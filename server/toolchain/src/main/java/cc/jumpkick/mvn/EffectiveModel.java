@@ -12,7 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -246,6 +248,14 @@ final class EffectiveModel {
         return ancestors.stream().anyMatch(a -> !a.inReactor() && !a.managed().isEmpty());
     }
 
+    /**
+     * True when an ancestor's own {@code dependencyManagement} entry pins {@code key}: under Maven
+     * such an entry beats every BOM import, so the version is the chain's, whatever a BOM says.
+     */
+    boolean chainManages(String key) {
+        return managedBy(key).isPresent();
+    }
+
     /** The nearest ancestor whose own dependencyManagement pins {@code key} (a management key). */
     Optional<Ancestor> managedBy(String key) {
         return ancestors.stream()
@@ -366,6 +376,8 @@ final class EffectiveModel {
      * chain carried as a platform entry. A version an inline {@code dependencyManagement} entry of
      * this POM, of a reactor parent or of a parent read off the disk supplies is not such a
      * platform's — no repository serves that entry — so the dependency keeps the version as written.
+     * A BOM of the reactor itself reads as a platform here; the workspace pass, which knows the
+     * reactor's POMs, takes back what one of them supplied ({@link ReactorManaged}).
      */
     boolean platformSupplies(String key, Management mgmt) {
         if (ownManaged().stream().anyMatch(m -> !isImport(m) && key.equals(m.getManagementKey()))) return false;
@@ -374,6 +386,21 @@ final class EffectiveModel {
         Optional<Ancestor> inline = managedBy(key);
         if (inline.isPresent()) return inline.get().published() && publishedParent;
         return publishedParent || mgmt.platform().stream().anyMatch(bom -> PluginFacts.usable(bom.version()) != null);
+    }
+
+    /**
+     * The effective {@code dependencyManagement} as a POM importing this one as a BOM receives it —
+     * inherited, interpolated, its own imports flattened — as {@code group:artifact -> version}, the
+     * first entry per module; an entry whose version is blank or still a placeholder is left out.
+     */
+    Map<String, String> managedTable() {
+        Map<String, String> table = new LinkedHashMap<>();
+        for (Dependency d : managed(model)) {
+            String version = PluginFacts.usable(d.getVersion());
+            if (version == null || d.getGroupId() == null || d.getArtifactId() == null) continue;
+            table.putIfAbsent(d.getGroupId() + ":" + d.getArtifactId(), version);
+        }
+        return table;
     }
 
     private List<Dependency> ownManaged() {

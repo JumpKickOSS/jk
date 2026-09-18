@@ -44,8 +44,11 @@ A managed dependency is a versionless GAV string — `group:artifact` with no th
 [catalog](dependencies.md#library-catalog) short name set to `"managed"`, or an inline table
 without `version`. Writing a version on it is a user root, and a user root beats the BOM for that
 coordinate. `jk add` given no version writes the managed spelling when the manifest's platform
-already covers the coordinate, and `jk import` writes it for every dependency whose version a BOM
-or parent supplied under Maven — [Dependencies](dependencies.md#managed-the-platforms-version-in-the-string-form).
+already covers the coordinate, and `jk import` writes it for every dependency whose version a
+published BOM or published parent chain supplied under Maven — the managers it writes as
+`[platform-dependencies]` rows, so the lock finds the version where Maven did; a version a reactor
+BOM or an inline `dependencyManagement` entry supplied is written as Maven resolved it —
+[Dependencies](dependencies.md#managed-the-platforms-version-in-the-string-form).
 
 ```bash
 jk tree -s platform          # BOM under the platform section, tagged (platform)

@@ -59,8 +59,10 @@ An inline table takes exactly the keys jk knows — `group`, `name`, `version`, 
 refuses any other by name (`dependencies.guava unknown key \`excludes\``), so a typo cannot parse
 cleanly and silently drop; a `[workspace.dependencies]` entry is held to its own list the same way.
 `jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table; `jk
-import` writes every plain coordinate the same way, and a dependency whose version a BOM or parent
-supplied under Maven the same way, versionless. `jk add --classifier <c>` always writes the inline table, under the handle `<name>-<c>`
+import` writes every plain coordinate the same way, and a dependency the same way, versionless, when
+its version under Maven came from a manager the lock reads as a `[platform-dependencies]` row of the
+same manifest — see [`managed`](#managed-the-platforms-version-in-the-string-form) below.
+`jk add --classifier <c>` always writes the inline table, under the handle `<name>-<c>`
 unless `--library` names one. `jk format` never rewrites one spelling into another. A classifier or type in a GAV string
 (`g:a:v:classifier`) is an error — use the inline table. `classifier` names the classified jar of
 the module (`natives-linux`, `linux-x86_64`); the solver and the lock key that edge as
@@ -80,9 +82,25 @@ the catalog counterpart of the versionless `group:artifact` string, so a BOM-man
 no inline table, and it is a word rather than `""` or `"*"` because an empty string says nothing
 and `*` would promise "any version" where the platform allows exactly one. `jk lock` refuses a `managed` entry no BOM or managed entry of the manifest
 covers — `` `group:artifact` is declared without a version, but no [platform-dependencies] BOM
-manages it `` — and `jk update` leaves the entry alone: moving the BOM moves the version. The
+manages it `` — and `jk update` leaves the entry alone: moving the BOM moves the version. A
+written version on the same coordinate in another table of the manifest — or, in a workspace, in
+another member — is a user root, and a user root beats the BOM for that coordinate wherever it is
+declared: the `managed` entry takes the pin's version and the lock writes one row. The
 inline table without `version` remains the spelling for a managed dependency that also needs
 `exclude`, `optional`, `classifier` or `kind`.
+
+`jk import` writes a dependency `managed` (or as the versionless coordinate) exactly when the
+version Maven gave it came from a manager the import writes as a `[platform-dependencies]` row of
+that same manifest, so the lock finds the version where Maven did: a published BOM the POM or one
+of its parents imports, or a published parent chain, which the import carries as one platform row
+naming the nearest published parent — the lock reads that POM's inherited `dependencyManagement`,
+the BOMs it imports included, as it reads a BOM's. Every other manager keeps the version written as
+Maven resolved it: an inline `dependencyManagement` entry of the POM itself, of a reactor parent or
+of a parent read off the disk through `relativePath`, and a BOM of the reactor itself — a sibling
+module or BOM leaf a member imports, which leaves `[platform-dependencies]` because no repository
+serves it — since nothing the lock reads would supply that version. A member that imports both a
+published chain and a reactor BOM keeps the pins the reactor BOM supplied and leaves the chain's to
+the platform, module by module.
 
 ### Optional dependencies
 

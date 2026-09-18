@@ -185,18 +185,21 @@ public final class PomImporter {
     /**
      * One POM imported, before the workspace pass decides which of its platform-supplied versions
      * are written: {@code platformSupplied} names the modules declared without a version that a
-     * {@code [platform-dependencies]} entry of the manifest supplies.
+     * {@code [platform-dependencies]} entry of the manifest supplies, and {@code bomSupplied} those
+     * of them a BOM import supplied rather than an ancestor's own {@code dependencyManagement} entry
+     * — the ones a BOM of the reactor may turn out to own ({@link ReactorManaged}).
      */
-    private record Imported(JkBuild jkBuild, ImportReport report, Set<String> platformSupplied) {
+    private record Imported(
+            JkBuild jkBuild, ImportReport report, Set<String> platformSupplied, Set<String> bomSupplied) {
 
         /** The result with every platform-supplied dependency written without a version. */
         Result platformManaged() {
-            return new Result(withPlatformManaged(jkBuild, platformSupplied), report);
+            return platformManaged(platformSupplied);
         }
 
-        /** The result with every version written as the effective POM resolved it. */
-        Result pinned() {
-            return new Result(jkBuild, report);
+        /** The result with each dependency on a module of {@code supplied} written without a version. */
+        Result platformManaged(Set<String> supplied) {
+            return new Result(withPlatformManaged(jkBuild, supplied), report);
         }
     }
 
@@ -243,8 +246,9 @@ public final class PomImporter {
         Project project = mapProject(em, report, sourceTree);
         PluginFacts.ProcessorPaths processorPaths = PluginFacts.annotationProcessorPaths(em.model());
         Set<String> platformSupplied = new HashSet<>();
+        Set<String> bomSupplied = new HashSet<>();
         Map<Scope, List<Dependency>> byScope =
-                mapDependencies(em, report, processorPaths.all(), hoisted, platformSupplied);
+                mapDependencies(em, report, processorPaths.all(), hoisted, platformSupplied, bomSupplied);
         mapProcessorPaths(processorPaths, byScope, report);
         ProfileMapping.Mapped profiles = ProfileMapping.map(em, report);
         addOptionalDeps(byScope, profiles.optionalDeps());
@@ -277,7 +281,7 @@ public final class PomImporter {
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
-        return new Imported(jkBuild, report.build(), platformSupplied);
+        return new Imported(jkBuild, report.build(), platformSupplied, bomSupplied);
     }
 
     /**
@@ -374,6 +378,7 @@ public final class PomImporter {
         // The managed pins a reactor parent owns are written once, on the root, whose table every
         // member's lock reads.
         List<Dependency> hoistedManaged = new ArrayList<>();
+        ReactorManaged reactorManaged = new ReactorManaged();
         ReactorModules.Reactor found =
                 ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report, (leaf, model) -> {
                     Imported child = importModel(model, remote, settings, inherited, hoistedManaged);
@@ -381,9 +386,13 @@ public final class PomImporter {
                     moduleRows.addAll(leaf.path(), child.report());
                     ShadedSiblings.Shaded member = ShadedSiblings.of(leaf, model.model());
                     if (member != null) shaded.add(member);
+                    if ("pom".equals(model.model().getPackaging())) reactorManaged.add(leaf.ga(), model);
                 });
         List<ReactorModules.Leaf> leaves = found.modules();
         EffectiveModel rootModel = reactor.effective(rootFile);
+        reactorManaged.add(
+                rootModel.model().getGroupId() + ":" + rootModel.model().getArtifactId(), rootModel);
+        for (ReactorModules.Leaf bom : found.boms()) reactorManaged.add(bom.ga(), reactor.effective(bom.pomFile()));
         reportInheritanceFailure(rootModel, report);
         if (leaves.isEmpty() && found.boms().isEmpty()) reportInactiveModules(rootModel, report);
         SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(
@@ -396,7 +405,7 @@ public final class PomImporter {
                 rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
 
         Map<String, JkBuild> members = SelfHostedFrameworks.strip(
-                memberBuilds(imported, found.boms()), found.boms(), rootProject.version(), report);
+                memberBuilds(imported, reactorManaged, found.unbuilt()), found.boms(), rootProject.version(), report);
         SiblingNames.report(members, report);
         ShadedSiblings.report(leaves, shaded, report);
         // The workspace root is a coordination point — no deps of its own — but it owns the one
@@ -449,19 +458,22 @@ public final class PomImporter {
     }
 
     /**
-     * Each member's manifest with its platform-supplied versions written as the platform's — except
-     * in a member that imports a BOM of the reactor itself: that BOM is no {@code [platform]} row
-     * under jk ({@link SiblingEdges}), so nothing would supply the versions it manages, and the
-     * member keeps every version as the effective POM resolved it.
+     * Each member's manifest with its platform-supplied versions written as the platform's, less
+     * what a BOM of the reactor itself supplied: that BOM is no {@code [platform]} row under jk
+     * ({@link SiblingEdges}), so nothing would supply the versions it manages, and the member keeps
+     * those as the effective POM resolved them ({@link ReactorManaged}).
      */
-    private static Map<String, JkBuild> memberBuilds(Map<String, Imported> imported, List<ReactorModules.Leaf> boms) {
-        Map<String, String> bomByGa = bomGaIndex(boms);
+    private static Map<String, JkBuild> memberBuilds(
+            Map<String, Imported> imported,
+            ReactorManaged reactorManaged,
+            Map<String, ReactorModules.Unbuilt> unbuilt) {
         Map<String, JkBuild> builds = new LinkedHashMap<>();
         for (Map.Entry<String, Imported> e : imported.entrySet()) {
             Imported member = e.getValue();
-            boolean importsReactorBom = member.jkBuild().dependencies().of(Scope.PLATFORM).stream()
-                    .anyMatch(bom -> bomByGa.containsKey(bom.module()));
-            builds.put(e.getKey(), (importsReactorBom ? member.pinned() : member.platformManaged()).jkBuild());
+            Set<String> supplied = new HashSet<>(member.platformSupplied());
+            supplied.removeAll(member.bomSupplied());
+            supplied.addAll(reactorManaged.keep(member.jkBuild(), member.bomSupplied(), unbuilt));
+            builds.put(e.getKey(), member.platformManaged(supplied).jkBuild());
         }
         return builds;
     }
@@ -602,14 +614,16 @@ public final class PomImporter {
      * {@code processorPaths} count as users of a managed version too, so their pins are not reported
      * unused; {@code hoisted} collects the reactor parent's inline pins for the workspace root, and is
      * {@code null} for a POM imported on its own. {@code platformSupplied} collects the modules
-     * declared without a version that a written {@code [platform-dependencies]} entry supplies.
+     * declared without a version that a written {@code [platform-dependencies]} entry supplies, and
+     * {@code bomSupplied} those of them a BOM import supplied rather than an ancestor's own entry.
      */
     private static Map<Scope, List<Dependency>> mapDependencies(
             EffectiveModel em,
             ImportReport.Builder report,
             List<Pom.Dep> processorPaths,
             @Nullable List<Dependency> hoisted,
-            Set<String> platformSupplied) {
+            Set<String> platformSupplied,
+            Set<String> bomSupplied) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         Set<String> used = new HashSet<>();
         for (Pom.Dep path : processorPaths) used.add(path.module() + ":jar");
@@ -634,6 +648,8 @@ public final class PomImporter {
             }
             if (declared.versionManaged() && em.platformSupplies(declared.key(), mgmt)) {
                 platformSupplied.add(declared.dep().module());
+                if (!em.chainManages(declared.key()))
+                    bomSupplied.add(declared.dep().module());
             }
             mapDependency(declared.dep(), byScope, report);
         }

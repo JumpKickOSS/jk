@@ -112,7 +112,7 @@ class StableVersionsTest {
         assertThat(out.get("changed")).isEqualTo(true);
         assertThat((String) out.get("preview"))
                 .contains("thing = \"com.acme:thing\"\n")
-                .doesNotContain("managed");
+                .doesNotContain("= \"managed\"");
         assertThat(String.valueOf(out.get("notes"))).contains("add com.acme:thing (version managed by the platform)");
     }
 
