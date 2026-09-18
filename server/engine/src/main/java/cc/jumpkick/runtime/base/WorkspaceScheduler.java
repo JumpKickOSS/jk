@@ -6,6 +6,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.SessionCancel;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
@@ -146,6 +148,26 @@ public final class WorkspaceScheduler {
             int maxConcurrency,
             BooleanSupplier cancelled,
             Predicate<U> awaitsCompletion) {
+        return run(units, dirOf, edges, task, sink, maxConcurrency, cancelled, awaitsCompletion, u -> {});
+    }
+
+    /**
+     * As above, with {@code stopUnit} the way to end a unit still in flight when the sink stops the
+     * schedule. Fail-fast then stops every in-flight sibling through it and waits for each to finish
+     * — its result still reaches the sink — so the record holds every module that started, the
+     * failed one as failed and the siblings as what the failure stopped. Without the hook a sibling
+     * keeps building past the return and lands in the record, or not, by timing.
+     */
+    public static <U, R> @Nullable R run(
+            List<U> units,
+            Function<U, Path> dirOf,
+            Map<Path, Set<Path>> edges,
+            PhasedUnitTask<U, R> task,
+            LevelSink<U, R> sink,
+            int maxConcurrency,
+            BooleanSupplier cancelled,
+            Predicate<U> awaitsCompletion,
+            Consumer<U> stopUnit) {
         BooleanSupplier stop = cancelled == null ? () -> false : cancelled;
         Set<Path> unitDirs = new HashSet<>();
         for (U u : units) unitDirs.add(dirOf.apply(u));
@@ -167,6 +189,7 @@ public final class WorkspaceScheduler {
         BlockingQueue<Object> events = new LinkedBlockingQueue<>();
         Set<Path> published = ConcurrentHashMap.newKeySet();
         Set<CompletableFuture<?>> inflight = ConcurrentHashMap.newKeySet();
+        Map<CompletableFuture<?>, U> unitOf = new ConcurrentHashMap<>();
         int inFlight = 0;
         while (true) {
             if (stop.getAsBoolean()) {
@@ -195,8 +218,10 @@ public final class WorkspaceScheduler {
                 CompletableFuture<R> f =
                         CompletableFuture.supplyAsync(() -> gated(stop, task, unit, publish), JkThreads.io());
                 inflight.add(f);
+                unitOf.put(f, unit);
                 f.whenComplete((r, ex) -> {
                     inflight.remove(f);
+                    unitOf.remove(f);
                     events.add(new Done<>(unit, r, ex));
                 });
                 inFlight++;
@@ -241,9 +266,41 @@ public final class WorkspaceScheduler {
             published.add(dirOf.apply(d.unit()));
             R sinkStop = sink.after(List.of(d.unit()), Collections.singletonList(d.result()), List.copyOf(notStarted));
             if (sinkStop != null) {
-                cancelAll(inflight);
+                drainStopped(events, sink, inFlight, unitOf.values(), stopUnit, List.copyOf(notStarted));
                 return sinkStop;
             }
+        }
+    }
+
+    /**
+     * The fail-fast tail: stop every unit still in flight, then take their completions so each
+     * result reaches the sink before the schedule returns. A unit that ignores its stop is waited
+     * for up to {@link #FAIL_FAST_DRAIN_MS} after the completion before it; past that the schedule
+     * returns without it, as a schedule with no drain did.
+     */
+    private static <U, R> void drainStopped(
+            BlockingQueue<Object> events,
+            LevelSink<U, R> sink,
+            int inFlight,
+            Collection<U> running,
+            Consumer<U> stopUnit,
+            List<U> remaining) {
+        for (U u : List.copyOf(running)) stopUnit.accept(u);
+        while (inFlight > 0) {
+            Object event;
+            try {
+                event = events.poll(FAIL_FAST_DRAIN_MS, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (event == null) return;
+            if (!(event instanceof Done)) continue;
+            @SuppressWarnings("unchecked")
+            Done<U, R> d = (Done<U, R>) event;
+            inFlight--;
+            if (d.error() != null || d.result() == null) continue;
+            sink.after(List.of(d.unit()), Collections.singletonList(d.result()), remaining);
         }
     }
 
@@ -348,6 +405,12 @@ public final class WorkspaceScheduler {
     static final long CANCEL_DRAIN_MS = 2_000L;
 
     /**
+     * How long fail-fast waits for the next stopped sibling to finish. A stopped plan returns
+     * within its own cancelled-body drain, so this is headroom, not a wait anyone should see out.
+     */
+    static final long FAIL_FAST_DRAIN_MS = 30_000L;
+
+    /**
      * Admission gate: a queued task starting after cancel must do nothing (and emit nothing). Its
      * {@code null} is the one the completion loops read as "cancelled, never ran".
      */
@@ -359,7 +422,7 @@ public final class WorkspaceScheduler {
         }
     }
 
-    /** Fail-fast path: in-flight modules keep building; only queued-not-started are prevented. */
+    /** Interrupted while waiting: settle the handles; the bodies stop cooperatively. */
     private static void cancelAll(Iterable<? extends CompletableFuture<?>> futures) {
         for (CompletableFuture<?> f : futures) {
             f.cancel(true);

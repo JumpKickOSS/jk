@@ -99,6 +99,9 @@ public final class BuildPlan {
     /** True only for host {@link #requestCancel} (vs internal cancel after a step failure). */
     private final AtomicBoolean userRequestedCancel = new AtomicBoolean(false);
 
+    /** The handles of the async steps in flight, so {@link #stop} can cancel them from outside the run loop. */
+    private final Set<CompletableFuture<TaskStatus>> outstanding = ConcurrentHashMap.newKeySet();
+
     private final Map<String, TaskStatus> statuses = new ConcurrentHashMap<>();
     private final List<BuildPlanResult.Diagnostic> warnings = Collections.synchronizedList(new ArrayList<>());
     private final List<BuildPlanResult.Diagnostic> errors = Collections.synchronizedList(new ArrayList<>());
@@ -147,6 +150,16 @@ public final class BuildPlan {
     public void requestCancel() {
         userRequestedCancel.set(true);
         cancelled.set(true);
+    }
+
+    /**
+     * Stop the plan for a failure elsewhere — a sibling module of a fail-fast workspace: running
+     * steps see {@link TaskContext#cancelled} flip and are cancelled after the cooperative grace,
+     * unstarted ones end {@code CANCELLED}, and the result is neither a success nor a user cancel,
+     * so the record shows what the failure stopped rather than an interrupt nobody made.
+     */
+    public void stop() {
+        cancelSiblings(outstanding);
     }
 
     public BuildPlanView snapshot() {
@@ -227,7 +240,6 @@ public final class BuildPlan {
         // One event per started async step. Bounded by the step count, so an unbounded queue
         // cannot grow: every offer is matched by exactly one take below.
         BlockingQueue<Done> events = new LinkedBlockingQueue<>();
-        Set<CompletableFuture<TaskStatus>> outstanding = ConcurrentHashMap.newKeySet();
         // The bodies behind those handles. Cancelling a handle does not stop its body, so the plan
         // keeps these to wait on before it calls itself finished.
         Set<CompletableFuture<TaskStatus>> bodies = ConcurrentHashMap.newKeySet();

@@ -10,6 +10,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -56,6 +58,59 @@ class WorkspaceSchedulerKeepGoingTest {
         assertThat(runWith(false))
                 .as("units queued behind the failure never run")
                 .doesNotContain("c");
+    }
+
+    /**
+     * Fail-fast with a sibling in flight: the sibling is stopped through the hook and its result
+     * still reaches the sink before the schedule returns, so the record can hold it as stopped
+     * rather than missing it or finding it by timing.
+     */
+    @Test
+    void fail_fast_stops_the_in_flight_sibling_and_waits_for_its_result() throws Exception {
+        CountDownLatch slowStarted = new CountDownLatch(1);
+        CountDownLatch slowReleased = new CountDownLatch(1);
+        List<String> stopped = Collections.synchronizedList(new ArrayList<>());
+        List<String> seenBySink = Collections.synchronizedList(new ArrayList<>());
+        WorkspaceScheduler.PhasedUnitTask<String, String> task = (unit, publish) -> {
+            if ("slow".equals(unit)) {
+                slowStarted.countDown();
+                try {
+                    if (!slowReleased.await(10, TimeUnit.SECONDS)) return "TIMED_OUT";
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return "STOPPED";
+            }
+            try {
+                if (!slowStarted.await(10, TimeUnit.SECONDS)) return "TIMED_OUT";
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return "FAILED";
+        };
+        WorkspaceScheduler.LevelSink<String, String> sink = (justCompleted, results, remaining) -> {
+            seenBySink.addAll(results);
+            return results.contains("FAILED") ? "FAILED" : null;
+        };
+        Map<Path, Set<Path>> edges = Map.of(p("bad"), Set.of(), p("slow"), Set.of());
+        String verdict = WorkspaceScheduler.run(
+                List.of("bad", "slow"),
+                WorkspaceSchedulerKeepGoingTest::p,
+                edges,
+                task,
+                sink,
+                2,
+                () -> false,
+                u -> false,
+                unit -> {
+                    stopped.add(unit);
+                    slowReleased.countDown();
+                });
+        assertThat(verdict).isEqualTo("FAILED");
+        assertThat(stopped).as("only the sibling still in flight is stopped").containsExactly("slow");
+        assertThat(seenBySink)
+                .as("the stopped sibling's result reached the sink before the schedule returned")
+                .containsExactlyInAnyOrder("FAILED", "STOPPED");
     }
 
     @Test
