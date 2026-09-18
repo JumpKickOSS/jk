@@ -219,8 +219,11 @@ checksum *and* names no such file pins a jar nobody fetched, and a compile class
 name (`dependency org.picketbox:picketbox:5.0.3.Final has no file …`) rather than compiling without
 it — re-run `jk lock`. That rule holds for a lock whose `generated-by-build-time` says its writer
 marked such rows; a lock from an earlier writer carries its BOMs and aggregators unmarked, is read
-by that writer's rule — every checksum-less row is file-less — and builds as before, and the next
-`jk lock` rewrites it with the marks. When a compile fails on `package X does not exist` and the module's lock
+by that writer's rule — every checksum-less row is file-less — and builds as before. The first
+build or `jk sync` that finds such a lock fresh rewrites it in place — each bare row gains the
+`path` of the POM it stands for, the manifest digest and every other row stay — and says so on one
+line, so an existing lock converges without a resolve and without a diff to read beyond the marks;
+a `jk lock` marks the rows as it writes. When a compile fails on `package X does not exist` and the module's lock
 carries a jar-typed row standing for a POM alone, the error names that row under `locked without a
 file:` with the repository that served its POM: the jar was not there when the lock was written, so
 add the repository that publishes it to `[repositories]` and re-run `jk lock`.
