@@ -135,7 +135,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         if (run.exit() != 0) {
             // Fail loudly: a cached "success" with no quarkus-app would silently ship a
             // non-production artifact on every later build.
-            throw new IOException("quarkus-augment failed (exit " + run.exit() + "):\n" + tail(run.output()));
+            throw new IOException("quarkus-augment failed (exit " + run.exit() + "):\n"
+                    + failureText(QuarkusAugmentMain.LOG_PREFIX, run.output()));
         }
     }
 
@@ -169,7 +170,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             Files.deleteIfExists(routes);
         }
         if (run.exit() != 0) {
-            throw new IOException("quarkus-test-model failed (exit " + run.exit() + "):\n" + tail(run.output()));
+            throw new IOException("quarkus-test-model failed (exit " + run.exit() + "):\n"
+                    + failureText(QuarkusTestModelMain.LOG_PREFIX, run.output()));
         }
         Path model = outDir.resolve(QuarkusTestModelMain.MODEL_FILE);
         if (!Files.isRegularFile(model)) {
@@ -469,10 +471,26 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         });
     }
 
-    private static String tail(String output) {
+    /** How many of the fork's last lines a failure carries; Quarkus's own stack trace fits. */
+    private static final int FAILURE_TAIL_LINES = 60;
+
+    /**
+     * A failed fork's report: the fork's own {@code <prefix>:} lines — the remote repositories it
+     * was routed to, the locked closure it resolved — kept at the top, then its last {@link
+     * #FAILURE_TAIL_LINES} lines. A header line already inside that window is not repeated. The
+     * head is what explains a routing or closure problem, and a long augment log pushes it out of
+     * any tail.
+     */
+    static String failureText(String prefix, String output) {
         if (output == null || output.isBlank()) return "";
         String[] lines = output.split("\n");
-        int from = Math.max(0, lines.length - 60);
-        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
+        int from = Math.max(0, lines.length - FAILURE_TAIL_LINES);
+        List<String> kept = new ArrayList<>();
+        String header = prefix + ":";
+        for (int i = 0; i < from; i++) {
+            if (lines[i].startsWith(header)) kept.add(lines[i]);
+        }
+        kept.addAll(Arrays.asList(lines).subList(from, lines.length));
+        return String.join("\n", kept);
     }
 }

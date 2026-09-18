@@ -162,15 +162,17 @@ final class LockedAppModel {
     /** Say every disagreement out loud — a lock that quietly loses is the defect being fixed. */
     private static void report(LockedClosure.Plan plan) {
         for (String override : plan.overrides()) {
-            System.err.println("jk-quarkus-augment: lock overrides " + override);
+            System.err.println(QuarkusAugmentMain.LOG_PREFIX + ": lock overrides " + override);
         }
         if (!plan.unlocked().isEmpty()) {
-            System.err.println("jk-quarkus-augment: NOT shipped — outside jk-lock.toml (declare them under"
-                    + " [dependencies] and re-lock to ship them): " + String.join(", ", plan.unlocked()));
+            System.err.println(
+                    QuarkusAugmentMain.LOG_PREFIX + ": NOT shipped — outside jk-lock.toml (declare them under"
+                            + " [dependencies] and re-lock to ship them): " + String.join(", ", plan.unlocked()));
         }
         if (!plan.unresolved().isEmpty()) {
-            System.err.println("jk-quarkus-augment: locked but off the augment's runtime classpath (extension"
-                    + " excluded-artifacts): " + String.join(", ", plan.unresolved()));
+            System.err.println(
+                    QuarkusAugmentMain.LOG_PREFIX + ": locked but off the augment's runtime classpath (extension"
+                            + " excluded-artifacts): " + String.join(", ", plan.unresolved()));
         }
     }
 

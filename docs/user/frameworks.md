@@ -59,7 +59,10 @@ jk new -t quarkus/hello my-api
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
   `mvn` CLI). The application's own coordinate and its workspace siblings live in the
   augment's private repository, jar and POM together, so no repository is ever asked for
-  them: Central refusing the request cannot fail the package step.
+  them: Central refusing the request cannot fail the package step. When the augment does fail,
+  the step's failure text opens with the fork's own `jk-quarkus-augment:` lines — the remote
+  repositories it was routed to and the locked closure it resolved — above the fork's last 60
+  lines, so a routing or closure problem is readable from `target/jk-results.md`.
 - **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
   `jk native` only) builds through **Quarkus’s own** native-image command. JumpKick
   supplies the GraalVM toolchain. Nothing jk composes is added on top; `[native] args`

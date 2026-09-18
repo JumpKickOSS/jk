@@ -34,6 +34,9 @@ import java.util.List;
  */
 public final class QuarkusTestModelMain {
 
+    /** The prefix of every line this fork writes about itself; the plugin keeps those lines when it fails. */
+    static final String LOG_PREFIX = "jk-quarkus-test-model";
+
     /** Quarkus's {@code BootstrapConstants.SERIALIZED_TEST_APP_MODEL}. */
     static final String SERIALIZED_TEST_APP_MODEL = "quarkus-internal-test.serialized-app-model.path";
 
@@ -63,8 +66,8 @@ public final class QuarkusTestModelMain {
         boolean offline = EnvValues.parseBool(args[10]).orElse(false);
 
         LockedClosure locked = LockedClosure.parse(runtimeList);
-        System.err.println("jk-quarkus-test-model: locked test closure="
-                + locked.artifacts().size() + (offline ? " offline" : ""));
+        System.err.println(
+                LOG_PREFIX + ": locked test closure=" + locked.artifacts().size() + (offline ? " offline" : ""));
 
         Files.createDirectories(outDir);
         Path scratch = Files.createDirectories(outDir.resolve(".jk-quarkus-bootstrap"));
@@ -83,7 +86,7 @@ public final class QuarkusTestModelMain {
 
         Path file = outDir.resolve(MODEL_FILE);
         ApplicationModelSerializer.serialize(model, file);
-        System.out.println("jk-quarkus-test-model: " + file);
+        System.out.println(LOG_PREFIX + ": " + file);
     }
 
     /**
