@@ -48,6 +48,14 @@ siblings on its classpath, so a changed sibling invalidates only the consumer cl
 referenced the changed producer class — not every class that touched the sibling's jar. A
 sibling whose analysis is missing or does not match its classes is treated like any other jar.
 
+A class file whose source is gone leaves the classes tree on the next compile, whatever put it
+there. The Java and Scala compile sweeps every class its incremental analysis does not own before
+it runs — a restore from the action cache rewrites the tree without telling the analysis, so a
+tree can hold the class of a source the analysis never saw — and the Kotlin compile starts its
+incremental state over when a restore lays down a tree other than the one that state produced.
+The record a compile stores is the swept tree, so a later restore of it cannot bring a deleted
+test back to the runner or a deleted class into the jar.
+
 The first build after `jk install` of a new engine runs every plugin step, guard lane,
 build-logic run and packaging step once more: their keys carry the identity of the engine that
 produced them, so nothing an older engine produced is restored under the new one. Compile steps

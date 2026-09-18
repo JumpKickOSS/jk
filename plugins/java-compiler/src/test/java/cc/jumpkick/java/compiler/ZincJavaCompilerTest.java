@@ -216,6 +216,24 @@ class ZincJavaCompilerTest {
     }
 
     @Test
+    void incremental_compile_prunes_a_class_the_analysis_does_not_own(@TempDir Path dir) throws Exception {
+        // An action-cache restore rewrites the class output and not the analysis, so the tree can
+        // hold the class of a source this analysis never saw — one since deleted among them. Zinc
+        // prunes only the products it recorded; the compile must sweep the rest.
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A {}");
+        assertThat(p.compile().success()).isTrue();
+
+        Path stray = p.classFile("a/B.class");
+        Files.copy(p.classFile("a/A.class"), stray);
+        p.write("a/A.java", "package a; public class A { int x; }");
+
+        assertThat(p.compile().success()).isTrue();
+        assertThat(p.classFile("a/A.class")).isRegularFile();
+        assertThat(stray).doesNotExist();
+    }
+
+    @Test
     void corrupt_analysis_falls_back_to_a_full_compile(@TempDir Path dir) throws Exception {
         // A truncated/incompatible analysis file must not fail every build persistently.
         Project p = new Project(dir);
