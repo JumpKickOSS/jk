@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
 import cc.jumpkick.engine.http.mcp.McpTools;
-import cc.jumpkick.engine.http.mcp.McpVitals;
+import cc.jumpkick.engine.jobs.JobRow;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
@@ -164,86 +164,71 @@ class McpHandlerTest {
         assertThat(cancelBody).contains("true");
     }
 
+    /**
+     * The {@code jobs} array of {@code jk_status} is the one {@code jk engine status --output json}
+     * and {@code GET /api/status} carry: every live and queued job as its {@link JobRow}, so an agent
+     * reads the same rows — and the same field names — whichever surface it asks.
+     */
     @Test
-    void stalled_keys_on_event_silence_not_job_age() {
-        long now = System.currentTimeMillis();
-        // Old job, fresh progress signal: healthy. Old job, silent for the stall window: stalled.
-        HttpLive.Run healthy = new HttpLive.Run(
-                1L,
-                1L,
-                "build",
-                "/a",
-                "c",
-                null,
-                null,
-                now - 10 * 60_000,
-                now - 1_000,
-                40.0,
-                "j-1",
-                0,
-                0,
+    void jk_status_lists_the_jobs_as_the_status_rows() {
+        List<JobRow> rows = List.of(
+                JobRow.live(739, "test", "/home/me/app", 1_700_000_000_000L, 1, 1_700_000_500_000L),
+                JobRow.queued(741, "format", "/home/me/tool", 1_700_000_600_000L, 0));
+        StatusSnapshot base =
+                new StatusSnapshot("0.12.0", 1L, 0L, 0, 1, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30);
+        StatusSnapshot withJobs = new StatusSnapshot(
+                base.version(),
+                base.pid(),
+                base.startedAtMillis(),
+                base.activeRequests(),
+                base.activeBuildPlans(),
+                base.heapUsedBytes(),
+                base.heapCommittedBytes(),
+                base.heapMaxBytes(),
+                base.rssBytes(),
+                base.aotTrainingPid(),
+                base.cores(),
+                base.totalMemoryBytes(),
+                base.availableMemoryBytes(),
+                base.systemCpuLoad(),
+                base.systemLoadAverage(),
+                base.engineEpoch(),
+                base.peakActiveRequests(),
+                base.peakActiveBuildPlans(),
+                base.idleDropped(),
+                base.logBytes(),
+                base.logRolledAt(),
+                base.ignoredSignals(),
                 1,
-                2,
-                List.of(),
-                List.of());
-        HttpLive.Run silent = new HttpLive.Run(
-                2L,
-                2L,
-                "build",
-                "/b",
-                "c",
-                null,
-                null,
-                now - 10 * 60_000,
-                now - McpVitals.STALL_MS - 5_000,
-                40.0,
-                "j-2",
-                0,
-                0,
-                1,
-                2,
-                List.of(),
-                List.of());
-        // No signal ever: falls back to startedAt (young job — not stalled).
-        HttpLive.Run young = new HttpLive.Run(
-                3L,
-                3L,
-                "lock",
-                "/c",
-                "c",
-                null,
-                null,
-                now - 2_000,
-                0L,
-                Double.NaN,
-                "j-3",
-                0,
-                0,
-                1,
-                2,
-                List.of(),
-                List.of());
+                JobRow.toJson(rows));
         McpHandler withLive = new McpHandler(
-                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                () -> withJobs,
                 jobs,
                 dir -> Map.of(),
                 List::of,
                 "0.12.0",
                 new ProgressTokenRegistry(),
-                () -> List.of(healthy, silent, young),
+                List::of,
                 AdmissionYield.NONE,
                 null);
         String body = withLive.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
-        Map<String, Object> result = object(resp, "result");
-        Map<String, Object> structured = object(result, "structuredContent");
+        Map<String, Object> structured = object(object(resp, "result"), "structuredContent");
         List<Map<String, Object>> jobRows = objects(structured, "jobs");
-        assertThat(jobRows).hasSize(3);
-        assertThat(jobRows.get(0).get("stalled")).isEqualTo(false); // ten minutes old, ticked 1s ago
-        assertThat(jobRows.get(1).get("stalled")).isEqualTo(true); // silent past the stall window
-        assertThat(jobRows.get(2).get("stalled")).isEqualTo(false); // no signal, but only 2s old
+        assertThat(jobRows).hasSize(2);
+        assertThat(jobRows.get(0).keySet())
+                .as("the row shape jk engine status and GET /api/status render")
+                .containsExactly("jid", "kind", "dir", "state", "since", "workers", "lastEventAt", "ahead");
+        assertThat(number(jobRows.get(0), "jid").longValue()).isEqualTo(739L);
+        assertThat(jobRows.get(0).get("state")).isEqualTo("live");
+        assertThat(number(jobRows.get(0), "workers").intValue()).isEqualTo(1);
+        assertThat(number(jobRows.get(0), "lastEventAt").longValue()).isEqualTo(1_700_000_500_000L);
+        assertThat(jobRows.get(1).get("state")).isEqualTo("queued");
+        assertThat(jobRows.get(1).get("kind")).isEqualTo("format");
+        assertThat(number(jobRows.get(1), "ahead").intValue()).isZero();
+        assertThat(number(structured, "queuedBuildPlans").intValue()).isEqualTo(1);
     }
 
     @Test

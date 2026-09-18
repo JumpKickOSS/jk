@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.host.Log;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -220,7 +222,8 @@ public final class LiveVitals implements AutoCloseable {
 
     /**
      * Quantized status for equality — available/heap to 1 MiB, CPU load to 1 percentage point,
-     * load average to 0.1, counters exact. Keeps "still 5.0 GiB available" from spamming the wire.
+     * load average to 0.1, counters and the job rows exact. Keeps "still 5.0 GiB available" from
+     * spamming the wire while a job admitted, queued or ticking its last event is a frame at once.
      */
     record PresentStatus(
             int activeBuildPlans,
@@ -235,7 +238,8 @@ public final class LiveVitals implements AutoCloseable {
             int cores,
             long pid,
             long aotTrainingPid,
-            String engineEpoch) {
+            String engineEpoch,
+            List<Map<String, Object>> jobs) {
 
         static PresentStatus of(StatusSnapshot s) {
             int loadPp = s.systemCpuLoad() < 0 ? -1 : (int) Math.round(s.systemCpuLoad() * 100);
@@ -253,7 +257,8 @@ public final class LiveVitals implements AutoCloseable {
                     s.cores(),
                     s.pid(),
                     s.aotTrainingPid(),
-                    s.engineEpoch() == null ? "" : s.engineEpoch());
+                    s.engineEpoch() == null ? "" : s.engineEpoch(),
+                    s.jobs());
         }
 
         private static long mib(long bytes) {

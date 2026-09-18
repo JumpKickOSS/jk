@@ -46,8 +46,9 @@ how long since its last task event:
 ```
 
 `--output json` carries the same rows as `jobs` (`jid`, `kind`, `dir`, `state` = `live` |
-`queued`, `since`, `workers`, `lastEventAt`, `ahead`); `GET /api/status` and the socket status
-frame carry the identical array, and `POST /api/cancel {"jid":N}` takes any jid it lists.
+`queued`, `since`, `workers`, `lastEventAt`, `ahead`); `GET /api/status`, the socket status
+frame, the dashboard's live `status` frame and the MCP `jk_status` tool carry the identical array,
+and `POST /api/cancel {"jid":N}` takes any jid it lists.
 
 ### Queued for memory
 
