@@ -381,8 +381,11 @@ public final class LockOrchestrator {
     /**
      * A versionless root of the merged manifest that only some members' BOMs manage takes their
      * version in the merged solve, as the exact pin the declaring member could have written would:
-     * the shared table adopts that module's say from the table folding every BOM the manifest
-     * declares, which is collected only when such a root exists.
+     * the shared table adopts that module's say from the first member, in workspace order, whose own
+     * table manages it. Each member's table folds that member's BOMs alone, as the member pass folds
+     * them, so two members holding BOMs that disagree on a module are each their own answer — the
+     * later one reads a row of its own — and no conflict is raised where no member sees both BOMs.
+     * The members' tables are collected only when such a root exists.
      */
     private void adoptVersionlessRoots(
             JkBuild project,
@@ -391,17 +394,33 @@ public final class LockOrchestrator {
             PlatformConstraints.BomTables bomTables)
             throws IOException, InterruptedException {
         if (members.isEmpty()) return;
-        PlatformConstraints whole = null;
+        List<PlatformConstraints> memberTables = null;
         for (Map.Entry<Scope, List<Dependency>> scope :
                 project.dependencies().byScope().entrySet()) {
             if (scope.getKey() == Scope.PLATFORM || scope.getKey() == Scope.MANAGED) continue;
             for (Dependency root : scope.getValue()) {
                 if (!root.isPlatformManaged() || shared.versions().containsKey(root.module())) continue;
-                if (whole == null)
-                    whole = PlatformConstraints.collect(project, repos, pomBuilder, bomTables, pinPolicy);
-                shared.adopt(root.module(), whole);
+                if (memberTables == null) memberTables = memberTables(pomBuilder, bomTables);
+                for (PlatformConstraints table : memberTables) {
+                    if (table.versions().containsKey(root.module())) {
+                        shared.adopt(root.module(), table);
+                        break;
+                    }
+                }
             }
         }
+    }
+
+    /** Every member's own platform table, in workspace order, each folding that member's BOMs alone. */
+    private List<PlatformConstraints> memberTables(
+            EffectivePomBuilder pomBuilder, PlatformConstraints.BomTables bomTables)
+            throws IOException, InterruptedException {
+        List<PlatformConstraints> tables = new ArrayList<>(members.size());
+        for (Member member : members) {
+            tables.add(PlatformConstraints.collect(
+                    MemberPartitions.solvable(member.manifest()), repos, pomBuilder, bomTables, pinPolicy));
+        }
+        return tables;
     }
 
     /**
