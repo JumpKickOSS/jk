@@ -4,6 +4,8 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.jobs.JobRow;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -50,6 +52,47 @@ class LiveVitalsTest {
         StatusSnapshot hotter = snap(5L * 1024 * 1024 * 1024, 0.50);
         assertThat(LiveVitals.PresentStatus.of(base)).isNotEqualTo(LiveVitals.PresentStatus.of(moreJobs));
         assertThat(LiveVitals.PresentStatus.of(base)).isNotEqualTo(LiveVitals.PresentStatus.of(hotter));
+    }
+
+    /** A job's row changing — one admitted, one queued, a worker gone — is a frame, not a wait for the next tick. */
+    @Test
+    void presentStatus_notices_a_job_row_change() {
+        StatusSnapshot base = snap(5L * 1024 * 1024 * 1024, 0.10);
+        StatusSnapshot oneJob =
+                withJobs(base, List.of(JobRow.live(739, "test", "/home/me/app", 1_700_000_000_000L, 1, 0)));
+        StatusSnapshot ticked = withJobs(
+                base, List.of(JobRow.live(739, "test", "/home/me/app", 1_700_000_000_000L, 1, 1_700_000_500_000L)));
+        assertThat(LiveVitals.PresentStatus.of(base)).isNotEqualTo(LiveVitals.PresentStatus.of(oneJob));
+        assertThat(LiveVitals.PresentStatus.of(oneJob)).isNotEqualTo(LiveVitals.PresentStatus.of(ticked));
+        assertThat(LiveVitals.PresentStatus.of(ticked)).isEqualTo(LiveVitals.PresentStatus.of(ticked));
+    }
+
+    private static StatusSnapshot withJobs(StatusSnapshot base, List<JobRow> rows) {
+        return new StatusSnapshot(
+                base.version(),
+                base.pid(),
+                base.startedAtMillis(),
+                base.activeRequests(),
+                base.activeBuildPlans(),
+                base.heapUsedBytes(),
+                base.heapCommittedBytes(),
+                base.heapMaxBytes(),
+                base.rssBytes(),
+                base.aotTrainingPid(),
+                base.cores(),
+                base.totalMemoryBytes(),
+                base.availableMemoryBytes(),
+                base.systemCpuLoad(),
+                base.systemLoadAverage(),
+                base.engineEpoch(),
+                base.peakActiveRequests(),
+                base.peakActiveBuildPlans(),
+                base.idleDropped(),
+                base.logBytes(),
+                base.logRolledAt(),
+                base.ignoredSignals(),
+                base.queuedBuildPlans(),
+                JobRow.toJson(rows));
     }
 
     @Test
