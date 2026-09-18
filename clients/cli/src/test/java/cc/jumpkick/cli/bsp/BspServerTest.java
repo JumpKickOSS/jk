@@ -110,6 +110,59 @@ class BspServerTest {
         assertThat(responses).contains("targets");
     }
 
+    /**
+     * A mixed Java/Scala module is a Scala build target to Metals: its target carries the {@code
+     * scala} data kind with the compiler version and its {@code languageIds} name both languages,
+     * {@code buildTarget/scalacOptions} answers with the Zinc arguments, the classpath and the
+     * class directory, and the server advertises {@code scala} among its languages.
+     */
+    @Test
+    void a_mixed_java_scala_module_is_a_scala_target_with_scalac_options(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "t"
+                name = "mixed"
+                version = "0.0.1"
+                java = 25
+                scala = "3.8.4"
+                """);
+        Files.createDirectories(dir.resolve("src/main/java/t"));
+        Files.writeString(dir.resolve("src/main/java/t/Greeter.java"), """
+                package t;
+                public class Greeter { public static String hi() { return "hi"; } }
+                """);
+        Files.createDirectories(dir.resolve("src/main/scala/t"));
+        Files.writeString(dir.resolve("src/main/scala/t/Main.scala"), """
+                package t
+                object Main:
+                  def main(args: Array[String]): Unit = println(Greeter.hi())
+                """);
+        IdeEngineClient ide = IdeEngineClient.open(dir, Files.createDirectories(dir.resolve("cache")), null);
+        ide.connect();
+
+        String session = frame(init(1)) + frame("""
+                        {"jsonrpc":"2.0","id":2,"method":"workspace/buildTargets","params":{}}
+                        """) + frame("""
+                        {"jsonrpc":"2.0","id":3,"method":"buildTarget/scalacOptions","params":{"targets":[]}}
+                        """) + frame("""
+                        {"jsonrpc":"2.0","id":4,"method":"buildTarget/javacOptions","params":{"targets":[]}}
+                        """) + frame(shutdown(5)) + frame(exit());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new BspServer(ide, new ByteArrayInputStream(session.getBytes(StandardCharsets.UTF_8)), out).serve();
+        String responses = out.toString(StandardCharsets.UTF_8);
+
+        assertThat(responses).contains("\"languageIds\":[\"java\",\"scala\"]");
+        assertThat(responses).contains("\"dataKind\":\"scala\"");
+        assertThat(responses).contains("\"scalaVersion\":\"3.8.4\"").contains("\"scalaBinaryVersion\":\"3\"");
+        assertThat(responses).contains("\"scalaOrganization\":\"org.scala-lang\"");
+        String classes = dir.toRealPath().resolve("target/classes/main").toUri().toString();
+        assertThat(responses)
+                .contains("\"options\":[\"-java-output-version\",\"25\"]")
+                .contains("\"classDirectory\":\"" + classes + "\"");
+        assertThat(responses).contains("\"options\":[\"--release\",\"25\"]");
+        // The initialize result names scala among the languages this workspace compiles.
+        assertThat(responses.substring(0, responses.indexOf("\"id\":2"))).contains("scala");
+    }
+
     @Test
     void buildTarget_test_returns_statusCode(@TempDir Path dir) throws Exception {
         Path src = Files.createDirectories(dir.resolve("src"));

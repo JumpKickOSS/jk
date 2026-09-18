@@ -79,7 +79,7 @@ public final class CompileToolchain {
      * Pick the Scala 3 compiler version: lock pin first, else the locked {@code scala3-library_3}
      * artifact, else an exact {@code scala} pin, else {@code null} (bundled default).
      */
-    public static @Nullable String scalaVersionFor(Lockfile lock, JkBuild project) {
+    public static @Nullable String scalaVersionFor(@Nullable Lockfile lock, JkBuild project) {
         if (lock != null && lock.scala() != null && !lock.scala().isBlank()) {
             return lock.scala();
         }

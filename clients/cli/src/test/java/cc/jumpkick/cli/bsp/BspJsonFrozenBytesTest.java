@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
 class BspJsonFrozenBytesTest {
     @Test
     void initialize_result_names_the_three_providers() {
-        String provider = "{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]}";
-        assertThat(BspServer.initializeResultJson())
+        String provider = "{\"languageIds\":[\"java\",\"scala\"]}";
+        assertThat(BspServer.initializeResultJson(List.of("java", "scala")))
                 .isEqualTo("{\"displayName\":\"jk\",\"version\":\"" + JkVersion.VERSION + "\",\"bspVersion\":\"2.1.0\","
                         + "\"capabilities\":{\"compileProvider\":" + provider + ",\"testProvider\":" + provider
                         + ",\"runProvider\":" + provider + ",\"canReload\":true}}");
@@ -24,7 +24,7 @@ class BspJsonFrozenBytesTest {
         assertThat(BspServer.targetJson("file:///p#app", "g:app", "file:///p/app", true))
                 .isEqualTo(
                         "{\"id\":{\"uri\":\"file:///p#app\"},\"displayName\":\"g:app\",\"baseDirectory\":\"file:///p/app\","
-                                + "\"tags\":[\"library\"],\"languageIds\":[\"java\",\"kotlin\",\"groovy\"],\"dependencies\":[],"
+                                + "\"tags\":[\"library\"],\"languageIds\":[\"java\",\"kotlin\",\"groovy\",\"scala\"],\"dependencies\":[],"
                                 + "\"capabilities\":{\"canCompile\":true,\"canTest\":true,\"canRun\":true}}");
     }
 

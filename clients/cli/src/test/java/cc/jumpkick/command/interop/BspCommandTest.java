@@ -35,7 +35,7 @@ class BspCommandTest {
         assertThat(json)
                 .contains("\"name\": \"jk\"")
                 .contains("\"bspVersion\": \"2.1.0\"")
-                .contains("\"languages\": [\"java\", \"kotlin\", \"groovy\"]")
+                .contains("\"languages\": [\"java\"]")
                 .contains("\"version\": " + quoted(JkVersion.VERSION))
                 .contains("\"bsp\", \"serve\"");
     }

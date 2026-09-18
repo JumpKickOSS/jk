@@ -12,7 +12,10 @@ jk ide --print-model         # ide-model JSON on stdout (no writes)
 BSP can discover JumpKick. IDE launches use `jk bsp serve` (stdio BSP — **no engine jars
 in the IDE process**). Requires `jk` on PATH (or `JK_BIN`). Coding agents get the same
 files from the MCP tool `jk_ide` (`preview=true` lists them without writing) — see
-[MCP](mcp.md).
+[MCP](mcp.md). The file's `languages` are the ones the workspace compiles — `scala` among them
+when a module does — so Metals imports a mixed Java/Scala module: its build target carries the
+Scala compiler version and jars, and `buildTarget/scalacOptions` answers with the arguments jk's
+Zinc session passes, the compile classpath and the class directory.
 
 ## Test suites in the IDE
 
@@ -50,6 +53,9 @@ pinned jar is verified against it.
 | `workspace/buildTargets`, sources, dependency modules | yes |
 | Dependency **sources** jars | yes (classifier `sources` when present) |
 | `buildTarget/outputPaths` | yes (main + test classes dirs) |
+| `buildTarget/scalacOptions`, `buildTarget/javacOptions` | yes: `-java-output-version N` / `--release N` for the module's Java level, the compile classpath (library jars, the Scala library, sibling classes) and the class directory |
+| Scala targets | a module that compiles Scala is a `scala` build target (`scalaVersion`, `scalaBinaryVersion`, the compiler jars a build fetched, the JDK); every other module carries `jvm` data naming its JDK |
+| `buildTarget/dependencySources`, `scalaMainClasses`, `scalaTestClasses` | yes (sources jars when present; the declared main class; test classes are discovered by `buildTarget/test`, so the listing is empty) |
 | `buildTarget/compile` | yes; `publishDiagnostics` with file/line/column for javac, kotlinc and groovyc blocks (errors severity 1, warnings 2; anything unparseable lands at project root) |
 | `buildTarget/test` | yes; optional suite/tag/class `data`, optional `debug` |
 | `buildTarget/run` | yes when main class known; optional `debug` |

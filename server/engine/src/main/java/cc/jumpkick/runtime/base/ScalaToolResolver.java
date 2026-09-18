@@ -95,6 +95,19 @@ public final class ScalaToolResolver {
     }
 
     /**
+     * The compiler closure a build already fetched for {@code scalaVersion}, or empty: the IDE
+     * model reads what the store holds and never downloads a compiler.
+     */
+    public static List<Path> cachedClasspath(Cas cas, String scalaVersion) {
+        try {
+            List<Path> cached = readValidatedClosure(libDir(cas, scalaVersion), cacheFile(cas, scalaVersion));
+            return cached == null ? List.of() : cached;
+        } catch (IOException | RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    /**
      * Return the cached named-jar closure only when it is provably complete: the {@code closure.shas}
      * completion marker exists (written last, so a crashed resolve has none) and the lib dir holds
      * exactly as many jars as it records. A partial lib dir returns {@code null} → re-resolve.
