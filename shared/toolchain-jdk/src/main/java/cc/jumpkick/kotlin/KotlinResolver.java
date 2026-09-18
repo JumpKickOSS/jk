@@ -3,6 +3,7 @@ package cc.jumpkick.kotlin;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
+import cc.jumpkick.version.Versions;
 import java.net.URI;
 import org.jspecify.annotations.Nullable;
 
@@ -19,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 public final class KotlinResolver {
 
     /**
-     * jk's lowest supported Kotlin. Two reasons stack:
+     * The oldest Kotlin jk's compile path drives. Two reasons stack:
      *
      * <ul>
      *   <li>The Kotlin compile path runs the Build Tools API via its {@code KotlinToolchains} entry
@@ -31,13 +32,11 @@ public final class KotlinResolver {
      *       the compiler and not jk's wiring. 2.4.10 fixes it.
      * </ul>
      *
-     * <p>The floor is therefore a patch version. {@link #FLOOR_PATCH} exists so the version guard
-     * compares against this constant rather than spelling {@code 10} again somewhere else.
+     * <p>The floor is therefore a patch version. A project declaring a Kotlin below it compiles with
+     * the floor ({@link #floored}): the lock pins the floor and notes it, the build warns once per
+     * module, and an import writes the floor with a row.
      */
     public static final String FLOOR_VERSION = "2.4.10";
-
-    /** Patch component of {@link #FLOOR_VERSION}, for the {@code 2.4.x} arm of a version guard. */
-    public static final int FLOOR_PATCH = 10;
 
     /** jk's bundled default Kotlin version. Never below {@link #FLOOR_VERSION}. */
     public static final String DEFAULT_VERSION = FLOOR_VERSION;
@@ -48,6 +47,27 @@ public final class KotlinResolver {
 
     public static ToolDistribution defaultDistribution() {
         return distributionFor(DEFAULT_VERSION);
+    }
+
+    /** True when {@code version} sorts below {@link #FLOOR_VERSION} as a Maven version, a pre-release of the floor included. */
+    public static boolean belowFloor(String version) {
+        return Versions.compare(version.trim(), FLOOR_VERSION) < 0;
+    }
+
+    /** The compiler jk drives for a declared {@code version}: itself, or {@link #FLOOR_VERSION} when it is below the floor. */
+    public static String floored(String version) {
+        return belowFloor(version) ? FLOOR_VERSION : version;
+    }
+
+    /**
+     * The one sentence for a manifest whose {@code kotlin} is below the floor: what jk compiles with
+     * and what to check. The lock and the build both say it; an import rewrites the manifest instead.
+     */
+    public static String floorNote(String declared) {
+        return "kotlin " + declared + " is below jk's floor " + FLOOR_VERSION
+                + ", the oldest Kotlin its compile path drives, so the module compiles with " + FLOOR_VERSION
+                + " — check the build against that compiler's warnings and language changes, and write kotlin = \""
+                + FLOOR_VERSION + "\" to have the manifest say so";
     }
 
     /**

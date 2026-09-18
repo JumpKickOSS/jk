@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.ImportedKotlin;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.InFlightRequests;
@@ -634,7 +635,7 @@ public final class PomImporter {
                     + " is `latest` — `jk lock` picks the current stable, then `jk update` moves it.");
             return VersionSelector.parse("latest");
         }
-        return VersionSelector.parse(version);
+        return ImportedKotlin.floored(VersionSelector.parse(version), report);
     }
 
     /**

@@ -18,6 +18,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.ToolchainLockStamp;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.LockManifestDigest;
@@ -319,7 +320,7 @@ public final class LockPipeline {
         boolean keepPins = policy.keepPins() && existing != null;
         // Compiler pins first: the solve injects each language's stdlib pinned to its compiler.
         LanguageRuntimeInject.ToolVersions tools =
-                resolveToolVersions(keepPins ? existing : null, pathPrep.repos(), progress);
+                resolveToolVersions(keepPins ? existing : null, pathPrep.repos(), progress, observer);
         orchestrator.withToolVersions(tools);
         phases.begin(ResolveProfile::phaseResolve);
         Lockfile lock = solve(orchestrator, pathPrep.project(), keepPins ? existing : null, observer);
@@ -380,11 +381,16 @@ public final class LockPipeline {
      * The Kotlin and Scala compiler pins, resolved before the dependency solve so the injected
      * stdlibs can follow them exactly. A freshen carries the pin the lock already holds — bumping
      * the compiler is {@code jk lock}'s job — and otherwise every path resolves it, since a lock
-     * written without it loses compiler provisioning.
+     * written without it loses compiler provisioning. A Kotlin below jk's floor is pinned at the
+     * floor, the compiler jk drives for it, and the lock's notes say so.
      */
     private LanguageRuntimeInject.ToolVersions resolveToolVersions(
-            @Nullable Lockfile pins, RepoGroup repos, Progress progress) {
+            @Nullable Lockfile pins, RepoGroup repos, Progress progress, ResolveObserver observer) {
         String kotlin = pins != null && pins.kotlin() != null ? pins.kotlin() : resolveKotlinVersion(effective, repos);
+        if (kotlin != null && KotlinResolver.belowFloor(kotlin)) {
+            observer.onNote(KotlinResolver.floorNote(kotlin));
+            kotlin = KotlinResolver.FLOOR_VERSION;
+        }
         if (kotlin != null) progress.label("resolved kotlin " + kotlin);
         String scala = pins != null && pins.scala() != null ? pins.scala() : resolveScalaVersion(effective, repos);
         if (scala != null) progress.label("resolved scala " + scala);

@@ -4,6 +4,7 @@ package cc.jumpkick.gradle;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -173,6 +174,31 @@ class GradleImporterPropertiesTest {
         assertThat(Objects.requireNonNull(build.project().kotlin()).raw()).isEqualTo("2.4.10");
         assertThat(build.pluginConfig("spring-boot").orElseThrow().string("version"))
                 .isEqualTo("4.1.1");
+    }
+
+    /**
+     * tut-spring-boot-kotlin: a build on a Kotlin below jk's floor imports at the floor, the
+     * compiler jk drives for it, and a row says what was declared and what to check.
+     */
+    @Test
+    void a_kotlin_below_jks_floor_imports_at_the_floor_with_a_row(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("build.gradle.kts"), """
+                plugins {
+                    kotlin("jvm") version "2.2.21"
+                    kotlin("plugin.spring") version "2.2.21"
+                }
+                """);
+
+        GradleImporter.Result result = GradleImporter.importFrom(tmp.resolve("build.gradle.kts"));
+
+        assertThat(Objects.requireNonNull(result.jkBuild().project().kotlin()).raw())
+                .isEqualTo(KotlinResolver.FLOOR_VERSION);
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .anySatisfy(m -> assertThat(m)
+                        .contains("`2.2.21`")
+                        .contains("below jk's floor `" + KotlinResolver.FLOOR_VERSION + "`")
+                        .contains("kotlin = \"" + KotlinResolver.FLOOR_VERSION + "\""));
     }
 
     @Test

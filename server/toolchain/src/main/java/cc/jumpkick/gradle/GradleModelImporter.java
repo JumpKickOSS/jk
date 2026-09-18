@@ -2,6 +2,7 @@
 package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.ImportedKotlin;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -291,7 +292,7 @@ final class GradleModelImporter {
                         p.group().isBlank() ? "com.example" : p.group(),
                         name,
                         versionOf(p.version()) == null ? "0.1.0" : p.version())
-                .kotlin(kotlin == null ? null : VersionSelector.parse(kotlin))
+                .kotlin(kotlin == null ? null : ImportedKotlin.floored(VersionSelector.parse(kotlin), local))
                 .description(p.description());
         // A toolchain is a JDK the build asks for; source, target and --release are language levels
         // the host JDK compiles to, so only the former is a `jdk` pin.
