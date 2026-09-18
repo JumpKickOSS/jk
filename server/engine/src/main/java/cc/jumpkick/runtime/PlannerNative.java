@@ -155,7 +155,11 @@ public final class PlannerNative {
     private static Path preflightNativeImageHome(
             TaskContext ctx, @Nullable Path graalHome, Path dir, @Nullable Path jdksDir) throws Exception {
         GraalSearch search = searchNativeImageHome(graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
-        if (NativeImageDriver.resolve(search.home()).isEmpty()) {
+        // The request's environment, not this process's. The engine is a daemon: System.getenv
+        // here answers from whichever shell started it, possibly days ago, and a $GRAALVM_HOME or
+        // a $PATH that the user's shell never had must not decide what a build links with — nor
+        // appear in the failure as though it had been consulted.
+        if (NativeImageDriver.resolve(search.home(), BuildEnv.forModule(dir)).isEmpty()) {
             ctx.error("native", Errors.text(NativeImageDriver.notFoundError(search.checked())));
             throw new RuntimeException("native-image not found");
         }
@@ -673,16 +677,16 @@ public final class PlannerNative {
     static GraalSearch searchNativeImageHome(
             @Nullable Path graalHome, Path projectDir, @Nullable Path jdksDir, @Nullable String moduleGraalSpec) {
         List<NativeImageDriver.Candidate> checked = new ArrayList<>();
+        var buildEnv = BuildEnv.forModule(projectDir);
         if (graalHome != null) {
             checked.add(new NativeImageDriver.Candidate(
                     "the GraalVM the client resolved for this module", graalHome));
-            if (NativeImageDriver.resolve(graalHome).isPresent()) {
+            if (NativeImageDriver.resolve(graalHome, buildEnv).isPresent()) {
                 return new GraalSearch(graalHome, checked);
             }
         }
         // The request's GRAALVM_HOME, carried as a typed field rather than sampled from this
         // process's environment — the engine is a daemon.
-        var buildEnv = BuildEnv.forModule(projectDir);
         Path fromRequest = SessionContext.current().graalHome();
         if (fromRequest != null) {
             checked.add(new NativeImageDriver.Candidate(
@@ -696,7 +700,7 @@ public final class PlannerNative {
         // short of installing one — the request's --graal spec, the module's [native].graal, the
         // lock's [graal] pin, the jk jdk graal pointer, then policy.
         Optional<Path> installed = GraalHomeLookup.installed(
-                projectDir, jdksDir, buildEnv, SessionContext.current().graalSpec(), moduleGraalSpec);
+                projectDir, jdksDir, SessionContext.current().graalSpec(), moduleGraalSpec);
         if (installed.isPresent()) {
             // This tier answers or stays silent — GraalHomeLookup applies its own launcher filter —
             // so it records what it answered rather than a home it rejected.

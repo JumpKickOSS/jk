@@ -9,10 +9,6 @@ import cc.jumpkick.tool.GraalHomeLookup;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Function;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,8 +19,6 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class GraalHomeLookupTest {
 
-    private static final Function<String, @Nullable String> NO_ENV = name -> null;
-
     @Test
     void an_explicit_spec_answers_its_own_install_or_nothing(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
@@ -32,12 +26,12 @@ class GraalHomeLookupTest {
         makeGraalvmInstall(graal25, "25.0.4");
         Path project = Files.createDirectories(tmp.resolve("app"));
 
-        assertThat(GraalHomeLookup.installed(project, jdks, NO_ENV, null, "graalvm-25"))
+        assertThat(GraalHomeLookup.installed(project, jdks, null, "graalvm-25"))
                 .contains(graal25);
-        assertThat(GraalHomeLookup.installed(project, jdks, NO_ENV, "graalvm-21", "graalvm-25"))
+        assertThat(GraalHomeLookup.installed(project, jdks, "graalvm-21", "graalvm-25"))
                 .as("the first non-blank spec decides by itself; a 25 does not satisfy a named 21")
                 .isEmpty();
-        assertThat(GraalHomeLookup.installed(project, jdks, NO_ENV, "", null))
+        assertThat(GraalHomeLookup.installed(project, jdks, "", null))
                 .as("no spec: policy picks the one installed Graal")
                 .contains(graal25);
     }
@@ -47,9 +41,9 @@ class GraalHomeLookupTest {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         makeJdkInstall(jdks.resolve("temurin-25"), "25.0.1");
         Path project = Files.createDirectories(tmp.resolve("app"));
-        assertThat(GraalHomeLookup.installed(project, jdks, NO_ENV, "temurin-25"))
+        assertThat(GraalHomeLookup.installed(project, jdks, "temurin-25"))
                 .isEmpty();
-        assertThat(GraalHomeLookup.installed(project, jdks, NO_ENV)).isEmpty();
+        assertThat(GraalHomeLookup.installed(project, jdks)).isEmpty();
     }
 
     @Test
@@ -60,27 +54,48 @@ class GraalHomeLookupTest {
         JdkRegistry registry = new JdkRegistry(jdks);
         var pin = new GraalPin("oracle-graalvm", "25.0.3", "", "");
 
-        assertThat(GraalHomeLookup.byLockPin(registry, pin, NO_ENV))
+        assertThat(GraalHomeLookup.byLockPin(registry, pin))
                 .as("an unsatisfied pin answers nothing rather than an older Graal")
                 .isEmpty();
         Path newer = jdks.resolve("graalvm-25.0.4");
         makeGraalvmInstall(newer, "25.0.4");
-        assertThat(GraalHomeLookup.byLockPin(new JdkRegistry(jdks), pin, NO_ENV))
+        assertThat(GraalHomeLookup.byLockPin(new JdkRegistry(jdks), pin))
                 .as("major-or-better among installed wins")
                 .contains(newer);
     }
 
     @Test
-    void the_environment_consulted_is_the_callers(@TempDir Path tmp) throws IOException {
-        // A home whose launcher is only reachable through $GRAALVM_HOME resolves against the
-        // request's environment, never the process's.
+    void a_named_install_without_its_own_launcher_answers_nothing(@TempDir Path tmp) throws IOException {
+        // The tier names ONE Graal, so the only question is whether that home can build. The check
+        // used to run through NativeImageDriver.resolve, which falls back to $GRAALVM_HOME and then
+        // every $PATH entry — so this home passed whenever any other GraalVM was on the path, and
+        // the build linked with that one while believing it had honoured the spec.
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path graal = jdks.resolve("graalvm-25.0.4");
         makeGraalvmInstall(graal, "25.0.4");
-        Function<String, @Nullable String> env = Map.of("GRAALVM_HOME", graal.toString())::get;
-        assertThat(GraalHomeLookup.bySpec(new JdkRegistry(jdks), "graalvm-25", env))
-                .contains(graal);
-        assertThat(Optional.ofNullable(env.apply("PATH"))).isEmpty();
+        Files.delete(graal.resolve("bin").resolve(nativeImageName()));
+
+        // A launcher does exist on this host — in another GraalVM, one directory over.
+        Path elsewhere = Files.createDirectories(tmp.resolve("other-graalvm").resolve("bin"));
+        Files.writeString(elsewhere.resolve(nativeImageName()), "#!/fake");
+
+        assertThat(GraalHomeLookup.bySpec(new JdkRegistry(jdks), "graalvm-25"))
+                .as("which is a different GraalVM, and not the one the spec named")
+                .isEmpty();
+    }
+
+    @Test
+    void a_named_install_that_carries_its_own_launcher_answers(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path graal = jdks.resolve("graalvm-25.0.4");
+        makeGraalvmInstall(graal, "25.0.4");
+
+        assertThat(GraalHomeLookup.bySpec(new JdkRegistry(jdks), "graalvm-25")).contains(graal);
+    }
+
+    /** The launcher spelling {@link #makeGraalvmInstall} writes for this host. */
+    private static String nativeImageName() {
+        return Os.isWindows() ? "native-image.cmd" : "native-image";
     }
 
     private static void makeJdkInstall(Path home, String version) throws IOException {
