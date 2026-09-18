@@ -154,4 +154,54 @@ class PomLintImportTest {
 
         assertThat(result.jkBuild().pluginConfig("lint")).isEmpty();
     }
+
+    /** The migration plugins are rows naming the tool recipe, with the POM's URL and change log in them. */
+    @Test
+    void the_migration_plugins_are_rows_naming_the_tool_recipe(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.flywaydb</groupId>
+                        <artifactId>flyway-maven-plugin</artifactId>
+                        <version>11.13.2</version>
+                        <configuration>
+                          <url>jdbc:h2:file:./target/db</url>
+                          <user>sa</user>
+                          <locations><location>filesystem:src/main/resources/db/migration</location></locations>
+                        </configuration>
+                      </plugin>
+                      <plugin>
+                        <groupId>org.liquibase</groupId>
+                        <artifactId>liquibase-maven-plugin</artifactId>
+                        <version>4.33.0</version>
+                        <configuration>
+                          <changeLogFile>config/liquibase/master.xml</changeLogFile>
+                          <url>${liquibase-plugin.url}</url>
+                        </configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().pluginConfigs()).isEmpty();
+        List<String> rows = messages(result);
+        assertThat(rows).anySatisfy(m -> assertThat(m)
+                .contains("`flyway-maven-plugin`")
+                .contains("flyway-commandline")
+                .contains("`FLYWAY_URL` (`jdbc:h2:file:./target/db`)")
+                .contains("database.md"));
+        assertThat(rows).anySatisfy(m -> assertThat(m)
+                .contains("`liquibase-maven-plugin`")
+                .contains("LiquibaseCommandLine")
+                .contains("`LIQUIBASE_COMMAND_URL` in")
+                .contains("LIQUIBASE_COMMAND_CHANGELOG_FILE=config/liquibase/master.xml"));
+        assertThat(rows).noneMatch(m -> m.contains("was not imported"));
+    }
 }

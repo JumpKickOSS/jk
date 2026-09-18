@@ -60,6 +60,8 @@ final class PluginFacts {
             "maven-checkstyle-plugin",
             "maven-pmd-plugin",
             "spotbugs-maven-plugin",
+            "flyway-maven-plugin",
+            "liquibase-maven-plugin",
             "wire-maven-plugin",
             "graphqlcodegen-maven-plugin",
             "graphql-codegen-maven-plugin",
