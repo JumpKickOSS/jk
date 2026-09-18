@@ -43,7 +43,8 @@ import org.jspecify.annotations.Nullable;
  * {@code [application]}) is the exception: what its consumers see — its own classes and the
  * libraries it bundles, under the shaded names — exists only in its {@code -all.jar}, so that jar
  * is the sibling in both views, a consumer's compile is admitted once the sibling has packaged
- * it, and the sibling's own lock rows do not ride along, since the jar already carries them.
+ * it, and neither the sibling's own lock rows nor its own workspace edges ride along, since the
+ * jar already carries them.
  */
 public final class WorkspaceClasspath {
 
@@ -378,6 +379,10 @@ public final class WorkspaceClasspath {
             String coord = queue.poll();
             JkBuild sibBuild = sib.manifestByCoord().get(coord);
             if (sibBuild == null) continue;
+            // A relocating sibling's fat jar bundles its whole graph, its own workspace edges
+            // included: the consumer sees that jar alone, as Maven's dependency-reduced POM
+            // declares nothing.
+            if (sib.relocating().contains(coord)) continue;
             // MAIN and EXPORT propagate transitively: a sibling's exported deps
             // (api semantics) ride along to anything that depends on it, and MAIN
             // deps stay visible down the workspace chain (io→core→model).

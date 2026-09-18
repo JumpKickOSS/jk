@@ -81,6 +81,58 @@ class PomShadedLibraryImportTest {
     }
 
     /** A shaded member relocating lucene, an `index` member depending on it, and a `server` member depending on `index`. */
+    /**
+     * A shaded member that depends on a sibling of its own — hadoop-client-api on
+     * hadoop-annotations — keeps its {@code [library]} table through the sibling-edge rewrite: the
+     * rewrite replaces the dependencies and nothing else the member declared.
+     */
+    @Test
+    void a_shaded_member_with_a_sibling_edge_keeps_its_library_table(@TempDir Path root) throws Exception {
+        writeReactor(root);
+        write(root, "pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.demo</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>2.1.0</version>
+                  <packaging>pom</packaging>
+                  <modules>
+                    <module>annotations</module>
+                    <module>lucene9-shaded</module>
+                    <module>index</module>
+                    <module>server</module>
+                  </modules>
+                </project>
+                """);
+        write(root, "annotations/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  %s
+                  <artifactId>annotations</artifactId>
+                </project>
+                """.formatted(PARENT));
+        String shadedPom = Files.readString(root.resolve("lucene9-shaded/pom.xml"));
+        write(root, "lucene9-shaded/pom.xml", shadedPom.replace("<build>", """
+                <dependencies>
+                  <dependency>
+                    <groupId>org.demo</groupId>
+                    <artifactId>annotations</artifactId>
+                    <version>${project.version}</version>
+                  </dependency>
+                </dependencies>
+                <build>"""));
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        JkBuild shaded = requireNonNull(result.modules().get("lucene9-shaded"));
+        assertThat(shaded.dependencies().of(Scope.MAIN))
+                .anyMatch(d -> d.isWorkspace() && "annotations".equals(d.workspaceName()));
+        assertThat(shaded.libraryOpt())
+                .as("the sibling rewrite keeps the [library] table")
+                .isPresent();
+        assertThat(shaded.relocates()).isTrue();
+    }
+
     private static void writeReactor(Path root) throws Exception {
         write(root, "pom.xml", """
                 <project>

@@ -109,24 +109,7 @@ public final class WorkspaceMerge {
             resolvedByScope.put(Scope.MANAGED, managed);
         }
 
-        JkBuild.Builder out = JkBuild.builder(module.project())
-                .dependencies(new JkBuild.Dependencies(resolvedByScope))
-                .repositories(module.repositories())
-                .profiles(module.profiles())
-                .features(module.features())
-                .workspace(module.workspace())
-                .manifest(module.manifest())
-                .plugins(module.plugins())
-                .application(module.applicationOpt().orElse(null))
-                .nativeConfig(module.nativeConfigOpt().orElse(null))
-                .build(module.build())
-                .format(module.format())
-                .variants(module.variants())
-                .install(module.install());
-        for (PluginConfig config : module.pluginConfigs().values()) {
-            out.pluginConfig(config);
-        }
-        return out.build();
+        return module.withDependencies(new JkBuild.Dependencies(resolvedByScope));
     }
 
     /** Add a BOM or managed entry to a member's table unless an earlier entry already manages that module. */
@@ -176,24 +159,7 @@ public final class WorkspaceMerge {
         }
         if (!rewroteAny) return module;
 
-        JkBuild.Builder out = JkBuild.builder(module.project())
-                .dependencies(new JkBuild.Dependencies(byScope))
-                .repositories(module.repositories())
-                .profiles(module.profiles())
-                .features(module.features())
-                .workspace(module.workspace())
-                .manifest(module.manifest())
-                .plugins(module.plugins())
-                .application(module.applicationOpt().orElse(null))
-                .nativeConfig(module.nativeConfigOpt().orElse(null))
-                .build(module.build())
-                .format(module.format())
-                .variants(module.variants())
-                .install(module.install());
-        for (PluginConfig config : module.pluginConfigs().values()) {
-            out.pluginConfig(config);
-        }
-        return out.build();
+        return module.withDependencies(new JkBuild.Dependencies(byScope));
     }
 
     /**
