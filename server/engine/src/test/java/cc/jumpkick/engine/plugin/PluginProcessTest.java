@@ -10,6 +10,9 @@ import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -167,6 +170,45 @@ class PluginProcessTest {
                 null);
         assertThat(exit).isZero();
         assertThat(ran).isEmpty();
+    }
+
+    /**
+     * A fork that writes its last events and exits at once loses none of them while every carrier of
+     * the virtual-thread scheduler is busy: the pump reads the pipe on a thread of its own, and what
+     * the fork wrote before it died is delivered after the root's exit, not discarded with the pipe.
+     * The spinners never yield, so a pump on a virtual thread would not run until they stop — after
+     * the job has given the pipe up. The probe itself runs on a platform thread, since the test
+     * runner's own threads are virtual and would be starved with the pump.
+     */
+    @Test
+    void every_event_a_fork_writes_at_exit_arrives_under_carrier_starvation() throws Exception {
+        int burst = 5_000;
+        List<String> events = new ArrayList<>();
+        AtomicInteger exit = new AtomicInteger(-1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread probe = Thread.ofPlatform().name("starved-probe").start(() -> {
+            int carriers = Runtime.getRuntime().availableProcessors();
+            AtomicBoolean spin = new AtomicBoolean(true);
+            List<Thread> spinners = new ArrayList<>();
+            for (int i = 0; i < carriers; i++) {
+                spinners.add(Thread.ofVirtual().start(() -> {
+                    while (spin.get()) Thread.onSpinWait();
+                }));
+            }
+            try {
+                exit.set(PluginProcess.run(cmd("burst", Integer.toString(burst)), "##T:", events::add, null));
+            } catch (Throwable t) {
+                failure.set(t);
+            } finally {
+                spin.set(false);
+            }
+        });
+        probe.join(Duration.ofSeconds(120).toMillis());
+        assertThat(probe.isAlive()).as("the probe finished").isFalse();
+        assertThat(failure.get()).isNull();
+        assertThat(exit.get()).isZero();
+        assertThat(events).as("every event the fork wrote").hasSize(burst);
+        assertThat(Jsonl.intValue(events.getLast(), "i", -1)).isEqualTo(burst - 1);
     }
 
     /**
