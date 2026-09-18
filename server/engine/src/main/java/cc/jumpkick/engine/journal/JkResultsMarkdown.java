@@ -49,6 +49,9 @@ public final class JkResultsMarkdown {
     static final int MAX_WHY = 3;
     static final int MAX_WHY_CHARS = 200;
 
+    /** Columns a why-line of a resolver explanation may take before it wraps under its rail. */
+    static final int MAX_WHY_WRAP = 120;
+
     private JkResultsMarkdown() {}
 
     /**
@@ -226,10 +229,18 @@ public final class JkResultsMarkdown {
         return List.of("failed");
     }
 
+    /**
+     * A {@code verbatim} diagnostic is the resolver's own explanation, and its header alone
+     * ({@code Cannot resolve dependencies:}) names nothing: the why-line carries every line of it,
+     * each a continuation of the bullet, wrapped at {@link #MAX_WHY_WRAP} under its own rail.
+     */
     private static String whyLine(BuildRecord.Diag d) {
         String mod = moduleLabel(d);
         String step = some(d.step());
-        String msg = clipOneLine(firstLine(d.message()).strip(), MAX_WHY_CHARS);
+        String message = d.message() == null ? "" : d.message().strip();
+        String msg = "verbatim".equals(d.code()) && message.indexOf('\n') >= 0
+                ? explanation(message)
+                : clipOneLine(firstLine(message).strip(), MAX_WHY_CHARS);
         StringBuilder b = new StringBuilder();
         if (!mod.isEmpty()) b.append('`').append(mod).append("` ");
         if (step != null) b.append('`').append(step).append("`");
@@ -240,6 +251,32 @@ public final class JkResultsMarkdown {
             return "failed";
         }
         return b.toString().strip();
+    }
+
+    /**
+     * The explanation's first line, then each following line indented two columns so Markdown reads
+     * it as part of the bullet; a line past {@link #MAX_WHY_WRAP} breaks at a space and its remainder
+     * sits two columns inside the line's own indent.
+     */
+    private static String explanation(String message) {
+        String[] lines = message.split("\n", -1);
+        StringBuilder b = new StringBuilder(lines[0].strip());
+        for (int i = 1; i < lines.length; i++) {
+            String line = lines[i].stripTrailing();
+            b.append('\n');
+            if (line.isEmpty()) continue;
+            b.append("  ");
+            int indent = line.length() - line.stripLeading().length();
+            String hang = " ".repeat(indent + 2);
+            while (line.length() > MAX_WHY_WRAP) {
+                int at = line.lastIndexOf(' ', MAX_WHY_WRAP);
+                if (at <= indent) break;
+                b.append(line, 0, at).append("\n  ");
+                line = hang + line.substring(at + 1);
+            }
+            b.append(line);
+        }
+        return b.toString();
     }
 
     private static void appendCounts(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
