@@ -173,6 +173,10 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
       metrics.toml
 ```
 
+Per-class test walls are one table per module in both files, `[test-class."<dir>"]` with a
+`<fqcn> = <ms>` row per class, closing the file after the scalar rows; the run file carries the
+measured walls, the ledger their trimmed means.
+
 ## Step metrics: wall and wait
 
 `metrics.toml` records every successful step twice: `task.<step>.wall-ms` /

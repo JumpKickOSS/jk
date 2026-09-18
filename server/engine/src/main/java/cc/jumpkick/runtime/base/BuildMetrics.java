@@ -219,9 +219,8 @@ public final class BuildMetrics {
     }
 
     /**
-     * Per-class test walls by module, indexed once from the session aggregates: the key space
-     * holds one {@code test-class.<fqcn>.wall-ms} row per test class in the workspace, and
-     * scanning it per module priced was a walk of the whole space for every module.
+     * Per-class test walls by module, taken once from the session aggregates' class-wall tables
+     * and held for the aggregate window, so pricing a module is one map lookup.
      */
     public record ClassWallIndex(Map<String, Map<String, Long>> byModule) {
         public ClassWallIndex {
@@ -234,31 +233,9 @@ public final class BuildMetrics {
         }
 
         static ClassWallIndex of(AggregatedMetrics agg) {
-            Map<String, Map<String, Long>> byModule = new LinkedHashMap<>();
-            index(agg.meanMap(), byModule, false);
-            index(agg.lastMap(), byModule, true);
             Map<String, Map<String, Long>> frozen = new LinkedHashMap<>();
-            for (var e : byModule.entrySet()) frozen.put(e.getKey(), Map.copyOf(e.getValue()));
+            for (var e : agg.classWalls().entrySet()) frozen.put(e.getKey(), Map.copyOf(e.getValue()));
             return new ClassWallIndex(frozen);
-        }
-
-        private static void index(
-                Map<String, Double> source, Map<String, Map<String, Long>> into, boolean onlyIfAbsent) {
-            String marker = ".test-class.";
-            String suffix = ".wall-ms";
-            for (var e : source.entrySet()) {
-                String key = e.getKey();
-                if (!key.startsWith("module.") || !key.endsWith(suffix) || !(e.getValue() > 0)) continue;
-                int at = key.indexOf(marker);
-                if (at <= "module.".length()) continue;
-                String module = key.substring("module.".length(), at);
-                String fqcn = key.substring(at + marker.length(), key.length() - suffix.length());
-                if (fqcn.isEmpty()) continue;
-                Map<String, Long> walls = into.computeIfAbsent(module, k -> new LinkedHashMap<>());
-                long wall = Math.round(e.getValue());
-                if (onlyIfAbsent) walls.putIfAbsent(fqcn, wall);
-                else walls.put(fqcn, wall);
-            }
         }
     }
 

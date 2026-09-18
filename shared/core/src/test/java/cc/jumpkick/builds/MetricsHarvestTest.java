@@ -45,6 +45,43 @@ class MetricsHarvestTest {
         assertThat(hm).doesNotContain("workspace.wall-ms");
     }
 
+    /** Class walls are spelled as one table per module in the run file and in the ledger alike. */
+    @Test
+    void class_walls_are_one_table_per_module(@TempDir Path root) throws Exception {
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        Files.writeString(run.metricsFile(), """
+                workspace.wall-ms = 1000
+                module.server/io.task.run-tests.wall-ms = 400
+
+                [test-class."server/io"]
+                com.example.IoTest = 300
+                com.example.SlowTest = 5000
+
+                [test-class."_"]
+                com.example.RootTest = 20
+                """);
+        MetricsHarvest.get().configure(50, 90);
+        MetricsHarvest.get().runOnce(root);
+        String pm = Files.readString(run.projectHome().resolve(ProjectBuilds.PROJECT_METRICS));
+        assertThat(pm)
+                .contains("module.server/io.task.run-tests.wall-ms = 400")
+                .contains("[test-class.\"server/io\"]\ncom.example.IoTest = 300\ncom.example.SlowTest = 5000\n")
+                .contains("[test-class.\"_\"]\ncom.example.RootTest = 20\n")
+                .doesNotContain("test-class.com")
+                .doesNotContain("com.example.IoTest.wall-ms");
+        assertThat(pm.indexOf("[count]")).as("the class tables close the file").isLessThan(pm.indexOf("[test-class."));
+        AggregatedMetrics agg = AggregatedMetrics.load(root, "g:demo", root.resolve("proj"));
+        assertThat(agg.testClassWallMs(root.resolve("proj/server/io").toString(), "com.example.SlowTest"))
+                .hasValue(5000);
+        assertThat(agg.testClassWallMs(root.resolve("proj").toString(), "com.example.RootTest"))
+                .hasValue(20);
+        assertThat(agg.classWalls())
+                .containsOnlyKeys(
+                        AggregatedMetrics.sanitize(
+                                root.resolve("proj/server/io").toString()),
+                        AggregatedMetrics.sanitize(root.resolve("proj").toString()));
+    }
+
     @Test
     void retention_caps_run_count(@TempDir Path root) throws Exception {
         Path home = ProjectBuilds.projectHome(root, "g:cap", root.resolve("p"));

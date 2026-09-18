@@ -13,7 +13,9 @@ import org.jspecify.annotations.Nullable;
  * root itself is {@value #ROOT}), so every checkout of one project — a clone, a worktree, a moved
  * directory — writes and reads one row set. A module outside the root keeps its absolute path. In
  * memory every key is absolute again: {@link #absolute} expands the relative spellings against the
- * root the ledger is being read for, so readers keep looking modules up by their real path.
+ * root the ledger is being read for, so readers keep looking modules up by their real path, and
+ * {@link #absoluteDir} does the same for a directory spelled on its own, as a class-wall table
+ * header spells it.
  */
 public final class ModuleKeys {
 
@@ -21,7 +23,7 @@ public final class ModuleKeys {
     public static final String ROOT = "_";
 
     /** The key segments that follow a module directory; the directory ends at the first of them. */
-    private static final List<String> MARKERS = List.of(".task.", ".phase.", ".test-class.");
+    private static final List<String> MARKERS = List.of(".task.", ".phase.");
 
     private static final String MODULE = "module.";
 
@@ -53,9 +55,20 @@ public final class ModuleKeys {
         int at = firstMarker(key);
         if (at < 0) return key;
         String dir = key.substring(MODULE.length(), at);
-        if (dir.equals(ROOT)) return MODULE + root + key.substring(at);
-        if (dir.isEmpty() || isAbsolute(dir) || dir.indexOf(':') >= 0) return key;
-        return MODULE + root + "/" + dir + key.substring(at);
+        if (dir.isEmpty()) return key;
+        return MODULE + absoluteDir(dir, root) + key.substring(at);
+    }
+
+    /**
+     * A module directory in its on-disk spelling expanded against {@code root}: {@value #ROOT} is
+     * the root, a relative path hangs below it, and an absolute one — or any spelling when {@code
+     * root} is unknown — comes back unchanged.
+     */
+    public static String absoluteDir(String dir, @Nullable String root) {
+        if (root == null || root.isEmpty()) return dir;
+        if (dir.equals(ROOT)) return root;
+        if (isAbsolute(dir) || dir.indexOf(':') >= 0) return dir;
+        return root + "/" + dir;
     }
 
     private static int firstMarker(String key) {

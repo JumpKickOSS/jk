@@ -100,7 +100,9 @@ class SessionAggregatesTest {
                 [mean]
                 module._.task.guard.wall-ms = 70
                 module.server/io.task.compile-java.wall-ms = 800
-                module.server/io.test-class.com.example.IoTest.wall-ms = 300
+
+                [test-class."server/io"]
+                com.example.IoTest = 300
                 """);
         assertThat(ProjectBuilds.projectHome(state.resolve("builds"), null, b))
                 .isEqualTo(ProjectBuilds.projectHome(state.resolve("builds"), null, a));

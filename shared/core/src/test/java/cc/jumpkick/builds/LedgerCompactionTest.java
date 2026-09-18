@@ -41,20 +41,22 @@ class LedgerCompactionTest {
 
         String ledger = Files.readString(home.resolve(ProjectBuilds.PROJECT_METRICS), StandardCharsets.UTF_8);
         List<String> meanRows = section(ledger, "mean");
-        assertThat(meanRows).hasSize(MODULES * (TASKS.length + CLASSES_PER_MODULE) + 3);
+        assertThat(meanRows)
+                .as("scalar rows only; class walls have their own tables")
+                .hasSize(MODULES * TASKS.length + 3);
         assertThat(meanRows.stream().filter(l -> l.startsWith("module.server/m1.task.run-tests.wall-ms")))
                 .as("one row per module task, however many checkouts ran it")
                 .hasSize(1);
-        assertThat(section(ledger, "count"))
-                .contains("module.server/m1.task.run-tests.wall-ms = 3")
-                .noneMatch(l -> l.contains(".test-class."));
-        assertThat(section(ledger, "last"))
-                .as("per-class walls keep mean and last")
-                .anyMatch(l -> l.startsWith("module.server/m1.test-class.com.example.m1.T0Test.wall-ms"));
+        assertThat(section(ledger, "count")).contains("module.server/m1.task.run-tests.wall-ms = 3");
+        assertThat(ledger).doesNotContain(".test-class.");
+        assertThat(section(ledger, "test-class.\"server/m1\""))
+                .as("one table per module, one row per class, the class wall's trimmed mean")
+                .hasSize(CLASSES_PER_MODULE)
+                .contains("com.example.m1.T0Test = 200");
         assertThat(ledger).doesNotContain("/wt/");
         assertThat(Files.size(home.resolve(ProjectBuilds.PROJECT_METRICS)))
                 .as("a forty-module, fourteen-hundred-class project ledger")
-                .isLessThan(300 * 1024);
+                .isLessThan(200 * 1024);
     }
 
     @Test
@@ -83,20 +85,30 @@ class LedgerCompactionTest {
     }
 
     @Test
-    void row_families_are_capped_keeping_the_best_sampled_rows() {
+    void class_wall_rows_are_capped_keeping_the_best_sampled_classes() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (int i = 0; i < MetricsHarvest.MAX_TEST_CLASS_ROWS + 50; i++) {
+            counts.put("m\u0000com.example.C" + String.format(Locale.ROOT, "%05d", i) + "Test", i < 50 ? 1L : 9L);
+        }
+        List<String> kept = MetricsHarvest.keptClassRows(counts);
+        assertThat(kept).hasSize(MetricsHarvest.MAX_TEST_CLASS_ROWS);
+        assertThat(kept).doesNotContain("m\u0000com.example.C00000Test");
+        assertThat(kept).contains("m\u0000com.example.C00050Test");
+    }
+
+    @Test
+    void scalar_rows_are_capped_keeping_the_best_sampled_rows() {
         Map<String, Long> counts = new LinkedHashMap<>();
         Map<String, Double> last = new LinkedHashMap<>();
-        for (int i = 0; i < MetricsHarvest.MAX_TEST_CLASS_ROWS + 50; i++) {
-            String key = "module.m.test-class.com.example.C" + String.format(Locale.ROOT, "%05d", i) + "Test.wall-ms";
+        for (int i = 0; i < MetricsHarvest.MAX_OTHER_ROWS + 50; i++) {
+            String key = "module.m.task.t" + String.format(Locale.ROOT, "%05d", i) + ".wall-ms";
             counts.put(key, i < 50 ? 1L : 9L);
             last.put(key, 1.0);
         }
-        counts.put("task.compile-java.wall-ms", 4L);
         List<String> kept = MetricsHarvest.keptRows(Map.of(), last, counts);
-        assertThat(kept).hasSize(MetricsHarvest.MAX_TEST_CLASS_ROWS + 1);
-        assertThat(kept).contains("task.compile-java.wall-ms");
-        assertThat(kept).doesNotContain("module.m.test-class.com.example.C00000Test.wall-ms");
-        assertThat(kept).contains("module.m.test-class.com.example.C00050Test.wall-ms");
+        assertThat(kept).hasSize(MetricsHarvest.MAX_OTHER_ROWS);
+        assertThat(kept).doesNotContain("module.m.task.t00000.wall-ms");
+        assertThat(kept).contains("module.m.task.t00050.wall-ms");
     }
 
     /** What the journal writes for one run of a checkout: root tasks, module tasks, class walls. */
@@ -115,14 +127,16 @@ class LedgerCompactionTest {
                         .append(base + t)
                         .append('\n');
             }
+        }
+        // Class walls close the file: every row after a module's header is one of its classes.
+        for (int m = 1; m <= MODULES; m++) {
+            sb.append(MetricsFile.testClassHeader("server/m" + m)).append('\n');
             for (int c = 0; c < CLASSES_PER_MODULE; c++) {
-                sb.append("module.")
-                        .append(mod)
-                        .append(".test-class.com.example.m")
+                sb.append("com.example.m")
                         .append(m)
                         .append(".T")
                         .append(c)
-                        .append("Test.wall-ms = ")
+                        .append("Test = ")
                         .append(base)
                         .append('\n');
             }

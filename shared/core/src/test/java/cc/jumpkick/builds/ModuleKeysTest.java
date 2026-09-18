@@ -33,8 +33,10 @@ class ModuleKeysTest {
                 .isEqualTo("module./src/jk-wt/argv/server/io.task.compile-java.wall-ms");
         assertThat(ModuleKeys.absolute("module._.task.guard.wall-ms", root))
                 .isEqualTo("module./src/jk-wt/argv.task.guard.wall-ms");
-        assertThat(ModuleKeys.absolute("module.server/io.test-class.com.example.FooTest.wall-ms", root))
-                .isEqualTo("module./src/jk-wt/argv/server/io.test-class.com.example.FooTest.wall-ms");
+        assertThat(ModuleKeys.absoluteDir("server/io", root)).isEqualTo("/src/jk-wt/argv/server/io");
+        assertThat(ModuleKeys.absoluteDir(ModuleKeys.ROOT, root)).isEqualTo("/src/jk-wt/argv");
+        assertThat(ModuleKeys.absoluteDir("/elsewhere/lib", root)).isEqualTo("/elsewhere/lib");
+        assertThat(ModuleKeys.absoluteDir("server/io", null)).isEqualTo("server/io");
         assertThat(ModuleKeys.absolute("module.clients/cli.phase.compile.wall-ms", root))
                 .isEqualTo("module./src/jk-wt/argv/clients/cli.phase.compile.wall-ms");
     }
