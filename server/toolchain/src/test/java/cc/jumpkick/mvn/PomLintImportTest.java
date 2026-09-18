@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.PluginConfig;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -203,5 +204,133 @@ class PomLintImportTest {
                 .contains("`LIQUIBASE_COMMAND_URL` in")
                 .contains("LIQUIBASE_COMMAND_CHANGELOG_FILE=config/liquibase/master.xml"));
         assertThat(rows).noneMatch(m -> m.contains("was not imported"));
+    }
+
+    /** nacos's shape: the root configures SpotBugs for whoever runs {@code mvn spotbugs:check}; no module gets a table. */
+    @Test
+    void an_inherited_lint_plugin_with_no_executions_is_one_row_and_no_tables(@TempDir Path root) throws Exception {
+        writeReactor(root, """
+                <plugin>
+                  <groupId>com.github.spotbugs</groupId>
+                  <artifactId>spotbugs-maven-plugin</artifactId>
+                  <version>4.10.4.1</version>
+                  <configuration><effort>Max</effort></configuration>
+                </plugin>
+                """);
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(result.modules()).hasSize(2);
+        assertThat(result.modules().values())
+                .allSatisfy(module -> assertThat(module.pluginConfig("lint")).isEmpty());
+        assertThat(result.report().issues().stream()
+                        .map(i -> i.message())
+                        .filter(m -> m.contains("spotbugs-maven-plugin")))
+                .singleElement()
+                .satisfies(m -> assertThat(m)
+                        .startsWith("`spotbugs-maven-plugin` binds no `<execution>`, so Maven runs it only by hand"
+                                + " (`mvn spotbugs:check`); no `[lint] spotbugs` was written")
+                        .endsWith("Declared by the root pom.xml, inherited by 2 modules."));
+    }
+
+    /** A parent's execution bound to a phase runs on every module under Maven, so every module gets the table. */
+    @Test
+    void an_inherited_lint_plugin_with_an_execution_is_a_table_on_every_module(@TempDir Path root) throws Exception {
+        writeReactor(root, """
+                <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-pmd-plugin</artifactId>
+                  <version>3.26.0</version>
+                  <executions>
+                    <execution>
+                      <phase>compile</phase>
+                      <goals><goal>check</goal></goals>
+                    </execution>
+                  </executions>
+                </plugin>
+                """);
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(result.modules().values()).allSatisfy(module -> assertThat(
+                        module.pluginConfig("lint").orElseThrow().stringList("pmd"))
+                .containsExactly("rulesets/java/quickstart.xml"));
+        assertThat(result.report().issues()).noneMatch(i -> i.message().contains("binds no `<execution>`"));
+    }
+
+    /** A ruleset spelled through a property nothing defines (a directory plugin's, set at run time) is a row, not silence. */
+    @Test
+    void a_ruleset_named_through_an_undefined_property_is_a_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.baeldung</groupId>
+                  <artifactId>parent-modules</artifactId>
+                  <version>1.0.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-pmd-plugin</artifactId>
+                        <version>3.26.0</version>
+                        <configuration>
+                          <rulesets>
+                            <ruleset>${tutorialsproject.basedir}/baeldung-pmd-rules.xml</ruleset>
+                          </rulesets>
+                        </configuration>
+                        <executions>
+                          <execution>
+                            <phase>compile</phase>
+                            <goals><goal>check</goal></goals>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.stringList("pmd")).containsExactly("rulesets/java/quickstart.xml");
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .contains("names the ruleset `${tutorialsproject.basedir}/baeldung-pmd-rules.xml` through a property"
+                        + " no POM defines")
+                .contains("`rulesets/java/quickstart.xml` stands in"));
+    }
+
+    /** A root declaring {@code plugin} under {@code <build><plugins>} over two leaf modules. */
+    private static void writeReactor(Path root, String plugin) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.demo</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <modules>
+                    <module>core</module>
+                    <module>app</module>
+                  </modules>
+                  <build>
+                    <plugins>
+                      %s
+                    </plugins>
+                  </build>
+                </project>
+                """.formatted(plugin));
+        for (String module : List.of("core", "app")) {
+            Path dir = Files.createDirectories(root.resolve(module));
+            Files.writeString(dir.resolve("pom.xml"), """
+                    <project>
+                      <modelVersion>4.0.0</modelVersion>
+                      <parent>
+                        <groupId>org.demo</groupId>
+                        <artifactId>parent</artifactId>
+                        <version>1.0.0</version>
+                      </parent>
+                      <artifactId>%s</artifactId>
+                    </project>
+                    """.formatted(module));
+        }
     }
 }
