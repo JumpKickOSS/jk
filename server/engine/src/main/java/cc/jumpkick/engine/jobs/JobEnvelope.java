@@ -281,6 +281,7 @@ public final class JobEnvelope {
             admission.release(jid);
             return refuseDraining(detached, writer);
         }
+        LastBuiltRoot.note(dir);
         return null;
     }
 

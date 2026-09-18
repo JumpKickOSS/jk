@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -110,6 +111,18 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
     public int clear() {
         int dropped = entries.size();
         entries.clear();
+        return dropped;
+    }
+
+    /**
+     * Drop every entry whose key {@code keep} rejects and say how many went: the idle trim keeps the
+     * workspace built last warm and returns the rest.
+     */
+    public int retain(Predicate<K> keep) {
+        int dropped = 0;
+        for (K key : entries.keySet()) {
+            if (!keep.test(key) && entries.remove(key) != null) dropped++;
+        }
         return dropped;
     }
 

@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.engine.jobs.LastBuiltRoot;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.host.Log;
@@ -87,7 +88,7 @@ public final class IdleHousekeeping {
     private void settledTrim() {
         if (!idle()) return;
         dropHeapResidue();
-        String memos = MemoTrim.drop();
+        String memos = MemoTrim.drop(LastBuiltRoot.get());
         System.gc();
         log.accept("jk engine: idle trim: " + HeapTrim.trimNative() + "; " + memos);
     }
