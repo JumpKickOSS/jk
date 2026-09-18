@@ -69,6 +69,36 @@ class BuildPlanTest {
         assertThat(result.errors()).hasSize(1);
     }
 
+    /**
+     * A step that records a failure and then throws it while the session is cancelled — a test fork
+     * ended by the cancel's SIGTERM — leaves one row under Failures, the one carrying the module
+     * label, not a second copy of the same words without it.
+     */
+    @Test
+    void a_failure_a_cancelled_step_already_recorded_is_not_recorded_again_as_its_cancel_row() {
+        String why = "test runner exited 143 (SIGTERM) before any test ran — the fork's last output:\nbye";
+        var plan = BuildPlan.builder("cancelled-fork")
+                .addTask(Task.builder("run-tests")
+                        .ticks(1)
+                        .execute(ctx -> {
+                            ctx.error("test-launcher", why, new TestFailureInfo("app", "", "", "", "", why, "bye"));
+                            SessionCancel.bind(() -> true);
+                            throw new IllegalStateException(why);
+                        })
+                        .build())
+                .build();
+        try {
+            var result = plan.run();
+            assertThat(result.success()).isFalse();
+            assertThat(result.errors())
+                    .extracting(BuildPlanResult.Diagnostic::message)
+                    .containsExactly(why);
+            assertThat(result.errors().getFirst().module()).isEqualTo("app");
+        } finally {
+            SessionCancel.bind(null);
+        }
+    }
+
     /** What a step reports as blocked time rides beside its wall to every listener. */
     @Test
     void a_steps_reported_wait_reaches_listeners_beside_its_wall() {
