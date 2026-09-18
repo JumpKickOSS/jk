@@ -64,6 +64,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final @Nullable McpHandler mcp;
     private final @Nullable McpFront mcpFront;
     private final HttpHistoryApi historyApi;
+    private final HttpCoverageReport coverageReport;
     private final HttpProjectApi projectApi;
     private final HttpReadApi readApi;
 
@@ -189,6 +190,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
+        this.coverageReport = new HttpCoverageReport(journal, tokens);
         this.projectApi = new HttpProjectApi(journal);
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
         api.register("GET", "/api/status", readApi::handleStatus);
@@ -398,6 +400,10 @@ public final class HttpEngineServer implements AutoCloseable {
                 return;
             }
             api.handle(exchange);
+            return;
+        }
+        if (path.startsWith(HttpCoverageReport.PREFIX)) {
+            coverageReport.handle(exchange); // token in the path; sandboxed, per-run report tree
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets

@@ -58,6 +58,22 @@ past 20,000 files leaving the file comparison out); tests from every test's
 outcome (`test-outcomes.tsv`). A run with no earlier run from its origin, or one whose previous
 run recorded no tests, shows the comparisons it has.
 
+## Coverage
+
+A coverage run (`jk test --coverage`, or a module with `[test] coverage = true`) adds a
+**coverage** strip under the run's header: covered lines and branches as percentages, the module
+count for a workspace, and `Δ vs run #N` when an earlier run of the project measured coverage.
+Clicking the strip opens the table the results file prints under `## Coverage` — one row per
+module, `85.2% (1204/1413)`, signed points against the baseline (`+1.3`, `−0.5`, `±0.0`, `new`
+for a module the baseline did not have), an **all** row for a workspace. **HTML report** opens the
+JaCoCo report of that run in a new tab: the one module's `index.html`, or the workspace roll-up
+that links each module's report. The engine serves the report from the checkout the run measured,
+under a per-run route that carries the dashboard token in its path (so the report's own pages and
+stylesheets resolve) and in a sandboxed origin, so a report cannot script the dashboard. The
+figures are the record's `coverage[]` rows — the same facts as `target/jk-results.md` and MCP
+`jk_results`; the baseline is the nearest earlier record of the project whose coverage is not
+empty, as the results file chooses it.
+
 The link ends in `#t=<token>`; a project link from MCP carries it as `#project/<id>?t=<token>`.
 The page stores the token in `sessionStorage` / `localStorage` and scrubs it from the address
 bar, keeping the route. Every `/api/*` call sends
