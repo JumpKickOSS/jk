@@ -79,7 +79,8 @@ final class ConnectionWatch {
      * connection: under a wall deadline, until deadline plus grace and then one last chance after
      * enforcing it; otherwise until the runner's own finally ends the wait or a cancel begins —
      * {@code cancelled} is released by the first user cancel, however it arrived — and from a
-     * cancel, a short cancel grace and then a force kill.
+     * cancel, a short cancel grace, a force kill, and a bounded wait for the runner's next cancel
+     * check before the job is written off.
      */
     void awaitRunner(
             long jid,
@@ -139,14 +140,24 @@ final class ConnectionWatch {
         }
     }
 
+    /**
+     * How many more join budgets a runner gets, after its workers are killed, to reach its next
+     * cancel check before the job is written off as abandoned. A runner that looks for the cancel
+     * between units of work — the forecast at each module boundary — ends at its next look, and one
+     * module of a large reactor can outlast the budget itself.
+     */
+    private static final long NEXT_CHECK_BUDGETS = 4L;
+
     private void joinAfterCancel(long jid, CountDownLatch done, long cancelGraceMs, Runnable forceKill)
             throws InterruptedException {
-        // User cancel without wall deadline: join only for cancelGrace + small buffer.
+        // User cancel without wall deadline: join for cancelGrace + a small buffer, then kill the
+        // workers so nothing the runner waits on is still running.
         long joinBudget = cancelGraceMs + 500L;
         if (done.await(joinBudget, TimeUnit.MILLISECONDS)) return;
         forceKill.run();
-        if (!done.await(200L, TimeUnit.MILLISECONDS)) {
-            log.accept("jk engine: job " + jid + " still running after cancel+" + joinBudget
+        long nextCheck = NEXT_CHECK_BUDGETS * joinBudget;
+        if (!done.await(nextCheck, TimeUnit.MILLISECONDS)) {
+            log.accept("jk engine: job " + jid + " still running after cancel+" + (joinBudget + nextCheck)
                     + "ms — abandoned; workers force-killed");
         }
     }
