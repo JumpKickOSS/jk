@@ -21,6 +21,15 @@ public class JkCommandLinesTest {
     }
 
     @Test
+    public void a_method_level_gutter_action_selects_one_method_of_the_class() {
+        String selector = JkRunConfigurationProducer.selector("com.acme.OrdersTest", "refunds");
+        assertEquals("com.acme.OrdersTest#refunds", selector);
+        assertEquals(
+                List.of("test", "-m", "app", "--class", "com.acme.OrdersTest#refunds", "--debug-jvm=localhost:41873"),
+                JkCommandLines.args(JkCommandLines.KIND_TEST, "app", selector, "localhost:41873"));
+    }
+
+    @Test
     public void debug_adds_the_jdwp_address_jk_listens_on() {
         assertEquals(
                 List.of("test", "-m", "app", "--class", "com.acme.OrdersTest", "--debug-jvm=localhost:41873"),

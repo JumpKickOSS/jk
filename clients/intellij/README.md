@@ -12,7 +12,7 @@ model. Never loads the JumpKick engine jar into the IDE.
 | `jk.toml` or `jk-lock.toml` changes under the project (editor save or a terminal `jk add` / `jk remove`) | Re-resolves after a 2 s quiet window; libraries and roots update in place |
 | **Tools → JumpKick → Sync project** | Explicit re-resolve; progress and the CLI's output in the Build tool window's Sync tab |
 | Tools → JumpKick → Build / Test / Lock / Sync dependencies and sources / Install BSP connection | `jk build` / `test` / `lock` / `sync --sources` / `bsp install` |
-| Gutter **Run** / **Debug** on a test class or method, or on a `main` method | A **JumpKick** run configuration: `jk test -m <module> --class <fqcn>` or `jk run <module>` from the workspace root. Debug starts the same command with `--debug-jvm=localhost:<port>` and attaches the Java debugger to that address once the JVM listens — no hand-made Remote JVM Debug configuration |
+| Gutter **Run** / **Debug** on a test class or method, or on a `main` method | A **JumpKick** run configuration: `jk test -m <module> --class <fqcn>` for a class, `--class <fqcn>#<method>` for one method, or `jk run <module>` from the workspace root. Debug starts the same command with `--debug-jvm=localhost:<port>` and attaches the Java debugger to that address once the JVM listens — no hand-made Remote JVM Debug configuration |
 
 A resolve runs `jk ide --print-model` in the linked directory, decodes the engine's `ide-model`
 JSON with the plugin's own small reader, and hands IntelliJ:
@@ -88,14 +88,15 @@ extension (`clients/vscode/`).
 ## Run and debug through jk
 
 `JkRunConfigurationProducer` turns the gutter's context into a `JkRunConfiguration`: a class under
-a test root of a JumpKick module is `jk test -m <module> --class <fqcn>`; a class with a `main`
-method under a source root is `jk run <module>`. Both run from the workspace root in the Run
+a test root of a JumpKick module is `jk test -m <module> --class <fqcn>`, an annotated method in
+it is `--class <fqcn>#<method>`; a class with a `main` method under a source root is `jk run
+<module>`. Both run from the workspace root in the Run
 tool window's console. The producer is preferred over the bundled JUnit and Application ones on
 these modules, which stay in the list as alternatives. Under Debug, `JkCommandState` picks a free
 loopback port, passes `--debug-jvm=localhost:<port>` — jk starts the one JVM suspended with a
 JDWP listener there — and `JkDebugRunner` attaches the Java debugger to that address, retrying
 while jk builds (up to ten minutes); a breakpoint in the test or the application stops as usual.
-`--class` selects a class, so a method's gutter action runs its class.
+`--class <fqcn>#<method>` selects one method, so a method's gutter action runs that method alone.
 
 ## Manual today
 

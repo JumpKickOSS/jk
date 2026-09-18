@@ -139,7 +139,8 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
   2 s quiet window; **Tools → JumpKick → Sync project** re-resolves on demand with progress in
   the Build tool window. The gutter's **Run** and **Debug** on a test class or method — or on a
   `main` method — create a **JumpKick** run configuration: `jk test -m <module> --class <fqcn>`
-  (or `jk run <module>`) from the workspace root, its output in the Run tool window. **Debug**
+  for a class, `--class <fqcn>#<method>` for one test method (or `jk run <module>`) from the
+  workspace root, its output in the Run tool window. **Debug**
   passes `--debug-jvm=localhost:<port>` with a port the plugin picks and attaches the Java
   debugger to it once jk has built the module and started the JVM; a breakpoint stops as usual,
   with no Remote JVM Debug configuration of your own. `jk ide --idea` is the export for an IDE

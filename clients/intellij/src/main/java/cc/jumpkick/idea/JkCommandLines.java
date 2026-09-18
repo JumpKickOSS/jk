@@ -10,13 +10,14 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * The {@code jk} command a run configuration stands for. A test runs {@code jk test -m <module>
- * --class <fqcn>} from the workspace root; an application runs {@code jk run <module>}. Under
- * the Debug executor the command carries {@code --debug-jvm=localhost:<port>}: jk starts the one
- * JVM with a suspended JDWP listener at that address and the IDE's debugger attaches to it.
+ * --class <fqcn>} — {@code --class <fqcn>#<method>} for one method — from the workspace root; an
+ * application runs {@code jk run <module>}. Under the Debug executor the command carries {@code
+ * --debug-jvm=localhost:<port>}: jk starts the one JVM with a suspended JDWP listener at that
+ * address and the IDE's debugger attaches to it.
  */
 public final class JkCommandLines {
 
-    /** {@code jk test} of one class. */
+    /** {@code jk test} of one class or one {@code Class#method}. */
     public static final String KIND_TEST = "test";
 
     /** {@code jk run} of the module's main class. */
@@ -26,8 +27,9 @@ public final class JkCommandLines {
 
     /**
      * The arguments after {@code jk}. {@code moduleRel} is the module directory relative to the
-     * workspace root ({@code ""} for a standalone project); {@code debugAddress} is the
-     * {@code host:port} a debugger attaches to, or {@code null} for a plain run.
+     * workspace root ({@code ""} for a standalone project); {@code className} is the test class or
+     * {@code Class#method} {@code --class} selects; {@code debugAddress} is the {@code host:port} a
+     * debugger attaches to, or {@code null} for a plain run.
      */
     public static List<String> args(
             String kind, String moduleRel, @Nullable String className, @Nullable String debugAddress) {

@@ -14,6 +14,8 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiJavaFile;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiModifier;
 import com.intellij.psi.util.PsiMethodUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import java.nio.file.Path;
@@ -22,19 +24,23 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * The gutter's Run and Debug on a JumpKick module route through {@code jk}: a class under a test
- * root becomes {@code jk test --class}, a class with a {@code main} method under a source root
- * becomes {@code jk run}. Preferred over the bundled JUnit and Application producers on these
- * modules, which keep their own configurations in the list.
+ * root becomes {@code jk test --class <fqcn>}, an annotated method in it {@code --class
+ * <fqcn>#<method>}, a class with a {@code main} method under a source root becomes {@code jk
+ * run}. Preferred over the bundled JUnit and Application producers on these modules, which keep
+ * their own configurations in the list.
  */
 public final class JkRunConfigurationProducer extends LazyRunConfigurationProducer<JkRunConfiguration> {
 
-    /** What a location resolves to: the command, where it runs, and the class it names. */
+    /**
+     * What a location resolves to: the command, where it runs, and the selector it names — a test
+     * class, or {@code Class#method} for one method of it.
+     */
     record Target(
             String kind,
             String rootDir,
             String moduleRel,
             @Nullable String className,
-            PsiClass element) {
+            PsiElement element) {
 
         boolean matches(JkRunConfiguration c) {
             return kind.equals(c.kind())
@@ -91,12 +97,37 @@ public final class JkRunConfigurationProducer extends LazyRunConfigurationProduc
         if (moduleDir == null || rootDir == null) return null;
         String rel = relative(rootDir, moduleDir);
         if (ProjectFileIndex.getInstance(module.getProject()).isInTestSourceContent(vf)) {
+            PsiMethod method = testMethod(at);
+            if (method != null) {
+                return new Target(
+                        JkCommandLines.KIND_TEST,
+                        rootDir,
+                        rel,
+                        selector(cls.getQualifiedName(), method.getName()),
+                        method);
+            }
             return new Target(JkCommandLines.KIND_TEST, rootDir, rel, cls.getQualifiedName(), cls);
         }
         if (PsiMethodUtil.hasMainMethod(cls)) {
             return new Target(JkCommandLines.KIND_RUN, rootDir, rel, null, cls);
         }
         return null;
+    }
+
+    /** {@code --class}'s spelling of one method of a class. */
+    static String selector(String className, String methodName) {
+        return className + "#" + methodName;
+    }
+
+    /**
+     * The test method the location is in: a non-static method carrying an annotation — {@code
+     * @Test}, {@code @ParameterizedTest}, TestNG's {@code @Test} — whose class the gutter marks.
+     * Null for a location outside a method or on a helper, which run the class.
+     */
+    private static @Nullable PsiMethod testMethod(PsiElement at) {
+        PsiMethod method = PsiTreeUtil.getParentOfType(at, PsiMethod.class, false);
+        if (method == null || method.isConstructor() || method.hasModifierProperty(PsiModifier.STATIC)) return null;
+        return method.getModifierList().getAnnotations().length == 0 ? null : method;
     }
 
     /** The class the location is in, up to the top level; a file's first class when the caret is outside one. */

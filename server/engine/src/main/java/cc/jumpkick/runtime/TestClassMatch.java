@@ -37,9 +37,10 @@ public final class TestClassMatch {
         return "no classes matched --class " + String.join(", ", patterns) + " — skipped";
     }
 
-    /** The failure line: the patterns, so the typo is on the screen. */
+    /** The failure line: the patterns, so the typo is on the screen; "tests" when one names a method. */
     public static String noMatchMessage(List<String> patterns) {
-        return "no test classes matched --class " + String.join(", ", patterns);
+        boolean method = patterns.stream().anyMatch(p -> p.indexOf('#') >= 0);
+        return "no test " + (method ? "methods" : "classes") + " matched --class " + String.join(", ", patterns);
     }
 
     /**
