@@ -119,7 +119,7 @@ class PomDeclaredPinsImportTest {
                 .contains("`net.java.dev.swing-layout:swing-layout 1.0.2` is pinned by the POM");
         assertThat(Files.readString(pom.resolveSibling("jk.toml")))
                 .as("the pin is still written; the row is the diagnosis, not a rewrite")
-                .contains("version = \"1.0.2\"");
+                .contains("swing-layout = \"net.java.dev.swing-layout:swing-layout:1.0.2\"");
     }
 
     @Test

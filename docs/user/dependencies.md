@@ -58,9 +58,9 @@ An inline table takes exactly the keys jk knows — `group`, `name`, `version`, 
 `default-features` and the git ref keys `tag`, `branch`, `rev`, `submodules`, `verify-signed` — and
 refuses any other by name (`dependencies.guava unknown key \`excludes\``), so a typo cannot parse
 cleanly and silently drop; a `[workspace.dependencies]` entry is held to its own list the same way.
-`jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table, and
-`jk import` writes a dependency whose version a BOM or parent supplied under Maven the same way,
-versionless. `jk add --classifier <c>` always writes the inline table, under the handle `<name>-<c>`
+`jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table; `jk
+import` writes every plain coordinate the same way, and a dependency whose version a BOM or parent
+supplied under Maven the same way, versionless. `jk add --classifier <c>` always writes the inline table, under the handle `<name>-<c>`
 unless `--library` names one. `jk format` never rewrites one spelling into another. A classifier or type in a GAV string
 (`g:a:v:classifier`) is an error — use the inline table. `classifier` names the classified jar of
 the module (`natives-linux`, `linux-x86_64`); the solver and the lock key that edge as

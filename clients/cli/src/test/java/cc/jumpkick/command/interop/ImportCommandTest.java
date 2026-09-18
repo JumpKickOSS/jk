@@ -42,7 +42,8 @@ class ImportCommandTest {
         assertThat(jkBuild).contains("name     = \"widget\"");
         assertThat(jkBuild).contains("[dependencies]");
         assertThat(jkBuild)
-                .contains("jackson-databind = { group = \"com.fasterxml.jackson.core\", version = \"2.18.2\" }");
+                .as("a plain coordinate is spelled as jk add writes it")
+                .contains("jackson-databind = \"com.fasterxml.jackson.core:jackson-databind:2.18.2\"");
 
         String report = Files.readString(tempDir.resolve("jk-import-report.md"));
         assertThat(report).contains("# jk import report");
@@ -176,10 +177,8 @@ class ImportCommandTest {
         assertThat(jkBuild).contains("group    = \"com.example\"");
         assertThat(jkBuild).contains("jdk      = \"25\"");
         assertThat(jkBuild).contains("[dependencies]");
-        // Prefer unique library-catalog short name (jackson2-databind) when reverse-map hits.
-        assertThat(jkBuild).contains("group = \"com.fasterxml.jackson.core\"");
-        assertThat(jkBuild).contains("version = \"2.18.2\"");
-        assertThat(jkBuild).containsAnyOf("jackson-databind", "jackson2-databind");
+        // The catalog short name (jackson2-databind) with the bare version, as jk add writes it.
+        assertThat(jkBuild).contains("jackson2-databind = \"2.18.2\"");
 
         assertThat(Files.readString(tempDir.resolve("jk-import-report.md"))).contains("# jk import report");
     }
