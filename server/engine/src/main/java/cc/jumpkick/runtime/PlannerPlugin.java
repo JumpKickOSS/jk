@@ -428,7 +428,7 @@ public final class PlannerPlugin {
                     List<PluginBuild.ProdEntry> prodEntries = step.inputs().contains("runtime-entries")
                             ? PluginBuild.productionEntries(in.dir(), cx.cas(), in.lockFile(), project)
                             : step.inputs().contains("test-runtime-entries")
-                                    ? PluginBuild.testRuntimeEntries(in.dir(), in.lockFile(), project)
+                                    ? PluginBuild.testRuntimeEntries(in.dir(), cx.cas(), in.lockFile(), project)
                                     : List.of();
 
                     // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — the ones

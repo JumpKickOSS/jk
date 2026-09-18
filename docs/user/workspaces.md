@@ -215,7 +215,9 @@ the workspace's answer cannot be its answer:
   exclusions to the module that imports it and a dependency's exclusions to its whole subtree.
 
 Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
-classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the
+classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns): the compile and
+test classpaths, and every classpath a plugin step or packager is handed (`protoc` unpacks the
+member's own `protobuf-java` for its imports, not the workspace's), read the member's view. Everything the
 member agrees on stays a plain row; where the member's own BOM manages such a row at the
 workspace's version, the plain row carries that BOM as `pinned-by`, as the member's own row would,
 and `jk why` names it for every member that reads the row. Agreement is per scope: a version the workspace carries only as
