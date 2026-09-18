@@ -200,6 +200,39 @@ class LintStepTest {
         assertThat(detekt).containsSequence("--input", main + "," + test);
     }
 
+    /** Maven's default ruleset is not one of PMD's: jk carries it, and hands PMD a file under the step's output. */
+    @Test
+    void the_maven_pmd_plugins_default_ruleset_is_handed_to_pmd_as_a_file(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "lint")
+                .config(Map.of(
+                        "pmd", List.of("rulesets/java/maven-pmd-plugin-default.xml", "category/java/security.xml")));
+        Path report = Files.createDirectories(tmp.resolve("scratch/lint/pmd")).resolve("pmd.xml");
+
+        List<String> pmd = LintStep.arguments(LintTool.PMD, io, List.of(tmp.resolve("src/main/java")), report);
+
+        Path bundled = report.resolveSibling("maven-pmd-plugin-default.xml");
+        assertThat(pmd).containsSequence("--rulesets", bundled + ",category/java/security.xml");
+        assertThat(bundled)
+                .content()
+                .contains("Default Maven PMD Plugin Ruleset")
+                .contains("UselessParentheses");
+    }
+
+    /** SpotBugs reports at medium confidence as the Maven plugin does by default; {@code spotbugs-threshold} lowers or raises it. */
+    @Test
+    void spotbugs_reports_at_the_tables_confidence_medium_by_default(@TempDir Path tmp) throws Exception {
+        Path report = tmp.resolve("report.xml");
+        FakeBuildIo byDefault = new FakeBuildIo(tmp.resolve("d"), "lint").config(Map.of("spotbugs", true));
+        FakeBuildIo low =
+                new FakeBuildIo(tmp.resolve("l"), "lint").config(Map.of("spotbugs", true, "spotbugs-threshold", "low"));
+
+        assertThat(LintStep.arguments(LintTool.SPOTBUGS, byDefault, List.of(), report))
+                .contains("-medium")
+                .doesNotContain("-low");
+        assertThat(LintStep.arguments(LintTool.SPOTBUGS, low, List.of(), report))
+                .contains("-low");
+    }
+
     /** {@code exclude} globs reach Checkstyle as {@code -x} path patterns and detekt as {@code --excludes}. */
     @Test
     void exclude_globs_are_passed_the_way_each_tool_leaves_paths_out(@TempDir Path tmp) throws Exception {

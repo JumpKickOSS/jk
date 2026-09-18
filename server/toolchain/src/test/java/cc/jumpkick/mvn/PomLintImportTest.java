@@ -221,7 +221,12 @@ class PomLintImportTest {
                 .containsEntry("fail-on", "warning")
                 .containsEntry(
                         "pmd",
-                        List.of("rulesets/java/quickstart.xml", "category/java/security.xml", "pmd-custom_ruleset.xml"))
+                        List.of(
+                                "rulesets/java/maven-pmd-plugin-default.xml",
+                                "category/java/security.xml",
+                                "pmd-custom_ruleset.xml"))
+                .containsEntry("pmd-exclude", "pmd-exclude.properties")
+                .containsEntry("pmd-version", "7.17.0")
                 .containsEntry("spotbugs", true)
                 .containsEntry("spotbugs-exclude", "spotbugs-exclude.xml")
                 .containsEntry("spotbugs-effort", "max")
@@ -229,8 +234,9 @@ class PomLintImportTest {
                 .containsEntry("sources", List.of("src/main/java", "src/test/java"));
         List<String> rows = messages(result);
         assertThat(rows)
-                .anyMatch(m -> m.contains("Maven plugin's own default ruleset"))
-                .anyMatch(m -> m.contains("`<excludeFromFailureFile>`"))
+                .noneMatch(m -> m.contains("default ruleset"))
+                .noneMatch(m -> m.contains("`<excludeFromFailureFile>`"))
+                .noneMatch(m -> m.contains("has one threshold"))
                 .anyMatch(m -> m.contains("`<plugins>`") && m.contains("fb-contrib"))
                 .anyMatch(m -> m.contains("`[lint]`") && m.contains("jk-results.md"))
                 .noneMatch(m -> m.contains("was not imported"));
@@ -269,6 +275,136 @@ class PomLintImportTest {
                 .doesNotContainKey("checkstyle-version");
         assertThat(messages(result))
                 .anyMatch(m -> m.contains("`google_checks.xml`") && m.contains("copy the rule set in"));
+    }
+
+    /** Maven fails on every PMD priority up to failurePriority (default 5): fail-on follows it, not Checkstyle's severity. */
+    @Test
+    void pmds_failure_threshold_sets_fail_on(@TempDir Path tempDir) throws Exception {
+        PluginConfig defaults = pmdOnly(tempDir.resolve("defaults"), "");
+        assertThat(defaults.values()).containsEntry("fail-on", "warning");
+
+        PluginConfig priorityTwo = pmdOnly(tempDir.resolve("two"), "<failurePriority>2</failurePriority>");
+        assertThat(priorityTwo.values())
+                .as("priorities 1 and 2 are jk's errors, the table's default threshold")
+                .doesNotContainKey("fail-on");
+
+        PluginConfig noFailure = pmdOnly(tempDir.resolve("never"), "<failOnViolation>false</failOnViolation>");
+        assertThat(noFailure.values()).containsEntry("fail-on", "never");
+    }
+
+    /** Checkstyle fails on errors alone under Maven while PMD fails on every finding: one key, the stricter, and a row. */
+    @Test
+    void tools_that_disagree_on_the_threshold_get_the_stricter_one_and_a_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-checkstyle-plugin</artifactId>
+                        <configuration><configLocation>checkstyle.xml</configLocation></configuration>
+                      </plugin>
+                      <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-pmd-plugin</artifactId>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.values()).containsEntry("fail-on", "warning");
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .contains("Checkstyle fails the build on `error`")
+                .contains("PMD fails the build on `warning`")
+                .contains("`fail-on = \"warning\"`"));
+    }
+
+    /** The PMD a POM runs is the plugin's bundled one, or the pmd-java the plugin's own dependencies pin. */
+    @Test
+    void the_pmd_release_follows_the_plugin_or_its_pinned_pmd_java(@TempDir Path tempDir) throws Exception {
+        PluginConfig pinned = pmdOnly(tempDir.resolve("pinned"), "3.26.0", "", """
+                <dependencies>
+                  <dependency>
+                    <groupId>net.sourceforge.pmd</groupId><artifactId>pmd-java</artifactId><version>7.20.0</version>
+                  </dependency>
+                </dependencies>
+                """);
+        assertThat(pinned.values()).containsEntry("pmd-version", "7.20.0");
+
+        PluginConfig bundled = pmdOnly(tempDir.resolve("bundled"), "3.26.0", "", "");
+        assertThat(bundled.values()).containsEntry("pmd-version", "7.7.0");
+
+        PomImporter.Result six = importPmdOnly(tempDir.resolve("six"), "3.21.2", "", "");
+        assertThat(six.jkBuild().pluginConfig("lint").orElseThrow().values()).doesNotContainKey("pmd-version");
+        assertThat(messages(six))
+                .anySatisfy(m -> assertThat(m).contains("PMD 6.55.0").contains("PMD 7"));
+    }
+
+    /** spotbugs-maven-plugin reports at medium confidence unless {@code <threshold>} says otherwise. */
+    @Test
+    void spotbugs_threshold_is_the_tables_confidence(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                        <version>4.10.4.1</version>
+                        <configuration><threshold>Low</threshold></configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.values()).containsEntry("spotbugs-threshold", "low").doesNotContainKey("spotbugs-version");
+    }
+
+    private static PluginConfig pmdOnly(Path dir, String configuration) throws Exception {
+        return pmdOnly(dir, "3.28.0", configuration, "");
+    }
+
+    private static PluginConfig pmdOnly(Path dir, String version, String configuration, String dependencies)
+            throws Exception {
+        return importPmdOnly(dir, version, configuration, dependencies)
+                .jkBuild()
+                .pluginConfig("lint")
+                .orElseThrow();
+    }
+
+    private static PomImporter.Result importPmdOnly(Path dir, String version, String configuration, String dependencies)
+            throws Exception {
+        return TestImporters.importXml(dir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-pmd-plugin</artifactId>
+                        <version>%s</version>
+                        <configuration>%s</configuration>
+                        %s
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """.formatted(version, configuration, dependencies));
     }
 
     @Test
@@ -383,7 +519,7 @@ class PomLintImportTest {
 
         assertThat(result.modules().values()).allSatisfy(module -> assertThat(
                         module.pluginConfig("lint").orElseThrow().stringList("pmd"))
-                .containsExactly("rulesets/java/quickstart.xml"));
+                .containsExactly("rulesets/java/maven-pmd-plugin-default.xml"));
         assertThat(result.report().issues()).noneMatch(i -> i.message().contains("binds no `<execution>`"));
     }
 
