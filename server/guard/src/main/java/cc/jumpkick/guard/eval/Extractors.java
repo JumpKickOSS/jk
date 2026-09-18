@@ -344,7 +344,7 @@ final class Extractors {
         return new Extraction(s.label(), null, rows);
     }
 
-    private static Extraction guardKinds(Spec s) {
+    static Extraction guardKinds(Spec s) {
         List<Extraction.Row> rows = new ArrayList<>();
         for (Kind k : Kind.values())
             rows.add(row(
@@ -361,7 +361,7 @@ final class Extractors {
     }
 
     /** Every key of every kind (or of one), then the keys all kinds share under the kind {@code common}. */
-    private static Extraction guardSchemas(Spec s) throws ExtractorException {
+    static Extraction guardSchemas(Spec s) throws ExtractorException {
         // a bare boolean (`guard-schemas = true`) or `all` is every kind; anything else names one
         String which = s.arg("kind", "all");
         List<Extraction.Row> rows = new ArrayList<>();

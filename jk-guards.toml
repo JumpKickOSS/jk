@@ -858,24 +858,6 @@ fixture    = "server/guard/fixtures/case-conversion-locale"
 instead    = "toLowerCase(Locale.ROOT) / toUpperCase(Locale.ROOT)"
 why        = "a case conversion in the default locale misparses identifiers under tr_TR and az"
 
-# The user documentation's kind and key tables are renderings of the loader's own schema, so the
-# docs cannot drift from what the loader accepts.
-[guards.guard-kinds-doc]
-kind     = "generated"
-source   = { guard-kinds = true }
-template = { table = ["kind", "substrate", "lane", "summary"] }
-into     = "docs/user/guards.md"
-markers  = "guard-kinds"
-why      = "a kind the docs describe and the loader does not know is a rule nobody can write"
-
-[guards.guard-schemas-doc]
-kind     = "generated"
-source   = { guard-schemas = true }
-template = { table = ["kind", "key", "required", "type", "meaning"] }
-into     = "docs/user/guards.md"
-markers  = "guard-schemas"
-why      = "a key the docs describe and the loader does not accept is a rule that fails to load"
-
 # G85. Every external format constant is 1 until 1.0; the shape changes in place, never by a new number.
 [guards.schema-freeze]
 kind    = "text"

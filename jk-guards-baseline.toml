@@ -1763,7 +1763,8 @@ population = { files = 1970 }
 population = { examined = 42 }
 
 [guard-kinds-doc]
-population = { rows = 18 }
+population = { examined = 18 }
+scope-reason = "the kinds table is now judged by a guard test, whose population unit is rows examined"
 
 [guard-letters-registry]
 population = { examined = 108 }
@@ -1772,7 +1773,8 @@ population = { examined = 108 }
 population = { rows = 70 }
 
 [guard-schemas-doc]
-population = { rows = 84 }
+population = { examined = 84 }
+scope-reason = "the keys table is now judged by a guard test, whose population unit is rows examined"
 
 [hand-built-java-binary]
 population = { examined = 1929 }

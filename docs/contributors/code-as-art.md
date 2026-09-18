@@ -945,8 +945,8 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G80 | a commit message carrying a tool's co-author, generator or assistant trailer — refused at the commit boundary by the `commit-msg` hook `jk guard hooks install` writes | commit rule, forbid-trailers globs; CI's history scan is the other half | `no-agent-trailers` (commit) |
 | G81 | `hosting/public/install.sh` differing from the repo-root copy — served to `curl | bash` users, so a stale copy installs jk where the CLI does not look | parity, line sets of the two copies | `published-installer-sh` (parity) |
 | G82 | `hosting/public/install.ps1` differing from the repo-root copy — the PowerShell half of G81 | parity, line sets of the two copies | `published-installer-ps1` (parity) |
-| G83 | the kinds table in `docs/user/guards.md` not being what the loader's kind list renders | generated, rendered from `guard-kinds` | `guard-kinds-doc` (generated) |
-| G84 | the key tables in `docs/user/guards.md` not being what the loader's `KeySpec` tables render | generated, rendered from `guard-schemas` | `guard-schemas-doc` (generated) |
+| G83 | the kinds table in `docs/user/guards.md` not being what the loader's kind list renders | exact generated-block comparison against the tree's own compiled `Kind` list | guard test `guard-kinds-doc` |
+| G84 | the key tables in `docs/user/guards.md` not being what the loader's `KeySpec` tables render | exact generated-block comparison against the tree's own compiled `KindSchemas` | guard test `guard-schemas-doc` |
 | G85 | an external format constant (`Lockfile.CURRENT_VERSION`, `EngineProtocol.PROTOCOL`, MCP / JSONL / transcript `SCHEMA`) not equal to 1 before 1.0 | text, exactly five `= 1` constants across the named owners | `schema-freeze` (text) |
 | G86 | a committed `jk-lock.toml` whose `version` is not 1 | text, max 0 matches over every lock in the tree | `lock-version-is-one` (text) |
 | G87 | `@Deprecated` or `@SuppressWarnings("unused")` in main code — a dual path or a parked helper the charter says to delete on touch | text, max 0 matches over `**/src/main/**/*.java` | `no-retired-code-markers` (text) |
@@ -1016,9 +1016,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | engine-log-owner | forbid | a print has no level, misses the engine log's size cap and skips its redaction; the logger is the one sink |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
 | git-writes-are-pinned | text | a write that searches upward mutates whichever repository encloses the path, not the one meant |
-| guard-kinds-doc | generated | a kind the docs describe and the loader does not know is a rule nobody can write |
 | guard-registry-doc | generated | the registry drifted twice by hand; the third reconciliation is not by hand |
-| guard-schemas-doc | generated | a key the docs describe and the loader does not accept is a rule that fails to load |
 | install-tests-redirect-m2 | text | an install test without --m2-dir publishes into the developer's real ~/.m2 |
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
 | json-concat | text | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
