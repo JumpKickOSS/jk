@@ -166,6 +166,30 @@ class JavaSourceApiTest {
         assertThat(digests.get(a)).isEqualTo(JavaSourceApi.digest(a));
     }
 
+    @Test
+    void a_module_is_parsed_in_batches_bounded_by_source_bytes(@TempDir Path dir) throws IOException {
+        Path a = Files.writeString(dir.resolve("A.java"), "package p; public class A {}".repeat(1));
+        Path b = Files.writeString(dir.resolve("B.java"), "package p; public class B { public int x; }");
+        Path c = Files.writeString(dir.resolve("C.java"), "package p; public class C { public int y; }");
+        long each = Files.size(b);
+        // Two files fit under the bound together; the third opens a batch of its own.
+        assertThat(JavaSourceApi.batches(List.of(a, b, c), each * 2)).containsExactly(List.of(a, b), List.of(c));
+        // A file above the bound is never dropped: it is a batch of one.
+        assertThat(JavaSourceApi.batches(List.of(a, b, c), 1)).containsExactly(List.of(a), List.of(b), List.of(c));
+        assertThat(JavaSourceApi.batches(List.of(), 1)).isEmpty();
+    }
+
+    @Test
+    void a_digest_does_not_depend_on_the_batch_its_file_was_parsed_in(@TempDir Path dir) throws IOException {
+        Path a = Files.writeString(dir.resolve("A.java"), "package p; public class A { public void a() {} }");
+        Path b = Files.writeString(dir.resolve("B.java"), "package p; public class B { public int x; }");
+        Path c = Files.writeString(dir.resolve("C.java"), BASE);
+        Map<Path, String> together =
+                JavaSourceApi.parse(List.of(a, b, c), JavaSourceApi.View.DECLARATIONS, Long.MAX_VALUE);
+        Map<Path, String> apart = JavaSourceApi.parse(List.of(a, b, c), JavaSourceApi.View.DECLARATIONS, 1);
+        assertThat(apart).containsOnlyKeys(a, b, c).isEqualTo(together);
+    }
+
     private static String digest(Path dir, String source) throws IOException {
         return digest(dir, source, JavaSourceApi.View.DECLARATIONS);
     }

@@ -168,6 +168,15 @@ public final class JobWorkers {
         for (var f : pending) f.get(10, TimeUnit.SECONDS);
     }
 
+    /**
+     * True once {@link #shutdownForRequest} has run for {@code requestId}: the job is over, and a
+     * result that arrives under its scope after this — a test pool unblocked by the kill — belongs
+     * to no report.
+     */
+    public static boolean ended(long requestId) {
+        return TOMBSTONES.contains(requestId);
+    }
+
     /** Forked processes of {@code requestId} still alive right now; {@code 0} when none or unknown. */
     public static int liveCountForRequest(long requestId) {
         Set<Process> set = BY_REQUEST.get(requestId);

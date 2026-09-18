@@ -179,6 +179,9 @@ public final class JournalWriter {
             log.accept("jk engine: build journal skip requestId=" + requestId + " (no accumulator)");
             return;
         }
+        // Taken first: this build's runs are its own, then what no live build covers is nobody's.
+        List<MarkdownTestReport.ModuleRun> tests = takeTests(a.dir());
+        MarkdownTestReport.retainUnder(sessions.accumulatorDirs());
         try {
             if (a.discarded()) {
                 deleteStub(a);
@@ -194,7 +197,6 @@ public final class JournalWriter {
             a.flushTimeline().ifPresent(path -> {
                 if (writer != null) WireWriter.sendQuiet(writer, new TimelineEvent(path.toString()).encode());
             });
-            List<MarkdownTestReport.ModuleRun> tests = takeTests(a.dir());
             List<BuildRecord.Coverage> coverage = takeCoverage(a.dir());
             if (!coverage.isEmpty()) record = record.withCoverage(coverage);
             if (record.synthetic()) {
