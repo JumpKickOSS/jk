@@ -46,6 +46,27 @@ class NewCommandTest {
         assertThat(parsed.project().isKotlin()).isFalse();
     }
 
+    /** Without {@code --jdk} the manifest carries the level alone: nothing for a reader to learn as a pin. */
+    @Test
+    void no_jdk_flag_writes_the_java_level_and_no_toolchain_pin(@TempDir Path tempDir) throws IOException {
+        int exit = Jk.execute(
+                "new",
+                "--group",
+                "com.example",
+                "--name",
+                "widget",
+                "--lang",
+                "scala",
+                "--no-module",
+                tempDir.toString());
+        assertThat(exit).isEqualTo(0);
+        String toml = Files.readString(tempDir.resolve("jk.toml"));
+        assertThat(toml).contains("java     = ").doesNotContain("jdk      =");
+        assertThat(toml).contains("scala    = ");
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).project().jdk())
+                .isNull();
+    }
+
     @Test
     void explicit_vendor_spec_is_preserved_in_jk_toml(@TempDir Path tempDir) throws IOException {
         int exit = Jk.execute(

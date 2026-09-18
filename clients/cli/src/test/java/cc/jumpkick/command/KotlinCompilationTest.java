@@ -132,9 +132,6 @@ class KotlinCompilationTest {
     @Test
     void mixed_java_and_kotlin_compile_together(@TempDir Path tempDir) throws IOException {
         run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
-        // Opt into Java too — a mixed project declares both java and kotlin.
-        Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml) + "java = 25\n");
         // Java type that Kotlin will use.
         Path javaSrc = tempDir.resolve("src/main/java/example/Hub.java");
         Files.createDirectories(javaSrc.getParent());
@@ -167,8 +164,6 @@ class KotlinCompilationTest {
         // The reorder (Kotlin first, then javac against Kotlin's output) makes
         // Java → Kotlin references resolve within a single module.
         run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
-        Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml) + "java = 25\n");
         Path ktSrc = tempDir.resolve("src/main/kotlin/example/Greeter.kt");
         Files.createDirectories(ktSrc.getParent());
         Files.writeString(ktSrc, """
@@ -202,8 +197,6 @@ class KotlinCompilationTest {
         // reference Kotlin within the module.
         run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir); // jk new no longer locks; check needs a lock
-        Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml) + "java = 25\n");
         Path ktSrc = tempDir.resolve("src/main/kotlin/example/Greeter.kt");
         Files.createDirectories(ktSrc.getParent());
         Files.writeString(ktSrc, """

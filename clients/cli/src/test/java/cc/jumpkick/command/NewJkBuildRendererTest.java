@@ -13,6 +13,7 @@ import cc.jumpkick.scaffold.NewJkBuildRenderer;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class NewJkBuildRendererTest {
@@ -188,7 +189,44 @@ class NewJkBuildRendererTest {
                 Path.of("/tmp/demo"));
         String toml = NewJkBuildRenderer.render(inputs, NewScaffolder.VERSIONS);
         assertThat(toml).contains("scala    = \"1.2.3\"");
-        assertThat(toml).doesNotContain("java     =");
+        assertThat(toml).as("the level is the line every language writes").contains("java     = 25");
+    }
+
+    /**
+     * The manifest carries the language level and no toolchain pin unless the caller asked for one:
+     * a {@code java = N} the host JDK compiles to costs no download, a {@code jdk = "…"} forces one.
+     */
+    @Test
+    void a_scaffold_writes_the_java_level_and_a_jdk_pin_only_when_given_one() throws IOException {
+        for (NewInputs.Language lang : NewInputs.Language.values()) {
+            String toml = NewJkBuildRenderer.render(inputs(lang, null), NewScaffolder.VERSIONS);
+            assertThat(toml)
+                    .as("%s without a pin", lang)
+                    .contains("java     = 25")
+                    .doesNotContain("jdk      =");
+        }
+        String pinned =
+                NewJkBuildRenderer.render(inputs(NewInputs.Language.SCALA, "corretto-25"), NewScaffolder.VERSIONS);
+        assertThat(pinned).contains("jdk      = \"corretto-25\"").contains("java     = 25");
+    }
+
+    private static NewInputs inputs(NewInputs.Language lang, @Nullable String jdk) {
+        return new NewInputs(
+                "com.example",
+                "demo",
+                jdk,
+                25,
+                25,
+                null,
+                null,
+                false,
+                false,
+                lang,
+                Layout.TRADITIONAL,
+                null,
+                List.of(),
+                true,
+                Path.of("/tmp/demo"));
     }
 
     /**

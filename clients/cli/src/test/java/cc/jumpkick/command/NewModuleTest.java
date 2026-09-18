@@ -77,7 +77,7 @@ class NewModuleTest {
         assertThat(Jk.execute("new", module.toString())).isZero();
 
         String toml = Files.readString(module.resolve("jk.toml"));
-        assertThat(toml).contains("jdk      = \"25\""); // toolchain inherited (bare major)
+        assertThat(toml).doesNotContain("jdk      ="); // the toolchain is the workspace's, inherited unwritten
         assertThat(toml).contains("java     = 17"); // compile target flowed through
         assertThat(JkBuildParser.parse(module.resolve("jk.toml")).project().javaRelease())
                 .isEqualTo(17);

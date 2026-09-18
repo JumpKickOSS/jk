@@ -641,11 +641,11 @@ public final class NewCommand implements CliCommand {
                                 Optional.ofNullable(System.getProperty("user.home"))
                                         .map(Path::of)
                                         .orElse(null));
-        // Resolve the JDK pin written to jk.toml: an explicit --jdk wins (keeping
-        // a vendor only when the user typed one); else inherit the parent's major
-        // (module); else adopt the global default JDK's major; else the latest
-        // LTS. Every non-explicit path writes a bare major — the vendor stays out
-        // of jk.toml unless the user asked for it.
+        // The Java level: an explicit --jdk names it (and is the one pin jk.toml
+        // carries, vendor and all); else the parent's major (module); else the
+        // global default JDK's major; else the latest LTS. Every non-explicit path
+        // writes the level alone — the host JDK compiles to it, so no toolchain
+        // pin is written for the user to learn.
         NewJdkPlan.Spec jdkSpec;
         if (jdk != null && !jdk.isBlank()) {
             jdkSpec = NewJdkChoice.fromArg(jdk);
@@ -658,7 +658,7 @@ public final class NewCommand implements CliCommand {
         } else {
             jdkSpec = new NewJdkPlan.Spec(NewWizard.LATEST_LTS_MAJOR, Integer.toString(NewWizard.LATEST_LTS_MAJOR));
         }
-        var resolvedJdk = jdkSpec.pin();
+        String resolvedJdk = jdk != null && !jdk.isBlank() ? jdkSpec.pin() : null;
         int resolvedJdkMajor = jdkSpec.major();
         // The compile target flows through from the parent (workspace-wide
         // release) even when it diverges from the JDK toolchain; standalone
@@ -730,8 +730,8 @@ public final class NewCommand implements CliCommand {
         // Resolve the JDK: a module inherits the parent's major; a global
         // default JDK is adopted; otherwise it's the candidate the user picked
         // (or the one auto-resolved when the "Select a JDK" step was skipped).
-        // The pin written to jk.toml is always the bare major — the wizard never
-        // emits a vendor (that's reserved for an explicit `--jdk <vendor>-<major>`).
+        // The wizard writes the level it settles on (`java = N`) and never a
+        // toolchain pin — that is reserved for an explicit `--jdk <vendor>-<major>`.
         int resolvedJdkMajor;
         Optional<String> resolvedJdkIdentifier;
         if (parent != null) {
@@ -744,7 +744,6 @@ public final class NewCommand implements CliCommand {
             resolvedJdkMajor = pickedOpt.major();
             resolvedJdkIdentifier = Optional.of(pickedOpt.id());
         }
-        var resolvedJdk = Integer.toString(resolvedJdkMajor);
         // Compile target: a module inherits the parent's; a standalone Java
         // project uses the Java Language Version it was asked for; otherwise
         // (Kotlin, or a default-JDK project that skipped the version step) it
@@ -788,7 +787,7 @@ public final class NewCommand implements CliCommand {
         return new NewInputs(
                 resolvedGroup,
                 resolvedName,
-                resolvedJdk,
+                null,
                 resolvedJdkMajor,
                 resolvedJavaRelease,
                 resolvedJdkIdentifier.orElse(null),
