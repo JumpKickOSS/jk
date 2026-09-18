@@ -5,7 +5,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -18,15 +17,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -447,7 +438,8 @@ public final class RepoGroup {
         // order: the answer a repo-by-repo walk gives, at the wall of the slowest remote rather than
         // the sum of them.
         boolean fanOut = asked.size() > 1 && (!wanted.isEmpty() || snapshots);
-        List<Leg<List<String>>> catalogs = fanOut ? legs(asked, repo -> repo.availableVersions(coord)) : List.of();
+        List<RepoLegs.Leg<List<String>>> catalogs =
+                fanOut ? RepoLegs.legs(asked, repo -> repo.availableVersions(coord)) : List.of();
         LinkedHashSet<String> union = new LinkedHashSet<>();
         boolean releaseFound = false;
         IOException firstFailure = null;
@@ -457,7 +449,7 @@ public final class RepoGroup {
                 if (releaseFound && union.containsAll(wanted) && !(snapshots && repo.servesSnapshots())) continue;
                 List<String> found;
                 try {
-                    found = fanOut ? await(catalogs.get(i).future()) : repo.availableVersions(coord);
+                    found = fanOut ? RepoLegs.await(catalogs.get(i).future()) : repo.availableVersions(coord);
                 } catch (IOException transport) {
                     // One remote's 429, 5xx or reset is that remote's problem, not an answer about the
                     // coordinate: the remaining candidates are still asked. Said once per run per
@@ -473,7 +465,7 @@ public final class RepoGroup {
                 releaseFound |= union.stream().anyMatch(v -> !Versions.isSnapshot(v));
             }
         } finally {
-            settle(catalogs);
+            RepoLegs.settle(catalogs);
         }
         // Every candidate failed to answer: that is the failure, not an empty catalog, and an
         // empty answer must not be memoised over it.
@@ -501,212 +493,6 @@ public final class RepoGroup {
         for (String v : found) {
             boolean snapshot = Versions.isSnapshot(v);
             if (snapshot ? snapshots && repo.servesSnapshots() : repo.servesReleases()) union.add(v);
-        }
-    }
-
-    /** One repository's network leg for a fetch. */
-    @FunctionalInterface
-    private interface LegWork<T> {
-        T fetch(MavenRepo repo) throws Exception;
-    }
-
-    /**
-     * Run {@code work} against each of {@code repos} at once, one leg per repository, each under a
-     * {@link DownloadSlots#acquireLeg(String) leg slot} of its host: on the io pool when several
-     * repositories are asked, inline when there is one, since a single-repository group pays for no
-     * thread hand-off. The slots are taken here, on the calling thread, before a leg is handed to the
-     * pool, so a fan-out wider than a host's queue parks its later legs unsubmitted rather than as
-     * one waiting thread each — and in two passes: first every leg whose host has room right now,
-     * then the rest, each submitted as soon as its own host frees a slot, so a repository whose queue
-     * is full holds back only the legs bound for it while the others already run. A pooled leg runs
-     * under the calling thread's session, so {@code --offline} and {@code --force} reach it.
-     */
-    private static <T> List<Leg<T>> legs(List<MavenRepo> repos, LegWork<T> work) throws InterruptedException {
-        if (repos.size() == 1) {
-            MavenRepo repo = repos.getFirst();
-            String host = hostOf(repo);
-            DownloadSlots.acquireLeg(host);
-            CompletableFuture<T> inline = new CompletableFuture<>();
-            try {
-                inline.complete(work.fetch(repo));
-            } catch (Exception e) {
-                inline.completeExceptionally(e);
-            } finally {
-                DownloadSlots.releaseLeg(host);
-            }
-            return List.of(Leg.finished(inline));
-        }
-        var session = SessionContext.current();
-        List<Leg<T>> out = new ArrayList<>(repos.size());
-        boolean[] submitted = new boolean[repos.size()];
-        for (int i = 0; i < repos.size(); i++) {
-            out.add(Leg.finished(new CompletableFuture<>()));
-            MavenRepo repo = repos.get(i);
-            String host = hostOf(repo);
-            if (DownloadSlots.tryAcquireLeg(host)) {
-                out.set(
-                        i,
-                        trackedLeg(JkThreads.io(), host, () -> SessionContext.where(session, () -> work.fetch(repo))));
-                submitted[i] = true;
-            }
-        }
-        int waiting = repos.size();
-        for (boolean b : submitted) if (b) waiting--;
-        // Rotate over the legs still waiting rather than block on the first: a host whose queue frees
-        // next gets its leg submitted whatever its place in repository order.
-        while (waiting > 0) {
-            for (int i = 0; i < repos.size(); i++) {
-                if (submitted[i]) continue;
-                MavenRepo repo = repos.get(i);
-                String host = hostOf(repo);
-                if (!DownloadSlots.tryAcquireLeg(host, LEG_SLOT_POLL_MS)) continue;
-                out.set(
-                        i,
-                        trackedLeg(JkThreads.io(), host, () -> SessionContext.where(session, () -> work.fetch(repo))));
-                submitted[i] = true;
-                waiting--;
-            }
-        }
-        return out;
-    }
-
-    /** How long a fan-out waits on one host's queue before looking at the next host's. */
-    private static final long LEG_SLOT_POLL_MS = 10;
-
-    /** The host whose leg slots and request permits a repository's legs take; empty for a local tree. */
-    private static String hostOf(MavenRepo repo) {
-        String host = repo.baseUrl().getHost();
-        return host == null ? "" : host;
-    }
-
-    /**
-     * Hand {@code work} to {@code pool} holding the leg slot for {@code host} the caller has already
-     * taken, and give the slot back exactly once: as the leg ends, or at once when the leg is
-     * cancelled before it started, since a body that never runs cannot release anything. The fetch
-     * loop cancels the legs it no longer needs the moment an earlier repository answers, so a slot
-     * tied to the body alone would leak on every such cancel until nothing could fetch at all.
-     */
-    static <T> CompletableFuture<T> pooledLeg(Executor pool, String host, Callable<T> work) {
-        return trackedLeg(pool, host, work).future();
-    }
-
-    /**
-     * One leg of a fan-out: its answer, the moment its body has returned or will never run — which
-     * a cancelled {@link Future} does not tell, since cancelling only asks the leg to stop — and the
-     * thread running it, so {@link #settle} can interrupt a read that lost to an earlier answer.
-     */
-    static final class Leg<T> {
-        private final CompletableFuture<T> future;
-        private final CountDownLatch finished = new CountDownLatch(1);
-        private @Nullable Thread runner;
-
-        private Leg(CompletableFuture<T> future) {
-            this.future = future;
-        }
-
-        /** A leg whose body already ran (or never will): nothing for {@link #settle} to wait for. */
-        static <T> Leg<T> finished(CompletableFuture<T> future) {
-            Leg<T> leg = new Leg<>(future);
-            leg.finished.countDown();
-            return leg;
-        }
-
-        CompletableFuture<T> future() {
-            return future;
-        }
-
-        private synchronized void running(@Nullable Thread thread) {
-            runner = thread;
-        }
-
-        /** Interrupt the body if it is running right now; a thread that has moved on is left alone. */
-        private synchronized void interruptRunner() {
-            if (runner != null) runner.interrupt();
-        }
-    }
-
-    /** {@link #pooledLeg} with the leg's completion latch and runner, for the fan-out's {@link #settle}. */
-    private static <T> Leg<T> trackedLeg(Executor pool, String host, Callable<T> work) {
-        Leg<T> leg = new Leg<>(new CompletableFuture<>());
-        CompletableFuture<T> future = leg.future;
-        // Whoever flips this owns the release: the body when it starts, or the cancel that beat it.
-        AtomicBoolean owned = new AtomicBoolean();
-        legsInFlight.incrementAndGet();
-        future.whenComplete((r, e) -> {
-            if (future.isCancelled() && owned.compareAndSet(false, true)) legEnded(host, leg);
-        });
-        Runnable body = () -> {
-            if (!owned.compareAndSet(false, true)) return;
-            leg.running(Thread.currentThread());
-            try {
-                future.complete(work.call());
-            } catch (Throwable t) {
-                future.completeExceptionally(t);
-            } finally {
-                leg.running(null);
-                legEnded(host, leg);
-            }
-        };
-        try {
-            pool.execute(body);
-        } catch (RuntimeException rejected) {
-            if (owned.compareAndSet(false, true)) legEnded(host, leg);
-            throw rejected;
-        }
-        return leg;
-    }
-
-    /**
-     * End every leg the walk did not wait for: a leg still running is interrupted, and the call
-     * returns only once each has stopped, so no fetch that lost to an earlier answer is still
-     * writing into its repository's store after the caller has moved on. A caller's own interrupt
-     * is kept for it and re-asserted afterwards.
-     */
-    private static void settle(List<? extends Leg<?>> legs) {
-        for (Leg<?> leg : legs) {
-            if (leg.future.isDone()) continue;
-            leg.future.cancel(true);
-            leg.interruptRunner();
-        }
-        boolean interrupted = false;
-        for (Leg<?> leg : legs) {
-            while (true) {
-                try {
-                    leg.finished.await();
-                    break;
-                } catch (InterruptedException e) {
-                    interrupted = true;
-                }
-            }
-        }
-        if (interrupted) Thread.currentThread().interrupt();
-    }
-
-    private static void legEnded(String host, Leg<?> leg) {
-        legsInFlight.decrementAndGet();
-        DownloadSlots.releaseLeg(host);
-        leg.finished.countDown();
-    }
-
-    /** Pooled legs submitted and not yet finished, across every group in the process. */
-    private static final AtomicInteger legsInFlight = new AtomicInteger();
-
-    /** Test seam: pooled legs submitted and not yet finished, across every group in the process. */
-    static int legsInFlight() {
-        return legsInFlight.get();
-    }
-
-    /** The result of a fetch leg, rethrowing what the leg threw: not-found, transport or interrupt. */
-    private static <T> T await(Future<T> leg) throws IOException, InterruptedException {
-        try {
-            return leg.get();
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause() == null ? e : e.getCause();
-            if (cause instanceof IOException io) throw io;
-            if (cause instanceof InterruptedException ie) throw ie;
-            if (cause instanceof RuntimeException re) throw re;
-            if (cause instanceof Error err) throw err;
-            throw new IOException(cause);
         }
     }
 
@@ -862,13 +648,13 @@ public final class RepoGroup {
             throw new MavenRepo.FetchAbortedException(
                     "fetch aborted before network leg for " + coord + " (lock already failed)");
         }
-        List<Leg<MavenRepo.Fetched>> legs =
-                legs(candidates.subList(0, networkLegs), repo -> fetcher.fetch(repo, coord));
+        List<RepoLegs.Leg<MavenRepo.Fetched>> legs =
+                RepoLegs.legs(candidates.subList(0, networkLegs), repo -> fetcher.fetch(repo, coord));
         try {
             for (int i = 0; i < networkLegs; i++) {
                 try {
-                    return Optional.of(
-                            new RepoFetched(candidates.get(i), await(legs.get(i).future())));
+                    return Optional.of(new RepoFetched(
+                            candidates.get(i), RepoLegs.await(legs.get(i).future())));
                 } catch (MavenRepo.ArtifactNotFoundException notFound) {
                     fanOut.notFound(candidates.get(i)); // the next candidate in order
                 } catch (MavenRepo.FetchAbortedException aborted) {
@@ -881,7 +667,7 @@ public final class RepoGroup {
                 }
             }
         } finally {
-            settle(legs);
+            RepoLegs.settle(legs);
         }
         return local;
     }
