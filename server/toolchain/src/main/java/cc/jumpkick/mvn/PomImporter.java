@@ -807,9 +807,14 @@ public final class PomImporter {
     /**
      * The optional deps inactive profiles contribute, after the POM's own handles are settled: a
      * handle already taken in the scope gets a numeric suffix, the same rule as
-     * {@link #uniquifyHandles}, so the feature's list still names what was written.
+     * {@link #uniquifyHandles}, so the feature's list still names what was written. A profile
+     * dependency with no version of its own that names a coordinate the POM already declares is
+     * Maven's merge of the two — the profile's row over the declared one, the version kept — so it
+     * takes the declared version rather than {@code unresolved}.
      */
     private static void addOptionalDeps(Map<Scope, List<Dependency>> byScope, Map<Scope, List<Dependency>> optional) {
+        List<Dependency> declared = new ArrayList<>();
+        byScope.values().forEach(declared::addAll);
         for (Map.Entry<Scope, List<Dependency>> e : optional.entrySet()) {
             List<Dependency> deps = byScope.computeIfAbsent(e.getKey(), s -> new ArrayList<>());
             Set<String> seen = new HashSet<>();
@@ -817,9 +822,24 @@ public final class PomImporter {
             for (Dependency d : e.getValue()) {
                 String handle = d.library();
                 for (int n = 2; !seen.add(handle); n++) handle = d.library() + "-" + n;
-                deps.add(d.withLibrary(handle).withOptional(true));
+                deps.add(declaredVersion(d, declared).withLibrary(handle).withOptional(true));
             }
         }
+    }
+
+    /** {@code d} at the version of the declared dependency naming its coordinate, when {@code d} has none. */
+    private static Dependency declaredVersion(Dependency d, List<Dependency> declared) {
+        if (!DependencyMapping.UNRESOLVED.equals(d.version().raw())) return d;
+        for (Dependency existing : declared) {
+            if (existing.group().equals(d.group())
+                    && existing.module().equals(d.module())
+                    && existing.kind() == d.kind()
+                    && Objects.equals(existing.classifier(), d.classifier())
+                    && !DependencyMapping.UNRESOLVED.equals(existing.version().raw())) {
+                return d.withVersion(existing.version());
+            }
+        }
+        return d;
     }
 
     /**
