@@ -320,6 +320,49 @@ class LockFreshenTest {
                 .containsExactly(GroovyResolver.DEFAULT_VERSION);
     }
 
+    /**
+     * A platform BOM that manages {@code kotlin-stdlib} at the Kotlin line the project declared —
+     * a line below jk's floor — does not put its stdlib beside the compiler's: the lock carries the
+     * stdlib at the compiler jk drives, a {@code managed} root included.
+     */
+    @Test
+    void a_bom_managed_kotlin_stdlib_follows_the_floored_compiler(@TempDir Path tmp) throws Exception {
+        serveLib("1.0");
+        upstream.leaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", KotlinResolver.FLOOR_VERSION);
+        upstream.leaf("org.jetbrains.kotlin", "kotlin-stdlib", KotlinResolver.FLOOR_VERSION);
+        upstream.leaf("org.jetbrains.kotlin", "kotlin-stdlib", "2.2.21");
+        upstream.pomOnly(
+                "com.foo",
+                "bom",
+                "1.0",
+                MavenStub.bom("com.foo", "bom", "1.0", List.of("org.jetbrains.kotlin:kotlin-stdlib:2.2.21")));
+        Files.createDirectories(tmp.resolve("src/main/kotlin"));
+        Files.writeString(tmp.resolve("src/main/kotlin/K.kt"), "class K");
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "demo"
+                version = "1.0.0"
+                java = 25
+                kotlin = "2.2.21"
+
+                [platform-dependencies]
+                bom = "com.foo:bom:1.0"
+
+                [dependencies]
+                kotlin-stdlib = "org.jetbrains.kotlin:kotlin-stdlib"
+                lib = { group = "com.foo", name = "lib", version = "^1.0" }
+                """);
+
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
+
+        assertThat(first.status()).as(String.valueOf(first.error())).isZero();
+        assertThat(requireNonNull(first.lockfile()).kotlin()).isEqualTo(KotlinResolver.FLOOR_VERSION);
+        assertThat(first.lockfile().artifacts())
+                .filteredOn(a -> a.name().startsWith("org.jetbrains.kotlin:kotlin-stdlib:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly(KotlinResolver.FLOOR_VERSION);
+    }
+
     /** Run the lock plan for {@code tmp} under {@code mode} and return the lockfile it wrote. */
     private Lockfile runLockPlan(Path tmp, Path cache, LockMode mode) throws Exception {
         var plan = LockPlans.plan(

@@ -8,8 +8,10 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -45,17 +47,30 @@ public final class LanguageRuntimeInject {
     }
 
     /**
+     * What one inject did: the module keys it added (the skip-list for the exact-root BOM strip)
+     * and the notes the lock carries for what it moved.
+     */
+    record Injected(Set<String> runtimes, List<String> notes) {}
+
+    /** The Kotlin coordinates published at the compiler's version, one family with {@code kotlin-stdlib}. */
+    private static final List<String> KOTLIN_FAMILY = List.of(
+            "org.jetbrains.kotlin:kotlin-stdlib",
+            "org.jetbrains.kotlin:kotlin-reflect",
+            "org.jetbrains.kotlin:kotlin-test");
+
+    /**
      * Inject Groovy/Kotlin/Scala runtimes when the project has sources of that language.
      *
-     * @return the module keys this call added (skip-list for the exact-root BOM strip)
+     * @return the module keys this call added (skip-list for the exact-root BOM strip) and its notes
      */
-    static Set<String> inject(
+    static Injected inject(
             JkBuild project,
             @Nullable Path projectDir,
             Map<String, String> bomConstraints,
             LinkedHashMap<String, Dependency> mainDeduped,
             ToolVersions tools) {
         Set<String> added = new LinkedHashSet<>();
+        List<String> notes = new ArrayList<>();
         Project p = project.project();
         // Same inference the engine uses to enable lanes: an unpinned project with
         // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too —
@@ -73,6 +88,7 @@ public final class LanguageRuntimeInject {
             addRuntime(bomConstraints, mainDeduped, added, "org.apache.groovy:groovy", groovy, "5");
         }
         if (langs.kotlin() && hasLangSources(projectDir, ".kt")) {
+            if (tools.kotlin() != null) alignKotlinFamily(bomConstraints, mainDeduped, tools.kotlin(), notes);
             VersionSelector kotlin = ToolVersions.exactOr(tools.kotlin(), p.kotlin());
             addRuntime(bomConstraints, mainDeduped, added, "org.jetbrains.kotlin:kotlin-stdlib", kotlin, "2");
         }
@@ -86,7 +102,59 @@ public final class LanguageRuntimeInject {
                 addRuntime(bomConstraints, mainDeduped, added, "org.scala-lang:scala-library", scala, "3");
             }
         }
-        return added;
+        return new Injected(added, notes);
+    }
+
+    /**
+     * The compiler's stdlib family is the compiler's: every {@link #KOTLIN_FAMILY} coordinate the
+     * platform table manages at another version, and every declared root pinned at one, follows
+     * {@code compiler} — the version the module compiles with — so one stdlib reaches the compile
+     * classpath and the suite runs the classes the compiler wrote against the library it wrote them
+     * for. A coordinate nothing manages is left to the solve; one note names what moved.
+     */
+    private static void alignKotlinFamily(
+            Map<String, String> bomConstraints,
+            LinkedHashMap<String, Dependency> mainDeduped,
+            String compiler,
+            List<String> notes) {
+        Map<String, String> moved = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : bomConstraints.entrySet()) {
+            if (kotlinFamily(e.getKey()) && !compiler.equals(e.getValue())) {
+                moved.put(e.getKey(), e.getValue());
+                e.setValue(compiler);
+            }
+        }
+        for (Map.Entry<String, Dependency> e : mainDeduped.entrySet()) {
+            Dependency d = e.getValue();
+            if (!kotlinFamily(d.module()) || d.isPlatformManaged()) continue;
+            String lit = versionLiteral(d.version());
+            if (lit == null || lit.isBlank() || compiler.equals(lit)) continue;
+            moved.put(d.module(), lit);
+            e.setValue(d.withVersion(new VersionSelector.Exact("=" + compiler, compiler)));
+        }
+        if (moved.isEmpty()) return;
+        StringBuilder note = new StringBuilder("the module compiles with Kotlin ")
+                .append(compiler)
+                .append(", so its stdlib family follows the compiler: ");
+        boolean first = true;
+        for (Map.Entry<String, String> e : moved.entrySet()) {
+            if (!first) note.append(", ");
+            first = false;
+            note.append(e.getKey())
+                    .append(" at ")
+                    .append(compiler)
+                    .append(" instead of ")
+                    .append(e.getValue());
+        }
+        note.append(" — one stdlib on the compile classpath, the one the compiled classes were written against");
+        notes.add(note.toString());
+    }
+
+    private static boolean kotlinFamily(String module) {
+        for (String family : KOTLIN_FAMILY) {
+            if (module.equals(family) || module.startsWith(family + "-")) return true;
+        }
+        return false;
     }
 
     /** Where the Scala 3 stdlib lives, by compiler version. */
