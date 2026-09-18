@@ -156,7 +156,9 @@ public final class PomImporter {
     /**
      * Run {@code read} under the stall watch: the parent, BOM and POM reads are the progress, and an
      * import whose reads stop advancing for the window fails with {@link #BUDGET_EXCEEDED} followed
-     * by the coordinate being read and the URL waited on, as a lock's resolve does.
+     * by the coordinate being read and the URL waited on, as a lock's resolve does. The window
+     * opens with the first read, since nothing before it can park on a repository; an import that
+     * reads no POM is never stopped.
      */
     private <T> T watched(Read<T> read) throws IOException {
         StallWatch watch = new StallWatch(
@@ -166,7 +168,8 @@ public final class PomImporter {
                 resolver::readsCompleted,
                 resolver::phase,
                 InFlightRequests::waitingOn);
-        watch.start(Thread.currentThread());
+        Thread importing = Thread.currentThread();
+        resolver.onFirstRead(() -> watch.start(importing));
         try {
             T out = read.run();
             if (watch.tripped()) throw new IOException(BUDGET_EXCEEDED + watch.stall());
@@ -178,6 +181,7 @@ public final class PomImporter {
             if (watch.tripped()) throw new IOException(BUDGET_EXCEEDED + watch.stall(), e);
             throw e;
         } finally {
+            resolver.onFirstRead(null);
             watch.stop();
         }
     }
