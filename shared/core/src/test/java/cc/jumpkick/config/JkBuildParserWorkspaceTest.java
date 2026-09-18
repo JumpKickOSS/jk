@@ -6,6 +6,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.TEST_CATALOG;
 import static cc.jumpkick.config.JkBuildParserFixtures.workspaceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -368,14 +369,32 @@ class JkBuildParserWorkspaceTest {
         assertThat(Dependency.workspaceCoordinate(edge.module())).isEqualTo("com.example.common:edqs");
     }
 
+    /**
+     * The key of a workspace edge is its handle; {@code name} names the sibling when the two differ,
+     * so one manifest can hold a sibling's jar and its test classes as two rows a {@code [features]}
+     * list can name apart.
+     */
     @Test
-    void workspace_true_cannot_combine_with_name() {
+    void a_workspace_edge_s_name_picks_the_sibling_and_the_key_stays_the_handle() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [test-dependencies]
+                common = { workspace = true, optional = true }
+                common-tests = { workspace = true, name = "common", kind = "tests", optional = true }
+                edqs-tests = { workspace = true, name = "edqs", group = "com.example.common", kind = "tests" }
+                """);
+        assertThat(parsed.dependencies().of(Scope.TEST))
+                .extracting(Dependency::library, Dependency::workspaceName, Dependency::isTestsKind)
+                .containsExactly(
+                        tuple("common", "common", false),
+                        tuple("common-tests", "common", true),
+                        tuple("edqs-tests", "edqs", true));
+        assertThat(parsed.dependencies().of(Scope.TEST).get(2).workspaceGroup()).isEqualTo("com.example.common");
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
-                [dependencies]
-                bad = { workspace = true, name = "other" }
-                """))
+                        [dependencies]
+                        bad = { workspace = true, name = " " }
+                        """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("must not set `name`");
+                .hasMessageContaining("name must not be blank");
     }
 
     @Test

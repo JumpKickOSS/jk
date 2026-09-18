@@ -158,7 +158,10 @@ BOM POMs they read from a repository several at a time, Maven's model building o
 and are imported in the order listed, so a reactor of 1,350 modules imports in minutes rather
 than one module at a time.
 A dependency on any module of the reactor is a workspace edge — `{ workspace = true }`, with
-`kind = "tests"` for a `test-jar` — wherever the module sits and however its version is spelled,
+`kind = "tests"` for a `test-jar` under the `<artifactId>-tests` handle, so a POM that depends on a
+sibling's jar and its test-jar keeps two rows (`hadoop-common` and `hadoop-common-tests = {
+workspace = true, name = "hadoop-common", kind = "tests" }`) and a profile that declares both is a
+feature naming both — wherever the module sits and however its version is spelled,
 because siblings match by `groupId:artifactId`. Two leaves that share an artifactId under
 different groups (thingsboard's `common/edqs` and `edqs`) are both modules — each builds into its
 own `target/<path>/` — and an edge to that name carries the group the POM named,

@@ -276,7 +276,7 @@ public final class LockOrchestrator {
         adoptVersionlessRoots(project, constraints, pomBuilder, bomTables);
         Solve union = solveManifest(
                 project,
-                featuresRequested,
+                declaredFeatures(project, featuresRequested),
                 withDefaults,
                 lockedVersionPrefs,
                 progress,
@@ -322,6 +322,25 @@ public final class LockOrchestrator {
         CentralMirror.standard().note().ifPresent(observer::onNote);
         progress.finished(lockfile.artifacts().size());
         return lockfile;
+    }
+
+    /**
+     * The requested feature names the merged manifest itself declares. A name only a member
+     * declares is that member's to activate ({@link MemberPartitions}) and is left out here; a
+     * name neither {@code project} nor any member declares is refused as unknown, as a standalone
+     * project's {@code Features.activate} refuses it.
+     */
+    private Collection<String> declaredFeatures(JkBuild project, Collection<String> featuresRequested) {
+        List<String> own = new ArrayList<>();
+        for (String name : featuresRequested) {
+            if (project.features().byName().containsKey(name)) {
+                own.add(name);
+            } else if (members.stream()
+                    .noneMatch(m -> m.manifest().features().byName().containsKey(name))) {
+                throw new IllegalArgumentException("unknown feature: " + name);
+            }
+        }
+        return own;
     }
 
     /**

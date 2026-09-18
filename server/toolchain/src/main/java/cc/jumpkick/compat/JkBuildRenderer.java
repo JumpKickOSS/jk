@@ -558,15 +558,20 @@ public final class JkBuildRenderer {
             return safeKey(d.library()) + " = " + quote(catalogHit ? version : d.module() + ":" + version);
         }
         if (d.isWorkspace()) {
-            // Shorthand only for the default main kind; a group, kind=tests and optional need the table form.
+            // Shorthand only for the default main kind under the sibling's own name; another
+            // handle, a group, kind=tests and optional need the table form.
             String group = d.workspaceGroup();
+            String sibling = d.workspaceName() == null ? d.library() : d.workspaceName();
+            boolean renamed = !sibling.equals(d.library());
             if (group == null
+                    && !renamed
                     && d.kind() == DependencyKind.MAIN
                     && !d.optional()
                     && d.exclusions().isEmpty()) {
                 return safeKey(d.library()) + ".workspace = true";
             }
             StringBuilder ws = new StringBuilder(safeKey(d.library())).append(" = { workspace = true");
+            if (renamed) ws.append(", name = ").append(quote(sibling));
             if (group != null) ws.append(", group = ").append(quote(group));
             if (d.kind() != DependencyKind.MAIN)
                 ws.append(", kind = ").append(quote(d.kind().toml()));

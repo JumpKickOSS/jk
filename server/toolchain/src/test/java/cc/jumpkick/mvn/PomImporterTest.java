@@ -7,6 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.JkBuildRenderer;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
@@ -16,6 +18,7 @@ import cc.jumpkick.repo.PomParseException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -236,7 +239,12 @@ class PomImporterTest {
         assertThat(main.getFirst().kind()).isEqualTo(DependencyKind.MAIN);
 
         List<Dependency> test = app.dependencies().of(Scope.TEST);
-        assertThat(test).anyMatch(d -> d.isWorkspace() && d.isTestsKind() && "lib".equals(d.library()));
+        assertThat(test)
+                .as("a sibling's test-jar keeps the -tests handle the jar's own row would collide with")
+                .anyMatch(d -> d.isWorkspace()
+                        && d.isTestsKind()
+                        && "lib-tests".equals(d.library())
+                        && "lib".equals(d.workspaceName()));
         assertThat(test).anyMatch(d -> !d.isWorkspace() && d.module().equals("org.junit.jupiter:junit-jupiter"));
     }
 
@@ -325,6 +333,94 @@ class PomImporterTest {
                 .containsExactly(
                         "org.apache.logging.log4j:log4j-core:jar:",
                         "org.apache.logging.log4j:log4j-core:test-jar:tests");
+    }
+
+    /**
+     * An inactive profile that declares a sibling's jar and its test-jar — hadoop's {@code noshade}
+     * — imports as two optional workspace rows under the handles the feature list names, so
+     * activating the feature finds both.
+     */
+    @Test
+    void a_profile_s_sibling_jar_and_test_jar_stay_two_rows_the_feature_names(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <modules>
+                    <module>common</module>
+                    <module>it</module>
+                  </modules>
+                </project>
+                """);
+        Files.createDirectories(root.resolve("common"));
+        Files.writeString(root.resolve("common/pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.ex</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0.0</version>
+                  </parent>
+                  <artifactId>common</artifactId>
+                </project>
+                """);
+        Files.createDirectories(root.resolve("it"));
+        Files.writeString(root.resolve("it/pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.ex</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0.0</version>
+                  </parent>
+                  <artifactId>it</artifactId>
+                  <profiles>
+                    <profile>
+                      <id>noshade</id>
+                      <activation><property><name>skipShade</name></property></activation>
+                      <dependencies>
+                        <dependency>
+                          <groupId>com.ex</groupId>
+                          <artifactId>common</artifactId>
+                          <version>1.0.0</version>
+                          <scope>test</scope>
+                        </dependency>
+                        <dependency>
+                          <groupId>com.ex</groupId>
+                          <artifactId>common</artifactId>
+                          <version>1.0.0</version>
+                          <type>test-jar</type>
+                          <scope>test</scope>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                  </profiles>
+                </project>
+                """);
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+        JkBuild it = requireNonNull(result.modules().get("it"));
+        List<Dependency> test = it.dependencies().of(Scope.TEST);
+        assertThat(test)
+                .filteredOn(Dependency::isWorkspace)
+                .extracting(
+                        Dependency::library, Dependency::workspaceName, Dependency::isTestsKind, Dependency::optional)
+                .containsExactly(tuple("common", "common", false, true), tuple("common-tests", "common", true, true));
+        List<String> named =
+                requireNonNull(it.features().byName().get("noshade")).deps();
+        assertThat(named).containsExactly("common", "common-tests");
+        assertThat(it.features().requestedDepNames(it.features().activate(Set.of("noshade"), true)))
+                .as("every handle the feature names is a declared optional row")
+                .allMatch(handle -> test.stream().anyMatch(d -> d.optional() && handle.equals(d.library())));
+
+        JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(it));
+        assertThat(reparsed.dependencies().of(Scope.TEST))
+                .filteredOn(Dependency::isWorkspace)
+                .extracting(Dependency::library, Dependency::workspaceName, Dependency::isTestsKind)
+                .containsExactly(tuple("common", "common", false), tuple("common-tests", "common", true));
     }
 
     @Test

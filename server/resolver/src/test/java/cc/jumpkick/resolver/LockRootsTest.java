@@ -276,6 +276,29 @@ class LockRootsTest {
                         + " — declare it under [dependencies.*] with `optional = true`");
     }
 
+    /**
+     * A feature name the manifest declares nowhere is a workspace edge the merge dropped before the
+     * solve — a sibling has no lock row — so the feature's other dependencies still enter and
+     * nothing is refused.
+     */
+    @Test
+    void a_feature_naming_a_dropped_workspace_edge_activates_the_rest() throws Exception {
+        JkBuild project = JkBuildParser.parse("""
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                extra = { group = "com.foo", name = "extra", version = "1.0", optional = true }
+
+                [features]
+                default = []
+                noshade = { deps = ["sibling", "sibling-tests", "extra"] }
+                """);
+        LockRoots.Declared declared = LockRoots.partition(project, List.of("noshade"), true);
+        assertThat(declared.main().values()).extracting(Dependency::module).containsExactly("com.foo:extra");
+    }
+
     @Test
     void split_moves_file_dependencies_out_of_every_graph_once() {
         Dependency jar = new Dependency("com.foo:core", VersionSelector.parse("=1.0"));

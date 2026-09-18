@@ -7,6 +7,7 @@ import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.repo.RepoGroup;
@@ -76,8 +77,9 @@ final class LockCascade {
         Path lockDir;
         JkBuild effective;
         String coord;
+        FeatureSelection selection = new FeatureSelection(features, withDefaults);
         try {
-            var scope = LockPlans.lockScope(entryDir);
+            var scope = LockPlans.lockScope(entryDir, selection);
             lockDir = scope.lockDir();
             effective = scope.effective();
             coord = scope.coord();
@@ -100,7 +102,7 @@ final class LockCascade {
                     ManifestUpdates.apply(plan);
                     // The manifests just changed: the merged model the resolve sees must be theirs.
                     if (!plan.isEmpty())
-                        effective = LockPlans.lockScope(entryDir).effective();
+                        effective = LockPlans.lockScope(entryDir, selection).effective();
                 } catch (RuntimeException | IOException e) {
                     host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
                     return JobOutcome.failed(Exit.CONFIG);

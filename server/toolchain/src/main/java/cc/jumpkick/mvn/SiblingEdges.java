@@ -42,9 +42,10 @@ final class SiblingEdges {
     }
 
     /**
-     * Convert deps whose GA matches a workspace sibling into workspace edges; an edge to a name in
-     * {@code sharedNames} carries the dependency's group so it picks one member. Maven
-     * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps). A BOM of
+     * Convert deps whose GA matches a workspace sibling into workspace edges, each under the handle
+     * the Maven dependency was written under; an edge to a name in {@code sharedNames} carries the
+     * dependency's group so it picks one member. Maven {@code <type>test-jar</type>} becomes
+     * {@code kind = "tests"} (Mill testModuleDeps) under its {@code -tests} handle. A BOM of
      * the reactor leaves {@code [platform]}: its managed versions are already on the declared
      * dependencies, and the lock fetches a BOM from a repository, which a reactor BOM is not in. A
      * dependency on a reactor POM the workspace does not build ({@code unbuilt}: an aggregator, a
@@ -124,13 +125,15 @@ final class SiblingEdges {
                                     + " BOM, so transitive versions follow the resolver.");
                     continue;
                 }
-                // Library handle matches the sibling project name so `{ workspace = true }` resolves.
+                // The edge keeps the handle the Maven dependency was written under — the
+                // artifactId, `-tests` for a test-jar, a collision rename — so a feature list
+                // naming it still does, and the jar and the test-jar of one sibling stay two rows.
                 // mapDependencies already forced tests-kind deps into a test scope, so kind is
                 // carried as-is — never emitted where the parser would reject it.
                 Dependency ws = sharedNames.contains(siblingName)
                         ? Dependency.workspace(siblingName, d.group())
                         : Dependency.workspace(siblingName);
-                ws = ws.withOptional(d.optional());
+                ws = ws.withLibrary(d.library()).withOptional(d.optional());
                 if (d.isTestsKind()) {
                     ws = ws.withKind(DependencyKind.TESTS);
                 }
@@ -193,6 +196,7 @@ final class SiblingEdges {
                 Dependency ws = sharedNames.contains(siblingName)
                         ? Dependency.workspace(siblingName, dep.groupId())
                         : Dependency.workspace(siblingName);
+                ws = ws.withLibrary(d.library());
                 d = d.isTestsKind() ? ws.withKind(DependencyKind.TESTS) : ws;
                 written.add(dep.module() + " (workspace)");
             } else {

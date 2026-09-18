@@ -8,6 +8,7 @@ import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -110,7 +111,10 @@ final class LockRoots {
     /**
      * Partition {@code project}'s declared dependencies. An optional dependency a feature names enters
      * only when a requested feature activates it; one no feature names is the module's own root, as
-     * a POM's {@code <optional>} dependency is under Maven. The JUnit Platform launcher always rides the test graph, JUnit
+     * a POM's {@code <optional>} dependency is under Maven. A feature that names a dependency
+     * declared without {@code optional = true} is refused — the forgotten flag; a name the manifest
+     * declares nowhere is a workspace edge the merge dropped before the solve (a sibling has no lock
+     * row) and is left out. The JUnit Platform launcher always rides the test graph, JUnit
      * Jupiter joins it only when the user declared no test dependencies at all, and a declared
      * framework's Platform engine joins it when the framework has none ({@link TestEngines}). Cross-package
      * features on {@code path=} libraries are expanded by the engine before the path dep is rewritten
@@ -125,9 +129,11 @@ final class LockRoots {
         LinkedHashMap<String, Dependency> processorDeduped = new LinkedHashMap<>();
         LinkedHashMap<String, Dependency> optionalByLib = new LinkedHashMap<>();
         Map<String, Scope> optionalScopeByLib = new HashMap<>();
+        Set<String> declaredHandles = new HashSet<>();
         for (Scope scope : SCOPES) {
             if (scope == Scope.PLATFORM) continue;
             for (Dependency dep : project.dependencies().of(scope)) {
+                declaredHandles.add(dep.library());
                 if (dep.optional() && project.features().names(dep.library())) {
                     optionalByLib.putIfAbsent(dep.library(), dep);
                     optionalScopeByLib.putIfAbsent(dep.library(), scope);
@@ -143,6 +149,7 @@ final class LockRoots {
         }
         for (String depName : project.features().requestedDepNames(activated)) {
             Dependency opt = optionalByLib.get(depName);
+            if (opt == null && !declaredHandles.contains(depName)) continue;
             if (opt == null) {
                 throw new IllegalArgumentException("feature dependency '"
                         + depName

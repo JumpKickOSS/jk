@@ -604,6 +604,36 @@ class LockOrchestratorMemberPartitionsTest {
     }
 
     /**
+     * A {@code --features} name the workspace root does not declare is not refused when a member
+     * declares it: the merged solve runs without it and the member's own solve activates it; a
+     * name no unit declares is refused by name.
+     */
+    @Test
+    void a_requested_feature_only_a_member_declares_is_the_member_s_to_activate(@TempDir Path tempDir)
+            throws Exception {
+        serveMiddleOverLeaf();
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        Dependency leafOn = Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("=2.0"))
+                .withOptional(true);
+        // The feature also names a sibling edge the merge dropped: a sibling has no lock row.
+        Features extra =
+                new Features(Map.of("extra", new Feature("extra", List.of("leaf", "sibling"), List.of())), List.of());
+        JkBuild app = withFeatures(manifest("app", Map.of(Scope.MAIN, List.of(middle, leafOn))), extra);
+        JkBuild merged = manifest("root", Map.of(Scope.MAIN, List.of(middle)));
+
+        LockOrchestrator orchestrator =
+                new LockOrchestrator(repoGroup(tempDir)).withMembers(List.of(new LockOrchestrator.Member("app", app)));
+        Lockfile lock = orchestrator.lock(merged, "test", List.of("extra"), true);
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("2.0");
+
+        assertThatThrownBy(() -> orchestrator.lock(merged, "test", List.of("nowhere"), true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown feature: nowhere");
+    }
+
+    /**
      * A member row agrees with the workspace only where a merged row at that version carries the
      * member row's scope group: {@code lib} pins leaf 3.0 for its main classpath while the workspace
      * holds 3.0 as a test-only dual under a main row at 2.0, so {@code lib} gets a main-scoped row
