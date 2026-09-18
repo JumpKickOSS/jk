@@ -299,10 +299,17 @@ public final class LockOrchestrator {
             MemberPartitions.MemberSolver solver = (manifest, features, prefs, own) -> {
                 // A member solved on its own: its rows, assembled against its own platform table.
                 LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
-                Solve solve = solveManifest(
-                        manifest, features, withDefaults, prefs, silent, ResolveObserver.NOOP, pomBuilder, own);
-                silent.materializePhase(0);
-                return assemble(solve, manifest, jkVersion, silent, pomBuilder);
+                ResolveProfile.Phases steps = ResolveProfile.phases();
+                steps.begin(ResolveProfile::memberSolve);
+                try {
+                    Solve solve = solveManifest(
+                            manifest, features, withDefaults, prefs, silent, ResolveObserver.NOOP, pomBuilder, own);
+                    steps.begin(ResolveProfile::memberAssemble);
+                    silent.materializePhase(0);
+                    return assemble(solve, manifest, jkVersion, silent, pomBuilder);
+                } finally {
+                    steps.end();
+                }
             };
             MemberPartitions partitions = new MemberPartitions(
                     union, repos, pomBuilder, bomTables, pinPolicy, featuresRequested, withDefaults);

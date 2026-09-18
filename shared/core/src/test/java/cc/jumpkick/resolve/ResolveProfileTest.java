@@ -33,7 +33,21 @@ class ResolveProfileTest {
         ResolveProfile.phaseResolve(Duration.ofSeconds(9).toNanos());
         ResolveProfile.phasePartition(Duration.ofSeconds(3).toNanos());
 
-        assertThat(ResolveProfile.report()).contains("phaseResolve=9000ms phasePartition=3000ms phasePost=0ms");
+        assertThat(ResolveProfile.report())
+                .contains(
+                        "phaseResolve=9000ms phasePartition=3000ms memberSolve=0ms/0 memberAssemble=0ms/0 phasePost=0ms");
+    }
+
+    @Test
+    void each_member_s_solve_and_assembly_are_counted_apart_inside_the_partition_pass() {
+        ResolveProfile.phasePartition(Duration.ofSeconds(5).toNanos());
+        ResolveProfile.memberSolve(Duration.ofSeconds(2).toNanos());
+        ResolveProfile.memberSolve(Duration.ofSeconds(1).toNanos());
+        ResolveProfile.memberAssemble(Duration.ofMillis(1_500).toNanos());
+        ResolveProfile.memberAssemble(Duration.ofMillis(300).toNanos());
+
+        assertThat(ResolveProfile.report())
+                .contains("phasePartition=5000ms memberSolve=3000ms/2 memberAssemble=1800ms/2");
     }
 
     @Test

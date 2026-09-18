@@ -187,6 +187,45 @@ class JkResultsMarkdownTest {
                 .anyMatch(l -> l.startsWith("      ") && l.endsWith("org.example:leaf [1.0,2.0)"));
     }
 
+    /**
+     * A wrapped remainder that opens with a token wider than the wrap — the URL a stall names —
+     * is written whole on its own line: the wrap never breaks inside the hanging indent, so it
+     * cannot loop on the same remainder.
+     */
+    @Test
+    void an_unbreakable_token_in_a_wrapped_remainder_is_written_whole() {
+        String url = "https://repo.example.org/maven2/" + "segment/".repeat(20) + "artifact-1.0.0.pom";
+        String line =
+                "  \u2502 Resolution budget exceeded: no decision advanced for 120 s while reading the dependencies of"
+                        + " org.slf4j:slf4j-api:jar:@2.0.18 (after 113 completed); waiting on " + url + " (120 s)";
+        BuildRecord.Diag err = new BuildRecord.Diag(
+                "error",
+                "/ws/app",
+                "parse-build",
+                "verbatim",
+                "\u203c Cannot resolve dependencies:\n" + line + "\n",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0);
+        BuildRecord r = record(false, List.of(), List.of(err), List.of(task("parse-build", "resolve", "FAIL", 300)));
+        String why = JkResultsMarkdown.render(r);
+        why = why.substring(0, why.indexOf("Diagnostics: "));
+        List<String> lines = why.lines().toList();
+        assertThat(lines).hasSizeLessThan(12);
+        assertThat(lines).anyMatch(l -> l.startsWith("      ") && l.contains(url));
+        assertThat(lines).noneMatch(l -> !l.isEmpty() && l.isBlank());
+    }
+
     @Test
     void a_launcher_failure_is_a_failed_step_with_the_runner_output_not_a_red_test() {
         String message = "test discovery exited 70 before any test ran"

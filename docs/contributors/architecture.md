@@ -378,7 +378,9 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   dies in the solve or the partition pass reports as much as one that finishes, with the phase in
   flight credited up to the failure. The member-partition pass (`MemberPartitions`, every member
   the merged answer cannot serve solved again on its own) is inside the resolve phase and has its
-  own entry, because on a large reactor it is minutes.
+  own entry, because on a large reactor it is minutes; `memberSolve` and `memberAssemble` split
+  it into the members' own solves and the assembly of their rows, each with a call per member, so
+  the line says whether the pass is spending its time solving or locating what it solved.
 - **Speculative reads end with the solve:** when a resolve returns, what the warm-up has not
   started is dropped and what it is reading is cancelled, and the call returns only once nothing is
   in flight — so a store the caller then deletes or replaces sees no late write.

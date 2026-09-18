@@ -262,7 +262,9 @@ public final class JkResultsMarkdown {
     /**
      * The explanation's first line, then each following line indented two columns so Markdown reads
      * it as part of the bullet; a line past {@link #MAX_WHY_WRAP} breaks at a space and its remainder
-     * sits two columns inside the line's own indent.
+     * sits two columns inside the line's own indent. A token wider than the wrap — the URL a stall
+     * names — is written whole: a break inside the leading indent would emit a blank line and leave
+     * the remainder as it was.
      */
     private static String explanation(String message) {
         String[] lines = message.split("\n", -1);
@@ -276,7 +278,7 @@ public final class JkResultsMarkdown {
             String hang = " ".repeat(indent + 2);
             while (line.length() > MAX_WHY_WRAP) {
                 int at = line.lastIndexOf(' ', MAX_WHY_WRAP);
-                if (at <= indent) break;
+                if (at <= indent || line.substring(0, at).isBlank()) break;
                 b.append(line, 0, at).append("\n  ");
                 line = hang + line.substring(at + 1);
             }
