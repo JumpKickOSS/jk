@@ -19,6 +19,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Parent;
@@ -32,26 +34,60 @@ import org.apache.maven.model.resolution.UnresolvableModelException;
  * Maven's parent / BOM lookup routed through jk's repository client: the caller's {@link
  * RepoGroup} (global repositories over the public baseline, the {@code ~/.m2} probe and the store
  * included), with every {@code <repository>} the POM under import declares consulted first. A
- * fetched POM passes through jk's hardened XML parser before Maven reads it.
+ * fetched POM passes through jk's hardened XML parser before Maven reads it. Every copy shares one
+ * count of completed reads and one phase sentence, which the import's stall watch samples.
  */
 // ModelResolver's own signatures name the ModelSource type Maven 3.9 deprecates.
 @SuppressWarnings("deprecation")
 final class RepoModelResolver implements ModelResolver {
 
+    /** A read the stall watch interrupted: the import stops here instead of writing a manifest with holes. */
+    static final class ReadInterrupted extends RuntimeException {
+        ReadInterrupted(String message) {
+            super(message);
+        }
+    }
+
     private RepoGroup repos;
     private final Http http;
     private final Cas cas;
     private final Set<String> declared;
+    private final AtomicLong reads;
+    private final AtomicReference<String> phase;
 
     RepoModelResolver(RepoGroup repos, Cas cas) {
-        this(repos, Http.forRepositories(), cas, new HashSet<>());
+        this(
+                repos,
+                Http.forRepositories(),
+                cas,
+                new HashSet<>(),
+                new AtomicLong(),
+                new AtomicReference<>("reading the POM"));
     }
 
-    private RepoModelResolver(RepoGroup repos, Http http, Cas cas, Set<String> declared) {
+    private RepoModelResolver(
+            RepoGroup repos,
+            Http http,
+            Cas cas,
+            Set<String> declared,
+            AtomicLong reads,
+            AtomicReference<String> phase) {
         this.repos = repos;
         this.http = http;
         this.cas = cas;
         this.declared = declared;
+        this.reads = reads;
+        this.phase = phase;
+    }
+
+    /** Parent, BOM and POM reads completed so far, across every copy. */
+    long readsCompleted() {
+        return reads.get();
+    }
+
+    /** What is being read right now, as {@code reading the parent org.demo:parent:1.0}, across every copy. */
+    String phase() {
+        return phase.get();
     }
 
     /** The group this resolver was built over: what the lock reads before a POM's own {@code <repository>} entries. */
@@ -66,7 +102,13 @@ final class RepoModelResolver implements ModelResolver {
     @Override
     public ModelSource resolveModel(String groupId, String artifactId, String version)
             throws UnresolvableModelException {
+        return resolveModel("the POM", groupId, artifactId, version);
+    }
+
+    private ModelSource resolveModel(String what, String groupId, String artifactId, String version)
+            throws UnresolvableModelException {
         Coordinate coord = Coordinate.of(groupId, artifactId, version);
+        phase.set("reading " + what + " " + coord.toGav());
         try {
             Optional<RepoGroup.RepoFetched> hit = repos.tryFetchPom(coord);
             if (hit.isEmpty()) {
@@ -85,19 +127,20 @@ final class RepoModelResolver implements ModelResolver {
                     coord.toGav() + ": " + e.getMessage(), groupId, artifactId, version, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new UnresolvableModelException(
-                    "interrupted fetching " + coord.toGav(), groupId, artifactId, version, e);
+            throw new ReadInterrupted("interrupted " + phase.get());
+        } finally {
+            reads.incrementAndGet();
         }
     }
 
     @Override
     public ModelSource resolveModel(Parent parent) throws UnresolvableModelException {
-        return resolveModel(parent.getGroupId(), parent.getArtifactId(), parent.getVersion());
+        return resolveModel("the parent", parent.getGroupId(), parent.getArtifactId(), parent.getVersion());
     }
 
     @Override
     public ModelSource resolveModel(Dependency dependency) throws UnresolvableModelException {
-        return resolveModel(dependency.getGroupId(), dependency.getArtifactId(), dependency.getVersion());
+        return resolveModel("the BOM", dependency.getGroupId(), dependency.getArtifactId(), dependency.getVersion());
     }
 
     @Override
@@ -129,7 +172,7 @@ final class RepoModelResolver implements ModelResolver {
 
     @Override
     public ModelResolver newCopy() {
-        return new RepoModelResolver(repos, http, cas, new HashSet<>(declared));
+        return new RepoModelResolver(repos, http, cas, new HashSet<>(declared), reads, phase);
     }
 
     private String repoNames() {

@@ -3,7 +3,9 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.InFlightRequests;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
@@ -21,9 +23,11 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.StallWatch;
 import cc.jumpkick.resolver.TestEngines;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpResponse;
@@ -73,8 +77,14 @@ public final class PomImporter {
         byte[] fetch(URI uri) throws IOException;
     }
 
+    /** How a refusal for a POM read that stopped advancing opens. */
+    public static final String BUDGET_EXCEEDED = "Resolution budget exceeded: ";
+
     final RepoModelResolver resolver;
     private final RemoteFile remote;
+
+    /** How long the POM reads may stand still before the import stops; {@code JK_RESOLVE_TIMEOUT_MS}. */
+    private long stallWindowMs = StallWatch.envWindowMs();
 
     /**
      * Maven's {@code settings.xml}: the repositories of its active profiles join every imported
@@ -112,21 +122,64 @@ public final class PomImporter {
         };
     }
 
+    /** This importer with another stall window for its POM reads, in milliseconds ({@code 0} never stops) — tests. */
+    PomImporter stallWindowMs(long windowMs) {
+        this.stallWindowMs = windowMs;
+        return this;
+    }
+
     public Result importFrom(Path pomXml) throws IOException {
         Path file = pomXml.toAbsolutePath();
-        return importModel(
-                        EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null),
-                        remote,
-                        settings,
-                        null,
-                        null)
-                .platformManaged();
+        byte[] xml = Files.readAllBytes(file);
+        return watched(() -> importModel(
+                        EffectiveModel.build(xml, file, resolver.newCopy(), null), remote, settings, null, null)
+                .platformManaged());
     }
 
     /** A POM with no file behind it (an archive's embedded pom.xml): no {@code relativePath} lookup. */
     public Result importFromBytes(byte[] xml) {
-        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null), remote, settings, null, null)
-                .platformManaged();
+        try {
+            return watched(() -> importModel(
+                            EffectiveModel.build(xml, null, resolver.newCopy(), null), remote, settings, null, null)
+                    .platformManaged());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** One import pass over the POMs; the reads inside may park on a repository. */
+    @FunctionalInterface
+    private interface Read<T> {
+        T run() throws IOException;
+    }
+
+    /**
+     * Run {@code read} under the stall watch: the parent, BOM and POM reads are the progress, and an
+     * import whose reads stop advancing for the window fails with {@link #BUDGET_EXCEEDED} followed
+     * by the coordinate being read and the URL waited on, as a lock's resolve does.
+     */
+    private <T> T watched(Read<T> read) throws IOException {
+        StallWatch watch = new StallWatch(
+                Clock.SYSTEM,
+                stallWindowMs,
+                "no POM read",
+                resolver::readsCompleted,
+                resolver::phase,
+                InFlightRequests::waitingOn);
+        watch.start(Thread.currentThread());
+        try {
+            T out = read.run();
+            if (watch.tripped()) throw new IOException(BUDGET_EXCEEDED + watch.stall());
+            return out;
+        } catch (RepoModelResolver.ReadInterrupted e) {
+            if (watch.tripped()) throw new IOException(BUDGET_EXCEEDED + watch.stall(), e);
+            throw new IOException(e.getMessage(), e);
+        } catch (IOException | RuntimeException e) {
+            if (watch.tripped()) throw new IOException(BUDGET_EXCEEDED + watch.stall(), e);
+            throw e;
+        } finally {
+            watch.stop();
+        }
     }
 
     /**
@@ -292,6 +345,10 @@ public final class PomImporter {
      * for itself.
      */
     public WorkspaceImportResult importWorkspace(Path rootPom) throws IOException {
+        return watched(() -> importReactor(rootPom));
+    }
+
+    private WorkspaceImportResult importReactor(Path rootPom) throws IOException {
         Path rootFile = rootPom.toAbsolutePath();
         byte[] rootXml = Files.readAllBytes(rootFile);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
