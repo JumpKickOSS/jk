@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
@@ -219,14 +220,14 @@ class LockFreshenTest {
         // LockFlow (first-run/workspace freshen path) writes the kotlin pin like
         // lockBuildPlan does.
         serveLib("1.0");
-        upstream.leaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.1.0");
+        upstream.leaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.4.20");
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
                 jdk = 25
                 java = 25
-                kotlin = "2.1.0"
+                kotlin = "2.4.20"
 
                 [dependencies]
                 lib = { group = "com.foo", name = "lib", version = "^1.0" }
@@ -234,7 +235,32 @@ class LockFreshenTest {
 
         LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
         assertThat(first.status()).isZero();
-        assertThat(requireNonNull(first.lockfile()).kotlin()).isEqualTo("2.1.0");
+        assertThat(requireNonNull(first.lockfile()).kotlin()).isEqualTo("2.4.20");
+    }
+
+    /**
+     * A project on a Kotlin below jk's floor locks the compiler at the floor, the one jk drives for
+     * it, instead of refusing; the manifest keeps saying what the project declared.
+     */
+    @Test
+    void a_kotlin_below_the_floor_is_locked_at_the_floor(@TempDir Path tmp) throws Exception {
+        serveLib("1.0");
+        upstream.leaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", KotlinResolver.FLOOR_VERSION);
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "demo"
+                version = "1.0.0"
+                java = 25
+                kotlin = "2.2.21"
+
+                [dependencies]
+                lib = { group = "com.foo", name = "lib", version = "^1.0" }
+                """);
+
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
+
+        assertThat(first.status()).as(String.valueOf(first.error())).isZero();
+        assertThat(requireNonNull(first.lockfile()).kotlin()).isEqualTo(KotlinResolver.FLOOR_VERSION);
     }
 
     /** Run the lock plan for {@code tmp} under {@code mode} and return the lockfile it wrote. */

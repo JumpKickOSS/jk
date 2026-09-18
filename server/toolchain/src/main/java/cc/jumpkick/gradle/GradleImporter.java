@@ -8,6 +8,7 @@ import static cc.jumpkick.gradle.GradleScriptText.firstString;
 import static cc.jumpkick.gradle.GradleScriptText.stripComments;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.ImportedKotlin;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -220,7 +221,7 @@ public final class GradleImporter {
         // its compiler version); ids claimed by an installed jk plugin's [[import.gradle-plugin]]
         // rules map to that plugin's table below; the rest are diagnostics only.
         String pluginsBody = pluginsBlock(stripped, properties, report);
-        VersionSelector kotlin = detectKotlinVersion(pluginsBody, report);
+        VersionSelector kotlin = ImportedKotlin.floored(detectKotlinVersion(pluginsBody, report), report);
         // git.properties from the git-properties plugin, build-info.properties from Boot's
         // `springBoot { buildInfo() }`: both are the [build-info] table.
         BuildBlock.BuildInfo buildInfo = BOOT_BUILD_INFO.matcher(stripped).find() ? BuildBlock.BuildInfo.DEFAULT : null;

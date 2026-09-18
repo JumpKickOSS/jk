@@ -4,6 +4,7 @@ package cc.jumpkick.gradle;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -154,6 +155,21 @@ class GradleModelImporterTest {
                 .containsExactly("https://maven.acme.example/releases/");
         assertThat(module(result, "api").repositories()).isEmpty();
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m).contains("mavenLocal()"));
+    }
+
+    /** A module on a Kotlin below jk's floor imports at the floor, with a row saying so. */
+    @Test
+    void a_kotlin_below_jks_floor_comes_out_at_the_floor_with_a_row() {
+        String model = THREE_MODULES.replace("\"kotlinVersion\":\"2.4.10\"", "\"kotlinVersion\":\"2.2.21\"");
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        JkBuild core = module(result, "core");
+        assertThat(Objects.requireNonNull(core.project().kotlin()).raw()).isEqualTo(KotlinResolver.FLOOR_VERSION);
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .anySatisfy(m -> assertThat(m).contains("`2.2.21`").contains("below jk's floor"));
     }
 
     @Test
@@ -308,7 +324,7 @@ class GradleModelImporterTest {
         String model = """
                 {"gradle":"9.0.0","rootName":"kotlin4example","settingsRepositories":[],"projects":[
                   {"path":":","projectName":"kotlin4example","dir":"","group":"com.github.jillesvangurp","version":"1.0","plugins":["org.jetbrains.kotlin.jvm"],
-                   "pluginClasses":[],"pluginVersions":{},"kotlinVersion":"2.2.0","bootBuildInfo":false,"repositories":[],
+                   "pluginClasses":[],"pluginVersions":{},"kotlinVersion":"2.4.20","bootBuildInfo":false,"repositories":[],
                    "configurations":[{"name":"implementation","dependencies":[
                      {"kind":"module","group":"org.jetbrains.kotlinx","artifact":"kotlinx-coroutines-core","version":"_","excludes":[]},
                      {"kind":"module","group":"io.github.microutils","artifact":"kotlin-logging","version":"_","excludes":[]},

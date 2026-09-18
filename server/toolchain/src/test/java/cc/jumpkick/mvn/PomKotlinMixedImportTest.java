@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -101,6 +103,24 @@ class PomKotlinMixedImportTest {
                 .contains("kotlin   = \"2.4.20\"\n")
                 .doesNotContain("java     = ");
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("mixed"));
+    }
+
+    /** A POM on a Kotlin below jk's floor imports at the floor, the compiler jk drives for it, with a row saying so. */
+    @Test
+    void a_kotlin_below_jks_floor_imports_at_the_floor_with_a_row(@TempDir Path tempDir) throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("project"));
+        Files.createDirectories(project.resolve("src/main/kotlin/net/demo"));
+        Files.writeString(project.resolve("src/main/kotlin/net/demo/Faker.kt"), "package net.demo\nclass Faker");
+
+        PomImporter.Result result = TestImporters.importXml(
+                tempDir, pom(KOTLIN_PLUGIN.replace("test-compile", "compile").replace("2.4.20", "2.2.21")));
+
+        assertThat(Objects.requireNonNull(result.jkBuild().project().kotlin()).raw())
+                .isEqualTo(KotlinResolver.FLOOR_VERSION);
+        assertThat(JkBuildRenderer.render(result.jkBuild()))
+                .contains("kotlin   = \"" + KotlinResolver.FLOOR_VERSION + "\"\n");
+        assertThat(TestImporters.messages(result))
+                .anySatisfy(m -> assertThat(m).contains("`2.2.21`").contains("below jk's floor"));
     }
 
     /** An archive's POM has no tree behind it: a Kotlin plugin that never binds {@code compile} leaves main to javac. */

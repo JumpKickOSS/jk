@@ -42,14 +42,14 @@ public final class CompileToolchain {
     /**
      * Pick the Kotlin compiler version to provision: the version pinned in {@code jk-lock.toml} (resolved
      * by {@code jk lock}) if present, else an exact {@code kotlin} pin, else {@code null}
-     * which falls back to the bundled default distribution.
+     * which falls back to the bundled default distribution. A version below jk's floor is the floor.
      */
     public static @Nullable String kotlinVersionFor(Lockfile lock, JkBuild project) {
         if (lock != null && lock.kotlin() != null && !lock.kotlin().isBlank()) {
-            return lock.kotlin();
+            return KotlinResolver.floored(lock.kotlin());
         }
         if (project != null && project.project().kotlin() instanceof VersionSelector.Exact exact) {
-            return exact.version();
+            return KotlinResolver.floored(exact.version());
         }
         return null;
     }

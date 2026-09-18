@@ -47,7 +47,7 @@ their plugins.
 | `version` | Project version |
 | `java` | Language + bytecode (`--release`). Default **25**. Prefer this over `jdk` — [Concepts](concepts.md) |
 | `jdk` | Specific JDK *install* (rare) |
-| `kotlin` | Kotlin compiler version (Kotlin modules) |
+| `kotlin` | Kotlin compiler version (Kotlin modules). jk's floor is **2.4.10**, the oldest Kotlin its compile path drives: a version below it compiles with the floor — the lock pins `2.4.10` and notes it, the build warns once per module — and `jk import` writes the floor with a row |
 | `groovy` | Groovy compiler version — **5+** (Groovy modules) |
 | `scala` | Scala 3 compiler version (Scala 3 only; mixed Java+Scala compile in one Zinc session). jk injects the stdlib pinned to the resolved compiler version — `"3.8.4"` holds both, an opt-in `"^3.8"` moves compiler and library together (`scala-library`; on 3.8+ that jar *is* the Scala 3 library) |
 | `description` | Optional; does **not** auto-inherit in workspaces unless you set it or `description.workspace = true` |

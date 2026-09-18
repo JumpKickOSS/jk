@@ -18,6 +18,7 @@ import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkEnsureProgress;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
@@ -30,6 +31,7 @@ import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.resolver.CacheSync;
@@ -66,11 +68,16 @@ public final class PlannerSetup {
     /**
      * What the manifest has to say once it is parsed: a shadowed module says once, on the build
      * after its POM changed, what the effective POM declares that the in-place build does not
-     * carry; a declared language set says which sources of another language it leaves uncompiled.
+     * carry; a declared language set says which sources of another language it leaves uncompiled;
+     * a Kotlin below jk's floor says the module compiles with the floor.
      */
     private static void warnManifestRows(TaskContext ctx, Path dir, JkBuild project) {
         for (String row : ShadowManifests.drainTier3(dir)) ctx.warn("pom", row);
         for (String row : Languages.undeclaredWithSources(project.project(), dir)) ctx.warn("languages", row);
+        if (project.project().kotlin() instanceof VersionSelector.Exact exact
+                && KotlinResolver.belowFloor(exact.version())) {
+            ctx.warn("kotlin", KotlinResolver.floorNote(exact.version()));
+        }
     }
 
     static Task parseBuildStep(BuildPlanner.Ctx cx) {

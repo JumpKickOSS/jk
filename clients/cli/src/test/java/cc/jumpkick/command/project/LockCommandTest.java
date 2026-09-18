@@ -390,22 +390,22 @@ class LockCommandTest {
 
     @Test
     void kotlin_project_lock_pins_floating_compiler_version(@TempDir Path tempDir) throws Exception {
-        // 2.4.0-RC2 is higher than 2.3.21 and also in range, but a floating
+        // 2.5.0-RC2 is higher than 2.4.20 and also in range, but a floating
         // selector must skip the pre-release and pin the highest stable.
         maven.registerMetadata(
                 "org.jetbrains.kotlin",
                 "kotlin-compiler-embeddable",
-                "2.0.21",
-                "2.3.0",
                 "2.3.21",
-                "2.4.0-RC2",
+                "2.4.10",
+                "2.4.20",
+                "2.5.0-RC2",
                 "3.0.0");
         Files.createDirectories(tempDir);
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group = "com.acme"
                 name     = "app"
                 version = "0.1.0"
-                kotlin = "^2.3.0"
+                kotlin = "^2.4.10"
                 """);
 
         int exit = run(
@@ -418,9 +418,9 @@ class LockCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        // ^2.3.0 → >=2.3.0, <3.0.0; highest *stable* match is 2.3.21 (not 2.4.0-RC2).
+        // ^2.4.10 → >=2.4.10, <3.0.0; highest *stable* match is 2.4.20 (not 2.5.0-RC2).
         Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
-        assertThat(lock.kotlin()).isEqualTo("2.3.21");
+        assertThat(lock.kotlin()).isEqualTo("2.4.20");
     }
 
     @Test
@@ -432,7 +432,7 @@ class LockCommandTest {
                 group = "com.acme"
                 name     = "app"
                 version = "0.1.0"
-                kotlin = "=2.1.0"
+                kotlin = "=2.4.20"
                 """);
 
         int exit = run(
@@ -446,7 +446,7 @@ class LockCommandTest {
         assertThat(exit).isEqualTo(0);
 
         Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
-        assertThat(lock.kotlin()).isEqualTo("2.1.0");
+        assertThat(lock.kotlin()).isEqualTo("2.4.20");
     }
 
     @Test
