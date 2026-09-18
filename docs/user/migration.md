@@ -50,6 +50,9 @@ A small Maven core extension, `jk-maven-spy-<version>.jar`, rides Maven's `-Dmav
 and records the reactor's events; after Maven exits the engine folds those events, each module's
 `target/surefire-reports` / `target/failsafe-reports` XML and the compiler plugin's
 `file:[line,col]` failures into the same Tests, Modules and Diagnostics blocks a jk build gets.
+Each mojo is a step with the time Maven spent in it — the spy clocks every execution from its
+start to its end, since Maven's own summary times only whole modules — so the Failed steps table
+says how long the failing `surefire:test` ran, not just that it failed.
 The jar is looked up in this order, first hit wins: the `jk.maven-spy.jar` system property;
 `~/.jk/lib/jk-maven-spy-<version>.jar` (where the installers put it from a dist); the store's
 `jk-local` shelf (`jk install` from a checkout); `lib/` beside the `jk` binary (the `target/dist`

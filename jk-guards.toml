@@ -961,7 +961,9 @@ why      = "a deprecated alias is a dual path with no users to protect"
 
 # Time is read in one place. A stamp, an age or a duration taken straight from the JVM cannot be
 # moved by a test, so the test sleeps instead — and a sleep asserts a duration, not a condition.
-# Baselined at the swept count; the ratchet only shrinks it.
+# Baselined at the swept count; the ratchet only shrinks it. The Maven spy rides Maven's own
+# classpath and links no jk module, so its mojo timer is the one other owner: a clock it takes as a
+# LongSupplier, which its tests move by hand.
 [guards.clock-owner]
 kind       = "forbid"
 signatures = [
@@ -969,7 +971,7 @@ signatures = [
   "java.lang.System#nanoTime(**)",
   "java.time.Instant#now(**)",
 ]
-owner      = "cc.jumpkick.host.time.SystemClock"
+owner      = ["cc.jumpkick.host.time.SystemClock", "cc.jumpkick.maven.spy.MojoTimer"]
 baseline   = true
 instead    = "take a cc.jumpkick.host.time.Clock (Clock.SYSTEM in production, FakeClock in tests) and read millis(), nanos() or instant()"
 why        = "a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition"

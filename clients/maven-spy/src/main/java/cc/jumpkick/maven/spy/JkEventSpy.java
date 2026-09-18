@@ -16,8 +16,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Appends every {@link ExecutionEvent} as one {@link EventLine} to the file {@code -Djk.mvn.events}
- * names. Silent when the property is absent, and never fails the build: a spy that cannot write
- * drops the line.
+ * names, each mojo's line carrying the time the {@link MojoTimer} measured for it. Silent when the
+ * property is absent, and never fails the build: a spy that cannot write drops the line.
  */
 @Named
 @Singleton
@@ -26,6 +26,7 @@ public final class JkEventSpy extends AbstractEventSpy {
     /** The property {@code jk mvn} sets to the events file; absent means record nothing. */
     public static final String EVENTS_PROPERTY = "jk.mvn.events";
 
+    private final MojoTimer timer = MojoTimer.system();
     private @Nullable Writer out;
 
     @Override
@@ -59,7 +60,7 @@ public final class JkEventSpy extends AbstractEventSpy {
         Writer w = out;
         if (w == null || !(event instanceof ExecutionEvent e)) return;
         try {
-            w.write(EventLine.of(e));
+            w.write(EventLine.of(e, timer.observe(e)));
             w.write('\n');
             w.flush();
         } catch (IOException | RuntimeException ignored) {

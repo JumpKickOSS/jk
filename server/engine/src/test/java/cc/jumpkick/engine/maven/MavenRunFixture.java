@@ -52,7 +52,7 @@ final class MavenRunFixture {
                         ""),
                 line(
                         "MojoSucceeded",
-                        0,
+                        120,
                         "com.example:lib",
                         l,
                         "maven-compiler-plugin:compile",
@@ -64,7 +64,7 @@ final class MavenRunFixture {
                 line("MojoStarted", 0, "com.example:app", a, "maven-surefire-plugin:test", "default-test", "", ""),
                 line(
                         "MojoFailed",
-                        0,
+                        340,
                         "com.example:app",
                         a,
                         "maven-surefire-plugin:test",
