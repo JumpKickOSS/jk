@@ -142,4 +142,48 @@ class PomProfileImportTest {
         assertThat(JkBuildRenderer.render(build)).doesNotContain("unresolved");
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`=unresolved`"));
     }
+
+    /**
+     * A profile that re-declares a dependency the POM already carries, without a version, is Maven's
+     * merge of the two rows — the version stays the declared one — so the profile's optional copy
+     * takes that version instead of {@code unresolved}, and the lock has something to resolve.
+     */
+    @Test
+    void a_profiles_versionless_copy_of_a_declared_dependency_takes_the_declared_version(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>0.1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.springframework.boot</groupId>
+                      <artifactId>spring-boot-starter-cloud-connectors</artifactId>
+                      <version>2.2.13.RELEASE</version>
+                    </dependency>
+                  </dependencies>
+                  <profiles>
+                    <profile>
+                      <id>cloudfoundry</id>
+                      <dependencies>
+                        <dependency>
+                          <groupId>org.springframework.boot</groupId>
+                          <artifactId>spring-boot-starter-cloud-connectors</artifactId>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                  </profiles>
+                </project>
+                """);
+
+        JkBuild build = result.jkBuild();
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .extracting(d -> d.module() + "=" + d.version().raw(), Dependency::optional)
+                .containsExactly(
+                        tuple("org.springframework.boot:spring-boot-starter-cloud-connectors=2.2.13.RELEASE", false),
+                        tuple("org.springframework.boot:spring-boot-starter-cloud-connectors=2.2.13.RELEASE", true));
+        assertThat(JkBuildRenderer.render(build)).doesNotContain("unresolved");
+    }
 }
