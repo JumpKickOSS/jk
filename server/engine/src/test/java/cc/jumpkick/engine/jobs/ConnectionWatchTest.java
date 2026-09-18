@@ -106,7 +106,45 @@ class ConnectionWatchTest {
                 kills::incrementAndGet);
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
         assertThat(kills).hasValue(1);
-        assertThat(log).singleElement().asString().contains("still running after cancel+550ms");
+        assertThat(log).singleElement().asString().contains("still running after cancel+2750ms");
+    }
+
+    /**
+     * A runner that looks for the cancel between units of work — the forecast at each module
+     * boundary — ends at its next look, which on a large reactor lies past the join budget. The
+     * workers are still killed at the budget, and the runner is given four more budgets to reach
+     * that look before the job is written off as abandoned.
+     */
+    @Test
+    void a_runner_that_ends_at_its_next_cancel_check_after_the_join_budget_is_not_written_off() throws Exception {
+        List<String> log = new ArrayList<>();
+        ConnectionWatch watch = new ConnectionWatch(System::currentTimeMillis, log::add);
+        AtomicInteger kills = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        // The join budget is 50 + 500 ms; the runner reaches its next check 300 ms past it.
+        Thread runner = Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(850L);
+            } catch (InterruptedException ignored) {
+                // the test ends first
+            }
+            done.countDown();
+        });
+        watch.awaitRunner(
+                9L,
+                done,
+                new WallDeadline(0L, ""),
+                JobLimits.DEFAULT_DEADLINE_GRACE_MS,
+                50L,
+                0L,
+                new CountDownLatch(0),
+                () -> {},
+                kills::incrementAndGet);
+        runner.join();
+        assertThat(kills).as("the workers are still killed at the join budget").hasValue(1);
+        assertThat(log)
+                .as("a runner that ended at its next check was not abandoned")
+                .isEmpty();
     }
 
     @Test
