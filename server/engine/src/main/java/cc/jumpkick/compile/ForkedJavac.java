@@ -383,6 +383,7 @@ public final class ForkedJavac {
                     PluginAot.javaCompilerFlags(
                             hostJavaHome,
                             workerCp,
+                            novelJvmArgs(req),
                             (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)),
                     heapBytes,
                     req.jvmArgs());
@@ -461,23 +462,40 @@ public final class ForkedJavac {
     }
 
     /**
+     * The module's {@code -J} flags jk does not already pass the worker — the ones that make its
+     * JVM differ from every other module's, and so the ones that key its AOT cache and start the
+     * trainer that records it.
+     */
+    static List<String> novelJvmArgs(Request req) {
+        List<String> own = new ArrayList<>();
+        List<String> batch = JvmOptions.batchFlags(1);
+        for (String flag : req.jvmArgs()) {
+            if (JdkCompilerAccess.JVM_FLAGS.contains(flag) || batch.contains(flag) || own.contains(flag)) continue;
+            own.add(flag);
+        }
+        return own;
+    }
+
+    /**
      * Background AOT trainer: same {@code java -cp worker PluginMain @spec} shape as a real
-     * compile, recording with {@code -XX:AOTCacheOutput} while compiling a synthetic Hello.java.
+     * compile, started with the module's own JVM flags, recording with {@code -XX:AOTCacheOutput}
+     * while compiling a synthetic Hello.java.
      */
     static List<String> trainerCommand(Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch)
             throws IOException {
         return trainerCommandForOptimize(
-                hostJavaHome, workerCp, aotOutput, scratch, req.release() > 0 ? req.release() : 25);
+                hostJavaHome, workerCp, aotOutput, scratch, req.release() > 0 ? req.release() : 25, novelJvmArgs(req));
     }
 
-    /** Public entry for install {@code jk optimize} / {@link WorkerAotBootstrap}. */
+    /** Public entry for install {@code jk optimize} / {@link WorkerAotBootstrap}: the flag-less key. */
     public static List<String> trainerCommandForOptimize(
             Path hostJavaHome, String workerCp, Path aotOutput, Path scratch) throws IOException {
-        return trainerCommandForOptimize(hostJavaHome, workerCp, aotOutput, scratch, 25);
+        return trainerCommandForOptimize(hostJavaHome, workerCp, aotOutput, scratch, 25, List.of());
     }
 
     private static List<String> trainerCommandForOptimize(
-            Path hostJavaHome, String workerCp, Path aotOutput, Path scratch, int release) throws IOException {
+            Path hostJavaHome, String workerCp, Path aotOutput, Path scratch, int release, List<String> module)
+            throws IOException {
         Path src = scratch.resolve("Hello.java");
         Files.writeString(src, """
                 package demo;
@@ -503,7 +521,7 @@ public final class ForkedJavac {
         Path trainSpec = scratch.resolve("train.spec");
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(trainSpec);
-        List<String> jvmFlags = workerJvmFlags(List.of("-XX:AOTCacheOutput=" + aotOutput));
+        List<String> jvmFlags = workerJvmFlags(List.of("-XX:AOTCacheOutput=" + aotOutput), null, module);
         Path javaExe = JdkFingerprint.java(hostJavaHome);
         // Same classpath as the real fork: the classpath is part of the AOT key, and a
         // thin worker jar alone would CNFE on PluginMain, silently never training.

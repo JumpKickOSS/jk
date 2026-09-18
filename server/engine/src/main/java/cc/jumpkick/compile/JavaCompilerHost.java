@@ -511,6 +511,7 @@ public final class JavaCompilerHost {
                     PluginAot.javaCompilerFlags(
                             hostJavaHome,
                             workerCp,
+                            ForkedJavac.novelJvmArgs(template),
                             (aotOutput, scratch) ->
                                     ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)),
                     heapBytes,
