@@ -9,6 +9,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -22,6 +23,10 @@ import org.junit.jupiter.api.io.TempDir;
  * The real thing: a three-module Gradle build with a version catalog, evaluated by a Gradle the
  * query provisions (verified download, or a healthy install on this machine) in a fork, imports
  * as a workspace whose members carry the catalog's coordinates and each other as workspace edges.
+ *
+ * <p>Gradle is provisioned into the tools root of the home this JVM runs under ({@link
+ * JkDirs#tools()}): the module's sandbox home under {@code jk test}, which stays warm between
+ * runs, so the distribution downloads once per host rather than once per run.
  */
 @Tag("network")
 class GradleModelQueryNetworkTest {
@@ -64,6 +69,7 @@ class GradleModelQueryNetworkTest {
                 """);
         Path core = Files.createDirectories(root.resolve("core"));
         Files.writeString(core.resolve("build.gradle.kts"), """
+                plugins { `java-library` }
                 dependencies {
                     api(libs.guava)
                     compileOnly("org.projectlombok:lombok:1.18.42")
@@ -86,10 +92,16 @@ class GradleModelQueryNetworkTest {
 
         List<String> progress = new ArrayList<>();
         GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
-                tmp.resolve("tools"), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
 
         GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle.kts"), progress::add);
 
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+        assertThat(result.report().hasErrors())
+                .as("Gradle evaluated the build: " + rows)
+                .isFalse();
         assertThat(progress).anySatisfy(p -> assertThat(p).contains("Gradle " + GradleResolver.DEFAULT_VERSION));
         assertThat(result.root().project().name()).isEqualTo("shop");
         assertThat(Objects.requireNonNull(result.root().workspace()).modules()).containsExactly("api", "app", "core");
@@ -119,11 +131,7 @@ class GradleModelQueryNetworkTest {
                 .extracting(Dependency::library)
                 .containsExactly("api", "picocli");
         assertThat(Objects.requireNonNull(appBuild.application()).main()).isEqualTo("com.acme.App");
-        List<String> rows = result.report().issues().stream()
-                .map(ImportReport.Issue::message)
-                .toList();
         assertThat(rows).anySatisfy(r -> assertThat(r).contains("task `release`"));
-        assertThat(result.report().hasErrors()).as(rows.toString()).isFalse();
     }
 
     private static JkBuild module(GradleBuildImport.Result result, String path) {
