@@ -110,6 +110,21 @@ final class PluginFacts {
                 .findFirst();
     }
 
+    /**
+     * The compiler plugin as the bound compile runs it: the {@code <plugins>} entry, else the
+     * {@code <pluginManagement>} one — the jar lifecycle binds the plugin whether or not the POM
+     * lists it, and Maven configures that run from the managed entry.
+     */
+    static Optional<Plugin> compilerPlugin(Model model) {
+        Optional<Plugin> declared = plugin(model, "maven-compiler-plugin");
+        if (declared.isPresent()) return declared;
+        Build build = model.getBuild();
+        if (build == null || build.getPluginManagement() == null) return Optional.empty();
+        return build.getPluginManagement().getPlugins().stream()
+                .filter(p -> "maven-compiler-plugin".equals(p.getArtifactId()))
+                .findFirst();
+    }
+
     /** A declared compiler level and the key that declared it ({@code maven.compiler.source}, {@code <release>}). */
     record CompilerLevel(int release, String origin) {}
 
@@ -120,7 +135,7 @@ final class PluginFacts {
             Optional<Integer> level = javaLevel(props.getProperty(key));
             if (level.isPresent()) return Optional.of(new CompilerLevel(level.get(), "`" + key + "`"));
         }
-        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        Optional<Plugin> compiler = compilerPlugin(model);
         if (compiler.isEmpty()) return Optional.empty();
         for (Xpp3Dom config : configurations(compiler.get())) {
             for (String key : COMPILER_CONFIG) {
@@ -162,7 +177,7 @@ final class PluginFacts {
         List<String> main = new ArrayList<>();
         List<String> test = new ArrayList<>();
         List<String> scoped = new ArrayList<>();
-        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        Optional<Plugin> compiler = compilerPlugin(model);
         if (compiler.isEmpty()) return new CompilerArgs(main, test, scoped);
         if (compiler.get().getConfiguration() instanceof Xpp3Dom config) {
             collectCompilerArgs(config, main);
@@ -217,7 +232,7 @@ final class PluginFacts {
      */
     static List<String> mainScopedProcessorPaths(Model model) {
         List<String> scoped = new ArrayList<>();
-        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        Optional<Plugin> compiler = compilerPlugin(model);
         if (compiler.isEmpty()) return scoped;
         for (PluginExecution execution : compiler.get().getExecutions()) {
             if (!(execution.getConfiguration() instanceof Xpp3Dom config)) continue;
@@ -285,7 +300,7 @@ final class PluginFacts {
     static ProcessorPaths annotationProcessorPaths(Model model) {
         List<Pom.Dep> shared = new ArrayList<>();
         List<Pom.Dep> test = new ArrayList<>();
-        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        Optional<Plugin> compiler = compilerPlugin(model);
         if (compiler.isEmpty()) return new ProcessorPaths(shared, test);
         if (compiler.get().getConfiguration() instanceof Xpp3Dom config) collectProcessorPaths(model, config, shared);
         for (PluginExecution execution : compiler.get().getExecutions()) {
