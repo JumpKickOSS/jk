@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
@@ -57,6 +58,18 @@ class McpJobCancelTest {
                 null);
     }
 
+    /** A connection bound to {@code /ws}: {@code initialize} mints it, {@code jk_bind} binds it. */
+    private static String boundToWs(McpHandler mcp) {
+        String session = requireNonNull(
+                mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
+                        .openedSessionId());
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws\"}}}",
+                session);
+        return session;
+    }
+
     private static HttpLive.Run run(long jid, long startedAt) {
         return new HttpLive.Run(jid, jid, "build", "/ws", "g:a", startedAt, 50.0, "j-" + jid);
     }
@@ -65,10 +78,12 @@ class McpJobCancelTest {
     void omitted_jid_cancel_picks_the_newest_job_not_iteration_order() {
         // Newest first in the snapshot — the old last-element pick would choose jid 9.
         McpHandler mcp = handler(List.of(run(7L, 2_000L), run(9L, 1_000L)));
-        mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws\"}}}");
-        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_job\",\"arguments\":{\"action\":\"cancel\"}}}");
+        String session = boundToWs(mcp);
+        String body = mcp.handle(
+                        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
+                                + "\"params\":{\"name\":\"jk_job\",\"arguments\":{\"action\":\"cancel\"}}}",
+                        session)
+                .body();
         assertThat(cancelled).containsExactly(7L);
         assertThat(body).contains("\"cancelled\":true");
     }
@@ -76,10 +91,11 @@ class McpJobCancelTest {
     @Test
     void tied_start_times_prefer_the_higher_jid() {
         McpHandler mcp = handler(List.of(run(3L, 1_000L), run(5L, 1_000L)));
-        mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws\"}}}");
-        mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_job\",\"arguments\":{\"action\":\"cancel\"}}}");
+        String session = boundToWs(mcp);
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"jk_job\",\"arguments\":{\"action\":\"cancel\"}}}",
+                session);
         assertThat(cancelled).containsExactly(5L);
     }
 

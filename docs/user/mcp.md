@@ -71,10 +71,11 @@ list byte for byte. Widen the list to every card with `[mcp] tools = "all"` in `
 
 **Binding.** `dir` is the project root. An unbound connection is bound by the **first call that
 carries `dir`** — that one result says `bound <dir>` (text and `structuredContent.bound`) — and
-later calls on that connection may omit it. **`jk_bind`** switches. The bind is per connection
-(`Mcp-Session-Id`), so two agents on one engine never clobber each other; a client that sends no
-session id has no bind of its own and falls back to the engine-wide one that every `jk_bind` also
-sets. A call that names `dir` always targets that dir, bound or not.
+later calls on that connection may omit it. **`jk_bind`** switches. The bind is the connection's
+alone (`Mcp-Session-Id`): two agents on one engine each keep their own, every tool and `jk://`
+resource answers for the caller's, and there is no engine-wide default one agent could re-target
+for another. A client that sends no session id has no bind — it passes `dir` on each call, and
+`jk_bind` tells it so. A call that names `dir` always targets that dir, bound or not.
 
 The whole registry:
 
@@ -125,11 +126,11 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 |-----|----------|
 | `jk://manual` | JumpKick playbook (same as `jk_manual` / CLI `jk manual`) |
 | `jk://session` | Bound dir + engine status |
-| `jk://project` | Project card (needs an engine-wide bind: `jk_bind`) |
+| `jk://project` | Project card for the connection's bound dir (`jk_bind` first) |
 | `jk://runs/latest` | Latest history summary |
 | `jk://runs/latest/results` | Latest `jk-results.md` (same as `jk_results`) |
 | `jk://runs/latest/details` | Budgeted tail of latest `details.jsonl` (same as `jk_details`) |
-| `jk://guards` | Guard catalog (same as `jk guard explain`); `jk://guards/<id>` is one rule's card (same as `jk guard explain <id>`). Needs an engine-wide bind (`jk_bind`); an unknown id is a `-32602` error naming the nearest ids |
+| `jk://guards` | Guard catalog (same as `jk guard explain`); `jk://guards/<id>` is one rule's card (same as `jk guard explain <id>`). Reads the connection's bound dir (`jk_bind` first); an unknown id is a `-32602` error naming the nearest ids |
 | `jk://disk` | Cache and store usage |
 | `jk://config` | Effective machine config |
 

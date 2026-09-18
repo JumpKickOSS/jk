@@ -40,16 +40,19 @@ class McpMavenOnlyProjectTest {
                 + "\"diagnostics\":[{\"severity\":\"error\",\"code\":\"compiler\",\"dir\":\"" + dir + "\","
                 + "\"task\":\"compiler:compile\",\"message\":\"" + dir + "/src/A.java:3:5: cannot find symbol\"}]}";
         McpHandler mcp = handler(List.of(run));
+        String session = requireNonNull(
+                mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
+                        .openedSessionId());
 
-        Map<String, Object> bound = call(mcp, "jk_bind", "{\"dir\":\"" + dir + "\"}");
+        Map<String, Object> bound = call(mcp, session, "jk_bind", "{\"dir\":\"" + dir + "\"}");
         assertThat(bound.get("coord")).isEqualTo("com.example:app");
         assertThat(object(bound, "lastRun").get("kind")).isEqualTo("mvn");
 
-        Map<String, Object> results = call(mcp, "jk_results", "{}");
+        Map<String, Object> results = call(mcp, session, "jk_results", "{}");
         assertThat(results.get("run")).isEqualTo("m1");
         assertThat(String.valueOf(results.get("markdown"))).contains("tool: mvn");
 
-        Map<String, Object> diagnostics = call(mcp, "jk_diagnostics", "{}");
+        Map<String, Object> diagnostics = call(mcp, session, "jk_diagnostics", "{}");
         assertThat(number(diagnostics, "count").intValue()).isEqualTo(1);
         Map<String, Object> row = objects(diagnostics, "diagnostics").get(0);
         assertThat(number(row, "line").intValue()).isEqualTo(3);
@@ -94,9 +97,12 @@ class McpMavenOnlyProjectTest {
                 "0.13.7");
     }
 
-    private static Map<String, Object> call(McpHandler mcp, String name, String argsJson) {
-        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"" + name + "\",\"arguments\":" + argsJson + "}}");
+    private static Map<String, Object> call(McpHandler mcp, String session, String name, String argsJson) {
+        String body = mcp.handle(
+                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\"," + "\"params\":{\"name\":\"" + name
+                                + "\",\"arguments\":" + argsJson + "}}",
+                        session)
+                .body();
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         return object(object(resp, "result"), "structuredContent");

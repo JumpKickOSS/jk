@@ -21,11 +21,11 @@ public final class McpVitals {
 
     private McpVitals() {}
 
-    public static Map<String, Object> statusPayload(McpContext ctx) {
+    /** The status envelope; {@code bound} is the calling connection's dir, or null when it has none. */
+    public static Map<String, Object> statusPayload(McpContext ctx, @Nullable String bound) {
         StatusSnapshot s = ctx.status().get();
         // Every vital, from the one enumeration; only the MCP-specific keys are added here.
         Map<String, Object> fields = new LinkedHashMap<>(s.vitals());
-        String bound = ctx.session().dir();
         if (bound != null) fields.put("boundDir", bound);
         fields.put("jobs", liveJobRows(ctx));
         Map<String, Object> last = McpHistoryViews.jobSummary(McpDiagnostics.findNewest(ctx.history(), bound));

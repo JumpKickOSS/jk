@@ -24,9 +24,11 @@ import lombok.Setter;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Everything an {@link McpTool} may reach: the engine collaborators the handler was built with,
- * plus the one process-wide {@link McpSession} bind. Constructor args are the DI framework, so a
- * tool holds no state of its own and {@link McpTools#standard()} can be a list of singletons.
+ * Everything an {@link McpTool} may reach: the engine collaborators the handler was built with.
+ * Constructor args are the DI framework, so a tool holds no state of its own and {@link
+ * McpTools#standard()} can be a list of singletons. The project a call targets is the call's own
+ * ({@link McpCall#dir()}): its argument, else the bind of the connection it rode in on — never a
+ * process-wide default two agents could overwrite for each other.
  *
  * <p>The four {@code @Setter} fields are optional wiring the embedded server attaches after
  * construction ({@code cacheSnapshot}, {@code detailsFile}, {@code cacheGate}) or that only tests
@@ -71,8 +73,6 @@ public final class McpContext {
      * full {@code historyRaw} re-scan.
      */
     private final LongFunction<String> finishedRecords;
-
-    private final McpSession session = new McpSession();
 
     /** Every connection that has said {@code initialize}, by the session id the engine minted for it. */
     private final McpConnections connections = new McpConnections();

@@ -180,7 +180,7 @@ public final class McpHandler {
             case "tools/list" -> tools.listing(surface);
             case "tools/call" -> tools.call(ctx, params, connection);
             case "resources/list" -> McpResources.list();
-            case "resources/read" -> McpResources.read(ctx, params);
+            case "resources/read" -> McpResources.read(ctx, params, connection);
             case "prompts/list" -> McpPrompts.list();
             case "prompts/get" -> McpPrompts.get(params);
             case "logging/setLevel" -> Map.of(); // declared capability; engine log level is fixed

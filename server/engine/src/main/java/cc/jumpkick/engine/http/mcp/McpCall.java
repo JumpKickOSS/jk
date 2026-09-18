@@ -93,14 +93,18 @@ public record McpCall(
     }
 
     /**
-     * The target checkout: the explicit argument, else this connection's bind, else the
-     * process-wide bind an anonymous {@code jk_bind} set, else {@code null}.
+     * The target checkout: the explicit argument, else this connection's bind, else {@code null}.
+     * An anonymous call has no bind to fall back on: another connection's bind is never its own.
      */
     public @Nullable String dir() {
         String dir = str("dir");
         if (dir != null && !dir.isBlank()) return dir;
-        if (connection != null && connection.dir() != null) return connection.dir();
-        return ctx.session().dir();
+        return boundDir();
+    }
+
+    /** The dir this call's connection is bound to, or {@code null} when it is anonymous or unbound. */
+    public @Nullable String boundDir() {
+        return connection == null ? null : connection.dir();
     }
 
     /** {@link #dir()} for a tool that cannot run without one. */
