@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.CentralMirror;
+import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
@@ -13,17 +14,11 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.StoreWriteGate;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
-import java.net.ConnectException;
-import java.net.NoRouteToHostException;
 import java.net.URI;
-import java.net.UnknownHostException;
-import java.net.http.HttpConnectTimeoutException;
-import java.nio.channels.UnresolvedAddressException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -97,6 +92,8 @@ public final class MavenRepo {
     /**
      * The connect-level fault the first request to this repository met, once one has — nothing
      * answers at its address, so it is asked nothing more for the rest of the job — else null.
+     * The address itself is remembered process-wide by {@link ConnectFaults}, so a fresh object
+     * over the same URL is refused before it dials as well.
      */
     private final AtomicReference<@Nullable String> unreachable = new AtomicReference<>();
 
@@ -547,33 +544,6 @@ public final class MavenRepo {
         }
     }
 
-    /**
-     * The connect-level fault in {@code failure}'s cause chain — the connection refused, the host
-     * unknown or unroutable, the connect timed out — as one line, or null for any other failure. A
-     * reset or a 5xx is one request the remote dropped; these say nothing answers at the address. The
-     * JDK's HTTP client reports a refused connect as a {@link ConnectException} carrying no message,
-     * and a peer that accepted and dropped the connection mid-handshake under the same class with a
-     * message that says reset — only the latter is one request's failure.
-     */
-    static @Nullable String connectFailure(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
-            String detail = t.getMessage();
-            boolean reset = detail != null && detail.toLowerCase(Locale.ROOT).contains("reset");
-            if (t instanceof ConnectException && !reset) {
-                return detail == null || detail.isBlank()
-                        ? "ConnectException: the connection was not accepted"
-                        : "ConnectException: " + detail;
-            }
-            if (t instanceof UnknownHostException
-                    || t instanceof NoRouteToHostException
-                    || t instanceof HttpConnectTimeoutException
-                    || t instanceof UnresolvedAddressException) {
-                return t.getClass().getSimpleName() + (detail == null || detail.isBlank() ? "" : ": " + detail);
-            }
-        }
-        return null;
-    }
-
     /** The fault an earlier request met, thrown again without a request, once this repository is unreachable. */
     private void refuseIfUnreachable() throws RepositoryUnreachableException {
         String fault = unreachable.get();
@@ -585,7 +555,7 @@ public final class MavenRepo {
      * remembered, so the repository is asked nothing more — else {@code transport} itself.
      */
     private IOException unreachableOr(IOException transport) {
-        String fault = connectFailure(transport);
+        String fault = ConnectFaults.describe(transport);
         if (fault == null) return transport;
         unreachable.compareAndSet(null, fault);
         return new RepositoryUnreachableException(name, baseUrl, fault, transport);
