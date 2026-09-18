@@ -4,14 +4,13 @@ package cc.jumpkick.wire.protocol;
 import cc.jumpkick.jsonl.Jsonl;
 import org.jspecify.annotations.Nullable;
 
-/** An import run's terminal: worker exit, warning count, error and diagnostic text (see {@link EngineProtocol#BUILDPLAN_FINISH}). */
+/** An import run's terminal: worker exit, warning count and error text (see {@link EngineProtocol#BUILDPLAN_FINISH}). */
 public record PlanFinishImportEvent(
         String dir,
         boolean success,
         int exitCode,
         int warnings,
-        @Nullable String error,
-        @Nullable String diag) {
+        @Nullable String error) {
     public String encode() {
         return RequestJson.request(EngineProtocol.BUILDPLAN_FINISH)
                 .string("kind", "import")
@@ -20,7 +19,6 @@ public record PlanFinishImportEvent(
                 .number("importExit", exitCode)
                 .number("importWarnings", warnings)
                 .string("importError", error)
-                .string("importDiag", diag)
                 .finish();
     }
 
@@ -30,7 +28,6 @@ public record PlanFinishImportEvent(
                 Jsonl.bool(json, "success", false),
                 Jsonl.intValue(json, "importExit", 0),
                 Jsonl.intValue(json, "importWarnings", 0),
-                Jsonl.str(json, "importError"),
-                Jsonl.str(json, "importDiag"));
+                Jsonl.str(json, "importError"));
     }
 }

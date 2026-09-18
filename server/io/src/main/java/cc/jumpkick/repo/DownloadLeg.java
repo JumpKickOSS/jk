@@ -131,7 +131,9 @@ final class DownloadLeg {
                                 () -> new MavenRepo.ArtifactNotFoundException("not found in " + name + ": " + uri));
                 OutputStream out = new DigestOutputStream(Files.newOutputStream(tmp), digest)) {
             size = in.transferTo(out);
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
+            // The sidecars were only ever worth reading beside a body that arrived.
+            if (sidecars != null) sidecars.cancel();
             Files.deleteIfExists(tmp);
             throw e;
         }

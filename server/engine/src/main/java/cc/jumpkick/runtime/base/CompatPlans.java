@@ -41,11 +41,8 @@ public final class CompatPlans {
     /** The importer's reported issue count (rendered as "Import notes: N issue(s)"). */
     public static final BuildPlanKey<Integer> WARNINGS = BuildPlanKey.scalar("import-warnings", Integer.class);
 
-    /** The importer's terminal error text, if any. */
+    /** The importer's terminal error text, kept only when it exited non-zero. */
     public static final BuildPlanKey<String> ERROR = BuildPlanKey.scalar("import-error", String.class);
-
-    /** The importer's diagnostic detail, kept only when it exited non-zero. */
-    public static final BuildPlanKey<String> DIAG = BuildPlanKey.scalar("import-diag", String.class);
 
     /**
      * Build the import plan. All paths arrive absolute (the command pre-flighted source detection
@@ -83,15 +80,12 @@ public final class CompatPlans {
                     if (outcome.error() != null && outcome.exit() != 0) ctx.put(ERROR, outcome.error());
                     ctx.put(WARNINGS, outcome.warnings());
                     ctx.put(EXIT, outcome.exit());
-                    if (outcome.exit() != 0 && outcome.error() != null) {
-                        ctx.put(DIAG, outcome.error());
-                    }
                     ctx.progress(1);
                 })
                 .build();
 
         return BuildPlan.builder("import")
-                .stateKeys(EXIT, WARNINGS, ERROR, DIAG)
+                .stateKeys(EXIT, WARNINGS, ERROR)
                 .addTask(convert)
                 .build();
     }

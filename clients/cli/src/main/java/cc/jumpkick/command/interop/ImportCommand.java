@@ -125,7 +125,6 @@ public final class ImportCommand implements CliCommand {
         int exit;
         int warnings;
         String error;
-        String diag;
         EngineRequests.ImportOutcome outcome;
         try {
             outcome = EngineClient.runImport(
@@ -153,13 +152,9 @@ public final class ImportCommand implements CliCommand {
         exit = outcome.exitCode();
         warnings = outcome.warnings();
         error = outcome.error();
-        diag = outcome.diag();
 
         if (error != null) CommandWedge.printFail("Import", error);
         if (warnings != 0) CliOutput.out("Import notes: " + warnings + " issue(s)");
-        if (exit != 0 && diag != null && !diag.isBlank()) {
-            CommandWedge.printFail("Import", diag);
-        }
         return exit;
     }
 

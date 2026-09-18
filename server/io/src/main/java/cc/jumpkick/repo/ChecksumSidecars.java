@@ -17,7 +17,8 @@ import java.util.concurrent.Future;
  * at once, on the io pool, so a caller can start them beside the artifact download and pay one
  * round trip for the three files instead of three in a row; the {@code .md5} is asked for only when
  * both are absent. A sidecar whose body is not a digest of the expected length (an HTML error page
- * under HTTP 200) counts as absent.
+ * under HTTP 200) counts as absent. A body fetch that fails {@linkplain #cancel cancels} the two
+ * reads, so a repository that stopped answering is not held to for the request timeout twice over.
  */
 final class ChecksumSidecars {
 
@@ -69,6 +70,12 @@ final class ChecksumSidecars {
         Optional<String> strong = join(sha256);
         if (strong.isPresent()) return Optional.of(new Published(Algorithm.SHA256, strong.get()));
         return join(sha1).map(hex -> new Published(Algorithm.SHA1, hex));
+    }
+
+    /** Stop the two SHA reads: a leg still parked in its request is interrupted and ends at once. */
+    void cancel() {
+        sha256.cancel(true);
+        sha1.cancel(true);
     }
 
     /** {@link #strongestSha()}, falling back to the {@code .md5} read now; empty when none is published. */
