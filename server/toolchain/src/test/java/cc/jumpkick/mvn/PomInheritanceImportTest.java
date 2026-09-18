@@ -533,6 +533,148 @@ class PomInheritanceImportTest {
                 .containsExactly("org.slf4j:slf4j-api=2.0.16");
     }
 
+    /**
+     * A member whose versions come from two managers — a published parent chain and a BOM leaf of
+     * the reactor — is written with each version where the lock finds it: the published chain's as
+     * {@code managed}, since its {@code [platform-dependencies]} row carries the whole inherited
+     * table; the reactor BOM's as the version the effective POM resolved, since a reactor BOM
+     * leaves {@code [platform]} and nothing the lock reads would supply it.
+     */
+    @Test
+    void a_version_a_reactor_bom_leaf_supplies_is_pinned_beside_one_a_published_parent_manages(@TempDir Path root)
+            throws Exception {
+        JkBuild app = importAppUnder(root, reactorBom("bom", ""));
+
+        assertThat(versions(app.dependencies().of(Scope.PLATFORM)))
+                .as("the published parent's row stays; the reactor BOM's row leaves")
+                .containsExactly("org.demo:demo-starter-parent=1.0");
+        assertThat(versions(app.dependencies().of(Scope.MAIN)))
+                .as("the published chain's version is the platform's; the reactor BOM's is written; an inherited"
+                        + " declaration keeps its own")
+                .containsExactly(
+                        "com.google.guava:guava=managed",
+                        "org.apache.commons:commons-lang3=3.17.0",
+                        "org.slf4j:slf4j-api=2.0.16");
+    }
+
+    /**
+     * The same when the reactor's BOM is a pom-packaged sibling with a build of its own — a module
+     * the workspace builds, whose {@code [platform]} row leaves all the same.
+     */
+    @Test
+    void a_version_a_pom_packaged_sibling_supplies_is_pinned_beside_one_a_published_parent_manages(@TempDir Path root)
+            throws Exception {
+        JkBuild app = importAppUnder(root, reactorBom("bom", """
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>flatten-maven-plugin</artifactId>
+                        <version>1.6.0</version>
+                      </plugin>
+                    </plugins>
+                  </build>
+                """));
+
+        assertThat(versions(app.dependencies().of(Scope.PLATFORM))).containsExactly("org.demo:demo-starter-parent=1.0");
+        assertThat(versions(app.dependencies().of(Scope.MAIN)))
+                .containsExactly(
+                        "com.google.guava:guava=managed",
+                        "org.apache.commons:commons-lang3=3.17.0",
+                        "org.slf4j:slf4j-api=2.0.16");
+    }
+
+    /**
+     * A reactor under the served starter-parent chain with two modules: {@code bom}, written as
+     * {@code bomXml}, and {@code app}, which imports it and declares guava (the chain manages it)
+     * and commons-lang3 (the reactor BOM does) without versions. Returns the imported {@code app}.
+     */
+    private JkBuild importAppUnder(Path root, String bomXml) throws Exception {
+        serveChain();
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.demo</groupId>
+                    <artifactId>demo-starter-parent</artifactId>
+                    <version>1.0</version>
+                    <relativePath/>
+                  </parent>
+                  <groupId>com.ex</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <modules><module>bom</module><module>app</module></modules>
+                </project>
+                """);
+        Files.createDirectories(root.resolve("bom"));
+        Files.writeString(root.resolve("bom/pom.xml"), bomXml);
+        Files.createDirectories(root.resolve("app"));
+        Files.writeString(root.resolve("app/pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.ex</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0.0</version>
+                  </parent>
+                  <artifactId>app</artifactId>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.ex</groupId><artifactId>bom</artifactId><version>1.0.0</version>
+                        <type>pom</type><scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.google.guava</groupId>
+                      <artifactId>guava</artifactId>
+                    </dependency>
+                    <dependency>
+                      <groupId>org.apache.commons</groupId>
+                      <artifactId>commons-lang3</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.WorkspaceImportResult result =
+                TestImporters.over(root, http.base()).importWorkspace(root.resolve("pom.xml"));
+        assertThat(result.report().hasErrors())
+                .as(String.join(
+                        "\n",
+                        result.report().issues().stream()
+                                .map(ImportReport.Issue::message)
+                                .toList()))
+                .isFalse();
+        return requireNonNull(result.modules().get("app"));
+    }
+
+    /** A pom-packaged reactor module managing commons-lang3; {@code extra} is a build section or nothing. */
+    private static String reactorBom(String artifactId, String extra) {
+        return """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.ex</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0.0</version>
+                  </parent>
+                  <artifactId>%s</artifactId>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.apache.commons</groupId><artifactId>commons-lang3</artifactId><version>3.17.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                %s</project>
+                """.formatted(artifactId, extra);
+    }
+
     private void serveChain() throws Exception {
         for (String artifact : List.of("demo-build", "demo-bom", "demo-dependencies", "demo-starter-parent")) {
             http.serve(

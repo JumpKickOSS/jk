@@ -73,7 +73,10 @@ writes no report. A project with only a `pom.xml` binds for MCP by its POM coord
 **POM import** is the primary path, and it reads the POM the way Maven does: the effective
 model, built by Maven's own model builder. Parents are flattened (a sibling `pom.xml` in the
 reactor answers first, then any `<repository>` the POM declares, then the repositories jk knows),
-`dependencyManagement` is merged so a dependency declared without a version gets the managed one,
+`dependencyManagement` is merged so a dependency declared without a version gets the managed one —
+written `managed` or as the versionless coordinate when a published BOM or parent chain the manifest
+carries as a `[platform-dependencies]` row supplied it, and as the version Maven resolved otherwise
+([`managed`](dependencies.md#managed-the-platforms-version-in-the-string-form)) —
 its inline pins that no declared dependency uses become `[managed-dependencies]` entries so they
 govern transitive versions as they do under Maven (a reactor parent's once, on the workspace root —
 [Managed versions](dependencies.md#managed-versions)),

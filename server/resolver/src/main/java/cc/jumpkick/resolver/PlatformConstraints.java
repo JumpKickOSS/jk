@@ -276,18 +276,35 @@ public final class PlatformConstraints {
     /**
      * Apply the constraints to the declared roots: drop the table's say on modules the user pinned
      * exactly (except the injected runtimes, which carry the BOM's own version), then give every
-     * {@code platform-managed} root its managed version.
+     * {@code platform-managed} root its managed version — or, on a module an exact root of another
+     * table pins, that pin's version: a written version is a user root, and a user root beats the
+     * BOM for the coordinate in every table, as it does when a workspace merge sets one member's
+     * {@code managed} row beside another member's pin.
      */
     LockRoots.Roots apply(LockRoots.Roots roots, Set<String> injectedRuntimes) {
+        Map<String, String> pinned = exactPins(roots);
         stripBomForExactRoots(roots.main(), versions, provenance, injectedRuntimes);
         stripBomForExactRoots(roots.test(), versions, provenance, injectedRuntimes);
         stripBomForExactRoots(roots.processor(), versions, provenance, injectedRuntimes);
         overrides.keySet().retainAll(versions.keySet());
         return new LockRoots.Roots(
-                materializePlatformManaged(roots.main()),
-                materializePlatformManaged(roots.test()),
-                materializePlatformManaged(roots.processor()),
+                materializePlatformManaged(roots.main(), pinned),
+                materializePlatformManaged(roots.test(), pinned),
+                materializePlatformManaged(roots.processor(), pinned),
                 roots.fileDeps());
+    }
+
+    /** {@code module -> version} for every root with a written exact version, the first per module. */
+    private static Map<String, String> exactPins(LockRoots.Roots roots) {
+        Map<String, String> pinned = new LinkedHashMap<>();
+        for (List<Dependency> declared : List.of(roots.main(), roots.test(), roots.processor())) {
+            for (Dependency d : declared) {
+                if (!d.isPlatformManaged() && d.version() instanceof VersionSelector.Exact exact) {
+                    pinned.putIfAbsent(d.module(), exact.version());
+                }
+            }
+        }
+        return pinned;
     }
 
     private void fold(JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder, BomTables tables)
@@ -501,16 +518,17 @@ public final class PlatformConstraints {
     }
 
     /**
-     * Every {@code platform-managed} root at its managed version, and every root a BOM manages
+     * Every {@code platform-managed} root at its managed version — the table's, or the version an
+     * exact root of another table {@code pinned} the module at — and every root a BOM manages
      * without exclusions of its own under the BOM's managed exclusions — a root's own {@code exclude}
      * list always wins outright, as under Maven.
      */
-    private List<Dependency> materializePlatformManaged(List<Dependency> declared) {
+    private List<Dependency> materializePlatformManaged(List<Dependency> declared, Map<String, String> pinned) {
         List<Dependency> roots = new ArrayList<>(declared.size());
         for (Dependency d : declared) {
             Dependency root = d;
             if (d.isPlatformManaged()) {
-                String managed = versions.get(d.module());
+                String managed = versions.getOrDefault(d.module(), pinned.get(d.module()));
                 if (managed == null) {
                     throw new IllegalStateException("`" + d.module()
                             + "` is declared without a version, but no [platform-dependencies] BOM manages it"
