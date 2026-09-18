@@ -15,6 +15,18 @@ import org.junit.jupiter.api.Test;
  */
 class TestWorkerEnvTest {
 
+    /** The silence a worker is allowed grows with the host's load; a window set by hand is taken as written. */
+    @Test
+    void the_idle_window_stretches_with_the_load_per_processor_unless_set_by_hand() {
+        assertThat(TestWorkerEnv.idleTimeoutMs(null, 0.5, 8)).isEqualTo(TestWorkerEnv.DEFAULT_IDLE_MS);
+        assertThat(TestWorkerEnv.idleTimeoutMs(null, 146, 24)).isEqualTo(TestWorkerEnv.DEFAULT_IDLE_MS * 7);
+        assertThat(TestWorkerEnv.idleTimeoutMs("30000", 146, 24)).isEqualTo(30_000L);
+        assertThat(TestWorkerEnv.idleTimeoutMs("0", 146, 24))
+                .as("0 disables the watchdog")
+                .isZero();
+        assertThat(TestWorkerEnv.idleTimeoutMs("x", 146, 24)).isEqualTo(TestWorkerEnv.DEFAULT_IDLE_MS * 7);
+    }
+
     @Test
     void each_worker_gets_its_own_state_dir_under_the_run_s_own() {
         WorkerEnv base =

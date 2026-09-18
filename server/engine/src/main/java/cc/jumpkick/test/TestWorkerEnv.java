@@ -2,9 +2,12 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.HostLoad;
+import cc.jumpkick.host.HostProcessors;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /** What a pull-mode test worker runs under: its private env and how long it may stay silent. */
 final class TestWorkerEnv {
@@ -35,22 +38,32 @@ final class TestWorkerEnv {
         return base.with(env);
     }
 
+    /** The silence a test worker is allowed on a quiet host before it is taken for hung. */
+    static final long DEFAULT_IDLE_MS = 10 * 60_000L;
+
     /**
      * Inactivity window for pull-mode test workers. Generous: single tests are legitimately
      * slow (the Android ladder runs minutes per class), but the runner emits an event per test
      * start/finish, so a silent worker is a hung one — a JLine tty probe once stalled a worker
-     * (and the whole suite) for 3.5h with zero output. Override:
+     * (and the whole suite) for 3.5h with zero output. The default stretches with the host's
+     * load per processor ({@link HostLoad}): a test whose build crawls under a load average in
+     * the hundreds is slow, not hung. Override, taken as written whatever the load:
      * {@code -Djk.test.worker.idle.ms} / {@code JK_TEST_WORKER_IDLE_MS}; {@code 0} disables.
      */
     static long idleTimeoutMs() {
         String prop = System.getProperty("jk.test.worker.idle.ms", System.getenv("JK_TEST_WORKER_IDLE_MS"));
-        if (prop != null && !prop.isBlank()) {
+        return idleTimeoutMs(prop, HostLoad.loadAverage(), HostProcessors.count());
+    }
+
+    /** {@link #idleTimeoutMs()} with its inputs explicit. */
+    static long idleTimeoutMs(@Nullable String setting, double loadAverage, int processors) {
+        if (setting != null && !setting.isBlank()) {
             try {
-                return Long.parseLong(prop.trim());
+                return Long.parseLong(setting.trim());
             } catch (NumberFormatException ignored) {
-                // fall through to default
+                // an unreadable setting is no setting
             }
         }
-        return 10 * 60_000L;
+        return DEFAULT_IDLE_MS * HostLoad.factor(loadAverage, processors);
     }
 }
