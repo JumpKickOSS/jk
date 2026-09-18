@@ -130,6 +130,13 @@ One lock, one solve: the workspace's dependencies are resolved together, and a r
 it — an edge that declares `1.0` where a sibling's declares `2.0` is a floor, and the workspace
 takes `2.0` for both, as it would in one project.
 
+A member's own coordinate is the member's everywhere. A dependency whose POM asks for a published
+`group:artifact` the workspace builds — `hbase-server` depending on `org.apache.hadoop:hadoop-common`
+inside the Hadoop reactor — is served by the member, as Maven's reactor stands in for a published
+artifact of the same coordinate: the lock carries no row for it, nothing only that published POM
+pulled is locked, and every classpath reads the member's output. The lock's notes name the first
+POM that asked.
+
 A member's platform BOMs — the root's `[platform-dependencies]`, its own, the BOM a framework
 table such as `[spring-boot]` injects, and those of the siblings it depends on — constrain that
 member's graph, and so do the [`[managed-dependencies]`](dependencies.md#managed-versions) entries
