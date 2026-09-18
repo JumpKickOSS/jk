@@ -66,7 +66,7 @@ class JobEnvelopeTest {
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         assertThat(ran).isFalse();
         assertThat(out.toString()).contains("shutting down");
-        assertThat(host.abandoned).isZero();
+        assertThat(host.abandoned).hasValue(0);
     }
 
     @Test
@@ -85,7 +85,7 @@ class JobEnvelopeTest {
         assertThat(ran).isTrue();
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish")))
                 .isTrue();
-        assertThat(host.finished).isEqualTo(1);
+        assertThat(host.finished).hasValue(1);
         assertThat(host.cleared).containsExactly(1L);
         // writeJournal must run before clearProgress: the real host retires the session on
         // clear, and takeAccumulator then returns null — permanent "Building" in jk jobs.
@@ -155,8 +155,8 @@ class JobEnvelopeTest {
         // teardownOrder entries after finished++ lands, and containsExactly iterating the live
         // synchronizedList mid-append flaked under parallel suite load (the "expected X to
         // contain exactly X" failure). Snapshot before asserting.
-        Await.until(Duration.ofSeconds(30), () -> !((host.finished == 0 || host.teardownOrder.size() < 2)));
-        assertThat(host.finished).isEqualTo(1);
+        Await.until(Duration.ofSeconds(30), () -> !((host.finished.get() == 0 || host.teardownOrder.size() < 2)));
+        assertThat(host.finished).hasValue(1);
         assertThat(List.copyOf(host.teardownOrder)).containsExactly("writeJournal", "clearProgress");
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish")))
                 .isTrue();

@@ -152,8 +152,8 @@ class ConfigShapeTest {
                 new Wither("withVariant", new Object[] {"beta", Map.of("B", "2")}, List.of("variant", "clientEnv")),
                 new Wither(
                         "withToolchainSpecs",
-                        new Object[] {"25", "graal-25", Path.of("/opt/graal-25")},
-                        List.of("jdkSpec", "graalSpec", "graalHome")));
+                        new Object[] {"25", "graal-25", Path.of("/opt/graal-25"), Path.of("/opt/temurin-25")},
+                        List.of("jdkSpec", "graalSpec", "graalHome", "javaHome")));
     }
 
     @Test

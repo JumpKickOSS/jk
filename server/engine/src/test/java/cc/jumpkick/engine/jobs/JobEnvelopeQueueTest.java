@@ -116,7 +116,7 @@ class JobEnvelopeQueueTest {
         // The line lands on the stream's writer thread; the dashboard frame follows on this one.
         Await.until(Duration.ofSeconds(5), () -> host.events.stream().anyMatch(e -> e.startsWith("request-queued:")));
         assertThat(secondRan).isFalse();
-        assertThat(host.activePlans).as("a queued job holds no plan slot").isEqualTo(1);
+        assertThat(host.activePlans).as("a queued job holds no plan slot").hasValue(1);
 
         firstMayFinish.countDown();
         second.join(Duration.ofSeconds(10));
@@ -174,7 +174,7 @@ class JobEnvelopeQueueTest {
         assertThat(host.events).anyMatch(e -> e.startsWith("request-finish:") && e.contains("\"cancelled\":true"));
         assertThat(host.abandoned)
                 .as("no slot was claimed, so none is given back")
-                .isZero();
+                .hasValue(0);
         firstMayFinish.countDown();
     }
 
