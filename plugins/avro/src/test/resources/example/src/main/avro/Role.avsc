@@ -1,0 +1,1 @@
+{"type": "enum", "name": "Role", "namespace": "com.acme.events", "symbols": ["ADMIN", "USER"]}

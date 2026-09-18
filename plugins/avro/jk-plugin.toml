@@ -1,0 +1,33 @@
+# The built-in Avro preset's declarative manifest. Owns [avro]; the code layer turns the table into
+# one generator entry — jk's own main over Avro's SpecificCompiler, run over the module's schema,
+# protocol and IDL files, into the generate stage, contributed as sources — and runs it through the
+# generator plugin's step. `jk explain` shows that entry as the step `generate-avro`.
+
+[plugin]
+id        = "avro"
+table     = "avro"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-avro"
+protocol-prefix = "##JKAVRO:"
+
+[schema]
+src              = { type = "string", default = "src/main/avro", hint = "the module-relative directory holding the .avsc schemas, .avpr protocols and .avdl IDL files; a schema may name a type another file defines" }
+string-type      = { type = "string", default = "String", hint = "the Java type of an Avro string field: String, CharSequence or Utf8" }
+field-visibility = { type = "string", default = "PRIVATE", hint = "the generated record fields' visibility: PRIVATE or PUBLIC" }
+setters          = { type = "bool", default = true, hint = "generate a setter per field" }
+optional-getters = { type = "bool", default = false, hint = "generate an Optional-returning getter beside each nullable field's getter" }
+decimal-logical-type = { type = "bool", default = false, hint = "map the decimal logical type to BigDecimal instead of ByteBuffer" }
+encoding         = { type = "string", hint = "the generated sources' encoding" }
+version          = { type = "string", default = "1.12.2", example = "1.12.2", hint = "the Avro release; a bare version is exact, and the module's avro dependency is expected to match" }
+
+# The compiler and its runtime closure (avro, Jackson, Velocity) come together; the IDL reader
+# rides beside it so a .avdl file compiles too.
+[[contribute.step-dependency]]
+artifact   = "avro-compiler"
+coordinate = "org.apache.avro:avro-compiler:${config.version}"
+with       = ["org.apache.avro:avro-idl:${config.version}"]
+transitive = true
+for-step   = "generate-avro"

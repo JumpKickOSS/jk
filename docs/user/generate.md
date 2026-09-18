@@ -163,6 +163,59 @@ The step is `generate-taglib`; a view added or renamed re-runs it. `jk import` w
 from a POM's `maven-hpi-plugin` `generate-taglib-interface` goal
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
+## `[avro]` — Avro schemas, protocols and IDL
+
+[Avro](https://avro.apache.org/)'s `SpecificCompiler` generates a class per record, enum and
+fixed type and an interface per protocol. The preset runs it over the module's Avro directory
+the way `avro-maven-plugin` does, with one parser shared by every schema, so a `.avsc` may name
+a type another file defines in whatever order the files come: a schema whose names are not yet
+defined waits for the files that define them.
+
+```toml
+[avro]
+# src              = "src/main/avro"   # .avsc schemas, .avpr protocols and .avdl IDL files
+# string-type      = "String"          # the Java type of an Avro string: String, CharSequence or Utf8
+# field-visibility = "PRIVATE"         # or PUBLIC
+# setters          = true
+# optional-getters = false             # an Optional-returning getter beside each nullable field's
+# decimal-logical-type = false         # decimal as BigDecimal instead of ByteBuffer
+# encoding         = "UTF-8"
+# version          = "1.12.2"          # the Avro release; a bare version is exact
+
+[dependencies]
+avro = "1.12.2"                        # the generated classes read it at run time; keep it at the compiler's version
+```
+
+The step is `generate-avro`; a schema edit re-runs it, and the classes join the compile. `jk import`
+writes the table from a POM's `avro-maven-plugin`
+([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+
+## `[jaxb]` — XML schemas through xjc
+
+The JAXB schema compiler, [xjc](https://eclipse-ee4j.github.io/jaxb-ri/), generates a class per
+complex type and an `ObjectFactory` per package. The preset runs it over the module's schema
+directory in one invocation — every `.xsd` under `src`, the bindings named in `bindings` — and
+passes `-no-header`, so an unchanged schema is a byte-identical output.
+
+```toml
+[jaxb]
+# src       = "src/main/xsd"                 # every .xsd under it, in one xjc run
+# package   = "com.acme.schema"              # one package for every class (-p), in place of the namespaces'
+# bindings  = ["src/main/xjb"]               # .xjb files or directories of them (-b)
+# encoding  = "UTF-8"
+# extension = false                          # vendor extensions in the bindings (-extension)
+# arguments = ["-npa", "-mark-generated"]    # further xjc arguments
+# version   = "4.0.9"                        # the jaxb-xjc release; a bare version is exact
+
+[dependencies]
+jakarta-xml-bind-api = "4.0.5"               # the generated classes' annotations
+jaxb-runtime = "4.0.9"                       # the JAXB implementation at run time, on xjc's line
+```
+
+The step is `generate-jaxb`; a schema or binding edit re-runs it, and the classes join the
+compile. `jk import` writes the table from a POM's `jaxb2-maven-plugin` (MojoHaus) or
+`maven-jaxb2-plugin` (jvnet) ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+
 ## GraphQL — a recipe, not a table
 
 Spring for GraphQL, the common JVM server, is schema-first with annotated controllers and needs no
@@ -215,9 +268,9 @@ step naming the tool, the directory it was bound for and the cause.
 
 ## Presets to come
 
-`[jooq]`, `[avro]` and `[jaxb]` follow the same shape `[openapi]`, `[localizer]` and `[antlr]`
-take — a manifest with a schema and a tool coordinate, a small expansion into a generator entry.
-Until they land, each tool works through `[generate]` today.
+`[jooq]` follows the same shape `[openapi]`, `[avro]` and `[antlr]` take — a manifest with a
+schema and a tool coordinate, a small expansion into a generator entry. Until it lands, jOOQ
+codegen works through `[generate]` today.
 
 ## Related
 

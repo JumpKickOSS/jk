@@ -1,0 +1,16 @@
+# XML schemas as generated classes: [jaxb] runs xjc over src/main/xsd in the generate stage, the
+# classes join the compile, and a schema edit regenerates.
+name    = "jaxb-orders"
+group   = "com.acme"
+version = "1.0.0"
+java    = 25
+
+[application]
+main = "com.acme.Main"
+
+[jaxb]
+package = "com.acme.order"
+
+[dependencies]
+jakarta-xml-bind-api = { group = "jakarta.xml.bind", name = "jakarta.xml.bind-api", version = "4.0.5" }
+jaxb-runtime = { group = "org.glassfish.jaxb", version = "4.0.9" }

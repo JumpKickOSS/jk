@@ -33,6 +33,8 @@ class BuiltInManifestClasspathTest {
                         "localizer",
                         "antlr",
                         "taglib",
+                        "avro",
+                        "jaxb",
                         "minified");
     }
 

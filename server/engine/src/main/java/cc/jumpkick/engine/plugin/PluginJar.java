@@ -49,6 +49,8 @@ public enum PluginJar {
     LOCALIZER("jk-localizer", "jk.localizer.plugin.jar"),
     ANTLR("jk-antlr", "jk.antlr.plugin.jar"),
     TAGLIB("jk-taglib", "jk.taglib.plugin.jar"),
+    AVRO("jk-avro", "jk.avro.plugin.jar"),
+    JAXB("jk-jaxb", "jk.jaxb.plugin.jar"),
     MINIFIED("jk-minified", "jk.minified.plugin.jar");
 
     private final String artifactId;
