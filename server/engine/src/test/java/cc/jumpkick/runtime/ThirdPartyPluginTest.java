@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
@@ -14,14 +15,17 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
+import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
@@ -30,9 +34,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * P5 acceptance (build-plugins plan §4): a third-party hello-world table plugin, published to a
- * (file://) repo, declared under {@code [plugins]} — resolved, SHA-pinned, manifest-extracted,
- * schema-validated, contribution-applied, and its worker code trust-gated end to end.
+ * A third-party hello-world table plugin, published to a {@code file://} repository, declared under
+ * {@code [plugins]} — resolved, SHA-pinned, manifest-extracted, schema-validated,
+ * contribution-applied, and its worker code trust-gated end to end.
+ *
+ * <p>The plugin forks with the SDK floor its consumer's lock carries, so the fixture repository
+ * also serves {@code jk-plugin-sdk} and {@code jk-host} at the running jk's version — the jars
+ * this checkout's own build packaged — and is declared under the JumpKick repository's name, the
+ * one first-party coordinates resolve from; nothing reaches the network. The test needs a prior
+ * {@code jk build} for those jars and skips without one.
  */
 @Tag("slow")
 class ThirdPartyPluginTest {
@@ -85,6 +95,7 @@ class ThirdPartyPluginTest {
     @Test
     void hello_world_plugin_runs_from_a_published_coordinate(@TempDir Path tmp) throws Exception {
         Path repo = publishFixture(tmp.resolve("repo"));
+        publishSdkFloor(repo);
         Path cache = tmp.resolve("cache");
         Path project = Files.createDirectories(tmp.resolve("proj"));
         Path stateDir = Files.createDirectories(tmp.resolve("state"));
@@ -107,8 +118,10 @@ class ThirdPartyPluginTest {
                 integration = false
                 install = false
 
+                # The fixture stands in for the JumpKick repository, so the SDK floor's first-party
+                # coordinates resolve from it too.
                 [repositories]
-                local = "%s"
+                jumpkick = "%s"
 
                 [plugins]
                 hello = { group = "%s", name = "%s", version = "%s", sha256 = "%s" }
@@ -139,15 +152,24 @@ class ThirdPartyPluginTest {
         cas.putFile(fetched.fetched().cachePath(), hex);
         var entry = new Lockfile.PluginEntry(
                 GROUP + ":" + ARTIFACT, VERSION, "sha256:" + fetched.fetched().sha256());
+        // The SDK floor the plugin forks with rides in the consumer's lock as plugin-scoped rows;
+        // the manifest names no sdk, so the floor is the running jk's and the lock notes it.
+        List<String> notes = new ArrayList<>();
+        List<Lockfile.Artifact> sdkRows =
+                PluginSdkFloor.rows(repos, build.plugins().getFirst(), null, notes::add);
+        assertThat(sdkRows).extracting(Lockfile.Artifact::version).containsOnly(JkVersion.VERSION);
+        assertThat(notes).singleElement().asString().contains("declares no SDK version");
         LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        null,
-                        null,
-                        List.of(),
-                        List.of(entry)),
+                PluginSdkFloor.withRows(
+                        new Lockfile(
+                                Lockfile.CURRENT_VERSION,
+                                "test",
+                                Lockfile.RESOLUTION_ALGORITHM,
+                                null,
+                                null,
+                                List.of(),
+                                List.of(entry)),
+                        sdkRows),
                 project.resolve("jk-lock.toml"));
         assertThat(PluginDescriptorOps.ensureMaterialized(project, cache)).isTrue();
 
@@ -238,6 +260,27 @@ class ThirdPartyPluginTest {
         // The refusal left no memo behind: the right pin still answers with the right bytes.
         assertThat(repos.tryFetchArtifact(coord, hex).orElseThrow().fetched().sha256())
                 .isEqualToIgnoringCase(hex);
+    }
+
+    /**
+     * The SDK floor in Maven layout under {@code repo}: the {@code jk-plugin-sdk} and {@code jk-host}
+     * jars and POMs this checkout's {@code jk build} packaged, at the running jk's version.
+     */
+    private static void publishSdkFloor(Path repo) throws IOException {
+        Path root = RepoRoot.find(ThirdPartyPluginTest.class);
+        for (String artifact : PluginSdkFloor.ARTIFACTS) {
+            Path lib = root.resolve("target/shared")
+                    .resolve(artifact.substring("jk-".length()))
+                    .resolve("lib");
+            String stem = artifact + "-" + JkVersion.VERSION;
+            assumeTrue(
+                    Files.isRegularFile(lib.resolve(stem + ".jar")) && Files.isRegularFile(lib.resolve(stem + ".pom")),
+                    "the checkout's own " + artifact + " jar and POM are the fixture: run `jk build` first");
+            Path dir = Files.createDirectories(
+                    repo.resolve("cc/jumpkick").resolve(artifact).resolve(JkVersion.VERSION));
+            Files.copy(lib.resolve(stem + ".jar"), dir.resolve(stem + ".jar"));
+            Files.copy(lib.resolve(stem + ".pom"), dir.resolve(stem + ".pom"));
+        }
     }
 
     /** Compile the fixture main, jar it with the manifest, publish to a Maven-layout dir. */
