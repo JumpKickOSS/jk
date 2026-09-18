@@ -3,10 +3,14 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.gradle.GradleBuildImport;
+import cc.jumpkick.gradle.GradleModelQuery;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.PomImporter;
@@ -56,12 +60,16 @@ public final class ImportVerb implements HostedVerb {
         return List.of("import");
     }
 
-    /** Auto-detects the source build file — the same order the CLI uses. */
+    /** The build files an import auto-detects, in the order tried — the same order the CLI uses. */
+    public static final List<String> AUTO_DETECT_ORDER =
+            List.of("build.gradle.kts", "build.gradle", "settings.gradle.kts", "settings.gradle", "pom.xml");
+
+    /** Auto-detects the source build file. */
     @Override
     public String decodeJob(JobSpec spec) {
         Path dir = Path.of(spec.dir());
         Path source = null;
-        for (String candidate : List.of("build.gradle.kts", "build.gradle", "pom.xml")) {
+        for (String candidate : AUTO_DETECT_ORDER) {
             Path p = dir.resolve(candidate);
             if (Files.isRegularFile(p)) {
                 source = p;
@@ -70,7 +78,7 @@ public final class ImportVerb implements HostedVerb {
         }
         if (source == null) {
             throw new IllegalArgumentException(
-                    "no build file found in " + dir + " (looked for build.gradle.kts, build.gradle, pom.xml)");
+                    "no build file found in " + dir + " (looked for " + String.join(", ", AUTO_DETECT_ORDER) + ")");
         }
         return new ImportRequest(
                         source.toString(),
@@ -109,8 +117,13 @@ public final class ImportVerb implements HostedVerb {
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 Cas cas = JkStores.storeCas();
                 PomImporter poms = new PomImporter(RepoGroupBuilder.buildForImport(cas), cas);
+                // Gradle's own evaluation runs in a fork on a provisioned distribution: the engine's
+                // heap never hosts Gradle, and the wrapper's checksum vouches for the download.
+                GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                        JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, Path.of(body.tmpDir())));
                 BuildPlan plan = CompatPlans.importBuildPlan(
                         poms,
+                        gradle,
                         Path.of(body.source()),
                         Path.of(body.out()),
                         baseDir,

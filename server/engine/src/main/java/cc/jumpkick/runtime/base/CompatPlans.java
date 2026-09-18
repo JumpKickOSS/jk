@@ -7,6 +7,7 @@ import cc.jumpkick.compat.ProjectImport;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
+import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.gradle.GradleResolver;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.command.Exit;
@@ -49,11 +50,13 @@ public final class CompatPlans {
     /**
      * Build the import plan. All paths arrive absolute (the command pre-flighted source detection
      * and overwrite checks); {@code report} may be {@code null}; {@code poms} resolves the parents a
-     * POM inherits. Conversion runs in-process so {@code [[import.gradle-plugin]]} rules come from
-     * the engine registry, not a worker catalog.
+     * POM inherits and {@code gradle} reads a Gradle build, its stages streamed as {@code note}
+     * lines. Conversion runs in-process so {@code [[import.gradle-plugin]]} rules come from the
+     * engine registry, not a worker catalog; only Gradle's own evaluation runs in a fork.
      */
     public static BuildPlan importBuildPlan(
             PomImporter poms,
+            GradleBuildImport gradle,
             Path source,
             Path out,
             Path baseDir,
@@ -68,12 +71,14 @@ public final class CompatPlans {
                     ctx.label("convert " + source.getFileName());
                     ProjectImport.Outcome outcome = ProjectImport.run(
                             poms,
+                            gradle,
                             source.toAbsolutePath(),
                             out.toAbsolutePath(),
                             baseDir == null ? null : baseDir.toAbsolutePath(),
                             tmpDir == null ? null : tmpDir.toAbsolutePath(),
                             force,
-                            report == null ? null : report.toAbsolutePath());
+                            report == null ? null : report.toAbsolutePath(),
+                            note -> observer.onNote("note", note));
                     for (Path wrote : outcome.wrote()) observer.onNote("wrote", wrote.toString());
                     if (outcome.error() != null && outcome.exit() != 0) ctx.put(ERROR, outcome.error());
                     ctx.put(WARNINGS, outcome.warnings());

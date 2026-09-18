@@ -215,8 +215,8 @@ test workers, a separate knob. Filter with `-m api,worker`, globs, `--affected` 
 **Explain.** `jk explain` is the day-to-day “why would this rebuild?” tool (cache hit/miss + ETA).
 Prefer it over Gradle build scans for that question.
 
-**Adopt, don't rewrite on day one.** `jk import` turns a POM (high fidelity) or a declarative Gradle
-file into `jk.toml`. `jk export maven|gradle|bom`. `jk ide` writes IntelliJ / VS Code / BSP. `jk mvn`
+**Adopt, don't rewrite on day one.** `jk import` turns a POM (high fidelity) or a Gradle build
+(evaluated by Gradle in a fork, every module a workspace member) into `jk.toml`. `jk export maven|gradle|bom`. `jk ide` writes IntelliJ / VS Code / BSP. `jk mvn`
 / `jk gradle` run the *real* other tool when a tree is not imported yet.
 
 **Ship.** Thin jar from `jk build`; fat/minified via `jk assemble`; Graal native-image `jk native`;

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ProjectImport;
+import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
@@ -106,12 +107,14 @@ class PomDeclaredPinsImportTest {
 
         ProjectImport.Outcome outcome = ProjectImport.run(
                 TestImporters.over(tmp, repo.toUri()),
+                GradleBuildImport.scannerOnly(),
                 pom,
                 pom.resolveSibling("jk.toml"),
                 pom.getParent(),
                 null,
                 true,
-                report);
+                report,
+                note -> {});
 
         assertThat(outcome.exit()).isZero();
         assertThat(Files.readString(report))
