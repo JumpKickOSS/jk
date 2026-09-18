@@ -79,17 +79,25 @@ public final class GraalResolver {
     }
 
     /**
-     * Whether {@code javaRelease} constrains this spec: only when the spec names a flavour and no
-     * version, and is not a keyword.
+     * Whether {@code spec} names a particular GraalVM rather than a flavour of one.
      *
-     * <p>A spec with a major ({@code graalvm-25}) is an answer already. A keyword ({@code native},
-     * {@code lts}) is resolved against the catalog by {@link #install}, which has its own rules and
-     * would not know what {@code native-25} meant.
+     * <p>A major ({@code graalvm-25}) names one. So does a keyword ({@code native}, {@code lts}),
+     * which {@link #install} resolves against the catalog by its own rules and which would not
+     * know what {@code native-25} meant. A bare vendor token ({@code graalvm}, {@code graalvm-ce})
+     * does not: it says which flavour, and every installed major of it matches.
      */
-    private static boolean floorApplies(String spec, int javaRelease) {
-        return javaRelease > 0
-                && !JdkKeywords.isKeyword(spec)
-                && JdkSelector.parseFlexible(spec).majorOpt().isEmpty();
+    private static boolean namesOne(String spec) {
+        if (spec.isBlank()) return false;
+        return JdkKeywords.isKeyword(spec)
+                || JdkSelector.parseFlexible(spec).majorOpt().isPresent();
+    }
+
+    private static @Nullable String blankToNull(@Nullable String spec) {
+        return spec == null || spec.isBlank() ? null : spec;
+    }
+
+    private static String announceFor(String flavour, int javaRelease) {
+        return javaRelease > 0 ? "graal = \"" + flavour + "\", java = " + javaRelease : "graal = \"" + flavour + "\"";
     }
 
     private static @Nullable String firstNonBlank(@Nullable String... values) {
@@ -106,22 +114,19 @@ public final class GraalResolver {
         // shipped no client answer. What is the CLI's alone is what happens when a tier names a
         // Graal that is not installed: install it, or offer to.
 
-        // 1. Explicit spec: --graal switch (jk.graal) > project.graal > JK_GRAAL env.
+        // 1. A spec that NAMES one: --graal switch (jk.graal) > project.graal > JK_GRAAL env.
         String effective = firstNonBlank(SessionContext.current().graalSpec(), graalSpec, System.getenv("JK_GRAAL"));
-        if (effective != null && !effective.isBlank()) {
-            if (floorApplies(effective, javaRelease)) {
-                // A flavour with no version, and a module that says which Java it targets: the
-                // installed Graal that can build it, else download one that can rather than
-                // whatever is newest in the catalog.
-                Optional<Path> atLeast = GraalHomeLookup.bySpecAtLeast(registry, effective, javaRelease);
-                if (atLeast.isPresent()) return atLeast.get();
-                String floored = effective + "-" + javaRelease;
-                return install(floored, registry, /*announce*/ "graal = \"" + effective + "\", java = " + javaRelease);
-            }
+        if (effective != null && namesOne(effective)) {
             Optional<Path> hit = GraalHomeLookup.bySpec(registry, effective);
             if (hit.isPresent()) return hit.get();
             return install(effective, registry, /*announce*/ "graal = \"" + effective + "\"");
         }
+        // Otherwise a flavour at most ("graalvm"), which is what a module linking a native image
+        // and pinning no graal resolves with. A flavour is a preference, not an answer, so the
+        // tiers below still decide — the lock's [graal] pin most of all. Treating it as an answer
+        // returned here, and a pinned lock went unread for exactly the modules that always build
+        // native.
+        @Nullable String flavour = blankToNull(effective);
 
         // 2. Lock [graal] pin — ahead of the inventory pointer and de-facto policy,
         //    mirroring the JDK side's lock tier. Major-or-better among installed wins;
@@ -138,13 +143,17 @@ public final class GraalResolver {
                     "[graal] " + lockGraal.vendor() + " " + lockGraal.version() + " (lock)");
         }
 
-        // 3. The `jk jdk graal` default-graal pointer, if one is set and usable.
-        Optional<Path> pointer = GraalHomeLookup.byInventory(registry);
+        // 3. The `jk jdk graal` default-graal pointer, if one is set, usable, and able to build
+        //    what this module targets.
+        Optional<Path> pointer = GraalHomeLookup.byInventory(registry, javaRelease);
         if (pointer.isPresent()) return pointer.get();
 
-        // 4. De-facto preferred installed Graal (same policy as the shell hook).
-        Optional<Path> defacto = GraalHomeLookup.byPolicy(registry);
-        if (defacto.isPresent()) return defacto.get();
+        // 4. The best installed Graal: of the named flavour when there is one, clearing the
+        //    module's release either way.
+        Optional<Path> installed = flavour != null
+                ? GraalHomeLookup.bySpecAtLeast(registry, flavour, javaRelease)
+                : GraalHomeLookup.byPolicy(registry, javaRelease);
+        if (installed.isPresent()) return installed.get();
 
         // 5. Ambient native-image search (project JDK → $GRAALVM_HOME → PATH).
         // projectJavaHome may be null (jk runs as a native image with no java.home,
@@ -166,6 +175,13 @@ public final class GraalResolver {
         if (binary.isPresent()) return graalHomeOf(binary.get(), projectJavaHome);
 
         // 6. Missing — offer Oracle GraalVM (prompt / --yes / non-TTY fail).
+        if (flavour != null) {
+            // A flavour was asked for and nothing installed can serve it: install one that can,
+            // chosen for the release rather than for being newest. No prompt — the module said it
+            // always builds native, so a GraalVM is not optional.
+            String spec = javaRelease > 0 ? flavour + "-" + javaRelease : flavour;
+            return install(spec, registry, /*announce*/ announceFor(flavour, javaRelease));
+        }
         return offerOracleGraalVm(projectJavaHome, registry);
     }
 

@@ -6,6 +6,7 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JavacLevel;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.task.ActionKey;
 import java.io.BufferedReader;
@@ -61,7 +62,8 @@ public final class JavacRunner {
                 // No PluginAot on bare `javac` — AOT is for `java … PluginMain` workers only
                 // (jk-java-compiler ToolProvider host and kotlin-compiler). See PluginAot.
                 command.add("@" + argfile);
-                ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
+                ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(command), javaHome)
+                        .redirectErrorStream(true);
                 Process process = JobWorkers.start(pb);
                 List<String> stray = new ArrayList<>();
                 List<CompileResult.Diagnostic> diagnostics;

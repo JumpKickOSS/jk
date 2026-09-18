@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -78,6 +79,43 @@ final class AlwaysNativeGraal {
         List<Module> out = new ArrayList<>();
         for (Module m : modules) {
             if (selected.contains(m.dir().toAbsolutePath().normalize())) out.add(m);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * {@code modules} with each one's {@code java} release taken from the engine's summary of the
+     * workspace root, where the root's inheritance has already been applied.
+     *
+     * <p>{@link #fromManifests} reads each member's own manifest, which is the bootstrap read and
+     * knows nothing of a release the root declares for everybody. A member that inherits its
+     * {@code java} would carry 0 from that read — no floor — and be served by any GraalVM at all.
+     * The summary is one engine round-trip for the whole workspace, the same one
+     * {@code JdkPreflight} makes for the JDK side. Without it (no engine answer) the manifest
+     * values stand.
+     */
+    static List<Module> withEffectiveReleases(List<Module> modules, @Nullable ProjectInfo rootInfo) {
+        if (rootInfo == null || modules.isEmpty()) return modules;
+        Map<Path, Integer> byDir = new LinkedHashMap<>();
+        for (var listed : rootInfo.moduleToolchains().entrySet()) {
+            byDir.put(Path.of(listed.getKey()).toAbsolutePath().normalize(), listed.getValue().javaRelease());
+        }
+        if (!rootInfo.workspaceRootDir().isBlank()) {
+            byDir.putIfAbsent(
+                    Path.of(rootInfo.workspaceRootDir()).toAbsolutePath().normalize(), rootInfo.javaRelease());
+        }
+        return withReleases(modules, byDir);
+    }
+
+    /**
+     * The rule {@link #withEffectiveReleases} applies, over a plain map: a release the summary
+     * knows wins, and a module the summary says nothing about keeps what its manifest declared.
+     */
+    static List<Module> withReleases(List<Module> modules, Map<Path, Integer> byDir) {
+        List<Module> out = new ArrayList<>();
+        for (Module m : modules) {
+            int effective = byDir.getOrDefault(m.dir().toAbsolutePath().normalize(), 0);
+            out.add(effective > 0 ? new Module(m.dir(), m.graalSpec(), effective) : m);
         }
         return List.copyOf(out);
     }

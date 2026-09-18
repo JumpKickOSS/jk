@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.runtime.base.DokkaResolver;
@@ -45,11 +46,13 @@ public final class DokkaTool {
                     config,
                     configJson(tool, outDir, moduleName, moduleVersion, sources, classpath, jdkVersion),
                     StandardCharsets.UTF_8);
-            ProcessBuilder pb = new ProcessBuilder(
-                            JdkFingerprint.java(javaHome).toString(),
-                            "-jar",
-                            tool.cli().toAbsolutePath().toString(),
-                            config.toAbsolutePath().toString())
+            ProcessBuilder pb = JavaHomes.underJdk(
+                            new ProcessBuilder(
+                                    JdkFingerprint.java(javaHome).toString(),
+                                    "-jar",
+                                    tool.cli().toAbsolutePath().toString(),
+                                    config.toAbsolutePath().toString()),
+                            javaHome)
                     .directory(workdir.toFile())
                     .redirectErrorStream(true);
             Process proc = JobWorkers.start(pb);

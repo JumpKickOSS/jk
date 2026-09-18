@@ -367,7 +367,9 @@ final class KtsSession {
         cmd.add(Classpaths.join(cp));
         cmd.add("cc.jumpkick.kts.JkKtsHostKt");
 
-        ProcessBuilder pb = new ProcessBuilder(cmd);
+        ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
+        // Not redirectErrorStream: the child's stdout carries the protocol, and a JVM warning on
+        // stderr merged into it would be read as a reply.
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         Path cacheDir = compiledScriptCache();
         Files.createDirectories(cacheDir);
