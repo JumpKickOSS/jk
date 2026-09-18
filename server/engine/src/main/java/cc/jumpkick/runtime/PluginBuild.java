@@ -361,6 +361,15 @@ public final class PluginBuild {
                 : MemberRows.view(lock, lockFile, moduleDir).platformPins();
     }
 
+    /**
+     * The lock at {@code lockFile} as the module at {@code moduleDir} reads it: a workspace member's
+     * partition rows in place of the workspace's for the coordinates it disagrees on, so a step's
+     * classpaths carry the jars the member's compile does ({@link MemberRows#view}).
+     */
+    private static Lockfile memberLock(Path lockFile, Path moduleDir) throws IOException {
+        return MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
+    }
+
     /** The lock at {@code lockFile}, or null when there is none readable — a pin lookup before the first lock. */
     private static @Nullable Lockfile lockOrNull(Path lockFile) {
         if (!Files.isRegularFile(lockFile)) return null;
@@ -458,7 +467,7 @@ public final class PluginBuild {
         List<Path> classpath = new ArrayList<>();
         var resolver = new ClasspathResolver(cas);
         if (Files.exists(lockFile)) {
-            classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), scopes, true, project));
+            classpath.addAll(resolver.classpathFor(memberLock(lockFile, projectDir), scopes, true, project));
         }
         WorkspaceClasspath.Result siblings = siblingsOrNone(projectDir, project, siblingScopes);
         for (Path jar : siblings.jars()) {
@@ -515,7 +524,7 @@ public final class PluginBuild {
         if (Files.exists(lockFile)) {
             var resolver = new ClasspathResolver(cas);
             for (var entry :
-                    resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true, project)) {
+                    resolver.entriesFor(memberLock(lockFile, projectDir), ClasspathResolver.RUNTIME, true, project)) {
                 var a = entry.artifact();
                 String ext = entry.container() != null ? ".aar" : ".jar";
                 out.add(new ProdEntry(
@@ -550,15 +559,16 @@ public final class PluginBuild {
     /**
      * The test runtime entries a step sees ({@code In.testRuntimeEntries()}): the lock's test
      * closure in lock order, then the workspace siblings the test scopes reach. What the forked
-     * test JVM's classpath is made of, as entries with coordinates.
+     * test JVM's classpath is made of, as entries with coordinates; the rows resolve against
+     * {@code cas} as in {@link #productionEntries}, a row the store lacks left out.
      */
-    public static List<ProdEntry> testRuntimeEntries(Path projectDir, Path lockFile, JkBuild project)
+    public static List<ProdEntry> testRuntimeEntries(Path projectDir, Cas cas, Path lockFile, JkBuild project)
             throws IOException {
         List<ProdEntry> out = new ArrayList<>();
         if (Files.exists(lockFile)) {
-            var resolver = new ClasspathResolver(JkStores.storeCas());
+            var resolver = new ClasspathResolver(cas);
             for (var entry :
-                    resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.TEST, false, project)) {
+                    resolver.entriesFor(memberLock(lockFile, projectDir), ClasspathResolver.TEST, false, project)) {
                 var a = entry.artifact();
                 out.add(new ProdEntry(
                         a.moduleArtifact() + "-" + a.version() + ".jar",
@@ -698,7 +708,7 @@ public final class PluginBuild {
         if (declaration == null || !PluginSdkFloor.needsFloor(declaration)) return List.of();
         Path lockFile = LockPaths.lockFile(active.moduleDir());
         List<Path> floor = Files.isRegularFile(lockFile)
-                ? PluginSdkFloor.classpath(LockfileReader.read(lockFile), JkStores.storeCas())
+                ? PluginSdkFloor.classpath(memberLock(lockFile, active.moduleDir()), JkStores.storeCas())
                 : List.of();
         if (floor.isEmpty()) {
             throw new IOException("plugin " + active.manifest().id() + ": "
