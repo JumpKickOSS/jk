@@ -53,6 +53,7 @@ checkstyle-suppressions = { type = "string", example = "config/nohttp-suppressio
 checkstyle-header = { type = "string", example = "config/header.txt", hint = "the run's header file, as the table's checkstyle-header" }
 checkstyle-properties = { type = "string-map", example = "{ \"checkstyle.build.directory\" = \"target\" }", hint = "properties the run's rule set reads, as the table's checkstyle-properties" }
 checkstyle-classpath = { type = "string-list", example = "[\"io.spring.nohttp:nohttp-checkstyle:0.0.11\"]", hint = "coordinates whose jars join this run's Checkstyle classpath, as the table's checkstyle-classpath" }
+checkstyle-version = { type = "string", inherit = true, example = "12.1.2", hint = "the Checkstyle release this run forks; the table's checkstyle-version unless written" }
 sources        = { type = "string-list", default = ["src/main/java"], hint = "the module-relative roots this run reads; \".\" for every file of the module" }
 exclude        = { type = "string-list", default = [], hint = "module-relative Ant-style path globs this run leaves out" }
 fail-on        = { type = "string", default = "error", hint = "the finding severity that fails this run: error, warning or never" }
@@ -78,12 +79,13 @@ artifact   = "checkstyle-header"
 url        = "${config.checkstyle-header}"
 for-step   = "lint-checkstyle"
 
-# Each [lint.<name>] run forks the table's Checkstyle release over its own rule set, classpath,
-# suppressions and header, fetched for that run's step alone.
+# Each [lint.<name>] run forks its own Checkstyle release — the table's unless the entry writes
+# checkstyle-version — over its own rule set, classpath, suppressions and header, fetched for that
+# run's step alone.
 [[contribute.step-dependency]]
 per-entry  = true
 artifact   = "checkstyle-${entry.name}"
-coordinate = "com.puppycrawl.tools:checkstyle:${config.checkstyle-version}"
+coordinate = "com.puppycrawl.tools:checkstyle:${entry.checkstyle-version}"
 transitive = true
 for-step   = "lint-checkstyle-${entry.name}"
 

@@ -326,9 +326,11 @@ public final class PluginContributions {
                     continue;
                 }
                 // per-entry: the one declaration, once per [<table>.<name>] entry in its scope; an
-                // entry that leaves a key the coordinate names unset declares no such tool.
+                // entry that leaves a key the coordinate names unset declares no such tool, unless
+                // the key inherits and the table sets it.
                 for (var entry : config.entries().entrySet()) {
-                    Interpolation.Entry scope = new Interpolation.Entry(entry.getKey(), entry.getValue());
+                    Interpolation.Entry scope =
+                            new Interpolation.Entry(entry.getKey(), entryValues(manifest, config, entry.getValue()));
                     if (!Interpolation.entryProvides(sd.coordinate(), scope)) continue;
                     if (!Interpolation.entryProvides(sd.url(), scope)) continue;
                     StepDep dep = toolDependency(sd, config, build.project(), manifest.id(), kind, scope);
@@ -336,6 +338,23 @@ public final class PluginContributions {
                 }
             }
         }
+        return out;
+    }
+
+    /**
+     * An entry's values, with the table's value under every entry-schema key marked {@code
+     * inherit} that the entry leaves unset: the run's own release over the table's shared one.
+     */
+    static Map<String, Object> entryValues(PluginDescriptor manifest, PluginConfig config, Map<String, Object> own) {
+        Map<String, PluginDescriptor.SchemaKey> keys =
+                manifest.entrySchema() == null ? null : manifest.subSchemas().get(manifest.entrySchema());
+        if (keys == null) return own;
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (PluginDescriptor.SchemaKey key : keys.values()) {
+            Object shared = config.values().get(key.name());
+            if (key.inherit() && !own.containsKey(key.name()) && shared != null) out.put(key.name(), shared);
+        }
+        out.putAll(own);
         return out;
     }
 

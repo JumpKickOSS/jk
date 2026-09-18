@@ -116,6 +116,13 @@ public final class PluginDescriptors {
                 throw new JkBuildParseException(displayPath + ".sub-schema." + entrySchema + " declares `"
                         + Interpolation.ENTRY_NAME + "`, which is the entry's own table name (${entry.name})");
             }
+            for (PluginDescriptor.SchemaKey key : keys.values()) {
+                PluginDescriptor.SchemaKey shared = key.inherit() ? schema.get(key.name()) : null;
+                if (key.inherit() && (shared == null || shared.type() != key.type())) {
+                    throw new JkBuildParseException(displayPath + ".sub-schema." + entrySchema + "." + key.name()
+                            + " inherits, so the [schema] must declare `" + key.name() + "` with the same type");
+                }
+            }
             entryKeys = keys.keySet();
         }
 
@@ -166,7 +173,8 @@ public final class PluginDescriptors {
                             defaultValue,
                             spec.getString("example"),
                             spec.getString("hint"),
-                            Boolean.TRUE.equals(spec.getBoolean("secret"))));
+                            Boolean.TRUE.equals(spec.getBoolean("secret")),
+                            Boolean.TRUE.equals(spec.getBoolean("inherit"))));
         }
         return schema;
     }

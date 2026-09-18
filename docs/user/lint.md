@@ -58,8 +58,9 @@ exclude              = ["**/target/**/*", "**/.git/**/*"]
 
 An entry carries its own `checkstyle`, `checkstyle-suppressions`, `checkstyle-header`,
 `checkstyle-properties`, `checkstyle-classpath`, `sources`, `exclude` and `fail-on` (`error`
-unless written — the table's thresholds do not reach it) and runs the table's
-`checkstyle-version` as the step `lint-checkstyle-<name>`, with a report of its own that the
+unless written — the table's thresholds do not reach it) and runs as the step
+`lint-checkstyle-<name>` on its own `checkstyle-version` — the table's unless the entry writes
+one, so two runs may fork two Checkstyle releases — with a report of its own that the
 `lint.checkstyle` guard measure counts beside the table's. `jk import` writes one entry per
 further `maven-checkstyle-plugin` execution, named by the execution's id.
 
@@ -104,7 +105,10 @@ step's cache key, so the file is re-read, never re-fetched, until the URL change
 build ships inside a jar — spring-cloud-build's `checkstyle.xml` in spring-cloud-build-tools,
 with the `io.spring.javaformat` checks it names — is a resource of a `checkstyle-classpath` jar:
 the jars join Checkstyle's classpath and `checkstyle`, `checkstyle-suppressions` and
-`checkstyle-header` name their resources as Checkstyle resolves them. A rule set whose
+`checkstyle-header` name their resources as Checkstyle resolves them. `jk import` reads each jar
+the plugin's `<dependencies>` name and confirms every such resource is in one of them: a rule set,
+header or suppressions file no jar holds is a row in the report, since the step would find no
+configuration and lint nothing. A rule set whose
 `SuppressionFilter` reads `${checkstyle.suppressions.file}` — the property
 `maven-checkstyle-plugin` binds `<suppressionsLocation>` to — gets it from
 `checkstyle-suppressions`, one whose `Header` check reads `${checkstyle.header.file}` from

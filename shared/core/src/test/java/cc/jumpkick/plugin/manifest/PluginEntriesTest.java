@@ -26,6 +26,9 @@ class PluginEntriesTest {
             id = "entries-fixture"
             table = "entries-fixture"
 
+            [schema]
+            release = { type = "string" }
+
             [entries]
             schema = "thing"
 
@@ -34,6 +37,7 @@ class PluginEntriesTest {
             args = { type = "string-list", default = [] }
             options = { type = "string-map", default = { verbose = "false" } }
             unpack = { type = "string" }
+            release = { type = "string", inherit = true }
 
             [[contribute.step-dependency]]
             per-entry  = true
@@ -46,6 +50,12 @@ class PluginEntriesTest {
             per-entry  = true
             artifact   = "${entry.name}-unpack"
             coordinate = "${entry.unpack}"
+            for-step   = "run-${entry.name}"
+
+            [[contribute.step-dependency]]
+            per-entry  = true
+            artifact   = "${entry.name}-release"
+            coordinate = "org.acme:release:${entry.release}"
             for-step   = "run-${entry.name}"
             """;
 
@@ -167,6 +177,54 @@ class PluginEntriesTest {
                         tuple("api", "org.acme:api-gen:1.0"),
                         tuple("wire", "com.squareup.wire:wire-compiler:5.5.1"),
                         tuple("wire-unpack", "io.zipkin.proto3:zipkin-proto3:1.0.0"));
+    }
+
+    /**
+     * An entry-schema key marked {@code inherit} reads the table's value when the entry leaves it
+     * unset, and the entry's own when it writes one; with neither set the tool is not declared.
+     */
+    @Test
+    void an_inheriting_entry_key_reads_the_tables_value_unless_the_entry_writes_its_own() {
+        PluginTableRegistry.putBuiltIn(manifest(), null);
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [entries-fixture]
+                release = "2.0"
+
+                [entries-fixture.api]
+                tool = "org.acme:api-gen:1.0"
+
+                [entries-fixture.grammar]
+                tool = "org.antlr:antlr4:4.13.2"
+                release = "3.0"
+                """);
+
+        assertThat(PluginContributions.stepDependencies(build, null, Map.of()))
+                .extracting(PluginContributions.StepDep::artifact, PluginContributions.StepDep::coordinateSpec)
+                .contains(
+                        tuple("api-release", "org.acme:release:2.0"), tuple("grammar-release", "org.acme:release:3.0"));
+    }
+
+    @Test
+    void an_inheriting_entry_key_must_be_a_key_of_the_table_schema() {
+        assertThatThrownBy(() -> PluginDescriptors.parse("""
+                        [plugin]
+                        id = "bad"
+                        table = "bad"
+
+                        [entries]
+                        schema = "thing"
+
+                        [sub-schema.thing]
+                        release = { type = "string", inherit = true }
+                        """, "bad.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("release")
+                .hasMessageContaining("inherits");
     }
 
     /**

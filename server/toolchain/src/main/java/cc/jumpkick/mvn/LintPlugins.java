@@ -23,6 +23,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
@@ -105,7 +107,7 @@ final class LintPlugins {
         if (checkstyle != null) {
             any = true;
             Path reactorRoot = inherited != null ? inherited.rootDir() : reactorRoot(em, baseDir);
-            failOn.put("checkstyle", checkstyle(checkstyle, baseDir, reactorRoot, values, sources, report));
+            failOn.put("checkstyle", checkstyle(checkstyle, baseDir, reactorRoot, values, sources, report, repos));
         }
         Plugin pmd = bound(em, PMD, "pmd:check", report, inherited);
         if (pmd != null) {
@@ -255,7 +257,8 @@ final class LintPlugins {
      * [lint.<execution-id>]} entry — and returns the threshold the first run's {@code
      * <violationSeverity>} means. The plugin's own {@code <dependencies>} other than Checkstyle
      * itself are {@code checkstyle-classpath}, on the table and on every entry: the jars a rule
-     * set, header, suppressions or check classes live in as resources.
+     * set, header, suppressions or check classes live in as resources, read through {@code repos}
+     * to confirm each resource a run names is in one of them.
      */
     private static String checkstyle(
             Plugin plugin,
@@ -263,7 +266,8 @@ final class LintPlugins {
             @Nullable Path reactorRoot,
             Map<String, Object> values,
             Set<String> sources,
-            ImportReport.Builder report) {
+            ImportReport.Builder report,
+            RepoGroup repos) {
         List<String> classpath = new ArrayList<>();
         for (Dependency dependency : plugin.getDependencies()) {
             String version = PluginFacts.usable(dependency.getVersion());
@@ -278,14 +282,14 @@ final class LintPlugins {
         List<Run> runs = checkstyleRuns(plugin, report);
         Run first = runs.getFirst();
         if (!classpath.isEmpty()) values.put("checkstyle-classpath", List.copyOf(classpath));
-        String failOn = checkstyleRun(first.dom(), baseDir, reactorRoot, values, sources, !classpath.isEmpty(), report);
+        ClasspathResources resources = new ClasspathResources(classpath, repos, report);
+        String failOn = checkstyleRun(first.dom(), baseDir, reactorRoot, values, sources, resources, report);
         Map<String, Map<String, Object>> entries = new LinkedHashMap<>();
         for (Run run : runs.subList(1, runs.size())) {
             Map<String, Object> entry = new LinkedHashMap<>();
             Set<String> roots = new LinkedHashSet<>(List.of("src/main/java"));
             if (!classpath.isEmpty()) entry.put("checkstyle-classpath", List.copyOf(classpath));
-            String threshold =
-                    checkstyleRun(run.dom(), baseDir, reactorRoot, entry, roots, !classpath.isEmpty(), report);
+            String threshold = checkstyleRun(run.dom(), baseDir, reactorRoot, entry, roots, resources, report);
             if (roots.size() != 1 || !roots.contains("src/main/java")) entry.put("sources", List.copyOf(roots));
             if (!threshold.equals("error")) entry.put("fail-on", threshold);
             entries.put(Objects.requireNonNull(run.id()), entry);
@@ -302,7 +306,8 @@ final class LintPlugins {
      * except {@code checkstyle.suppressions.file} and {@code checkstyle.header.file}, which are the
      * keys above; {@code <sourceDirectories>} and {@code <includeTestSourceDirectory>} shape
      * {@code sources}. A location the module does not hold is written as spelled when the run has
-     * a classpath — a resource in one of its jars — and a row otherwise.
+     * a classpath — a resource in one of its jars, which {@code classpath} confirms — and a row
+     * otherwise.
      */
     private static String checkstyleRun(
             Xpp3Dom dom,
@@ -310,7 +315,7 @@ final class LintPlugins {
             @Nullable Path reactorRoot,
             Map<String, Object> values,
             Set<String> sources,
-            boolean classpath,
+            ClasspathResources classpath,
             ImportReport.Builder report) {
         String failOn = "error";
         String config = PluginFacts.text(dom.getChild("configLocation"));
@@ -375,10 +380,11 @@ final class LintPlugins {
                     baseDir,
                     reactorRoot,
                     values,
+                    classpath,
                     report);
         }
         if (header != null)
-            location(header.strip(), "checkstyle-header", "header", baseDir, reactorRoot, values, report);
+            location(header.strip(), "checkstyle-header", "header", baseDir, reactorRoot, values, classpath, report);
         if (!properties.isEmpty()) values.put("checkstyle-properties", properties);
         return failOn;
     }
@@ -397,13 +403,14 @@ final class LintPlugins {
      * path through the reactor-root launcher property the root's file by its path from the module;
      * a built-in {@code sun_checks.xml} / {@code google_checks.xml}, or a path through a property
      * no POM defines, as spelled plus a row to copy the rule set in; any other name the module's
-     * file, or, when the run has a {@code classpath}, the resource one of its jars holds.
+     * file, or, when the run has a {@code classpath}, the resource one of its jars holds — a row
+     * when none does.
      */
     private static String ruleSet(
             @Nullable String config,
             @Nullable Path baseDir,
             @Nullable Path reactorRoot,
-            boolean classpath,
+            ClasspathResources classpath,
             ImportReport.Builder report) {
         if (config != null && reactorRoot != null && config.contains(REACTOR_ROOT_PROPERTY)) {
             config = launcherPath(config, baseDir, reactorRoot);
@@ -423,13 +430,16 @@ final class LintPlugins {
         }
         if (url) return config;
         String file = SourceTreePlugins.moduleRelativeFile(config, baseDir);
-        return classpath && (baseDir == null || !Files.isRegularFile(baseDir.resolve(file))) ? config : file;
+        if (!classpath.any() || (baseDir != null && Files.isRegularFile(baseDir.resolve(file)))) return file;
+        classpath.confirm(config, "rule set");
+        return config;
     }
 
     /**
      * {@code key} for a suppressions or header {@code location}: a URL, a module path (through the
-     * reactor-root launcher property when spelled so) or a classpath resource as written; a path
-     * through a property no POM defines is a row instead.
+     * reactor-root launcher property when spelled so) or a classpath resource as written — one
+     * {@code classpath} confirms when the module holds no such file; a path through a property no
+     * POM defines is a row instead.
      */
     private static void location(
             String location,
@@ -438,15 +448,89 @@ final class LintPlugins {
             @Nullable Path baseDir,
             @Nullable Path reactorRoot,
             Map<String, Object> values,
+            ClasspathResources classpath,
             ImportReport.Builder report) {
         String resolved = launcherPath(location, baseDir, reactorRoot);
         if (resolved.startsWith("http://") || resolved.startsWith("https://") || !resolved.contains("${")) {
+            boolean file = baseDir != null
+                    && Files.isRegularFile(baseDir.resolve(SourceTreePlugins.moduleRelativeFile(resolved, baseDir)));
+            if (!resolved.startsWith("http") && !file && classpath.any()) classpath.confirm(resolved, what);
             values.put(key, resolved);
             return;
         }
         report.warning("`" + CHECKSTYLE + "` reads its " + what + " from `" + location
                 + "`, a path through a property no POM defines; `[lint] " + key + "` names a file in the module,"
                 + " so copy the " + what + " in and point the key at it.");
+    }
+
+    /**
+     * The {@code checkstyle-classpath} jars of one plugin, read once each through the import's
+     * repositories: {@link #confirm} says, as a row, when a resource a run names is in none of
+     * them — the step would warn {@code no configuration} and lint nothing — or when a jar no
+     * repository serves leaves the question open. A resource is looked up as Checkstyle resolves
+     * it, with and without a leading slash.
+     */
+    private static final class ClasspathResources {
+        private final List<String> coordinates;
+        private final RepoGroup repos;
+        private final ImportReport.Builder report;
+
+        /** Entry names per coordinate; null for a jar no repository served or that could not be read. */
+        private final Map<String, @Nullable Set<String>> entries = new LinkedHashMap<>();
+
+        ClasspathResources(List<String> coordinates, RepoGroup repos, ImportReport.Builder report) {
+            this.coordinates = coordinates;
+            this.repos = repos;
+            this.report = report;
+        }
+
+        boolean any() {
+            return !coordinates.isEmpty();
+        }
+
+        void confirm(String resource, String what) {
+            String name = resource.startsWith("/") ? resource.substring(1) : resource;
+            List<String> unread = new ArrayList<>();
+            for (String coordinate : coordinates) {
+                if (!entries.containsKey(coordinate)) entries.put(coordinate, read(coordinate));
+                Set<String> names = entries.get(coordinate);
+                if (names == null) unread.add(coordinate);
+                else if (names.contains(name)) return;
+            }
+            if (unread.isEmpty()) {
+                report.warning("`" + CHECKSTYLE + "` reads its " + what + " from `" + resource
+                        + "`, a resource none of the plugin's dependency jars holds (" + String.join(", ", coordinates)
+                        + "); `[lint]` names it as written, so the step lints nothing until the jar that ships it"
+                        + " joins `checkstyle-classpath`, or the " + what
+                        + " is copied into the module and the key points at the file.");
+            } else {
+                report.warning("`" + CHECKSTYLE + "` reads its " + what + " from `" + resource
+                        + "`, a resource of the plugin's dependency jars this import could not confirm — no repository"
+                        + " serves " + String.join(", ", unread) + "; the step warns `no configuration` if no jar on"
+                        + " `checkstyle-classpath` holds it.");
+            }
+        }
+
+        private @Nullable Set<String> read(String coordinate) {
+            try {
+                Optional<RepoGroup.RepoFetched> fetched = repos.tryFetchArtifact(Coordinate.parse(coordinate));
+                if (fetched.isEmpty()) return null;
+                Set<String> names = new HashSet<>();
+                try (ZipFile zip =
+                        new ZipFile(fetched.get().fetched().cachePath().toFile())) {
+                    for (var e = zip.entries(); e.hasMoreElements(); ) {
+                        ZipEntry entry = e.nextElement();
+                        if (!entry.isDirectory()) names.add(entry.getName());
+                    }
+                }
+                return names;
+            } catch (IOException | RuntimeException e) {
+                return null;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
     }
 
     /**
