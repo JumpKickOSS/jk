@@ -2,6 +2,8 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.HostLoad;
+import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.time.Clock;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
@@ -12,7 +14,9 @@ import org.jspecify.annotations.Nullable;
  * A time budget measured as progress rather than wall clock: the work is stopped only when its
  * progress counter has not moved for one window, however long the whole takes. The solver counts
  * decisions and reads; an import counts the POMs it read. The window is {@value #DEFAULT_WINDOW_MS}
- * ms unless {@code JK_RESOLVE_TIMEOUT_MS} says otherwise; {@code 0} never stops the work.
+ * ms, stretched with the host's load per processor ({@link HostLoad}) so a machine that is merely
+ * slow is not read as a hang, unless {@code JK_RESOLVE_TIMEOUT_MS} says otherwise — a window set
+ * by hand is taken as written; {@code 0} never stops the work.
  *
  * <p>A stalled thread is usually parked inside a read, where no budget check runs, so a watcher
  * thread samples the progress counter and interrupts the worker once the window passes without a
@@ -66,15 +70,28 @@ public final class StallWatch {
         this.waitingOn = waitingOn;
     }
 
-    /** The stall window from {@code JK_RESOLVE_TIMEOUT_MS}, else {@link #DEFAULT_WINDOW_MS}. */
+    /**
+     * The stall window from {@code JK_RESOLVE_TIMEOUT_MS}, else {@link #DEFAULT_WINDOW_MS}
+     * stretched with the host's load.
+     */
     public static long envWindowMs() {
-        String v = System.getenv("JK_RESOLVE_TIMEOUT_MS");
-        if (v == null || v.isBlank()) return DEFAULT_WINDOW_MS;
-        try {
-            return Long.parseLong(v.trim());
-        } catch (NumberFormatException e) {
-            return DEFAULT_WINDOW_MS;
+        return windowMs(System.getenv("JK_RESOLVE_TIMEOUT_MS"), HostLoad.loadAverage(), HostProcessors.count());
+    }
+
+    /**
+     * {@link #envWindowMs()} with its inputs explicit: {@code setting} as written when it is a
+     * number, else the default multiplied by {@link HostLoad#factor} for {@code loadAverage} over
+     * {@code processors}.
+     */
+    static long windowMs(@Nullable String setting, double loadAverage, int processors) {
+        if (setting != null && !setting.isBlank()) {
+            try {
+                return Long.parseLong(setting.trim());
+            } catch (NumberFormatException e) {
+                // an unreadable setting is no setting
+            }
         }
+        return DEFAULT_WINDOW_MS * HostLoad.factor(loadAverage, processors);
     }
 
     /** Watch {@code solver} until {@link #stop}; nothing is started for a zero window. */

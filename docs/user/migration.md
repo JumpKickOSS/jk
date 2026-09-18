@@ -123,7 +123,9 @@ lock` judges those pins as it judges every other. Read that report before trusti
 `jk.toml`.
 
 **A repository that never answers stops the import.** The parent and BOM reads run under the
-resolve stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s; `0` never stops): an import whose reads stop
+resolve stall window (`JK_RESOLVE_TIMEOUT_MS`; 120 s on a quiet host, stretched with the load
+average per processor so a slow machine is not read as a hang; a value set by hand is taken as
+written; `0` never stops): an import whose reads stop
 advancing for that long fails naming the coordinate it was reading and the URL it waited on, as
 `jk lock` does, instead of sitting silent until something kills it.
 

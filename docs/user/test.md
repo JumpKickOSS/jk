@@ -286,6 +286,12 @@ module's sandbox (nested-engine suites get distinct engine sockets) and its own 
 failure-replay database (`jqwik.database`, under that temp root rather than `.jqwik-database`
 in the module root, so two runners never write one file).
 
+A runner that prints nothing — no test started, none finished — for ten minutes on a quiet
+host is taken for hung and stopped, its class reported as the failure. The window stretches
+with the host's one-minute load average per processor (at most ten times), so a suite whose
+builds crawl under a loaded gate is slow, not hung; `JK_TEST_WORKER_IDLE_MS` sets it by hand,
+taken as written whatever the load, and `0` disables it.
+
 ```bash
 jk test -w1          # debug flakes / one JVM per module
 jk test -w4          # cap class-shard pool
