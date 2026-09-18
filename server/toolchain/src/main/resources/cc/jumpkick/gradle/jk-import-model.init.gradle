@@ -112,6 +112,21 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     if (!m.mainClass) m.remove('mainClass')
     m.bootBuildInfo = p.tasks.findByName('bootBuildInfo') != null
     try {
+        // Shadow's relocators: pattern, shadedPattern, includes, excludes, rawString — the same
+        // properties on the Groovy and the Kotlin SimpleRelocator.
+        def shadow = p.tasks.findByName('shadowJar')
+        if (shadow != null) {
+            m.relocations = shadow.relocators.collect { r -> [
+                pattern: r.pattern?.toString(),
+                shadedPattern: r.shadedPattern?.toString(),
+                rawString: (r.rawString ?: false) as boolean,
+                includes: (r.includes ?: []).collect { it.toString() },
+                excludes: (r.excludes ?: []).collect { it.toString() },
+            ] }
+        }
+    } catch (Throwable ignored) {
+    }
+    try {
         def jar = p.tasks.findByName('jar')
         if (jar != null) m.manifest = jar.manifest.attributes.collectEntries { k, v -> [k.toString(), v.toString()] }
     } catch (Throwable ignored) {

@@ -373,6 +373,12 @@ neither runs on 25) and read from a fork whose whole evaluation stayed inside th
 | jillesvangurp/kotlin4example | Gradle 9.0.0 on JDK 21, refreshVersions | 40 s, 1 row | every `_` version is written as the pin `versions.properties` holds: `kotlin-logging = "…:3.0.5"` and the slf4j entries from their exact `version.<group>..<artifact>` keys, `kotlinx-coroutines-core = "1.10.2"`, `junit-jupiter-api = "5.13.4"` and `kotest-assertions-core = "…:5.9.1"` from the short keys `kotlinx.coroutines`, `junit.jupiter` and `kotest`; the one row names the refreshVersions plugin |
 | spring-guides/tut-spring-boot-kotlin | Gradle 9.2.1, Kotlin 2.2.21, Boot 4 | 3 rows; `jk build` green | `kotlin = "2.4.10"`: the build's Kotlin is below jk's floor, the oldest its compile path drives, so the floor is written and a row names the declared version and what to check — the same rule a hand-written `kotlin = "2.2.21"` meets at lock and build time, where the lock pins the floor and notes it and the build warns once per module; two rows name the allopen plugins |
 
+Gradle Shadow (`com.gradleup.shadow`, its `com.github.johnrengelman.shadow` predecessor) imports
+the same way Shade does, from the script or the model: the fat jar is `[application] assembly =
+true` when the build names a main and `[library] assembly = true` when it does not, and every
+`relocate("from", "to")` — with an `include` / `exclude` block or without — becomes a `relocate`
+rule where it agrees with jk's whole-package rule, else a row naming the construct.
+
 ### Which Maven plugins import, and how well
 
 Counted across 66 public repositories cloned for the Maven corpus and the agent-loop corpus on
@@ -403,7 +409,7 @@ relates to the Maven one.
 | maven-deploy-plugin | 14 | `jk publish` | exact |
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
 | maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` and system properties → the same `[test]` keys when Surefire set none, else a row | manual |
-| maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; a whole-package `<relocation>` → `[application] relocate` (see [Packaging § Package relocation](packaging.md#package-relocation)); a shaded member with no main — neo4j's `lucene9-shaded`, nacos's `client` — → `[library] assembly = true` with the same `relocate`, and the members that import its shaded packages keep their workspace edge and compile against its `-all.jar` ([Workspaces § Shaded siblings](workspaces.md#shaded-siblings)); a relocation with `<includes>`/`<excludes>`/`<rawString>`, filters, other transformers and `minimizeJar` → rows | approximate |
+| maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; a whole-package `<relocation>` → `[application] relocate` (see [Packaging § Package relocation](packaging.md#package-relocation)); a shaded member with no main — neo4j's `lucene9-shaded`, nacos's `client` — → `[library] assembly = true` with the same `relocate`, and the members that import its shaded packages keep their workspace edge and compile against its `-all.jar` ([Workspaces § Shaded siblings](workspaces.md#shaded-siblings)); a relocation narrowed by `<includes>`/`<excludes>`, spelled as a path or doubled as a `<rawString>` twin → rules where they agree with the whole-package rule on every class (nacos's `io.grpc` exclude-and-relocate pair), else rows naming the construct; filters, other transformers and `minimizeJar` → rows | approximate |
 | kotlin-maven-plugin | 12 | `kotlin =` on the module at the plugin's version, or at jk's floor (2.4.10) with a row when the plugin's version is below it; when the main source directory also carries `.java` files (Kotlin tests beside a Java main tree, a `test-compile`-only plugin, or both languages in main) the module is mixed and `java =` is written beside it, so javac compiles the Java tree against kotlinc's output and the Kotlin test tree sees both — a row says so | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |
 | central-publishing-maven-plugin | 11 | `jk publish --central` (planned battery) | manual |

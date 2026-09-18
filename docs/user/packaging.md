@@ -165,9 +165,14 @@ module compiles and runs against its `-all.jar` — the shaded names exist nowhe
 scheduled after that jar is packaged; see
 [Workspaces § Shaded siblings](workspaces.md#shaded-siblings).
 
-This is Maven Shade's `<relocation>` and Gradle Shadow's `relocate`: `jk import` writes a shade
-relocation of a whole package as a `relocate` entry; a relocation with `<includes>`, `<excludes>`
-or `<rawString>` stays a row, and the classes it named are bundled under their own names.
+This is Maven Shade's `<relocation>` and Gradle Shadow's `relocate`: `jk import` writes a
+relocation as a `relocate` entry wherever the whole-package rule agrees with it on every class — a
+plain relocation and one spelled as a path (`org/apache/lucene`), an `a.b.**` include as the rule
+for `a.b`, an exclude another relocation lands in the same place (the Shade idiom of excluding a
+package only to relocate it by a second entry to the same name), an include naming a class the
+rules already move where Shade does, and a `rawString` twin of a rule. What the rules cannot
+express — an exclude nothing else relocates, an include the rules move elsewhere — stays a row
+naming the construct, and the classes it named are bundled under their own names.
 
 ## Fat jar size against Shadow and Shade
 

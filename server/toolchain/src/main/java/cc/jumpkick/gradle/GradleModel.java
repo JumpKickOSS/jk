@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.gradle;
 
+import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +39,9 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
             Map<String, String> managedVersions,
             @Nullable String springBootBom,
             List<String> importedBoms,
-            List<Task> tasks) {
+            List<Task> tasks,
+            /** The {@code shadowJar} task's relocators, in order; empty without the Shadow plugin. */
+            List<RelocationRules.Relocation> relocations) {
 
         boolean isRoot() {
             return dir.isEmpty();
@@ -133,6 +136,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
     static final String FILES = "files";
     static final String GRADLE = "gradle";
     static final String IMPORTED_BOMS = "importedBoms";
+    static final String INCLUDES = "includes";
     static final String INTRANSITIVE = "intransitive";
     static final String JAVA = "java";
     static final String KOTLIN = "kotlin";
@@ -146,12 +150,15 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
     static final String PREFER = "prefer";
     static final String PROJECT_PATH = "projectPath";
     static final String PROJECTS = "projects";
+    static final String RAW_STRING = "rawString";
     static final String RELEASE = "release";
+    static final String RELOCATIONS = "relocations";
     static final String REPOSITORIES = "repositories";
     static final String REQUIRED = "required";
     static final String RESOURCES = "resources";
     static final String ROOT_NAME = "rootName";
     static final String SETTINGS_REPOSITORIES = "settingsRepositories";
+    static final String SHADED_PATTERN = "shadedPattern";
     static final String SOURCE_COMPATIBILITY = "sourceCompatibility";
     static final String SOURCE_SETS = "sourceSets";
     static final String SPRING_BOOT_BOM = "springBootBom";
@@ -192,6 +199,17 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
         List<Task> tasks = new ArrayList<>();
         for (String t : Jsonl.objectArray(p, TASKS))
             tasks.add(new Task(str(t, "name"), str(t, "type"), str(t, "group")));
+        List<RelocationRules.Relocation> relocations = new ArrayList<>();
+        for (String r : Jsonl.objectArray(p, RELOCATIONS)) {
+            String pattern = Jsonl.topStr(r, "pattern");
+            if (pattern == null) continue;
+            relocations.add(new RelocationRules.Relocation(
+                    pattern,
+                    Jsonl.topStr(r, SHADED_PATTERN),
+                    Jsonl.bool(r, RAW_STRING, false),
+                    Jsonl.strArray(r, INCLUDES),
+                    Jsonl.strArray(r, EXCLUDES)));
+        }
         String javaJson = Jsonl.nested(p, JAVA);
         Java java = javaJson == null
                 ? null
@@ -221,7 +239,8 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
                 Jsonl.strMap(p, MANAGED_VERSIONS),
                 Jsonl.topStr(p, SPRING_BOOT_BOM),
                 Jsonl.strArray(p, IMPORTED_BOMS),
-                tasks);
+                tasks,
+                relocations);
     }
 
     private static Dependency parseDependency(String d) {
