@@ -12,10 +12,12 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandler;
 import java.net.http.HttpResponse.BodySubscribers;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -65,8 +67,18 @@ public final class Http {
         Duration.ofMillis(1600),
     };
 
+    /**
+     * How long a GET or a form POST waits for the response to start once the connection is up. A
+     * server that accepts and stays silent past it has answered: the request fails at once naming
+     * the URL, and is not retried — a retry would only wait the same span again on the same host.
+     * For a streamed body this bounds the wait for the headers; the body then streams under the
+     * caller's own reading.
+     */
+    static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
+
     private final HttpClient client;
     private final Duration[] backoffs;
+    private final Duration requestTimeout;
 
     /** Where a request goes through a proxy, and the credential the proxy wants; consulted per request. */
     private final ProxyEnvironment proxies;
@@ -223,6 +235,18 @@ public final class Http {
             Clock clock,
             ProxyEnvironment proxies,
             Set<String> deniedHosts) {
+        this(client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, REQUEST_TIMEOUT);
+    }
+
+    private Http(
+            HttpClient client,
+            Duration[] backoffs,
+            CentralMirror centralMirror,
+            HostCooldown cooldown,
+            Clock clock,
+            ProxyEnvironment proxies,
+            Set<String> deniedHosts,
+            Duration requestTimeout) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
@@ -230,6 +254,12 @@ public final class Http {
         this.clock = clock;
         this.proxies = proxies;
         this.deniedHosts = deniedHosts;
+        this.requestTimeout = requestTimeout;
+    }
+
+    /** Visible for tests — this client with another {@link #REQUEST_TIMEOUT}, so a silent server is proven in milliseconds. */
+    Http withRequestTimeout(Duration timeout) {
+        return new Http(client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, timeout);
     }
 
     /** Maven Central and its failover mirror, as a {@link #DENY_HOSTS_ENV} value. */
@@ -266,7 +296,7 @@ public final class Http {
     public HttpResponse<byte[]> get(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
         checkOffline(uri);
         uri = centralMirror.route(uri);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(Duration.ofSeconds(60));
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(requestTimeout);
         for (Map.Entry<String, String> e : headers.entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }
@@ -288,8 +318,9 @@ public final class Http {
      * Same retry policy as {@link #get(URI)} for connect failures and 5xx; mid-stream failures
      * propagate to the caller (no resume).
      *
-     * <p>The per-request timeout is generous (15 min) because JDK archives commonly run 100–250 MB
-     * and the standard {@code .get} 60s ceiling would cut them off on slow links.
+     * <p>{@link #REQUEST_TIMEOUT} bounds the wait for the response headers alone: the body streams
+     * for as long as the caller reads it, so a JDK archive of hundreds of megabytes is not cut off
+     * on a slow link, while a repository that accepts a POM request and never answers is.
      */
     public HttpResponse<InputStream> getStream(URI uri) throws IOException, InterruptedException {
         return getStream(uri, Map.of());
@@ -297,14 +328,14 @@ public final class Http {
 
     /**
      * Streaming GET with extra request headers (e.g. {@code Authorization} for an authenticated
-     * repository). Otherwise identical to {@link #getStream(URI)}: same generous timeout and retry
-     * policy, body delivered as an {@link InputStream} the caller pumps to a sink.
+     * repository). Otherwise identical to {@link #getStream(URI)}: same timeout and retry policy,
+     * body delivered as an {@link InputStream} the caller pumps to a sink.
      */
     public HttpResponse<InputStream> getStream(URI uri, Map<String, String> headers)
             throws IOException, InterruptedException {
         checkOffline(uri);
         uri = centralMirror.route(uri);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(Duration.ofMinutes(15));
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(requestTimeout);
         for (Map.Entry<String, String> e : headers.entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }
@@ -337,7 +368,7 @@ public final class Http {
                 .POST(HttpRequest.BodyPublishers.ofString(urlEncode(form)))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Accept", "application/json")
-                .timeout(Duration.ofSeconds(60));
+                .timeout(requestTimeout);
         HttpRequest request = withProxyAuthorization(builder, uri).build();
         return sendWithRetry("POST", uri, request, gzipAwareByteArray(), null);
     }
@@ -420,6 +451,21 @@ public final class Http {
             HttpResponse.BodyHandler<T> handler,
             @Nullable BodyDrain<T> drain)
             throws IOException, InterruptedException {
+        long inFlight = InFlightRequests.begin(uri);
+        try {
+            return attempts(verb, uri, request, handler, drain);
+        } finally {
+            InFlightRequests.end(inFlight);
+        }
+    }
+
+    private <T> HttpResponse<T> attempts(
+            String verb,
+            URI uri,
+            HttpRequest request,
+            HttpResponse.BodyHandler<T> handler,
+            @Nullable BodyDrain<T> drain)
+            throws IOException, InterruptedException {
         IOException lastIo = null;
         int lastStatus = -1;
         for (int attempt = 0; attempt < backoffs.length + 1; attempt++) {
@@ -478,6 +524,21 @@ public final class Http {
                 lastStatus = status;
             } catch (RedirectRefusedException | CentralMirror.BlockedException | DeniedHostException e) {
                 throw e; // a policy answer, not a network fault: the same answer would come back
+            } catch (HttpConnectTimeoutException e) {
+                lastIo = e; // the connection never came up: the next attempt is cheap and may land
+            } catch (HttpTimeoutException e) {
+                // The server accepted and said nothing for the whole timeout. Central gets one more
+                // chance on the mirror; anyone else has answered, and the URL is named.
+                URI mirrored = centralMirror.enabled() && centralMirror.matches(request.uri())
+                        ? centralMirror.toMirror(request.uri())
+                        : request.uri();
+                if (!mirrored.equals(request.uri())) {
+                    return send(reissue(request, mirrored).build(), handler, drain);
+                }
+                throw new IOException(
+                        verb + " " + SafeUri.forMessage(uri) + " got no answer within " + requestTimeout.toSeconds()
+                                + " s",
+                        e);
             } catch (IOException e) {
                 lastIo = e;
             }

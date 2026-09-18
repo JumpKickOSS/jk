@@ -90,6 +90,15 @@ public interface PackageSource {
     }
 
     /**
+     * The URL(s) a read of this source is parked on right now, as {@code waiting on <url> (<n> s)};
+     * empty when none. The stall watch appends it to the refusal so the repository that never
+     * answered is named. Default: nothing known.
+     */
+    default String waitingOn() {
+        return "";
+    }
+
+    /**
      * @return dependency edges of {@code (pkg, version)} as {@link Term}s. A positive Term gives a
      * downstream package and the version range the parent requires of it. A negative Term is a
      * constraint: the package is absent or within the term's complement — it bounds a package

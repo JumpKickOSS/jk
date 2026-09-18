@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.host.Interned;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.http.InFlightRequests;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.MavenMetaversion;
@@ -526,6 +527,11 @@ public final class MavenPackageSource implements PackageSource {
     @Override
     public long readsCompleted() {
         return readsCompleted.get();
+    }
+
+    @Override
+    public String waitingOn() {
+        return InFlightRequests.waitingOn();
     }
 
     private List<String> orderedVersions(String pkg) throws IOException, InterruptedException {

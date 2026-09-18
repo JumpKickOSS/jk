@@ -350,8 +350,11 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   progress, not by length: a solve is stopped only when no decision, version catalog read or POM
   read — the speculative reads included — has advanced for the stall window,
   `JK_RESOLVE_TIMEOUT_MS` (default 120 s; `0` never stops a solve), and the refusal names what the
-  solver was doing when everything stood still. A thousand-dependency reactor on a busy engine
-  takes as long as it takes. Conflict **watermarks** fingerprint decision maps that already
+  solver was doing when everything stood still and the URL the parked read was waiting on
+  (`InFlightRequests`, every request `Http` has out). A
+  thousand-dependency reactor on a busy engine takes as long as it takes. A repository that accepts
+  a request and never answers costs one request timeout (60 s), not one per retry attempt: `Http`
+  names the URL and stops, after reissuing a Central-bound request once against the mirror. Conflict **watermarks** fingerprint decision maps that already
   failed so the solver cannot re-enter them (cleared when a universe expands).
 - **Effective-POM tables are shared objects:** `EffectivePomBuilder` values a BOM's managed table
   once, in the BOM's own merge, and every POM that imports or inherits it carries the same

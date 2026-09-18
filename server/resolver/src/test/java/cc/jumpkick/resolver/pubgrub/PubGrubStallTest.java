@@ -30,6 +30,11 @@ class PubGrubStallTest {
                 if (pkg.equals(stuck)) new CountDownLatch(1).await();
                 return List.of();
             }
+
+            @Override
+            public String waitingOn() {
+                return "waiting on https://repo.example/never/" + stuck + ".pom (1 s)";
+            }
         };
     }
 
@@ -48,6 +53,9 @@ class PubGrubStallTest {
                     String msg = Diagnostics.render(((UnsatisfiableException) ex).rootCause());
                     assertThat(msg).contains("budget exceeded");
                     assertThat(msg).as("names the read that stood still").contains("stuck@1.0");
+                    assertThat(msg)
+                            .as("names the URL the read was parked on")
+                            .contains("waiting on https://repo.example/never/stuck.pom (1 s)");
                     assertThat(msg).contains("JK_RESOLVE_TIMEOUT_MS");
                 });
         assertThat(Thread.currentThread().isInterrupted())
