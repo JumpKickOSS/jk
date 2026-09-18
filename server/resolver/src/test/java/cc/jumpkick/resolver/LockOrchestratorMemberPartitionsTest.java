@@ -364,6 +364,47 @@ class LockOrchestratorMemberPartitionsTest {
                 .containsExactly(tuple("1.0", List.of(), List.of("app")));
     }
 
+    /**
+     * Two members declare middle at one version; the later one excludes deep, a grandchild of
+     * middle. The merged manifest carries the first declaration, so the workspace's rows keep the
+     * edge onto deep; the later member reads a leaf row of its own without it, its lock row naming
+     * the member's own {@code exclude}, and the first member reads the workspace's rows.
+     */
+    @Test
+    void a_later_members_root_exclude_reaches_it_through_a_row_of_its_own(@TempDir Path tempDir) throws Exception {
+        upstream.leaf("com.foo", "deep", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0");
+        upstream.pom("com.foo", "leaf", "1.0", depending("leaf", "deep", "1.0"));
+        upstream.jar("com.foo", "leaf", "1.0");
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.pom("com.foo", "middle", "1.0", depending("middle", "leaf", "1.0"));
+        upstream.jar("com.foo", "middle", "1.0");
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        Dependency middleWithoutDeep = middle.withExclusions(List.of("com.foo:deep"));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(middle)));
+        JkBuild app = manifest("app", Map.of(Scope.MAIN, List.of(middleWithoutDeep)));
+        List<String> notes = new ArrayList<>();
+
+        Lockfile lock = lockWorkspace(tempDir, Map.of(), List.of(lib, app), notes);
+
+        String deepRef = "com.foo:deep:jar:@1.0";
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::deps)
+                .containsExactly(List.of(deepRef));
+        List<Lockfile.Artifact> appLeaf = rows(lock.forMember("app"), "com.foo:leaf:jar:");
+        assertThat(appLeaf)
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::deps, Lockfile.Artifact::members)
+                .containsExactly(tuple("1.0", List.of(), List.of("app")));
+        assertThat(appLeaf.getFirst().excludedBy())
+                .singleElement()
+                .asString()
+                .isEqualTo("com.foo:deep <- jk.toml:middle");
+        assertThat(rows(lock, "com.foo:middle:jar:")).hasSize(1).allMatch(r -> !r.isPartition());
+        assertThat(notes)
+                .contains(
+                        "app reads its own rows for 1 coordinate: com.foo:leaf 1.0 (the workspace's without com.foo:deep)");
+    }
+
     @Test
     void two_members_pinning_one_coordinate_differently_each_read_their_own(@TempDir Path tempDir) throws Exception {
         upstream.metadata("com.foo", "widget", "1.0", "2.0");

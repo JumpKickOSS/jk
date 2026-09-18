@@ -166,9 +166,12 @@ the workspace's answer cannot be its answer:
   declared), or outside a range it wrote, or
 - a BOM or `[managed-dependencies]` entry of its own table that not every member holds writes
   `exclude` patterns on a module in its graph — a BOM's `<exclusions>` on a root it manages, an
-  entry's on every edge onto its module — that prune an edge the workspace's row carries. The
-  versions may agree; the member's row is the workspace's version without the pruned edges, as
-  Maven applies an imported BOM's exclusions to the module that imports it.
+  entry's on every edge onto its module — that prune an edge the workspace's row carries, or the
+  member's own root carries an `exclude` list the workspace's root of that coordinate lacks
+  (`middle = { version = "1.0", exclude = ["com.foo:deep"] }` in one member, `middle = "1.0"` in
+  another declared before it). The versions may agree; the member's row is the workspace's
+  version without the pruned edges, anywhere under the root, as Maven applies an imported BOM's
+  exclusions to the module that imports it and a dependency's exclusions to its whole subtree.
 
 Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
 classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the
