@@ -204,7 +204,10 @@ declaration expanded once per `[entries]` sub-table: `artifact`, `coordinate`, `
 fetched by and keyed into that entry's step alone. A table may carry `[schema]` keys and
 `[entries]` at once: protobuf's `[protobuf.<id>]` entries are protoc plugins, each fetched as
 `protoc-gen-${entry.name}` beside the table's own protoc. A per-entry declaration whose `coordinate`
-names an optional entry key is expanded only for the entries that set it.
+names an optional entry key is expanded only for the entries that set it — unless the sub-schema
+marks the key `inherit = true`, in which case an entry that leaves it unset reads the table's value
+of the same `[schema]` key (the lint plugin's `checkstyle-version`: a run forks its own release, the
+table's unless written). An inheriting key must be declared by the `[schema]` with the same type.
 
 **Interpolation (closed set):** `${config.<key>}`, `${entry.name}` / `${entry.<key>}` (per-entry
 tools only), `${kotlin.version}`, `${project.group|name|version}`, `${host.os}`,

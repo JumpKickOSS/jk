@@ -105,6 +105,16 @@ class LintPluginPlanTest {
                 .containsEntry("checkstyle-version", "12.1.2")
                 .doesNotContainKey("fail-on")
                 .doesNotContainKey(PluginConfig.ENTRIES);
+        PluginConfig own = new PluginConfig(
+                "lint",
+                Map.of(
+                        "checkstyle-version",
+                        "12.1.2",
+                        PluginConfig.ENTRIES,
+                        Map.of("nohttp", Map.of("checkstyle", "n.xml", "checkstyle-version", "13.0.0"))));
+        assertThat(LintPlugin.scoped(own, "nohttp").values())
+                .as("a run's own Checkstyle release over the table's")
+                .containsEntry("checkstyle-version", "13.0.0");
         TaskSpec spec = LintPlugin.task(LintTool.CHECKSTYLE, scoped, "nohttp");
         assertThat(spec.name()).isEqualTo("lint-checkstyle-nohttp");
         assertThat(spec.declaredInputs())

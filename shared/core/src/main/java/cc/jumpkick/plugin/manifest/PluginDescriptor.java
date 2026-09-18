@@ -326,7 +326,9 @@ public record PluginDescriptor(
      * One schema key: its type ({@code string | coordinate | bool | int | string-list | string-map}), whether the table
      * must declare it, and the value applied when absent ({@code null} = stay absent — the
      * tri-state pattern). {@code example} and {@code hint} feed the required-key error message
-     * so schema-driven validation keeps the hand-written diagnostics' quality.
+     * so schema-driven validation keeps the hand-written diagnostics' quality. {@code inherit}
+     * is an entry-schema key's: an entry that leaves it unset reads the table's value of the
+     * same key wherever a per-entry tool names it as {@code ${entry.<key>}}.
      */
     public record SchemaKey(
             String name,
@@ -335,7 +337,20 @@ public record PluginDescriptor(
             @Nullable Object defaultValue,
             @Nullable String example,
             @Nullable String hint,
-            boolean secret) {
+            boolean secret,
+            boolean inherit) {
+
+        /** A key an entry does not inherit from its table. */
+        public SchemaKey(
+                String name,
+                Type type,
+                boolean required,
+                @Nullable Object defaultValue,
+                @Nullable String example,
+                @Nullable String hint,
+                boolean secret) {
+            this(name, type, required, defaultValue, example, hint, secret, false);
+        }
 
         public enum Type {
             STRING,
