@@ -314,6 +314,56 @@ class LockOrchestratorMemberPartitionsTest {
                         "app reads its own rows for 1 coordinate: com.foo:leaf 1.0 (the workspace's without com.foo:deep)");
     }
 
+    /**
+     * The versionless root {@code app} declares under its own BOM takes the BOM's version as the
+     * workspace's row, and the BOM's exclusion on it reaches {@code app} alone: the workspace's leaf
+     * row keeps the edge onto deep, {@code lib} reads that row, and {@code app} reads a leaf row of
+     * its own without the edge.
+     */
+    @Test
+    void a_member_only_boms_exclusions_on_a_versionless_root_reach_the_holder_alone(@TempDir Path tempDir)
+            throws Exception {
+        upstream.leaf("com.foo", "deep", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0");
+        upstream.pom("com.foo", "leaf", "1.0", depending("leaf", "deep", "1.0"));
+        upstream.jar("com.foo", "leaf", "1.0");
+        upstream.pom("org.example", "pruning-bom", "1.0", """
+                <project>
+                  <groupId>org.example</groupId><artifactId>pruning-bom</artifactId><version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement><dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                      <exclusions><exclusion><groupId>com.foo</groupId><artifactId>deep</artifactId></exclusion></exclusions>
+                    </dependency>
+                  </dependencies></dependencyManagement>
+                </project>
+                """);
+        Dependency bom = Dependency.of("pruning-bom", "org.example:pruning-bom", VersionSelector.parse("=1.0"));
+        Dependency managedLeaf = Dependency.platformManaged("leaf", "com.foo:leaf");
+        Dependency pinnedLeaf = new Dependency("com.foo:leaf", VersionSelector.parse("=1.0"));
+        JkBuild app = manifest("app", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(managedLeaf)));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(pinnedLeaf)));
+
+        Lockfile lock = lockWorkspace(tempDir, Map.of(), List.of(app, lib));
+
+        String deepRef = "com.foo:deep:jar:@1.0";
+        Lockfile.Artifact workspace = rows(lock, "com.foo:leaf:jar:").stream()
+                .filter(r -> !r.isPartition())
+                .findFirst()
+                .orElseThrow();
+        assertThat(workspace.version()).isEqualTo("1.0");
+        assertThat(workspace.deps())
+                .as("the workspace's row keeps the edge the BOM excludes")
+                .contains(deepRef);
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::deps)
+                .containsExactly(List.of(deepRef));
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::deps, Lockfile.Artifact::members)
+                .containsExactly(tuple("1.0", List.of(), List.of("app")));
+    }
+
     @Test
     void two_members_pinning_one_coordinate_differently_each_read_their_own(@TempDir Path tempDir) throws Exception {
         upstream.metadata("com.foo", "widget", "1.0", "2.0");
