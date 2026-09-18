@@ -12,6 +12,7 @@ import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.guard.api.runtime.GuardRuntime;
+import cc.jumpkick.guard.eval.GuardDocTables;
 import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -243,6 +244,46 @@ final class ParityRules {
                                 + pair[1]);
         }
         v.population(table.size() + process.size());
+    }
+
+    // ---- G83 / G84 ---------------------------------------------------------------------------
+
+    private static final String GUARDS_DOC = "docs/user/guards.md";
+
+    @Guard(
+            id = "guard-kinds-doc",
+            why = "a kind the docs describe and the loader does not know is a rule nobody can write",
+            instead = "replace the guard-kinds table in docs/user/guards.md with the rendering in the detail")
+    void guardKindsDoc(Text text, Violations v) {
+        schemaTable(text, v, "guard-kinds", GuardDocTables.kinds(), "the loader's kind list");
+    }
+
+    @Guard(
+            id = "guard-schemas-doc",
+            why = "a key the docs describe and the loader does not accept is a rule that fails to load",
+            instead = "replace the guard-schemas table in docs/user/guards.md with the rendering in the detail")
+    void guardSchemasDoc(Text text, Violations v) {
+        schemaTable(text, v, "guard-schemas", GuardDocTables.schemas(), "the loader's key tables");
+    }
+
+    /**
+     * One marked table of the manual against its rendering from the schema classes on this suite's
+     * classpath — the tree's own, compiled by the build that runs the suite — so a hint edited
+     * beside its row is judged from the same commit, whatever engine hosts the lane. The population
+     * is the table's rows.
+     */
+    private static void schemaTable(Text text, Violations v, String marker, List<String> table, String source) {
+        String expected =
+                "<!-- " + marker + ":start -->\n" + String.join("\n", table) + "\n<!-- " + marker + ":end -->";
+        List<String> doc = text.lines(GUARDS_DOC);
+        String actual = block(doc, marker);
+        if (actual == null)
+            throw new IllegalStateException(GUARDS_DOC + " is missing its " + marker + " table markers");
+        if (!actual.equals(expected))
+            v.add(
+                    new TextSite(GUARDS_DOC, markerLine(doc, marker), marker + " table"),
+                    GUARDS_DOC + " differs from " + source + "; replace its " + marker + " table with:\n" + expected);
+        v.population(table.size() - 2);
     }
 
     // ---- G56 (Node arm) ----------------------------------------------------------------------
