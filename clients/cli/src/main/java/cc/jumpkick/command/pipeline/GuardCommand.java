@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.JsonlShape;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -27,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * {@code jk guard} — run every house-rule lane now, cache-aware; non-zero on any red. It is the
@@ -149,8 +152,34 @@ public final class GuardCommand implements CliCommand {
                     if (!line.isBlank()) CliOutput.out(JsonlShape.guard(line));
                 }
             }
+        } else {
+            // The build's wedge says the build passed; this line is the guards' own verdict.
+            Path results = target.resolve(ProjectBuilds.RESULTS);
+            if (Files.isRegularFile(results))
+                verdict(Files.readAllLines(results, StandardCharsets.UTF_8)).ifPresent(CliOutput::out);
         }
         return exit;
+    }
+
+    /**
+     * The guards' verdict as the engine wrote it under {@code ## Guards} in {@code
+     * target/jk-results.md}, as one terminal line: {@code Guards: clean · 4 lanes (1 cached)}, or
+     * {@code Guards: 2 rules broken (5 sites)} — the count of rules and sites the section details.
+     * Empty when the record has no guard section, which is a run in which no guard lane ran.
+     */
+    static Optional<String> verdict(List<String> results) {
+        int at = results.indexOf("## Guards");
+        if (at < 0) return Optional.empty();
+        for (int i = at + 1; i < results.size(); i++) {
+            String line = results.get(i).strip();
+            if (line.isEmpty()) continue;
+            if (line.startsWith("## ")) break;
+            if (line.startsWith("Guards: clean"))
+                return Optional.of(Theme.paint(line, Theme.active().success()));
+            return Optional.of(Theme.paint(
+                    "Guards: " + line.replace("**", ""), Theme.active().error()));
+        }
+        return Optional.empty();
     }
 
     /** The files the engine writes under {@code target/}; named here so the CLI never links the guard engine. */

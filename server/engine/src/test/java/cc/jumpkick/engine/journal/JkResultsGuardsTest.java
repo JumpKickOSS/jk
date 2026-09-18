@@ -112,6 +112,63 @@ class JkResultsGuardsTest {
         assertThat(none).doesNotContain("## Guards");
     }
 
+    /** A workspace run's lanes are its modules' steps; the root has none of its own. */
+    @Test
+    void a_workspace_runs_lanes_are_counted_across_its_modules() {
+        List<BuildRecord.Module> modules = List.of(
+                new BuildRecord.Module(
+                        "g:a",
+                        "/ws/a",
+                        true,
+                        0,
+                        10,
+                        List.of(
+                                new BuildRecord.Task(TaskNames.GUARD_MODEL, "resolve", "SUCCESS", 1, 0),
+                                new BuildRecord.Task("compile-java", "compile", "SUCCESS", 1, 0))),
+                new BuildRecord.Module(
+                        "g:b",
+                        "/ws/b",
+                        true,
+                        0,
+                        10,
+                        List.of(
+                                new BuildRecord.Task(TaskNames.GUARD, "compile", "SKIPPED", 1, 0),
+                                new BuildRecord.Task(TaskNames.GUARD_MODEL, "resolve", "SUCCESS", 1, 0))));
+        String md = JkResultsMarkdown.render(workspaceRecord(modules));
+        assertThat(md).contains("## Guards\n\nGuards: clean · 3 lanes (1 cached)\n");
+    }
+
+    private static BuildRecord workspaceRecord(List<BuildRecord.Module> modules) {
+        return new BuildRecord(
+                "id",
+                3,
+                BuildRecord.SCHEMA,
+                "guard",
+                "/ws",
+                "g:ws",
+                "pid",
+                1_000,
+                1_100,
+                100,
+                true,
+                false,
+                0,
+                "9.9",
+                null,
+                modules,
+                List.of(),
+                List.of(),
+                "cli",
+                null,
+                null,
+                null,
+                false,
+                null,
+                0,
+                null,
+                List.of());
+    }
+
     @Test
     void red_sites_group_by_rule_with_why_once_and_instead_per_site_and_leave_failures_alone() {
         BuildRecord.Diag d =

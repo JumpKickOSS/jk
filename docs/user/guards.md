@@ -216,6 +216,9 @@ no report anywhere is `not-evaluated`, naming the file looked for.
 
 ## Reading a failure
 
+`jk guard` ends with the guards' own verdict on the terminal, beside the build's wedge:
+`Guards: clean · 4 lanes (1 cached)` names the lanes that ran and how many replayed a cached
+verdict; `Guards: 2 rules broken (5 sites)` counts what `target/jk-results.md` then details.
 `target/jk-results.md` lists every broken rule with its sites:
 
 ```

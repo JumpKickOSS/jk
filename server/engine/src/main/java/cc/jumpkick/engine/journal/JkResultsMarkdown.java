@@ -395,6 +395,13 @@ public final class JkResultsMarkdown {
                         || step.startsWith(TaskNames.GUARD + ":"));
     }
 
+    private static void addLanes(List<BuildRecord.Task> lanes, List<BuildRecord.Task> steps) {
+        for (BuildRecord.Task t : steps) {
+            String n = t.name();
+            if (n.equals(TaskNames.GUARD) || n.startsWith(TaskNames.GUARD + "-")) lanes.add(t);
+        }
+    }
+
     /**
      * {@code ## Guards}: the agent view of the house rules. One line when every lane came back
      * clean; on failure, at most {@value #MAX_GUARD_SITES} sites grouped by rule with {@code why}
@@ -402,11 +409,10 @@ public final class JkResultsMarkdown {
      * tokens; the trailer says how to exempt and what never to do.
      */
     private static void appendGuards(StringBuilder sb, BuildRecord r) {
+        // A plain project's lanes are the root's steps; a workspace's are its modules' steps.
         List<BuildRecord.Task> lanes = new ArrayList<>();
-        for (BuildRecord.Task t : r.steps()) {
-            String n = t.name();
-            if (n.equals(TaskNames.GUARD) || n.startsWith(TaskNames.GUARD + "-")) lanes.add(t);
-        }
+        addLanes(lanes, r.steps());
+        for (BuildRecord.Module m : r.modules()) addLanes(lanes, m.steps());
         List<BuildRecord.Diag> red = new ArrayList<>();
         for (BuildRecord.Diag d : r.diagnostics()) if (isError(d) && isGuard(d)) red.add(d);
         if (lanes.isEmpty() && red.isEmpty()) return;
