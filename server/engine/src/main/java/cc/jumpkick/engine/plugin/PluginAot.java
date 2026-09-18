@@ -117,6 +117,17 @@ public final class PluginAot {
      */
     public static List<String> pluginWorkerFlags(
             String tool, Path javaHome, String workerClasspath, TrainerCommand trainer) {
+        return pluginWorkerFlags(tool, javaHome, workerClasspath, List.of(), trainer);
+    }
+
+    /**
+     * As {@link #pluginWorkerFlags(String, Path, String, TrainerCommand)} for a worker the caller
+     * starts with {@code jvmFlags} of its own beyond jk's: the flags join the key, and the trainer
+     * the caller supplies must start its JVM with the same flags, so the cache the worker maps was
+     * recorded under the flag set it runs with — a module graph the JVM validates at map time.
+     */
+    public static List<String> pluginWorkerFlags(
+            String tool, Path javaHome, String workerClasspath, List<String> jvmFlags, TrainerCommand trainer) {
         if (!enabled() || javaHome == null) return List.of();
         try {
             JdkId id = jdkId(javaHome);
@@ -124,9 +135,11 @@ public final class PluginAot {
             List<String> batch = JvmOptions.batchFlags(1);
             String gc = effectiveGc(batch); // must match javaCommand / PluginLoader
             String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
-            String cacheKey = key(id, gc, workerClasspath);
+            String cacheKey = key(id, gc, workerClasspath, jvmFlags);
             Path cache = cacheFile(prefix, cacheKey);
-            CacheMeta meta = new CacheMeta(prefix, cacheKey, id, gc, workerClasspath, batch);
+            List<String> recorded = new ArrayList<>(batch);
+            recorded.addAll(jvmFlags);
+            CacheMeta meta = new CacheMeta(prefix, cacheKey, id, gc, workerClasspath, recorded);
             if (AotCacheFiles.usable(cache)) {
                 touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
                 recordUse(cache, meta);
@@ -149,6 +162,15 @@ public final class PluginAot {
      */
     public static List<String> kotlincFlags(Path javaHome, String workerClasspath, TrainerCommand trainer) {
         return pluginWorkerFlags("kotlinc", javaHome, workerClasspath, trainer);
+    }
+
+    /**
+     * {@link #javaCompilerFlags(Path, String, TrainerCommand)} for a compile whose module starts the
+     * worker with {@code jvmFlags} of its own ({@code -J} arguments jk does not pass itself).
+     */
+    public static List<String> javaCompilerFlags(
+            Path javaHome, String workerClasspath, List<String> jvmFlags, TrainerCommand trainer) {
+        return pluginWorkerFlags("java-compiler", javaHome, workerClasspath, jvmFlags, trainer);
     }
 
     /**
@@ -324,6 +346,12 @@ public final class PluginAot {
     static String key(JdkId id, String gc, String extra) {
         return Hashing.sha256Hex(id.home() + "|" + id.vendor().name() + "|" + id.version() + "|" + gc + "|" + extra)
                 .substring(0, 16);
+    }
+
+    /** {@link #key(JdkId, String, String)} with the worker's own JVM flags folded in; none is the bare key. */
+    static String key(JdkId id, String gc, String extra, List<String> jvmFlags) {
+        if (jvmFlags.isEmpty()) return key(id, gc, extra);
+        return key(id, gc, extra + "\n" + String.join("\n", jvmFlags));
     }
 
     // ---- training -------------------------------------------------------------------------

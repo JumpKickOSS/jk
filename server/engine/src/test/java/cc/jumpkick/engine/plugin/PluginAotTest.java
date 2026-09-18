@@ -62,6 +62,17 @@ class PluginAotTest {
     }
 
     @Test
+    void key_folds_in_a_modules_jvm_flags_and_no_flags_is_the_bare_key(@TempDir Path tmp) {
+        PluginAot.JdkId id = new PluginAot.JdkId(tmp.resolve("jdk"), JdkVendor.TEMURIN, "25.0.3");
+        String bare = PluginAot.key(id, "g1", "w.jar");
+        assertThat(PluginAot.key(id, "g1", "w.jar", List.of())).isEqualTo(bare);
+        assertThat(PluginAot.key(id, "g1", "w.jar", List.of("-Dprobe=1"))).isNotEqualTo(bare);
+        assertThat(PluginAot.key(id, "g1", "w.jar", List.of("-Dprobe=1", "-Xss4m")))
+                .as("the flag set, in order, is the key")
+                .isNotEqualTo(PluginAot.key(id, "g1", "w.jar", List.of("-Xss4m", "-Dprobe=1")));
+    }
+
+    @Test
     void jdk_id_parses_the_release_file_and_eligibility_gates_on_feature_and_vendor() throws IOException {
         Path jdk = Files.createDirectories(tmp.resolve("jdk25"));
         Files.writeString(jdk.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"25.0.3\"\n");

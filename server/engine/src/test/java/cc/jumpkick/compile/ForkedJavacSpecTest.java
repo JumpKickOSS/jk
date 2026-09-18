@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import java.nio.file.Files;
@@ -71,6 +73,32 @@ class ForkedJavacSpecTest {
                 .as("a flag the worker grants anyway is not passed twice")
                 .hasSize(1);
         assertThat(request(dir, List.of("-Xlint:all")).jvmArgs()).isEmpty();
+    }
+
+    /**
+     * A worker started with a module's own JVM flags maps a cache trained under the same flags:
+     * the flags that are not jk's own are what joins the AOT key, and the trainer's command
+     * carries them.
+     */
+    @Test
+    void a_modules_novel_J_flags_join_the_aot_key_and_the_trainer_command(@TempDir Path dir) throws Exception {
+        String granted = "-J" + JdkCompilerAccess.JVM_FLAGS.getFirst();
+        ForkedJavac.Request plain = request(dir, List.of("-Xlint:all", granted));
+        ForkedJavac.Request novel =
+                request(dir, List.of(granted, "-J--add-opens=java.base/java.lang=ALL-UNNAMED", "-J-Dprobe=1"));
+
+        assertThat(ForkedJavac.novelJvmArgs(plain))
+                .as("a flag jk grants anyway is not novel")
+                .isEmpty();
+        assertThat(ForkedJavac.novelJvmArgs(novel))
+                .containsExactly("--add-opens=java.base/java.lang=ALL-UNNAMED", "-Dprobe=1");
+
+        Path host = requireNonNull(JavaHomes.runningJavaHome());
+        Path scratch = Files.createDirectories(dir.resolve("scratch"));
+        List<String> trainer = ForkedJavac.trainerCommand(novel, "w.jar", host, dir.resolve("out.aot"), scratch);
+        assertThat(trainer).contains("--add-opens=java.base/java.lang=ALL-UNNAMED", "-Dprobe=1");
+        assertThat(trainer.stream().filter(JdkCompilerAccess.JVM_FLAGS.getFirst()::equals))
+                .hasSize(1);
     }
 
     private static ForkedJavac.Request request(Path dir) {
