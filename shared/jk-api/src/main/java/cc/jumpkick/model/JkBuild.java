@@ -213,7 +213,7 @@ public record JkBuild(
                 workspace,
                 manifest,
                 plugins,
-                new Application(app.main(), assembly, minified, app.nativeImage(), app.config()),
+                new Application(app.main(), assembly, minified, app.nativeImage(), app.config(), app.relocate()),
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -671,13 +671,18 @@ public record JkBuild(
      *     install}
      * @param config optional module-relative template copied to
      *     {@code <home>/config/<bin>/config.toml} on {@code jk install}
+     * @param relocate {@code relocate}: package prefixes the fat jar moves, source package to
+     *     shaded package in declaration order — every class under a source package is rewritten
+     *     to the shaded one, in its own name, in every reference to it and in the service files
+     *     that name it. Empty for a fat jar that bundles classes under their own names.
      */
     public record Application(
             @Nullable String main,
             boolean assembly,
             boolean minified,
             boolean nativeImage,
-            @Nullable String config) {
+            @Nullable String config,
+            Map<String, String> relocate) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
@@ -686,6 +691,17 @@ public record JkBuild(
             // -min.jar always yields -all.jar beside it. That is also what makes the pair
             // A/B-testable without a config change.
             if (minified) assembly = true;
+            relocate = relocate == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(relocate));
+        }
+
+        /** Convenience: no package relocation. */
+        public Application(
+                @Nullable String main,
+                boolean assembly,
+                boolean minified,
+                boolean nativeImage,
+                @Nullable String config) {
+            this(main, assembly, minified, nativeImage, config, Map.of());
         }
 
         /** Convenience for importers: no minified artifact, no native image, no config template. */

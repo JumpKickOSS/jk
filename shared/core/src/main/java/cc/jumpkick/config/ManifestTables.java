@@ -618,14 +618,40 @@ public final class ManifestTables {
         if (main == null || main.isBlank()) {
             throw new JkBuildParseException("[application].main is required");
         }
-        return Optional.of(new JkBuild.Application(main, assembly, minified, nativeImage, config));
+        return Optional.of(
+                new JkBuild.Application(main, assembly, minified, nativeImage, config, parseRelocate(application)));
+    }
+
+    /**
+     * {@code relocate}: a table of package prefix to shaded package prefix, declaration order kept.
+     * Both sides are dotted package names; an empty side or a non-string value is a parse error
+     * rather than a rule that silently moves nothing.
+     */
+    private static Map<String, String> parseRelocate(TomlTable application) {
+        if (!application.contains("relocate")) return Map.of();
+        if (!application.isTable("relocate")) {
+            throw new JkBuildParseException(
+                    "[application].relocate must be a table of `\"from.package\" =" + " \"to.package\"` entries");
+        }
+        TomlTable table = Objects.requireNonNull(application.getTable("relocate"));
+        Map<String, String> relocate = new LinkedHashMap<>();
+        for (String from : table.keySet()) {
+            Object to = table.get(List.of(from));
+            if (!(to instanceof String shaded) || shaded.isBlank() || from.isBlank()) {
+                throw new JkBuildParseException("[application].relocate." + from
+                        + " must name the shaded package as a string, e.g. \"com.example.shaded." + from + "\"");
+            }
+            relocate.put(from, shaded);
+        }
+        return relocate;
     }
 
     /**
      * Every key that belongs to {@code [application]}. Written down so a misplacement is caught as
      * a class rather than one key at a time.
      */
-    static final List<String> APPLICATION_KEYS = List.of("main", "assembly", "minified", "native", "config");
+    static final List<String> APPLICATION_KEYS =
+            List.of("main", "assembly", "minified", "native", "config", "relocate");
 
     /**
      * Reject an {@code [application]} key written at the top level.

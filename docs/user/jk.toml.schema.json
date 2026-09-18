@@ -203,6 +203,13 @@
             "object"
           ],
           "description": "Runtime configuration source."
+        },
+        "relocate": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Package relocation in the fat jar: source package prefix to shaded package prefix."
         }
       }
     },

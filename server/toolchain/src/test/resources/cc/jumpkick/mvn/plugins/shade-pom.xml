@@ -26,6 +26,17 @@
                   <pattern>com.google.common</pattern>
                   <shadedPattern>com.ex.shaded.guava</shadedPattern>
                 </relocation>
+                <relocation>
+                  <pattern>org.apache.commons.io</pattern>
+                  <shadedPattern>com.ex.shaded.commons.io</shadedPattern>
+                  <excludes>
+                    <exclude>org.apache.commons.io.input.*</exclude>
+                  </excludes>
+                </relocation>
+                <relocation>
+                  <pattern>com.fasterxml.jackson</pattern>
+                  <shadedPattern>com.ex.shaded.jackson</shadedPattern>
+                </relocation>
               </relocations>
               <filters>
                 <filter>

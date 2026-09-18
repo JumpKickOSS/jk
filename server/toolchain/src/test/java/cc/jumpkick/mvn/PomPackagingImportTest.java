@@ -9,6 +9,7 @@ import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,10 +29,16 @@ class PomPackagingImportTest {
         assertThat(build.applicationOpt()).isPresent();
         assertThat(build.applicationOpt().get().main()).isEqualTo("com.ex.cli.Main");
         assertThat(build.applicationOpt().get().assembly()).isTrue();
+        assertThat(build.applicationOpt().get().relocate())
+                .as("a whole-package relocation is the assembly's relocate rule, in declaration order")
+                .containsExactly(
+                        Map.entry("com.google.common", "com.ex.shaded.guava"),
+                        Map.entry("com.fasterxml.jackson", "com.ex.shaded.jackson"));
         assertThat(build.manifest()).containsEntry("Multi-Release", "true");
         assertThat(messages)
-                .anyMatch(m ->
-                        m.startsWith("`maven-shade-plugin` `<relocations>` com.google.common → com.ex.shaded.guava —"));
+                .as("a relocation narrowed by <excludes> is the one row")
+                .anyMatch(m -> m.startsWith("`maven-shade-plugin` `<relocations>` org.apache.commons.io →"
+                        + " com.ex.shaded.commons.io — `[application] relocate` moves whole packages"));
         assertThat(messages).anyMatch(m -> m.startsWith("`maven-shade-plugin` `<filters>` on *:* —"));
         assertThat(messages)
                 .as("the manifest and services transformers are jk's default merge; only the appending one is a row")
@@ -39,9 +46,14 @@ class PomPackagingImportTest {
         assertThat(messages).noneMatch(m -> m.startsWith("`<plugin>"));
 
         String rendered = JkBuildRenderer.render(build);
-        assertThat(rendered).contains("[application]\nmain       = \"com.ex.cli.Main\"\nassembly = true\n");
+        assertThat(rendered)
+                .contains("[application]\nmain       = \"com.ex.cli.Main\"\nassembly = true\n"
+                        + "relocate = { \"com.google.common\" = \"com.ex.shaded.guava\","
+                        + " \"com.fasterxml.jackson\" = \"com.ex.shaded.jackson\" }\n");
         assertThat(JkBuildParser.parse(rendered).applicationOpt().get().assembly())
                 .isTrue();
+        assertThat(JkBuildParser.parse(rendered).applicationOpt().get().relocate())
+                .containsEntry("com.google.common", "com.ex.shaded.guava");
     }
 
     @Test

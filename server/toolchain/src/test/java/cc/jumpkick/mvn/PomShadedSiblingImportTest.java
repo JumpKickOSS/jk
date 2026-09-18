@@ -11,9 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A member shaded with relocations publishes packages jk never produces; when another member's
- * sources import them, the shaded member is a Tier-3 row naming the relocations, the importers and
- * the Maven-built artifact to depend on instead.
+ * A member shaded with relocations publishes packages its workspace classes tree never carries;
+ * when another member's sources import them, the shaded member is a Tier-3 row naming the
+ * relocations, the importers and the Maven-built artifact to depend on instead.
  */
 class PomShadedSiblingImportTest {
 
@@ -56,7 +56,8 @@ class PomShadedSiblingImportTest {
                 .singleElement()
                 .satisfies(issue -> assertThat(issue.message())
                         .startsWith("[lucene9-shaded] `maven-shade-plugin` relocates org.apache.lucene →"
-                                + " org.demo.shaded.lucene9; jk has no package relocation")
+                                + " org.demo.shaded.lucene9; jk relocates packages only in the fat jar of an"
+                                + " `[application]`")
                         .contains("`index` (2 files), `server` (1 file) import them")
                         .contains("`jk mvn -pl lucene9-shaded install` publishes org.demo:lucene9-shaded:2.1.0"));
     }
@@ -75,10 +76,13 @@ class PomShadedSiblingImportTest {
         assertThat(result.report().issues())
                 .filteredOn(i -> i.severity() == ImportReport.Severity.ERROR)
                 .isEmpty();
+        // a library has no main and so no [application]; the relocation is a row, not a rule
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.startsWith("[lucene9-shaded] `maven-shade-plugin` `<relocations>` org.apache.lucene →"
-                        + " org.demo.shaded.lucene9"));
+                .anyMatch(m -> m.startsWith("[lucene9-shaded] a fat jar was requested but no `<mainClass>` was found"));
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .noneMatch(m -> m.contains("jk's fat jar does not rewrite packages"));
     }
 
     /** A shaded member relocating lucene, an `index` member depending on it, and a `server` member depending on `index`. */

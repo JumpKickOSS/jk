@@ -98,17 +98,24 @@ public final class PackagingKeys {
     public static Keyed assembly(
             Path assemblyJar, Path moduleDir, JkBuild project, String classesTok, String contribTok, String depsTok) {
         // The fat jar is a pure function of the main classes, the plugin-contributed dirs merged
-        // over them, the bundled dependency jars' content, the main class, and the manifest.
+        // over them, the bundled dependency jars' content, the main class, the manifest and the
+        // package relocations.
         List<String> tokens = List.of(
                 "classes:" + classesTok,
                 "contrib:" + contribTok,
                 "deps:" + depsTok,
                 "main:" + orEmpty(mainClass(moduleDir, project)),
                 "manifest:" + project.manifest(),
+                "relocate:" + relocate(project),
                 "packaging:fat"); // distinct from shrink / thin package-jar
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, assemblyJar);
         String asmKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
         return new Keyed(taskId, tokens, asmKey);
+    }
+
+    /** The module's {@code [application] relocate} rules, source to shaded package in declaration order. */
+    public static Map<String, String> relocate(JkBuild project) {
+        return project.applicationOpt().map(JkBuild.Application::relocate).orElse(Map.of());
     }
 
     /**

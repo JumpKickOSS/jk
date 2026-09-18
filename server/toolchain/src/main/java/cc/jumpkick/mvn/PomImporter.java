@@ -261,8 +261,9 @@ public final class PomImporter {
         TestPlugins.TestSettings tests = TestPlugins.map(em.model(), report);
         MigrationPlugins.report(em.model(), report);
         PackagingPlugins.Packaging packaging = PackagingPlugins.map(em, mainClass, report);
-        JkBuild.Application application =
-                mainClass != null ? new JkBuild.Application(mainClass, packaging.fatJar()) : null;
+        JkBuild.Application application = mainClass != null
+                ? new JkBuild.Application(mainClass, packaging.fatJar(), false, false, null, packaging.relocate())
+                : null;
         JkBuild.Builder builder = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .repositories(repos)

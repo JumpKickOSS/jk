@@ -18,6 +18,9 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 
 class AssemblyPackagerTest {
 
@@ -211,6 +214,86 @@ class AssemblyPackagerTest {
                             + "Sbom-Location: META-INF/sbom/application.cdx.json\r\n"
                             + "\r\n");
         }
+    }
+
+    @Test
+    void relocates_packages_across_class_bytes_entry_paths_and_service_files(@TempDir Path tmp) throws IOException {
+        Path classes = tmp.resolve("classes");
+        Files.createDirectories(classes.resolve("app"));
+        // app.Main holds an IndexReader field and names the class as a string, as Class.forName would.
+        Files.write(
+                classes.resolve("app/Main.class"), referencingClass("app/Main", "org/apache/lucene/index/IndexReader"));
+
+        Path dep = tmp.resolve("lucene.jar");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(dep))) {
+            jos.putNextEntry(new JarEntry("org/apache/lucene/index/IndexReader.class"));
+            jos.write(referencingClass("org/apache/lucene/index/IndexReader", "org/apache/lucene/store/Directory"));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("org/apache/lucene/store/Directory.class"));
+            jos.write(referencingClass("org/apache/lucene/store/Directory", "java/lang/Object"));
+            jos.closeEntry();
+            putEntry(jos, "org/apache/lucene/util/version.properties", "lucene=9");
+            putEntry(jos, "META-INF/services/org.apache.lucene.codecs.Codec", "org.apache.lucene.codecs.Lucene99Codec");
+            putEntry(jos, "org/other/Keep.txt", "untouched");
+        }
+
+        Path out = tmp.resolve("app-all.jar");
+        new AssemblyPackager()
+                .packageAssembly(new AssemblyPackager.AssemblyRequest(
+                        classes,
+                        List.of(dep),
+                        out,
+                        "app.Main",
+                        Map.of(),
+                        Map.of(),
+                        Map.of("org.apache.lucene", "org.demo.shaded.lucene9"),
+                        0L));
+
+        try (JarFile jf = new JarFile(out.toFile())) {
+            assertThat(jf.getJarEntry("org/demo/shaded/lucene9/index/IndexReader.class"))
+                    .isNotNull();
+            assertThat(jf.getJarEntry("org/apache/lucene/index/IndexReader.class"))
+                    .isNull();
+            assertThat(jf.getJarEntry("org/demo/shaded/lucene9/util/version.properties"))
+                    .isNotNull();
+            assertThat(jf.getJarEntry("org/other/Keep.txt")).isNotNull();
+            // the moved class refers to its moved neighbour
+            ClassReader reader =
+                    new ClassReader(jf.getInputStream(jf.getJarEntry("org/demo/shaded/lucene9/index/IndexReader.class"))
+                            .readAllBytes());
+            assertThat(reader.getClassName()).isEqualTo("org/demo/shaded/lucene9/index/IndexReader");
+            assertThat(reader.getSuperName()).isEqualTo("org/demo/shaded/lucene9/store/Directory");
+            // the project's own class follows the move: its field type and its string constant
+            byte[] main = jf.getInputStream(jf.getJarEntry("app/Main.class")).readAllBytes();
+            String text = new String(main, StandardCharsets.ISO_8859_1);
+            assertThat(text).contains("org/demo/shaded/lucene9/index/IndexReader");
+            assertThat(text).contains("org.demo.shaded.lucene9.index.IndexReader");
+            assertThat(text).doesNotContain("org/apache/lucene");
+            // the service file moves with its provider
+            assertThat(jf.getJarEntry("META-INF/services/org.apache.lucene.codecs.Codec"))
+                    .isNull();
+            String svc = new String(
+                    jf.getInputStream(jf.getJarEntry("META-INF/services/org.demo.shaded.lucene9.codecs.Codec"))
+                            .readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertThat(svc.trim()).isEqualTo("org.demo.shaded.lucene9.codecs.Lucene99Codec");
+        }
+    }
+
+    /** {@code public class <name> extends <ref> { <ref> field; static final String NAME = "<ref dotted>"; }}. */
+    private static byte[] referencingClass(String name, String ref) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, name, null, ref, null);
+        cw.visitField(Opcodes.ACC_PUBLIC, "field", "L" + ref + ";", null, null).visitEnd();
+        cw.visitField(
+                        Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
+                        "NAME",
+                        "Ljava/lang/String;",
+                        null,
+                        ref.replace('/', '.'))
+                .visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
     }
 
     private static void putEntry(JarOutputStream jos, String name, String content) throws IOException {

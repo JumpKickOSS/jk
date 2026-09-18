@@ -21,6 +21,7 @@ R8 minification is **opt-in**, never the default.
 [application]
 main     = "com.example.App"   # required for run / fat / typical apps
 assembly = true
+# relocate = { "com.google.common" = "com.example.shaded.guava" }   # move a bundled package
 # minified = true
 # config   = "config/install.toml"  # optional template → ~/.jk/config/<bin>/config.toml
 ```
@@ -131,6 +132,29 @@ Fat and minified never share an action-cache key.
 
 **Dropped:** signature files (`META-INF/*.SF` / `*.RSA` / `*.DSA` / `*.EC` / `SIG-*`) and
 dependency `module-info.class` (JPMS descriptors break a single classpath jar).
+
+## Package relocation
+
+```toml
+[application]
+main     = "com.example.App"
+assembly = true
+relocate = { "com.google.common" = "com.example.shaded.guava", "org.apache.lucene" = "com.example.shaded.lucene" }
+```
+
+`relocate` moves every class under a source package to the shaded package inside the fat jar —
+the class's own name, every reference any bundled class or the project's own classes make to it,
+a string constant that spells it (what `Class.forName` reads), the resource paths under the
+package and the `META-INF/services` files that name its providers, both the file name and the
+provider lines. A rule matches whole package segments (`org.apache.lucene` moves
+`org.apache.lucene.index.IndexReader`, not `org.apache.lucenex.Other`); the first matching rule
+wins, in declaration order. The thin jar is untouched, so a workspace sibling that compiles against
+this module's classes sees the packages under their own names — relocation is a fact of the
+`-all.jar` alone. The rules are part of the fat jar's action key.
+
+This is Maven Shade's `<relocation>` and Gradle Shadow's `relocate`: `jk import` writes a shade
+relocation of a whole package as a `relocate` entry; a relocation with `<includes>`, `<excludes>`
+or `<rawString>` stays a row, and the classes it named are bundled under their own names.
 
 ## Fat jar size against Shadow and Shade
 

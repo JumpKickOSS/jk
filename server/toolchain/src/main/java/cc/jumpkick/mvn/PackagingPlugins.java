@@ -7,8 +7,11 @@ import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.maven.model.Model;
@@ -19,8 +22,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The plugins that shape the artifact. Shade and {@code jar-with-dependencies} are {@code
- * [application] assembly = true}; a relocation, filter or transformer jk's merge rules do not
- * cover is a row. {@code spring-boot-maven-plugin} is the {@code [spring-boot]} table at the Boot
+ * [application] assembly = true}; a shade {@code <relocation>} of a package is the assembly's
+ * {@code relocate} rule, and a filter, a transformer or a relocation shape jk's rules do not cover
+ * is a row. {@code spring-boot-maven-plugin} is the {@code [spring-boot]} table at the Boot
  * version the chain resolves; {@code quarkus-maven-plugin} is the {@code [quarkus]} table at the
  * platform version; {@code native-maven-plugin} is {@code [native]}. Jib's and the Docker plugins'
  * base and target images are the {@code [image]} table, and a war has no jk shape at all.
@@ -28,20 +32,32 @@ import org.jspecify.annotations.Nullable;
 final class PackagingPlugins {
 
     /**
-     * What the packaging plugins add: a fat jar, a native table, a Boot table, a Quarkus table and
-     * an image table, each optional ({@code image} is {@link ImageTable#EMPTY} without one).
+     * What the packaging plugins add: a fat jar with its package relocations, a native table, a
+     * Boot table, a Quarkus table and an image table, each optional ({@code image} is {@link
+     * ImageTable#EMPTY} without one).
      */
     record Packaging(
             boolean fatJar,
+            Map<String, String> relocate,
             JkBuild.@Nullable NativeConfig nativeConfig,
             @Nullable PluginConfig springBoot,
             @Nullable PluginConfig quarkus,
             ImageTable image) {}
 
-    /** One shade {@code <relocation>}: the package moved and where to; {@code shaded} is null when the POM omits it. */
-    record Relocation(String pattern, @Nullable String shaded) {
+    /**
+     * One shade {@code <relocation>}: the package moved and where to; {@code shaded} is null when
+     * the POM omits it. {@code rawString} is Shade's literal-string mode and {@code filtered} its
+     * {@code <includes>}/{@code <excludes>} narrowing — neither is a whole-package rule, so
+     * neither becomes a {@code relocate} entry.
+     */
+    record Relocation(String pattern, @Nullable String shaded, boolean rawString, boolean filtered) {
         String label() {
             return pattern + (shaded == null ? "" : " → " + shaded);
+        }
+
+        /** A whole dotted package moved to another: what {@code [application] relocate} spells. */
+        boolean wholePackage() {
+            return shaded != null && !rawString && !filtered && !pattern.contains("/") && !shaded.contains("/");
         }
     }
 
@@ -64,11 +80,16 @@ final class PackagingPlugins {
      */
     static Packaging map(EffectiveModel em, @Nullable String mainClass, ImportReport.Builder report) {
         Model model = em.model();
-        boolean fatJar = mapShade(em, report) | mapAssembly(em, report);
+        Map<String, String> relocate = new LinkedHashMap<>();
+        boolean fatJar = mapShade(em, relocate, report) | mapAssembly(em, report);
         if (fatJar && mainClass == null) {
             report.warning("a fat jar was requested but no `<mainClass>` was found; `[application] assembly = true`"
-                    + " needs `[application] main`, so no `[application]` table was written — add both.");
+                    + " needs `[application] main`, so no `[application]` table was written — add both"
+                    + (relocate.isEmpty()
+                            ? "."
+                            : ", and `relocate = " + relocate + "` beside them for the shade relocations."));
             fatJar = false;
+            relocate.clear();
         }
         PluginConfig springBoot = PluginFacts.plugin(model, SPRING_BOOT)
                 .filter(boot -> repackages(boot, mainClass, report))
@@ -90,7 +111,13 @@ final class PackagingPlugins {
             report.error("packaging `war` (`maven-war-plugin`) is not supported: jk builds jars, Boot jars and"
                     + " native images. Keep building this module with `jk mvn package`.");
         }
-        return new Packaging(fatJar, nativeConfig, springBoot, quarkus, image);
+        return new Packaging(
+                fatJar,
+                Collections.unmodifiableMap(new LinkedHashMap<>(relocate)),
+                nativeConfig,
+                springBoot,
+                quarkus,
+                image);
     }
 
     /** Every {@code <relocation>} of the module's shade plugin, in declaration order; empty without the plugin. */
@@ -101,8 +128,11 @@ final class PackagingPlugins {
         for (Xpp3Dom config : PluginFacts.configurations(shade.get())) {
             PluginFacts.visit(config, "relocation", relocation -> {
                 String pattern = PluginFacts.child(relocation, "pattern");
-                if (pattern != null)
-                    relocations.add(new Relocation(pattern, PluginFacts.child(relocation, "shadedPattern")));
+                if (pattern == null) return;
+                boolean raw = Boolean.parseBoolean(PluginFacts.child(relocation, "rawString"));
+                boolean filtered =
+                        hasChildren(relocation.getChild("includes")) || hasChildren(relocation.getChild("excludes"));
+                relocations.add(new Relocation(pattern, PluginFacts.child(relocation, "shadedPattern"), raw, filtered));
             });
         }
         return relocations;
@@ -125,13 +155,26 @@ final class PackagingPlugins {
         return Optional.empty();
     }
 
-    /** Shade is the fat jar; what jk's merge rules do not do is a row per construct. */
-    private static boolean mapShade(EffectiveModel em, ImportReport.Builder report) {
+    private static boolean hasChildren(@Nullable Xpp3Dom node) {
+        return node != null && node.getChildCount() > 0;
+    }
+
+    /**
+     * Shade is the fat jar; a whole-package relocation is a {@code relocate} entry written into
+     * {@code relocate}, and what jk's rules do not do is a row per construct.
+     */
+    private static boolean mapShade(EffectiveModel em, Map<String, String> relocate, ImportReport.Builder report) {
         Model model = em.model();
         Optional<Plugin> shade = active(em, SHADE, "no fat jar is written", report);
         if (shade.isEmpty()) return false;
-        List<String> relocations =
-                relocations(model).stream().map(Relocation::label).toList();
+        List<String> partial = new ArrayList<>();
+        for (Relocation relocation : relocations(model)) {
+            if (relocation.wholePackage()) {
+                relocate.putIfAbsent(relocation.pattern(), Objects.requireNonNull(relocation.shaded()));
+            } else if (!relocation.rawString() || !relocate.containsValue(slashesToDots(relocation.shaded()))) {
+                partial.add(relocation.label());
+            }
+        }
         List<String> filters = new ArrayList<>();
         List<String> transformers = new ArrayList<>();
         boolean minimize = false;
@@ -148,9 +191,11 @@ final class PackagingPlugins {
             });
             minimize |= Boolean.parseBoolean(PluginFacts.child(config, "minimizeJar"));
         }
-        if (!relocations.isEmpty()) {
-            report.warning("`maven-shade-plugin` `<relocations>` " + String.join(", ", relocations)
-                    + " — jk's fat jar does not rewrite packages; the classes are bundled under their own names.");
+        if (!partial.isEmpty()) {
+            report.warning("`maven-shade-plugin` `<relocations>` " + String.join(", ", partial)
+                    + " — `[application] relocate` moves whole packages; a relocation with `<includes>`,"
+                    + " `<excludes>` or `<rawString>`, or one spelled as a path, is not written and those"
+                    + " classes are bundled under their own names.");
         }
         if (!filters.isEmpty()) {
             report.warning("`maven-shade-plugin` `<filters>` on " + String.join(", ", filters)
@@ -167,6 +212,11 @@ final class PackagingPlugins {
                     + " unminimized.");
         }
         return true;
+    }
+
+    /** A raw-string rule's target as the dotted package it mirrors, or empty when it names none. */
+    private static String slashesToDots(@Nullable String shaded) {
+        return shaded == null ? "" : shaded.replace('/', '.');
     }
 
     /** {@code jar-with-dependencies} is the fat jar; any other descriptor is a row. */
