@@ -208,7 +208,8 @@ the `jacoco.xml` a `jk test --coverage` run leaves under each module's reports. 
 with `cap` is the mirror: `measure = "lint.findings"`, `cap = 0`, `baseline = true` counts the
 findings in the XML reports the [`[lint]`](lint.md) steps leave under each module's
 `target/…/plugin/lint-<tool>/` — Checkstyle's and detekt's `<error>` rows, PMD's `<violation>`s and
-`<error>`s, SpotBugs's `<BugInstance>`s — summed over the module's tools, and refuses a build whose
+`<error>`s, SpotBugs's `<BugInstance>`s — as each step reported them (a PMD violation the module's
+`pmd-exclude` leaves out is not in its report), summed over the module's tools, and refuses a build whose
 count rises above its entry while the entry follows the count down. `lint.checkstyle`, `lint.pmd`,
 `lint.spotbugs` and `lint.detekt` count one tool's report alone. A module with no report is skipped;
 no report anywhere is `not-evaluated`, naming the file looked for.
