@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -185,5 +186,81 @@ class PomProfileImportTest {
                         tuple("org.springframework.boot:spring-boot-starter-cloud-connectors=2.2.13.RELEASE", false),
                         tuple("org.springframework.boot:spring-boot-starter-cloud-connectors=2.2.13.RELEASE", true));
         assertThat(JkBuildRenderer.render(build)).doesNotContain("unresolved");
+    }
+
+    /**
+     * A profile's {@code <dependencyManagement>} may import a BOM at a version the profile's own
+     * {@code <properties>} define; the versions it manages reach the profile's dependencies the way
+     * Maven gives them once the profile is active, read from the repository, so the optional row is
+     * pinned rather than {@code unresolved}.
+     */
+    @Test
+    void a_profiles_dependency_takes_the_version_a_bom_the_profile_imports_manages(@TempDir Path tempDir)
+            throws Exception {
+        Path repo = tempDir.resolve("repo");
+        Path bom =
+                repo.resolve(TestImporters.pomPath("org.springframework.cloud", "spring-cloud-dependencies", "2023.0.0")
+                        .substring(1));
+        Files.createDirectories(Objects.requireNonNull(bom.getParent()));
+        Files.writeString(bom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.springframework.cloud</groupId>
+                  <artifactId>spring-cloud-dependencies</artifactId>
+                  <version>2023.0.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.springframework.cloud</groupId>
+                        <artifactId>spring-cloud-starter</artifactId>
+                        <version>4.1.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        Path project = Files.createDirectories(tempDir.resolve("project"));
+        Files.writeString(project.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>0.1.0</version>
+                  <profiles>
+                    <profile>
+                      <id>cloudfoundry</id>
+                      <properties>
+                        <spring-cloud.version>2023.0.0</spring-cloud.version>
+                      </properties>
+                      <dependencyManagement>
+                        <dependencies>
+                          <dependency>
+                            <groupId>org.springframework.cloud</groupId>
+                            <artifactId>spring-cloud-dependencies</artifactId>
+                            <version>${spring-cloud.version}</version>
+                            <type>pom</type>
+                            <scope>import</scope>
+                          </dependency>
+                        </dependencies>
+                      </dependencyManagement>
+                      <dependencies>
+                        <dependency>
+                          <groupId>org.springframework.cloud</groupId>
+                          <artifactId>spring-cloud-starter</artifactId>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                  </profiles>
+                </project>
+                """);
+
+        PomImporter.Result result = TestImporters.over(tempDir, repo.toUri()).importFrom(project.resolve("pom.xml"));
+
+        assertThat(result.jkBuild().dependencies().of(Scope.MAIN))
+                .extracting(d -> d.module() + "=" + d.version().raw(), Dependency::optional)
+                .containsExactly(tuple("org.springframework.cloud:spring-cloud-starter=4.1.0", true));
+        assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("unresolved");
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("could not be read"));
     }
 }

@@ -49,20 +49,37 @@ final class ProfileMapping {
         "maven.compiler.release", "maven.compiler.target", "maven.compiler.source"
     };
 
+    /**
+     * The managed table of a BOM a profile imports, by its coordinate: what a profile's {@code
+     * <scope>import</scope>} entry contributes once the profile is active, read from a repository.
+     * Null entries are BOMs that could not be read; the caller says why.
+     */
+    interface BomTables {
+        @Nullable
+        List<Pom.Dep> managedBy(String groupId, String artifactId, String version);
+    }
+
     private final EffectiveModel em;
     private final ImportReport.Builder report;
+    private final BomTables boms;
     private final Map<Scope, List<Dependency>> optionalDeps = new EnumMap<>(Scope.class);
     private final Map<String, Feature> features = new LinkedHashMap<>();
     private final List<CompilerProfile> profiles = new ArrayList<>();
     private final List<Repository> repositories = new ArrayList<>();
 
-    private ProfileMapping(EffectiveModel em, ImportReport.Builder report) {
+    private ProfileMapping(EffectiveModel em, ImportReport.Builder report, BomTables boms) {
         this.em = em;
         this.report = report;
+        this.boms = boms;
     }
 
+    /** As {@link #map(EffectiveModel, ImportReport.Builder, BomTables)} with no repository to read a profile's BOM from. */
     static Mapped map(EffectiveModel em, ImportReport.Builder report) {
-        ProfileMapping mapping = new ProfileMapping(em, report);
+        return map(em, report, (g, a, v) -> null);
+    }
+
+    static Mapped map(EffectiveModel em, ImportReport.Builder report, BomTables boms) {
+        ProfileMapping mapping = new ProfileMapping(em, report, boms);
         for (Profile profile : em.raw().getProfiles()) {
             if (em.isActive(profile)) {
                 mapping.reportActive(profile);
@@ -128,7 +145,7 @@ final class ProfileMapping {
         List<Pom.Dep> deps = new ArrayList<>();
         for (var d : profile.getDependencies()) {
             if (d.getGroupId() == null || d.getArtifactId() == null) continue;
-            deps.add(managedVersion(EffectiveModel.toDep(d), profile.getDependencyManagement()));
+            deps.add(managedVersion(EffectiveModel.toDep(d), profile));
         }
         int managed = managedCount(profile.getDependencyManagement());
         if (deps.isEmpty()) {
@@ -168,12 +185,15 @@ final class ProfileMapping {
 
     /**
      * The version Maven would give a profile dependency declared without one: the profile's own
-     * {@code <dependencyManagement>} first, then the POM's effective table (parents flattened, BOM
-     * imports inlined), which is what governs the dependency once the profile is active.
+     * {@code <dependencyManagement>} first — its entries, then the BOMs it imports, read from a
+     * repository — then the POM's effective table (parents flattened, BOM imports inlined), which
+     * is what governs the dependency once the profile is active.
      */
-    private Pom.Dep managedVersion(Pom.Dep dep, @Nullable DependencyManagement profileManagement) {
-        if (PluginFacts.usable(dep.version()) != null) return dep;
-        String version = versionManagedBy(dep, profileManagement);
+    private Pom.Dep managedVersion(Pom.Dep dep, Profile profile) {
+        DependencyManagement profileManagement = profile.getDependencyManagement();
+        String version = dep.version() == null ? null : PluginFacts.usable(expand(dep.version(), profile));
+        if (version == null) version = versionManagedBy(dep, profileManagement);
+        if (version == null) version = versionManagedByImport(dep, profile);
         if (version == null) version = versionManagedBy(dep, em.model().getDependencyManagement());
         if (version == null) return dep;
         return new Pom.Dep(
@@ -185,6 +205,39 @@ final class ProfileMapping {
                 dep.classifier(),
                 dep.type(),
                 dep.exclusions());
+    }
+
+    /**
+     * A value of the profile with its {@code ${...}} placeholders filled from the profile's own
+     * {@code <properties>} first, then the POM's: an inactive profile's properties are not in the
+     * effective model, and its BOM versions and dependency versions are written with them.
+     */
+    private String expand(String value, Profile profile) {
+        return CiFriendlyVersions.interpolate(value, name -> {
+            String own = profile.getProperties().getProperty(name);
+            return own != null ? own : em.model().getProperties().getProperty(name);
+        });
+    }
+
+    /** The version a BOM the profile's {@code <dependencyManagement>} imports manages {@code dep} at, or null. */
+    private @Nullable String versionManagedByImport(Pom.Dep dep, Profile profile) {
+        DependencyManagement dm = profile.getDependencyManagement();
+        if (dm == null) return null;
+        for (var m : dm.getDependencies()) {
+            if (!"import".equals(m.getScope()) || !"pom".equals(m.getType())) continue;
+            String version = m.getVersion() == null ? null : PluginFacts.usable(expand(m.getVersion(), profile));
+            if (version == null || m.getGroupId() == null || m.getArtifactId() == null) continue;
+            List<Pom.Dep> table = boms.managedBy(m.getGroupId(), m.getArtifactId(), version);
+            if (table == null) continue;
+            for (Pom.Dep managed : table) {
+                if (dep.groupId().equals(managed.groupId())
+                        && dep.artifactId().equals(managed.artifactId())
+                        && PluginFacts.usable(managed.version()) != null) {
+                    return managed.version();
+                }
+            }
+        }
+        return null;
     }
 
     private static @Nullable String versionManagedBy(Pom.Dep dep, @Nullable DependencyManagement dm) {
