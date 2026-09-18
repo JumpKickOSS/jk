@@ -137,7 +137,30 @@ class GradleImporterPropertiesTest {
                 .first()
                 .asString()
                 .contains("io.kotest:kotest-assertions-core")
-                .contains("no entry for it");
+                .contains("no `version.kotest` entry for it");
+    }
+
+    /** A plugin applied without a version reads its {@code plugin.<id>} pin from versions.properties, Kotlin's {@code version.kotlin}. */
+    @Test
+    void plugins_applied_without_a_version_read_their_pins_from_versions_properties(@TempDir Path tmp)
+            throws Exception {
+        Files.writeString(tmp.resolve("versions.properties"), """
+                plugin.org.jetbrains.dokka=2.0.0
+                version.kotlin=2.4.10
+                """);
+        Files.writeString(tmp.resolve("build.gradle.kts"), """
+                plugins {
+                    kotlin("jvm")
+                    id("org.jetbrains.dokka")
+                }
+                """);
+
+        GradleImporter.Result result = GradleImporter.importFrom(tmp.resolve("build.gradle.kts"));
+
+        assertThat(Objects.requireNonNull(result.jkBuild().project().kotlin()).raw())
+                .isEqualTo("2.4.10");
+        assertThat(result.jkBuild().build().dokka().version().raw()).isEqualTo("2.0.0");
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("without an explicit version"));
     }
 
     /** No versions.properties beside the script: the placeholder is a row and the entry is written version-less. */

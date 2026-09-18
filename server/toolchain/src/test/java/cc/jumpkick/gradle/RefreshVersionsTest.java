@@ -10,8 +10,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code versions.properties} answers a refreshVersions {@code _}: an exact {@code group..artifact}
- * key, else the one short key whose segments are all words of the coordinate; two short keys that
- * fit equally are an ambiguity, and a coordinate no key fits is a miss.
+ * key, else the short key the plugin's bundled rules spell for the coordinate; a coordinate whose
+ * key the file lacks is a miss naming that key. A plugin applied without a version reads its
+ * {@code plugin.<id>} entry, Kotlin's {@code version.kotlin}.
  */
 class RefreshVersionsTest {
 
@@ -43,53 +44,117 @@ class RefreshVersionsTest {
 
         RefreshVersions.Lookup launcher = versions.lookup("org.junit.platform", "junit-platform-launcher");
         assertThat(launcher.version()).isEqualTo("1.13.4");
-        assertThat(launcher.keys()).containsExactly("org.junit.platform..junit-platform-launcher");
+        assertThat(launcher.key()).isEqualTo("version.org.junit.platform..junit-platform-launcher");
         assertThat(versions.lookup("io.github.microutils", "kotlin-logging").version())
                 .isEqualTo("3.0.5");
         assertThat(versions.lookup("ch.qos.logback", "logback-classic").version())
                 .isEqualTo("1.5.18");
     }
 
+    /**
+     * The short key is the one the plugin's rules spell, whether or not its segments are words of
+     * the coordinate: {@code kotlinx.coroutines} for {@code kotlinx-coroutines-core}, {@code kotlin}
+     * for every {@code org.jetbrains.kotlin:kotlin-*}, {@code google.android.play-services-maps} for
+     * {@code com.google.android.gms:play-services-maps}, {@code androidx.test.ext.junit} for {@code
+     * androidx.test.ext:junit-ktx}.
+     */
     @Test
-    void a_short_key_whose_segments_are_words_of_the_coordinate_is_the_pin(@TempDir Path tmp) throws Exception {
-        RefreshVersions versions = write(tmp, KOTLIN4EXAMPLE);
+    void a_short_key_the_plugins_rules_spell_is_the_pin(@TempDir Path tmp) throws Exception {
+        RefreshVersions versions = write(tmp, KOTLIN4EXAMPLE + """
+                version.google.android.play-services-maps=19.0.0
+                version.androidx.test.ext.junit=1.2.1
+                """);
 
         RefreshVersions.Lookup coroutines = versions.lookup("org.jetbrains.kotlinx", "kotlinx-coroutines-core");
         assertThat(coroutines.version()).isEqualTo("1.10.2");
-        assertThat(coroutines.keys()).containsExactly("kotlinx.coroutines");
+        assertThat(coroutines.key()).isEqualTo("version.kotlinx.coroutines");
         assertThat(versions.lookup("org.junit.jupiter", "junit-jupiter-api").version())
                 .isEqualTo("5.13.4");
         assertThat(versions.lookup("io.kotest", "kotest-assertions-core").version())
                 .isEqualTo("5.9.1");
         assertThat(versions.lookup("org.jetbrains.kotlin", "kotlin-stdlib-jdk8").version())
                 .isEqualTo("2.2.0");
+        assertThat(versions.lookup("com.google.android.gms", "play-services-maps")
+                        .version())
+                .isEqualTo("19.0.0");
+        assertThat(versions.lookup("androidx.test.ext", "junit-ktx").version()).isEqualTo("1.2.1");
     }
 
     @Test
-    void a_word_that_only_starts_a_key_segment_does_not_match(@TempDir Path tmp) throws Exception {
+    void a_coordinate_whose_key_the_file_lacks_is_a_miss_naming_the_key(@TempDir Path tmp) throws Exception {
         RefreshVersions versions = write(tmp, "version.kotlin=2.2.0\n");
 
-        RefreshVersions.Lookup lookup = versions.lookup("org.jetbrains.kotlinx", "kotlinx-serialization-json");
+        RefreshVersions.Lookup serialization = versions.lookup("org.jetbrains.kotlinx", "kotlinx-serialization-json");
+        assertThat(serialization.found())
+                .as("`kotlin` pins the compiler, not kotlinx")
+                .isFalse();
+        assertThat(serialization.key()).isEqualTo("version.kotlinx.serialization");
 
-        assertThat(lookup.found()).as("`kotlin` is not the word `kotlinx`").isFalse();
-        assertThat(lookup.keys()).isEmpty();
+        RefreshVersions.Lookup unruled = versions.lookup("com.acme", "widgets");
+        assertThat(unruled.found()).isFalse();
+        assertThat(unruled.key())
+                .as("a coordinate no rule covers is kept under its exact key")
+                .isEqualTo("version.com.acme..widgets");
+    }
+
+    /** A rule without a wildcard wins over a longer wildcard match; a value naming another key is followed. */
+    @Test
+    void an_exact_rule_wins_and_an_alias_value_is_followed(@TempDir Path tmp) throws Exception {
+        RefreshVersions versions = write(tmp, """
+                version.junit.junit=4.13.2
+                version.junit.jupiter=5.13.4
+                version.okhttp3=5.1.0
+                version.kotlinpoet=2.2.0
+                version.kotlinx.serialization=version.kotlin
+                version.kotlin=2.4.10
+                """);
+
+        assertThat(versions.lookup("junit", "junit").version()).isEqualTo("4.13.2");
+        assertThat(versions.lookup("org.junit.jupiter", "junit-jupiter-params").version())
+                .isEqualTo("5.13.4");
+        assertThat(versions.lookup("com.squareup.okhttp3", "logging-interceptor")
+                        .version())
+                .isEqualTo("5.1.0");
+        assertThat(versions.lookup("com.squareup", "kotlinpoet-ksp").version()).isEqualTo("2.2.0");
+        assertThat(versions.lookup("org.jetbrains.kotlinx", "kotlinx-serialization-json")
+                        .version())
+                .isEqualTo("2.4.10");
     }
 
     @Test
-    void the_key_with_more_segments_wins_and_an_equal_fit_is_an_ambiguity(@TempDir Path tmp) throws Exception {
+    void a_plugin_applied_without_a_version_reads_its_own_key(@TempDir Path tmp) throws Exception {
         RefreshVersions versions = write(tmp, """
-                version.junit=4.13.2
-                version.junit.jupiter=5.13.4
-                version.squareup.okhttp3=5.1.0
-                version.okhttp3.logging=4.12.0
+                plugin.org.jetbrains.dokka=2.0.0
+                plugin.android=8.13.0
+                version.kotlin=2.4.10
                 """);
 
-        assertThat(versions.lookup("org.junit.jupiter", "junit-jupiter-api").version())
-                .isEqualTo("5.13.4");
-        assertThat(versions.lookup("junit", "junit").version()).isEqualTo("4.13.2");
-        RefreshVersions.Lookup interceptor = versions.lookup("com.squareup.okhttp3", "logging-interceptor");
-        assertThat(interceptor.ambiguous()).isTrue();
-        assertThat(interceptor.keys()).containsExactly("okhttp3.logging", "squareup.okhttp3");
+        assertThat(versions.pluginVersion("org.jetbrains.dokka").version()).isEqualTo("2.0.0");
+        assertThat(versions.pluginVersion("org.jetbrains.kotlin.plugin.serialization")
+                        .version())
+                .isEqualTo("2.4.10");
+        assertThat(versions.pluginVersion("com.android.application").version()).isEqualTo("8.13.0");
+        RefreshVersions.Lookup boot = versions.pluginVersion("org.springframework.boot");
+        assertThat(boot.found()).isFalse();
+        assertThat(boot.key()).isEqualTo("plugin.org.springframework.boot");
+    }
+
+    /** A build's own rules, named by the settings file's {@code extraArtifactVersionKeyRules}, join the plugin's. */
+    @Test
+    void the_settings_files_extra_rules_join_the_bundled_ones(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("settings.gradle.kts"), """
+                plugins { id("de.fayard.refreshVersions") version "0.60.5" }
+                refreshVersions {
+                    extraArtifactVersionKeyRules(file("acme-rules.txt"))
+                }
+                """);
+        Files.writeString(tmp.resolve("acme-rules.txt"), """
+                com.acme.platform:acme-*
+                    ^^^^.^^^^^^^^
+                """);
+        RefreshVersions versions = write(tmp, "version.acme.platform=3.1.0\n");
+
+        assertThat(versions.lookup("com.acme.platform", "acme-core").version()).isEqualTo("3.1.0");
     }
 
     @Test

@@ -1,0 +1,457 @@
+// The artifact-version-key rules the refreshVersions Gradle plugin (de.fayard.refreshVersions) bundles
+// under refreshVersions-rules/ in its jar, one file after another: an artifact pattern over a line
+// marking, with ^ and ., the characters of the version key that a version.<key> entry in
+// versions.properties is named by.
+
+// ---- androidx-version-alias-rules.txt
+
+androidx.*:*
+^^^^^^^^^^
+
+androidx.biometric:biometric-ktx
+^^^^^^^^.          ^^^^^^^^^^^^^
+
+androidx.camera:camera-extensions(-*)
+^^^^^^^^.       ^^^^^^.^^^^^^^^^^
+
+androidx.camera:camera-view(-*)
+^^^^^^^^.       ^^^^^^.^^^^
+
+androidx.car.app:app-testing(-*)
+^^^^^^^^.^^^.    ^^^^^^^^^^^
+
+androidx.constraintlayout:constraintlayout
+^^^^^^^^.                 ^^^^^^^^^^^^^^^^
+
+androidx.constraintlayout:constraintlayout-*
+^^^^^^^^.                 ^^^^^^^^^^^^^^^^^^
+
+androidx.core:core-role(-*)
+^^^^^^^^.     ^^^^^^^^^
+
+androidx.core:core-animation(-*)
+^^^^^^^^.     ^^^^^^^^^^^^^^
+
+androidx.core:core-google-shortcuts(-*)
+^^^^^^^^.     ^^^^^^^^^^^^^^^^^^^^^
+
+androidx.core:core-performance(-*)
+^^^^^^^^.     ^^^^^^^^^^^^^^^^
+
+androidx.core:core-splashscreen(-*)
+^^^^^^^^.     ^^^^^^^^^^^^^^^^^
+
+androidx.core:core-telecom
+^^^^^^^^^     ^^^^^^^^^^^^
+
+androidx.core:core-i18n
+^^^^^^^^^     ^^^^^^^^^
+
+androidx.core:core-location-altitude(-*)
+^^^^^^^^^     ^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.compose.foundation:foundation-text // Deprecated artifact, not updated with its family.
+^^^^^^^^.^^^^^^^.           ^^^^^^^^^^^^^^^
+
+androidx.compose.runtime:runtime-tracing // Probably only during alpha stage
+^^^^^^^^.^^^^^^^.        ^^^^^^^^^^^^^^^
+
+androidx.customview:customview(-*)
+^^^^^^^^.           ^^^^^^^^^^^^^^
+
+androidx.dynamicanimation:dynamicanimation-ktx
+^^^^^^^^.                 ^^^^^^^^^^^^^^^^^^^^
+
+androidx.games:games-*
+^^^^^^^^.^^^^^      ^^
+
+androidx.games:* // In case they add an artifact that doesn't start with "games"
+^^^^^^^^.^^^^^.^
+
+androidx.gaming:gaming-frame-pacing(-*) // Family renamed to androidx.games
+^^^^^^^^.       ^^^^^^^^^^^^^^^^^^^
+
+androidx.gaming:gaming-performance-tuner(-*) // Family renamed to androidx.games
+^^^^^^^^.       ^^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.graphics:*
+^^^^^^^^.         ^
+
+androidx.hilt:hilt-lifecycle-viewmodel // Deprecated artifact, not updated with its family.
+^^^^^^^^.     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.hilt:hilt-navigation-compose
+^^^^^^^^.     ^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.health:health-services-client
+^^^^^^^^.       ^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.health:health-connect-client
+^^^^^^^^.       ^^^^^^^^^^^^^^^^^^^^^
+
+androidx.leanback:leanback-paging(-*)
+^^^^^^^^.         ^^^^^^^^^^^^^^^
+
+androidx.leanback:leanback-tab(-*)
+^^^^^^^^.         ^^^^^^^^^^^^
+
+androidx.leanback:leanback-grid(-*)
+^^^^^^^^.         ^^^^^^^^^^^^^
+
+androidx.lifecycle:lifecycle-extensions // Deprecated artifact, not updated with its family.
+^^^^^^^^.          ^^^^^^^^^^^^^^^^^^^^
+
+androidx.lifecycle:lifecycle-viewmodel-compose
+^^^^^^^^.          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.media:media-widget(-*)
+^^^^^^^^.      ^^^^^^^^^^^^
+
+androidx.paging:paging-compose
+^^^^^^^^.       ^^^^^^^^^^^^^^
+
+androidx.recyclerview:recyclerview-selection(-*)
+^^^^^^^^.             ^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.room:room-coroutines // Deprecated artifact, not updated with its family.
+^^^^^^^^^     ^^^^^^^^^^^^^^^
+
+androidx.security:security-app-authenticator
+^^^^^^^^.         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.security:security-app-authenticator-testing
+^^^^^^^^.         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.security:security-crypto(-*)
+^^^^^^^^.         ^^^^^^^^^^^^^^^
+
+androidx.security:security-identity-credential
+^^^^^^^^.         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.slice:slice-builders-ktx
+^^^^^^^^.      ^^^^^^^^^^^^^^^^^^
+
+androidx.test:*
+^^^^^^^^^^^^^.^
+
+androidx.test:core(-*)
+^^^^^^^^^^^^^.^^^^
+
+androidx.test.ext:*
+^^^^^^^^^^^^^^^^^.^
+
+androidx.test.ext:junit
+^^^^^^^^^^^^^^^^^.^^^^^
+
+androidx.test.ext:junit-ktx
+^^^^^^^^^^^^^^^^^.^^^^^
+
+androidx.test.ext:junit-*
+^^^^^^^^^^^^^^^^^.^^^^^^^
+
+androidx.test.espresso.idling(-*) // Same version as other androidx.test.espresso artifacts.
+^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.test.espresso:espresso-device(-*)
+^^^^^^^^^^^^^^         ^^^^^^^^^^^^^^^
+
+androidx.tracing:tracing-perfetto(-*)
+^^^^^^^^^        ^^^^^^^^^^^^^^^^
+
+androidx.vectordrawable:vectordrawable
+^^^^^^^^.               ^^^^^^^^^^^^^^
+
+androidx.vectordrawable:vectordrawable-animated
+^^^^^^^^.               ^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.vectordrawable:vectordrawable-seekable
+^^^^^^^^.               ^^^^^^^^^^^^^^^^^^^^^^^
+
+androidx.wear:wear(-*)
+^^^^^^^^^     ^^^^^^^^
+
+androidx.wear:wear-input-testing
+^^^^^^^^^     ^^^^^^^^^^
+
+androidx.window:window-extensions
+^^^^^^^^.       ^^^^^^^^^^^^^^^^^
+
+androidx.wear.compose:compose-*
+^^^^^^^^.^^^^.^^^^^^^
+
+androidx.wear.compose:* // In case they add an artifact that doesn't start with "compose"
+^^^^^^^^.^^^^.^^^^^^^.^
+
+androidx.wear.watchface:watchface(-*)
+^^^^^^^^^^^^^^          ^^^^^^^^^^^^^
+
+androidx.wear.watchface:watchface-complications(-*)
+^^^^^^^^^^^^^^          ^^^^^^^^^^^^^^^^^^^^^^^
+
+// ---- cashapp-version-alias-rules.txt
+
+app.cash.*:*
+^^^^^^^^^^
+
+app.cash.licensee:licensee-gradle-plugin
+^^^^^^^^^^^^^^^^^
+
+// ---- dependency-groups-alias-rules.txt
+
+co.touchlab:kermit(-*)
+            ^^^^^^
+
+co.touchlab:stately-*
+            ^^^^^^^
+
+com.android.billingclient:billing(-*)
+    ^^^^^^^^^^^^^^^^^^^^^
+
+com.android.tools:*
+    ^^^^^^^^^^^^^.^
+
+com.apollographql.apollo3:apollo-*
+    ^^^^^^^^^^^^^
+
+com.github.chuckerteam.chucker:library(-*)
+                       ^^^^^^^
+
+com.google.android.horologist:*
+    ^^^^^^^        ^^^^^^^^^^
+
+com.louiscad.splitties:splitties-*
+             ^^^^^^^^^
+
+com.rickclephas.kmp:kmp-nativecoroutines(-*)
+    ^^^^^^^^^^^^        ^^^^^^^^^^^^^^^^
+
+com.russhwolf:multiplatform-settings(-*)
+              ^^^^^^^^^^^^^^^^^^^^^^
+
+io.arrow-kt.analysis.kotlin:io.arrow-kt.analysis.kotlin.*
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+io.arrow-kt:arrow-*
+            ^^^^^
+
+io.coil-kt:coil(-*)
+   ^^^^^^^
+
+io.github.javaeden.orchid:*
+                   ^^^^^^
+
+io.insert-koin:koin-*
+          ^^^^
+
+io.ktor:*
+   ^^^^
+
+org.assertj:assertj-*
+            ^^^^^^^.^
+
+org.hamcrest:hamcrest(-*)
+    ^^^^^^^^
+
+org.http4k:http4k-*
+    ^^^^^^
+
+org.http4k:http4k-connect-*
+           ^^^^^^^^^^^^^^
+
+org.jetbrains.exposed:exposed-*
+    ^^^^^^^^^.^^^^^^^
+
+org.jetbrains.kotlinx:dataframe(-*)
+              ^^^^^^^.^^^^^^^^^
+
+org.jetbrains.kotlinx:kotlin-deeplearning(-*)
+              ^^^^^^^.       ^^^^^^^^^^^^
+
+org.jetbrains.kotlinx:lincheck(-*)
+              ^^^^^^^.^^^^^^^^
+
+org.jetbrains.kotlinx:multik(-*)
+              ^^^^^^^.^^^^^^
+
+org.kodein.di:kodein-di(-*)
+    ^^^^^^^^^
+
+// ---- google-version-alias-rules.txt
+
+com.google.firebase:firebase-bom
+                    ^^^^^^^^^^^^
+
+com.google.firebase:firebase-*
+                    ^^^^^^^^^^
+
+com.google.accompanist:accompanist-*
+    ^^^^^^.^^^^^^^^^^^
+
+com.google.accompanist:accompanist-imageloading-core
+    ^^^^^^.^^^^^^^^^^^.            ^^^^^^^^^^^^^^^^^
+
+com.google.accompanist:accompanist-glide
+    ^^^^^^.^^^^^^^^^^^.            ^^^^^
+
+com.google.android.libraries.places:places
+    ^^^^^^.^^^^^^^.          ^^^^^^
+
+com.google.maps.android:*
+    ^^^^^^.     ^^^^^^^.^
+
+com.google.maps.android:android-maps-utils
+    ^^^^^^.     ^^^^^^^.        ^^^^^^^^^^
+
+com.google.maps.android:maps-ktx
+    ^^^^^^.     ^^^^^^^.^^^^^^^^
+
+com.google.maps.android:maps-utils-ktx
+    ^^^^^^.     ^^^^^^^.^^^^^      ^^^
+
+com.google.android.play:*(-ktx)
+    ^^^^^^^        ^^^^.^
+
+com.google.android.material:material
+    ^^^^^^^^^^^^^^^^^^^^^^^
+
+com.google.android.material:compose-theme-adapter
+    ^^^^^^^^^^^^^^^^^^^^^^^.^^^^^^^^^^^^^^^^^^^^^
+
+com.google.android.material:compose-theme-adapter-3
+    ^^^^^^^^^^^^^^^^^^^^^^^.^^^^^^^^^^^^^^^^^^^^^^^
+
+com.google.android.wearable:wearable
+    ^^^^^^^^^^^^^^^^^^^^^^^
+
+com.google.android.support:wearable
+    ^^^^^^^^^^^^^^.        ^^^^^^^^
+
+com.google.android.gms:play-services-*
+    ^^^^^^.^^^^^^^.    ^^^^^^^^^^^^^^^
+
+com.google.dagger:*
+    ^^^^^^.^^^^^^
+
+com.google.androidbrowserhelper:androidbrowserhelper
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+com.google.mlkit:*
+    ^^^^^^^^^^^^.^
+
+com.google.oboe:oboe
+    ^^^^^^^^^^^
+
+com.google.modernstorage:modernstorage-*
+    ^^^^^^^^^^^^^^^^^^^^
+
+com.google.modernstorage:modernstorage-mediastore
+    ^^^^^^.              ^^^^^^^^^^^^^^^^^^^^^^^^
+
+com.google.modernstorage:modernstorage-filesystem
+    ^^^^^^.              ^^^^^^^^^^^^^^^^^^^^^^^^
+
+com.google.android.fhir:*
+    ^^^^^^^^^^^^^^^^^^^.^
+
+com.google.android.flexbox:flexbox
+    ^^^^^^^^^^^^^^^^^^^^^^
+
+com.google.ambient.crossdevice:crossdevice
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+// ---- jakewharton-version-alias-rules.txt
+
+com.jakewharton.timber:timber
+    ^^^^^^^^^^^^^^^^^^
+
+com.jakewharton.picnic:picnic
+    ^^^^^^^^^^^^^^^^^^
+
+com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter
+    ^^^^^^^^^^^.         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+com.jakewharton.confundus:confundus-gradle
+    ^^^^^^^^^^^^^^^^^^^^^
+
+com.jakewharton.wormhole:wormhole-gradle
+    ^^^^^^^^^^^^^^^^^^^^
+
+com.jakewharton.moshi:shimo
+    ^^^^^^^^^^^^^^^^^.^^^^^
+
+com.jakewharton.rxbinding3:rxbinding(-*)
+    ^^^^^^^^^^^^^^^^^^^^^^
+
+com.jakewharton.rxbinding4:rxbinding(-*)
+    ^^^^^^^^^^^^^^^^^^^^^^
+
+com.jakewharton.rxrelay2:rxrelay
+    ^^^^^^^^^^^^^^^^^^^^
+
+com.jakewharton.rxrelay3:rxrelay
+    ^^^^^^^^^^^^^^^^^^^^
+
+// ---- kotlin(x)-version-alias-rules.txt
+
+org.jetbrains.kotlin:kotlin-*
+              ^^^^^^
+
+org.jetbrains.kotlinx:kotlinx-???(-*)
+              ^^^^^^^.        ^^^
+
+org.jetbrains.kotlinx:kotlinx-collections-immutable(-*)
+              ^^^^^^^.        ^^^^^^^^^^^.^^^^^^^^^
+
+org.jetbrains.kotlinx:kotlinx.reflect.lite
+              ^^^^^^^.        ^^^^^^^^^^^^
+
+// ---- reactivex-version-alias-rules.txt
+
+io.reactivex.*:*
+             ^.^
+
+// ---- square-version-alias-rules.txt
+
+com.squareup.*:*
+             ^
+
+com.squareup:kotlinpoet(-*)
+             ^^^^^^^^^^
+
+// ---- testing-version-alias-rules.txt
+
+junit:junit
+^^^^^.^^^^^ // Allow adding digits/numbers in artifact rules if not too complicated
+
+org.junit:junit-bom
+    ^^^^^
+
+org.junit.jupiter:junit-jupiter(-*)
+    ^^^^^^^^^^^^^
+
+io.kotest:*
+   ^^^^^^
+
+io.kotest.extensions:kotest-extensions-*
+   ^^^^^^.^^^^^^^^^^.                  ^
+
+io.kotest.extensions:kotest-*
+   ^^^^^^.^^^^^^^^^^.       ^
+
+io.kotest.extensions:*
+   ^^^^^^.^^^^^^^^^^.^
+
+org.spekframework.spek2:spek-*
+                        ^^^^
+
+io.strikt:strikt-*
+   ^^^^^^
+
+org.robolectric:*
+    ^^^^^^^^^^^
+
+io.mockk:mockk(-*)
+   ^^^^^
+
+org.mockito:mockito-*
+    ^^^^^^^
