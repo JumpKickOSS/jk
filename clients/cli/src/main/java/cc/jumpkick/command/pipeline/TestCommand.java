@@ -15,6 +15,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
+import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.theme.Theme;
@@ -252,30 +253,21 @@ public final class TestCommand implements CliCommand {
         // step actually ran) before the terminal plan-finish reaches that listener, exactly
         // mirroring how plan.get(TEST_RESULT) is already populated by the in-process path above.
         TestSummary[] testResultHolder = new TestSummary[1];
+        // Counts the suite's replay from its green marker, so the tail can say the tests were
+        // served from cache and not run; the summary renders after the step has finished.
+        ServedTally served = new ServedTally();
         ConsoleSpec spec = new ConsoleSpec(
-                "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
+                "Test",
+                r -> testSummary(testResultHolder[0], r, served.served() > 0),
+                r -> testFailureMessage(testResultHolder[0], r));
         String module = ProjectInfos.buildTarget(buildFile, dir);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         try {
             result = EngineClient.runTest(
                     EnginePaths.current(),
-                    new EngineRequests.TestRequest(
-                            dir,
-                            cache,
-                            jdksDir,
-                            workerCount,
-                            profileName,
-                            global.verbose,
-                            // Global flags are consumed into the session before dispatch
-                            // the session (not the Invocation) is their authority, exactly as
-                            // BuildCommand's request wiring reads them.
-                            SessionContext.current().offline(),
-                            SessionContext.current().force(),
-                            parallelTests,
-                            testSelection,
-                            debugJvm,
-                            coverage),
-                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
+                    testRequest(dir, cache, workerCount),
+                    steps -> CompositeBuildPlanListener.of(
+                            BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module), served),
                     testResultHolder);
         } catch (IOException e) {
             CommandWedge.printFail("Test", e.getMessage());
@@ -286,7 +278,7 @@ public final class TestCommand implements CliCommand {
         if (session != null) {
             session.module(module).absorb(result);
             if (result.success()) {
-                session.wedge(testSummary(testResult, result));
+                session.wedge(testSummary(testResult, result, served.served() > 0));
             } else {
                 session.wedge(testFailureMessage(testResult, result));
             }
@@ -510,6 +502,27 @@ public final class TestCommand implements CliCommand {
         return result.exitCode();
     }
 
+    /**
+     * The plain project's test request. Global flags are consumed into the session before
+     * dispatch — the session, not the Invocation, is their authority, exactly as BuildCommand's
+     * request wiring reads them.
+     */
+    private EngineRequests.TestRequest testRequest(Path dir, Path cache, int workerCount) {
+        return new EngineRequests.TestRequest(
+                dir,
+                cache,
+                jdksDir,
+                workerCount,
+                profileName,
+                global.verbose,
+                SessionContext.current().offline(),
+                SessionContext.current().force(),
+                parallelTests,
+                testSelection,
+                debugJvm,
+                coverage);
+    }
+
     private WorkspaceRequest workspaceTestRequest(Path entryDir, Path cache, int workerCount, List<String> modules) {
         String variant = SessionContext.current().variant();
         if (variant == null) variant = "";
@@ -565,17 +578,19 @@ public final class TestCommand implements CliCommand {
     }
 
     /**
-     * Success result line (sans the leading ✓): {@code Passed N tests in 32s}, or {@code No tests in
-     * <t>} for a project with no test sources. Takes the resolved {@link TestSummary}
-     * directly (rather than a {@code BuildPlan} to look it up from) so both the in-process path (which
-     * reads it off {@code plan.get(TEST_RESULT)}) and the engine-hosted path (which has no real
-     * {@code BuildPlan}, only a wire-populated holder) share this one rendering method.
+     * Success result line (sans the leading ✓): {@code Passed N tests}, {@code Passed N tests
+     * (served from cache)} when the suite's green marker was replayed instead of a run, or {@code
+     * No tests} for a project with no test sources. Takes the resolved {@link TestSummary} directly
+     * (rather than a {@code BuildPlan} to look it up from) so both the in-process path (which reads
+     * it off {@code plan.get(TEST_RESULT)}) and the engine-hosted path (which has no real {@code
+     * BuildPlan}, only a wire-populated holder) share this one rendering method.
      */
-    static String testSummary(TestSummary testResult, BuildPlanResult result) {
+    static String testSummary(TestSummary testResult, BuildPlanResult result, boolean servedFromCache) {
         if (testResult == null || testResult.total() == 0) return "No tests";
         long total = testResult.total();
         String passed = Theme.colorize("Passed", Theme.active().focused());
-        return passed + " " + total + " test" + (total == 1 ? "" : "s");
+        return passed + " " + total + " test" + (total == 1 ? "" : "s")
+                + (servedFromCache ? " (served from cache)" : "");
     }
 
     static String testFailureMessage(TestSummary testResult, BuildPlanResult result) {
