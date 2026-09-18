@@ -260,7 +260,7 @@ Discover test classes, then fork N runners that **pull** classes until empty.
 | Value | Meaning |
 |-------|---------|
 | omit / `0` | **Auto:** this build's share of the jobs budget — `jobs / dirty-module width`, then `min(…, classCount)`, then heap-clamped. `jobs` is `-j` / `JK_JOBS` / `[engine] jobs`, default all cores |
-| `1` | One test JVM (serial within the module) |
+| `1` | One test JVM (serial within the module). It lists the classes the way the pull runners are fed — on a launcher that fires no session or discovery listener — and then executes them one class at a time, so a framework that readies the JVM per class as the classes load (Quarkus augments one application per test profile) does so for the class about to run, not for every class in the module |
 | `N` | Cap at N runners (still ≤ class count; heap-clamped) |
 
 Auto is a **share**, not "as many as this module could use", because jk takes its

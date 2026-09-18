@@ -266,6 +266,33 @@ class LauncherPathTest {
         assertThat(LifecycleListenerFixture.discoveriesStarted()).isZero();
     }
 
+    /**
+     * A one-shot run lists the root on the listing launcher — no session or discovery listener
+     * fires for the root — and executes class by class, so a framework readies the JVM for the
+     * class about to run and not for every class the root holds: each class is one discovery that
+     * selects it, and every test the root holds still runs.
+     */
+    @Test
+    void a_one_shot_run_lists_without_listeners_and_executes_one_class_at_a_time(@TempDir Path tmp) throws IOException {
+        Path root = classpathRootOf(tmp, TagEmptiedFixture.class, PlainPassingFixture.class);
+        LifecycleListenerFixture.reset();
+        var events = new Recorder();
+
+        int exit = LauncherPath.runOneShot(root, null, List.of(), List.of(), List.of(), 0, events);
+
+        assertThat(exit).isZero();
+        assertThat(events.discovered())
+                .containsExactlyInAnyOrder(TagEmptiedFixture.class.getName(), PlainPassingFixture.class.getName());
+        assertThat(events.finishedTests()).hasSize(3);
+        assertThat(LifecycleListenerFixture.rootDiscoveries())
+                .as("the root is listed on a launcher that fires no listener")
+                .isZero();
+        assertThat(LifecycleListenerFixture.classDiscoveries())
+                .as("one executing discovery per class")
+                .isEqualTo(2);
+        assertThat(LifecycleListenerFixture.sessionsOpened()).isEqualTo(2);
+    }
+
     @Test
     void discovery_announces_a_nested_class_through_its_enclosing_class_only() {
         assertThat(LauncherPath.discoveredClassesOf(WithNested.class)).containsExactly(WithNested.class.getName());
