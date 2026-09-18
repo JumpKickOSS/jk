@@ -34,6 +34,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -453,6 +455,10 @@ public final class TestSupport {
         Path dir = moduleDir;
         TestFailureSource.Cache snippets = cache != null ? cache : new TestFailureSource.Cache();
         return new TestProgressListener() {
+            // The discovery fork and the execution fork both judge the same root, so a warning
+            // about the root arrives once per fork; the run reports it once.
+            private final Set<String> warned = ConcurrentHashMap.newKeySet();
+
             @Override
             public void onDiscoveryTotal(int classes, int tests) {
                 if (tests > 0) {
@@ -549,6 +555,7 @@ public final class TestSupport {
 
             @Override
             public void onUserOutput(int workerId, String line) {
+                ctx.forkOutput(line);
                 // Muted by default; --verbose surfaces it. We hand the line to the
                 // view via the step context — only:cli owns the actual streams.
                 if (!verbose) return;
@@ -559,7 +566,8 @@ public final class TestSupport {
 
             @Override
             public void onWarning(String code, String message) {
-                ctx.warn(code == null || code.isBlank() ? "test" : code, message);
+                String c = code == null || code.isBlank() ? "test" : code;
+                if (warned.add(c + '\n' + message)) ctx.warn(c, message);
             }
         };
     }
