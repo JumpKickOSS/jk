@@ -34,6 +34,7 @@ register.
 | generator | `[generate.<name>]`: any JVM code generator as a cached generate-stage step | core | one worker behind every generator table |
 | openapi | `[openapi]`: OpenAPI Generator over a contract, interface-only Spring by default | core | most Spring services ship a contract |
 | avro | `[avro]`: Avro's SpecificCompiler over a module's schemas, protocols and IDL files, one parser across the files | core | the Kafka services' generator; code-free sugar over the generator worker |
+| jooq | `[jooq]`: jOOQ codegen over the module's DDL scripts through DDLDatabase, no database for the build; a live schema opt-in | core | most jOOQ services carry their Flyway migrations; code-free sugar over the generator worker |
 | jaxb | `[jaxb]`: xjc over a module's XML schemas and bindings, timestamp-free output | core | the SOAP and XML services' generator; code-free sugar over the generator worker |
 | build-info | `[build-info]`: `git.properties` and Boot's `build-info.properties` as cached resources in the jar | core | Boot's `/info` endpoint on every imported service; the git-commit-id plugins' consumers |
 | android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |

@@ -10,13 +10,15 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Where the schema compilers land: {@code avro-maven-plugin} as the {@code [avro]} preset and the
- * two JAXB plugins as {@code [jaxb]}, each with its configuration in the table's keys, its output
- * dropped from build-helper's roots, and a row for what the preset has no key for.
+ * Where the schema compilers land: {@code avro-maven-plugin} as the {@code [avro]} preset, the two
+ * JAXB plugins as {@code [jaxb]} and {@code jooq-codegen-maven} as {@code [jooq]}, each with its
+ * configuration in the table's keys, its output dropped from build-helper's roots, and a row for
+ * what the preset has no key for.
  */
 class PomSchemaGeneratorImportTest {
 
@@ -233,5 +235,133 @@ class PomSchemaGeneratorImportTest {
         assertThat(messages(result))
                 .anyMatch(m -> m.contains("`<plugins>`") && m.contains("no `[jaxb]` key"))
                 .noneMatch(m -> m.contains("`<plugin>maven-jaxb2-plugin</plugin>` was not imported"));
+    }
+
+    /** The Baeldung spring-jooq shape: a live database from POM properties, generating into the tree. */
+    @Test
+    void jooq_codegen_over_a_live_database_becomes_the_jooq_preset_with_jdbc_keys(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.baeldung</groupId>
+                  <artifactId>spring-jooq</artifactId>
+                  <version>1.0</version>
+                  <properties>
+                    <db.url>jdbc:h2:~/jooq</db.url>
+                    <db.username>sa</db.username>
+                  </properties>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jooq</groupId>
+                        <artifactId>jooq-codegen-maven</artifactId>
+                        <version>3.19.24</version>
+                        <executions>
+                          <execution>
+                            <phase>generate-sources</phase>
+                            <goals><goal>generate</goal></goals>
+                            <configuration>
+                              <jdbc>
+                                <url>${db.url}</url>
+                                <user>${db.username}</user>
+                                <password>${db.password}</password>
+                              </jdbc>
+                              <generator>
+                                <target>
+                                  <packageName>com.baeldung.jooq.introduction.db</packageName>
+                                  <directory>src/main/java</directory>
+                                </target>
+                                <database>
+                                  <inputSchema>PUBLIC</inputSchema>
+                                  <excludes>flyway_schema_history</excludes>
+                                </database>
+                                <generate>
+                                  <pojos>true</pojos>
+                                  <fluentSetters>true</fluentSetters>
+                                </generate>
+                              </generator>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig jooq = result.jkBuild().pluginConfig("jooq").orElseThrow();
+        assertThat(jooq.values())
+                .containsEntry("package", "com.baeldung.jooq.introduction.db")
+                .containsEntry("excludes", "flyway_schema_history")
+                .containsEntry("pojos", true)
+                .containsEntry("fluent-setters", true)
+                .containsEntry("jdbc-url", "jdbc:h2:~/jooq")
+                .containsEntry("jdbc-user", "sa")
+                .containsEntry("version", "3.19.24")
+                .doesNotContainKey("jdbc-password")
+                .doesNotContainKey("schema");
+        assertThat(messages(result))
+                .anyMatch(m -> m.contains("live database") && m.contains("`sql`"))
+                .anyMatch(m -> m.contains("`src/main/java`") && m.contains("delete the checked-in copies"))
+                .noneMatch(m -> m.contains("`<plugin>jooq-codegen-maven</plugin>` was not imported"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("[jooq]").contains("jdbc-url = \"jdbc:h2:~/jooq\"");
+        assertThat(JkBuildParser.parse(rendered).pluginConfig("jooq")).isPresent();
+    }
+
+    /** A DDLDatabase configuration: its scripts are the preset's own input. */
+    @Test
+    void jooq_codegen_over_ddl_scripts_names_them_as_sql(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>shop</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jooq</groupId>
+                        <artifactId>jooq-codegen-maven</artifactId>
+                        <version>3.21.8</version>
+                        <configuration>
+                          <generator>
+                            <database>
+                              <name>org.jooq.meta.extensions.ddl.DDLDatabase</name>
+                              <properties>
+                                <property><key>scripts</key><value>${basedir}/src/main/resources/db/*.sql</value></property>
+                                <property><key>sort</key><value>semantic</value></property>
+                                <property><key>defaultNameCase</key><value>lower</value></property>
+                                <property><key>parseIgnoreComments</key><value>true</value></property>
+                              </properties>
+                              <inputSchema>shop</inputSchema>
+                            </database>
+                            <generate><records>false</records><daos>true</daos></generate>
+                            <target>
+                              <packageName>com.acme.jooq</packageName>
+                              <directory>target/generated-sources/jooq</directory>
+                            </target>
+                          </generator>
+                        </configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig jooq = result.jkBuild().pluginConfig("jooq").orElseThrow();
+        assertThat(jooq.values())
+                .containsEntry("sql", "src/main/resources/db/*.sql")
+                .containsEntry("name-case", "lower")
+                .containsEntry("properties", Map.of("parseIgnoreComments", "true"))
+                .containsEntry("schema", "shop")
+                .containsEntry("records", false)
+                .containsEntry("daos", true)
+                .containsEntry("package", "com.acme.jooq")
+                .doesNotContainKey("version")
+                .doesNotContainKey("jdbc-url");
+        assertThat(result.jkBuild().build().extraSrc()).isEmpty();
+        assertThat(messages(result)).anyMatch(m -> m.contains("`[jooq]`") && m.contains("DDL scripts"));
     }
 }

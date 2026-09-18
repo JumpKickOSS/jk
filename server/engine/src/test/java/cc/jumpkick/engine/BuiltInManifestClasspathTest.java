@@ -35,6 +35,7 @@ class BuiltInManifestClasspathTest {
                         "taglib",
                         "avro",
                         "jaxb",
+                        "jooq",
                         "minified");
     }
 
