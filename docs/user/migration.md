@@ -179,7 +179,7 @@ graph; in a leaf it builds that module and what it depends on, exactly as in a `
 workspace. Nested aggregators belong to the outermost root; a module listed only by a profile
 Maven does not activate on this machine is not built.
 
-What the import report would grade Tier 3 (a `<build><extensions>` entry other than os-maven-plugin, a `war` packaging, a
+What the import report would grade Tier 3 (a `<build><extensions>` entry jk has no role for, a Tycho or OSGi-bundle packaging, a `war` packaging, a
 `system`-scoped dependency, a parent no repository serves) is not an error here: the build after
 a POM change reports each row once, under Warnings, with the remedy — `jk import pom.xml` writes
 a `jk.toml` you can edit.
@@ -341,7 +341,7 @@ relates to the Maven one.
 | docker-maven-plugin / jib-maven-plugin | 7 | row carrying the `[image]` lines to paste (`base`, `registry`, `name`, `tag` from `<from>` / `<to>`); nothing is written to `jk.toml` | manual |
 | frontend-maven-plugin | 7 | `[dev.sidecars]` + a resource module | manual |
 | quarkus-maven-plugin | 7 | `[quarkus]` at the platform version; none when that version is one the reactor builds `quarkus-bom` at itself (Quarkus's own reactor at `999-SNAPSHOT`), since the BOM the table implies is published for releases only → one row naming those modules | exact |
-| flatten-maven-plugin | 6 | nothing (`jk export maven` writes a flat POM) | exact |
+| flatten-maven-plugin | 6 | Tier-2 row: the flattened POM is what `mvn deploy` publishes; `jk publish` writes its POM from jk.toml, which has no build-time properties to flatten, and `jk export maven` writes a flat POM | exact |
 | os-maven-plugin (a `<build><extensions>` entry or the `detect` goal) | 6 | nothing to write: `os.detected.name`, `os.detected.arch` and `os.detected.classifier` are valued from the host in the effective model, so a `${os.detected.classifier}` classifier is this machine's word | exact |
 | native-maven-plugin | 6 | `[native]`: `<imageName>` → `name`, `<buildArgs>` → `args`; `<mainClass>` → `[application] main`; declared bare with its executions only in an inactive profile → Tier-2 row naming the profile, no `[native]` (so Spring AOT stays off) | approximate |
 | maven-war-plugin | 5 | not supported (packaging `war`) → Tier-3 row | none |
@@ -351,7 +351,9 @@ relates to the Maven one.
 | localizer-maven-plugin | 1 | `[localizer]`: `<fileMask>` → `mask`, the POM's `<resources>` directories → `resources`, `<outputEncoding>` → `encoding`, `<accessModifierAnnotations>` / `<strictTypes>` / `<keyPattern>` → their keys, the plugin version → `version`; the `<outputDirectory>` is the preset's contribution, so a build-helper root inside it is not written; the module keeps its `org.jvnet.localizer:localizer` dependency for the generated classes' runtime | exact |
 | graphqlcodegen-maven-plugin (DGS codegen), graphql-codegen-maven-plugin (graphql-java-codegen) | 1 | row: DGS codegen is a `[generate.<name>]` recipe over `graphql-dgs-codegen-core`'s command line ([Generate](generate.md#graphql--a-recipe-not-a-table)); graphql-java-codegen has no command line, so its step stays under `jk mvn` | manual |
 | openapi-generator-maven-plugin | 4 | `[openapi]`: `<inputSpec>` → `spec` (an HTTP URL is fetched once into `api/<file>` beside the manifest, a row says so), `<generatorName>` → `generator`, the `<modelPackage>` root (else the api or invoker package) → `package` with `<apiPackage>` / `<modelPackage>` / `<invokerPackage>` the root does not derive → `api-package` / `model-package` / `invoker-package`, `<configOptions>` / `<additionalProperties>` → `options`, the plugin version → `version`; `<packageName>`, a second `generate` execution and any other option → row | approximate |
-| any other `<build><extensions>` entry | 4 | Tier-3 row naming the coordinate and, for build-reporter-maven-extension, gitflow-incremental-builder, wagon-ssh and archetype-packaging, what it does under Maven | none |
+| `<build><extensions>` entries and lifecycle plugins whose effect is on how Maven runs — build-reporter-maven-extension, gitflow-incremental-builder, the wagon deploy transports (ssh, ssh-external, WebDAV, ftp), maven-build-cache-extension, takari-smart-builder, jgitver-maven-plugin | 4 | Tier-2 row naming the coordinate, what it does under Maven and what jk has in its place (`jk publish`, the action cache, its own scheduler, `version` in jk.toml); nothing is written | exact |
+| `<build><extensions>` entries and lifecycle plugins that are a packaging jk does not build — archetype-packaging, tycho-maven-plugin, maven-bundle-plugin, nar-maven-plugin | 5 | Tier-3 row naming the coordinate and the packaging; keep that step under `jk mvn` | none |
+| any other `<build><extensions>` entry | — | Tier-3 row naming the coordinate | none |
 
 In a workspace, a row a parent's `<build>` puts on every module — an extension, a plugin with
 no mapping — is said once, at the declaring POM (`the root pom.xml`, `` `build-parent/pom.xml` ``,
