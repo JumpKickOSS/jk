@@ -312,7 +312,8 @@ class PomNestedReactorImportTest {
         assertThat(server.dependencies().of(Scope.TEST)).singleElement().satisfies(d -> {
             assertThat(d.isWorkspace()).isTrue();
             assertThat(d.isTestsKind()).isTrue();
-            assertThat(d.library()).isEqualTo("collector");
+            assertThat(d.library()).isEqualTo("collector-tests");
+            assertThat(d.workspaceName()).isEqualTo("collector");
         });
         assertThat(result.report().hasErrors()).isFalse();
     }

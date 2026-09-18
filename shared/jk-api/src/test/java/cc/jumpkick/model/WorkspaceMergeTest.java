@@ -256,6 +256,30 @@ class WorkspaceMergeTest {
                 .anyMatch(d -> d.isFixtures() && d.module().equals("cc.jumpkick:lib"));
     }
 
+    /**
+     * An optional workspace edge stays optional once the sibling is resolved to its coordinate:
+     * a {@code [features]} list that names its handle still finds an optional dependency to
+     * activate, in the tree as in the member's own solve.
+     */
+    @Test
+    void resolve_sibling_coordinates_preserves_the_optional_flag() {
+        JkBuild root = workspaceRoot("jk", List.of("lib", "app"));
+        JkBuild lib = newProject("lib", Map.of());
+        Dependency gated = workspacePlaceholder("lib").withOptional(true);
+        Dependency gatedTests = workspacePlaceholder("lib")
+                .withLibrary("lib-tests")
+                .withKind(DependencyKind.TESTS)
+                .withOptional(true);
+        JkBuild app = newProject("app", Map.of(Scope.TEST, List.of(gated, gatedTests)));
+
+        JkBuild rewritten = WorkspaceMerge.resolveSiblingCoordinates(root, app, List.of(lib, app));
+        assertThat(rewritten.dependencies().of(Scope.TEST))
+                .extracting(Dependency::library, Dependency::module, Dependency::optional, Dependency::isTestsKind)
+                .containsExactly(
+                        tuple("lib", "cc.jumpkick:lib", true, false),
+                        tuple("lib-tests", "cc.jumpkick:lib", true, true));
+    }
+
     @Test
     void variants_survive_apply_to_module_and_union_into_lock_scopes() {
         // A flavored module: its [variants] block must ride through the merge (the finding-5
@@ -437,6 +461,35 @@ class WorkspaceMergeTest {
         assertThat(merged.dependencies().of(Scope.MAIN))
                 .extracting(Dependency::module, Dependency::optional)
                 .containsExactly(tuple("com.foo:mysql", false), tuple("com.foo:redis", false));
+    }
+
+    /**
+     * A feature selection reaches each member whose {@code [features]} declares the name: its
+     * dependencies join the merge, the defaults it turns off leave it, and a member that lacks the
+     * name is read as it was.
+     */
+    @Test
+    void a_requested_feature_joins_the_merge_for_the_members_that_declare_it() {
+        JkBuild root = workspaceRoot("ws", List.of("gated", "on"));
+        Dependency pg = dep("pg", "com.foo:pg", "1.0").withOptional(true);
+        JkBuild gated = JkBuild.builder(new Project("cc.jumpkick", "gated", "0.1.0", 0))
+                .dependencies(new JkBuild.Dependencies(Map.of(Scope.MAIN, List.of(pg))))
+                .features(new Features(Map.of("db", new Feature("db", List.of("pg"), List.of())), List.of()))
+                .build();
+        Dependency redis = dep("redis", "com.foo:redis", "1.0").withOptional(true);
+        JkBuild on = JkBuild.builder(new Project("cc.jumpkick", "on", "0.1.0", 0))
+                .dependencies(new JkBuild.Dependencies(Map.of(Scope.MAIN, List.of(redis))))
+                .features(new Features(
+                        Map.of("cache", new Feature("cache", List.of("redis"), List.of())), List.of("cache")))
+                .build();
+
+        JkBuild withDb = WorkspaceMerge.merge(root, List.of(gated, on), new FeatureSelection(List.of("db"), true));
+        assertThat(withDb.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("com.foo:pg", "com.foo:redis");
+
+        JkBuild noDefaults = WorkspaceMerge.merge(root, List.of(gated, on), new FeatureSelection(List.of(), false));
+        assertThat(noDefaults.dependencies().of(Scope.MAIN)).isEmpty();
     }
 
     private static JkBuild newProject(String artifact, Map<Scope, List<Dependency>> depsByScope) {

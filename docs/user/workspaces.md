@@ -102,6 +102,19 @@ widget-core = { workspace = true, kind = "tests" }
 Default kind is `main`. The same key works on published Maven coordinates (type `test-jar`,
 classifier `tests`).
 
+The key of a workspace edge is its handle and, by default, the sibling's name. `name` names the
+sibling under another handle, so one manifest holds a sibling's jar and its test classes as two
+rows — the shape a `[features]` list needs to name them apart:
+
+```toml
+[test-dependencies]
+widget-core = { workspace = true, optional = true }
+widget-core-tests = { workspace = true, name = "widget-core", kind = "tests", optional = true }
+
+[features.noshade]
+deps = ["widget-core", "widget-core-tests"]
+```
+
 A consumer inherits a sibling's `[dependencies]` and `[export-dependencies]` — its classes tree
 on the compile classpath, its jar and those libraries at runtime — and never a sibling's
 [`optional = true`](dependencies.md#optional-dependencies) entries, external or sibling: those are
@@ -235,9 +248,12 @@ it stands in for the 1.3.5 a `spring-context` module's graph declares, and the m
 workspace's row. A floating selector on the member's own root — `latest`, a
 caret, the Jupiter the test runner adds to a member that declares no test dependencies — asks
 the workspace for its answer and never disagrees with it; so a member that holds no platform table
-and pins nothing exactly reads the plain rows alone. A `--features` name reaches a member's own
-solve only where that member's `[features]` declares it; a name the member lacks is not its to
-activate and is left out for it.
+and pins nothing exactly reads the plain rows alone. A `jk lock --features` name reaches each unit
+whose `[features]` declares it — the root's merged solve where the root declares it, a member's
+declarations in that solve and its own solve where the member does — and is left out for the units
+that lack it; a name no unit of the workspace declares is refused as `unknown feature`. So
+`jk lock --features noshade` at hadoop's root activates `hadoop-client-integration-tests`' feature
+though the root has no `[features]` table.
 
 `jk why <coord>` lists every version the lock carries for the coordinate, each with the members it
 belongs to. `jk lock` prints one note per member solved on its own, after the summary line, naming

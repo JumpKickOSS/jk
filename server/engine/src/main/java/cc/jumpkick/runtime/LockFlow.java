@@ -10,6 +10,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.command.Exit;
@@ -84,7 +85,7 @@ public final class LockFlow {
         // Workspace root or member → the merged union at the root; standalone → itself.
         LockPlans.LockScope scope;
         try {
-            scope = LockPlans.lockScope(dir);
+            scope = LockPlans.lockScope(dir, new FeatureSelection(features, !noDefaultFeatures));
         } catch (IOException | RuntimeException e) {
             return new Result(Exit.CONFIG, e.getMessage(), null, null, 0);
         }

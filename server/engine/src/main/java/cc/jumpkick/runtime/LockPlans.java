@@ -12,6 +12,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Variants;
@@ -529,17 +530,26 @@ public final class LockPlans {
      */
     public record LockScope(Path lockDir, JkBuild effective, String coord, boolean workspace, int moduleCount) {}
 
-    /** Resolve the {@link LockScope} for {@code entryDir}. Throws like {@link JkBuildParser#parse}. */
+    /** Resolve the {@link LockScope} for {@code entryDir} under the default features. Throws like {@link JkBuildParser#parse}. */
     public static LockScope lockScope(Path entryDir) throws IOException {
+        return lockScope(entryDir, FeatureSelection.DEFAULTS);
+    }
+
+    /**
+     * Resolve the {@link LockScope} for {@code entryDir}: a workspace's merged manifest carries each
+     * member's optional dependencies as {@code selection} reads that member. Throws like {@link
+     * JkBuildParser#parse}.
+     */
+    public static LockScope lockScope(Path entryDir, FeatureSelection selection) throws IOException {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
         // background StoreFeedRefresh on first start of a host).
         LibraryRegistrySync.ensurePresent(SessionContext.current().offline());
         JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
-        if (root.isWorkspaceRoot()) return workspaceScope(entryDir, root);
+        if (root.isWorkspaceRoot()) return workspaceScope(entryDir, root, selection);
         var rootOpt = WorkspaceLocator.findRoot(entryDir);
         if (rootOpt.isPresent()) {
             Path wsRoot = rootOpt.get();
-            return workspaceScope(wsRoot, JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot)));
+            return workspaceScope(wsRoot, JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot)), selection);
         }
         UnresolvedPins.refuse(ManifestPaths.manifestIn(entryDir), root);
         // Standalone: variant dep overlays union here (workspace scopes union inside WorkspaceMerge).
@@ -572,7 +582,8 @@ public final class LockPlans {
         }
     }
 
-    private static LockScope workspaceScope(Path wsRoot, JkBuild rootManifest) throws IOException {
+    private static LockScope workspaceScope(Path wsRoot, JkBuild rootManifest, FeatureSelection selection)
+            throws IOException {
         var modules = WorkspaceLoader.loadModules(wsRoot, rootManifest);
         // A member's `unresolved` pin is refused at the member's own line, before the union hides
         // which manifest declared it.
@@ -580,7 +591,7 @@ public final class LockPlans {
         for (var module : modules.entrySet()) {
             UnresolvedPins.refuse(ManifestPaths.manifestIn(module.getKey()), module.getValue());
         }
-        JkBuild effective = Variants.unionDependencies(WorkspaceMerge.merge(rootManifest, modules.values()));
+        JkBuild effective = Variants.unionDependencies(WorkspaceMerge.merge(rootManifest, modules.values(), selection));
         return new LockScope(wsRoot, effective, coordLabel(rootManifest, wsRoot), true, modules.size());
     }
 

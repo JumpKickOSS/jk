@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Merges workspace root + modules into a synthetic {@link JkBuild} for single-pass locking.
@@ -170,6 +171,15 @@ public final class WorkspaceMerge {
      * workspace's pin and platform policies are the root's.
      */
     public static JkBuild merge(JkBuild root, Collection<JkBuild> modules) {
+        return merge(root, modules, FeatureSelection.DEFAULTS);
+    }
+
+    /**
+     * As {@link #merge(JkBuild, Collection)} under a feature selection: each member's optional
+     * dependencies join as {@code selection} reads that member — a name reaches the members whose
+     * {@code [features]} declare it and is left out for the rest.
+     */
+    public static JkBuild merge(JkBuild root, Collection<JkBuild> modules, FeatureSelection selection) {
         if (modules.isEmpty()) return Variants.unionDependencies(root);
 
         // Union variant dep overlays into every manifest before folding (see applyToModule).
@@ -198,7 +208,7 @@ public final class WorkspaceMerge {
                 dedup.putIfAbsent(resolved.packageKey(), resolved);
             }
             for (JkBuild module : modules) {
-                for (Dependency d : asMemberReads(module, module.dependencies().of(scope))) {
+                for (Dependency d : asMemberReads(module, module.dependencies().of(scope), selection)) {
                     Dependency resolved = resolve(d, siblingByArtifact, wsDeps);
                     if (internal.contains(resolved.module())) continue;
                     dedup.putIfAbsent(resolved.packageKey(), resolved);
@@ -223,23 +233,27 @@ public final class WorkspaceMerge {
     }
 
     /**
-     * A member's declarations as its own graph reads them, for a merge solved under the root's
-     * features: an optional dependency no feature of the member names is the member's own root, one
-     * a feature names rides only when the member's default features activate it, and both arrive as
-     * plain roots.
+     * A member's declarations as its own graph reads them: an optional dependency no feature of the
+     * member names is the member's own root, one a feature names rides only while {@code selection}
+     * activates that feature for this member, and both arrive as plain roots.
      */
-    private static List<Dependency> asMemberReads(JkBuild member, List<Dependency> declared) {
+    private static List<Dependency> asMemberReads(
+            JkBuild member, List<Dependency> declared, FeatureSelection selection) {
         List<Dependency> out = new ArrayList<>(declared.size());
-        Set<String> activated = null;
+        Set<String> active = null;
         for (Dependency d : declared) {
             if (!d.optional()) {
                 out.add(d);
                 continue;
             }
             if (member.features().names(d.library())) {
-                if (activated == null)
-                    activated = new HashSet<>(member.features().defaultDepNames());
-                if (!activated.contains(d.library())) continue;
+                if (active == null) {
+                    active = selection.apply(member).dependencies().byScope().values().stream()
+                            .flatMap(List::stream)
+                            .map(Dependency::library)
+                            .collect(Collectors.toSet());
+                }
+                if (!active.contains(d.library())) continue;
             }
             out.add(d.withOptional(false));
         }
@@ -317,11 +331,12 @@ public final class WorkspaceMerge {
         if (sibling != null) {
             Project p = sibling.project();
             String module = p.group() + ":" + p.name();
-            // Preserve kind and fixtures so classpath resolution still sees both flags. For lock,
-            // siblings are dropped.
+            // Preserve kind, fixtures and optional so classpath resolution and a [features] list
+            // still see the edge as written. For lock, siblings are dropped.
             return Dependency.of(d.library(), module, VersionSelector.parse("=" + p.version()))
                     .withKind(d.kind())
                     .withFixtures(d.fixtures())
+                    .withOptional(d.optional())
                     .withExclusions(d.exclusions());
         }
         Workspace.WorkspaceDependency ws = wsDeps.get(name);
@@ -333,11 +348,13 @@ public final class WorkspaceMerge {
                 return Dependency.git(d.library(), ws.module(), ws.gitSource())
                         .withKind(d.kind())
                         .withFixtures(d.fixtures())
+                        .withOptional(d.optional())
                         .withExclusions(exclusions);
             }
             return Dependency.of(d.library(), ws.module(), Objects.requireNonNull(ws.version()))
                     .withKind(d.kind())
                     .withFixtures(d.fixtures())
+                    .withOptional(d.optional())
                     .withExclusions(exclusions);
         }
         throw new IllegalStateException("no workspace dependency or sibling named `" + name + "`");

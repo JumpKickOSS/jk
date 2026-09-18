@@ -462,19 +462,26 @@ public final class ManifestDeps {
             if (!Boolean.TRUE.equals(ws)) {
                 throw new JkBuildParseException(displayPath + ".workspace must be `true` (the only legal value)");
             }
-            // The key is the sibling's name; `group` picks one of two members carrying it.
+            // The key is the handle and, absent `name`, the sibling's name; `name` names the
+            // sibling under another handle (a jar and its test classes as two rows), and `group`
+            // picks one of two members carrying it.
+            String sibling = name;
             if (entry.contains("name")) {
-                throw new JkBuildParseException(displayPath + " with `workspace = true` must not set `name`");
+                String named = entry.getString("name");
+                if (named == null || named.isBlank()) {
+                    throw new JkBuildParseException(displayPath + ".name must not be blank");
+                }
+                sibling = named;
             }
             String group = entry.getString("group");
             if (group != null) {
                 if (group.isBlank()) {
                     throw new JkBuildParseException(displayPath + ".group must not be blank");
                 }
-                return Dependency.workspace(name, group);
+                return Dependency.workspace(sibling, group).withLibrary(name);
             }
             // kind is applied in parseDepEntry after this form returns.
-            return resolveWorkspaceDep(name, displayPath, workspace);
+            return resolveWorkspaceDep(sibling, displayPath, workspace).withLibrary(name);
         }
 
         // For non-workspace deps, group/name may come from the table or

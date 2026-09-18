@@ -469,6 +469,37 @@ class JkBuildRendererTest {
         assertThat(requireNonNull(reparsed.workspace()).modules()).containsExactly("core", "app");
     }
 
+    /** A workspace edge whose handle is not the sibling's name carries the sibling as {@code name}, and reparses to the same edge. */
+    @Test
+    void a_workspace_edge_under_another_handle_renders_the_sibling_as_name() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.TEST,
+                List.of(
+                        Dependency.workspace("common").withOptional(true),
+                        Dependency.workspace("common")
+                                .withLibrary("common-tests")
+                                .withKind(DependencyKind.TESTS)
+                                .withOptional(true),
+                        Dependency.workspace("edqs", "org.tb.common")
+                                .withLibrary("edqs-tests")
+                                .withKind(DependencyKind.TESTS)));
+        JkBuild model =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains("common = { workspace = true, optional = true }")
+                .contains("common-tests = { workspace = true, name = \"common\", kind = \"tests\", optional = true }")
+                .contains(
+                        "edqs-tests = { workspace = true, name = \"edqs\", group = \"org.tb.common\", kind = \"tests\" }");
+        assertThat(JkBuildParser.parse(out).dependencies().of(Scope.TEST))
+                .extracting(Dependency::library, Dependency::workspaceName, Dependency::isTestsKind)
+                .containsExactly(
+                        tuple("common", "common", false),
+                        tuple("common-tests", "common", true),
+                        tuple("edqs-tests", "edqs", true));
+    }
+
     /** A table whose manifest is not installed in this process is still written, every value as carried. */
     @Test
     void a_plugin_table_without_an_installed_manifest_is_rendered_from_its_values() {
