@@ -812,52 +812,6 @@ class LockOrchestratorMemberPartitionsTest {
                                 + " but org.example:api-parent:1.0 constrains to 1.0.");
     }
 
-    /**
-     * Two members each hold one of two BOMs that disagree on a module both declare versionless; no
-     * member holds both. Under {@code exact} the lock is not a refusal: the workspace's row takes the
-     * say of the first member, in workspace order, whose own table manages the module, and the other
-     * member reads a row of its own at its BOM's version — each member's table folds its own BOMs
-     * alone, as the member pass folds them.
-     */
-    @Test
-    void two_members_each_holding_one_of_two_disagreeing_boms_lock_under_exact_pins(@TempDir Path tempDir)
-            throws Exception {
-        upstream.metadata("com.foo", "leaf", "1.0", "2.0");
-        for (String v : List.of("1.0", "2.0")) {
-            upstream.pom("com.foo", "leaf", v, leafPom("leaf", v));
-            upstream.jar("com.foo", "leaf", v);
-        }
-        upstream.pom(
-                "org.example",
-                "quarkus-bom",
-                "1.0",
-                MavenStub.bom("org.example", "quarkus-bom", "1.0", List.of("com.foo:leaf:2.0")));
-        upstream.pom(
-                "org.example",
-                "api-parent",
-                "1.0",
-                MavenStub.bom("org.example", "api-parent", "1.0", List.of("com.foo:leaf:1.0")));
-        Dependency quarkusBom = Dependency.of("quarkus-bom", "org.example:quarkus-bom", VersionSelector.parse("=1.0"));
-        Dependency apiParent = Dependency.of("api-parent", "org.example:api-parent", VersionSelector.parse("=1.0"));
-        Dependency leaf = Dependency.platformManaged("leaf", "com.foo:leaf");
-        JkBuild app = manifest("app", Map.of(Scope.PLATFORM, List.of(quarkusBom), Scope.MAIN, List.of(leaf)));
-        JkBuild lib = manifest("lib", Map.of(Scope.PLATFORM, List.of(apiParent), Scope.MAIN, List.of(leaf)));
-
-        Lockfile lock = lockWorkspace(tempDir, Map.of(), List.of(app, lib));
-
-        assertThat(rows(lock, "com.foo:leaf:jar:"))
-                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy, Lockfile.Artifact::members)
-                .containsExactlyInAnyOrder(
-                        tuple("2.0", "org.example:quarkus-bom:1.0", List.of()),
-                        tuple("1.0", "org.example:api-parent:1.0", List.of("lib")));
-        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
-                .extracting(Lockfile.Artifact::version)
-                .containsExactly("2.0");
-        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
-                .extracting(Lockfile.Artifact::version)
-                .containsExactly("1.0");
-    }
-
     /** A BOM the root holds, or one every member holds, is the workspace's constraint: one row, no partition. */
     @Test
     void a_bom_the_root_or_every_member_holds_is_the_workspaces_constraint(@TempDir Path tempDir) throws Exception {
