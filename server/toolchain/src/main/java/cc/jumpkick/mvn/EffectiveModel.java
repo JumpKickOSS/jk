@@ -245,14 +245,18 @@ final class EffectiveModel {
                 .orElse(raw);
     }
 
-    /** The nearest ancestor that is not a sibling pom.xml: the published parent a platform entry can name. */
+    /**
+     * The nearest published ancestor: the parent a platform entry can name, since a lock reads the
+     * entry from a repository. A sibling pom.xml of the reactor and a parent read off the disk
+     * through {@code relativePath} are in none.
+     */
     Optional<Ancestor> nearestExternal() {
-        return ancestors.stream().filter(a -> !a.inReactor()).findFirst();
+        return ancestors.stream().filter(Ancestor::published).findFirst();
     }
 
     /** True when some published ancestor declares dependencyManagement of its own. */
     boolean externalChainManages() {
-        return ancestors.stream().anyMatch(a -> !a.inReactor() && !a.managed().isEmpty());
+        return ancestors.stream().anyMatch(a -> a.published() && !a.managed().isEmpty());
     }
 
     /**
@@ -349,7 +353,8 @@ final class EffectiveModel {
      * carries the whole inherited table; {@code inline} are the bare pins no declared dependency
      * uses and no platform entry carries, plus every entry with exclusions, which {@code
      * [managed-dependencies]} carries so they govern transitive versions and prune transitive edges
-     * as they do under Maven.
+     * as they do under Maven. A pin of a parent read off the disk is inline too: no repository
+     * serves that parent, so no platform entry can carry it.
      */
     record Management(List<Pom.Dep> platform, @Nullable Ancestor parentPlatform, List<InlinePin> inline) {}
 
@@ -363,7 +368,7 @@ final class EffectiveModel {
             boolean own = ownKeys.contains(key);
             Optional<Ancestor> owner = own ? Optional.empty() : (isImport(m) ? importsBom() : managedBy(key));
             boolean carriedByParent =
-                    parentCarries && owner.isPresent() && !owner.get().inReactor();
+                    parentCarries && owner.isPresent() && owner.get().published();
             if (carriedByParent) continue;
             if (isImport(m)) {
                 platform.add(toDep(m));

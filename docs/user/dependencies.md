@@ -96,9 +96,11 @@ of its parents imports, or a published parent chain, which the import carries as
 naming the nearest published parent — the lock reads that POM's inherited `dependencyManagement`,
 the BOMs it imports included, as it reads a BOM's. Every other manager keeps the version written as
 Maven resolved it: an inline `dependencyManagement` entry of the POM itself, of a reactor parent or
-of a parent read off the disk through `relativePath`, and a BOM of the reactor itself — a sibling
-module or BOM leaf a member imports, which leaves `[platform-dependencies]` because no repository
-serves it — since nothing the lock reads would supply that version. A member that imports both a
+of a parent read off the disk through `relativePath` (no repository serves either parent's POM, so
+neither is a platform row; a pin of theirs nothing declared uses is a `[managed-dependencies]` row
+instead), and a BOM of the reactor itself — a sibling module or BOM leaf a member imports, which
+leaves `[platform-dependencies]` because no repository serves it — since nothing the lock reads
+would supply that version. A member that imports both a
 published chain and a reactor BOM keeps the pins the reactor BOM supplied and leaves the chain's to
 the platform, module by module.
 
