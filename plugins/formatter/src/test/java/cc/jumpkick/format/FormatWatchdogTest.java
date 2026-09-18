@@ -141,10 +141,29 @@ class FormatWatchdogTest {
         assertThat(FormatWatchdog.human(416_000)).isEqualTo("416.0s");
     }
 
+    /** A limit the host's load stretched names the stretch in the verdict, so a slow host is told apart from a slow file. */
+    @Test
+    void a_stretched_limit_says_why_in_the_verdict() {
+        FormatWatchdog dog = new FormatWatchdog(
+                500,
+                FormatTimeout.forHost(48, 24),
+                clock,
+                (file, elapsedMs) -> notices.add(file + " @ " + elapsedMs + " ms"),
+                replacements::incrementAndGet);
+        try (var window = dog.watch(0, FILE)) {
+            advanceMs(6_000);
+            dog.tick();
+
+            assertThat(dog.verdict(0))
+                    .isEqualTo("timed out after 6.0s (limit 6000 ms, the 3000 ms default stretched 2× for a load"
+                            + " average of 48.0 over 24 processors)");
+        }
+    }
+
     private FormatWatchdog watchdog(long warnMs, long timeoutMs) {
         return new FormatWatchdog(
                 warnMs,
-                timeoutMs,
+                FormatTimeout.explicit(timeoutMs),
                 clock,
                 (file, elapsedMs) -> notices.add(file + " @ " + elapsedMs + " ms"),
                 replacements::incrementAndGet);

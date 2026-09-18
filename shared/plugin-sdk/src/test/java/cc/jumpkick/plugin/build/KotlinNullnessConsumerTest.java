@@ -3,8 +3,8 @@ package cc.jumpkick.plugin.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.HostLoad;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.testing.HostLoad;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -55,7 +55,8 @@ final class FormatWatchdog implements AutoCloseable {
      * pathological file one extra second exactly once, because the verdict is remembered
      * ({@code FormatStampCache}), and it leaves a file that is merely on a bad host alone.
      *
-     * <p>{@code jk.format.file-timeout-ms} moves it either way.
+     * <p>The default is the quiet host's; {@link FormatTimeout#forHost} stretches it by the load per
+     * online processor, and {@code jk.format.file-timeout-ms} sets it outright either way.
      */
     static final long DEFAULT_TIMEOUT_MS = 3_000;
 
@@ -64,7 +65,7 @@ final class FormatWatchdog implements AutoCloseable {
 
     private final long warnNanos;
     private final long timeoutNanos;
-    private final long timeoutMs;
+    private final FormatTimeout timeout;
     private final Clock clock;
     private final Slow slow;
     private final Runnable onAbandon;
@@ -76,10 +77,10 @@ final class FormatWatchdog implements AutoCloseable {
 
     private volatile @Nullable Thread ticker;
 
-    FormatWatchdog(long warnMs, long timeoutMs, Clock clock, Slow slow, Runnable onAbandon) {
+    FormatWatchdog(long warnMs, FormatTimeout timeout, Clock clock, Slow slow, Runnable onAbandon) {
         this.warnNanos = warnMs * 1_000_000L;
-        this.timeoutNanos = timeoutMs * 1_000_000L;
-        this.timeoutMs = timeoutMs;
+        this.timeoutNanos = timeout.ms() * 1_000_000L;
+        this.timeout = timeout;
         this.clock = clock;
         this.slow = slow;
         this.onAbandon = onAbandon;
@@ -148,7 +149,7 @@ final class FormatWatchdog implements AutoCloseable {
         // Loses to the window's own close, so a file that finished inside the same tick keeps its
         // real verdict.
         if (!inFlight.remove(w.index, w)) return;
-        verdicts.put(w.index, "timed out after " + human(millis(elapsed)) + " (limit " + timeoutMs + " ms)");
+        verdicts.put(w.index, "timed out after " + human(millis(elapsed)) + " " + timeout.describe());
         onAbandon.run();
     }
 
