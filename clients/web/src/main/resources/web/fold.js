@@ -23,8 +23,8 @@ export const MAX_DIAGNOSTICS = 12;
  */
 export const MAX_TEST_FAILURE_DIAGNOSTICS = 120;
 
-/** Same set as {@code BuildHistoryKinds} — Activity tracks builds, not format/lock/cache. */
-export const BUILD_LIKE_KINDS = new Set(['build', 'test', 'compile', 'native', 'image']);
+/** Same set as {@code BuildHistoryKinds} — Activity tracks builds, a jk mvn run included, not format/lock/cache. */
+export const BUILD_LIKE_KINDS = new Set(['build', 'test', 'compile', 'native', 'image', 'mvn']);
 
 export function isBuildLikeKind(kind) {
   return BUILD_LIKE_KINDS.has(kind);

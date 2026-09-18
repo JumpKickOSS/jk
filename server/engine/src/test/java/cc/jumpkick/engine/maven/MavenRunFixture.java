@@ -26,7 +26,7 @@ final class MavenRunFixture {
         Path app = Files.createDirectories(project.resolve("app"));
         Files.writeString(
                 project.resolve("pom.xml"),
-                "<project><groupId>com.example</groupId><artifactId>reactor</artifactId></project>\n");
+                "<project><groupId>com.example</groupId><artifactId>reactor</artifactId><version>1.0</version></project>\n");
         Path reports = Files.createDirectories(app.resolve("target").resolve("surefire-reports"));
         Files.writeString(reports.resolve("TEST-" + FAILING_TEST + ".xml"), surefireXml());
         Path events = project.resolve("events.tsv");

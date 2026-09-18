@@ -62,7 +62,7 @@ class MvnResultsCommandTest {
         Files.createDirectories(projectDir.resolve(".mvn/wrapper"));
         Files.writeString(
                 projectDir.resolve("pom.xml"),
-                "<project><groupId>com.example</groupId><artifactId>reactor</artifactId></project>\n");
+                "<project><groupId>com.example</groupId><artifactId>reactor</artifactId><version>1.0</version></project>\n");
         Path argsLog = tempDir.resolve("argv.log");
         serveMaven(scriptedZip("apache-maven-3.9.9", argsLog));
         Files.writeString(
@@ -89,7 +89,7 @@ class MvnResultsCommandTest {
         Path results = projectDir.resolve("target").resolve("jk-results.md");
         assertThat(results).exists();
         String md = Files.readString(results);
-        assertThat(md).startsWith("# jk results — FAIL\n\n**FAIL** · `com.example:reactor`");
+        assertThat(md).startsWith("# jk results — FAIL\n\n**FAIL** · `com.example:reactor` · #1");
         assertThat(md).contains("trigger: cli · tool: mvn");
         assertThat(md).contains("## Tests");
         assertThat(md).contains("#### com.example.AppTest\n");
@@ -102,6 +102,10 @@ class MvnResultsCommandTest {
 
         String printed = Capture.stdout(() -> run("-C", projectDir.toString(), "results"));
         assertThat(printed).isEqualTo(md);
+
+        // The Maven run counts as a build: numbered, and listed with its outcome and tool.
+        String history = Capture.stdout(() -> run("--no-ansi", "-C", projectDir.toString(), "history", "list"));
+        assertThat(history).contains("com.example:reactor").contains("mvn").contains("1 failed");
     }
 
     private void serveMaven(byte[] zip) {

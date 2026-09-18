@@ -42,6 +42,9 @@ never bypasses a checksum that is published.
 
 `jk mvn` also writes jk's run report for the Maven run: `target/jk-results.md` and the history
 row behind `jk results`, MCP `jk_results` and `jk_diagnostics` (header `trigger: cli · tool: mvn`).
+The run counts as a build: it takes the project's next build number (`#N` in the header), appears
+in `jk history` and on the dashboard's Activity feed labelled `tool: mvn`, so a supervisor sees
+what an agent ran through Maven beside what it ran through jk.
 A small Maven core extension, `jk-maven-spy-<version>.jar`, rides Maven's `-Dmaven.ext.class.path`
 and records the reactor's events; after Maven exits the engine folds those events, each module's
 `target/surefire-reports` / `target/failsafe-reports` XML and the compiler plugin's
