@@ -463,6 +463,79 @@ class DependencyTreeTest {
         assertThat(ownTree).contains("com.foo:mysql:1.0");
     }
 
+    /**
+     * A sibling whose fat jar relocates packages exports that jar alone: its declared graph is
+     * bundled inside it, so a consumer's tree stops at the sibling — nested and flattened alike —
+     * while the sibling's own tree still shows what it bundles.
+     */
+    @Test
+    void a_relocating_sibling_exports_no_graph_to_its_consumer(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "1.0"
+
+                [workspace]
+                modules = ["shaded", "inner", "app"]
+                """);
+        Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
+        Path shaded = Files.createDirectories(root.resolve("shaded"));
+        Files.writeString(shaded.resolve("jk.toml"), """
+                name = "shaded"
+
+                [library]
+                relocate = { "com.foo" = "com.acme.shaded.foo" }
+
+                [dependencies]
+                inner = { workspace = true }
+                api = { group = "com.foo", name = "api", version = "1.0" }
+                """);
+        Path inner = Files.createDirectories(root.resolve("inner"));
+        Files.writeString(inner.resolve("jk.toml"), """
+                name = "inner"
+
+                [dependencies]
+                deep = { group = "com.foo", name = "deep", version = "1.0" }
+                """);
+        Path app = Files.createDirectories(root.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), """
+                name = "app"
+
+                [dependencies]
+                shaded = { workspace = true }
+                """);
+        Lockfile lock = lockOf(pkg("com.foo:api", "1.0", List.of()), pkg("com.foo:deep", "1.0", List.of()));
+
+        JkBuild consumer = JkBuildParser.parse(app.resolve("jk.toml"));
+        String tree = DependencyTree.render(
+                consumer,
+                lock,
+                app,
+                Integer.MAX_VALUE,
+                DependencyTreeStyle.Styling.plain(),
+                false,
+                List.of(Scope.MAIN));
+        assertThat(tree)
+                .contains("com.acme:shaded:1.0")
+                .doesNotContain("com.foo:api")
+                .doesNotContain("com.acme:inner")
+                .doesNotContain("com.foo:deep");
+        String flat = DependencyTree.render(
+                consumer, lock, app, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), true, List.of(Scope.MAIN));
+        assertThat(flat)
+                .contains("com.acme:shaded:1.0")
+                .doesNotContain("com.foo:api")
+                .doesNotContain("com.foo:deep");
+
+        JkBuild own = JkBuildParser.parse(shaded.resolve("jk.toml"));
+        String ownTree = DependencyTree.render(
+                own, lock, shaded, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.MAIN));
+        assertThat(ownTree)
+                .contains("com.foo:api:1.0")
+                .contains("com.acme:inner:1.0")
+                .contains("com.foo:deep:1.0");
+    }
+
     @Test
     void sibling_runtime_module_edges_do_not_chain(@TempDir Path root) throws Exception {
         // b -> a, and a declares sibling c under [runtime-dependencies]. WorkspaceClasspath only

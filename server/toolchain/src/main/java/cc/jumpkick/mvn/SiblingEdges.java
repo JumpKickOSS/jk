@@ -147,23 +147,7 @@ final class SiblingEdges {
             PomImporter.uniquifyHandles(byScope, handles);
             rows.addAll(moduleKey, handles.build());
         }
-        JkBuild.Builder out = JkBuild.builder(module.project())
-                .dependencies(new JkBuild.Dependencies(byScope))
-                .repositories(module.repositories())
-                .profiles(module.profiles())
-                .features(module.features())
-                .workspace(module.workspace())
-                .manifest(module.manifest())
-                .plugins(module.plugins())
-                .application(module.applicationOpt().orElse(null))
-                .nativeConfig(module.nativeConfigOpt().orElse(null))
-                .build(module.build())
-                .format(module.format())
-                .variants(module.variants());
-        for (var config : module.pluginConfigs().values()) {
-            out.pluginConfig(config);
-        }
-        return out.build();
+        return module.withDependencies(new JkBuild.Dependencies(byScope));
     }
 
     /** True when {@code module} is a POM of the reactor: a member, an aggregator or a reactor BOM. */

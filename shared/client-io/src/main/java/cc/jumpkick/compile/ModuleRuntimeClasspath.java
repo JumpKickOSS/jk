@@ -30,7 +30,8 @@ import java.util.function.Predicate;
 
 /**
  * Runtime jars for one module: lockfile transitive closure of declared external deps (and of
- * workspace siblings' main/export/runtime externals) plus sibling thin jars. Shared by packaging
+ * workspace siblings' main/export/runtime externals) plus sibling thin jars — a relocating
+ * sibling's fat jar in place of both its thin jar and its externals. Shared by packaging
  * (assembly) and thin-worker install — never the whole workspace lock.
  */
 public final class ModuleRuntimeClasspath {
@@ -88,6 +89,8 @@ public final class ModuleRuntimeClasspath {
         // jk.toml — seed them so assembly/fat jars nest groovy/kotlin-stdlib.
         seedLanguageRuntimeRoots(moduleDir, project, roots);
         for (JkBuild sib : siblingBuilds(moduleDir, project, siblings.siblingCoords())) {
+            // A relocating sibling's fat jar bundles its rows; the jar rides below, its rows do not.
+            if (sib.relocates()) continue;
             roots.addAll(
                     ClasspathResolver.inheritedExternalRoots(sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
         }

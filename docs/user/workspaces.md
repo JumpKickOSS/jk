@@ -131,8 +131,12 @@ fat jar relocates packages — `relocate` under [`[library]`](packaging.md#packa
 `[application]` — is the exception: the shaded names exist only in its `-all.jar`, so that jar is
 what its siblings compile and run against, in every scope, and a sibling's compile is admitted once
 the module's `package-assembly` has written it. The module's own `[dependencies]` do not ride to its
-siblings the way another sibling's do: the fat jar already bundles them, under the shaded names
-where a rule covers them.
+siblings the way another sibling's do — neither its external rows nor the workspace siblings it
+depends on: the fat jar already bundles them, under the shaded names where a rule covers them, as
+the dependency-reduced POM Maven's shade plugin publishes declares nothing. A consumer's compile
+and runtime classpaths, its own fat jar and `jk tree` all see the shaded module's `-all.jar` alone;
+the tree tags the node `[shaded]` and draws nothing beneath it, while the module's own tree still
+shows what it bundles.
 
 ```toml
 # lucene9-shaded/jk.toml

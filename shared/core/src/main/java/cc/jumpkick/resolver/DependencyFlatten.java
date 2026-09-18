@@ -198,6 +198,11 @@ final class DependencyFlatten {
             String ga = WorkspaceGraph.moduleGa(sibling.build());
             String ver = sibling.build().project().version();
             if (!visited.add(ga)) return;
+            // A relocating sibling's fat jar bundles its graph: the consumer sees the jar alone.
+            if (sibling.build().relocates()) {
+                put(out, new FlatDep(ga, ver, DependencyTree.SHADED_SUFFIX));
+                return;
+            }
             put(out, new FlatDep(ga, ver, ""));
             LockGraph siblingGraph = sibling.lock() == null ? graph : LockGraph.forLock(sibling.lock());
             // The sibling contributes its own surface (export/main/runtime), not whatever

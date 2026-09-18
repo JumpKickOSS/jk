@@ -484,10 +484,14 @@ public final class DependencyTree {
         renderNode(graph, module, depth, maxDepth, isLast, prefix, styling, seenModules, out, declaredVersion, pinTag);
     }
 
+    /** The tag on a sibling whose fat jar relocates packages: its consumers see that jar and nothing beneath it. */
+    static final String SHADED_SUFFIX = " [shaded]";
+
     /**
      * A workspace sibling as a real module node (version from its {@code jk.toml}). When depth
      * allows, walk its contributed surface ({@link WorkspaceGraph#siblingContributedScopes()}) —
-     * and those deps' lockfile transitives.
+     * and those deps' lockfile transitives. A sibling that relocates packages is a leaf tagged
+     * {@link #SHADED_SUFFIX}: its fat jar bundles that surface.
      */
     private static void renderSiblingModule(
             LoadedModule sibling,
@@ -510,11 +514,14 @@ public final class DependencyTree {
                     .append('\n');
             return;
         }
+        boolean shaded = sibling.build().relocates();
         out.append(prefix)
                 .append(styling.rail().apply(connector))
                 .append(TreeCoords.formatCoord(p.group(), p.name(), p.version(), styling))
+                .append(shaded ? styling.rail().apply(SHADED_SUFFIX) : "")
                 .append('\n');
-        if (depth >= maxDepth) return;
+        // A relocating sibling's fat jar bundles its graph: the consumer sees the jar alone.
+        if (shaded || depth >= maxDepth) return;
         String childPrefix = prefix + styling.rail().apply(isLast ? "   " : "│  ");
         renderScopeDepList(
                 sibling.build(),
