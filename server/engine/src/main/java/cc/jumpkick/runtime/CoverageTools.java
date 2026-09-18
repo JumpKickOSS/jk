@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.DomXml;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
@@ -112,8 +113,10 @@ final class CoverageTools {
         }
         Files.createDirectories(xml.toAbsolutePath().getParent());
         Files.createDirectories(html);
-        Process process = new ProcessBuilder(
-                        reportCommand(javaHome, tools.cliJar(), exec, classDirs, sourceDirs, xml, html, name))
+        Process process = JavaHomes.underJdk(
+                        new ProcessBuilder(
+                                reportCommand(javaHome, tools.cliJar(), exec, classDirs, sourceDirs, xml, html, name)),
+                        javaHome)
                 .redirectErrorStream(true)
                 .start();
         String output;

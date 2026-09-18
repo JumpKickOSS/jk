@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.lock.GraalPin;
@@ -88,6 +90,32 @@ public final class GraalHomeLookup {
         return LockPinMatch.chooseGraal(registry.listHits(), pin)
                 .map(JdkHit::home)
                 .filter(GraalHomeLookup::usable);
+    }
+
+    /**
+     * {@link #byInventory(JdkRegistry)} for a module that targets {@code javaRelease}: the pointer
+     * answers only when it can build that release. A default is a convenience, and a convenience
+     * that cannot compile the module is not one.
+     */
+    public static Optional<Path> byInventory(JdkRegistry registry, int javaRelease) {
+        return byInventory(registry).filter(home -> clearsFloor(home, javaRelease));
+    }
+
+    /** {@link #byPolicy(JdkRegistry)} narrowed to Graals that can build {@code javaRelease}. */
+    public static Optional<Path> byPolicy(JdkRegistry registry, int javaRelease) {
+        return DefaultGraalPolicy.choose(registry.listHits(), javaRelease)
+                .map(JdkHit::home)
+                .filter(GraalHomeLookup::usable);
+    }
+
+    /** Whether the JDK at {@code home} is at or above {@code javaRelease} ({@code 0} = no floor). */
+    private static boolean clearsFloor(Path home, int javaRelease) {
+        if (javaRelease <= 0) return true;
+        Integer major = ProbeSupport.discoverJdk(home, "jk")
+                .map(JdkHit::version)
+                .map(JdkKeywords::leadingMajor)
+                .orElse(null);
+        return major != null && major >= javaRelease;
     }
 
     /** The {@code jk jdk graal} pointer's home, when set, still installed, and carrying native-image. */
