@@ -28,7 +28,7 @@ detekt     = true                                               # detekt over th
 | `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.1.0"` |
 | `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, `rulesets/java/maven-pmd-plugin-default.xml` (Maven's default, which jk carries), or a module-relative ruleset file | off |
 | `pmd-exclude` | A module-relative file in `maven-pmd-plugin`'s `excludeFromFailureFile` shape — `package.Class=Rule,Rule` per line — whose findings are left out of the report | none |
-| `pmd-version` | The PMD release; `jk import` writes the one the POM's plugin runs, since a newer PMD reports what an older one let through | `"7.27.0"` |
+| `pmd-version` | The PMD release; `jk import` writes the one the POM's plugin runs — the `pmd-java` it pins, else the release its `maven-pmd-plugin` bundles, read from that plugin's POM — since a newer PMD reports what an older one let through | `"7.27.0"` |
 | `spotbugs` | Enable SpotBugs over the module's classes, against its compile classpath | `false` |
 | `spotbugs-exclude` | A SpotBugs filter file of findings to leave out | none |
 | `spotbugs-effort` | `min`, `less`, `default`, `more`, `max` | `"default"` |

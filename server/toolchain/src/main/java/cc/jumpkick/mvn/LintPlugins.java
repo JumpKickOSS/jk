@@ -3,8 +3,13 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.repo.Pom;
+import cc.jumpkick.repo.PomParser;
+import cc.jumpkick.repo.RepoGroup;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -13,6 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
@@ -66,28 +72,19 @@ final class LintPlugins {
     /** The PMD release the lint step runs when the table names none. */
     private static final String DEFAULT_PMD = "7.27.0";
 
-    /** The PMD each {@code maven-pmd-plugin} release bundles, from the plugin POM's {@code pmdVersion}. */
-    private static final Map<String, String> PMD_BY_PLUGIN = Map.of(
-            "3.20.0", "6.53.0",
-            "3.21.0", "6.55.0",
-            "3.21.2", "6.55.0",
-            "3.22.0", "7.0.0",
-            "3.23.0", "7.0.0",
-            "3.24.0", "7.3.0",
-            "3.25.0", "7.3.0",
-            "3.26.0", "7.7.0",
-            "3.27.0", "7.14.0",
-            "3.28.0", "7.17.0");
+    /** The property every {@code maven-pmd-plugin} release's POM names its bundled PMD under. */
+    private static final String PMD_VERSION_PROPERTY = "pmdVersion";
 
     private LintPlugins() {}
 
     /**
      * The table, or null when the POM declares none of the three plugins — or only inherits ones
      * that bind no execution. {@code inherited} collects the rows of a workspace module; null for a
-     * POM imported on its own.
+     * POM imported on its own. {@code repos} serves the PMD plugin's own POM, which names the PMD
+     * it bundles.
      */
     static @Nullable PluginConfig map(
-            EffectiveModel em, ImportReport.Builder report, @Nullable InheritedRows inherited) {
+            EffectiveModel em, ImportReport.Builder report, @Nullable InheritedRows inherited, RepoGroup repos) {
         Model model = em.model();
         Path baseDir = model.getProjectDirectory() == null
                 ? null
@@ -105,7 +102,7 @@ final class LintPlugins {
         Plugin pmd = bound(em, PMD, "pmd:check", report, inherited);
         if (pmd != null) {
             any = true;
-            failOn.put("pmd", pmd(pmd, baseDir, values, sources, report));
+            failOn.put("pmd", pmd(pmd, baseDir, values, sources, report, repos));
         }
         Plugin spotbugs = bound(em, SPOTBUGS, "spotbugs:check", report, inherited);
         if (spotbugs != null) {
@@ -307,7 +304,8 @@ final class LintPlugins {
             @Nullable Path baseDir,
             Map<String, Object> values,
             Set<String> sources,
-            ImportReport.Builder report) {
+            ImportReport.Builder report,
+            RepoGroup repos) {
         List<String> rulesets = new ArrayList<>();
         String failOn = "warning";
         for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
@@ -349,16 +347,18 @@ final class LintPlugins {
         }
         if (rulesets.isEmpty()) rulesets.add(MAVEN_PMD_DEFAULT);
         values.put("pmd", rulesets);
-        pmdVersion(plugin, values, report);
+        pmdVersion(plugin, values, report, repos);
         return failOn;
     }
 
     /**
      * {@code pmd-version}: the {@code pmd-java} (or {@code pmd-core}) the plugin's own dependencies
-     * pin, else the PMD the plugin release bundles. A PMD 6 is not written — the step runs PMD 7's
-     * command line — and is a row; jk's own default is not written either.
+     * pin, else the PMD the plugin release bundles — the {@code pmdVersion} property of its POM,
+     * read from the repositories. A PMD 6 is not written — the step runs PMD 7's command line —
+     * and is a row; jk's own default is not written either; a POM no repository serves is a row.
      */
-    private static void pmdVersion(Plugin plugin, Map<String, Object> values, ImportReport.Builder report) {
+    private static void pmdVersion(
+            Plugin plugin, Map<String, Object> values, ImportReport.Builder report, RepoGroup repos) {
         String version = null;
         for (Dependency dependency : plugin.getDependencies()) {
             if ("net.sourceforge.pmd".equals(dependency.getGroupId())
@@ -370,7 +370,7 @@ final class LintPlugins {
         if (version == null) {
             String pluginVersion = PluginFacts.usable(plugin.getVersion());
             if (pluginVersion == null) return;
-            version = PMD_BY_PLUGIN.get(pluginVersion);
+            version = bundledPmd(pluginVersion, repos, report);
             if (version == null) return;
         }
         if (version.startsWith("6.")) {
@@ -380,6 +380,37 @@ final class LintPlugins {
             return;
         }
         if (!version.equals(DEFAULT_PMD)) values.put("pmd-version", version);
+    }
+
+    /**
+     * The PMD {@code maven-pmd-plugin} {@code pluginVersion} bundles, from the {@code pmdVersion}
+     * property of the release's POM; null, with a row, when no repository serves the POM or it
+     * names none.
+     */
+    static @Nullable String bundledPmd(String pluginVersion, RepoGroup repos, ImportReport.Builder report) {
+        Coordinate coord = Coordinate.parse("org.apache.maven.plugins:" + PMD + ":" + pluginVersion + "!pom");
+        String why;
+        try {
+            Optional<RepoGroup.RepoFetched> fetched = repos.tryFetchPom(coord);
+            if (fetched.isPresent()) {
+                Pom pom = PomParser.parse(
+                        Files.readAllBytes(fetched.get().fetched().cachePath()));
+                String version = PluginFacts.usable(pom.properties().get(PMD_VERSION_PROPERTY));
+                if (version != null) return version;
+                why = "its POM names no `" + PMD_VERSION_PROPERTY + "`";
+            } else {
+                why = "no repository serves its POM";
+            }
+        } catch (IOException | RuntimeException e) {
+            why = "its POM could not be read: " + e.getMessage();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            why = "the read of its POM was interrupted";
+        }
+        report.warning("`" + PMD + "` " + pluginVersion + " bundles a PMD release this import could not learn — " + why
+                + "; `pmd-version` is left to the step's default (" + DEFAULT_PMD + "), so set it to the PMD the"
+                + " Maven build ran if a finding the build did not report appears.");
+        return null;
     }
 
     /**
