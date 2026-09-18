@@ -423,6 +423,71 @@ class PomInheritanceImportTest {
                 .containsExactly("org.apache.commons:commons-lang3=3.17.0");
     }
 
+    /**
+     * That parent is no {@code [platform-dependencies]} row either: no repository serves its POM,
+     * so a lock could not read the row. Its managed versions reach the module through the versions
+     * written on the declared dependencies, and a pin of its table nothing declared uses is a
+     * {@code [managed-dependencies]} row of the module's own, as a reactor parent's is.
+     */
+    @Test
+    void a_relative_path_parent_is_no_platform_row(@TempDir Path tempDir) throws Exception {
+        Path parent = Files.createDirectories(tempDir.resolve("parent"));
+        Files.writeString(parent.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.ex</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.apache.commons</groupId>
+                        <artifactId>commons-lang3</artifactId>
+                        <version>3.17.0</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>org.jspecify</groupId>
+                        <artifactId>jspecify</artifactId>
+                        <version>1.0.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        Path child = Files.createDirectories(tempDir.resolve("child"));
+        Path pom = child.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.ex</groupId><artifactId>parent</artifactId><version>1</version>
+                    <relativePath>../parent/pom.xml</relativePath>
+                  </parent>
+                  <artifactId>child</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.apache.commons</groupId>
+                      <artifactId>commons-lang3</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.Result result = TestImporters.offline(tempDir).importFrom(pom);
+
+        assertThat(result.jkBuild().dependencies().of(Scope.PLATFORM))
+                .as("a POM no repository serves is no platform row")
+                .isEmpty();
+        assertThat(versions(result.jkBuild().dependencies().of(Scope.MAIN)))
+                .containsExactly("org.apache.commons:commons-lang3=3.17.0");
+        assertThat(versions(result.jkBuild().dependencies().of(Scope.MANAGED)))
+                .containsExactly("org.jspecify:jspecify=1.0.0");
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .noneMatch(m -> m.contains("carried as `[platform]`"));
+    }
+
     /** A parent no repository has is a Tier-3 row; the POM's own declarations still import. */
     @Test
     void missing_parent_is_an_error_row_not_a_crash(@TempDir Path tempDir) throws Exception {
