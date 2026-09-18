@@ -6,6 +6,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.RateLimitedException;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -25,9 +26,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -41,7 +48,10 @@ import org.jspecify.annotations.Nullable;
  * fetched it before — is not walked at all: the mirrored POM is the repository's own word that the
  * version exists. The sweep runs {@link #walksInFlight()} catalogs at a time and under a wall
  * budget ({@link #BUDGET}): what it has not reached by then is one note naming the count, and
- * {@code jk lock} decides those pins as it decides every other.
+ * {@code jk lock} decides those pins as it decides every other. A repository that fails to answer
+ * — a 401 or 429 to a request, a connection nothing accepts — is asked once per sweep
+ * ({@link Refusals}): the first walk to reach it records the answer and every later walk notes the
+ * repository without a request, so a refusing repository costs one round trip, not one per pin.
  */
 public final class DeclaredPins {
 
@@ -185,6 +195,7 @@ public final class DeclaredPins {
     private static Sweep walkAll(Set<String> gavs, RepoGroup repos, Clock clock, Duration budget) {
         var session = SessionContext.current();
         Semaphore permits = new Semaphore(walksInFlight());
+        Refusals refusals = new Refusals();
         long deadline = clock.nanos() + budget.toNanos();
         Map<String, Verdict> out = new LinkedHashMap<>();
         Map<String, Set<String>> toWalk = new LinkedHashMap<>();
@@ -207,7 +218,7 @@ public final class DeclaredPins {
                                 permits.acquire();
                                 try {
                                     if (clock.nanos() >= deadline) return null;
-                                    return walk(ga, versions, repos, clock, deadline);
+                                    return walk(ga, versions, repos, refusals, clock, deadline);
                                 } finally {
                                     permits.release();
                                 }
@@ -247,11 +258,13 @@ public final class DeclaredPins {
     /**
      * The repositories the lock asks for {@code ga}, in the lock's order, each read once until every
      * version in {@code versions} has been listed by one of them or {@code deadline} has passed.
-     * A repository that fails to answer is recorded, not skipped; the verdicts of the versions no
-     * repository listed carry it. A version still open when the deadline cuts the walk short has
-     * no verdict: an unasked repository may list it.
+     * A repository that fails to answer is recorded, not skipped — in {@code refusals} for the
+     * sweep, so no later walk asks it — and the verdicts of the versions no repository listed
+     * carry it. A version still open when the deadline cuts the walk short has no verdict: an
+     * unasked repository may list it.
      */
-    private static Walked walk(String ga, Set<String> versions, RepoGroup repos, Clock clock, long deadline)
+    private static Walked walk(
+            String ga, Set<String> versions, RepoGroup repos, Refusals refusals, Clock clock, long deadline)
             throws InterruptedException {
         Coordinate coord = Coordinate.ofModule(ga, versions.iterator().next());
         Map<String, Verdict> out = new LinkedHashMap<>();
@@ -264,6 +277,11 @@ public final class DeclaredPins {
             if (!repo.servesReleases()) continue;
             if (clock.nanos() >= deadline) return new Walked(out);
             asked.add(repo.name());
+            String refused = refusals.awaitFirstAsk(repo.name(), deadline - clock.nanos());
+            if (refused != null) {
+                unreachable.add(repo.name() + " was not asked again after it " + refused);
+                continue;
+            }
             try {
                 List<String> catalog = repo.availableVersions(coord);
                 for (String version : List.copyOf(remaining)) {
@@ -274,7 +292,10 @@ public final class DeclaredPins {
                 }
                 if (!catalog.isEmpty()) listed.add(repo.name() + " lists " + named(catalog));
             } catch (IOException transport) {
+                refusals.record(repo.name(), summary(transport));
                 unreachable.add(repo.name() + " could not be reached (" + describe(transport) + ")");
+            } finally {
+                refusals.asked(repo.name());
             }
         }
         Verdict unlisted = new Verdict(false, List.copyOf(asked), List.copyOf(listed), List.copyOf(unreachable));
@@ -303,12 +324,69 @@ public final class DeclaredPins {
                 + (newestFirst.size() - VERSIONS_NAMED) + " older";
     }
 
+    /**
+     * A failure in a few words, for the rows of the walks that did not ask again: the HTTP status a
+     * request drew, a rate limit, an address nothing answers at; anything else as {@link #describe}.
+     */
+    static String summary(IOException failure) {
+        String message = failure.getMessage() == null ? "" : failure.getMessage();
+        if (failure instanceof RateLimitedException) return "was rate-limited";
+        if (failure instanceof MavenRepo.RepositoryUnreachableException) return "could not be reached";
+        Matcher status = HTTP_STATUS.matcher(message);
+        if (status.find()) return "answered HTTP " + status.group(1);
+        return "failed (" + describe(failure) + ")";
+    }
+
+    private static final Pattern HTTP_STATUS = Pattern.compile("^HTTP (\\d{3}) ");
+
     private static String describe(Throwable failure) {
         Throwable root = failure;
         while (root.getCause() != null && root.getCause() != root) root = root.getCause();
         String head =
                 failure.getClass().getSimpleName() + (failure.getMessage() == null ? "" : ": " + failure.getMessage());
         return root == failure ? head : head + " — " + root.getClass().getSimpleName() + ": " + root.getMessage();
+    }
+
+    /**
+     * One sweep's memory of the repositories that failed to answer, by name. The first walk to
+     * reach a repository asks it while the others wait for that one answer; once it has failed —
+     * at the first ask or any later one — no walk of this sweep asks it again.
+     */
+    static final class Refusals {
+
+        private final Map<String, String> failures = new ConcurrentHashMap<>();
+        private final Map<String, CompletableFuture<Void>> firstAsks = new ConcurrentHashMap<>();
+
+        /**
+         * The recorded failure of {@code repository}, or null once it may be asked: the first
+         * caller for a repository is told to ask at once, every other waits — for {@code
+         * remainingNanos} at most — until that first ask has an outcome.
+         */
+        @Nullable
+        String awaitFirstAsk(String repository, long remainingNanos) throws InterruptedException {
+            String failed = failures.get(repository);
+            if (failed != null) return failed;
+            CompletableFuture<Void> mine = new CompletableFuture<>();
+            CompletableFuture<Void> first = firstAsks.putIfAbsent(repository, mine);
+            if (first == null) return null;
+            try {
+                first.get(Math.max(0, remainingNanos), TimeUnit.NANOSECONDS);
+            } catch (TimeoutException | ExecutionException outcomeUnknown) {
+                // The first ask is still open or died before answering: ask, and judge for oneself.
+            }
+            return failures.get(repository);
+        }
+
+        /** {@code repository} failed to answer: {@code why} completes "was not asked again after it …" in every later walk's row. */
+        void record(String repository, String why) {
+            failures.putIfAbsent(repository, why);
+        }
+
+        /** The first ask of {@code repository} is over, whatever it answered. */
+        void asked(String repository) {
+            CompletableFuture<Void> first = firstAsks.get(repository);
+            if (first != null) first.complete(null);
+        }
     }
 
     /**
