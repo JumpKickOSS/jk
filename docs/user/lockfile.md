@@ -379,9 +379,10 @@ file, so history and dashboard routes for a project resolve without reading its 
 
 `generated-by` names the jk version that wrote the lock. Beside it, `generated-by-build` and
 `generated-by-build-time` name the build — the twelve-hex identity of the jk code archive that
-wrote it and that archive's timestamp — so two builds of one version can be told apart and
-ordered; a jk running from a classes directory writes neither. The stamps are provenance, not
-pins: they choose no artifact and never make a lock stale.
+wrote it and the commit time its packaging stamped into that archive's manifest (`Build-Time`) —
+so two builds of one version can be told apart and ordered by the source they were built from,
+and a reinstall of the same jar moves neither; a jk running from a classes directory writes
+neither. The stamps are provenance, not pins: they choose no artifact and never make a lock stale.
 
 A jk **older than the writer never relocks**. When the manifests move and the build, `jk sync`
 or `jk lock` would rewrite a lock a newer jk wrote — a newer version, or a later build of the same

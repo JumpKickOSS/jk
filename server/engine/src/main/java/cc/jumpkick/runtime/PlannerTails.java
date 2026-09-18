@@ -18,6 +18,7 @@ import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
@@ -38,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -252,7 +254,8 @@ public final class PlannerTails {
                     ctx.label("package " + assemblyJar.getFileName());
                     classes = stageClassesWithContributions(ctx, classes, contributed, layout);
                     byte[] assemblySbom = null;
-                    Map<String, String> assemblyAttrs = new LinkedHashMap<>(project.manifest());
+                    Map<String, String> assemblyAttrs =
+                            assemblyAttributes(project, PlannerBuildInfo.worktree(layout.moduleRoot()));
                     if (Files.exists(lockFile)) {
                         assemblySbom = applicationSbom(project, LockfileReader.read(lockFile));
                         assemblyAttrs.put("Sbom-Format", "CycloneDX");
@@ -278,6 +281,26 @@ public final class PlannerTails {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * The assembly's manifest attributes: the {@code [manifest]} table, plus {@link
+     * BuildIdentity#BUILD_TIME_ATTRIBUTE} when the module is the one jk installs as its own product
+     * lib and {@code worktree} describes its checkout. The value is the checkout's commit time, so
+     * the jar stays a function of its source — the same commit packages the same bytes — while two
+     * engines of one version are ordered by the commit they were built from rather than by when a
+     * jar was copied into place. Any other assembly, and one built outside a checkout, carries what
+     * the table says and nothing more.
+     */
+    static Map<String, String> assemblyAttributes(JkBuild project, Optional<GitFetcher.Worktree> worktree) {
+        Map<String, String> attrs = new LinkedHashMap<>(project.manifest());
+        JkBuild.Install install = project.install();
+        if (install != null && install.productLib() != null && worktree.isPresent()) {
+            attrs.put(
+                    BuildIdentity.BUILD_TIME_ATTRIBUTE,
+                    worktree.get().commitTime().toString());
+        }
+        return attrs;
     }
 
     /** Sources-jar packaging — writes {@code <artifact>-<version>-sources.jar} to the artifact dir. */
