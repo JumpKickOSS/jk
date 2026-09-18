@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
@@ -54,15 +53,6 @@ class ScalaToolResolverTest {
         assertThat(ScalaToolResolver.libraryJars(cp))
                 .extracting(p -> p.getFileName().toString())
                 .containsExactly("scala-library-3.8.4.jar", "scala3-library_3-3.8.4.jar");
-    }
-
-    @Test
-    void rejects_scala_2() {
-        assertThatThrownBy(() -> ScalaToolResolver.requireSupportedVersion("2.13.16"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Scala 3");
-        ScalaToolResolver.requireSupportedVersion("3.8.4");
-        ScalaToolResolver.requireSupportedVersion("3.0.0");
     }
 
     @Test

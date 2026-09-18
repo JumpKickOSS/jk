@@ -34,8 +34,10 @@ public final class LanguageRuntimeInject {
      * the language is not pinned here and the manifest selector is used as written.
      */
     public record ToolVersions(
-            @Nullable String kotlin, @Nullable String scala) {
-        public static final ToolVersions NONE = new ToolVersions(null, null);
+            @Nullable String kotlin,
+            @Nullable String scala,
+            @Nullable String groovy) {
+        public static final ToolVersions NONE = new ToolVersions(null, null, null);
 
         static @Nullable VersionSelector exactOr(@Nullable String version, @Nullable VersionSelector declared) {
             return version == null || version.isBlank() ? declared : new VersionSelector.Exact("=" + version, version);
@@ -67,7 +69,8 @@ public final class LanguageRuntimeInject {
         // (lock.kotlin) but produces no classes — injecting its runtime made such locks fail
         // against repos that don't host the stdlib.
         if (langs.groovy() && hasLangSources(projectDir, ".groovy")) {
-            addRuntime(bomConstraints, mainDeduped, added, "org.apache.groovy:groovy", p.groovy(), "5");
+            VersionSelector groovy = ToolVersions.exactOr(tools.groovy(), p.groovy());
+            addRuntime(bomConstraints, mainDeduped, added, "org.apache.groovy:groovy", groovy, "5");
         }
         if (langs.kotlin() && hasLangSources(projectDir, ".kt")) {
             VersionSelector kotlin = ToolVersions.exactOr(tools.kotlin(), p.kotlin());

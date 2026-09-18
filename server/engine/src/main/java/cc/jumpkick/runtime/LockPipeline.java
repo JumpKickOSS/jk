@@ -11,6 +11,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.Hashing;
@@ -62,6 +63,7 @@ import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.runtime.base.SdkComponents;
+import cc.jumpkick.scala.ScalaResolver;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
@@ -378,11 +380,13 @@ public final class LockPipeline {
     }
 
     /**
-     * The Kotlin and Scala compiler pins, resolved before the dependency solve so the injected
-     * stdlibs can follow them exactly. A freshen carries the pin the lock already holds — bumping
-     * the compiler is {@code jk lock}'s job — and otherwise every path resolves it, since a lock
-     * written without it loses compiler provisioning. A Kotlin below jk's floor is pinned at the
-     * floor, the compiler jk drives for it, and the lock's notes say so.
+     * The Kotlin, Scala and Groovy compiler pins, resolved before the dependency solve so the
+     * injected runtimes can follow them exactly. A freshen carries the pin the lock already holds —
+     * bumping the compiler is {@code jk lock}'s job — and otherwise every path resolves it, since a
+     * lock written without it loses compiler provisioning. A compiler below its language's floor is
+     * pinned at the version jk drives for it, and the lock's notes say so. Groovy has no lock field
+     * of its own: its pin is the locked {@code org.apache.groovy:groovy} runtime, so an unpinned
+     * Groovy module ({@code null} here) keeps following its platform.
      */
     private LanguageRuntimeInject.ToolVersions resolveToolVersions(
             @Nullable Lockfile pins, RepoGroup repos, Progress progress, ResolveObserver observer) {
@@ -393,8 +397,18 @@ public final class LockPipeline {
         }
         if (kotlin != null) progress.label("resolved kotlin " + kotlin);
         String scala = pins != null && pins.scala() != null ? pins.scala() : resolveScalaVersion(effective, repos);
+        if (scala != null && ScalaResolver.belowFloor(scala)) {
+            observer.onNote(ScalaResolver.floorNote(scala));
+            scala = ScalaResolver.DEFAULT_VERSION;
+        }
         if (scala != null) progress.label("resolved scala " + scala);
-        return new LanguageRuntimeInject.ToolVersions(kotlin, scala);
+        String groovy = resolveGroovyVersion(effective, repos);
+        if (groovy != null && GroovyResolver.belowFloor(groovy)) {
+            observer.onNote(GroovyResolver.floorNote(groovy));
+            groovy = GroovyResolver.DEFAULT_VERSION;
+        }
+        if (groovy != null) progress.label("resolved groovy " + groovy);
+        return new LanguageRuntimeInject.ToolVersions(kotlin, scala, groovy);
     }
 
     /**
@@ -837,6 +851,17 @@ public final class LockPipeline {
         VersionSelector kotlin = effective.project().kotlin();
         if (kotlin == null) return null;
         return highestMatch(kotlin, repos, Coordinate.of("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "any"));
+    }
+
+    /**
+     * Resolve the project's {@code groovy} version selector to a concrete Groovy release. Returns
+     * null for a project that declares none — its runtime follows the platform or the default line
+     * — or when resolution can't complete.
+     */
+    static @Nullable String resolveGroovyVersion(JkBuild effective, RepoGroup repos) {
+        VersionSelector groovy = effective.project().groovy();
+        if (groovy == null) return null;
+        return highestMatch(groovy, repos, Coordinate.of("org.apache.groovy", "groovy", "any"));
     }
 
     /**
