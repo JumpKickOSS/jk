@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -392,13 +393,50 @@ class ProtocStepTest {
      * {@code exit}. Written where the engine's fetch would put it — a plain file with no mode bits
      * of its own, which is what the step has to cope with.
      */
+    /**
+     * {@code replace} rules rewrite what protoc wrote, in order, as regular expressions with group
+     * references: the generated sources of a module built against a shaded protobuf runtime import
+     * the shaded package, while a rule matching nothing leaves a file as protoc wrote it.
+     */
+    @Test
+    void replace_rules_rewrite_the_generated_sources_after_protoc(@TempDir Path tmp) throws Exception {
+        Map<String, String> replace = new LinkedHashMap<>();
+        replace.put("([^.])com\\.google\\.protobuf", "$1org.apache.hadoop.thirdparty.protobuf");
+        replace.put("class Hello", "final class Hello");
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf").config(Map.of("replace", replace));
+        write(tmp.resolve("proto/a.proto"), "syntax = \"proto3\";");
+        Path argv = tmp.resolve("argv.txt");
+        io.extra("protoc", stubProtoc(tmp, argv, 0, "import com.google.protobuf.GeneratedMessageV3;\nclass Hello {}"));
+
+        ProtocStep.run(io);
+
+        Path gen = tmp.resolve("scratch/gen");
+        assertThat(Files.readString(gen.resolve("Hello.java")))
+                .isEqualTo("import org.apache.hadoop.thirdparty.protobuf.GeneratedMessageV3;\nfinal class Hello {}\n");
+    }
+
+    @Test
+    void a_replace_key_that_is_not_a_regular_expression_fails_naming_it(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf").config(Map.of("replace", Map.of("([^.", "x")));
+        write(tmp.resolve("proto/a.proto"), "syntax = \"proto3\";");
+        io.extra("protoc", stubProtoc(tmp, tmp.resolve("argv.txt"), 0));
+
+        assertThatThrownBy(() -> ProtocStep.run(io))
+                .hasMessageStartingWith("[protobuf] replace: `([^.` is not a regular expression");
+    }
+
     private static Path stubProtoc(Path tmp, Path argv, int exit) throws IOException {
+        return stubProtoc(tmp, argv, exit, "class Hello {}");
+    }
+
+    /** As above, the stub writing {@code hello} as the generated {@code Hello.java}. */
+    private static Path stubProtoc(Path tmp, Path argv, int exit, String hello) throws IOException {
         String script = "#!/bin/sh\n"
                 + "printf '%s\\n' \"$@\" > '" + argv + "'\n"
                 + "for a in \"$@\"; do\n"
                 + "  case \"$a\" in\n"
                 + "    --java_out=*) out=\"${a#--java_out=}\"; out=\"${out#lite:}\"; mkdir -p \"$out\";"
-                + " echo 'class Hello {}' > \"$out/Hello.java\";;\n"
+                + " printf '%s\\n' '" + hello.replace("\n", "' '") + "' > \"$out/Hello.java\";;\n"
                 + "  esac\n"
                 + "done\n"
                 + "exit " + exit + "\n";

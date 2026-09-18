@@ -20,6 +20,7 @@ src     = { type = "string-list", default = ["proto"] }   # proto roots, module-
 exclude = { type = "string-list", default = [] }          # root-relative globs protoc never sees (a proto another generation covers)
 lite    = { type = "bool", default = false }       # lite-runtime codegen (Android/datastore posture)
 kotlin  = { type = "bool", default = false }       # also emit Kotlin DSL codegen (--kotlin_out; pairs with protobuf-kotlin[-lite])
+replace = { type = "string-map", default = {}, hint = "regular expression → replacement, applied in order to every generated .java and .kt file after protoc; $1 names a group, as in Java's Matcher.replaceAll" }
 
 # Every [protobuf.<id>] sub-table is one protoc plugin, <id> being the name protoc knows it by
 # (--<id>_out, protoc-gen-<id>): [protobuf.grpc-java] runs io.grpc's stub generator over the

@@ -295,7 +295,10 @@ public final class PluginTableRegistry {
             for (String key : table.keySet()) {
                 TomlTable entryTable = readTable(table, key);
                 if (entryTable == null || manifest.subTables().containsKey(key)) continue;
-                if (manifest.schema().containsKey(key)) {
+                PluginDescriptor.SchemaKey schemaKey = manifest.schema().get(key);
+                if (schemaKey != null) {
+                    // A string-map key is an inline table by nature: the schema pass read it already.
+                    if (schemaKey.type() == PluginDescriptor.SchemaKey.Type.STRING_MAP) continue;
                     throw new JkBuildParseException("[" + manifest.table() + "." + key + "] is a [" + manifest.table()
                             + "] key, not an entry name");
                 }
@@ -408,7 +411,8 @@ public final class PluginTableRegistry {
                 if (map == null) throw new JkBuildParseException(where + " must be a table of strings");
                 Map<String, String> out = new LinkedHashMap<>();
                 for (String k : map.keySet()) {
-                    Object val = map.get(k);
+                    // By path, not by name: a quoted key holding dots is one key, not a walk.
+                    Object val = map.get(List.of(k));
                     if (!(val instanceof String str)) {
                         throw new JkBuildParseException(where + "." + k + " must be a string");
                     }

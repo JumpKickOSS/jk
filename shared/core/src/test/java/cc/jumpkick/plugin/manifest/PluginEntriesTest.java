@@ -75,6 +75,40 @@ class PluginEntriesTest {
                 .containsEntry("options", Map.of("verbose", "false"));
     }
 
+    /**
+     * A string-map key of the owning table is an inline table too, so it is read as the key it is
+     * — its quoted names holding dots and all — and never mistaken for an entry.
+     */
+    @Test
+    void a_string_map_key_of_the_table_is_not_an_entry() {
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id = "entries-fixture"
+                table = "entries-fixture"
+
+                [schema]
+                replace = { type = "string-map", default = {} }
+
+                [entries]
+                schema = "thing"
+
+                [sub-schema.thing]
+                tool = { type = "string", required = true }
+                """, "entries-fixture.toml");
+        PluginConfig config = PluginTableRegistry.validate(manifest, Toml.parse("""
+                replace = { "([^\\\\.])com.google.protobuf" = "$1org.acme.shaded.protobuf", "class Hello" = "final class Hello" }
+
+                [api]
+                tool = "org.acme:api-gen:1.0"
+                """));
+
+        assertThat(config.entries().keySet()).containsExactly("api");
+        assertThat(config.stringMap("replace"))
+                .containsExactly(
+                        Map.entry("([^\\.])com.google.protobuf", "$1org.acme.shaded.protobuf"),
+                        Map.entry("class Hello", "final class Hello"));
+    }
+
     @Test
     void an_entry_missing_a_required_key_names_the_entry() {
         assertThatThrownBy(() -> PluginTableRegistry.validate(manifest(), Toml.parse("[api]\nargs = []")))

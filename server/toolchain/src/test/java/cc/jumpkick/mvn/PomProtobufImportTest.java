@@ -11,6 +11,7 @@ import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -295,6 +296,169 @@ class PomProtobufImportTest {
                         .stringList("exclude"))
                 .containsExactly("ProtobufRpcEngine.proto");
     }
+
+    /**
+     * Hadoop's shape: the root manages a {@code replacer} whose executions are skipped, and a module
+     * turns the one over {@code target/generated-sources} back on, so protoc's output is rewritten to
+     * the shaded protobuf package before it compiles. That execution is {@code [protobuf] replace};
+     * the one over the module's own sources is a row, and the plugin is not the generic row.
+     */
+    @Test
+    void a_replacer_over_the_generated_sources_is_the_tables_replace(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), ROOT_WITH_REPLACER);
+        Path protoDir = Files.createDirectories(tempDir.resolve("project/src/main/proto"));
+        Files.writeString(protoDir.resolve("Data.proto"), "syntax = \"proto3\";\nmessage Data { string key = 1; }\n");
+        String replacer = """
+                <plugin>
+                  <groupId>com.google.code.maven-replacer-plugin</groupId>
+                  <artifactId>replacer</artifactId>
+                  <executions>
+                    <execution>
+                      <id>replace-generated-sources</id>
+                      <configuration>
+                        <skip>false</skip>
+                        <excludes><exclude>**/ProtobufRpcEngineProtos.java</exclude></excludes>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>replace-generated-test-sources</id>
+                      <configuration><skip>false</skip></configuration>
+                    </execution>
+                    <execution>
+                      <id>replace-sources</id>
+                      <configuration><skip>false</skip></configuration>
+                    </execution>
+                  </executions>
+                </plugin>
+                """;
+        String testProtos = """
+                <plugin>
+                  <groupId>org.xolstice.maven.plugins</groupId>
+                  <artifactId>protobuf-maven-plugin</artifactId>
+                  <version>0.6.1</version>
+                  <configuration>
+                    <protocArtifact>com.google.protobuf:protoc:${protobuf-java.version}:exe:${os.detected.classifier}</protocArtifact>
+                  </configuration>
+                  <executions>
+                    <execution>
+                      <goals><goal>compile</goal></goals>
+                    </execution>
+                    <execution>
+                      <id>test-protos</id>
+                      <goals><goal>test-compile</goal></goals>
+                      <configuration>
+                        <outputDirectory>${project.build.directory}/generated-test-sources/java</outputDirectory>
+                      </configuration>
+                    </execution>
+                  </executions>
+                </plugin>
+                """;
+        PomImporter.Result result = TestImporters.importXml(tempDir, MODULE.formatted(testProtos + replacer));
+
+        PluginConfig protobuf = result.jkBuild().pluginConfig("protobuf").orElseThrow();
+        assertThat(protobuf.stringMap("replace"))
+                .containsExactly(Map.entry("([^\\.])com.google.protobuf", "$1org.apache.hadoop.thirdparty.protobuf"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(JkBuildParser.parse(rendered)
+                        .pluginConfig("protobuf")
+                        .orElseThrow()
+                        .stringMap("replace"))
+                .as("the rule round-trips through jk.toml, its quoted key with the dots inside it")
+                .isEqualTo(protobuf.stringMap("replace"));
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .startsWith(
+                        "`replacer` execution `replace-sources` rewrites the files under `src/main/java` in place"));
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .startsWith("`replacer` execution `replace-generated-sources` `<excludes>`"));
+        assertThat(messages(result)).noneMatch(m -> m.contains("`<plugin>replacer</plugin>` was not imported"));
+        assertThat(messages(result))
+                .as("the test protos' output is not the table's, so the execution over it is a row, not a rule")
+                .anySatisfy(m -> assertThat(m)
+                        .startsWith("`replacer` execution `replace-generated-test-sources` rewrites the files under"
+                                + " `target/generated-test-sources` in place, outside the protobuf plugin's output"));
+    }
+
+    private static final String ROOT_WITH_REPLACER = """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.alibaba.nacos</groupId>
+              <artifactId>nacos-all</artifactId>
+              <version>3.3.0</version>
+              <packaging>pom</packaging>
+              <properties>
+                <protobuf-java.version>3.25.5</protobuf-java.version>
+                <shaded-protobuf-prefix>org.apache.hadoop.thirdparty.protobuf</shaded-protobuf-prefix>
+              </properties>
+              <dependencyManagement>
+                <dependencies>
+                  <dependency>
+                    <groupId>com.google.protobuf</groupId>
+                    <artifactId>protobuf-java</artifactId>
+                    <version>${protobuf-java.version}</version>
+                  </dependency>
+                </dependencies>
+              </dependencyManagement>
+              <build>
+                <pluginManagement>
+                  <plugins>
+                    <plugin>
+                      <groupId>com.google.code.maven-replacer-plugin</groupId>
+                      <artifactId>replacer</artifactId>
+                      <version>1.5.3</version>
+                      <executions>
+                        <execution>
+                          <id>replace-generated-sources</id>
+                          <phase>generate-sources</phase>
+                          <goals><goal>replace</goal></goals>
+                          <configuration>
+                            <skip>true</skip>
+                            <basedir>${project.build.directory}/generated-sources</basedir>
+                            <includes><include>**/*.java</include></includes>
+                            <replacements>
+                              <replacement>
+                                <token>([^\\.])com.google.protobuf</token>
+                                <value>$1${shaded-protobuf-prefix}</value>
+                              </replacement>
+                            </replacements>
+                          </configuration>
+                        </execution>
+                        <execution>
+                          <id>replace-generated-test-sources</id>
+                          <phase>generate-test-resources</phase>
+                          <goals><goal>replace</goal></goals>
+                          <configuration>
+                            <skip>true</skip>
+                            <basedir>${project.build.directory}/generated-test-sources</basedir>
+                            <replacements>
+                              <replacement>
+                                <token>([^\\.])com.google.protobuf</token>
+                                <value>$1${shaded-protobuf-prefix}</value>
+                              </replacement>
+                            </replacements>
+                          </configuration>
+                        </execution>
+                        <execution>
+                          <id>replace-sources</id>
+                          <phase>generate-sources</phase>
+                          <goals><goal>replace</goal></goals>
+                          <configuration>
+                            <skip>true</skip>
+                            <basedir>${basedir}/src/main/java</basedir>
+                            <replacements>
+                              <replacement>
+                                <token>([^\\.])com.google.protobuf</token>
+                                <value>$1${shaded-protobuf-prefix}</value>
+                              </replacement>
+                            </replacements>
+                          </configuration>
+                        </execution>
+                      </executions>
+                    </plugin>
+                  </plugins>
+                </pluginManagement>
+              </build>
+            </project>
+            """;
 
     /** Every proto excluded leaves the module with none to compile: no table, and the output root row says so. */
     @Test
