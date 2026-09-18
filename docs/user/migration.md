@@ -251,12 +251,12 @@ or newer and drives Maven and jk through one protocol: import, lock, build, test
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 | run 10 | run 11 | run 12 | run 13 | run 14 | run 15 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 | 12 | 12 | 11 | 11 | 11 | 11 |
-| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 | 16 | 16 | 16 | 15 | 18 | 19 |
-| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 | 9 | 11 | 11 | 9 | 9 | 11 |
-| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 1 | 1 | 2 |
+| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 | run 10 | run 11 | run 12 | run 13 | run 14 | run 15 | run 16 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 | 12 | 12 | 11 | 11 | 11 | 11 | 11 |
+| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 | 16 | 16 | 16 | 15 | 18 | 19 | 18 |
+| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 | 9 | 11 | 11 | 9 | 9 | 11 | 13 |
+| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 1 | 1 | 2 | 2 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
 the import count fell because the same import now reports a parent or BOM it cannot fetch as a
@@ -340,6 +340,11 @@ its build to a `-J` compiler argument the import now carries into an in-process 
 spring-cloud-alibaba modules fail javac with no diagnostic, and floci's build took the 256 MB
 engine down with a heap dump. Each is a ticket; the first two are import regressions the next run
 must recover.
+Run 16 (main 03de088c6) builds thirteen — spring-cloud-alibaba, floci and zipkin past the run-15
+walls and into their tests — and locks eighteen: tutorials imports under its Maven profiles for the
+first time, 1,350 modules, and its lock refuses a POM-declared plaintext http repository that
+Maven merely blocks, and jenkins's build stops on the SpotBugs threshold its plugin configuration
+now imports. Both are import-fidelity tickets; the build count is the ratchet's new bar.
 
 Two of run 7's test walls are the repository's contract with Maven rather than something jk
 translates. cryptomator's `SecurePasswordFieldTest` starts the JavaFX platform in `@BeforeAll`;
