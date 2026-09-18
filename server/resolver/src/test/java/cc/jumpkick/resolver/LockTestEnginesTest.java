@@ -130,6 +130,41 @@ class LockTestEnginesTest {
                 .hasMessageContaining("raise the pin to 4.13.2");
     }
 
+    @Test
+    void a_platform_managed_junit4_row_locks_at_the_boms_version(@TempDir Path tempDir) throws Exception {
+        upstream.pom(
+                "org.example", "bom", "1.0", MavenStub.bom("org.example", "bom", "1.0", List.of("junit:junit:4.13.2")));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(managedJunit4Project(), "test");
+
+        Map<String, Lockfile.Artifact> byKey = new HashMap<>();
+        for (Lockfile.Artifact a : lock.artifacts()) byKey.put(a.packageKey(), a);
+        assertThat(requireNonNull(byKey.get("junit:junit:jar:")).version()).isEqualTo("4.13.2");
+        assertThat(byKey).containsKey("org.junit.vintage:junit-vintage-engine:jar:");
+    }
+
+    @Test
+    void a_platform_managed_junit4_row_the_bom_holds_below_the_floor_is_refused_naming_the_boms_version(
+            @TempDir Path tempDir) {
+        upstream.metadata("junit", "junit", "3.8.2", "4.12", "4.13.2");
+        upstream.pom("junit", "junit", "3.8.2", MavenStub.emptyPom("junit", "junit", "3.8.2"));
+        upstream.pom(
+                "org.example", "bom", "1.0", MavenStub.bom("org.example", "bom", "1.0", List.of("junit:junit:3.8.2")));
+
+        assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir)).lock(managedJunit4Project(), "test"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("[test-dependencies] junit:junit is platform-managed at 3.8.2, which cannot run under jk:"
+                        + " its suites run through org.junit.vintage:junit-vintage-engine, which needs junit:junit"
+                        + " 4.12 or later — declare junit:junit 4.13.2 in [test-dependencies]");
+    }
+
+    private static JkBuild managedJunit4Project() {
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.PLATFORM, List.of(Dependency.of("bom", "org.example:bom", VersionSelector.parse("=1.0"))));
+        byScope.put(Scope.TEST, List.of(Dependency.platformManaged("junit", "junit:junit")));
+        return new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
+    }
+
     private static JkBuild junit4Project(String junitSelector) {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(Scope.TEST, List.of(new Dependency("junit:junit", VersionSelector.parse(junitSelector))));

@@ -60,23 +60,48 @@ public final class TestEngines {
 
         /**
          * Refuse an exact pin the engine would reject at discovery time; that failure names the
-         * engine, not the fix, and surfaces only after a compile.
+         * engine, not the fix, and surfaces only after a compile. A platform-managed row carries no
+         * version of its own: it is judged once the platform table says which one it supplies
+         * ({@link #checkManagedFloor}).
          */
         void checkFloor(Dependency declared) {
+            if (declared.isPlatformManaged()) return;
             if (!(declared.version() instanceof VersionSelector.Exact exact)) return;
             if (Versions.compare(exact.version(), floor) >= 0) return;
             throw new IllegalArgumentException("[test-dependencies] "
                     + trigger
                     + " "
                     + exact.version()
-                    + " cannot run under jk: its suites run through "
-                    + engine.module()
-                    + ", which needs "
+                    + " cannot run under jk: "
+                    + why()
+                    + " — raise the pin to "
+                    + suggested);
+        }
+
+        /**
+         * Refuse a platform-managed row whose BOM supplies a version below the floor; {@code
+         * managed} is the platform table, {@code group:artifact -> version}. A framework the table
+         * does not manage is left to the solve, which names the missing version itself.
+         */
+        void checkManagedFloor(Dependency declared, Map<String, String> managed) {
+            if (!declared.isPlatformManaged()) return;
+            String version = managed.get(trigger);
+            if (version == null || Versions.compare(version, floor) >= 0) return;
+            throw new IllegalArgumentException("[test-dependencies] "
+                    + trigger
+                    + " is platform-managed at "
+                    + version
+                    + ", which cannot run under jk: "
+                    + why()
+                    + " — declare "
                     + trigger
                     + " "
-                    + floor
-                    + " or later — raise the pin to "
-                    + suggested);
+                    + suggested
+                    + " in [test-dependencies]");
+        }
+
+        private String why() {
+            return "its suites run through " + engine.module() + ", which needs " + trigger + " " + floor + " or later";
         }
     }
 
@@ -129,16 +154,27 @@ public final class TestEngines {
     /**
      * {@code group:artifact -> version} for every trigger the project pins exactly: the constraint
      * every edge onto that framework takes, so the injected engine's own edge cannot lift or fight
-     * the declared pin.
+     * the declared pin. A platform-managed trigger pins nothing here — its BOM's version is already
+     * in the table.
      */
     static Map<String, String> declaredTriggerPins(JkBuild project) {
         Map<String, String> pins = new LinkedHashMap<>();
         for (Row row : ROWS) {
             Dependency declared = row.declaredIn(project);
-            if (declared != null && declared.version() instanceof VersionSelector.Exact exact) {
-                pins.put(row.trigger(), exact.version());
-            }
+            if (declared == null || declared.isPlatformManaged()) continue;
+            if (declared.version() instanceof VersionSelector.Exact exact) pins.put(row.trigger(), exact.version());
         }
         return pins;
+    }
+
+    /**
+     * Refuse every platform-managed trigger whose BOM supplies a version below its engine's floor;
+     * {@code managed} is the platform table once every BOM has been read.
+     */
+    static void checkManagedFloors(JkBuild project, Map<String, String> managed) {
+        for (Row row : ROWS) {
+            Dependency declared = row.declaredIn(project);
+            if (declared != null) row.checkManagedFloor(declared, managed);
+        }
     }
 }

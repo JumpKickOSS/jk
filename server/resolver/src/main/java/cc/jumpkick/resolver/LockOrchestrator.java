@@ -444,7 +444,10 @@ public final class LockOrchestrator {
         LockRoots.Roots roots = constraints.apply(declared.split(), injected);
         for (String line : constraints.renderedOverrides()) observer.onOverride(line);
         // The framework a suite declares is the framework it runs on: an injected engine's own edge
-        // onto it takes the declared pin, as a transitive takes a direct dependency's in Maven.
+        // onto it takes the declared pin, as a transitive takes a direct dependency's in Maven. A
+        // platform-managed framework runs at the version the table supplies, judged here against
+        // its engine's floor.
+        TestEngines.checkManagedFloors(project, bomConstraints);
         bomConstraints.putAll(TestEngines.declaredTriggerPins(project));
 
         KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);
