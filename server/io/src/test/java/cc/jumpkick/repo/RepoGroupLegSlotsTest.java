@@ -56,15 +56,15 @@ class RepoGroupLegSlotsTest {
         int legs = DownloadSlots.legsAvailable(host);
         List<Runnable> parked = new ArrayList<>();
         DownloadSlots.acquireLeg(host);
-        CompletableFuture<String> leg = RepoGroup.pooledLeg(parked::add, host, () -> "answer");
+        CompletableFuture<String> leg = RepoLegs.pooledLeg(parked::add, host, () -> "answer");
         assertThat(DownloadSlots.legsAvailable(host)).isEqualTo(legs - 1);
-        assertThat(RepoGroup.legsInFlight()).isEqualTo(1);
+        assertThat(RepoLegs.legsInFlight()).isEqualTo(1);
 
         leg.cancel(false);
         assertThat(DownloadSlots.legsAvailable(host))
                 .as("the cancel returned the slot")
                 .isEqualTo(legs);
-        assertThat(RepoGroup.legsInFlight()).isZero();
+        assertThat(RepoLegs.legsInFlight()).isZero();
 
         parked.getFirst().run();
         assertThat(DownloadSlots.legsAvailable(host))
@@ -79,7 +79,7 @@ class RepoGroupLegSlotsTest {
         int legs = DownloadSlots.legsAvailable(host);
         List<Runnable> parked = new ArrayList<>();
         DownloadSlots.acquireLeg(host);
-        CompletableFuture<String> leg = RepoGroup.pooledLeg(parked::add, host, () -> "answer");
+        CompletableFuture<String> leg = RepoLegs.pooledLeg(parked::add, host, () -> "answer");
         parked.getFirst().run();
         assertThat(leg.get()).isEqualTo("answer");
         assertThat(DownloadSlots.legsAvailable(host)).isEqualTo(legs);
@@ -106,7 +106,7 @@ class RepoGroupLegSlotsTest {
         int peak = 0;
         long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1500);
         while (System.nanoTime() < until) {
-            peak = Math.max(peak, RepoGroup.legsInFlight());
+            peak = Math.max(peak, RepoLegs.legsInFlight());
             Thread.sleep(5);
         }
         open.countDown();
@@ -116,7 +116,7 @@ class RepoGroupLegSlotsTest {
                 .as("%d fetches over %d repositories would be %d legs unbounded", fetches, repos, fetches * repos)
                 .isLessThanOrEqualTo(width)
                 .isGreaterThan(1);
-        assertThat(RepoGroup.legsInFlight()).as("every leg finished").isZero();
+        assertThat(RepoLegs.legsInFlight()).as("every leg finished").isZero();
         assertThat(DownloadSlots.legsAvailable(host))
                 .as("every leg slot came back")
                 .isEqualTo(width);
