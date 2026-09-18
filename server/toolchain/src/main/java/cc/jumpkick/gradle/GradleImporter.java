@@ -146,11 +146,20 @@ public final class GradleImporter {
     private static final Pattern MANIFEST_ATTR =
             Pattern.compile(STR + "\\s*(?:to|:)\\s*(?:" + STR + "|([A-Za-z_][\\w.]*))");
 
-    // java { sourceCompatibility = JavaVersion.VERSION_25 }
-    private static final Pattern JAVA_VERSION_TOKEN =
-            Pattern.compile("JavaVersion\\.VERSION_([0-9_]+)|JavaLanguageVersion\\.of\\(\\s*([0-9]+)\\s*\\)"
-                    + "|sourceCompatibility\\s*[=]?\\s*['\"]?([0-9.]+)['\"]?"
-                    + "|jvmToolchain\\s*\\(\\s*([0-9]+)\\s*\\)");
+    // java { toolchain { languageVersion = JavaLanguageVersion.of(21) } } / kotlin { jvmToolchain(21) }
+    private static final Pattern TOOLCHAIN =
+            Pattern.compile("JavaLanguageVersion\\.of\\(\\s*([0-9]+)\\s*\\)|jvmToolchain\\s*\\(\\s*([0-9]+)\\s*\\)");
+    // options.release.set(17) / options.release = 17
+    private static final Pattern RELEASE =
+            Pattern.compile("\\boptions\\.release\\s*(?:\\.set\\s*\\(\\s*|=\\s*)([0-9]+)");
+    // sourceCompatibility = JavaVersion.VERSION_17 / sourceCompatibility = '17' / sourceCompatibility 1.8
+    private static final Pattern SOURCE_COMPATIBILITY = compatibility("sourceCompatibility");
+    private static final Pattern TARGET_COMPATIBILITY = compatibility("targetCompatibility");
+
+    private static Pattern compatibility(String key) {
+        return Pattern.compile(
+                "\\b" + key + "\\s*=?\\s*(?:JavaVersion\\.VERSION_([0-9_]+)|['\"]?([0-9][0-9.]*)['\"]?)");
+    }
 
     // repositories: maven { url = uri("https://...") } or maven { url 'https://...' }
     private static final Pattern MAVEN_URL =
@@ -198,7 +207,7 @@ public final class GradleImporter {
         String group = firstString(GROUP_ASSIGN, stripped).orElse("com.example");
         String version = firstString(VERSION_ASSIGN, stripped).orElse("0.1.0");
         String description = firstString(DESCRIPTION_ASSIGN, stripped).orElse(null);
-        int jdk = detectJdk(stripped).flatMap(GradleImporter::parseInt).orElse(25);
+        JavaLevel level = JavaLevel.of(stripped);
 
         // plugins block — the Kotlin plugin marks a Kotlin project (and carries
         // its compiler version); ids claimed by an installed jk plugin's [[import.gradle-plugin]]
@@ -262,12 +271,12 @@ public final class GradleImporter {
         List<RepositorySpec> repos = parseRepositories(stripped, report);
         warnUnsupportedSections(stripped, report);
 
-        // A Kotlin project sets `kotlin` (a version) and leaves `java` at 0 —
-        // the two are mutually exclusive. javaRelease() falls back to jdk.
-        int java = kotlin != null ? 0 : jdk;
+        // A toolchain is a JDK the build asks for; source, target and --release are language levels
+        // the host JDK compiles to, so only the former is a `jdk` pin. A Kotlin project carries
+        // `kotlin` and leaves `java` unset.
         Project project = Project.builder(group, defaultArtifact, version)
-                .jdkMajor(jdk)
-                .java(java)
+                .jdkMajor(level.toolchain())
+                .java(kotlin != null ? 0 : level.release())
                 .kotlin(kotlin)
                 .description(description)
                 .build();
@@ -461,18 +470,28 @@ public final class GradleImporter {
 
     // --- java / kotlin toolchain --------------------------------------------
 
-    private static Optional<String> detectJdk(String text) {
-        Matcher m = JAVA_VERSION_TOKEN.matcher(text);
-        if (!m.find()) return Optional.empty();
-        String raw = firstNonNull(m.group(1), m.group(2), m.group(3), m.group(4));
-        if (raw == null || raw.isBlank()) return Optional.empty();
-        // VERSION_21 / VERSION_1_8 → "21" / "1.8"
-        String normalized = raw.replace('_', '.');
-        if (normalized.startsWith("1.")) {
-            return Optional.of(normalized);
+    /**
+     * The Java level a script declares: {@code toolchain} is the JDK it asks for ({@code 0} for
+     * none); {@code release} is the language level — {@code options.release}, else source
+     * compatibility, else target compatibility, else the toolchain — as the model import reads it.
+     */
+    record JavaLevel(int toolchain, int release) {
+        static JavaLevel of(String text) {
+            int toolchain = major(TOOLCHAIN, text);
+            int release = major(RELEASE, text);
+            if (release == 0) release = major(SOURCE_COMPATIBILITY, text);
+            if (release == 0) release = major(TARGET_COMPATIBILITY, text);
+            if (release == 0) release = toolchain;
+            return new JavaLevel(toolchain, release);
         }
-        // Strip a leading "1." vestige if present.
-        return Optional.of(normalized);
+
+        /** The first match's number as a major: {@code VERSION_1_8} and {@code 1.8} are {@code 8}. */
+        private static int major(Pattern pattern, String text) {
+            Matcher m = pattern.matcher(text);
+            if (!m.find()) return 0;
+            String raw = firstNonNull(m.group(1), m.groupCount() > 1 ? m.group(2) : null);
+            return raw == null ? 0 : GradleModel.major(raw.replace('_', '.'));
+        }
     }
 
     // --- catch-all tier 3 warnings ------------------------------------------
@@ -502,15 +521,6 @@ public final class GradleImporter {
     }
 
     // --- helpers ------------------------------------------------------------
-
-    private static Optional<Integer> parseInt(@Nullable String s) {
-        if (s == null) return Optional.empty();
-        try {
-            return Optional.of(Integer.parseInt(s.trim()));
-        } catch (NumberFormatException e) {
-            return Optional.empty();
-        }
-    }
 
     /** Read {@code rootProject.name} from a {@code settings.gradle(.kts)} if present. */
     public static Optional<String> readRootProjectName(Path settings) throws IOException {
