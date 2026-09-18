@@ -7,10 +7,12 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The project model Gradle evaluates — every project, its configurations' declared dependencies,
@@ -59,7 +61,8 @@ class GradleModelImporterTest {
 
     @Test
     void every_project_is_a_workspace_module_and_the_root_names_them_in_path_order() {
-        GradleBuildImport.Result result = GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
         JkBuild root = result.root();
         assertThat(root.project().name()).isEqualTo("shop");
@@ -74,7 +77,8 @@ class GradleModelImporterTest {
 
     @Test
     void configurations_land_in_the_table_that_means_the_same_thing() {
-        GradleBuildImport.Result result = GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
         JkBuild api = module(result, "api");
 
         Dependency guava = only(api, Scope.MAIN);
@@ -94,7 +98,8 @@ class GradleModelImporterTest {
 
     @Test
     void a_project_dependency_is_a_workspace_edge_on_the_sibling() {
-        GradleBuildImport.Result result = GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
         List<Dependency> coreMain = module(result, "core").dependencies().of(Scope.MAIN);
         assertThat(coreMain).hasSize(1);
@@ -113,7 +118,8 @@ class GradleModelImporterTest {
 
     @Test
     void toolchain_release_and_kotlin_version_come_from_the_model() {
-        GradleBuildImport.Result result = GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
         JkBuild api = module(result, "api");
         assertThat(api.project().jdkMajor()).isEqualTo(21);
@@ -125,7 +131,8 @@ class GradleModelImporterTest {
 
     @Test
     void custom_tasks_and_configurations_are_rows_naming_them_not_errors() {
-        GradleBuildImport.Result result = GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
         List<String> rows = messages(result.report());
 
         assertThat(rows).anySatisfy(m -> assertThat(m).contains("`release`").contains("task"));
@@ -139,7 +146,8 @@ class GradleModelImporterTest {
 
     @Test
     void a_repository_other_than_central_is_hoisted_onto_the_root() {
-        GradleBuildImport.Result result = GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
         assertThat(result.root().repositories())
                 .extracting(r -> r.url().toString())
@@ -158,7 +166,8 @@ class GradleModelImporterTest {
                    "tasks":[]}]}
                 """;
 
-        GradleBuildImport.Result result = GradleModelImporter.importModel(single, Path.of("/tmp/widget"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(single, Path.of("/tmp/widget"), RefreshVersions.NONE);
 
         assertThat(result.modules()).isEmpty();
         assertThat(result.root().isWorkspaceRoot()).isFalse();
@@ -185,7 +194,8 @@ class GradleModelImporterTest {
                    "springBootBom":"org.springframework.boot:spring-boot-dependencies:3.5.11","tasks":[]}]}
                 """;
 
-        GradleBuildImport.Result result = GradleModelImporter.importModel(boot, Path.of("/tmp/gs"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(boot, Path.of("/tmp/gs"), RefreshVersions.NONE);
 
         JkBuild library = module(result, "library");
         Dependency bom = only(library, Scope.PLATFORM);
@@ -216,7 +226,8 @@ class GradleModelImporterTest {
                   {"path":":retrofit-bom","projectName":"retrofit-bom","dir":"retrofit-bom","group":"com.squareup.retrofit2","version":"3.0.0","plugins":["java-platform"],"pluginClasses":[],"pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[]}]}
                 """;
 
-        GradleBuildImport.Result result = GradleModelImporter.importModel(shared, Path.of("/tmp/retrofit"));
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(shared, Path.of("/tmp/retrofit"), RefreshVersions.NONE);
 
         assertThat(result.modules().keySet()).containsExactly("retrofit-adapters/guava", "retrofit-converters/guava");
         assertThat(module(result, "retrofit-adapters/guava").project().name()).isEqualTo("retrofit-adapters-guava");
@@ -227,6 +238,43 @@ class GradleModelImporterTest {
         assertThat(messages(result.report()))
                 .anySatisfy(m -> assertThat(m).contains("`guava`").contains("retrofit-adapters/guava"))
                 .anySatisfy(m -> assertThat(m).contains("retrofit-bom").contains("java-platform"));
+    }
+
+    /** kotlin4example: Gradle reports the declared version {@code _}; the pin is in versions.properties at the root. */
+    @Test
+    void a_refresh_versions_placeholder_reads_its_pin_from_the_roots_versions_properties(@TempDir Path root)
+            throws Exception {
+        Files.writeString(root.resolve("versions.properties"), """
+                version.kotlinx.coroutines=1.10.2
+                version.io.github.microutils..kotlin-logging=3.0.5
+                """);
+        String model = """
+                {"gradle":"9.0.0","rootName":"kotlin4example","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"kotlin4example","dir":"","group":"com.github.jillesvangurp","version":"1.0","plugins":["org.jetbrains.kotlin.jvm"],
+                   "pluginClasses":[],"pluginVersions":{},"kotlinVersion":"2.2.0","bootBuildInfo":false,"repositories":[],
+                   "configurations":[{"name":"implementation","dependencies":[
+                     {"kind":"module","group":"org.jetbrains.kotlinx","artifact":"kotlinx-coroutines-core","version":"_","excludes":[]},
+                     {"kind":"module","group":"io.github.microutils","artifact":"kotlin-logging","version":"_","excludes":[]},
+                     {"kind":"module","group":"io.kotest","artifact":"kotest-assertions-core","version":"_","excludes":[]}]}],
+                   "tasks":[]}]}
+                """;
+
+        GradleBuildImport.Result result = GradleModelImporter.importModel(model, root, RefreshVersions.beside(root));
+
+        List<Dependency> main = result.root().dependencies().of(Scope.MAIN);
+        assertThat(main.subList(0, 2))
+                .extracting(d -> d.module() + ":" + d.version().raw())
+                .containsExactly(
+                        "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2",
+                        "io.github.microutils:kotlin-logging:3.0.5");
+        assertThat(main.get(2).module()).isEqualTo("io.kotest:kotest-assertions-core");
+        assertThat(main.get(2).isPlatformManaged()).as("no key fits kotest").isTrue();
+        assertThat(messages(result.report()))
+                .hasSize(1)
+                .first()
+                .asString()
+                .contains("io.kotest:kotest-assertions-core")
+                .contains("`_`");
     }
 
     private static JkBuild module(GradleBuildImport.Result result, String path) {

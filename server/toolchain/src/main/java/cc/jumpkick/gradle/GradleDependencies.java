@@ -39,28 +39,35 @@ final class GradleDependencies {
 
     private final @Nullable GradleVersionCatalog catalog;
     private final GradleProperties properties;
+    private final RefreshVersions refreshVersions;
     private final ImportReport.Builder report;
     private final Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
     /** {@code testCompileOnly} coordinates, named once in the row explaining where they went. */
     private final List<String> testCompileOnly = new ArrayList<>();
 
     private GradleDependencies(
-            @Nullable GradleVersionCatalog catalog, GradleProperties properties, ImportReport.Builder report) {
+            @Nullable GradleVersionCatalog catalog,
+            GradleProperties properties,
+            RefreshVersions refreshVersions,
+            ImportReport.Builder report) {
         this.catalog = catalog;
         this.properties = properties;
+        this.refreshVersions = refreshVersions;
         this.report = report;
     }
 
     /**
      * Every dependency the block declares, by jk scope; empty when the script has no block. {@code
-     * properties} resolves the {@code $property} placeholders in coordinates.
+     * properties} resolves the {@code $property} placeholders in coordinates; {@code
+     * refreshVersions} answers a {@code _} version.
      */
     static Map<Scope, List<Dependency>> parse(
             String script,
             @Nullable GradleVersionCatalog catalog,
             GradleProperties properties,
+            RefreshVersions refreshVersions,
             ImportReport.Builder report) {
-        GradleDependencies deps = new GradleDependencies(catalog, properties, report);
+        GradleDependencies deps = new GradleDependencies(catalog, properties, refreshVersions, report);
         GradleScriptText.extractBlock(script, "dependencies").ifPresent(body -> deps.parseBlock(body, false));
         if (!deps.testCompileOnly.isEmpty()) {
             report.warning("`testCompileOnly` dependencies " + String.join(", ", deps.testCompileOnly)
@@ -276,10 +283,15 @@ final class GradleDependencies {
             return;
         }
         if (versionToken.equals(REFRESH_VERSIONS_PLACEHOLDER)) {
-            report.warning("dependency `" + module + "` has the version `_` (refreshVersions keeps the pin in"
-                    + " versions.properties); written without a version — pin it in jk.toml.");
-            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(shortName, module));
-            return;
+            RefreshVersions.Lookup pin = refreshVersions.lookup(parts[0], parts[1]);
+            if (pin.found()) {
+                versionToken = Objects.requireNonNull(pin.version());
+            } else {
+                report.warning(placeholderRow(module, pin));
+                byScope.computeIfAbsent(scope, s -> new ArrayList<>())
+                        .add(Dependency.platformManaged(shortName, module));
+                return;
+            }
         }
         VersionSelector selector = VersionSelector.parse(versionToken);
         byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.of(shortName, module, selector));
@@ -287,6 +299,16 @@ final class GradleDependencies {
 
     /** The version refreshVersions writes in a script while the pin lives in {@code versions.properties}. */
     static final String REFRESH_VERSIONS_PLACEHOLDER = "_";
+
+    /** The row for a {@code _} version {@code versions.properties} does not settle; {@code pin} says why. */
+    static String placeholderRow(String module, RefreshVersions.Lookup pin) {
+        String why = pin.ambiguous()
+                ? "versions.properties has both `version." + String.join("` and `version.", pin.keys())
+                        + "` and either could be its key"
+                : "versions.properties beside the build has no entry for it";
+        return "dependency `" + module + "` has the version `_` (refreshVersions keeps the pin in"
+                + " versions.properties) and " + why + "; written without a version — pin it in jk.toml.";
+    }
 
     /** {@code y `a`} or {@code ies `a`, `b`}, finishing the word "propert". */
     private static String plural(List<String> names) {

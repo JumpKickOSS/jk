@@ -352,7 +352,7 @@ neither runs on 25) and read from a fork whose whole evaluation stayed inside th
 | junit-pioneer/junit-pioneer | Gradle 8.14.2 on JDK 21 | 37 s | `junit-bom = "org.junit:junit-bom:6.1.0"` from `gradle.properties`, `jimfs = "…:1.3.0"` |
 | mapstruct/mapstruct-examples `mapstruct-on-gradle/` | Gradle 8.3 on JDK 17, Groovy DSL, `ext {}` | 9 s | `mapstruct = "1.7.0.Beta1"`, both comma-listed TestNG/FEST test dependencies |
 | junit-team/junit-examples `junit-jupiter-extensions/` | Gradle 9.7.1 | 6 s | `[platform-dependencies] junit-bom`, `junit-jupiter-api` under `[dependencies]` through its `because` closure, both `testRuntimeOnly` entries |
-| jillesvangurp/kotlin4example | Gradle 9.0.0 on JDK 21, refreshVersions | 23 s | every `_` version is a row naming the dependency and the entry is written version-less |
+| jillesvangurp/kotlin4example | Gradle 9.0.0 on JDK 21, refreshVersions | 40 s, 1 row | every `_` version is written as the pin `versions.properties` holds: `kotlin-logging = "…:3.0.5"` and the slf4j entries from their exact `version.<group>..<artifact>` keys, `kotlinx-coroutines-core = "1.10.2"`, `junit-jupiter-api = "5.13.4"` and `kotest-assertions-core = "…:5.9.1"` from the short keys `kotlinx.coroutines`, `junit.jupiter` and `kotest`; the one row names the refreshVersions plugin |
 
 ### Which Maven plugins import, and how well
 
@@ -483,7 +483,8 @@ a row saying jk has no test-provided table — `annotationProcessor`, `kapt` and
 table for (`intTestImplementation`, a japicmp `baseline`) is a row naming it and its
 dependencies; the tool configurations Gradle's own plugins declare (`kotlinCompilerClasspath`,
 `dokkaPlugin`, …) are not. `exclude` rules ride the edge (`isTransitive = false` is `*:*`); a
-classifier is kept; a dynamic version (`1.+`, `latest.release`) is written as `latest` with a row.
+classifier is kept; a dynamic version (`1.+`, `latest.release`) is written as `latest` with a row;
+refreshVersions' `_` is written as the pin `versions.properties` at the root holds (below).
 A module under the Spring dependency-management plugin without the Boot plugin takes Boot's BOM as
 its `[platform-dependencies]` entry; with the Boot plugin the `[spring-boot]` table brings it. A
 task the build script registers (`tasks.register("release")`, an ad-hoc `Copy`) is a Tier-2 row
@@ -508,9 +509,14 @@ skipped, so an `api("g:a") { because "…" }` imports; a Groovy comma list of co
 each one. A version spelled through a property — `$junitVersion`, `${mapstructVersion}` — is
 written as the value the property has in `gradle.properties`, an `ext { }` block, a Kotlin `extra`
 entry or a script-level `val` / `def`, and `${libs.versions.x.get()}` reads the catalog; the same
-holds for `id("…") version someVal` in the plugins block. A property nothing defines, or
-refreshVersions' `_`, is a row naming it and the dependency is written without a version — a `$`
-never reaches the manifest. Versions stay on deps and BOMs — they are not written into jk library
+holds for `id("…") version someVal` in the plugins block. A property nothing defines is a row
+naming it and the dependency is written without a version — a `$` never reaches the manifest.
+refreshVersions' `_` is written as the pin `versions.properties` beside the settings file holds:
+the exact `version.<group>..<artifact>` key, else the short key whose every segment is a word of
+the coordinate (`version.kotlinx.coroutines` for `org.jetbrains.kotlinx:kotlinx-coroutines-core`,
+`version.junit.jupiter` for `junit-jupiter-api`); a placeholder the file does not settle — no
+entry, or two short keys fitting equally — is a row naming the dependency, which is written
+version-less. Versions stay on deps and BOMs — they are not written into jk library
 catalog layers. Keep `jk gradle` for modules that still need full Gradle.
 
 **Export** writes what the manifest says: `jk export maven` writes each dependency's `exclude`

@@ -173,7 +173,12 @@ public final class GradleImporter {
         String defaultArtifact = projectName(projectDir);
         GradleVersionCatalog catalog =
                 GradleVersionCatalog.forProject(projectDir).orElse(null);
-        return importFromString(text, defaultArtifact, catalog, GradleProperties.fileProperties(projectDir));
+        return importFromString(
+                text,
+                defaultArtifact,
+                catalog,
+                GradleProperties.fileProperties(projectDir),
+                RefreshVersions.beside(projectDir));
     }
 
     public static Result importFromString(String text, String defaultArtifact) {
@@ -181,19 +186,21 @@ public final class GradleImporter {
     }
 
     public static Result importFromString(String text, String defaultArtifact, @Nullable GradleVersionCatalog catalog) {
-        return importFromString(text, defaultArtifact, catalog, Map.of());
+        return importFromString(text, defaultArtifact, catalog, Map.of(), RefreshVersions.NONE);
     }
 
     /**
      * Import {@code text} as the build script of {@code defaultArtifact}; {@code gradleProperties}
      * is the {@code gradle.properties} reading its {@code $property} placeholders resolve through,
-     * beside the script's own declarations.
+     * beside the script's own declarations, and {@code refreshVersions} the {@code
+     * versions.properties} a {@code _} version reads.
      */
-    public static Result importFromString(
+    static Result importFromString(
             String text,
             String defaultArtifact,
             @Nullable GradleVersionCatalog catalog,
-            Map<String, String> gradleProperties) {
+            Map<String, String> gradleProperties,
+            RefreshVersions refreshVersions) {
         String stripped = stripComments(text);
         ImportReport.Builder report = ImportReport.builder();
         GradleProperties properties = GradleProperties.of(stripped, gradleProperties, catalog);
@@ -267,7 +274,8 @@ public final class GradleImporter {
         });
         List<PluginConfig> pluginConfigs = mapPluginTables(applied.keySet(), pluginVersions, importRules, report);
 
-        Map<Scope, List<Dependency>> deps = GradleDependencies.parse(stripped, catalog, properties, report);
+        Map<Scope, List<Dependency>> deps =
+                GradleDependencies.parse(stripped, catalog, properties, refreshVersions, report);
         List<RepositorySpec> repos = parseRepositories(stripped, report);
         warnUnsupportedSections(stripped, report);
 

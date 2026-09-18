@@ -115,6 +115,7 @@ final class GradleModelImporter {
 
     private final GradleModel model;
     private final Path buildRoot;
+    private final RefreshVersions refreshVersions;
     private final ImportReport.Builder report = ImportReport.builder();
     private final ModuleRows rows = new ModuleRows();
     private final Map<String, GradleImporter.PluginImportRule> importRules = GradleImporter.pluginImportRules();
@@ -125,9 +126,10 @@ final class GradleModelImporter {
     /** Whether the {@code mavenLocal()} row was written; one row however many projects declare it. */
     private boolean mavenLocal;
 
-    private GradleModelImporter(GradleModel model, Path buildRoot) {
+    private GradleModelImporter(GradleModel model, Path buildRoot, RefreshVersions refreshVersions) {
         this.model = model;
         this.buildRoot = buildRoot;
+        this.refreshVersions = refreshVersions;
     }
 
     /** The plugin ids the model query asks each project about. */
@@ -137,9 +139,12 @@ final class GradleModelImporter {
         return List.copyOf(ids);
     }
 
-    /** Import the JSON the init script wrote for the build rooted at {@code buildRoot}. */
-    static GradleBuildImport.Result importModel(String json, Path buildRoot) {
-        return new GradleModelImporter(GradleModel.parse(json), buildRoot).run();
+    /**
+     * Import the JSON the init script wrote for the build rooted at {@code buildRoot}; {@code
+     * refreshVersions} is the build's {@code versions.properties}, which a {@code _} version reads.
+     */
+    static GradleBuildImport.Result importModel(String json, Path buildRoot, RefreshVersions refreshVersions) {
+        return new GradleModelImporter(GradleModel.parse(json), buildRoot, refreshVersions).run();
     }
 
     private GradleBuildImport.Result run() {
@@ -472,9 +477,13 @@ final class GradleModelImporter {
                 dep = Dependency.platformManaged(shortName, module);
             }
         } else if (version.equals(GradleDependencies.REFRESH_VERSIONS_PLACEHOLDER)) {
-            local.warning("dependency `" + module + "` has the version `_` (refreshVersions keeps the pin in"
-                    + " versions.properties); written without a version — pin it in jk.toml.");
-            dep = Dependency.platformManaged(shortName, module);
+            RefreshVersions.Lookup pin = refreshVersions.lookup(d.group(), d.artifact());
+            if (pin.found()) {
+                dep = Dependency.of(shortName, module, VersionSelector.parse(Objects.requireNonNull(pin.version())));
+            } else {
+                local.warning(GradleDependencies.placeholderRow(module, pin));
+                dep = Dependency.platformManaged(shortName, module);
+            }
         } else if (version.endsWith("+") || version.startsWith("latest.")) {
             local.warning("dependency `" + module + "` has the dynamic version `" + version
                     + "`; written as `latest`, which the first `jk lock` pins.");
