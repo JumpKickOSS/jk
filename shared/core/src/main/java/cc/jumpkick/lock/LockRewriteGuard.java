@@ -27,7 +27,7 @@ public final class LockRewriteGuard {
     public static @Nullable WriterBuild runningBuild() {
         String id = BuildIdentity.buildId();
         if (id.isEmpty()) return null;
-        return new WriterBuild(id, BuildIdentity.codeModifiedAt());
+        return new WriterBuild(id, BuildIdentity.builtAt());
     }
 
     /**

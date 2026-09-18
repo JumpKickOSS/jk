@@ -3,6 +3,9 @@ package cc.jumpkick.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
 
 class BuildIdentityTest {
@@ -46,5 +49,31 @@ class BuildIdentityTest {
             BuildIdentity.overrideBuildIdForTests(null);
         }
         assertThat(BuildIdentity.buildId()).isEmpty();
+    }
+
+    /**
+     * Two builds of one version are ordered by the build time the packaging wrote into the
+     * archive's manifest, which a reinstall cannot move the way it moves a file's mtime; an archive
+     * without the attribute, or with one that is not an instant, has no time.
+     */
+    @Test
+    void the_build_time_is_the_manifests_attribute_or_nothing() {
+        Manifest stamped = new Manifest();
+        stamped.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        stamped.getMainAttributes().putValue(BuildIdentity.BUILD_TIME_ATTRIBUTE, "2026-09-17T15:57:16Z");
+        assertThat(BuildIdentity.builtAt(stamped)).isEqualTo(Instant.parse("2026-09-17T15:57:16Z"));
+
+        Manifest bare = new Manifest();
+        bare.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        assertThat(BuildIdentity.builtAt(bare)).isNull();
+
+        Manifest garbled = new Manifest();
+        garbled.getMainAttributes().putValue(BuildIdentity.BUILD_TIME_ATTRIBUTE, "yesterday");
+        assertThat(BuildIdentity.builtAt(garbled)).isNull();
+    }
+
+    @Test
+    void unit_tests_run_from_a_classes_dir_and_have_no_build_time() {
+        assertThat(BuildIdentity.builtAt()).isNull();
     }
 }

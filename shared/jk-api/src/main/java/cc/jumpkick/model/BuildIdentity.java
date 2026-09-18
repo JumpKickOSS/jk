@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -100,16 +103,36 @@ public final class BuildIdentity {
     }
 
     /**
-     * When the running code archive was written — the jar's last-modified instant — or {@code
-     * null} when the code runs from no archive. Two builds of one version have no order in their
-     * digests; this is what orders them.
+     * The manifest attribute the packaging writes into the assembly of the module jk installs as
+     * its own product lib: the commit time of the checkout the jar was built from, as an ISO-8601
+     * instant. Two builds of one version have no order in their digests; this is what orders them,
+     * and a reinstall leaves it where a file's mtime would move.
      */
-    public static @Nullable Instant codeModifiedAt() {
+    public static final String BUILD_TIME_ATTRIBUTE = "Build-Time";
+
+    /**
+     * When the running code was built — the {@value #BUILD_TIME_ATTRIBUTE} attribute of the code
+     * archive's manifest — or {@code null} when the code runs from no archive or from one the
+     * packaging did not stamp.
+     */
+    public static @Nullable Instant builtAt() {
         Path location = codeArchive();
         if (location == null) return null;
-        try {
-            return Files.getLastModifiedTime(location).toInstant();
+        try (JarFile jar = new JarFile(location.toFile())) {
+            Manifest manifest = jar.getManifest();
+            return manifest == null ? null : builtAt(manifest);
         } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** {@link #builtAt()} read from {@code manifest}: the attribute as an instant, or null when absent or not one. */
+    static @Nullable Instant builtAt(Manifest manifest) {
+        String stamp = manifest.getMainAttributes().getValue(BUILD_TIME_ATTRIBUTE);
+        if (stamp == null || stamp.isBlank()) return null;
+        try {
+            return Instant.parse(stamp.trim());
+        } catch (DateTimeParseException notAnInstant) {
             return null;
         }
     }
