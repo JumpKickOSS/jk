@@ -9,6 +9,7 @@ import static cc.jumpkick.gradle.GradleScriptText.stripComments;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ImportedKotlin;
+import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -126,6 +127,10 @@ public final class GradleImporter {
     /** The Gradle plugin that writes {@code git.properties}; the {@code [build-info]} table in jk. */
     static final String GIT_PROPERTIES_PLUGIN = "com.gorylenko.gradle-git-properties";
 
+    /** The Shadow plugin's ids across its homes: the fat jar, and {@code relocate} rules. */
+    static final Set<String> SHADOW_PLUGINS =
+            Set.of("com.gradleup.shadow", "com.github.johnrengelman.shadow", "io.github.goooler.shadow");
+
     /** The Dokka Gradle plugin; its inline version is the {@code [dokka]} pin. */
     static final String DOKKA_PLUGIN = "org.jetbrains.dokka";
 
@@ -237,6 +242,9 @@ public final class GradleImporter {
                     // implicit in jk — nothing to say.
                 }
                 case GIT_PROPERTIES_PLUGIN -> buildInfo = BuildBlock.BuildInfo.DEFAULT;
+                case "com.gradleup.shadow", "com.github.johnrengelman.shadow", "io.github.goooler.shadow" -> {
+                    // the fat jar and its relocations: read below with the main class
+                }
                 case DOKKA_PLUGIN -> {
                     // Dokka's version is the [dokka] pin — inline, else refreshVersions' plugin.org.jetbrains.dokka;
                     // applied without one, jk's default Dokka runs.
@@ -295,11 +303,19 @@ public final class GradleImporter {
                 .kotlin(kotlin)
                 .description(description)
                 .build();
-        JkBuild.Application application = mainClass != null ? new JkBuild.Application(mainClass, false) : null;
+        // Shadow is the fat jar: the application's when the script names a main, the library's
+        // otherwise; its `relocate` calls are the assembly's rules where the rules agree with them.
+        boolean shadow = applied.keySet().stream().anyMatch(SHADOW_PLUGINS::contains);
+        RelocationRules.Mapped relocations = ShadowRelocations.map(stripped, report);
+        JkBuild.Application application = mainClass != null
+                ? new JkBuild.Application(mainClass, shadow, false, false, null, relocations.rules())
+                : null;
+        JkBuild.Library library = mainClass == null && shadow ? new JkBuild.Library(true, relocations.rules()) : null;
         JkBuild.Builder builder = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(deps))
                 .repositories(repos)
                 .application(application)
+                .library(library)
                 .build(BuildBlock.EMPTY.withBuildInfo(buildInfo).withDokka(dokkaTable));
         for (PluginConfig config : pluginConfigs) {
             builder.pluginConfig(config);

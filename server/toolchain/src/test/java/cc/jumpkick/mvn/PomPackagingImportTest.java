@@ -36,9 +36,10 @@ class PomPackagingImportTest {
                         Map.entry("com.fasterxml.jackson", "com.ex.shaded.jackson"));
         assertThat(build.manifest()).containsEntry("Multi-Release", "true");
         assertThat(messages)
-                .as("a relocation narrowed by <excludes> is the one row")
+                .as("a relocation whose exclude nothing else relocates is the one row, naming the exclude")
                 .anyMatch(m -> m.startsWith("`maven-shade-plugin` `<relocations>` org.apache.commons.io →"
-                        + " com.ex.shaded.commons.io — `[application] relocate` moves whole packages"));
+                        + " com.ex.shaded.commons.io (excludes org.apache.commons.io.input.*) — `relocate` moves"
+                        + " whole packages"));
         assertThat(messages).anyMatch(m -> m.startsWith("`maven-shade-plugin` `<filters>` on *:* —"));
         assertThat(messages)
                 .as("the manifest and services transformers are jk's default merge; only the appending one is a row")
@@ -54,6 +55,57 @@ class PomPackagingImportTest {
                 .isTrue();
         assertThat(JkBuildParser.parse(rendered).applicationOpt().get().relocate())
                 .containsEntry("com.google.common", "com.ex.shaded.guava");
+    }
+
+    /**
+     * nacos's client: an exclude carved out for a second relocation that lands the package where
+     * the first would have, an include naming that package's direct classes, and a path-spelled
+     * pattern all agree with the whole-package rules, so no relocation is a row.
+     */
+    @Test
+    void relocations_narrowed_by_includes_and_excludes_import_as_rules_where_the_rules_agree(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.alibaba.nacos</groupId>
+                  <artifactId>nacos-client</artifactId>
+                  <version>3.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>3.6.0</version>
+                    <configuration>
+                      <relocations>
+                        <relocation>
+                          <pattern>io.grpc</pattern>
+                          <shadedPattern>com.alibaba.nacos.shaded.io.grpc</shadedPattern>
+                          <excludes><exclude>io.grpc.netty.shaded.io.grpc.netty.*</exclude></excludes>
+                        </relocation>
+                        <relocation>
+                          <pattern>io.grpc.netty.shaded.io.grpc.netty</pattern>
+                          <shadedPattern>com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.grpc.netty</shadedPattern>
+                          <includes><include>io.grpc.netty.shaded.io.grpc.netty.*</include></includes>
+                        </relocation>
+                        <relocation>
+                          <pattern>com/google</pattern>
+                          <shadedPattern>com/alibaba/nacos/shaded/com/google</shadedPattern>
+                        </relocation>
+                      </relocations>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        JkBuild build = result.jkBuild();
+        assertThat(build.libraryOpt())
+                .as("a shaded module with no main is a library assembly")
+                .isPresent();
+        assertThat(build.relocate())
+                .containsExactly(
+                        Map.entry("io.grpc", "com.alibaba.nacos.shaded.io.grpc"),
+                        Map.entry("com.google", "com.alibaba.nacos.shaded.com.google"));
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`<relocations>`"));
     }
 
     @Test

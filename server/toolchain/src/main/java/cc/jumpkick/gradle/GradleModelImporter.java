@@ -3,6 +3,7 @@ package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ImportedKotlin;
+import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -62,7 +63,10 @@ final class GradleModelImporter {
             "org.jetbrains.kotlin.plugin.serialization",
             "com.google.devtools.ksp",
             GradleImporter.DOKKA_PLUGIN,
-            GradleImporter.GIT_PROPERTIES_PLUGIN);
+            GradleImporter.GIT_PROPERTIES_PLUGIN,
+            "com.gradleup.shadow",
+            "com.github.johnrengelman.shadow",
+            "io.github.goooler.shadow");
 
     /** Plugin ids whose effect needs no row: implicit in jk, or absorbed by another mapping. */
     private static final Set<String> SILENT_PLUGINS = Set.of(
@@ -78,6 +82,9 @@ final class GradleModelImporter {
             "org.jetbrains.kotlin.plugin.jpa",
             "org.jetbrains.kotlin.plugin.serialization",
             "org.jetbrains.kotlin.kapt",
+            "com.gradleup.shadow",
+            "com.github.johnrengelman.shadow",
+            "io.github.goooler.shadow",
             "com.google.devtools.ksp",
             GradleImporter.DOKKA_PLUGIN,
             GradleImporter.GIT_PROPERTIES_PLUGIN);
@@ -91,7 +98,8 @@ final class GradleModelImporter {
             "com.google.devtools.ksp",
             "com.gorylenko",
             "io.quarkus",
-            "com.diffplug.gradle.spotless");
+            "com.diffplug.gradle.spotless",
+            "com.github.jengelman.gradle.plugins.shadow");
 
     /** Configurations Gradle and its plugins declare for their own tooling, not the build's dependencies. */
     private static final List<String> TOOL_CONFIGURATION_PREFIXES = List.of(
@@ -311,10 +319,24 @@ final class GradleModelImporter {
             build = build.withDokka(
                     new BuildBlock.Dokka(VersionSelector.parse(dokka), BuildBlock.Dokka.Format.JAVADOC));
         }
+        // Shadow is the fat jar — the application's with a main, the library's without — and the
+        // shadowJar task's relocators are its rules where the rules agree with them.
+        boolean shadow = applied.stream().anyMatch(GradleImporter.SHADOW_PLUGINS::contains)
+                || !p.relocations().isEmpty();
+        RelocationRules.Mapped relocations = RelocationRules.map(p.relocations());
+        if (!relocations.unmapped().isEmpty()) {
+            local.warning("Shadow `relocate` " + String.join(", ", relocations.unmapped())
+                    + " — `relocate` moves whole packages, first rule winning; what the rules do not express is not"
+                    + " written, and those classes are bundled under their own names.");
+        }
         JkBuild.Builder builder = JkBuild.builder(project.build())
                 .dependencies(new JkBuild.Dependencies(deps))
                 .repositories(repos)
-                .application(mainClass == null ? null : new JkBuild.Application(mainClass, false))
+                .application(
+                        mainClass == null
+                                ? null
+                                : new JkBuild.Application(mainClass, shadow, false, false, null, relocations.rules()))
+                .library(mainClass == null && shadow ? new JkBuild.Library(true, relocations.rules()) : null)
                 .build(build);
         for (PluginConfig config : plugins) builder.pluginConfig(config);
         JkBuild jkBuild = builder.build();

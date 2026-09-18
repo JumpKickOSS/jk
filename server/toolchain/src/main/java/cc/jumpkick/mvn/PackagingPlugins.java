@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
@@ -11,7 +12,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.maven.model.Model;
@@ -43,23 +43,6 @@ final class PackagingPlugins {
             @Nullable PluginConfig springBoot,
             @Nullable PluginConfig quarkus,
             ImageTable image) {}
-
-    /**
-     * One shade {@code <relocation>}: the package moved and where to; {@code shaded} is null when
-     * the POM omits it. {@code rawString} is Shade's literal-string mode and {@code filtered} its
-     * {@code <includes>}/{@code <excludes>} narrowing — neither is a whole-package rule, so
-     * neither becomes a {@code relocate} entry.
-     */
-    record Relocation(String pattern, @Nullable String shaded, boolean rawString, boolean filtered) {
-        String label() {
-            return pattern + (shaded == null ? "" : " → " + shaded);
-        }
-
-        /** A whole dotted package moved to another: what {@code [application] relocate} spells. */
-        boolean wholePackage() {
-            return shaded != null && !rawString && !filtered && !pattern.contains("/") && !shaded.contains("/");
-        }
-    }
 
     private static final String SHADE = "maven-shade-plugin";
     private static final String ASSEMBLY = "maven-assembly-plugin";
@@ -113,21 +96,34 @@ final class PackagingPlugins {
     }
 
     /** Every {@code <relocation>} of the module's shade plugin, in declaration order; empty without the plugin. */
-    static List<Relocation> relocations(Model model) {
+    static List<RelocationRules.Relocation> relocations(Model model) {
         Optional<Plugin> shade = PluginFacts.plugin(model, SHADE);
         if (shade.isEmpty()) return List.of();
-        List<Relocation> relocations = new ArrayList<>();
+        List<RelocationRules.Relocation> relocations = new ArrayList<>();
         for (Xpp3Dom config : PluginFacts.configurations(shade.get())) {
             PluginFacts.visit(config, "relocation", relocation -> {
                 String pattern = PluginFacts.child(relocation, "pattern");
                 if (pattern == null) return;
-                boolean raw = Boolean.parseBoolean(PluginFacts.child(relocation, "rawString"));
-                boolean filtered =
-                        hasChildren(relocation.getChild("includes")) || hasChildren(relocation.getChild("excludes"));
-                relocations.add(new Relocation(pattern, PluginFacts.child(relocation, "shadedPattern"), raw, filtered));
+                relocations.add(new RelocationRules.Relocation(
+                        pattern,
+                        PluginFacts.child(relocation, "shadedPattern"),
+                        Boolean.parseBoolean(PluginFacts.child(relocation, "rawString")),
+                        children(relocation.getChild("includes")),
+                        children(relocation.getChild("excludes"))));
             });
         }
         return relocations;
+    }
+
+    /** The text of every child element of {@code node}, in order; empty for a missing or childless node. */
+    private static List<String> children(@Nullable Xpp3Dom node) {
+        if (node == null) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Xpp3Dom child : node.getChildren()) {
+            String value = PluginFacts.usable(child.getValue());
+            if (value != null) out.add(value);
+        }
+        return out;
     }
 
     /**
@@ -147,26 +143,18 @@ final class PackagingPlugins {
         return Optional.empty();
     }
 
-    private static boolean hasChildren(@Nullable Xpp3Dom node) {
-        return node != null && node.getChildCount() > 0;
-    }
-
     /**
-     * Shade is the fat jar; a whole-package relocation is a {@code relocate} entry written into
-     * {@code relocate}, and what jk's rules do not do is a row per construct.
+     * Shade is the fat jar; the relocations that agree with jk's whole-package rules ({@link
+     * RelocationRules}) are written into {@code relocate}, and what the rules do not express is a
+     * row per construct.
      */
     private static boolean mapShade(EffectiveModel em, Map<String, String> relocate, ImportReport.Builder report) {
         Model model = em.model();
         Optional<Plugin> shade = active(em, SHADE, "no fat jar is written", report);
         if (shade.isEmpty()) return false;
-        List<String> partial = new ArrayList<>();
-        for (Relocation relocation : relocations(model)) {
-            if (relocation.wholePackage()) {
-                relocate.putIfAbsent(relocation.pattern(), Objects.requireNonNull(relocation.shaded()));
-            } else if (!relocation.rawString() || !relocate.containsValue(slashesToDots(relocation.shaded()))) {
-                partial.add(relocation.label());
-            }
-        }
+        RelocationRules.Mapped mapped = RelocationRules.map(relocations(model));
+        relocate.putAll(mapped.rules());
+        List<String> partial = mapped.unmapped();
         List<String> filters = new ArrayList<>();
         List<String> transformers = new ArrayList<>();
         boolean minimize = false;
@@ -185,9 +173,10 @@ final class PackagingPlugins {
         }
         if (!partial.isEmpty()) {
             report.warning("`maven-shade-plugin` `<relocations>` " + String.join(", ", partial)
-                    + " — `[application] relocate` moves whole packages; a relocation with `<includes>`,"
-                    + " `<excludes>` or `<rawString>`, or one spelled as a path, is not written and those"
-                    + " classes are bundled under their own names.");
+                    + " — `relocate` moves whole packages, first rule winning; an exclude no other relocation"
+                    + " lands where the rule would, an include naming a class or a package's direct classes"
+                    + " the rules move elsewhere, and a rawString rewrite with no rule of the same name are not"
+                    + " written, and those classes are bundled under their own names.");
         }
         if (!filters.isEmpty()) {
             report.warning("`maven-shade-plugin` `<filters>` on " + String.join(", ", filters)
@@ -204,11 +193,6 @@ final class PackagingPlugins {
                     + " unminimized.");
         }
         return true;
-    }
-
-    /** A raw-string rule's target as the dotted package it mirrors, or empty when it names none. */
-    private static String slashesToDots(@Nullable String shaded) {
-        return shaded == null ? "" : shaded.replace('/', '.');
     }
 
     /** {@code jar-with-dependencies} is the fat jar; any other descriptor is a row. */

@@ -11,6 +11,7 @@ import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -189,6 +190,34 @@ class GradleModelImporterTest {
         assertThat(result.root().isWorkspaceRoot()).isFalse();
         assertThat(result.root().project().name()).isEqualTo("widget");
         assertThat(only(result.root(), Scope.MAIN).module()).isEqualTo("com.google.guava:guava");
+    }
+
+    /** The shadowJar task's relocators travel in the model; a project with no main ships them under [library]. */
+    @Test
+    void shadow_relocators_in_the_model_are_the_librarys_rules_and_the_plugin_is_no_row() {
+        String shaded = """
+                {"gradle":"9.5.1","rootName":"lucene9-shaded","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"lucene9-shaded","dir":"","group":"org.demo","version":"2.1.0",
+                   "plugins":["java-library","com.gradleup.shadow"],"pluginClasses":["com.github.jengelman.gradle.plugins.shadow.ShadowPlugin"],
+                   "pluginVersions":{"com.gradleup.shadow":"9.0.0"},"java":{"sourceCompatibility":"25","targetCompatibility":"25"},"bootBuildInfo":false,"repositories":[],
+                   "configurations":[],"tasks":[],
+                   "relocations":[
+                     {"pattern":"org.apache.lucene","shadedPattern":"org.demo.shaded.lucene9","rawString":false,"includes":[],"excludes":[]},
+                     {"pattern":"org/apache/lucene","shadedPattern":"org/demo/shaded/lucene9","rawString":true,"includes":[],"excludes":[]}
+                   ]}]}
+                """;
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(shaded, Path.of("/tmp/lucene9-shaded"), RefreshVersions.NONE);
+
+        JkBuild root = result.root();
+        assertThat(root.applicationOpt()).isEmpty();
+        assertThat(root.libraryOpt()).isPresent();
+        assertThat(root.assembly()).isTrue();
+        assertThat(root.relocate()).containsExactly(Map.entry("org.apache.lucene", "org.demo.shaded.lucene9"));
+        assertThat(messages(result.report()))
+                .noneMatch(m -> m.contains("relocate"))
+                .noneMatch(m -> m.contains("com.gradleup.shadow"));
     }
 
     @Test
