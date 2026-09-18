@@ -59,6 +59,10 @@ their plugins.
 **Language mix:** Java is the default. A module may mix Java with Kotlin, Groovy, **or**
 Scala 3 (Java↔Scala circular refs compile in one Zinc session). **Kotlin + Groovy in one
 module is rejected.** Scaffold with `jk new --lang kotlin`, `--lang groovy`, or `--lang scala`.
+With no language key at all the languages are inferred from the tree; once one is declared, the
+declaration is the whole set — a `kotlin =` manifest over `src/main/java` compiles no Java, and the
+build warns once per module, naming the root and the key to add (`src/main/java holds Java sources
+this module does not compile: jk.toml declares kotlin and not java — add java = 25 to compile them`).
 
 ## Version strings
 

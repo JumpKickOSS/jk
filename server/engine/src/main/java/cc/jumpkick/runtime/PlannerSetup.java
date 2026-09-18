@@ -20,6 +20,7 @@ import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkEnsureProgress;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -61,6 +62,16 @@ import org.jspecify.annotations.Nullable;
 public final class PlannerSetup {
 
     private PlannerSetup() {}
+
+    /**
+     * What the manifest has to say once it is parsed: a shadowed module says once, on the build
+     * after its POM changed, what the effective POM declares that the in-place build does not
+     * carry; a declared language set says which sources of another language it leaves uncompiled.
+     */
+    private static void warnManifestRows(TaskContext ctx, Path dir, JkBuild project) {
+        for (String row : ShadowManifests.drainTier3(dir)) ctx.warn("pom", row);
+        for (String row : Languages.undeclaredWithSources(project.project(), dir)) ctx.warn("languages", row);
+    }
 
     static Task parseBuildStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
@@ -111,9 +122,7 @@ public final class PlannerSetup {
                         throw e;
                     }
                     ctx.put(PROJECT, project);
-                    // A shadowed module says once, on the build after its POM changed, what the
-                    // effective POM declares that the in-place build does not carry.
-                    for (String row : ShadowManifests.drainTier3(in.dir())) ctx.warn("pom", row);
+                    warnManifestRows(ctx, in.dir(), project);
                     BuildLayout layout = BuildLayout.of(in.dir(), project);
                     ctx.put(LAYOUT, layout);
 

@@ -4,6 +4,8 @@ package cc.jumpkick.layout;
 import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Which languages a module compiles — one shared answer for the engine's lane wiring and the
@@ -13,7 +15,8 @@ import java.nio.file.Path;
  * tree — a {@code src/main/java} dir or any {@code .java} under {@code src/} enables Java (at
  * the jdk release); likewise {@code src/main/kotlin}/{@code .kt}, {@code
  * src/main/groovy}/{@code .groovy}, and {@code src/main/scala}/{@code .scala}. A project with
- * nothing to go on defaults to Java (a bare {@code jdk = N} project).
+ * nothing to go on defaults to Java (a bare {@code jdk = N} project). A declaration that leaves
+ * out a language whose sources exist is what {@link #undeclaredWithSources} names.
  */
 public record Languages(boolean java, boolean kotlin, boolean groovy, boolean scala) {
 
@@ -39,6 +42,52 @@ public record Languages(boolean java, boolean kotlin, boolean groovy, boolean sc
             return new Languages(true, false, false, false); // nothing detected — default to Java
         }
         return new Languages(java, kotlin, groovy, scala);
+    }
+
+    /**
+     * One row per language a declared language set leaves out while its sources exist: a
+     * {@code kotlin =} manifest over {@code src/main/java} compiles no Java, and the row says so,
+     * naming the root that holds the sources and the key that would compile them. Empty for a
+     * module whose languages are inferred from the tree, and for one whose declaration covers
+     * every root.
+     */
+    public static List<String> undeclaredWithSources(Project project, Path projectDir) {
+        Languages declared = resolve(project, projectDir);
+        boolean anyDeclared = project.java() > 0 || project.isKotlin() || project.isGroovy() || project.isScala();
+        if (!anyDeclared) return List.of();
+        List<String> declaredKeys = new ArrayList<>();
+        if (project.java() > 0) declaredKeys.add("java");
+        if (declared.kotlin()) declaredKeys.add("kotlin");
+        if (declared.groovy()) declaredKeys.add("groovy");
+        if (declared.scala()) declaredKeys.add("scala");
+        List<String> rows = new ArrayList<>();
+        // The level the compile would use: the declared one, else the JDK the engine runs on.
+        int release = project.javaRelease() > 0
+                ? project.javaRelease()
+                : Runtime.version().feature();
+        if (!declared.java()) dropped(rows, projectDir, "java", ".java", "java = " + release, declaredKeys);
+        if (!declared.kotlin()) dropped(rows, projectDir, "kotlin", ".kt", "kotlin = \"<version>\"", declaredKeys);
+        if (!declared.groovy()) dropped(rows, projectDir, "groovy", ".groovy", "groovy = \"<version>\"", declaredKeys);
+        if (!declared.scala()) dropped(rows, projectDir, "scala", ".scala", "scala = \"<version>\"", declaredKeys);
+        return rows;
+    }
+
+    private static void dropped(
+            List<String> rows, Path projectDir, String key, String ext, String addition, List<String> declaredKeys) {
+        Path traditional = projectDir.resolve("src/main/" + key);
+        String root;
+        String what;
+        if (anySourceUnder(traditional, ext)) {
+            root = "src/main/" + key;
+            what = Character.toUpperCase(key.charAt(0)) + key.substring(1) + " sources";
+        } else if (anySourceUnder(projectDir.resolve("src"), ext)) {
+            root = "src";
+            what = ext + " sources";
+        } else {
+            return;
+        }
+        rows.add(root + " holds " + what + " this module does not compile: jk.toml declares "
+                + String.join(", ", declaredKeys) + " and not " + key + " — add " + addition + " to compile them");
     }
 
     /** True if any regular file ending in {@code ext} exists anywhere under {@code root}. */
