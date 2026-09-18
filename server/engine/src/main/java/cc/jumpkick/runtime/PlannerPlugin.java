@@ -42,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -472,7 +473,10 @@ public final class PlannerPlugin {
                     String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
                     String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
                     ActionCache actionCache = cx.actionCache();
-                    var hit = actionCache.lookup(actionKey);
+                    // A forced rebuild runs the step as it runs compile and package: no record is
+                    // restored, and the run's own record is stored below for the next build.
+                    Optional<ActionCache.ActionRecord> hit =
+                            in.session().config().rebuildOr(false) ? Optional.empty() : actionCache.lookup(actionKey);
                     // A record with no outputs is a verdict; for a step that promises files there
                     // is nothing in it to restore, so it is a miss rather than an empty classes dir.
                     if (hit.isPresent() && (!hit.get().outputs().isEmpty() || !producesOutputs(step))) {
