@@ -53,7 +53,9 @@ what an agent ran through Maven beside what it ran through jk. The row's duratio
 clock, from the launch to Maven's exit, and its `Saved` column stays empty: jk ran none of the
 steps and cached none of them, so there is no cache saving to price. Provisioning Maven writes no
 report of its own — a `jk mvn -v` leaves no `target/jk-results.md` and no `target/jk-profile.json`
-behind.
+behind. A POM that cannot name its project — no `<version>` of its own or its parent's — has no
+project to journal under: `jk mvn` prints `run not journaled: <pom> has no <version> and no
+<parent><version>` after Maven's own error and writes no row and no report.
 A small Maven core extension, `jk-maven-spy-<version>.jar`, rides Maven's `-Dmaven.ext.class.path`
 and records the reactor's events; after Maven exits the engine folds those events, each module's
 `target/surefire-reports` / `target/failsafe-reports` XML and the compiler plugin's

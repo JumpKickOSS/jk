@@ -9,6 +9,7 @@ import cc.jumpkick.engine.maven.MavenEvents;
 import cc.jumpkick.engine.maven.MavenRunReport;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.mvn.PomCoord;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -19,6 +20,7 @@ import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -66,8 +68,16 @@ public final class MvnResultsVerb implements HostedVerb {
                 return JobOutcome.failed(Exit.FAILURE);
             }
             Path projectDir = Path.of(body.dir());
-            MavenRunReport report = MavenRunReport.read(projectDir, Path.of(body.events()));
             long rid = host.eventRequestId();
+            // A POM that cannot name its project has no project to journal under: say which
+            // element it lacks and write no row, rather than a row under build number 0.
+            Optional<String> unnamed = PomCoord.missingIdentity(projectDir);
+            if (unnamed.isPresent()) {
+                host.discardJournal(rid);
+                host.sendQuiet(writer, ProtoEvents.mvnResultsResult(null, unnamed.get()));
+                return body.exit() == Exit.SUCCESS ? JobOutcome.ok() : JobOutcome.failed(body.exit());
+            }
+            MavenRunReport report = MavenRunReport.read(projectDir, Path.of(body.events()));
             // The row's headline is Maven's wall, not the few hundred milliseconds this job takes.
             host.accToolWall(rid, body.millis());
             for (MavenRunReport.Module m : report.modules()) record(rid, m);
