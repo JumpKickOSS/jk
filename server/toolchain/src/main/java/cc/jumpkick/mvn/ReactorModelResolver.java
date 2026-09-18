@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -12,6 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.resolution.ModelResolver;
@@ -34,6 +42,12 @@ import org.jspecify.annotations.Nullable;
  * reactor walk does once a module's manifest is rendered: a parent is answered from the raw model,
  * so only the BOMs other modules import need to stay built. The memo, not the POM tree, is what
  * bounds the import's heap on a reactor of hundreds of modules.
+ *
+ * <p>The modules of one aggregator are built side by side ({@link #effectiveAll}), {@link
+ * DeclaredPins#walksInFlight()} at a time, so the parent and BOM POMs a repository serves are read
+ * several at once and Maven's model building runs on several cores. The memo is shared between
+ * those builds; a model another thread is building at the moment it is asked for is built again
+ * privately rather than waited on, so two modules importing each other's BOMs cannot deadlock.
  */
 final class ReactorModelResolver implements WorkspaceModelResolver {
 
@@ -47,8 +61,10 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
     private final List<String> activeProfiles;
     private final Map<String, Entry> byRawGav = new LinkedHashMap<>();
     private final Map<Path, Entry> byFile = new HashMap<>();
-    private final Map<Path, EffectiveModel> effective = new HashMap<>();
-    private final Set<Path> building = new HashSet<>();
+    private final Map<Path, CompletableFuture<EffectiveModel>> effective = new ConcurrentHashMap<>();
+
+    /** The POMs whose build is on this thread's stack, for the cycle check. */
+    private final ThreadLocal<Set<Path>> building = ThreadLocal.withInitial(HashSet::new);
 
     /**
      * {@code repositories} answers what the reactor does not: published parents and BOMs; {@code
@@ -85,6 +101,50 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
     }
 
     /**
+     * The effective models of several registered pom.xml files, keyed in the order given, built
+     * side by side on the io pool under the caller's session, {@link DeclaredPins#walksInFlight()}
+     * at a time. A build that fails is rethrown here as it would be from {@link #effective}; an
+     * interrupt of the caller cancels the builds still running and surfaces as {@link
+     * RepoModelResolver.ReadInterrupted}.
+     */
+    Map<Path, EffectiveModel> effectiveAll(List<Path> pomFiles) {
+        Map<Path, EffectiveModel> out = new LinkedHashMap<>();
+        if (pomFiles.size() < 2) {
+            for (Path pomFile : pomFiles) out.put(pomFile, effective(pomFile));
+            return out;
+        }
+        var session = SessionContext.current();
+        Semaphore permits = new Semaphore(DeclaredPins.walksInFlight());
+        List<Future<EffectiveModel>> pending = new ArrayList<>(pomFiles.size());
+        for (Path pomFile : pomFiles) {
+            pending.add(JkThreads.io()
+                    .submit(() -> SessionContext.where(session, () -> {
+                        permits.acquire();
+                        try {
+                            return effective(pomFile);
+                        } finally {
+                            permits.release();
+                        }
+                    })));
+        }
+        for (int i = 0; i < pomFiles.size(); i++) {
+            try {
+                out.put(pomFiles.get(i), pending.get(i).get());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                for (Future<EffectiveModel> f : pending) f.cancel(true);
+                throw new RepoModelResolver.ReadInterrupted("interrupted while building " + pomFiles.get(i));
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause() == null ? e : e.getCause();
+                if (cause instanceof RuntimeException runtime) throw runtime;
+                if (cause instanceof Error error) throw error;
+                throw new IllegalStateException(pomFiles.get(i) + ": " + cause.getMessage(), cause);
+            }
+        }
+        return out;
+    }
+
+    /**
      * Drop a memoised effective model; a later lookup builds it again. Called once the importer is
      * done with a module, so the memo holds only what other modules still ask for.
      */
@@ -94,21 +154,38 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
 
     /** The pom.xml files whose effective models the memo holds right now. */
     Set<Path> retained() {
-        return Set.copyOf(effective.keySet());
+        Set<Path> held = new HashSet<>();
+        effective.forEach((pomFile, built) -> {
+            if (built.isDone() && !built.isCompletedExceptionally()) held.add(pomFile);
+        });
+        return Set.copyOf(held);
     }
 
-    /** {@code null} while the entry's own build is in progress higher up the stack (a cycle). */
+    /**
+     * {@code null} while the entry's own build is in progress higher up this thread's stack (a
+     * cycle). A model another thread is building right now is built here again and not memoised.
+     */
     private @Nullable EffectiveModel build(Entry entry) {
-        EffectiveModel hit = effective.get(entry.pomFile());
-        if (hit != null) return hit;
-        if (!building.add(entry.pomFile())) return null;
+        Path pomFile = entry.pomFile();
+        Set<Path> onStack = building.get();
+        if (onStack.contains(pomFile)) return null;
+        CompletableFuture<EffectiveModel> mine = new CompletableFuture<>();
+        CompletableFuture<EffectiveModel> memo = effective.putIfAbsent(pomFile, mine);
+        if (memo != null && memo.isDone() && !memo.isCompletedExceptionally()) return memo.join();
+        onStack.add(pomFile);
         try {
-            EffectiveModel built = EffectiveModel.build(
-                    read(entry.pomFile()), entry.pomFile(), repositories.newCopy(), this, activeProfiles);
-            effective.put(entry.pomFile(), built);
+            EffectiveModel built =
+                    EffectiveModel.build(read(pomFile), pomFile, repositories.newCopy(), this, activeProfiles);
+            if (memo == null) mine.complete(built);
             return built;
+        } catch (RuntimeException | Error e) {
+            if (memo == null) {
+                effective.remove(pomFile, mine);
+                mine.completeExceptionally(e);
+            }
+            throw e;
         } finally {
-            building.remove(entry.pomFile());
+            onStack.remove(pomFile);
         }
     }
 
