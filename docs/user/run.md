@@ -19,6 +19,7 @@ engine job, then the process). It is not `exec`-replace.
 jk run --debug-jvm                      # localhost:5005, suspended until a debugger attaches
 jk run --debug-jvm=0 . -- args…         # a free port; use `=` when args follow
 jk run --debug-jvm=6006,suspend=n
+jk run --debug                          # the same flag by its unique prefix
 ```
 
 The app JVM starts with `-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=…`

@@ -115,6 +115,7 @@ jk test --debug-jvm=0                   # a free port jk picks; the address is p
 jk test --debug-jvm=6006,suspend=n      # listen, but do not wait for the attach
 jk test --debug-jvm='*:5005'            # every interface (remote attach)
 jk test --class OrdersTest --debug-jvm  # the usual selection applies unchanged
+jk test --debug                         # the same flag by its unique prefix
 ```
 
 The forked test JVM — and only that JVM — starts with
