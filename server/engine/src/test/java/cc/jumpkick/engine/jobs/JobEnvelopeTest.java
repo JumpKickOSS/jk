@@ -112,6 +112,19 @@ class JobEnvelopeTest {
     }
 
     @Test
+    void toolchain_kind_never_writes_a_timeline() {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        StringWriter out = new StringWriter();
+        env.submit(
+                "{\"type\":\"provision-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.toolchain("provision", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
+                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+        // Provisioning acts on the machine, not the project: the run it precedes owns target/.
+        assertThat(host.lastNoTimeline).isTrue();
+    }
+
+    @Test
     void a_maven_run_journaled_through_jk_mvn_takes_a_build_number(@TempDir Path dir) {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);

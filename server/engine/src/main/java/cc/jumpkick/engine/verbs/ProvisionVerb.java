@@ -28,7 +28,7 @@ public final class ProvisionVerb implements HostedVerb {
 
     @Override
     public JobKind jobKind() {
-        return JobKind.plan("provision");
+        return JobKind.toolchain("provision");
     }
 
     @Override
