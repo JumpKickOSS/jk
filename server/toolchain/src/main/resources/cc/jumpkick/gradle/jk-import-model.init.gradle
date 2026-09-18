@@ -152,23 +152,26 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     return m
 }
 
-// The BOMs a `dependencyManagement { imports { mavenBom … } }` block names. The plugin's API
-// exposes the versions it manages, not the BOM they came from, so the script text is read: the
-// project's own build script, else the nearest ancestor's (a root's `subprojects { }` block). A
-// `$property` in a coordinate is the project's property; `SpringBootPlugin.BOM_COORDINATES` is
-// Boot's BOM; a placeholder nothing defines is left for the import to report.
+// The BOMs a `dependencyManagement { imports { mavenBom … } }` block names for this project. The
+// plugin's API exposes the versions it manages, not the BOM they came from, so the script text is
+// read — the project's own build script and every ancestor's — and a `mavenBom` line counts for
+// the project when the block holding it reaches it: a script's top-level block is that script's
+// own project's alone, a `subprojects { }` block reaches every project below the script's, an
+// `allprojects { }` block every project at or below it, a `project(':path') { }` block the project
+// it names, and a `configure(subprojects…) { }` block every project below. A `$property` in a
+// coordinate is the project's property; `SpringBootPlugin.BOM_COORDINATES` is Boot's BOM; a
+// placeholder nothing defines is left for the import to report.
 def importedBoms(Project p) {
+    def boms = []
     for (Project owner = p; owner != null; owner = owner.parent) {
         def script = owner.buildFile
         if (script == null || !script.isFile()) continue
         def text = script.text
         if (!text.contains('mavenBom')) continue
-        def boms = []
-        def matcher = text =~ /mavenBom\s*\(?\s*(?:"([^"\n]*)"|'([^'\n]*)'|([A-Za-z_][\w.]*BOM_COORDINATES))/
-        while (matcher.find()) {
-            def literal = matcher.group(1) ?: matcher.group(2)
-            if (literal != null) {
-                boms << interpolate(p, literal)
+        for (def hit : mavenBomHits(text)) {
+            if (!reaches(hit.scope, owner, p)) continue
+            if (hit.literal != null) {
+                boms << interpolate(p, hit.literal)
             } else {
                 try {
                     boms << p.buildscript.classLoader.loadClass('org.springframework.boot.gradle.plugin.SpringBootPlugin')
@@ -177,9 +180,108 @@ def importedBoms(Project p) {
                 }
             }
         }
-        return boms
     }
-    return []
+    return boms
+}
+
+// Every `mavenBom` of a script with the scope of the block holding it — `self`, `subprojects`,
+// `allprojects` or a project path — and the coordinate as written, null for a BOM_COORDINATES constant.
+def mavenBomHits(String text) {
+    def hits = []
+    def matcher = text =~ /mavenBom\s*\(?\s*(?:"([^"\n]*)"|'([^'\n]*)'|([A-Za-z_][\w.]*BOM_COORDINATES))/
+    while (matcher.find()) {
+        hits << [scope: blockScope(text, matcher.start()), literal: matcher.group(1) ?: matcher.group(2)]
+    }
+    return hits
+}
+
+// Whether a block of `owner`'s script with `scope` configures `p`.
+def reaches(String scope, Project owner, Project p) {
+    switch (scope) {
+        case 'self': return owner.path == p.path
+        case 'allprojects': return true
+        case 'subprojects': return owner.path != p.path
+        default:
+            def path = scope.startsWith(':') ? scope : (owner.path == ':' ? ':' + scope : owner.path + ':' + scope)
+            return path == p.path
+    }
+}
+
+// The scope of the blocks open at `offset`: the outermost block whose head names a set of projects decides.
+def blockScope(String text, int offset) {
+    for (String head : openBlockHeads(text, offset)) {
+        if (head ==~ /(?s)subprojects\b.*/) return 'subprojects'
+        if (head ==~ /(?s)allprojects\b.*/) return 'allprojects'
+        def named = head =~ /^project\s*\(\s*["']([^"']+)["']\s*\)/
+        if (named.find()) return named.group(1)
+        if (head ==~ /(?s)configure\s*\(.*/) {
+            if (head.contains('allprojects')) return 'allprojects'
+            if (head.contains('subprojects')) return 'subprojects'
+        }
+    }
+    return 'self'
+}
+
+// The heads of the `{ }` blocks open at `offset`, outermost first: the text before each brace since
+// the previous brace, semicolon or line start (`subprojects`, `project(':core')`, `dependencyManagement`),
+// or the whole line before it when that holds no word; string literals and comments are skipped.
+def openBlockHeads(String text, int offset) {
+    def heads = []
+    int i = 0
+    int lineStart = 0
+    int headStart = 0
+    while (i < offset) {
+        String c = text.substring(i, i + 1)
+        if (c == '/' && text.startsWith('//', i)) {
+            int eol = text.indexOf('\n', i)
+            i = eol < 0 ? text.length() : eol
+            continue
+        }
+        if (c == '/' && text.startsWith('/*', i)) {
+            int end = text.indexOf('*/', i + 2)
+            i = end < 0 ? text.length() : end + 2
+            continue
+        }
+        if (c == '"' || c == "'") {
+            i = endOfString(text, i)
+            continue
+        }
+        if (c == '{') {
+            String head = text.substring(headStart, i).trim()
+            if (!(head =~ /[A-Za-z]/)) head = text.substring(lineStart, i).trim()
+            heads << head
+            headStart = i + 1
+        } else if (c == '}') {
+            if (!heads.isEmpty()) heads.remove(heads.size() - 1)
+            headStart = i + 1
+        } else if (c == ';') {
+            headStart = i + 1
+        } else if (c == '\n') {
+            lineStart = i + 1
+            headStart = i + 1
+        }
+        i++
+    }
+    return heads
+}
+
+// The index just past the string literal opening at `start`: a triple-quoted block, or a quoted run with backslash escapes.
+def endOfString(String text, int start) {
+    String quote = text.substring(start, start + 1)
+    String triple = quote * 3
+    if (text.startsWith(triple, start)) {
+        int end = text.indexOf(triple, start + 3)
+        return end < 0 ? text.length() : end + 3
+    }
+    int i = start + 1
+    while (i < text.length()) {
+        String c = text.substring(i, i + 1)
+        if (c == '\\') { i += 2; continue }
+        if (c == quote) return i + 1
+        if (c == '\n') return i
+        i++
+    }
+    return text.length()
 }
 
 // `$name` / `${name}` / `${property("name")}` / `${libs.versions.alias.get()}` in a script literal,
