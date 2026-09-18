@@ -18,6 +18,8 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.protocol.IdeWireModel;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -97,13 +99,23 @@ public final class BspCommand implements CliCommand {
     /**
      * Write {@code .bsp/jk.json} so BSP clients (Metals, IntelliJ Scala plugin, …) can spawn
      * {@code jk bsp serve} on stdio. Idempotent. Used by {@code jk bsp install} and {@code jk ide}
-     * (including {@code idea}/{@code vscode} aliases).
+     * (including {@code idea}/{@code vscode} aliases). The languages listed are the workspace's
+     * own, read from the engine's model; every language jk compiles when the engine cannot answer.
      *
      * @return path of the connection file written
      */
     public static Path writeConnectionFile(Path projectDir) throws Exception {
         // Prefer the jk on PATH; the IDE will spawn: jk bsp serve
-        return BspConnectionFile.write(projectDir, System.getenv().getOrDefault("JK_BIN", "jk"));
+        return BspConnectionFile.write(projectDir, System.getenv().getOrDefault("JK_BIN", "jk"), languages(projectDir));
+    }
+
+    private static List<String> languages(Path projectDir) {
+        try {
+            IdeWireModel model = IdeEngineClient.open(projectDir).ideModel();
+            return model.error() == null ? BspConnectionFile.languages(model) : BspConnectionFile.ALL_LANGUAGES;
+        } catch (IOException | RuntimeException e) {
+            return BspConnectionFile.ALL_LANGUAGES;
+        }
     }
 
     private static int serve(Path projectDir, GlobalOptions global) throws Exception {

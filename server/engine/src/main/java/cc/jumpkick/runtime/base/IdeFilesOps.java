@@ -61,7 +61,7 @@ public final class IdeFilesOps {
             List<IdeGeneration> generations = IdeGenerators.run(model, targets, preview);
             Path bsp = preview
                     ? model.wsRoot().resolve(".bsp").resolve("jk.json")
-                    : BspConnectionFile.write(model.wsRoot(), "jk");
+                    : BspConnectionFile.write(model.wsRoot(), "jk", BspConnectionFile.languages(wire));
             return new Result(null, wire.wsRoot(), wire.rootName(), generations, bsp);
         } catch (IOException | RuntimeException e) {
             return Result.error(Errors.text(e));

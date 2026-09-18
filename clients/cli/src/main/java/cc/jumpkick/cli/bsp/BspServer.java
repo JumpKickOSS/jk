@@ -6,6 +6,7 @@ import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.ide.BspConnectionFile;
 import cc.jumpkick.ide.IdeSourceRoots;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.MiniJson;
@@ -40,9 +41,11 @@ import org.jspecify.annotations.Nullable;
  * BSP 2.x JSON-RPC over Content-Length framing (stdio). Wire-only via {@link IdeEngineClient}.
  *
  * <p>Targets, sources (incl. resources), dependency modules (with sources jars when present),
- * output paths, compile/test/run by target URI, workspace/reload, build/cancel, and
- * publishDiagnostics on compile failures. Long-running compile/test/run run on a worker so
- * {@code build/cancel} can be accepted mid-flight.
+ * dependency sources, output paths, scalac and javac options, compile/test/run by target URI,
+ * workspace/reload, build/cancel, and publishDiagnostics on compile failures. A module that
+ * compiles Scala is a Scala build target ({@link BspTargetOptions}), which is how Metals imports
+ * a mixed Java/Scala module. Long-running compile/test/run run on a worker so {@code build/cancel}
+ * can be accepted mid-flight.
  */
 public final class BspServer {
 
@@ -99,7 +102,7 @@ public final class BspServer {
                 case "build/initialize" -> {
                     // Every build this server sends from here on journals as the IDE's own.
                     RequestEnvironment.declare("bsp", sessionLabel(message));
-                    respond(id, initializeResultJson());
+                    respond(id, initializeResultJson(workspaceLanguages()));
                 }
                 case "build/initialized" -> {
                     /* notification */
@@ -112,6 +115,16 @@ public final class BspServer {
                 case "buildTarget/sources" -> respond(id, sourcesJson(json));
                 case "buildTarget/dependencyModules" -> respond(id, dependencyModulesJson(json));
                 case "buildTarget/outputPaths" -> respond(id, outputPathsJson(json));
+                case "buildTarget/scalacOptions" ->
+                    respond(id, perTargetItems(json, BspTargetOptions::scalacOptionsItem));
+                case "buildTarget/javacOptions" ->
+                    respond(id, perTargetItems(json, BspTargetOptions::javacOptionsItem));
+                case "buildTarget/dependencySources" ->
+                    respond(id, perTargetItems(json, (tid, m, i) -> BspTargetOptions.dependencySourcesItem(tid, m)));
+                case "buildTarget/scalaMainClasses" ->
+                    respond(id, perTargetItems(json, BspTargetOptions::scalaMainClassesItem));
+                case "buildTarget/scalaTestClasses" ->
+                    respond(id, perTargetItems(json, (tid, m, i) -> BspTargetOptions.scalaTestClassesItem(tid)));
                 case "buildTarget/compile" -> scheduleLong(id, json, "compile");
                 case "buildTarget/test" -> scheduleLong(id, json, "test");
                 case "buildTarget/run" -> scheduleLong(id, json, "run");
@@ -256,7 +269,7 @@ public final class BspServer {
                 boolean canRun = i < mains.size()
                         && mains.get(i) != null
                         && !mains.get(i).isBlank();
-                targets.add(targetJson(id, name, pathUri(Path.of(dirs.get(i))), canRun));
+                targets.add(targetJson(id, name, pathUri(Path.of(dirs.get(i))), canRun, model, i));
             }
         } else {
             String display = info.coord() != null && !info.coord().isBlank() ? info.coord() : "root";
@@ -265,23 +278,34 @@ public final class BspServer {
                     && !model.mainClasses().isEmpty()
                     && model.mainClasses().getFirst() != null
                     && !model.mainClasses().getFirst().isBlank();
-            targets.add(targetJson(rootUri + "#root", display, rootUri, canRun));
+            targets.add(targetJson(rootUri + "#root", display, rootUri, canRun, model, 0));
         }
         return JsonFields.object().token("targets", arrayOf(targets)).finish();
     }
 
     /** Package-visible for contract tests. */
     static String targetJson(String id, String display, String baseDir) {
-        return targetJson(id, display, baseDir, false);
+        return targetJson(id, display, baseDir, false, null, 0);
     }
 
     static String targetJson(String id, String display, String baseDir, boolean canRun) {
-        return JsonFields.object()
+        return targetJson(id, display, baseDir, canRun, null, 0);
+    }
+
+    /**
+     * One build target. Its {@code languageIds} are the languages module {@code i} compiles; a
+     * module that compiles Scala carries the {@code scala} data Metals imports it by, any other
+     * the {@code jvm} data naming its JDK.
+     */
+    static String targetJson(
+            String id, String display, String baseDir, boolean canRun, @Nullable IdeWireModel model, int i) {
+        List<String> languages = model == null ? List.of() : model.languagesOf(i);
+        JsonFields target = JsonFields.object()
                 .token("id", uriJson(id))
                 .string("displayName", display)
                 .string("baseDirectory", baseDir)
                 .array("tags", List.of("library"))
-                .array("languageIds", LANGUAGE_IDS)
+                .array("languageIds", languages.isEmpty() ? LANGUAGE_IDS : languages)
                 .array("dependencies", List.of())
                 .token(
                         "capabilities",
@@ -289,11 +313,62 @@ public final class BspServer {
                                 .bool("canCompile", true)
                                 .bool("canTest", true)
                                 .bool("canRun", canRun)
-                                .finish())
-                .finish();
+                                .finish());
+        if (model != null) {
+            String scala = BspTargetOptions.scalaTargetData(model, i);
+            String jvm = scala == null ? BspTargetOptions.jvmTargetData(model, i) : null;
+            if (scala != null)
+                target.string("dataKind", BspTargetOptions.SCALA_DATA_KIND).token("data", scala);
+            else if (jvm != null) target.string("dataKind", "jvm").token("data", jvm);
+        }
+        return target.finish();
     }
 
-    private static final List<String> LANGUAGE_IDS = List.of("java", "kotlin", "groovy");
+    /** The languages this server compiles when the workspace's own set is not known. */
+    static final List<String> LANGUAGE_IDS = List.of("java", "kotlin", "groovy", "scala");
+
+    /**
+     * The languages the workspace compiles, as the union of its modules' sets; {@link
+     * #LANGUAGE_IDS} when the model cannot be computed.
+     */
+    private List<String> workspaceLanguages() {
+        try {
+            IdeWireModel model = model();
+            return model == null ? LANGUAGE_IDS : BspConnectionFile.languages(model);
+        } catch (IOException | RuntimeException e) {
+            return LANGUAGE_IDS;
+        }
+    }
+
+    /** One item per requested target, built by {@code item} from the model and the module index. */
+    private interface TargetItem {
+        String build(String tid, IdeWireModel model, int moduleIndex);
+    }
+
+    private String perTargetItems(String requestJson, TargetItem item) throws IOException {
+        IdeWireModel model = model();
+        List<String> requested = extractTargetUris(requestJson);
+        String rootUri = pathUri(ide.projectDir());
+        List<String> items = new ArrayList<>();
+        if (model == null)
+            return JsonFields.object().token("items", arrayOf(items)).finish();
+        if (model.moduleDirs() != null && !model.moduleDirs().isEmpty()) {
+            List<String> dirs = model.moduleDirs();
+            List<String> names = model.names() != null ? model.names() : List.of();
+            for (int i = 0; i < dirs.size(); i++) {
+                String name = i < names.size()
+                        ? names.get(i)
+                        : Path.of(dirs.get(i)).getFileName().toString();
+                String tid = rootUri + "#" + name;
+                if (!requested.isEmpty() && !requested.contains(tid)) continue;
+                items.add(item.build(tid, model, i));
+            }
+        } else {
+            String tid = rootUri + "#root";
+            if (requested.isEmpty() || requested.contains(tid)) items.add(item.build(tid, model, 0));
+        }
+        return JsonFields.object().token("items", arrayOf(items)).finish();
+    }
 
     /** Four hex digits minted once per server process: two windows of one IDE are two sessions. */
     private static final String SESSION_ID = String.format("%04x", new SecureRandom().nextInt(1 << 16));
@@ -310,8 +385,8 @@ public final class BspServer {
     }
 
     /** The {@code build/initialize} result: server identity and the three provider capabilities. */
-    static String initializeResultJson() {
-        String provider = JsonFields.object().array("languageIds", LANGUAGE_IDS).finish();
+    static String initializeResultJson(List<String> languages) {
+        String provider = JsonFields.object().array("languageIds", languages).finish();
         return JsonFields.object()
                 .string("displayName", "jk")
                 .string("version", JkVersion.VERSION)
@@ -327,8 +402,13 @@ public final class BspServer {
                 .finish();
     }
 
+    /** A per-target result item opened with its {@code target} identifier, for the fields that follow. */
+    static JsonFields itemFor(String tid) {
+        return JsonFields.object().token("target", uriJson(tid));
+    }
+
     /** {@code {"uri":…}} — the BSP identifier envelope every target and document carries. */
-    private static String uriJson(String uri) {
+    static String uriJson(String uri) {
         return JsonFields.object().string("uri", uri).finish();
     }
 

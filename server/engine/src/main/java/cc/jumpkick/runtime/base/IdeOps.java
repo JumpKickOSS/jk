@@ -19,6 +19,7 @@ import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -31,6 +32,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.resolver.CacheSync;
+import cc.jumpkick.scala.ScalaResolver;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -114,6 +116,7 @@ public final class IdeOps {
         Edges edges = edges(dirs, allModules, modules, allLibs);
         ModuleColumns m = moduleColumns(dirs, allModules, sdkRefs);
         LibColumns libs = libColumns(allLibs);
+        List<String> scalaJars = scalaJars(dirs, m.scalaVersions(), cas);
 
         return new IdeWireModel(
                 null,
@@ -147,7 +150,55 @@ public final class IdeOps {
                 Integer.parseInt(defaultSdk[2]),
                 defaultSdk[3],
                 defaultSdk[4],
-                sdkEntries);
+                sdkEntries,
+                m.languages(),
+                m.scalaVersions(),
+                scalaJars);
+    }
+
+    /**
+     * {@code i|path} rows of each Scala module's compiler closure as the store holds it — what a
+     * BSP client lists as the target's Scala jars. A closure no build has fetched yet is no rows:
+     * the model reads the store and never downloads a compiler.
+     */
+    private static List<String> scalaJars(List<Path> dirs, List<String> scalaVersions, Cas cas) {
+        List<String> rows = new ArrayList<>();
+        for (int i = 0; i < dirs.size(); i++) {
+            String version = scalaVersions.get(i);
+            if (version.isEmpty()) continue;
+            for (Path jar : ScalaToolResolver.cachedClasspath(cas, version)) rows.add(i + "|" + jar);
+        }
+        return rows;
+    }
+
+    /** The module's language set as the wire spells it: {@code java,scala}. */
+    private static String languagesOf(Path dir, JkBuild module) {
+        Languages langs = Languages.resolve(module.project(), dir);
+        List<String> out = new ArrayList<>(4);
+        if (langs.java()) out.add("java");
+        if (langs.kotlin()) out.add("kotlin");
+        if (langs.groovy()) out.add("groovy");
+        if (langs.scala()) out.add("scala");
+        return String.join(",", out);
+    }
+
+    /**
+     * The Scala compiler version a module compiles with — the lock's pin, else its exact
+     * selector, else jk's default — or {@code ""} for a module that compiles no Scala.
+     */
+    private static String scalaVersionOf(Path dir, JkBuild module) {
+        if (!Languages.resolve(module.project(), dir).scala()) return "";
+        Lockfile lock = null;
+        Path lockFile = LockPaths.lockFile(dir);
+        if (Files.exists(lockFile)) {
+            try {
+                lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
+            } catch (IOException | RuntimeException e) {
+                Log.debug("scalaVersionOf: lock unreadable, falling back to the manifest", e);
+            }
+        }
+        String version = CompileToolchain.scalaVersionFor(lock, module);
+        return version == null || version.isBlank() ? ScalaResolver.DEFAULT_VERSION : version;
     }
 
     /** The workspace root and its parsed manifest, whichever module the IDE opened. */
@@ -213,9 +264,13 @@ public final class IdeOps {
             List<String> sdkNames,
             List<String> sdkLevels,
             List<String> sdkHomes,
-            List<String> sdkVersions) {
+            List<String> sdkVersions,
+            List<String> languages,
+            List<String> scalaVersions) {
         static ModuleColumns empty() {
             return new ModuleColumns(
+                    new ArrayList<>(),
+                    new ArrayList<>(),
                     new ArrayList<>(),
                     new ArrayList<>(),
                     new ArrayList<>(),
@@ -257,6 +312,8 @@ public final class IdeOps {
             m.sdkLevels().add(sdk[2]);
             m.sdkHomes().add(sdk[3]);
             m.sdkVersions().add(sdk[4]);
+            m.languages().add(languagesOf(dir, module));
+            m.scalaVersions().add(scalaVersionOf(dir, module));
         }
         return m;
     }

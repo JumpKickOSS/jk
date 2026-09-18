@@ -107,7 +107,8 @@ class WireProducersFrozenBytesTest {
                         + "\"libEntries\":[\"le\"],\"processorJars\":[\"p\"],\"sdkStableNames\":[\"sn\"],\"sdkNames\":[\"sN\"],"
                         + "\"sdkLevels\":[\"17\"],\"sdkHomes\":[\"/sh\"],\"sdkVersions\":[\"17.0\"],\"defSdkStableName\":\"d\","
                         + "\"defSdkName\":\"dn\",\"defSdkLevel\":25,\"defSdkHome\":\"/dh\",\"defSdkVersion\":\"25.0\","
-                        + "\"sdkEntries\":[\"se\"]}";
+                        + "\"sdkEntries\":[\"se\"],\"languages\":[\"java,scala\"],\"scalaVersions\":[\"3.8.4\"],"
+                        + "\"scalaJars\":[\"0|/s.jar\"]}";
         assertThat(IdeWireModel.decode(ide).encode()).isEqualTo(ide);
     }
 

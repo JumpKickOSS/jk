@@ -13,8 +13,11 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Per-module data rides as parallel lists indexed by {@code moduleDirs}; cross-module edges and
  * per-module lists ride as {@code moduleIndex|…} strings (the {@code WhyReport} convention). Jar
- * and JDK paths are absolute. {@code error} non-null means the model could not be computed; its
- * message is ready to print.
+ * and JDK paths are absolute. {@code languages} is each module's comma-joined language set
+ * ({@code java,scala}); {@code scalaVersions} its Scala compiler version, {@code ""} for a module
+ * that compiles no Scala; {@code scalaJars} the {@code i|path} rows of the Scala compiler closure
+ * the store holds for it, empty until a build fetched one. {@code error} non-null means the model
+ * could not be computed; its message is ready to print.
  */
 public record IdeWireModel(
         @Nullable String error,
@@ -48,7 +51,10 @@ public record IdeWireModel(
         int defSdkLevel,
         String defSdkHome,
         String defSdkVersion,
-        List<String> sdkEntries) {
+        List<String> sdkEntries,
+        List<String> languages,
+        List<String> scalaVersions,
+        List<String> scalaJars) {
 
     /** Sibling-ref scope: on the main (and thus test) classpath. */
     public static final String SCOPE_COMPILE = "COMPILE";
@@ -73,7 +79,24 @@ public record IdeWireModel(
         return new IdeWireModel(
                 message, "", "", false, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", "", 0, "", "", List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", "", 0, "", "", List.of(),
+                List.of(), List.of(), List.of());
+    }
+
+    /** The languages module {@code i} compiles, in the order {@code java, kotlin, groovy, scala}. */
+    public List<String> languagesOf(int i) {
+        if (languages == null
+                || i < 0
+                || i >= languages.size()
+                || languages.get(i).isBlank()) return List.of();
+        return List.of(languages.get(i).split(","));
+    }
+
+    /** Module {@code i}'s Scala compiler version, or {@code null} when it compiles no Scala. */
+    public @Nullable String scalaVersionOf(int i) {
+        if (scalaVersions == null || i < 0 || i >= scalaVersions.size()) return null;
+        String v = scalaVersions.get(i);
+        return v == null || v.isBlank() ? null : v;
     }
 
     public String encode() {
@@ -110,6 +133,9 @@ public record IdeWireModel(
                 .string("defSdkHome", defSdkHome)
                 .string("defSdkVersion", defSdkVersion)
                 .array("sdkEntries", sdkEntries)
+                .array("languages", languages)
+                .array("scalaVersions", scalaVersions)
+                .array("scalaJars", scalaJars)
                 .finish();
     }
 
@@ -146,7 +172,10 @@ public record IdeWireModel(
                 Jsonl.intValue(line, "defSdkLevel", 0),
                 orEmpty(Jsonl.str(line, "defSdkHome")),
                 orEmpty(Jsonl.str(line, "defSdkVersion")),
-                Jsonl.strArray(line, "sdkEntries"));
+                Jsonl.strArray(line, "sdkEntries"),
+                Jsonl.strArray(line, "languages"),
+                Jsonl.strArray(line, "scalaVersions"),
+                Jsonl.strArray(line, "scalaJars"));
     }
 
     private static String orEmpty(@Nullable String s) {
