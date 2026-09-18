@@ -12,6 +12,9 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.SysProps;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -115,6 +118,60 @@ class CacheSyncTest {
         CacheSync.Report report = newSync(tempDir).sync(lock);
         assertThat(report.skipped()).isEqualTo(1);
         assertThat(report.errors()).isEmpty();
+    }
+
+    /**
+     * An address that answered nothing is remembered for a minute and refused before it is dialled;
+     * a forced sync distrusts that memory too, so a repository that came back within the minute is
+     * asked again at once.
+     */
+    @Test
+    void a_forced_sync_forgets_an_address_that_answered_nothing(@TempDir Path tempDir) throws Exception {
+        int port;
+        try (ServerSocket free = new ServerSocket(0)) {
+            port = free.getLocalPort();
+        }
+        byte[] jar = "came-back".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(jar);
+        String source = "central+http://127.0.0.1:" + port + "/";
+        Lockfile lock = lockOf(new Lockfile.Artifact("com.foo:leaf", "1.0", source, "sha256:" + hex, null, List.of()));
+
+        assertThat(newSync(tempDir).sync(lock).errors())
+                .as("nothing listens: the ladder fails and the address is remembered")
+                .hasSize(1);
+
+        AtomicInteger asked = new AtomicInteger();
+        HttpServer back = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+        back.createContext("/", exchange -> {
+            asked.incrementAndGet();
+            String path = exchange.getRequestURI().getPath();
+            byte[] body = path.endsWith(".jar")
+                    ? jar
+                    : path.endsWith(".sha256") ? hex.getBytes(StandardCharsets.UTF_8) : null;
+            if (body == null) {
+                exchange.sendResponseHeaders(404, -1);
+            } else {
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+            exchange.close();
+        });
+        back.start();
+        try {
+            assertThat(newSync(tempDir).sync(lock).errors())
+                    .as("the address is still remembered as dead: refused before it dials")
+                    .hasSize(1);
+            assertThat(asked).hasValue(0);
+
+            CacheSync.Report forced = newSync(tempDir).sync(lock, CacheSync.ProgressObserver.NOOP, true);
+            assertThat(forced.errors()).isEmpty();
+            assertThat(forced.fetched()).isEqualTo(1);
+            assertThat(asked.get())
+                    .as("the forced leg dialled the address again")
+                    .isPositive();
+        } finally {
+            back.stop(0);
+        }
     }
 
     // --- helpers -----------------------------------------------------------

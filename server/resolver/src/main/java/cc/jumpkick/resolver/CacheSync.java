@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.RepoSource;
@@ -113,10 +114,12 @@ public final class CacheSync {
 
     /**
      * Sync with per-package progress. {@code refresh} forces re-download even when a verified
-     * jar is already on disk.
+     * jar is already on disk, and distrusts the addresses this process remembers as answering
+     * nothing ({@link ConnectFaults}), so a repository that came back is dialled again at once.
      */
     public Report sync(Lockfile lock, ProgressObserver observer, boolean refresh)
             throws IOException, InterruptedException {
+        if (refresh) ConnectFaults.forget();
         int upToDate = 0;
         int skipped = 0;
         // Build the list of fetches to do, resolving repos up front (the
