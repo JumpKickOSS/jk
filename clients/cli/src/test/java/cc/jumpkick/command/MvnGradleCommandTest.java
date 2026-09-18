@@ -65,6 +65,9 @@ class MvnGradleCommandTest {
 
         assertThat(tempDir.resolve("tools/maven/3.9.9/bin/mvn")).exists();
         assertThat(Files.readString(argsLog).trim()).isEqualTo("clean install -DskipTests=true -X");
+        // Provisioning Maven is not a run of the project: a Maven that recorded no reactor leaves
+        // no report behind, and no provisioning row overwrites one.
+        assertThat(projectDir.resolve("target/jk-results.md")).doesNotExist();
 
         String env = Files.readString(envLog);
         assertThat(env).doesNotContain("MAVEN_OPTS=");

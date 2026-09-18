@@ -25,4 +25,13 @@ class JournalWriterResultsTest {
         assertThat(JournalWriter.writesProjectTarget("native")).isTrue();
         assertThat(JournalWriter.writesProjectTarget("format")).isTrue();
     }
+
+    @Test
+    void toolchain_kinds_leave_the_project_report_to_the_run_they_precede() {
+        assertThat(JournalWriter.writesProjectTarget("provision")).isFalse();
+        assertThat(JournalWriter.writesProjectTarget("tool")).isFalse();
+        assertThat(JournalWriter.writesProjectTarget("git-fetch")).isFalse();
+        assertThat(JournalWriter.writesProjectTarget("train")).isFalse();
+        assertThat(JournalWriter.writesProjectTarget("mvn")).isTrue();
+    }
 }

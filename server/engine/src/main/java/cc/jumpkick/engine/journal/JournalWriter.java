@@ -323,13 +323,18 @@ public final class JournalWriter {
     }
 
     /**
-     * Maintenance kinds delete {@code target/}; writing the latest report there would recreate the
-     * tree.
+     * Kinds that never write the project's {@code target/jk-results.md}: the maintenance kinds
+     * delete {@code target/}, and writing the latest report there would recreate the tree; the
+     * toolchain kinds act on the machine and not on the project's sources — a {@code jk mvn}
+     * provisions Maven before it runs, and the report a reader finds must be the Maven run's, never
+     * the provisioning row's.
      */
+    static final Set<String> PROJECT_SILENT_KINDS = Set.of("clean", "cache", "provision", "tool", "git-fetch", "train");
+
+    /** Whether a run of {@code kind} writes the project's {@code target/jk-results.md}. */
     static boolean writesProjectTarget(String kind) {
         if (kind == null || kind.isBlank()) return true;
-        String k = kind.trim().toLowerCase(Locale.ROOT);
-        return !"clean".equals(k) && !"cache".equals(k);
+        return !PROJECT_SILENT_KINDS.contains(kind.trim().toLowerCase(Locale.ROOT));
     }
 
     private CacheBenefit.@Nullable Result computeBenefit(BuildAccumulator a, long millis) {
