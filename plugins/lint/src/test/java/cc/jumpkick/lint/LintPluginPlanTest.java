@@ -52,6 +52,8 @@ class LintPluginPlanTest {
                         Map.of(
                                 "checkstyle",
                                 "config/checkstyle.xml",
+                                "checkstyle-suppressions",
+                                "config/suppressions.xml",
                                 "sources",
                                 List.of("src/main/java", "src/test/java"))));
 
@@ -61,6 +63,7 @@ class LintPluginPlanTest {
                         In.projectFiles("src/main/java"),
                         In.projectFiles("src/test/java"),
                         In.projectFiles("config/checkstyle.xml"),
+                        In.projectFiles("config/suppressions.xml"),
                         In.classes(),
                         In.config());
         assertThat(spec.declaredOutputs()).containsExactly("lint/checkstyle");

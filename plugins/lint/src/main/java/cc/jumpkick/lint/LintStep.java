@@ -4,17 +4,20 @@ package cc.jumpkick.lint;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -122,11 +125,14 @@ final class LintStep {
         List<String> args = new ArrayList<>();
         switch (tool) {
             case CHECKSTYLE -> {
-                String configured = config.string("checkstyle");
-                Path ruleSet = LintPlugin.isUrl(configured)
-                        ? exec.requireExtra("checkstyle-config")
-                        : module.resolve(configured);
-                args.addAll(List.of("-c", ruleSet.toString()));
+                args.addAll(List.of(
+                        "-c",
+                        checkstyleFile(exec, "checkstyle", "checkstyle-config").toString()));
+                if (config.stringOpt("checkstyle-suppressions").isPresent()) {
+                    Path suppressions = checkstyleFile(exec, "checkstyle-suppressions", "checkstyle-suppressions");
+                    args.addAll(List.of(
+                            "-p", checkstyleProperties(report, suppressions).toString()));
+                }
                 args.addAll(List.of("-f", "xml", "-o", report.toString()));
                 for (String glob : config.stringList("exclude")) args.addAll(List.of("-x", excludeRegex(glob)));
                 for (Path root : roots) args.add(root.toString());
@@ -174,6 +180,36 @@ final class LintStep {
             }
         }
         return args;
+    }
+
+    /** The file the table names under {@code key}: the engine-fetched {@code extra} for a URL, else the module's. */
+    private static Path checkstyleFile(TaskExec exec, String key, String extra) {
+        String configured = exec.config().string(key);
+        return LintPlugin.isUrl(configured)
+                ? exec.requireExtra(extra)
+                : exec.moduleDir().resolve(configured);
+    }
+
+    /**
+     * Checkstyle's {@code -p} file beside {@code report}, defining {@code checkstyle.suppressions.file}
+     * — the property {@code maven-checkstyle-plugin} binds {@code <suppressionsLocation>} to and a
+     * rule set's {@code SuppressionFilter} reads — as {@code suppressions}, absolute.
+     */
+    static Path checkstyleProperties(Path report, Path suppressions) {
+        Path out = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report dir");
+        Path file = out.resolve("checkstyle.properties");
+        try {
+            Files.createDirectories(out);
+            Files.writeString(
+                    file,
+                    DeterministicProperties.render(Map.of(
+                            "checkstyle.suppressions.file",
+                            suppressions.toAbsolutePath().toString())),
+                    StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return file;
     }
 
     /** jk's copy of Maven's default ruleset, written under {@code out} for PMD to read as a file. */

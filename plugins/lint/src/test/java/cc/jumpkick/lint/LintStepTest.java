@@ -186,6 +186,35 @@ class LintStepTest {
         assertThat(io.labels()).containsExactly("checkstyle (1 root)");
     }
 
+    /**
+     * {@code checkstyle-suppressions} reaches the rule set as Maven's {@code checkstyle.suppressions.file}
+     * property, through Checkstyle's own {@code -p} file, so a {@code SuppressionFilter} over it applies.
+     */
+    @Test
+    void the_suppressions_file_reaches_the_rule_set_through_checkstyles_property(@TempDir Path tmp) throws Exception {
+        String filtered = CONFIG.formatted("warning")
+                .replace(
+                        "<module name=\"TreeWalker\">",
+                        "<module name=\"SuppressionFilter\"><property name=\"file\" value=\"${checkstyle.suppressions.file}\"/></module>"
+                                + "<module name=\"TreeWalker\">");
+        FakeBuildIo io =
+                lintModule(tmp, "warning", SOURCE).config("checkstyle-suppressions", "config/suppressions.xml");
+        FakeBuildIo.write(tmp.resolve("checkstyle.xml"), filtered);
+        FakeBuildIo.write(tmp.resolve("config/suppressions.xml"), """
+                <?xml version="1.0"?>
+                <!DOCTYPE suppressions PUBLIC "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+                    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+                <suppressions>
+                  <suppress files="Sample\\.java" checks="MagicNumber"/>
+                </suppressions>
+                """);
+
+        LintStep.run(io, LintTool.CHECKSTYLE);
+
+        assertThat(io.diagnostics()).isEmpty();
+        assertThat(io.labels()).containsExactly("checkstyle (1 root)");
+    }
+
     /** SpotBugs runs over the compiled classes; a high-priority pattern is an error that fails the step. */
     @Test
     void spotbugs_reports_a_pattern_against_the_classes_and_a_high_priority_one_fails_the_step(@TempDir Path tmp)

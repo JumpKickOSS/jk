@@ -35,6 +35,11 @@ final class InheritedRows {
         this.rootDir = rootDir.toAbsolutePath().normalize();
     }
 
+    /** The workspace root: what Maven's launcher names {@code ${maven.multiModuleProjectDirectory}}. */
+    Path rootDir() {
+        return rootDir;
+    }
+
     /** Count one module inheriting {@code message} from {@code declaredBy}. */
     void inherited(String declaredBy, ImportReport.Severity severity, String message) {
         inheriting.merge(new Key(declaredBy, severity, message), 1, Integer::sum);

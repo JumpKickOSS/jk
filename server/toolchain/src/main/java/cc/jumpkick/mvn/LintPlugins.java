@@ -4,6 +4,8 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.PluginConfig;
+import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,9 +22,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The lint plugins are one {@code [lint]} table. {@code maven-checkstyle-plugin}: {@code
- * <configLocation>} is {@code checkstyle} — a URL as written, which the step fetches; a built-in
- * {@code sun_checks.xml} / {@code google_checks.xml} is a row, since the key reads a file in the
- * module — the Checkstyle
+ * <configLocation>} is {@code checkstyle} — a URL as written, which the step fetches; a path
+ * through {@code ${maven.multiModuleProjectDirectory}} the reactor root's file by its path from
+ * the module; a built-in {@code sun_checks.xml} / {@code google_checks.xml} is a row, since the
+ * key reads a file in the module — {@code <suppressionsLocation>} is {@code
+ * checkstyle-suppressions}, the Checkstyle
  * version the plugin's own {@code <dependencies>} pin is {@code checkstyle-version}, {@code
  * <includeTestSourceDirectory>} adds {@code src/test/java} to {@code sources}, a {@code
  * <violationSeverity>} of {@code warning} is {@code fail-on = "warning"}. {@code maven-pmd-plugin}:
@@ -95,7 +99,8 @@ final class LintPlugins {
         Plugin checkstyle = bound(em, CHECKSTYLE, "checkstyle:check", report, inherited);
         if (checkstyle != null) {
             any = true;
-            failOn.put("checkstyle", checkstyle(checkstyle, baseDir, values, sources, report));
+            Path reactorRoot = inherited != null ? inherited.rootDir() : reactorRoot(em, baseDir);
+            failOn.put("checkstyle", checkstyle(checkstyle, baseDir, reactorRoot, values, sources, report));
         }
         Plugin pmd = bound(em, PMD, "pmd:check", report, inherited);
         if (pmd != null) {
@@ -161,18 +166,73 @@ final class LintPlugins {
         });
     }
 
-    /** Maps the plugin and returns the {@code fail-on} Checkstyle's {@code <violationSeverity>} means. */
+    /** The launcher property Maven sets to the reactor root, which no POM defines. */
+    private static final String REACTOR_ROOT_PROPERTY = "${maven.multiModuleProjectDirectory}";
+
+    /**
+     * The reactor root of a POM imported on its own, as Maven's launcher finds it from the module:
+     * the nearest directory at or above the module holding {@code .mvn}, else the directory of the
+     * farthest parent read from disk through {@code <relativePath>} — the top of the reactor the
+     * module belongs to — else the module's own; null when the POM has no directory.
+     */
+    static @Nullable Path reactorRoot(EffectiveModel em, @Nullable Path baseDir) {
+        if (baseDir == null) return null;
+        Path module = baseDir.toAbsolutePath().normalize();
+        for (Path dir = module; dir != null; dir = dir.getParent()) {
+            if (Files.isDirectory(dir.resolve(".mvn"))) return dir;
+        }
+        Path top = module;
+        for (EffectiveModel.Ancestor ancestor : em.ancestors()) {
+            File pom = ancestor.raw().getPomFile();
+            if (pom == null) continue;
+            Path dir = pom.toPath().toAbsolutePath().normalize().getParent();
+            if (dir != null) top = dir;
+        }
+        return top;
+    }
+
+    /**
+     * {@code value} as the module names it: a path through {@value #REACTOR_ROOT_PROPERTY} is the
+     * root's file by its path from the module ({@code ../../src/checkstyle/checks.xml}), any other
+     * a module-relative file as {@link SourceTreePlugins#moduleRelativeFile}.
+     */
+    static String launcherPath(String value, @Nullable Path baseDir, @Nullable Path reactorRoot) {
+        if (value.contains(REACTOR_ROOT_PROPERTY) && baseDir != null && reactorRoot != null) {
+            String rest = value.replace('\\', '/').replace(REACTOR_ROOT_PROPERTY, "");
+            while (rest.startsWith("/")) rest = rest.substring(1);
+            Path file = reactorRoot.toAbsolutePath().normalize().resolve(rest).normalize();
+            return baseDir.toAbsolutePath()
+                    .normalize()
+                    .relativize(file)
+                    .toString()
+                    .replace('\\', '/');
+        }
+        return SourceTreePlugins.moduleRelativeFile(value, baseDir);
+    }
+
+    /**
+     * Maps the plugin and returns the threshold Checkstyle's {@code <violationSeverity>} means.
+     * {@code <suppressionsLocation>} is {@code checkstyle-suppressions}, which the step hands the
+     * rule set as Maven does; a path through the reactor-root launcher property resolves against
+     * {@code reactorRoot}.
+     */
     private static String checkstyle(
             Plugin plugin,
             @Nullable Path baseDir,
+            @Nullable Path reactorRoot,
             Map<String, Object> values,
             Set<String> sources,
             ImportReport.Builder report) {
         String config = null;
+        String suppressions = null;
         String failOn = "error";
         for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
             String location = PluginFacts.text(dom.getChild("configLocation"));
             if (location != null && !location.isBlank()) config = location.strip();
+            String suppressionsLocation = PluginFacts.text(dom.getChild("suppressionsLocation"));
+            if (suppressionsLocation != null && !suppressionsLocation.isBlank()) {
+                suppressions = suppressionsLocation.strip();
+            }
             if (EnvValues.parseBool(PluginFacts.child(dom, "includeTestSourceDirectory"))
                     .orElse(false)) {
                 sources.add(TEST_ROOT);
@@ -196,6 +256,9 @@ final class LintPlugins {
         // A rule set at a URL is the key as written: the step fetches it. One the module does not
         // hold is written as the POM spelled it, so the step's warning names it; the step runs
         // nothing until the file is there.
+        if (config != null && reactorRoot != null && config.contains(REACTOR_ROOT_PROPERTY)) {
+            config = launcherPath(config, baseDir, reactorRoot);
+        }
         boolean url = config != null && (config.startsWith("http://") || config.startsWith("https://"));
         boolean property = config != null && config.contains("${");
         boolean builtIn = config != null && (config.endsWith("sun_checks.xml") || config.endsWith("google_checks.xml"));
@@ -212,6 +275,16 @@ final class LintPlugins {
             values.put("checkstyle", named);
         } else {
             values.put("checkstyle", SourceTreePlugins.moduleRelativeFile(config, baseDir));
+        }
+        if (suppressions != null) {
+            String resolved = launcherPath(suppressions, baseDir, reactorRoot);
+            if (resolved.startsWith("http://") || resolved.startsWith("https://") || !resolved.contains("${")) {
+                values.put("checkstyle-suppressions", resolved);
+            } else {
+                report.warning("`" + CHECKSTYLE + "` reads its suppressions from `" + suppressions
+                        + "`, a path through a property no POM defines; `[lint] checkstyle-suppressions` names a"
+                        + " file in the module, so copy the suppressions in and point the key at it.");
+            }
         }
         for (Dependency dependency : plugin.getDependencies()) {
             if ("checkstyle".equals(dependency.getArtifactId())
