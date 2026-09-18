@@ -9,7 +9,6 @@ import cc.jumpkick.compile.KotlincInputs;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.engine.plugin.WorkerEnv;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -106,7 +105,7 @@ public final class LangCompile {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             // A failed restore (missing/corrupt blob) falls through to a real compile.
             if (hit.isPresent() && actionCache.restore(hit.get(), request.outputDir())) {
-                dropStateOfAnotherTree(workingDir, hit.get().outputs());
+                reconcileState(workingDir, key, hit.get().outputs());
                 return cacheHit(key);
             }
         }
@@ -262,7 +261,7 @@ public final class LangCompile {
             if (stateDir != null && Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
             return new Result(true, "compiled", key, cr.diagnostics(), movedSources);
         }
-        if (stateDir != null && Files.isDirectory(stateDir)) recordTree(stateDir, outputs);
+        if (stateDir != null && Files.isDirectory(stateDir)) recordTree(stateDir, key, outputs);
         // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
         // the next non-rebuild explain sees CACHE_HIT (same as JavaCompile). Only
         // ephemeral (verify-scratch) runs skip the write — their keys never recur.
@@ -286,40 +285,64 @@ public final class LangCompile {
         return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of());
     }
 
-    /** The file in an incremental state dir naming the tree its last compile wrote; see {@link #recordTree}. */
+    /**
+     * The file in an incremental state dir naming the compile that owns the state and the tree it
+     * wrote: the action key on the first line, then one {@code <hash> <relative path>} line per
+     * output, in path order; see {@link #recordTree}.
+     */
     static final String TREE_LEDGER = "tree";
 
     /**
-     * Note in {@code stateDir} the digest of the tree the compile that owns it wrote — {@code
-     * outputs}, relative path to content hash, as the action record stores it — so a later
-     * restore can tell whether the state still describes what is on disk.
+     * Note in {@code stateDir} which compile the state belongs to — its action {@code key} — and
+     * the tree it wrote — {@code outputs}, relative path to content hash, as the action record
+     * stores it — so a later restore can tell what the state describes of what is on disk.
      */
-    static void recordTree(Path stateDir, Map<String, String> outputs) throws IOException {
-        Files.writeString(stateDir.resolve(TREE_LEDGER), treeDigest(outputs) + "\n");
+    static void recordTree(Path stateDir, String key, Map<String, String> outputs) throws IOException {
+        StringBuilder sb = new StringBuilder(key).append('\n');
+        for (Map.Entry<String, String> e : new TreeMap<>(outputs).entrySet()) {
+            sb.append(e.getValue()).append(' ').append(e.getKey()).append('\n');
+        }
+        Files.writeString(stateDir.resolve(TREE_LEDGER), sb.toString());
     }
 
     /**
-     * Start the incremental state over when a restore has laid down a tree other than the one
-     * the state's own compile wrote. The state is told nothing by a restore, so it would carry a
-     * class of a source it never saw — one since deleted among them — through every later
-     * incremental compile and into every record they store; a rebuild from no state clears the
-     * output dir before it writes.
+     * Reconcile the incremental state with the tree a restore has laid down: the record's outputs
+     * and nothing else, a restore having pruned every file it does not own. A restore tells the
+     * state nothing, so when the trees differ the state is read against the record's key. A record
+     * under another key names other inputs than the state's compile did, and the state's own
+     * change tracking — sources against its snapshot, classpath entries against their ABI
+     * snapshots, the compiler's arguments — recompiles what moved between the two compiles on the
+     * next edit and deletes what a since-removed source wrote, so the state stays and the next edit
+     * is incremental. A record under the very same key that wrote another tree is a compile the
+     * state cannot explain, and a state with no ledger vouches for nothing: both start over, and a
+     * rebuild from no state clears the output dir before it writes.
      */
-    private static void dropStateOfAnotherTree(@Nullable Path stateDir, Map<String, String> restored)
+    private static void reconcileState(@Nullable Path stateDir, String key, Map<String, String> restored)
             throws IOException {
         if (stateDir == null || !Files.isDirectory(stateDir)) return;
-        Path ledger = stateDir.resolve(TREE_LEDGER);
-        String produced = Files.isRegularFile(ledger) ? Files.readString(ledger).trim() : "";
-        if (!produced.equals(treeDigest(restored))) PathUtil.deleteRecursively(stateDir);
+        Ledger produced = readLedger(stateDir.resolve(TREE_LEDGER));
+        if (produced == null
+                || produced.key().equals(key) && !produced.outputs().equals(restored)) {
+            PathUtil.deleteRecursively(stateDir);
+        }
     }
 
-    /** One digest over a record's outputs, in path order; equal trees digest equal whatever map they arrive in. */
-    static String treeDigest(Map<String, String> outputs) {
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<String, String> e : new TreeMap<>(outputs).entrySet()) {
-            sb.append(e.getKey()).append(' ').append(e.getValue()).append('\n');
+    /** What a state's ledger recorded: the owning compile's key and the tree it wrote. */
+    record Ledger(String key, Map<String, String> outputs) {}
+
+    /** The ledger at {@code file}, or {@code null} when there is none or it does not read as one. */
+    static @Nullable Ledger readLedger(Path file) throws IOException {
+        if (!Files.isRegularFile(file)) return null;
+        List<String> lines = Files.readAllLines(file);
+        if (lines.isEmpty() || lines.get(0).isBlank()) return null;
+        Map<String, String> outputs = new HashMap<>();
+        for (String line : lines.subList(1, lines.size())) {
+            if (line.isBlank()) continue;
+            int space = line.indexOf(' ');
+            if (space <= 0 || space == line.length() - 1) return null;
+            outputs.put(line.substring(space + 1), line.substring(0, space));
         }
-        return Hashing.sha256Hex(sb.toString());
+        return new Ledger(lines.get(0).strip(), outputs);
     }
 
     /**
