@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JavaRelease;
+import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.repo.Pom;
 import java.io.File;
@@ -153,9 +154,11 @@ final class PluginFacts {
     /**
      * The compiler arguments each compile step gets: {@code main} is {@code [javac] args} and
      * {@code test} is {@code [javac.test] args}; {@code scoped} names each execution whose
-     * configuration reached one step alone, as {@code `<id>` (goal `compile`)}.
+     * configuration reached one step alone, as {@code `<id>` (goal `compile`)}; {@code granted}
+     * is every {@code -J} line the POM spelled that jk starts every compiler worker with anyway
+     * ({@link JdkCompilerAccess#JVM_FLAGS}), left out of both tables.
      */
-    record CompilerArgs(List<String> main, List<String> test, List<String> scoped) {
+    record CompilerArgs(List<String> main, List<String> test, List<String> scoped, List<String> granted) {
         /** Whether compile-test gets other arguments than compile-main, so the manifest needs both tables. */
         boolean split() {
             return !main.equals(test);
@@ -182,7 +185,7 @@ final class PluginFacts {
         List<String> test = new ArrayList<>();
         List<String> scoped = new ArrayList<>();
         Optional<Plugin> compiler = compilerPlugin(model);
-        if (compiler.isEmpty()) return new CompilerArgs(main, test, scoped);
+        if (compiler.isEmpty()) return new CompilerArgs(main, test, scoped, List.of());
         if (compiler.get().getConfiguration() instanceof Xpp3Dom config) {
             collectCompilerArgs(config, main);
             collectCompilerSwitches(config, main);
@@ -202,7 +205,12 @@ final class PluginFacts {
             }
             if (step != CompileStep.BOTH && config.getChild("compilerArgs") != null) scoped.add(label(execution, step));
         }
-        return new CompilerArgs(main, test, scoped);
+        List<String> granted = new ArrayList<>();
+        for (String arg : main) if (JdkCompilerAccess.grants(arg) && !granted.contains(arg)) granted.add(arg);
+        for (String arg : test) if (JdkCompilerAccess.grants(arg) && !granted.contains(arg)) granted.add(arg);
+        main.removeIf(JdkCompilerAccess::grants);
+        test.removeIf(JdkCompilerAccess::grants);
+        return new CompilerArgs(main, test, scoped, granted);
     }
 
     /** {@code `<id>` (goal `compile`)} for a compiler-plugin execution bound to one step. */

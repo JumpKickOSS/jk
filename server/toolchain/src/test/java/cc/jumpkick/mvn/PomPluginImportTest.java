@@ -353,6 +353,48 @@ class PomPluginImportTest {
                 .isEmpty();
     }
 
+    /**
+     * Error Prone's documented {@code -J--add-exports} lines open {@code jdk.compiler} packages jk
+     * grants every compiler worker: the import drops them and says so once, and a {@code -J} flag
+     * jk does not grant stays.
+     */
+    @Test
+    void J_lines_jk_already_grants_the_worker_are_dropped_with_one_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <properties><maven.compiler.release>21</maven.compiler.release></properties>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                      <compilerArgs>
+                        <arg>-XDcompilePolicy=simple</arg>
+                        <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
+                        <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>
+                        <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
+                        <arg>-J--add-opens=java.base/java.lang=ALL-UNNAMED</arg>
+                      </compilerArgs>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().build().javac().args())
+                .as("the flags jk grants are gone; the one it does not stays")
+                .containsExactly("-XDcompilePolicy=simple", "-J--add-opens=java.base/java.lang=ALL-UNNAMED");
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .contains("3 `-J` lines")
+                .contains("jdk.compiler")
+                .contains("jk grants every compiler worker")
+                .contains("com.sun.tools.javac.api")
+                .contains("not written"));
+    }
+
     @Test
     void a_toolchain_pin_is_the_only_thing_that_writes_jdk(@TempDir Path tempDir) throws Exception {
         PomImporter.Result pinned = importXml(tempDir, """
