@@ -23,7 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * An import's parent and BOM reads run under the resolve stall window: a repository that accepts
  * the request and never answers stops the import, which names the coordinate it was reading and
- * the URL it waited on instead of sitting silent.
+ * the URL it waited on instead of sitting silent. The window opens with the first read, so the
+ * model building before it is never mistaken for a stalled read.
  */
 class PomImporterStallTest {
 
@@ -81,5 +82,31 @@ class PomImporterStallTest {
         assertThat(Thread.currentThread().isInterrupted())
                 .as("the watch's interrupt does not outlive the import")
                 .isFalse();
+    }
+
+    /**
+     * Nothing before the first read can park on a repository, so the window is not running yet:
+     * a POM with no parent and no BOM imports under a one-millisecond window, however long Maven
+     * takes to build its model.
+     */
+    @Test
+    @Timeout(30)
+    void an_import_that_reads_no_pom_is_never_stopped(@TempDir Path tempDir) throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("project"));
+        Path pom = project.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>plain</artifactId>
+                  <version>1.0</version>
+                </project>
+                """, StandardCharsets.UTF_8);
+        PomImporter importer = TestImporters.over(tempDir, base).stallWindowMs(1);
+
+        PomImporter.Result result = importer.importFrom(pom);
+
+        assertThat(result.jkBuild().project().name()).isEqualTo("plain");
+        assertThat(Thread.currentThread().isInterrupted()).isFalse();
     }
 }

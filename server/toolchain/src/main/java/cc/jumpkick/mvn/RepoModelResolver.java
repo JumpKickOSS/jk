@@ -29,13 +29,15 @@ import org.apache.maven.model.building.FileModelSource;
 import org.apache.maven.model.building.ModelSource;
 import org.apache.maven.model.resolution.ModelResolver;
 import org.apache.maven.model.resolution.UnresolvableModelException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maven's parent / BOM lookup routed through jk's repository client: the caller's {@link
  * RepoGroup} (global repositories over the public baseline, the {@code ~/.m2} probe and the store
  * included), with every {@code <repository>} the POM under import declares consulted first. A
  * fetched POM passes through jk's hardened XML parser before Maven reads it. Every copy shares one
- * count of completed reads and one phase sentence, which the import's stall watch samples.
+ * count of completed reads, one phase sentence and one first-read hook, which the import's stall
+ * watch samples and opens with.
  */
 // ModelResolver's own signatures name the ModelSource type Maven 3.9 deprecates.
 @SuppressWarnings("deprecation")
@@ -54,6 +56,7 @@ final class RepoModelResolver implements ModelResolver {
     private final Set<String> declared;
     private final AtomicLong reads;
     private final AtomicReference<String> phase;
+    private final AtomicReference<@Nullable Runnable> firstRead;
 
     RepoModelResolver(RepoGroup repos, Cas cas) {
         this(
@@ -62,7 +65,8 @@ final class RepoModelResolver implements ModelResolver {
                 cas,
                 new HashSet<>(),
                 new AtomicLong(),
-                new AtomicReference<>("reading the POM"));
+                new AtomicReference<>("reading the POM"),
+                new AtomicReference<>());
     }
 
     private RepoModelResolver(
@@ -71,13 +75,25 @@ final class RepoModelResolver implements ModelResolver {
             Cas cas,
             Set<String> declared,
             AtomicLong reads,
-            AtomicReference<String> phase) {
+            AtomicReference<String> phase,
+            AtomicReference<@Nullable Runnable> firstRead) {
         this.repos = repos;
         this.http = http;
         this.cas = cas;
         this.declared = declared;
         this.reads = reads;
         this.phase = phase;
+        this.firstRead = firstRead;
+    }
+
+    /**
+     * Run {@code hook} on the thread of the next read, right before it goes to a repository, and
+     * never again: the import's stall window opens there, so the model building that precedes the
+     * first read, however long it takes on a loaded machine, is not counted as a read standing still.
+     * {@code null} withdraws a hook no read has run.
+     */
+    void onFirstRead(@Nullable Runnable hook) {
+        firstRead.set(hook);
     }
 
     /** Parent, BOM and POM reads completed so far, across every copy. */
@@ -109,6 +125,8 @@ final class RepoModelResolver implements ModelResolver {
             throws UnresolvableModelException {
         Coordinate coord = Coordinate.of(groupId, artifactId, version);
         phase.set("reading " + what + " " + coord.toGav());
+        Runnable opening = firstRead.getAndSet(null);
+        if (opening != null) opening.run();
         try {
             Optional<RepoGroup.RepoFetched> hit = repos.tryFetchPom(coord);
             if (hit.isEmpty()) {
@@ -172,7 +190,7 @@ final class RepoModelResolver implements ModelResolver {
 
     @Override
     public ModelResolver newCopy() {
-        return new RepoModelResolver(repos, http, cas, new HashSet<>(declared), reads, phase);
+        return new RepoModelResolver(repos, http, cas, new HashSet<>(declared), reads, phase, firstRead);
     }
 
     private String repoNames() {
