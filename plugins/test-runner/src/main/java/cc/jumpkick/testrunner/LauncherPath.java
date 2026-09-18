@@ -77,13 +77,17 @@ final class LauncherPath {
         b.listeners(dropped);
 
         LauncherDiscoveryRequest request = b.build();
-        Launcher launcher = LauncherFactory.create();
-
         long planStart = System.nanoTime();
+        Launcher launcher;
         TestPlan plan;
         try {
+            launcher = LauncherFactory.create();
             plan = launcher.discover(request);
         } catch (RuntimeException e) {
+            if (emptyRunWithoutEngine(e, scanClasspath, filter, adapter)) {
+                adapter.emitPlanFinished(0);
+                return 0;
+            }
             reportDiscoveryFailure(scanClasspath, e);
             throw e;
         }
@@ -120,6 +124,7 @@ final class LauncherPath {
         try {
             plan = LauncherFactory.create().discover(b.build());
         } catch (RuntimeException e) {
+            if (emptyRunWithoutEngine(e, scanClasspath, filter, adapter)) return 0;
             reportDiscoveryFailure(scanClasspath, e);
             throw e;
         }
@@ -243,12 +248,28 @@ final class LauncherPath {
     static final String NO_TESTS_DISCOVERED = "no-tests-discovered";
 
     /**
+     * The warning code of a test root whose classes declare no test framework at all: an empty run
+     * the engine leaves green, as Maven's surefire reports {@code No tests to run}.
+     */
+    static final String NO_TEST_CLASSES = "no-test-classes";
+
+    /** How many of the classes a {@link #NO_TEST_CLASSES} warning names before counting the rest. */
+    private static final int NAMED_CLASSES = 8;
+
+    /**
      * A plan with no test where test classes exist is a run that would report success having run
      * nothing: an engine the Platform dropped, a class filter that admits no test. A class the
      * loader could not produce is reported before this by {@link DiscoveryFailures}. Judged against a second discovery without the tag filters,
      * so a plan the filters emptied stays what it is — a tier with nothing in it. Not under a
      * class filter: in a workspace every module but the one holding the named class is empty, and
      * the engine judges an unmatched {@code --class} across the run.
+     *
+     * <p>When no class under the root is test-shaped by its bytes ({@link TestClassShape}: no test
+     * annotation, no specification base) there is no framework whose engine could be missing — the
+     * root holds simulators, fixtures, a {@code main} — and the run is empty rather than broken:
+     * {@link #NO_TEST_CLASSES} names the classes it skipped. One class that does declare a test
+     * keeps the failure, since a declared framework whose engine is absent is exactly the case it
+     * exists for.
      */
     private static void warnIfEmptyPlan(Path scanClasspath, @Nullable String filter, TestPlan plan, Adapter adapter) {
         if (plan == null || (filter != null && !filter.isBlank())) return;
@@ -267,7 +288,73 @@ final class LauncherPath {
         if (hasTest(unfiltered)) return;
         // Protocol warning, not stderr: passthrough stderr is muted unless --verbose and the
         // crash buffer only surfaces on non-zero exit — an empty plan exits 0.
+        List<String> plain = classesDeclaringNoTest(scanClasspath);
+        if (plain != null) {
+            adapter.emitWarning(NO_TEST_CLASSES, noTestClassesMessage(plain, scanClasspath));
+            return;
+        }
         adapter.emitWarning(NO_TESTS_DISCOVERED, noTestsMessage(classes, scanClasspath));
+    }
+
+    /**
+     * The top-level classes under {@code root} when none of them is test-shaped; {@code null} as
+     * soon as one is, or when there is none to judge. A class whose bytes cannot be read counts as
+     * test-shaped, so an unreadable root keeps the failure.
+     */
+    private static @Nullable List<String> classesDeclaringNoTest(Path root) {
+        List<String> names = DiscoveryFailures.topLevelClassNames(root);
+        if (names.isEmpty()) return null;
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        if (loader == null) loader = ClassLoader.getSystemClassLoader();
+        TestClassShape shape = new TestClassShape(root, loader);
+        for (String name : names) {
+            if (shape.isTestClass(name)) return null;
+        }
+        return names;
+    }
+
+    /** What the Platform says when no engine is on the classpath; discovery cannot begin at all. */
+    static final String NO_ENGINE = "without at least one TestEngine";
+
+    /**
+     * True when {@code noLauncher} is the Platform's no-engine refusal and the root's classes declare
+     * no test, in which case the empty run — a discovery of nothing and the {@link #NO_TEST_CLASSES}
+     * warning — has been announced through {@code adapter}: with no framework declared there was
+     * none the engine could have served, so the run is empty, not broken. A root with a declared
+     * test, or a class filter, is left to fail: there the missing engine is the failure.
+     */
+    static boolean emptyRunWithoutEngine(
+            RuntimeException noLauncher,
+            Path scanClasspath,
+            @Nullable String filter,
+            EventWriter writer,
+            int workerId) {
+        return emptyRunWithoutEngine(noLauncher, scanClasspath, filter, new Adapter(writer, workerId));
+    }
+
+    private static boolean emptyRunWithoutEngine(
+            RuntimeException noLauncher, Path scanClasspath, @Nullable String filter, Adapter adapter) {
+        if (!String.valueOf(noLauncher.getMessage()).contains(NO_ENGINE)) return false;
+        if (filter != null && !filter.isBlank()) return false;
+        List<String> plain = classesDeclaringNoTest(scanClasspath);
+        if (plain == null) return false;
+        adapter.emitDiscoveryTotal(0, 0);
+        adapter.emitWarning(NO_TEST_CLASSES, noTestClassesMessage(plain, scanClasspath));
+        return true;
+    }
+
+    /** The empty-run line: how many classes, where, and which — none of them a test. */
+    static String noTestClassesMessage(List<String> classes, Path scanClasspath) {
+        int n = classes.size();
+        StringBuilder sb = new StringBuilder("no test classes: ")
+                .append(n == 1 ? "the one class" : "none of the " + n + " classes")
+                .append(" under ")
+                .append(scanClasspath)
+                .append(n == 1 ? " declares" : " declare")
+                .append(" a test framework (no test annotation, no specification base), so nothing ran — ")
+                .append(String.join(", ", classes.subList(0, Math.min(n, NAMED_CLASSES))));
+        if (n > NAMED_CLASSES) sb.append(" and ").append(n - NAMED_CLASSES).append(" more");
+        return sb.toString();
     }
 
     /** The failure line: the class count, then where to look. */

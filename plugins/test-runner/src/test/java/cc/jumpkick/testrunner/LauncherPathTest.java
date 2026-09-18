@@ -3,6 +3,7 @@ package cc.jumpkick.testrunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -167,15 +168,58 @@ class LauncherPathTest {
     }
 
     @Test
-    void a_root_with_classes_and_no_test_under_any_filter_warns_of_an_empty_discovery(@TempDir Path tmp)
+    void a_root_whose_classes_declare_a_test_the_platform_cannot_run_warns_of_an_empty_discovery(@TempDir Path tmp)
             throws IOException {
-        Path root = classpathRootOf(tmp, EventType.class);
+        Path root = classpathRootOf(tmp, TestableOnlyFixture.class, EventType.class);
         var events = new Recorder();
         LauncherPath.runListOnly(root, null, List.of("integration"), List.of(), 0, events);
         assertThat(events.warnings()).singleElement().satisfies(w -> {
             assertThat(w.get("code")).isEqualTo(LauncherPath.NO_TESTS_DISCOVERED);
-            assertThat(String.valueOf(w.get("message"))).contains("no tests discovered in 1 class");
+            assertThat(String.valueOf(w.get("message"))).contains("no tests discovered in 2 classes");
         });
+    }
+
+    @Test
+    void a_root_whose_classes_declare_no_test_framework_is_an_empty_run_naming_them(@TempDir Path tmp)
+            throws IOException {
+        Path root = classpathRootOf(tmp, EventType.class, Exit.class);
+        var events = new Recorder();
+        LauncherPath.runListOnly(root, null, List.of(), List.of(), 0, events);
+        assertThat(events.warnings()).singleElement().satisfies(w -> {
+            assertThat(w.get("code")).isEqualTo("no-test-classes");
+            assertThat(String.valueOf(w.get("message")))
+                    .startsWith("no test classes: none of the 2 classes under " + root)
+                    .contains("so nothing ran — " + Exit.class.getName() + ", " + EventType.class.getName());
+        });
+        assertThat(events.finishedTests()).isEmpty();
+    }
+
+    @Test
+    void a_classpath_with_no_engine_over_classes_that_declare_no_test_is_the_same_empty_run(@TempDir Path tmp)
+            throws IOException {
+        Path root = classpathRootOf(tmp, EventType.class);
+        RuntimeException noEngine = new IllegalStateException(
+                "Cannot create Launcher without at least one TestEngine; consider adding an engine implementation JAR to the classpath");
+        var events = new Recorder();
+
+        assertThat(LauncherPath.emptyRunWithoutEngine(noEngine, root, null, events, 0))
+                .isTrue();
+        assertThat(events.types).containsExactly(EventType.DISCOVERY_TOTAL, EventType.WARNING);
+        assertThat(events.warnings()).singleElement().satisfies(w -> {
+            assertThat(w.get("code")).isEqualTo(LauncherPath.NO_TEST_CLASSES);
+            assertThat(String.valueOf(w.get("message"))).contains(EventType.class.getName());
+        });
+
+        Path declared = classpathRootOf(tmp.resolve("declared"), TestableOnlyFixture.class);
+        assertThat(LauncherPath.emptyRunWithoutEngine(noEngine, declared, null, new Recorder(), 0))
+                .as("a declared test keeps the missing engine a failure")
+                .isFalse();
+        assertThat(LauncherPath.emptyRunWithoutEngine(noEngine, root, "com.example.Named", new Recorder(), 0))
+                .as("a class filter is judged by the engine across the run")
+                .isFalse();
+        assertThat(LauncherPath.emptyRunWithoutEngine(new IllegalStateException("boom"), root, null, new Recorder(), 0))
+                .as("only the no-engine refusal is judged")
+                .isFalse();
     }
 
     /** A classpath root holding only {@code classes}, copied out of this module's own output. */

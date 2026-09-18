@@ -11,6 +11,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.testing.TestCaches;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -76,7 +77,64 @@ class JupiterLineE2eTest {
     }
 
     @Test
-    void a_suite_whose_classes_hold_no_test_fails_the_step_with_the_class_count(@TempDir Path tmp) throws Exception {
+    void a_suite_whose_classes_declare_no_test_is_the_empty_run_with_a_warning_naming_them(@TempDir Path tmp)
+            throws Exception {
+        Path project = noTestsProject(tmp, "HelperOnly.java", """
+                package com.example;
+
+                class HelperOnly {
+                    static int answer() {
+                        return 42;
+                    }
+                }
+                """);
+
+        BuildPlan plan = lockAndPlan(project);
+        BuildPlanResult result = plan.run();
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success())
+                .as("a helper-only root is the empty run, as surefire's 'No tests to run'")
+                .isTrue();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        assertThat(tests.total()).isZero();
+        assertThat(result.warnings())
+                .filteredOn(d -> "no-test-classes".equals(d.code()))
+                .singleElement()
+                .satisfies(d -> assertThat(d.message())
+                        .startsWith("no test classes: the one class under ")
+                        .contains("so nothing ran — com.example.HelperOnly"));
+    }
+
+    @Test
+    void a_suite_that_declares_a_test_no_engine_runs_fails_the_step_with_the_class_count(@TempDir Path tmp)
+            throws Exception {
+        Path project = noTestsProject(tmp, "TestableOnly.java", """
+                package com.example;
+
+                import org.junit.platform.commons.annotation.Testable;
+
+                class TestableOnly {
+                    @Testable
+                    void probe() {}
+                }
+                """);
+
+        BuildPlan plan = lockAndPlan(project);
+        BuildPlanResult result = plan.run();
+        assertThat(result.success())
+                .as("a declared test that no engine discovers is a failed step, never OK")
+                .isFalse();
+        assertThat(result.errors()).anySatisfy(d -> assertThat(d.step()).isEqualTo("run-tests"));
+        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        assertThat(tests.failed()).isEqualTo(1);
+        assertThat(tests.failures()).anySatisfy(f -> {
+            assertThat(f.method()).isEqualTo("(test run)");
+            assertThat(f.message()).contains("no tests discovered in 1 class");
+        });
+    }
+
+    /** A Jupiter 6 project whose only test source is {@code file} with {@code body}. */
+    private static Path noTestsProject(Path tmp, String file, String body) throws IOException {
         Path project = tmp.resolve("no-tests");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), """
@@ -89,28 +147,8 @@ class JupiterLineE2eTest {
                 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
                 """ + REPOSITORIES);
         Path test = Files.createDirectories(project.resolve("test/src/com/example"));
-        Files.writeString(test.resolve("HelperOnly.java"), """
-                package com.example;
-
-                class HelperOnly {
-                    static int answer() {
-                        return 42;
-                    }
-                }
-                """);
-
-        BuildPlan plan = lockAndPlan(project);
-        BuildPlanResult result = plan.run();
-        assertThat(result.success())
-                .as("zero tests discovered is a failed step, never OK")
-                .isFalse();
-        assertThat(result.errors()).anySatisfy(d -> assertThat(d.step()).isEqualTo("run-tests"));
-        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
-        assertThat(tests.failed()).isEqualTo(1);
-        assertThat(tests.failures()).anySatisfy(f -> {
-            assertThat(f.method()).isEqualTo("(test run)");
-            assertThat(f.message()).contains("no tests discovered in 1 class");
-        });
+        Files.writeString(test.resolve(file), body);
+        return project;
     }
 
     private static BuildPlan lockAndPlan(Path project) throws Exception {

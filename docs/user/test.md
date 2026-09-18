@@ -348,11 +348,15 @@ launcher beside a Jupiter 5 engine would drop the engine without a word and the 
 success with no tests; a lock whose launcher and Jupiter engine sit on different lines — your own
 launcher pin on the wrong line — is refused by `jk lock` with the pin that aligns them.
 
-A run that discovers no test where test classes exist fails the `run-tests` step with the count
-(`no tests discovered in 3 classes under …`): an engine missing from the classpath, a framework
-classloader that failed, a suite of helpers with no `@Test`. Tag filters do not trip it — a tier
-with nothing in it is judged against a second discovery without the filters — and neither does
-`--class`, which the run judges as a whole. A green with zero tests is never the answer.
+A run that discovers no test where test classes declare one fails the `run-tests` step with the
+count (`no tests discovered in 3 classes under …`): an engine missing from the classpath, a
+framework classloader that failed. Tag filters do not trip it — a tier with nothing in it is
+judged against a second discovery without the filters — and neither does `--class`, which the run
+judges as a whole. A test root whose classes declare no framework at all — device simulators, a
+`main`, fixtures with no test annotation and no specification base — is the empty run surefire
+reports as *No tests to run*: the module passes with zero tests and one warning
+(`no test classes: none of the 4 classes under … declare a test framework …`) naming the classes
+it skipped. A green with zero tests where a test was declared is never the answer.
 
 A framework that has no Platform engine of its own gets one from the lock. Declare `junit:junit`
 and `jk lock` adds `org.junit.vintage:junit-vintage-engine` beside the launcher, on the declared
