@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
@@ -14,8 +16,27 @@ import org.jspecify.annotations.Nullable;
  * #publish} folds the entries into a process-wide store keyed by module path; the journal drains
  * that store into {@code jk-results.md}. Companion to {@link XmlTestReport} (JUnit XML under
  * {@code target/reports/test-results/}).
+ *
+ * <p>The store is bounded by what a report can use. A failure's message and stack are clipped at
+ * {@link #MAX_MESSAGE_CHARS} and {@link #MAX_STACK_CHARS} — the report shows a few dozen lines and
+ * the cause chain, which the clip keeps — so a suite whose every failure carries the same
+ * forty-kilobyte trace costs kilobytes, not megabytes. A publish under a request whose workers were
+ * already shut down is dropped: its report was written, and nothing will drain it. And every
+ * journal write sweeps the store with {@link #retainUnder}, so a run no live build will ever take
+ * does not stay for the engine's life.
  */
 public final class MarkdownTestReport {
+
+    /** Characters of a failure message kept; the report renders one line of it. */
+    static final int MAX_MESSAGE_CHARS = 4_096;
+
+    /** Stack lines kept from the top of a failure trace before the clip keeps only its cause headers. */
+    static final int MAX_STACK_LINES = 64;
+
+    /** Characters of a failure stack kept after the line clip. */
+    static final int MAX_STACK_CHARS = 16_384;
+
+    private static final String CAUSED_BY = "Caused by: ";
 
     public record Entry(
             String className,
@@ -66,7 +87,46 @@ public final class MarkdownTestReport {
                 failureMessage = Jsonl.str(throwableJson, "class");
             }
         }
-        entries.add(new Entry(className, display, durationMs, failureMessage, failureStack, null));
+        entries.add(new Entry(
+                className,
+                display,
+                durationMs,
+                clip(failureMessage, MAX_MESSAGE_CHARS),
+                boundedStack(failureStack),
+                null));
+    }
+
+    /** {@code text} cut at {@code max} characters with an ellipsis; {@code null} stays {@code null}. */
+    static @Nullable String clip(@Nullable String text, int max) {
+        if (text == null || text.length() <= max) return text;
+        return text.substring(0, max) + "…";
+    }
+
+    /**
+     * The first {@link #MAX_STACK_LINES} lines of {@code stack}, then every {@code Caused by:}
+     * header past them so the innermost cause survives, the whole cut at {@link #MAX_STACK_CHARS}.
+     */
+    static @Nullable String boundedStack(@Nullable String stack) {
+        if (stack == null || stack.length() <= MAX_STACK_CHARS) {
+            return stack;
+        }
+        String[] lines = stack.split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        int kept = Math.min(lines.length, MAX_STACK_LINES);
+        for (int i = 0; i < kept; i++) sb.append(lines[i]).append('\n');
+        int elided = 0;
+        for (int i = kept; i < lines.length; i++) {
+            if (lines[i].strip().startsWith(CAUSED_BY)) {
+                if (elided > 0) sb.append("\t… ").append(elided).append(" lines\n");
+                elided = 0;
+                sb.append(lines[i]).append('\n');
+            } else {
+                elided++;
+            }
+        }
+        if (elided > 0) sb.append("\t… ").append(elided).append(" lines\n");
+        String out = sb.toString();
+        return out.length() <= MAX_STACK_CHARS ? out : out.substring(0, MAX_STACK_CHARS) + "…";
     }
 
     /**
@@ -85,9 +145,15 @@ public final class MarkdownTestReport {
         publish(scopeKey, label, entries);
     }
 
-    /** Fold {@code entries} recorded elsewhere (a surefire report) into the store under {@code scopeKey}. */
+    /**
+     * Fold {@code entries} recorded elsewhere (a surefire report) into the store under {@code
+     * scopeKey}. Dropped when the ambient request's workers were already shut down: the journal
+     * that would have drained them is written, or never will be.
+     */
     public static void publish(String scopeKey, String label, List<Entry> entries) {
         if (entries.isEmpty()) return;
+        Long request = JobWorkers.currentRequestId();
+        if (request != null && JobWorkers.ended(request)) return;
         String k = scopeKey == null || scopeKey.isBlank() ? "_" : scopeKey;
         String lab = label == null ? "" : label;
         ModuleRun add = new ModuleRun(k, lab, List.copyOf(entries));
@@ -126,6 +192,39 @@ public final class MarkdownTestReport {
             if (run != null && !run.entries().isEmpty()) out.add(run);
         }
         return out;
+    }
+
+    /**
+     * Drop every published run whose scope is under none of {@code roots} — the project directories
+     * of the builds still accumulating a record. Called at each journal write, after that build's
+     * own runs were taken, so a run no live build can drain is not kept for the engine's life.
+     */
+    public static void retainUnder(Collection<String> roots) {
+        List<Path> keep = new ArrayList<>();
+        for (String root : roots) {
+            try {
+                keep.add(Path.of(root).toAbsolutePath().normalize());
+            } catch (RuntimeException ignored) {
+                // A root that is not a path covers nothing.
+            }
+        }
+        for (String key : List.copyOf(PUBLISHED.keySet())) {
+            Path p;
+            try {
+                p = Path.of(key).toAbsolutePath().normalize();
+            } catch (RuntimeException e) {
+                PUBLISHED.remove(key);
+                continue;
+            }
+            boolean covered = false;
+            for (Path root : keep) {
+                if (p.equals(root) || p.startsWith(root)) {
+                    covered = true;
+                    break;
+                }
+            }
+            if (!covered) PUBLISHED.remove(key);
+        }
     }
 
     /**

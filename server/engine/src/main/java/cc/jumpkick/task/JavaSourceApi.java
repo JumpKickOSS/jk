@@ -17,6 +17,7 @@ import com.sun.source.util.JavacTask;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,7 +47,11 @@ import org.jspecify.annotations.Nullable;
  * it: a body-only edit keeps the digest, a signature edit moves it.
  *
  * <p>Parsing is javac's own ({@code JavacTask.parse}), so the shape is what javac would see, and
- * the JDK the engine runs on is what renders it. Digests are memoized on the file's content hash
+ * the JDK the engine runs on is what renders it. The files are parsed a batch at a time, each batch
+ * bounded by {@link #PARSE_BATCH_BYTES} of source and rendered before the next is read: a parse
+ * tree is many times its source's size and javac keeps every tree of one task reachable until the
+ * task is dropped, so a whole module in one task is a heap bill the engine's cap cannot pay.
+ * Digests are memoized on the file's content hash
  * under the {@link AbiMemo}, so a file is parsed once per distinct content. A file javac cannot
  * parse, or a runtime without {@code jdk.compiler}, keys the file on its content instead — strictly
  * finer, so never a false hit — spelled with a different prefix so the two can be told apart.
@@ -77,6 +82,12 @@ public final class JavaSourceApi {
             this.memoNamespace = memoNamespace;
         }
     }
+
+    /**
+     * Source bytes one javac task parses at most. A file above it is a batch of its own; a batch's
+     * trees are dropped before the next batch is parsed.
+     */
+    static final long PARSE_BATCH_BYTES = 1L << 20;
 
     private JavaSourceApi() {}
 
@@ -118,7 +129,7 @@ public final class JavaSourceApi {
             }
         }
         if (!pending.isEmpty()) {
-            Map<Path, String> parsed = parse(pending, view);
+            Map<Path, String> parsed = parse(pending, view, PARSE_BATCH_BYTES);
             for (Path abs : pending) {
                 String content = Objects.requireNonNull(contentByPath.get(abs), "content hash");
                 @Nullable String shape = parsed.get(abs);
@@ -143,13 +154,49 @@ public final class JavaSourceApi {
     }
 
     /**
-     * The rendered declaration shape per file, for every file javac parsed without an error. A
-     * file with a syntax error is left out; so is every file when the runtime has no javac.
+     * The rendered declaration shape per file, for every file javac parsed without an error, one
+     * javac task per {@link #batches batch} of at most {@code batchBytes} of source. A file with a
+     * syntax error is left out; so is every file when the runtime has no javac.
      */
-    private static Map<Path, String> parse(List<Path> files, View view) {
+    static Map<Path, String> parse(List<Path> files, View view, long batchBytes) {
         Map<Path, String> out = new LinkedHashMap<>();
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         if (javac == null) return out;
+        try {
+            for (List<Path> batch : batches(files, batchBytes)) out.putAll(parseBatch(javac, batch, view));
+        } catch (IOException | RuntimeException e) {
+            // A parse that fails wholesale keys every pending file on content.
+            Log.debug("parse: javac could not read the declarations", e);
+            return Map.of();
+        }
+        return out;
+    }
+
+    /**
+     * {@code files} in order, cut into runs whose source bytes sum to at most {@code maxBytes}; a
+     * file larger than that is a run of its own, never left out.
+     */
+    static List<List<Path>> batches(List<Path> files, long maxBytes) throws IOException {
+        List<List<Path>> out = new ArrayList<>();
+        List<Path> batch = new ArrayList<>();
+        long bytes = 0;
+        for (Path file : files) {
+            long size = Files.size(file);
+            if (!batch.isEmpty() && bytes + size > maxBytes) {
+                out.add(List.copyOf(batch));
+                batch.clear();
+                bytes = 0;
+            }
+            batch.add(file);
+            bytes += size;
+        }
+        if (!batch.isEmpty()) out.add(List.copyOf(batch));
+        return out;
+    }
+
+    /** One javac task over {@code files}: the shape of every unit it parsed without an error. */
+    private static Map<Path, String> parseBatch(JavaCompiler javac, List<Path> files, View view) throws IOException {
+        Map<Path, String> out = new LinkedHashMap<>();
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         try (StandardJavaFileManager fm = javac.getStandardFileManager(diagnostics, null, StandardCharsets.UTF_8)) {
             Iterable<? extends JavaFileObject> units = fm.getJavaFileObjectsFromPaths(files);
@@ -171,10 +218,6 @@ public final class JavaSourceApi {
                 String shape = shapes.get(uri);
                 if (shape != null) out.put(file, shape);
             }
-        } catch (IOException | RuntimeException e) {
-            // A parse that fails wholesale keys every pending file on content.
-            Log.debug("parse: javac could not read the declarations", e);
-            return Map.of();
         }
         return out;
     }
