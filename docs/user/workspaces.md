@@ -210,7 +210,9 @@ web view. While the pass runs, the progress label names the member being solved 
 are flagged (`Solving members on their own… 2 of 7: services/api`): each flagged member costs a
 solve of its own, which on a cold large reactor is where the lock's time goes. `jk update`
 rewrites the declared pins and relocks, so a partition that stops being necessary disappears on
-its own.
+its own. The monorepo pack's converge-versions guard judges the workspace's rows and each member's
+view of the lock on their own: a member's own row beside the workspace's is one classpath's version
+and another's, not two versions on one classpath.
 
 A member that holds no `[platform-dependencies]` table reads the workspace's plain rows, and
 nothing aligns them for it. When two artifacts of one library family land there on different

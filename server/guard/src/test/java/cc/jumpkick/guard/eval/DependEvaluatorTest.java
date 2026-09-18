@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.facts.FactsIndex;
@@ -10,6 +11,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
@@ -91,8 +93,19 @@ class DependEvaluatorTest {
                 name, version, "central+https://repo.example/", null, null, List.of(scope), List.of(), null);
     }
 
+    /** The same workspace, its lock holding the rows given. */
+    private static void workspace(Path root, Lockfile.Artifact... artifacts) throws IOException {
+        workspace(root);
+        Lockfile lock = LockfileReader.read(root.resolve(ManifestPaths.LOCK));
+        LockfileWriter.write(lock.withArtifacts(List.of(artifacts)), root.resolve(ManifestPaths.LOCK));
+    }
+
     private static Map<String, Evaluation> run(Path root, String rules) throws Exception {
         workspace(root);
+        return evaluate(root, rules);
+    }
+
+    private static Map<String, Evaluation> evaluate(Path root, String rules) throws Exception {
         Files.writeString(root.resolve(GuardsPresence.RULES_FILE), rules);
         LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
         assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
@@ -163,6 +176,37 @@ class DependEvaluatorTest {
                         "convergence org.slf4j:slf4j-api",
                         "dynamic app [dependencies] com.google.guava:guava",
                         "snapshot lock acme:internal");
+    }
+
+    /**
+     * A member's own row beside the workspace's is one classpath's version and another's, not two
+     * on one: convergence judges the workspace's rows and each member's view of the lock on their
+     * own, and a member whose own rows carry one artifact at two versions is the one divergence.
+     */
+    @Test
+    void a_members_own_row_is_not_divergence_from_the_workspaces(@TempDir Path root) throws Exception {
+        workspace(
+                root,
+                artifact("net.bytebuddy:byte-buddy:jar:", "1.18.0", Scope.MAIN),
+                artifact("net.bytebuddy:byte-buddy:jar:", "1.17.5", Scope.MAIN).withMembers(List.of("app")),
+                artifact("org.junit.platform:junit-platform-engine:jar:", "6.1.3", Scope.TEST),
+                artifact("org.junit.platform:junit-platform-engine:jar:", "6.0.3", Scope.TEST)
+                        .withMembers(List.of("app")),
+                artifact("com.acme:native:jar:", "2.0", Scope.MAIN),
+                artifact("com.acme:native:jar:linux-x64", "1.0", Scope.MAIN).withMembers(List.of("lib")));
+        Map<String, Evaluation> r = evaluate(root, """
+                [guards.converge]
+                kind = "depend"
+                convergence = true
+                why = "w"
+                """);
+
+        Evaluation e = ev(r, "converge");
+        assertThat(e.observations())
+                .extracting(Observation::key, Observation::detail)
+                .containsExactly(tuple(
+                        "convergence com.acme:native", "com.acme:native resolves to 2 versions for lib: 1.0, 2.0"));
+        assertThat(e.population()).containsEntry("artifacts", 6L);
     }
 
     @Test

@@ -8,6 +8,7 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -210,25 +211,45 @@ final class DependEvaluator implements Evaluator {
         }
 
         void lock(Lockfile lock) {
-            Map<String, Set<String>> versionsByGa = new TreeMap<>();
+            List<Lockfile.Artifact> rows = new ArrayList<>();
             for (Lockfile.Artifact a : lock.artifacts()) {
                 if (!p.scopes().isEmpty() && a.scopes().stream().noneMatch(p.scopes()::contains)) continue;
                 artifacts++;
-                String ga = ga(a.name());
-                versionsByGa.computeIfAbsent(ga, k -> new TreeSet<>()).add(a.version());
-                resolved(a, ga);
+                rows.add(a);
+                resolved(a, ga(a.name()));
             }
-            if (p.convergence()) {
-                for (var e : versionsByGa.entrySet()) {
-                    if (e.getValue().size() > 1 && allowing(rule.allow(), "", e.getKey()) == null) {
-                        out.add(Observation.site(
-                                "convergence " + e.getKey(),
-                                ManifestPaths.LOCK,
-                                0,
-                                e.getKey() + " resolves to " + e.getValue().size() + " versions: "
-                                        + String.join(", ", e.getValue())));
-                    }
-                }
+            if (p.convergence()) convergence(rows);
+        }
+
+        /**
+         * One version per artifact within every set of rows one classpath reads: the workspace's
+         * plain rows, then each partitioned member's view of the lock. A member's own row beside
+         * the workspace's is one classpath's version and another's, not two on one; an artifact
+         * diverging in several views is one observation.
+         */
+        private void convergence(List<Lockfile.Artifact> rows) {
+            Set<String> reported = new TreeSet<>();
+            divergence(rows.stream().filter(a -> !a.isPartition()).toList(), "", reported);
+            Set<String> members = new TreeSet<>();
+            for (Lockfile.Artifact a : rows) members.addAll(a.members());
+            for (String member : members) divergence(MemberRows.narrow(rows, member), member, reported);
+        }
+
+        private void divergence(List<Lockfile.Artifact> view, String member, Set<String> reported) {
+            Map<String, Set<String>> versionsByGa = new TreeMap<>();
+            for (Lockfile.Artifact a : view) {
+                versionsByGa.computeIfAbsent(ga(a.name()), k -> new TreeSet<>()).add(a.version());
+            }
+            for (var e : versionsByGa.entrySet()) {
+                if (e.getValue().size() < 2 || !reported.add(e.getKey())) continue;
+                if (allowing(rule.allow(), "", e.getKey()) != null) continue;
+                out.add(Observation.site(
+                        "convergence " + e.getKey(),
+                        ManifestPaths.LOCK,
+                        0,
+                        e.getKey() + " resolves to " + e.getValue().size() + " versions"
+                                + (member.isEmpty() ? "" : " for " + member) + ": "
+                                + String.join(", ", e.getValue())));
             }
         }
 
