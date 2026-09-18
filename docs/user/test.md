@@ -334,7 +334,7 @@ losing the tool from the PATH (`missing`) changes the stamp and re-runs the suit
 `jk test`, no `--redo` needed; a tool left alone costs one `--version` per engine lifetime. The
 key is test-scoped like `env`: nothing about it enters the compile or package keys.
 
-## Test frameworks: Jupiter by default, JUnit 4 via Vintage
+## Test frameworks: Jupiter by default, JUnit 4 via Vintage, TestNG via its engine
 
 `jk test` discovers and runs tests through the JUnit Platform launcher and nothing else; `jk lock`
 puts `junit-platform-launcher` on every test classpath, and `junit-jupiter` on a module that
@@ -369,6 +369,24 @@ the line, still runs `TestCase` suites); `jk import` writes that raise for you a
 notes. Results render per test as they do for Jupiter: the class from the runner, the method from
 the JUnit 4 display name. Declaring the Vintage engine yourself is fine — the injection is
 `putIfAbsent`, and your version wins.
+
+TestNG takes the same road. Declare `org.testng:testng` and `jk lock` adds
+`org.junit.support:testng-engine` — the JUnit team's TestNG engine, released on a line of its own,
+so it is pinned at its newest release rather than the Platform's number and rides the launcher's
+Platform through its own `junit-platform-engine` edge:
+
+```toml
+[test-dependencies]
+testng = "7.12.0"      # @org.testng.annotations.Test classes under the test root
+```
+
+Discovery is the engine's class scan over the module's test classes, the way Jupiter's is:
+every class with a TestNG `@Test` runs, `--class` and tag filters apply (a TestNG `groups` value is
+a Platform tag), and a `testng.xml` suite file is not read — a suite is the test root. The engine
+needs TestNG 6.14.3 or later; an exact pin below that is refused by `jk lock` with the fix
+(`7.12.0`), and `jk import` writes that raise for you. Results render per test as they do for
+Jupiter — the class and the method from the engine's ids — and a failing method is named in
+`jk-results.md` with the framework's own assertion message.
 
 ### When the launcher cannot start
 
