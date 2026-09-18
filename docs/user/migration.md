@@ -422,7 +422,15 @@ type-safe accessors like `libs.guava` into `[dependencies]`. Unresolved catalog 
 up in the import report rather than vanishing. Versions stay on deps/BOMs — they are not
 written into jk library catalog layers. `annotationProcessor`, `kapt` and `ksp` land in
 `[processor-dependencies]`; `testAnnotationProcessor`, `kaptTest` and `kspTest` in
-`[test-processor-dependencies]`. Keep `jk gradle` for modules that still need full Gradle.
+`[test-processor-dependencies]`. The project is named from `rootProject.name` in the
+`settings.gradle(.kts)` beside the build file, else from the directory. Every configuration lands
+in the table that means the same thing: `implementation` and `api` in `[dependencies]`,
+`compileOnly` and `compileOnlyApi` in `[provided-dependencies]`, `runtimeOnly` in
+`[runtime-dependencies]`, `testImplementation` and `testRuntimeOnly` in `[test-dependencies]` —
+`testCompileOnly` too, with a row saying jk has no test-provided table. A declaration's closure is
+read for its `exclude` rules (`isTransitive = false` is `*:*`) and otherwise skipped, so an
+`api("g:a") { because "…" }` imports; a Groovy comma list of coordinates imports each one.
+Keep `jk gradle` for modules that still need full Gradle.
 
 **Export** writes what the manifest says: `jk export maven` writes each dependency's `exclude`
 list as `<exclusions>`, a `[managed-dependencies]` entry's included on its
