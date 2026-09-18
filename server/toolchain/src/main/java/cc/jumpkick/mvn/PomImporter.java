@@ -256,7 +256,7 @@ public final class PomImporter {
      * {@code inherited} collects the rows a workspace module inherits and {@code hoisted} the managed
      * pins its reactor parents own; both {@code null} for a POM imported on its own.
      */
-    private static Imported importModel(
+    private Imported importModel(
             EffectiveModel em,
             RemoteFile remote,
             MavenSettings settings,
@@ -300,7 +300,7 @@ public final class PomImporter {
                 .image(packaging.image())
                 .pluginConfig(packaging.springBoot())
                 .pluginConfig(packaging.quarkus())
-                .pluginConfig(LintPlugins.map(em, report, inherited));
+                .pluginConfig(LintPlugins.map(em, report, inherited, resolver.repos()));
         for (PluginConfig table : generators.tables()) builder.pluginConfig(table);
         JkBuild jkBuild = builder.build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))

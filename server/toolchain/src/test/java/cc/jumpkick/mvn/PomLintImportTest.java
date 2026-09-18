@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -255,7 +256,8 @@ class PomLintImportTest {
                                 "category/java/security.xml",
                                 "pmd-custom_ruleset.xml"))
                 .containsEntry("pmd-exclude", "pmd-exclude.properties")
-                .containsEntry("pmd-version", "7.17.0")
+                .as("offline, the plugin's POM is unread and the PMD release is left to the step")
+                .doesNotContainKey("pmd-version")
                 .containsEntry("spotbugs", true)
                 .containsEntry("spotbugs-exclude", "spotbugs-exclude.xml")
                 .containsEntry("spotbugs-effort", "max")
@@ -362,10 +364,17 @@ class PomLintImportTest {
         assertThat(messages(result)).noneMatch(m -> m.contains("has one threshold"));
     }
 
-    /** The PMD a POM runs is the plugin's bundled one, or the pmd-java the plugin's own dependencies pin. */
+    /**
+     * The PMD a POM runs is the pmd-java the plugin's own dependencies pin, else the one the plugin
+     * release bundles — its POM's {@code pmdVersion}, read from the repository at import time.
+     */
     @Test
     void the_pmd_release_follows_the_plugin_or_its_pinned_pmd_java(@TempDir Path tempDir) throws Exception {
-        PluginConfig pinned = pmdOnly(tempDir.resolve("pinned"), "3.26.0", "", """
+        Path repo = tempDir.resolve("repo");
+        servePmdPlugin(repo, "3.26.0", "7.7.0");
+        servePmdPlugin(repo, "3.21.2", "6.55.0");
+
+        PluginConfig pinned = pmdOnly(tempDir.resolve("pinned"), repo, "3.26.0", "", """
                 <dependencies>
                   <dependency>
                     <groupId>net.sourceforge.pmd</groupId><artifactId>pmd-java</artifactId><version>7.20.0</version>
@@ -374,13 +383,48 @@ class PomLintImportTest {
                 """);
         assertThat(pinned.values()).containsEntry("pmd-version", "7.20.0");
 
-        PluginConfig bundled = pmdOnly(tempDir.resolve("bundled"), "3.26.0", "", "");
+        PluginConfig bundled = pmdOnly(tempDir.resolve("bundled"), repo, "3.26.0", "", "");
         assertThat(bundled.values()).containsEntry("pmd-version", "7.7.0");
 
-        PomImporter.Result six = importPmdOnly(tempDir.resolve("six"), "3.21.2", "", "");
+        PomImporter.Result six = importPmdOnly(tempDir.resolve("six"), repo, "3.21.2", "", "");
         assertThat(six.jkBuild().pluginConfig("lint").orElseThrow().values()).doesNotContainKey("pmd-version");
         assertThat(messages(six))
                 .anySatisfy(m -> assertThat(m).contains("PMD 6.55.0").contains("PMD 7"));
+
+        PomImporter.Result unserved = importPmdOnly(tempDir.resolve("unserved"), repo, "3.99.0", "", "");
+        assertThat(unserved.jkBuild().pluginConfig("lint").orElseThrow().values())
+                .as("a release whose POM no repository serves pins nothing")
+                .doesNotContainKey("pmd-version");
+        assertThat(messages(unserved)).anySatisfy(m -> assertThat(m)
+                .contains("`maven-pmd-plugin` 3.99.0")
+                .contains("POM")
+                .contains("`pmd-version`"));
+    }
+
+    /** A {@code maven-pmd-plugin} release's POM under {@code repo}, naming the PMD it bundles the way the real ones do. */
+    static void servePmdPlugin(Path repo, String version, String pmdVersion) throws Exception {
+        Path pom = repo.resolve(TestImporters.pomPath("org.apache.maven.plugins", "maven-pmd-plugin", version)
+                .substring(1));
+        Files.createDirectories(Objects.requireNonNull(pom.getParent()));
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-pmd-plugin</artifactId>
+                  <version>%s</version>
+                  <packaging>maven-plugin</packaging>
+                  <properties>
+                    <pmdVersion>%s</pmdVersion>
+                  </properties>
+                  <dependencies>
+                    <dependency>
+                      <groupId>net.sourceforge.pmd</groupId>
+                      <artifactId>pmd-java</artifactId>
+                      <version>${pmdVersion}</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(version, pmdVersion));
     }
 
     /** spotbugs-maven-plugin reports at medium confidence unless {@code <threshold>} says otherwise. */
@@ -414,20 +458,21 @@ class PomLintImportTest {
     }
 
     private static PluginConfig pmdOnly(Path dir, String configuration) throws Exception {
-        return pmdOnly(dir, "3.28.0", configuration, "");
+        return pmdOnly(dir, null, "3.28.0", configuration, "");
     }
 
-    private static PluginConfig pmdOnly(Path dir, String version, String configuration, String dependencies)
-            throws Exception {
-        return importPmdOnly(dir, version, configuration, dependencies)
+    private static PluginConfig pmdOnly(
+            Path dir, @Nullable Path repo, String version, String configuration, String dependencies) throws Exception {
+        return importPmdOnly(dir, repo, version, configuration, dependencies)
                 .jkBuild()
                 .pluginConfig("lint")
                 .orElseThrow();
     }
 
-    private static PomImporter.Result importPmdOnly(Path dir, String version, String configuration, String dependencies)
-            throws Exception {
-        return TestImporters.importXml(dir, """
+    /** A POM with the PMD plugin alone, imported over {@code repo} (a directory), or offline when null. */
+    private static PomImporter.Result importPmdOnly(
+            Path dir, @Nullable Path repo, String version, String configuration, String dependencies) throws Exception {
+        String xml = """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.acme</groupId>
@@ -445,7 +490,11 @@ class PomLintImportTest {
                     </plugins>
                   </build>
                 </project>
-                """.formatted(version, configuration, dependencies));
+                """.formatted(version, configuration, dependencies);
+        if (repo == null) return TestImporters.importXml(dir, xml);
+        Path project = Files.createDirectories(dir.resolve("project"));
+        Files.writeString(project.resolve("pom.xml"), xml);
+        return TestImporters.over(dir, repo.toUri()).importFrom(project.resolve("pom.xml"));
     }
 
     @Test
