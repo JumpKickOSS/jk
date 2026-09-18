@@ -286,6 +286,25 @@ public final class JdkRegistry {
     }
 
     /**
+     * Every install matching {@code spec}, from every probe — {@link #findHitBySpec}'s matcher
+     * without its "pick one" step, in probe-chain order.
+     *
+     * <p>{@link #managedHits} answers the same question for jk's own root only. A caller choosing a
+     * toolchain has to see the JDK a developer installed through their IDE too, and a caller that
+     * then applies its own constraint — a floor, a flavour preference — needs the candidates rather
+     * than the registry's pick among them.
+     */
+    public List<JdkHit> hitsMatching(@Nullable String spec) {
+        if (spec == null || spec.isBlank()) return List.of();
+        JdkSelector.FlexibleQuery query = JdkSelector.parseFlexible(spec);
+        List<JdkHit> out = new ArrayList<>();
+        for (JdkHit hit : listHits()) {
+            if (matchesSpec(hit, query)) out.add(hit);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
      * Source-scoped variant of {@link #findHitBySpec(String)} — only considers hits whose {@link
      * JdkHit#source()} matches {@code sourceFilter}. Pass {@code null} or empty to disable the source
      * filter. Used by {@code jk jdk uninstall} where the user must qualify which probe's copy of a

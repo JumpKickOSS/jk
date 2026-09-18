@@ -594,8 +594,11 @@ public final class BuildCommand implements CliCommand {
         AlwaysNativeGraal.Module alwaysNative = AlwaysNativeGraal.fromManifest(dir);
         Path graalHome = null;
         if (alwaysNative != null) {
+            // The engine's summary has the root's inheritance applied; the manifest read behind
+            // alwaysNative does not, so prefer it when the engine answered.
+            int javaRelease = tailInfo != null ? tailInfo.javaRelease() : alwaysNative.javaRelease();
             Optional<Path> resolved = new GraalResolver(jdksDir, global.yes, BuildPlanConsole.modeFor(global))
-                    .resolve(dir, alwaysNative.graalSpec());
+                    .resolve(dir, alwaysNative.graalSpec(), javaRelease);
             if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
             graalHome = resolved.get();
         }
