@@ -526,15 +526,22 @@ public final class JkBuildRenderer {
     }
 
     /**
-     * One dependency line: workspace flag, a platform-managed coordinate's string, git table, or
-     * versioned table (with its classifier when set).
+     * One dependency line, spelled as {@code jk add} writes it: a plain Maven coordinate is one
+     * string — the version alone when {@code catalog} maps the key to the coordinate, else
+     * {@code group:artifact:version} ({@code managed} / {@code group:artifact} when a platform
+     * supplies the version); a workspace edge is its flag; git, classifier, kind, optional and
+     * exclusions need the inline table.
      */
     private static String renderEntry(Dependency d, LibraryCatalog catalog) {
-        if (d.isPlatformManaged() && plainMavenEdge(d)) {
+        if (plainMavenEdge(d)) {
             boolean catalogHit = catalog.lookup(d.library())
                     .map(m -> m.moduleKey().equals(d.module()))
                     .orElse(false);
-            return safeKey(d.library()) + " = " + quote(catalogHit ? Dependency.MANAGED_KEYWORD : d.module());
+            if (d.isPlatformManaged()) {
+                return safeKey(d.library()) + " = " + quote(catalogHit ? Dependency.MANAGED_KEYWORD : d.module());
+            }
+            String version = versionLiteral(d.version());
+            return safeKey(d.library()) + " = " + quote(catalogHit ? version : d.module() + ":" + version);
         }
         if (d.isWorkspace()) {
             // Shorthand only for the default main kind; a group, kind=tests and optional need the table form.

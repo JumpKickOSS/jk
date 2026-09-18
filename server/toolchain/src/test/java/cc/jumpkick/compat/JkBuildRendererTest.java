@@ -346,12 +346,11 @@ class JkBuildRendererTest {
         int testIdx = out.indexOf("[test-dependencies]");
         assertThat(mainIdx).isLessThan(testIdx).isGreaterThan(0);
 
-        // Inline-table format with name-as-key. `artifact` field omitted when
-        // the artifactId matches the key.
-        assertThat(out).contains("jackson-databind = { group = \"com.fasterxml.jackson.core\", version = \"2.18.2\" }");
-        assertThat(out)
-                .contains("spring-boot-starter-web = { group = \"org.springframework.boot\", version = \"3.4.0\" }");
-        assertThat(out).contains("junit-jupiter = { group = \"org.junit.jupiter\", version = \"5.11.0\" }");
+        // One string per plain coordinate, as `jk add` writes it: the bare version for a catalog
+        // name, the group:artifact:version string for any other.
+        assertThat(out).contains("jackson-databind = \"com.fasterxml.jackson.core:jackson-databind:2.18.2\"");
+        assertThat(out).contains("spring-boot-starter-web = \"3.4.0\"");
+        assertThat(out).contains("junit-jupiter = \"5.11.0\"");
 
         // Within a scope, sort by short name (alphabetical): jackson before spring.
         int jacksonIdx = out.indexOf("jackson-databind");
@@ -591,8 +590,8 @@ class JkBuildRendererTest {
         String out = JkBuildRenderer.render(model);
 
         // An exact pin is the bare version, however it was spelled; a caret keeps its `^`.
-        assertThat(out).contains("pinned = { group = \"com.example\", version = \"1.0.0\" }");
-        assertThat(out).contains("floating = { group = \"com.example\", version = \"^2.0.0\" }");
+        assertThat(out).contains("pinned = \"com.example:pinned:1.0.0\"");
+        assertThat(out).contains("floating = \"com.example:floating:^2.0.0\"");
 
         // Round-trip: re-parsing yields the same selector kinds.
         JkBuild reparsed = JkBuildParser.parse(out);

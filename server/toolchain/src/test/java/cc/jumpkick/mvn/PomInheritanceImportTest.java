@@ -365,9 +365,7 @@ class PomInheritanceImportTest {
                 .as("an inline pin a declared dependency uses is not a [managed-dependencies] row")
                 .isEmpty();
         String rendered = JkBuildRenderer.render(build);
-        assertThat(rendered)
-                .contains("guava = \"managed\"\n")
-                .contains("commons-lang3 = { group = \"org.apache.commons\", version = \"3.17.0\" }\n");
+        assertThat(rendered).contains("guava = \"managed\"\n").contains("commons-lang3 = \"3.17.0\"\n");
         assertThat(JkBuildParser.parse(rendered).dependencies().of(Scope.MAIN))
                 .filteredOn(d -> d.module().equals("com.google.guava:guava"))
                 .singleElement()
