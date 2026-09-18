@@ -49,10 +49,10 @@ class LedgerCompactionTest {
                 .hasSize(1);
         assertThat(section(ledger, "count")).contains("module.server/m1.task.run-tests.wall-ms = 3");
         assertThat(ledger).doesNotContain(".test-class.");
-        assertThat(section(ledger, "test-class.\"server/m1\""))
-                .as("one table per module, one row per class, the class wall's trimmed mean")
+        assertThat(section(ledger, "test-class.\"server/m1\".\"com.example.m1\""))
+                .as("one table per package of a module, one row per class by its simple name, the wall's trimmed mean")
                 .hasSize(CLASSES_PER_MODULE)
-                .contains("com.example.m1.T0Test = 200");
+                .contains("T0Test = 200");
         assertThat(ledger).doesNotContain("/wt/");
         assertThat(Files.size(home.resolve(ProjectBuilds.PROJECT_METRICS)))
                 .as("a forty-module, fourteen-hundred-class project ledger")
