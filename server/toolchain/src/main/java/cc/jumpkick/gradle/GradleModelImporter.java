@@ -18,7 +18,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -277,9 +276,8 @@ final class GradleModelImporter {
         Set<String> applied = new LinkedHashSet<>(p.plugins());
         ImportReport.Builder local = ImportReport.builder();
         Map<Scope, List<Dependency>> deps = new EnumMap<>(Scope.class);
-        Set<String> hoisted = new HashSet<>();
-        for (GradleModel.Configuration c : p.configurations()) mapConfiguration(p, c, deps, local, hoisted);
-        bomPlatform(p, applied, deps);
+        boolean platformed = bomPlatforms(p, applied, deps, local);
+        for (GradleModel.Configuration c : p.configurations()) mapConfiguration(p, c, deps, local, platformed);
         for (String url : p.repositories()) repository(url);
         List<PluginConfig> plugins = GradleImporter.mapPluginTables(applied, p.pluginVersions(), importRules, local);
         reportPlugins(p, applied, local);
@@ -341,19 +339,41 @@ final class GradleModelImporter {
     }
 
     /**
-     * A project under the dependency-management plugin but without the Boot plugin takes Boot's BOM as
-     * its {@code [platform-dependencies]} entry, so its version-less starters resolve; with the Boot
-     * plugin applied the {@code [spring-boot]} table brings the BOM itself.
+     * The BOMs the project's {@code dependencyManagement { imports { mavenBom … } } } block names are
+     * its {@code [platform-dependencies]} entries, so the version-less dependencies they manage stay
+     * platform-managed; a block naming none under a Boot plugin on the classpath imports Boot's BOM.
+     * Boot's BOM is written only without the Boot plugin, whose {@code [spring-boot]} table brings it.
+     * A BOM whose version reads a property nothing defines is a row. Answers whether a BOM was written.
      */
-    private static void bomPlatform(GradleModel.Project p, Set<String> applied, Map<Scope, List<Dependency>> deps) {
-        String bom = p.springBootBom();
-        if (bom == null || applied.contains("org.springframework.boot")) return;
-        String[] parts = bom.split(":");
-        if (parts.length != 3) return;
-        List<Dependency> platforms = deps.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>());
-        String module = parts[0] + ":" + parts[1];
-        if (platforms.stream().anyMatch(d -> d.module().equals(module))) return;
-        platforms.add(Dependency.of(parts[1], module, VersionSelector.parse(parts[2])));
+    private static boolean bomPlatforms(
+            GradleModel.Project p, Set<String> applied, Map<Scope, List<Dependency>> deps, ImportReport.Builder local) {
+        List<String> boms = new ArrayList<>(p.importedBoms());
+        if (boms.isEmpty() && p.springBootBom() != null) boms.add(p.springBootBom());
+        boolean written = false;
+        for (String bom : boms) {
+            if (bom.indexOf('$') >= 0) {
+                local.warning("dependencyManagement imports the BOM `" + bom + "`, whose version reads a property"
+                        + " nothing defines; declare it under [platform-dependencies] by hand.");
+                continue;
+            }
+            String[] parts = bom.split(":");
+            if (parts.length != 3) {
+                local.warning("dependencyManagement imports `" + bom + "`, which is not `group:artifact:version`;"
+                        + " declare the BOM under [platform-dependencies] by hand.");
+                continue;
+            }
+            if (bom.equals(p.springBootBom()) && applied.contains("org.springframework.boot")) {
+                written = true;
+                continue;
+            }
+            List<Dependency> platforms = deps.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>());
+            String module = parts[0] + ":" + parts[1];
+            written = true;
+            if (platforms.stream().anyMatch(d -> d.module().equals(module))) continue;
+            platforms.add(Dependency.of(
+                    GradleDependencies.shortNameFor(module).orElse(parts[1]), module, VersionSelector.parse(parts[2])));
+        }
+        return written;
     }
 
     // --- configurations -----------------------------------------------------
@@ -363,7 +383,7 @@ final class GradleModelImporter {
             GradleModel.Configuration c,
             Map<Scope, List<Dependency>> deps,
             ImportReport.Builder local,
-            Set<String> pinnedByManagement) {
+            boolean platformed) {
         Scope scope = GradleDependencies.mapConfiguration(c.name());
         if (scope == null) {
             if (!isToolConfiguration(c.name()) && !c.dependencies().isEmpty()) {
@@ -378,8 +398,7 @@ final class GradleModelImporter {
             }
             return;
         }
-        for (GradleModel.Dependency d : c.dependencies())
-            mapDependency(p, c.name(), scope, d, deps, local, pinnedByManagement);
+        for (GradleModel.Dependency d : c.dependencies()) mapDependency(p, c.name(), scope, d, deps, local, platformed);
         for (GradleModel.Constraint k : c.constraints()) {
             if (k.version().isBlank() || k.module().indexOf(':') <= 0) continue;
             String artifact = k.module().substring(k.module().indexOf(':') + 1);
@@ -427,7 +446,7 @@ final class GradleModelImporter {
             GradleModel.Dependency d,
             Map<Scope, List<Dependency>> deps,
             ImportReport.Builder local,
-            Set<String> pinnedByManagement) {
+            boolean platformed) {
         switch (d.kind()) {
             case "project" -> {
                 String sibling = d.projectPath() == null ? null : namesByPath.get(d.projectPath());
@@ -440,7 +459,7 @@ final class GradleModelImporter {
                 if (!d.excludes().isEmpty()) edge = edge.withExclusions(exclusions(d));
                 deps.computeIfAbsent(scope, s -> new ArrayList<>()).add(edge);
             }
-            case "module" -> mapModule(p, scope, d, deps, local, pinnedByManagement);
+            case "module" -> mapModule(p, scope, d, deps, local, platformed);
             case "files" ->
                 local.warning("file dependency `" + String.join(", ", d.files()) + "` on configuration `"
                         + configuration + "` has no coordinate to import; dropped.");
@@ -456,7 +475,7 @@ final class GradleModelImporter {
             GradleModel.Dependency d,
             Map<Scope, List<Dependency>> deps,
             ImportReport.Builder local,
-            Set<String> pinnedByManagement) {
+            boolean platformed) {
         if (d.group().isBlank() || d.artifact().isBlank()) {
             local.error("dependency `" + d.module() + "` has no group or no artifact; dropped.");
             return;
@@ -467,12 +486,14 @@ final class GradleModelImporter {
         String version = d.effectiveVersion();
         Dependency dep;
         if (version.isBlank()) {
-            String managed = p.springBootBom() == null ? p.managedVersions().get(module) : null;
+            // A BOM written as a platform row manages the version; without one, the version the
+            // dependency-management plugin supplies is all there is to write.
+            String managed = platformed ? null : p.managedVersions().get(module);
             if (managed != null && !managed.isBlank()) {
                 dep = Dependency.of(shortName, module, VersionSelector.parse(managed));
-                pinnedByManagement.add(module);
                 local.warning("version of " + module + " (" + managed + ") comes from the dependency-management"
-                        + " plugin's imported BOM; written as an exact pin.");
+                        + " plugin's `dependencyManagement { }` block, not a BOM this import can name; written as"
+                        + " an exact pin.");
             } else {
                 dep = Dependency.platformManaged(shortName, module);
             }

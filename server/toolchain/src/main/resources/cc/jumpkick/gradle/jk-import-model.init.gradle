@@ -14,6 +14,7 @@ import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
 import org.gradle.api.attributes.Category
 
@@ -145,9 +146,71 @@ def describeProject(Project p, Project root, List<String> probeIds) {
                     .getField('BOM_COORDINATES').get(null).toString()
         } catch (Throwable ignored) {
         }
+        m.importedBoms = importedBoms(p)
     }
     m.tasks = p.tasks.findAll { isScriptTask(it) }.collect { [name: it.name, type: taskType(it), group: it.group ?: ''] }
     return m
+}
+
+// The BOMs a `dependencyManagement { imports { mavenBom … } }` block names. The plugin's API
+// exposes the versions it manages, not the BOM they came from, so the script text is read: the
+// project's own build script, else the nearest ancestor's (a root's `subprojects { }` block). A
+// `$property` in a coordinate is the project's property; `SpringBootPlugin.BOM_COORDINATES` is
+// Boot's BOM; a placeholder nothing defines is left for the import to report.
+def importedBoms(Project p) {
+    for (Project owner = p; owner != null; owner = owner.parent) {
+        def script = owner.buildFile
+        if (script == null || !script.isFile()) continue
+        def text = script.text
+        if (!text.contains('mavenBom')) continue
+        def boms = []
+        def matcher = text =~ /mavenBom\s*\(?\s*(?:"([^"\n]*)"|'([^'\n]*)'|([A-Za-z_][\w.]*BOM_COORDINATES))/
+        while (matcher.find()) {
+            def literal = matcher.group(1) ?: matcher.group(2)
+            if (literal != null) {
+                boms << interpolate(p, literal)
+            } else {
+                try {
+                    boms << p.buildscript.classLoader.loadClass('org.springframework.boot.gradle.plugin.SpringBootPlugin')
+                            .getField('BOM_COORDINATES').get(null).toString()
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return boms
+    }
+    return []
+}
+
+// `$name` / `${name}` / `${property("name")}` / `${libs.versions.alias.get()}` in a script literal,
+// as the project answers them.
+def interpolate(Project p, String literal) {
+    return literal.replaceAll('\\$\\{([^}]*)\\}|\\$([A-Za-z_][A-Za-z0-9_]*)') { List<String> groups ->
+        def expression = (groups[1] ?: groups[2]).trim()
+        def value = propertyValue(p, expression)
+        value != null ? value : groups[0]
+    }
+}
+
+def propertyValue(Project p, String expression) {
+    def lookup = expression =~ /^(?:(?:project|rootProject)\.)?(?:property|findProperty|properties|extra|ext)\s*[(\[]\s*["']([^"']*)["']\s*[)\]]$/
+    def catalog = expression =~ /^([A-Za-z_][A-Za-z0-9_]*)\.versions\.([A-Za-z0-9_.]+)\.get\(\)$/
+    try {
+        if (lookup.matches()) return p.findProperty(lookup.group(1))?.toString()
+        if (catalog.matches()) {
+            def found = p.extensions.findByType(VersionCatalogsExtension)
+                    ?.named(catalog.group(1))
+                    ?.findVersion(catalog.group(2).replace('.', '-'))
+            return found?.isPresent() ? found.get().toString() : null
+        }
+        def name = expression
+        for (String prefix : ['project.', 'rootProject.', 'ext.', 'extra.']) {
+            if (name.startsWith(prefix)) name = name.substring(prefix.length())
+        }
+        return name ==~ /[A-Za-z_][A-Za-z0-9_]*/ ? p.findProperty(name)?.toString() : null
+    } catch (Throwable ignored) {
+        return null
+    }
 }
 
 def relDirs(Project p, Collection dirs) {

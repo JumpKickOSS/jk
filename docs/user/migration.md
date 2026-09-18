@@ -460,8 +460,8 @@ the wrapper's `distributionSha256Sum` or Gradle's published `.sha256`. Gradle ru
 the engine's JDK when the distribution accepts it and otherwise on the newest installed JDK it
 does (a wrapper pinned to 8.3 runs on JDK 20 or older; none installed is a refusal naming the
 range), and writes the evaluated project model: every project, the plugins it applies, the
-dependencies each configuration declares, its toolchain, source roots, repositories and
-script-registered tasks. Version catalogs, `subprojects { }` / `allprojects { }`, `ext` and
+dependencies each configuration declares, its toolchain, source roots, repositories, the BOMs its
+`dependencyManagement` block imports and script-registered tasks. Version catalogs, `subprojects { }` / `allprojects { }`, `ext` and
 `gradle.properties` placeholders, `buildSrc` and convention plugins therefore all import as what
 they evaluate to. The fork's output is the import's progress, and a fork whose output stands
 still for the resolve stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s) is stopped and refused with
@@ -484,10 +484,14 @@ table for (`intTestImplementation`, a japicmp `baseline`) is a row naming it and
 dependencies; the tool configurations Gradle's own plugins declare (`kotlinCompilerClasspath`,
 `dokkaPlugin`, …) are not. `exclude` rules ride the edge (`isTransitive = false` is `*:*`); a
 classifier is kept; a dynamic version (`1.+`, `latest.release`) is written as `latest` with a row;
-refreshVersions' `_` is written as the pin `versions.properties` at the root holds (below).
-A module under the Spring dependency-management plugin without the Boot plugin takes Boot's BOM as
-its `[platform-dependencies]` entry; with the Boot plugin the `[spring-boot]` table brings it. A
-task the build script registers (`tasks.register("release")`, an ad-hoc `Copy`) is a Tier-2 row
+refreshVersions' `_` is written as the pin `versions.properties` at the root holds (below). The
+BOMs a module's `dependencyManagement { imports { mavenBom … } }` block names — read from the
+script text, the module's own else the nearest ancestor's, a `$property` in a coordinate as the
+project answers it — are its `[platform-dependencies]` entries, so the version-less dependencies
+they manage stay platform-managed; Boot's own BOM is written only without the Boot plugin, whose
+`[spring-boot]` table brings it. A version the plugin supplies from no BOM (a `dependencyManagement
+{ dependencies { } }` entry) is an exact pin with a row, and a BOM whose version reads a property
+nothing defines is a row. A task the build script registers (`tasks.register("release")`, an ad-hoc `Copy`) is a Tier-2 row
 naming the task, never an error; a source set other than `main` and `test`, or a source root
 outside jk's layout, is a row; a plugin nothing maps is a row naming its id or class.
 
