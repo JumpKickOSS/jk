@@ -195,7 +195,7 @@ class PomLintImportTest {
         List<String> rows = messages(result);
         assertThat(rows).anySatisfy(m -> assertThat(m)
                 .contains("`flyway-maven-plugin`")
-                .contains("flyway-commandline")
+                .contains("flyway-commandline:<version> --main org.flywaydb.commandline.Main --with")
                 .contains("`FLYWAY_URL` (`jdbc:h2:file:./target/db`)")
                 .contains("database.md"));
         assertThat(rows).anySatisfy(m -> assertThat(m)
