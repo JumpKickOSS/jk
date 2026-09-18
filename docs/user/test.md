@@ -371,7 +371,10 @@ The JUnit 4 you declare is the JUnit 4 the suite runs on — Vintage's own `juni
 your pin, as a transitive takes a direct dependency's in Maven. Vintage refuses a JUnit older than
 4.12, so an exact pin below that is refused by `jk lock` with the fix (`4.13.2`, the last release of
 the line, still runs `TestCase` suites); `jk import` writes that raise for you and says so in its
-notes. Results render per test as they do for Jupiter: the class from the runner, the method from
+notes. A platform-managed row (`junit = "junit:junit"` under a BOM such as
+`spring-boot-dependencies`) runs at the version the BOM supplies and is judged against the floor
+at that version — refused only when the BOM's own number is below 4.12, with the row to declare.
+Results render per test as they do for Jupiter: the class from the runner, the method from
 the JUnit 4 display name. Declaring the Vintage engine yourself is fine — the injection is
 `putIfAbsent`, and your version wins.
 

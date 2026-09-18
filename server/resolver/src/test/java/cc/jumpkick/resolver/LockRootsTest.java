@@ -235,6 +235,28 @@ class LockRootsTest {
     }
 
     @Test
+    void a_platform_managed_junit4_row_is_not_judged_against_the_floor_and_pins_nothing() throws Exception {
+        JkBuild managed = JkBuildParser.parse("""
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [platform-dependencies]
+                spring-boot-dependencies = "org.springframework.boot:spring-boot-dependencies:4.1.0"
+
+                [test-dependencies]
+                junit = "junit:junit"
+                """);
+        LockRoots.Declared declared = LockRoots.partition(managed, List.of(), true);
+        assertThat(declared.test())
+                .as("the Vintage engine is injected for the managed row")
+                .containsKey(TestEngines.JUNIT4.engine().packageKey());
+        assertThat(TestEngines.declaredTriggerPins(managed))
+                .as("the BOM's version is the pin; the marker is not one")
+                .isEmpty();
+    }
+
+    @Test
     void a_feature_naming_a_non_optional_dependency_is_refused_in_one_sentence() throws Exception {
         JkBuild project = JkBuildParser.parse("""
                 group = "com.example"

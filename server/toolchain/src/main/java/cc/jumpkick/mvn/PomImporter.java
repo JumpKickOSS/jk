@@ -919,7 +919,7 @@ public final class PomImporter {
      */
     private static Dependency raiseToEngineFloor(Dependency d, Scope scope, ImportReport.Builder report) {
         if (scope != Scope.TEST && scope != Scope.TEST_DEV) return d;
-        if (!(d.version() instanceof VersionSelector.Exact exact)) return d;
+        if (d.isPlatformManaged() || !(d.version() instanceof VersionSelector.Exact exact)) return d;
         for (TestEngines.Row row : TestEngines.ROWS) {
             if (!row.trigger().equals(d.module()) || Versions.compare(exact.version(), row.floor()) >= 0) continue;
             report.warning(d.module()
