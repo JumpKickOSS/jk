@@ -46,6 +46,11 @@ class BspServerTest {
     void target_json_canRun_when_main_present() {
         String json = BspServer.targetJson("file:///p#app", "app", "file:///p/app", true);
         assertThat(json).contains("\"canRun\":true");
+        assertThat(json)
+                .as("a module with an [application] main is an application")
+                .contains("\"tags\":[\"application\"]");
+        assertThat(BspServer.targetJson("file:///p#lib", "lib", "file:///p/lib", false))
+                .contains("\"tags\":[\"library\"]");
     }
 
     @Test

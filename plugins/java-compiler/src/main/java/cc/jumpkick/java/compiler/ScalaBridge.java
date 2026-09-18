@@ -71,9 +71,15 @@ final class ScalaBridge {
         return out;
     }
 
+    /**
+     * The options scalac runs with: the Java level as {@code -java-output-version}, and {@code
+     * -color:never} — scalac colours its messages by default, and a diagnostic is text the engine
+     * parses, the IDE receives and the results file keeps, not a terminal's.
+     */
     static String[] scalacOptions(@Nullable MixedScala mixed, int release) {
-        if (mixed == null || release <= 0) return new String[0];
-        return new String[] {"-java-output-version", Integer.toString(release)};
+        if (mixed == null) return new String[0];
+        if (release <= 0) return new String[] {"-color:never"};
+        return new String[] {"-java-output-version", Integer.toString(release), "-color:never"};
     }
 
     private static Compilers javaOnlyCompilers(JavaCompiler javac) {
