@@ -287,15 +287,20 @@ public final class PomImporter {
         TestPlugins.TestSettings tests = TestPlugins.map(em.model(), report);
         MigrationPlugins.report(em.model(), report);
         PackagingPlugins.Packaging packaging = PackagingPlugins.map(em, mainClass, report);
+        // The fat jar is the application's when the module has a main; a shaded library — neo4j's
+        // lucene9-shaded, nacos's client — ships it under [library], relocations included.
         JkBuild.Application application = mainClass != null
                 ? new JkBuild.Application(mainClass, packaging.fatJar(), false, false, null, packaging.relocate())
                 : null;
+        JkBuild.Library library =
+                mainClass == null && packaging.fatJar() ? new JkBuild.Library(true, packaging.relocate()) : null;
         JkBuild.Builder builder = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .repositories(repos)
                 .features(profiles.features())
                 .profiles(toProfiles(profiles.profiles()))
                 .application(application)
+                .library(library)
                 .nativeConfig(packaging.nativeConfig())
                 .image(packaging.image())
                 .pluginConfig(packaging.springBoot())
@@ -398,10 +403,9 @@ public final class PomImporter {
         reportUnknownProfiles(rootRaw, report);
         ReactorModelResolver reactor = new ReactorModelResolver(resolver, activeProfiles);
         // Each module is imported as the walk reaches it and its effective model is dropped right
-        // after: what stays of a module is its JkBuild, its rows and its shade relocations.
+        // after: what stays of a module is its JkBuild and its rows.
         Map<String, Imported> imported = new LinkedHashMap<>();
         ModuleRows moduleRows = new ModuleRows();
-        List<ShadedSiblings.Shaded> shaded = new ArrayList<>();
         InheritedRows inherited = new InheritedRows(Objects.requireNonNull(rootFile.getParent()));
         // The managed pins a reactor parent owns are written once, on the root, whose table every
         // member's lock reads.
@@ -412,8 +416,6 @@ public final class PomImporter {
                     Imported child = importModel(model, remote, settings, inherited, hoistedManaged);
                     imported.put(leaf.path(), child);
                     moduleRows.addAll(leaf.path(), child.report());
-                    ShadedSiblings.Shaded member = ShadedSiblings.of(leaf, model.model());
-                    if (member != null) shaded.add(member);
                     if ("pom".equals(model.model().getPackaging())) reactorManaged.add(leaf.ga(), model);
                 });
         List<ReactorModules.Leaf> leaves = found.modules();
@@ -435,7 +437,6 @@ public final class PomImporter {
         Map<String, JkBuild> members = SelfHostedFrameworks.strip(
                 memberBuilds(imported, reactorManaged, found.unbuilt()), found.boms(), rootProject.version(), report);
         SiblingNames.report(members, report);
-        ShadedSiblings.report(leaves, shaded, report);
         // The workspace root is a coordination point — no deps of its own — but it owns the one
         // repository list the workspace lock resolves against, so every member's `<repositories>`
         // is hoisted onto it.

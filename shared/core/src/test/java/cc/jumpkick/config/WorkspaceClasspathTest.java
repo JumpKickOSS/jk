@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -411,6 +412,52 @@ class WorkspaceClasspathTest {
                 .as("the runtime view lists only what is on disk")
                 .isEmpty();
         assertThat(result.siblingClosureClasses()).containsExactly(libClasses);
+    }
+
+    /**
+     * A sibling whose fat jar relocates packages is that jar in both views: the shaded names exist
+     * nowhere else, so a consumer compiles against the {@code -all.jar}, waits for it as it waits
+     * for classes, and does not take the sibling's own lock rows — the jar carries them.
+     */
+    @Test
+    void a_relocating_sibling_is_its_shaded_jar_in_both_views_and_brings_no_lock(@TempDir Path root) throws Exception {
+        scaffold(root);
+        Files.writeString(root.resolve("lib/jk.toml"), """
+                group = "com.ex"
+                name = "lib"
+                version = "0.1.0"
+                jdk = "25"
+
+                [library]
+                relocate = { "com.ex.lib" = "com.ex.shaded.lib" }
+                """);
+        Files.writeString(root.resolve("lib/jk-lock.toml"), "version = 1\n");
+        Files.createDirectories(root.resolve("lib/src/com/ex/lib"));
+        Files.writeString(root.resolve("lib/src/com/ex/lib/Util.java"), "package com.ex.lib; public class Util {}");
+        BuildLayout lib = BuildLayout.of(root.resolve("lib"), JkBuildParser.parse(root.resolve("lib/jk.toml")));
+        Files.createDirectories(lib.classesDir().resolve("com/ex/lib"));
+        Files.writeString(lib.classesDir().resolve("com/ex/lib/Util.class"), "bytes");
+
+        JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
+        var before = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN));
+        assertThat(before.siblingClosureClasses()).containsExactly(lib.assemblyJar());
+        assertThat(before.siblingClosureJars()).containsExactly(lib.assemblyJar());
+        assertThat(before.missingSiblingClasses())
+                .as("a classes tree is not what this consumer compiles against")
+                .singleElement()
+                .asString()
+                .contains("expected its relocating jar at")
+                .contains("lib-0.1.0-all.jar");
+        assertThat(before.siblingLocks())
+                .as("the jar bundles the sibling's dependencies")
+                .isEmpty();
+
+        Files.createDirectories(requireNonNull(lib.assemblyJar().getParent()));
+        Files.writeString(lib.assemblyJar(), "jar");
+        var after = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN));
+        assertThat(after.missingSiblingClasses()).isEmpty();
+        assertThat(after.missingSiblingJars()).isEmpty();
+        assertThat(after.jars()).containsExactly(lib.assemblyJar());
     }
 
     /** A sibling with nothing to compile names that cause in both views rather than a bare path. */

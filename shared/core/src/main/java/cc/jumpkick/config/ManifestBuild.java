@@ -68,6 +68,7 @@ public final class ManifestBuild {
                 "manifest",
                 "plugins",
                 "application",
+                "library",
                 "native",
                 "image",
                 "train",

@@ -97,7 +97,7 @@ class WorkspacePublishGateTest {
                 TaskNames.COMPILE_TEST,
                 TaskNames.RUN_TESTS);
 
-        assertThat(WorkspaceRunPhase.classesWaitSet(plan))
+        assertThat(WorkspaceRunPhase.classesWaitSet(plan, false))
                 .containsExactlyInAnyOrder(
                         TaskNames.COMPILE_JAVA,
                         TaskNames.COMPILE_KOTLIN,
@@ -108,11 +108,33 @@ class WorkspacePublishGateTest {
     /** A plan whose only tree writer is its compiler publishes there; one that compiles nothing publishes on completion. */
     @Test
     void the_classes_publish_takes_what_the_plan_has() {
-        assertThat(WorkspaceRunPhase.classesWaitSet(planWith(TaskNames.COMPILE_GROOVY, TaskNames.WRITE_STAMP_GROOVY)))
+        assertThat(WorkspaceRunPhase.classesWaitSet(
+                        planWith(TaskNames.COMPILE_GROOVY, TaskNames.WRITE_STAMP_GROOVY), false))
                 .containsExactly(TaskNames.COMPILE_GROOVY);
         assertThat(WorkspaceRunPhase.classesWaitSet(
-                        planWith(TaskNames.RESOLVE_DEPS, TaskNames.BUILD_LOGIC_AFTER_BUILD)))
+                        planWith(TaskNames.RESOLVE_DEPS, TaskNames.BUILD_LOGIC_AFTER_BUILD), false))
                 .isEmpty();
+    }
+
+    /**
+     * A module whose fat jar relocates packages is compiled against through that jar, so its
+     * dependents are admitted only once {@code package-assembly} has written it.
+     */
+    @Test
+    void a_relocating_modules_classes_publish_waits_for_its_assembly() {
+        BuildPlan plan = planWith(
+                TaskNames.COMPILE_JAVA,
+                TaskNames.COPY_RESOURCES,
+                TaskNames.PACKAGE_JAR,
+                TaskNames.PACKAGE_ASSEMBLY,
+                TaskNames.RUN_TESTS);
+
+        assertThat(WorkspaceRunPhase.classesWaitSet(plan, true))
+                .containsExactlyInAnyOrder(
+                        TaskNames.COMPILE_JAVA, TaskNames.COPY_RESOURCES, TaskNames.PACKAGE_ASSEMBLY);
+        assertThat(WorkspaceRunPhase.classesWaitSet(plan, false))
+                .as("a fat jar that keeps every name is not what dependents compile against")
+                .containsExactlyInAnyOrder(TaskNames.COMPILE_JAVA, TaskNames.COPY_RESOURCES);
     }
 
     /** Observed as the scheduler observes it: dependents are admitted before this module packages. */
@@ -139,7 +161,7 @@ class WorkspacePublishGateTest {
                 .build());
         BuildPlan plan = b.build();
 
-        WorkspaceRunPhase.watchClassesSteps(plan, () -> log.add("PUBLISH"));
+        WorkspaceRunPhase.watchClassesSteps(plan, false, () -> log.add("PUBLISH"));
         assertThat(plan.run().success()).isTrue();
 
         assertThat(log)

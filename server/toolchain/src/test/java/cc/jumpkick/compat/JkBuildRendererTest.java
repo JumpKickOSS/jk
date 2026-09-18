@@ -79,6 +79,23 @@ class JkBuildRendererTest {
     }
 
     @Test
+    void renders_and_round_trips_the_library_table() {
+        JkBuild shaded = JkBuild.builder(new Project("com.ex", "lucene9-shaded", "1.0.0", 25))
+                .library(new JkBuild.Library(true, Map.of("org.apache.lucene", "com.ex.shaded.lucene9")))
+                .build();
+
+        String out = JkBuildRenderer.render(shaded);
+        assertThat(out)
+                .contains(
+                        "[library]\nassembly = true\nrelocate = { \"org.apache.lucene\" = \"com.ex.shaded.lucene9\" }")
+                .doesNotContain("[application]");
+        JkBuild parsed = JkBuildParser.parse(out);
+        assertThat(parsed.isApplication()).isFalse();
+        assertThat(parsed.assembly()).isTrue();
+        assertThat(parsed.relocate()).containsEntry("org.apache.lucene", "com.ex.shaded.lucene9");
+    }
+
+    @Test
     void renders_the_image_table_with_only_the_keys_that_are_set() {
         ImageTable image = new ImageTable(
                 "eclipse-temurin:{java-major-version}-jre",

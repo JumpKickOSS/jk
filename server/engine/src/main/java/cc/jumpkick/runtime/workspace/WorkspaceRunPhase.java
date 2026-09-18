@@ -96,6 +96,7 @@ final class WorkspaceRunPhase {
                                     () -> "admitted a unit with no prepared plan: " + unit.dir()),
                             listener,
                             testClassesConsumed.contains(unit.dir()),
+                            unit.manifest().relocates(),
                             // A module with Kotlin consumers has its classes tree snapshotted for
                             // them before they are admitted, so their compile keys are memo lookups.
                             KotlinAbiWarmup.before(
@@ -178,12 +179,13 @@ final class WorkspaceRunPhase {
             ModulePlan module,
             WorkspaceBuildListener listener,
             boolean testClassesConsumed,
+            boolean relocates,
             KotlinAbiWarmup.Warmup warmup,
             SiblingArtifacts siblings,
             Clock clock) {
         BuildPlanListener moduleListener = listener.onModuleStart(module);
         if (moduleListener != null) module.plan().addListener(moduleListener);
-        watchClassesSteps(module.plan(), warmup.publish());
+        watchClassesSteps(module.plan(), relocates, warmup.publish());
         watchArtifactSteps(module.plan(), testClassesConsumed, () -> siblings.published(module.dir()));
         long started = clock.nanos();
         try {
@@ -258,14 +260,15 @@ final class WorkspaceRunPhase {
     }
 
     /**
-     * The steps whose success makes this module's classes tree whole for its dependents' compiles:
-     * every language compile in the plan, the classes assembler of a mixed module, and the
-     * resource copy — resources are not compiled against, but they land in the same tree, and a
-     * dependent that fingerprints the tree while they are being written would memoize a token
-     * under an identity no later build will see. A plan with none of these (a sourceless root)
-     * publishes on completion.
+     * The steps whose success makes what this module's dependents compile against whole: every
+     * language compile in the plan, the classes assembler of a mixed module, and the resource
+     * copy — resources are not compiled against, but they land in the same tree, and a dependent
+     * that fingerprints the tree while they are being written would memoize a token under an
+     * identity no later build will see. A module that {@code relocates} packages is compiled
+     * against through its {@code -all.jar}, so its {@code package-assembly} joins the set. A plan
+     * with none of these (a sourceless root) publishes on completion.
      */
-    static Set<String> classesWaitSet(BuildPlan plan) {
+    static Set<String> classesWaitSet(BuildPlan plan, boolean relocates) {
         Set<String> present = new HashSet<>();
         for (Task step : plan.steps()) present.add(step.name());
         Set<String> wait = new HashSet<>();
@@ -277,12 +280,13 @@ final class WorkspaceRunPhase {
                 TaskNames.COPY_RESOURCES)) {
             if (present.contains(step)) wait.add(step);
         }
+        if (relocates && present.contains(TaskNames.PACKAGE_ASSEMBLY)) wait.add(TaskNames.PACKAGE_ASSEMBLY);
         return wait;
     }
 
-    /** Admit dependents once every step that writes this module's classes tree is terminal-successful. */
-    static void watchClassesSteps(BuildPlan plan, Runnable publish) {
-        watchSteps(plan, classesWaitSet(plan), publish);
+    /** Admit dependents once every step that writes what they compile against is terminal-successful. */
+    static void watchClassesSteps(BuildPlan plan, boolean relocates, Runnable publish) {
+        watchSteps(plan, classesWaitSet(plan, relocates), publish);
     }
 
     /**

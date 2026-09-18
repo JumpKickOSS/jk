@@ -520,6 +520,8 @@ public final class IdeOps {
             BuildLayout layout = BuildLayout.of(me.getKey(), me.getValue());
             String name = me.getValue().project().name();
             jarToModule.put(layout.mainJar(), name);
+            // A relocating sibling is its -all.jar in the closure; the IDE edge is still the module.
+            if (me.getValue().relocates()) jarToModule.put(layout.assemblyJar(), name);
             nameToDir.put(name, me.getKey());
         }
 
