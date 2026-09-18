@@ -104,6 +104,11 @@ that cannot be reached during that check leaves a Tier-2 note, not a claim; a pi
 on this machine already fetched is not checked again. Read that report before trusting the
 generated `jk.toml`.
 
+**A repository that never answers stops the import.** The parent and BOM reads run under the
+resolve stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s; `0` never stops): an import whose reads stop
+advancing for that long fails naming the coordinate it was reading and the URL it waited on, as
+`jk lock` does, instead of sitting silent until something kills it.
+
 **An optional dependency stays optional.** `<optional>true</optional>` is written as
 `optional = true`: the module's own dependency, which no consumer inherits — see
 [Dependencies](dependencies.md#optional-dependencies).
