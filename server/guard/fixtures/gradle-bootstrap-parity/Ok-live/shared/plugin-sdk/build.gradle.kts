@@ -3,6 +3,6 @@ plugins {
     `java-library`
 }
 
-// Published as `cc.jumpkick:jk-plugin-sdk` on its own version line, independent of the tree's.
+// Published as `cc.jumpkick:jk-plugin-sdk` at the tree's version, read from the root jk.toml.
 group = "cc.jumpkick"
-version = "0.1.0"
+version = JkTreeVersion.of(rootProject.projectDir)

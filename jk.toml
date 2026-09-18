@@ -4,6 +4,13 @@ version = "0.13.7"
 description = "JumpKick: The best damn build system for the JVM"
 java = 25
 
+# The POM metadata every published member carries; Maven Central refuses a POM without it.
+[publish]
+url = "https://jumpkick.build"
+licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
+developers = [{ id = "bsant", name = "Bryan Sant" }]
+scm = { url = "https://github.com/JumpKickOSS/jk", connection = "scm:git:https://github.com/JumpKickOSS/jk.git", developer-connection = "scm:git:ssh://git@github.com/JumpKickOSS/jk.git" }
+
 [workspace]
 modules = [
   # Shared Libraries
