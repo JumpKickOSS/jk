@@ -120,6 +120,12 @@ public final class TaskNames {
     public static final String RUN_TESTS = "run-tests";
 
     /**
+     * The label {@link #RUN_TESTS} carries when it replays a suite's green marker instead of running
+     * it; a client counts the modules served from the action cache by it.
+     */
+    public static final String TESTS_UP_TO_DATE = "tests up-to-date";
+
+    /**
      * Packaging steps that require only {@link #PACKAGE_JAR} and therefore run <em>concurrently</em>
      * with {@link #RUN_TESTS} rather than after it.
      *

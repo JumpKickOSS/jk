@@ -7,11 +7,14 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +53,25 @@ class WorkspaceRunViewTest {
         // `[01 of 01]` for every module of an N-module workspace.
         assertThat(out).contains("[1 of 2]");
         assertThat(run.planned()).isEqualTo(2);
+    }
+
+    @Test
+    void served_from_cache_counts_the_modules_whose_suite_replayed_its_green_marker() {
+        var run = headlessView();
+        WorkspaceBuildListener lis = run.headless();
+        Capture.stdout(() -> {
+            lis.onPlan(List.of(module("g:a", Path.of("/ws/a")), module("g:b", Path.of("/ws/b"))));
+            var served = lis.onModuleStart(module("g:a", Path.of("/ws/a")));
+            served.label(TaskNames.RUN_TESTS, TaskNames.TESTS_UP_TO_DATE);
+            served.stepFinish(TaskNames.RUN_TESTS, "test", TaskStatus.SKIPPED, Duration.ZERO, Duration.ZERO);
+            var ran = lis.onModuleStart(module("g:b", Path.of("/ws/b")));
+            ran.stepFinish(TaskNames.RUN_TESTS, "test", TaskStatus.SUCCESS, Duration.ZERO, Duration.ZERO);
+            var none = lis.onModuleStart(module("g:c", Path.of("/ws/c")));
+            none.label(TaskNames.RUN_TESTS, "no tests");
+            none.stepFinish(TaskNames.RUN_TESTS, "test", TaskStatus.SKIPPED, Duration.ZERO, Duration.ZERO);
+        });
+        // A module with no tests is skipped too; it was not served anything.
+        assertThat(run.servedFromCache()).isEqualTo(1);
     }
 
     @Test

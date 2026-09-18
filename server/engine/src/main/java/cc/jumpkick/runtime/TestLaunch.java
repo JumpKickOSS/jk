@@ -240,7 +240,7 @@ final class TestLaunch {
         if (marker.isEmpty() || !TestStamp.green(marker.get())) return false;
         ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
         // A run that found no test is not up-to-date tests; it is a module with none to run.
-        ctx.label(TestStamp.noTests(marker.get()) ? "no tests" : "tests up-to-date");
+        ctx.label(TestStamp.noTests(marker.get()) ? "no tests" : TaskNames.TESTS_UP_TO_DATE);
         ctx.cached();
         // Replay the green run's counts (stored on the marker) so the summary
         // line reads "Passed N tests", not "No tests" — without this a
