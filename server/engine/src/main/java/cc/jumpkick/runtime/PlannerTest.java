@@ -556,7 +556,7 @@ public final class PlannerTest {
                         // One debugger attaches to one JVM: a debug run is a one-worker run.
                         int testWorkers = in.session().debugJvm() != null
                                 ? 1
-                                : TestLaunch.dispatchWorkers(in, projectUnderTest.build());
+                                : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
                         TestProgressListener listener = TestSupport.bridgeListener(
                                 ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets);
                         JUnitLauncher launcher = TestLaunch.launcher(

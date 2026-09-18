@@ -316,6 +316,12 @@ Modules that cannot share a JVM pin workers in `jk.toml`. A positive module pin 
 over CLI auto / `-w N`. `workers = 0` is the same as no pin: the module takes this build's
 auto share (it does not get the whole machine).
 
+A framework plugin can pin the same thing for its modules: a Quarkus module's suite runs in
+one JVM — the shape of Surefire's single fork — because Quarkus's test bootstrap writes and
+removes its test-class index beside the compiled classes and binds the application's ports,
+which parallel suite JVMs of one module would race each other for. `-w` does not widen such a
+module; its own `[test] workers = N` does.
+
 ```toml
 [test]
 workers = 1          # serial within this module

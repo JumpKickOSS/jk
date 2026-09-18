@@ -24,7 +24,9 @@ public record TaskDecl(
          * Optional product stage wire ({@code generate}, {@code compile}, …). Empty/null → engine
          * infers from contributions / name.
          */
-        @Nullable String stage) {
+        @Nullable String stage,
+        /** Whether the module's tests run in one JVM ({@code TaskSpec.oneTestJvm}). */
+        boolean oneTestJvm) {
 
     /** True when this task replaces the module's classes dir downstream. */
     public boolean transforms() {

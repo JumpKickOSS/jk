@@ -192,6 +192,8 @@ public final class BuildPluginHarness {
                     .append(quoteArray(step.testClasspathContributions()))
                     .append(",\"contributesTestJvmArgs\":")
                     .append(quoteArray(step.testJvmArgsContributions()))
+                    .append(",\"oneTestJvm\":")
+                    .append(step.runsTestsInOneJvm())
                     .append(",\"transformsClasses\":")
                     .append(Jsonl.quote(classesTransform == null ? "" : classesTransform))
                     .append(",\"stage\":")

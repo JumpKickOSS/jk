@@ -41,7 +41,8 @@ class PluginTestJvmArgsTest {
                 List.of(),
                 jvmArgFiles,
                 null,
-                null);
+                null,
+                false);
     }
 
     @Test

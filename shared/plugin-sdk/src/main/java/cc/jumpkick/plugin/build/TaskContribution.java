@@ -66,6 +66,15 @@ public interface TaskContribution {
      */
     TaskContribution contributesTestJvmArgs(String relFile);
 
+    /**
+     * The module's tests run in one JVM unless its manifest pins {@code [test] workers} itself: the
+     * shape of surefire's one fork, for a framework whose test bootstrap keeps state per
+     * test-classes directory or per host — Quarkus writes and removes its test-class index beside
+     * the classes and binds the application's ports — so that parallel suite JVMs sharing the
+     * module would race each other.
+     */
+    TaskContribution oneTestJvm();
+
     /** Declare a declared output dir as the module's classes-dir replacement (at most one per build). */
     TaskContribution transformsClasses(String relDir);
 

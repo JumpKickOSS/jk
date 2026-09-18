@@ -87,6 +87,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 .inputs(In.classes(), In.testRuntimeEntries(), In.config(), In.repositories())
                 .outputs(TEST_MODEL_DIR)
                 .contributesTestJvmArgs(TEST_JVM_ARGS)
+                .oneTestJvm()
                 .run(QuarkusPlugin::runTestModel);
     }
 

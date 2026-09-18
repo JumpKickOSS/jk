@@ -156,6 +156,6 @@ class ActivePluginsTest {
     private static TaskDecl step(String name) {
         return new TaskDecl(
                 name, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                null, null);
+                null, null, false);
     }
 }

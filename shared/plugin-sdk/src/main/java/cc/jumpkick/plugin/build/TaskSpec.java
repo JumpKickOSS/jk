@@ -30,6 +30,7 @@ public final class TaskSpec {
     private final List<String> contributesTestSources = new ArrayList<>();
     private final List<String> contributesTestClasspath = new ArrayList<>();
     private final List<String> contributesTestJvmArgs = new ArrayList<>();
+    private boolean oneTestJvm;
     private @Nullable String transformsClasses;
     /**
      * Optional product stage wire name ({@code generate}, {@code compile}, {@code test}, …). Null
@@ -100,6 +101,12 @@ public final class TaskSpec {
         return this;
     }
 
+    /** See {@link TaskContribution#oneTestJvm}. */
+    public TaskSpec oneTestJvm() {
+        this.oneTestJvm = true;
+        return this;
+    }
+
     public TaskSpec transformsClasses(String relDir) {
         this.transformsClasses = relDir;
         return this;
@@ -157,6 +164,11 @@ public final class TaskSpec {
 
     public List<String> testJvmArgsContributions() {
         return List.copyOf(contributesTestJvmArgs);
+    }
+
+    /** Whether the module's tests run in one JVM ({@link #oneTestJvm()}). */
+    public boolean runsTestsInOneJvm() {
+        return oneTestJvm;
     }
 
     public @Nullable String classesTransform() {
