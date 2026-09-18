@@ -97,11 +97,7 @@ final class EnginePluginAdapter {
                                     session.clientEnv(),
                                     session.jvm(),
                                     session.config().rebuildOr(false)),
-                            SessionContext.current().jdkSpec(),
-                            SessionContext.current().graalSpec(),
-                            SessionContext.current().graalHome() == null
-                                    ? null
-                                    : SessionContext.current().graalHome().toString()));
+                            SessionContext.current()));
 
             return WireStream.pumpJob(reader, ch, hostedDecoder(planName, listenerFactory, onEvent, preFinish));
         }
@@ -212,11 +208,7 @@ final class EnginePluginAdapter {
                                     session.clientEnv(),
                                     session.jvm(),
                                     session.config().rebuildOr(false)),
-                            SessionContext.current().jdkSpec(),
-                            SessionContext.current().graalSpec(),
-                            SessionContext.current().graalHome() == null
-                                    ? null
-                                    : SessionContext.current().graalHome().toString()));
+                            SessionContext.current()));
 
             return WireStream.pumpJob(reader, ch, (type, line) -> {
                 if (terminalType.equals(type)) return decode.apply(line);

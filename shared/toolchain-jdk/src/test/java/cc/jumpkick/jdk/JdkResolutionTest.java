@@ -165,7 +165,7 @@ class JdkResolutionTest {
         // suggestion of 25.0.4 completely. Downloading here would be answering a question the
         // lock never asked; only a required-* pin insists on a particular install.
         var req = req(tmp).lockJdk("temurin", "25.0.4")
-                .env("JAVA_HOME", ambient.toString())
+                .javaHome(ambient)
                 .build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
@@ -181,7 +181,7 @@ class JdkResolutionTest {
         // A floor JAVA_HOME can sidestep is not a floor. What jk falls to next depends on the host
         // running these tests, so the property under test is only that this 21 is refused.
         var req = req(tmp).lockJdk("temurin", "25.0.4")
-                .env("JAVA_HOME", ambient.toString())
+                .javaHome(ambient)
                 .build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
@@ -253,6 +253,8 @@ class JdkResolutionTest {
         private int projectJavaRelease;
         private final Map<String, @Nullable String> env = new HashMap<>();
 
+        private @Nullable Path javaHome;
+
         ReqBuilder(Path projectDir) {
             this.projectDir = projectDir;
         }
@@ -292,10 +294,26 @@ class JdkResolutionTest {
             return this;
         }
 
+        /**
+         * The caller's {@code JAVA_HOME}. Typed, not an {@link #env} entry: it does not ride the
+         * forwarded environment, so inside the engine an env read would answer with the daemon's.
+         */
+        ReqBuilder javaHome(Path home) {
+            this.javaHome = home;
+            return this;
+        }
+
         JdkResolution.Request build() {
             Function<String, @Nullable String> lookup = env::get;
             return new JdkResolution.Request(
-                    projectDir, switchSpec, envSpec, lockJdk, projectJdkSpec, projectJavaRelease, lookup);
+                    projectDir,
+                    switchSpec,
+                    envSpec,
+                    lockJdk,
+                    projectJdkSpec,
+                    projectJavaRelease,
+                    javaHome,
+                    lookup);
         }
     }
 }

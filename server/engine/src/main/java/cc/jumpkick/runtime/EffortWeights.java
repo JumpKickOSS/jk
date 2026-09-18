@@ -879,6 +879,7 @@ public final class EffortWeights {
                     lock == null ? null : lock.jdk(),
                     project.project() != null ? project.project().jdk() : null,
                     project.project() != null ? project.project().javaRelease() : 0,
+                    SessionContext.current().javaHome(),
                     env::apply);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
             return (r.jdkOpt().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;

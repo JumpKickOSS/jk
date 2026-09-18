@@ -232,6 +232,10 @@ public final class JdkEnsure {
                 lockJdk,
                 (projectJdkSpec == null || projectJdkSpec.isEmpty()) ? null : projectJdkSpec,
                 javaRelease,
+                // Typed, for the same reason the switch spec is: JAVA_HOME is not on the
+                // forwarded environment (it would seed every test JVM), so reading it out of
+                // `env` would answer with the daemon's.
+                SessionContext.current().javaHome(),
                 env::apply);
         return JdkResolution.resolve(req, registry, defaults, latestLts);
     }

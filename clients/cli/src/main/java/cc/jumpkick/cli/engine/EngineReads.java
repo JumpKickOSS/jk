@@ -380,11 +380,7 @@ final class EngineReads {
                                 SessionContext.current().jvm(),
                                 SessionContext.current().config().rebuildOr(false),
                                 TimelineOpts.noTimeline()),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString()),
+                        SessionContext.current()),
                 EngineProtocol.PLUGIN_VERB_ACK,
                 "plugin command",
                 PluginCommandReport::decode);
@@ -478,11 +474,7 @@ final class EngineReads {
                                 SessionContext.current().jvm(),
                                 SessionContext.current().config().rebuildOr(false),
                                 TimelineOpts.noTimeline()),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString()),
+                        SessionContext.current()),
                 EngineProtocol.PROJECT_INFO_ACK,
                 "project-info request",
                 ProjectInfo::decode);
@@ -518,11 +510,7 @@ final class EngineReads {
                                 SessionContext.current().jvm(),
                                 SessionContext.current().config().rebuildOr(false),
                                 TimelineOpts.noTimeline()),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString()),
+                        SessionContext.current()),
                 EngineProtocol.EXEC_PLAN_ACK,
                 "exec-plan request",
                 ExecPlan::decode);

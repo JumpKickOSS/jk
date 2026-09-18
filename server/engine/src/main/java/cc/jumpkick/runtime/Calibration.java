@@ -902,7 +902,14 @@ public final class Calibration {
             // No module context here, so the ambient layer: request env, then this process's.
             var env = BuildEnv.ambient();
             var req = new JdkResolution.Request(
-                    null, SessionContext.current().jdkSpec(), null, null, null, 0, env::apply);
+                    null,
+                    SessionContext.current().jdkSpec(),
+                    null,
+                    null,
+                    null,
+                    0,
+                    SessionContext.current().javaHome(),
+                    env::apply);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
             return r.jdkOpt().map(InstalledJdk::home);
         } catch (Exception e) {

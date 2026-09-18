@@ -251,7 +251,8 @@ public final class GlobalOptions {
         SessionContext.install(current.withToolchainSpecs(
                         firstNonBlank(g.jdk, System.getenv("JK_JDK")),
                         firstNonBlank(g.graal, System.getenv("JK_GRAAL")),
-                        graalHomeFromEnv())
+                        graalHomeFromEnv(),
+                        javaHomeFromEnv())
                 .withWorkingDir(g.workingDir())
                 .withJvm(PluginTunings.resolveClient(g.jvmCli()))
                 // The machine-shaped forward set and the JK_REPO_* credentials ride every hosted
@@ -320,7 +321,22 @@ public final class GlobalOptions {
      * as its own field.
      */
     private static @Nullable Path graalHomeFromEnv() {
-        String raw = System.getenv("GRAALVM_HOME");
+        return homeFromEnv("GRAALVM_HOME");
+    }
+
+    /**
+     * The caller's {@code JAVA_HOME} as a path, or null. Travels as its own field for the reason
+     * {@code GRAALVM_HOME} does, and pointedly not on the forwarded environment: everything there
+     * is merged into every forked test JVM, where a JDK would change outcomes through a channel no
+     * action key can see ({@code ClientEnvForwardTest}). Typed, it reaches the toolchain resolver
+     * and stops.
+     */
+    private static @Nullable Path javaHomeFromEnv() {
+        return homeFromEnv("JAVA_HOME");
+    }
+
+    private static @Nullable Path homeFromEnv(String name) {
+        String raw = System.getenv(name);
         return raw == null || raw.isBlank() ? null : Path.of(raw.trim());
     }
 

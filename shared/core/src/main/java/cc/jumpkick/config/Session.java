@@ -49,6 +49,21 @@ public record Session(
          * shell knew about rather than the one the caller named.
          */
         @Nullable Path graalHome,
+        /**
+         * The caller's {@code JAVA_HOME}, when they set one.
+         *
+         * <p>Here for the same reason {@link #graalHome} is, and deliberately NOT on {@code
+         * clientEnv}: everything on that map is merged into every forked test JVM through a
+         * channel no action key can see, which is the hole {@code ClientEnvForwardTest} keeps
+         * shut. As a typed field it reaches toolchain resolution and nothing else.
+         *
+         * <p>It is a late tier — {@code --jdk}, the lock, the project's pin and the installed
+         * JDKs all answer first — so it decides only on a machine that has no jk-managed JDK yet.
+         * That is precisely a first run, and before this field the tier read the daemon's
+         * environment: the JDK a fresh machine built with came from whichever shell had started
+         * the engine.
+         */
+        @Nullable Path javaHome,
         @With boolean parallelTests,
         /**
          * The raw {@code -w N} the caller asked for, or {@code 0} for auto.
@@ -109,6 +124,7 @@ public record Session(
                 jdkSpec,
                 graalSpec,
                 graalHome,
+                javaHome,
                 parallelTests,
                 requestedTestWorkers,
                 cancel,
@@ -182,6 +198,7 @@ public record Session(
                 null,
                 null,
                 null,
+                null,
                 false,
                 0,
                 CancelToken.live(),
@@ -207,6 +224,7 @@ public record Session(
                 jdkSpec,
                 graalSpec,
                 graalHome,
+                javaHome,
                 parallelTests,
                 requestedTestWorkers,
                 cancel,
@@ -232,6 +250,7 @@ public record Session(
                 jdkSpec,
                 graalSpec,
                 graalHome,
+                javaHome,
                 parallelTests,
                 requestedTestWorkers,
                 cancel,
@@ -248,10 +267,11 @@ public record Session(
 
     /**
      * The request's toolchain selection: {@code --jdk} / {@code --graal} (with the {@code JK_JDK} /
-     * {@code JK_GRAAL} spellings folded in by the client), plus the caller's {@code GRAALVM_HOME}.
-     * Blanks normalize to null.
+     * {@code JK_GRAAL} spellings folded in by the client), plus the caller's {@code GRAALVM_HOME}
+     * and {@code JAVA_HOME}. Blanks normalize to null.
      */
-    public Session withToolchainSpecs(@Nullable String jdk, @Nullable String graal, @Nullable Path graalHome) {
+    public Session withToolchainSpecs(
+            @Nullable String jdk, @Nullable String graal, @Nullable Path graalHome, @Nullable Path javaHome) {
         return new Session(
                 config,
                 workingDir,
@@ -261,6 +281,7 @@ public record Session(
                 blankToNull(jdk),
                 blankToNull(graal),
                 graalHome,
+                javaHome,
                 parallelTests,
                 requestedTestWorkers,
                 cancel,
