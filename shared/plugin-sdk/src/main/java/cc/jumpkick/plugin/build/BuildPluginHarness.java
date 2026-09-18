@@ -683,6 +683,11 @@ public final class BuildPluginHarness {
         }
 
         @Override
+        public List<RepositoryRoute> repositories() {
+            return spec.repositories();
+        }
+
+        @Override
         public Optional<String> secret(String key) {
             return Optional.ofNullable(spec.secrets().get(key));
         }

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -343,16 +345,36 @@ public final class PackagingKeys {
             Path javaHome,
             @Nullable ActivePlugin active,
             PluginDeclarations decls,
-            Map<String, String> secrets) {}
+            Map<String, String> secrets,
+            /** Credential lookup for the routed repositories: the request's shell, then the engine's own. */
+            Function<String, @Nullable String> env) {}
 
     /**
-     * The plugin packager's key, plus the three derived values the packager's spec also needs.
-     * They are returned rather than recomputed because the facts that reach the plugin body and
-     * the facts that key its output must be the same object — a fact that reaches the packager
-     * without reaching its key is a stale artifact waiting to be restored.
+     * The plugin packager's key, plus the derived values the packager's spec also needs. They are
+     * returned rather than recomputed because the facts that reach the plugin body and the facts
+     * that key its output must be the same object — a fact that reaches the packager without
+     * reaching its key is a stale artifact waiting to be restored. {@code repositories} is the
+     * routed set of a declared {@code repositories} input, {@link PluginRepositories#NONE} otherwise.
      */
     public record PackagerKey(
-            Keyed keyed, ProjectFacts facts, List<PluginBuild.ProdEntry> entries, Map<String, Path> extras) {}
+            Keyed keyed,
+            ProjectFacts facts,
+            List<PluginBuild.ProdEntry> entries,
+            Map<String, Path> extras,
+            PluginRepositories repositories) {}
+
+    /**
+     * The routed remotes a packager receives: the module's repository group when its declaration
+     * names {@link In#repositories()}, {@link PluginRepositories#NONE} otherwise — the same rule a
+     * step's declaration is read by, so an undeclared packager never resolves a credential.
+     */
+    static PluginRepositories packagerRepositories(
+            PluginDeclarations.PackagerDecl packager,
+            JkBuild project,
+            Cas cas,
+            Function<String, @Nullable String> env) {
+        return PluginRepositories.forInputs(packager.inputs(), project, cas, env);
+    }
 
     /**
      * Action key for packaging owned by a plugin: the declared inputs + the facts + the packager's
@@ -390,6 +412,7 @@ public final class PackagingKeys {
                 packager.inputs().contains(In.compileClasspath().wireName())
                         ? PluginBuild.compileClasspath(p.moduleDir(), p.cas(), p.lockFile(), p.project())
                         : entryJars;
+        PluginRepositories repositories = packagerRepositories(packager, p.project(), p.cas(), p.env());
         List<String> tokens = new ArrayList<>(PlannerPlugin.declaredInputTokens(
                 packager.inputs(),
                 new PlannerPlugin.InputSources(
@@ -401,7 +424,7 @@ public final class PackagingKeys {
                         p.layout(),
                         p.moduleDir(),
                         SiblingFiles.forInputs(packager.inputs(), p.moduleDir(), p.project(), active.manifest()),
-                        PluginRepositories.NONE)));
+                        repositories)));
         tokens.addAll(PlannerPlugin.toolTokens(tools, extras, sdkPins));
         if (!p.secrets().isEmpty()) {
             // A changed signing credential re-signs (the signature is part of the artifact); the
@@ -435,7 +458,7 @@ public final class PackagingKeys {
         }
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, p.artifact());
         String pkgKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
-        return new PackagerKey(new Keyed(taskId, tokens, pkgKey), facts, entries, extras);
+        return new PackagerKey(new Keyed(taskId, tokens, pkgKey), facts, entries, extras, repositories);
     }
 
     /**
@@ -567,7 +590,8 @@ public final class PackagingKeys {
                             javaHome,
                             packagerPlugin,
                             owner.decls(),
-                            Map.of())) // secrets: absent — see the javadoc
+                            Map.of(), // secrets: absent — see the javadoc
+                            BuildEnv.ambient()))
                     .keyed();
             if (ForecastSteps.present(actionCache, keyed.key())) {
                 return new TaskForecast.Task(

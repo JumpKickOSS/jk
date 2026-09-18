@@ -98,6 +98,30 @@ class PluginRepositoriesTest {
     }
 
     @Test
+    void a_packager_is_read_by_the_same_rule_as_a_step(@TempDir Path tmp) {
+        JkBuild project = JkBuild.of(new Project("com.example", "app", "1.0", 25));
+        Cas cas = new Cas(tmp.resolve("cache"));
+
+        PluginRepositories declared = PackagingKeys.packagerRepositories(
+                new PluginDeclarations.PackagerDecl(
+                        "oci-image",
+                        List.of(In.classes().wireName(), In.repositories().wireName())),
+                project,
+                cas,
+                name -> null);
+        PluginRepositories undeclared = PackagingKeys.packagerRepositories(
+                new PluginDeclarations.PackagerDecl(
+                        "boot-jar", List.of(In.classes().wireName())),
+                project,
+                cas,
+                name -> null);
+
+        assertThat(declared.routes()).extracting(RepositoryRoute::id).contains("central");
+        assertThat(declared.token()).isNotEqualTo(PluginRepositories.NONE.token());
+        assertThat(undeclared).isSameAs(PluginRepositories.NONE);
+    }
+
+    @Test
     void a_step_that_did_not_declare_the_input_gets_no_routes(@TempDir Path tmp) {
         PluginRepositories none = PluginRepositories.forInputs(
                 List.of(In.classes().wireName(), In.config().wireName()),

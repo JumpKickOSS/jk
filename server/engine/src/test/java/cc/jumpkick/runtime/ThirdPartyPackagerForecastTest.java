@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
@@ -210,7 +211,8 @@ class ThirdPartyPackagerForecastTest {
                         TaskForecaster.forecastJavaHome(proj, project, LockfileReader.read(lockFile)),
                         requireNonNull(owner.packager()),
                         owner.decls(),
-                        Map.of()))
+                        Map.of(),
+                        BuildEnv.ambient()))
                 .keyed();
         Files.createDirectories(requireNonNull(artifact.getParent()));
         Files.writeString(artifact, "packed by " + PACKAGER);

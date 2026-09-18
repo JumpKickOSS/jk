@@ -638,7 +638,8 @@ public final class PlannerPlugin {
                 ctx.require(JAVA_HOME),
                 active,
                 decls,
-                secrets));
+                secrets,
+                in.env()));
         ProjectFacts facts = packaging.facts();
         List<PluginBuild.ProdEntry> entries = packaging.entries();
         Map<String, Path> extras = packaging.extras();
@@ -668,6 +669,7 @@ public final class PlannerPlugin {
         }
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
         for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
+        for (RepositoryRoute route : packaging.repositories().routes()) spec.repository(route);
         spec.extra("sbom", sbomFile);
         for (TaskDecl step : decls.steps()) {
             Path scratch = PluginBuild.taskScratch(layout, step.name());
