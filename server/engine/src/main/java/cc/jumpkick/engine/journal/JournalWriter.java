@@ -159,6 +159,12 @@ public final class JournalWriter {
         if (a != null) a.noteToolWall(millis);
     }
 
+    /** Refuse the request's row: {@link #write} deletes its stub and writes no report. */
+    public void accDiscard(long requestId) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.discard();
+    }
+
     /** One module's {@code --affected} ranking slice; merged per request, written at finish. */
     public void accAffected(long requestId, @Nullable AffectedTests affected) {
         BuildAccumulator a = sessions.accumulator(requestId);
@@ -174,6 +180,10 @@ public final class JournalWriter {
             return;
         }
         try {
+            if (a.discarded()) {
+                deleteStub(a);
+                return;
+            }
             long finishedAt = clock.getAsLong();
             String commit = gitCommit(a.dir());
             boolean cancelledEffective = cancelled || a.wasCancelled();
@@ -248,6 +258,13 @@ public final class JournalWriter {
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal append failed: " + e);
         }
+    }
+
+    /** The in-flight stub {@code JobAdmit} began for a run that is not to be journaled after all. */
+    private void deleteStub(BuildAccumulator a) {
+        if (!historyConfig.enabled()) return;
+        String jid = a.journalId();
+        if (jid != null && !jid.isBlank()) journal.delete(jid, a.coord(), a.dir());
     }
 
     /**

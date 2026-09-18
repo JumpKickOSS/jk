@@ -63,7 +63,7 @@ class MvnSpyFetchCommandTest {
         Files.createDirectories(projectDir.resolve(".mvn/wrapper"));
         Files.writeString(
                 projectDir.resolve("pom.xml"),
-                "<project><groupId>com.example</groupId><artifactId>app</artifactId></project>\n");
+                "<project><groupId>com.example</groupId><artifactId>app</artifactId><version>1.0</version></project>\n");
         Path argsLog = tempDir.resolve("argv.log");
         byte[] zip = scriptedZip(argsLog);
         maven.served().put("/apache-maven-3.9.9-bin.zip", zip);

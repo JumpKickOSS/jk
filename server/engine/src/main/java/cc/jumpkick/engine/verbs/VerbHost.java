@@ -76,6 +76,14 @@ public interface VerbHost {
         throw new UnsupportedOperationException("accToolWall");
     }
 
+    /**
+     * Refuse this request's journal row: the in-flight stub is deleted at finish and no
+     * {@code jk-results.md} is written, for a run whose project cannot be named.
+     */
+    default void discardJournal(long rid) {
+        throw new UnsupportedOperationException("discardJournal");
+    }
+
     /** One plan's {@code --affected} ranking slice; merged per request, written at request-finish. */
     default void accAffected(long rid, cc.jumpkick.test.@Nullable AffectedTests affected) {}
 

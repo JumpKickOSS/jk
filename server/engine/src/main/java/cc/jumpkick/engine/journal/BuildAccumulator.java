@@ -94,6 +94,8 @@ public final class BuildAccumulator {
     // The wall another tool measured for the run this row journals; 0 when the job's own elapsed
     // is the run.
     private volatile long toolWallMillis;
+    // Set when the verb refused the row: the run cannot be journaled under a project.
+    private volatile boolean discarded;
 
     public BuildAccumulator(String kind, String dir, @Nullable String coord, String trigger) {
         this(kind, dir, coord, trigger, null, false);
@@ -168,6 +170,19 @@ public final class BuildAccumulator {
      */
     public void noteToolWall(long millis) {
         if (millis > 0) toolWallMillis = millis;
+    }
+
+    /** Refuse the row: the writer deletes the in-flight stub and writes no report for this run. */
+    public void discard() {
+        discarded = true;
+    }
+
+    public boolean discarded() {
+        return discarded;
+    }
+
+    public @Nullable String coord() {
+        return coord;
     }
 
     public long buildNumber() {

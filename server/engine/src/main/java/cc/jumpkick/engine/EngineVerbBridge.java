@@ -122,6 +122,11 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
+    public void discardJournal(long rid) {
+        journalWriter.accDiscard(rid);
+    }
+
+    @Override
     public void accAffected(long rid, cc.jumpkick.test.@Nullable AffectedTests affected) {
         journalWriter.accAffected(rid, affected);
     }
