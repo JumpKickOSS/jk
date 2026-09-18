@@ -215,6 +215,63 @@ class GradleModelImporterTest {
                 .anySatisfy(m -> assertThat(m).contains("[library]").contains("com.acme.gradle.HousePlugin"));
     }
 
+    /** A library under dependency-management importing Spring Cloud's BOM beside Boot's, as the script text names them. */
+    @Test
+    void the_boms_a_dependency_management_block_imports_are_platform_rows_and_the_managed_versions_stay_managed() {
+        String cloud = """
+                {"gradle":"9.3.1","rootName":"cloud-lib","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"cloud-lib","dir":"","group":"com.example","version":"1.0",
+                   "plugins":["java","io.spring.dependency-management"],"pluginClasses":["io.spring.gradle.dependencymanagement.DependencyManagementPlugin"],
+                   "pluginVersions":{"io.spring.dependency-management":"1.1.7"},"bootBuildInfo":false,"repositories":[],
+                   "configurations":[{"name":"implementation","dependencies":[
+                     {"kind":"module","group":"org.springframework.cloud","artifact":"spring-cloud-starter-config","version":"","excludes":[]},
+                     {"kind":"module","group":"org.springframework.boot","artifact":"spring-boot-starter","version":"","excludes":[]}]}],
+                   "managedVersions":{"org.springframework.cloud:spring-cloud-starter-config":"5.0.0","org.springframework.boot:spring-boot-starter":"3.5.11"},
+                   "springBootBom":"org.springframework.boot:spring-boot-dependencies:3.5.11",
+                   "importedBoms":["org.springframework.boot:spring-boot-dependencies:3.5.11","org.springframework.cloud:spring-cloud-dependencies:2025.0.0","com.acme:acme-bom:${acmeVersion}"],
+                   "tasks":[]}]}
+                """;
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(cloud, Path.of("/tmp/cloud"), RefreshVersions.NONE);
+
+        JkBuild lib = result.root();
+        assertThat(lib.dependencies().of(Scope.PLATFORM))
+                .extracting(d -> d.module() + ":" + d.version().raw())
+                .containsExactly(
+                        "org.springframework.boot:spring-boot-dependencies:3.5.11",
+                        "org.springframework.cloud:spring-cloud-dependencies:2025.0.0");
+        assertThat(lib.dependencies().of(Scope.MAIN))
+                .as("the BOMs manage the versions; no exact pin is written")
+                .allMatch(Dependency::isPlatformManaged);
+        List<String> rows = messages(result.report());
+        assertThat(rows).noneMatch(m -> m.contains("exact pin"));
+        assertThat(rows).anySatisfy(m -> assertThat(m)
+                .contains("com.acme:acme-bom:${acmeVersion}")
+                .contains("nothing defines"));
+    }
+
+    /** A `dependencyManagement { dependencies { } }` block with no BOM: the plugin's version is all there is to write. */
+    @Test
+    void a_managed_version_from_no_bom_is_an_exact_pin_with_a_row() {
+        String direct = """
+                {"gradle":"9.3.1","rootName":"lib","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"lib","dir":"","group":"com.example","version":"1.0",
+                   "plugins":["java","io.spring.dependency-management"],"pluginClasses":[],"pluginVersions":{},"bootBuildInfo":false,"repositories":[],
+                   "configurations":[{"name":"implementation","dependencies":[
+                     {"kind":"module","group":"com.google.guava","artifact":"guava","version":"","excludes":[]}]}],
+                   "managedVersions":{"com.google.guava:guava":"33.4.8-jre"},"importedBoms":[],"tasks":[]}]}
+                """;
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(direct, Path.of("/tmp/lib"), RefreshVersions.NONE);
+
+        Dependency guava = only(result.root(), Scope.MAIN);
+        assertThat(guava.version().raw()).isEqualTo("33.4.8-jre");
+        assertThat(result.root().dependencies().of(Scope.PLATFORM)).isEmpty();
+        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m).contains("exact pin"));
+    }
+
     @Test
     void two_modules_sharing_a_name_are_named_by_their_paths_and_a_row_says_so() {
         String shared = """

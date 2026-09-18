@@ -10,8 +10,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * The project model Gradle writes for {@code jk import} (the init script {@code
  * jk-import-model.init.gradle}): the build, each of its projects, and per project the plugins it
- * applies, the dependencies each configuration declares, its toolchain, source roots and the tasks
- * its scripts register. Read from the JSON the fork leaves behind.
+ * applies, the dependencies each configuration declares, its toolchain, source roots, the BOMs its
+ * {@code dependencyManagement} block imports and the tasks its scripts register. Read from the
+ * JSON the fork leaves behind.
  */
 record GradleModel(String gradleVersion, String rootName, List<String> settingsRepositories, List<Project> projects) {
 
@@ -36,6 +37,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
             List<Configuration> configurations,
             Map<String, String> managedVersions,
             @Nullable String springBootBom,
+            List<String> importedBoms,
             List<Task> tasks) {
 
         boolean isRoot() {
@@ -130,6 +132,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
     static final String EXCLUDES = "excludes";
     static final String FILES = "files";
     static final String GRADLE = "gradle";
+    static final String IMPORTED_BOMS = "importedBoms";
     static final String INTRANSITIVE = "intransitive";
     static final String JAVA = "java";
     static final String KOTLIN = "kotlin";
@@ -217,6 +220,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
                 configurations,
                 Jsonl.strMap(p, MANAGED_VERSIONS),
                 Jsonl.topStr(p, SPRING_BOOT_BOM),
+                Jsonl.strArray(p, IMPORTED_BOMS),
                 tasks);
     }
 
