@@ -23,7 +23,7 @@ detekt     = true                                               # detekt over th
 | `exclude` | Module-relative Ant-style path globs Checkstyle and detekt leave out (`**/generated/**`); PMD excludes through its ruleset's `exclude-pattern`, SpotBugs through `spotbugs-exclude` | `[]` |
 | `fail-on` | The finding severity that fails a step: `error`, `warning`, or `never`. Findings render as diagnostics either way | `"error"` |
 | `checkstyle-fail-on`, `pmd-fail-on`, `spotbugs-fail-on`, `detekt-fail-on` | One tool's own threshold, taking precedence over `fail-on` for that tool — Maven's plugins each fail on their own terms (Checkstyle on errors, PMD and SpotBugs on every finding), and `jk import` writes these when the tools of a module differ | `fail-on` |
-| `checkstyle` | Enable Checkstyle with this configuration file | off |
+| `checkstyle` | Enable Checkstyle with this configuration file — a module-relative path, or the rule set at an `https://` URL, fetched once into the store and read from there on every build after | off |
 | `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.1.0"` |
 | `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, `rulesets/java/maven-pmd-plugin-default.xml` (Maven's default, which jk carries), or a module-relative ruleset file | off |
 | `pmd-exclude` | A module-relative file in `maven-pmd-plugin`'s `excludeFromFailureFile` shape — `package.Class=Rule,Rule` per line — whose findings are left out of the report | none |
@@ -65,12 +65,16 @@ PMD ruleset — fails the step with the tool's last lines. Two cases are not fai
 whose roots hold no file for the tool (Checkstyle's `exclude` globs covering every source, a test
 module with no `src/main/java`) is a step labelled `(no sources)` with an empty report, and a
 `checkstyle` or `detekt-config` file the module does not hold — the spelling `jk import` keeps for
-a rule set it could not carry, `sun_checks.xml` or a URL — is a warning naming it, labelled
+a rule set it could not carry, `sun_checks.xml` — is a warning naming it, labelled
 `(no configuration)`, until the file is there.
 
 ## Configuration files
 
-The files are yours and live in the module: jk ships no house rule set. A PMD ruleset is either
+The files are yours and live in the module: jk ships no house rule set. A Checkstyle rule set
+may instead be the one a build shares from a URL (`checkstyle = "https://raw.githubusercontent.com/…/checkstyle.xml"`,
+the shape `jk import` keeps from a POM's `<configLocation>`): the engine fetches it once into
+the store — `--offline` with no copy yet fails naming the URL — and its content is part of the
+step's cache key, so the file is re-read, never re-fetched, until the URL changes. A PMD ruleset is either
 one of PMD's built-in categories (`category/java/bestpractices.xml`, `rulesets/java/quickstart.xml`),
 `rulesets/java/maven-pmd-plugin-default.xml` — the ruleset `maven-pmd-plugin` runs when a POM names
 none, which PMD itself does not ship and jk carries so an imported build lints as Maven did — or a

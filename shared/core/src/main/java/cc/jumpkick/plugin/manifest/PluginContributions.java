@@ -222,8 +222,9 @@ public final class PluginContributions {
 
     /**
      * One resolved step-dependency, handed to the step as {@code artifact}: a Maven coordinate
-     * spec ({@code group:artifact:version[:classifier]}, {@code transitive} = the runtime closure)
-     * or a provisioned SDK component ({@code sdkComponent}/{@code sdkPath}).
+     * spec ({@code group:artifact:version[:classifier]}, {@code transitive} = the runtime closure),
+     * a provisioned SDK component ({@code sdkComponent}/{@code sdkPath}), or a file at an http(s)
+     * {@code url} the engine fetches once into the store.
      *
      * <p>{@code managedBy} / {@code with} mirror the manifest: BOM-aligned multi-root tool graphs.
      * {@code forSteps} names the steps or packagers that read the tool; empty means all of them.
@@ -236,7 +237,8 @@ public final class PluginContributions {
             @Nullable String sdkPath,
             @Nullable String managedBy,
             List<String> with,
-            List<String> forSteps) {
+            List<String> forSteps,
+            @Nullable String url) {
 
         public StepDep {
             with = with == null ? List.of() : List.copyOf(with);
@@ -244,7 +246,7 @@ public final class PluginContributions {
         }
 
         public StepDep(String artifact, @Nullable String coordinateSpec) {
-            this(artifact, coordinateSpec, false, null, null, null, List.of(), List.of());
+            this(artifact, coordinateSpec, false, null, null, null, List.of(), List.of(), null);
         }
 
         public StepDep(
@@ -253,7 +255,12 @@ public final class PluginContributions {
                 boolean transitive,
                 @Nullable String sdkComponent,
                 @Nullable String sdkPath) {
-            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of(), List.of());
+            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of(), List.of(), null);
+        }
+
+        /** A file at {@code url}, handed to the steps {@code forSteps} name as {@code artifact}. */
+        public static StepDep atUrl(String artifact, String url, List<String> forSteps) {
+            return new StepDep(artifact, null, false, null, null, null, List.of(), forSteps, url);
         }
 
         /** True when {@code consumer} — a step or packager name — receives this tool. */
@@ -313,7 +320,8 @@ public final class PluginContributions {
                     continue;
                 }
                 if (!sd.perEntry()) {
-                    out.add(toolDependency(sd, config, build.project(), manifest.id(), kind, null));
+                    StepDep dep = toolDependency(sd, config, build.project(), manifest.id(), kind, null);
+                    if (dep != null) out.add(dep);
                     continue;
                 }
                 // per-entry: the one declaration, once per [<table>.<name>] entry in its scope; an
@@ -321,15 +329,19 @@ public final class PluginContributions {
                 for (var entry : config.entries().entrySet()) {
                     Interpolation.Entry scope = new Interpolation.Entry(entry.getKey(), entry.getValue());
                     if (!Interpolation.entryProvides(sd.coordinate(), scope)) continue;
-                    out.add(toolDependency(sd, config, build.project(), manifest.id(), kind, scope));
+                    StepDep dep = toolDependency(sd, config, build.project(), manifest.id(), kind, scope);
+                    if (dep != null) out.add(dep);
                 }
             }
         }
         return out;
     }
 
-    /** One declaration resolved against the table (and, for a per-entry tool, one entry). */
-    private static StepDep toolDependency(
+    /**
+     * One declaration resolved against the table (and, for a per-entry tool, one entry); null for
+     * a {@code url} entry whose value is not an http(s) URL — a module file, or a key left unset.
+     */
+    private static @Nullable StepDep toolDependency(
             PluginDescriptor.StepDependency sd,
             PluginConfig config,
             Project project,
@@ -339,9 +351,14 @@ public final class PluginContributions {
         String artifact = Interpolation.resolve(sd.artifact(), config, project, null, entry);
         List<String> forSteps = new ArrayList<>(sd.forSteps().size());
         for (String step : sd.forSteps()) forSteps.add(Interpolation.resolve(step, config, project, null, entry));
+        if (sd.url() != null) {
+            if (!Interpolation.configProvides(sd.url(), config)) return null;
+            String url = Interpolation.resolve(sd.url(), config, project, null, entry);
+            return isHttpUrl(url) ? StepDep.atUrl(artifact, url, forSteps) : null;
+        }
         if (sd.sdkComponent() != null) {
             String component = Interpolation.resolve(sd.sdkComponent(), config, project, null, entry);
-            return new StepDep(artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps);
+            return new StepDep(artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps, null);
         }
         String coordinate = Interpolation.resolve(sd.coordinate(), config, project, null, entry);
         String[] parts = coordinate.split(":");
@@ -361,7 +378,12 @@ public final class PluginContributions {
             }
             with.add(resolved);
         }
-        return new StepDep(artifact, coordinate, sd.transitive(), null, null, managedBy, with, forSteps);
+        return new StepDep(artifact, coordinate, sd.transitive(), null, null, managedBy, with, forSteps, null);
+    }
+
+    /** True for an {@code http://} or {@code https://} value. */
+    public static boolean isHttpUrl(String value) {
+        return value.startsWith("https://") || value.startsWith("http://");
     }
 
     /**

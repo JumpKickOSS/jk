@@ -232,7 +232,13 @@ public record PluginDescriptor(
             List<String> with,
             List<String> forSteps,
             boolean perEntry,
-            @Nullable Condition when) {
+            @Nullable Condition when,
+            /**
+             * A file at an http(s) URL in place of a coordinate, interpolated like one; declared
+             * only when the value it resolves to is such a URL, so {@code ${config.<key>}} over a
+             * key that names a module file — or nothing — is no tool.
+             */
+            @Nullable String url) {
 
         public StepDependency {
             with = with == null ? List.of() : List.copyOf(with);
@@ -240,7 +246,7 @@ public record PluginDescriptor(
         }
 
         public StepDependency(String artifact, @Nullable String coordinate, @Nullable Condition when) {
-            this(artifact, coordinate, false, null, null, null, List.of(), List.of(), false, when);
+            this(artifact, coordinate, false, null, null, null, List.of(), List.of(), false, when, null);
         }
     }
 

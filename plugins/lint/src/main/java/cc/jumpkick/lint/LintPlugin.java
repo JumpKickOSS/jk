@@ -74,10 +74,18 @@ public final class LintPlugin implements Plugin, BuildExtension {
         return List.of(tool == LintTool.DETEKT ? "src/main/kotlin" : "src/main/java");
     }
 
-    /** The module-relative files {@code tool}'s configuration names: a change to any re-runs the step. */
+    /**
+     * The module-relative files {@code tool}'s configuration names: a change to any re-runs the
+     * step. A Checkstyle rule set at a URL is not among them — the engine fetches it as the
+     * {@code checkstyle-config} tool and keys the step on its content.
+     */
     static List<String> configFiles(LintTool tool, PluginConfig config) {
         return switch (tool) {
-            case CHECKSTYLE -> config.stringOpt("checkstyle").map(List::of).orElse(List.of());
+            case CHECKSTYLE ->
+                config.stringOpt("checkstyle")
+                        .filter(c -> !isUrl(c))
+                        .map(List::of)
+                        .orElse(List.of());
             case PMD -> {
                 List<String> files = new ArrayList<>(config.stringList("pmd").stream()
                         .filter(LintPlugin::isFile)
@@ -96,5 +104,10 @@ public final class LintPlugin implements Plugin, BuildExtension {
      */
     static boolean isFile(String ruleset) {
         return !ruleset.startsWith("category/") && !ruleset.startsWith("rulesets/");
+    }
+
+    /** A configuration at an http(s) URL rather than in the module. */
+    static boolean isUrl(String configuration) {
+        return configuration.startsWith("https://") || configuration.startsWith("http://");
     }
 }

@@ -68,6 +68,16 @@ class LintPluginPlanTest {
         assertThat(spec.body()).isNotNull();
     }
 
+    /** A rule set at a URL is the engine's to fetch and key: no module file is declared for it. */
+    @Test
+    void a_checkstyle_rule_set_at_a_url_is_not_a_project_input() {
+        TaskSpec spec = LintPlugin.task(
+                LintTool.CHECKSTYLE,
+                new PluginConfig("lint", Map.of("checkstyle", "https://example.com/build/checks.xml")));
+
+        assertThat(spec.declaredInputs()).containsExactly(In.projectFiles("src/main/java"), In.classes(), In.config());
+    }
+
     /** PMD's rulesets: a file in the module is an input, a built-in category is not. */
     @Test
     void the_pmd_step_keys_on_ruleset_files_but_not_built_in_categories() {
