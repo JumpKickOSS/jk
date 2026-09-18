@@ -137,6 +137,14 @@ final class MemberPartitions {
             Lockfile mine = solver.solve(manifest, featuresFor(manifest), prefs, own);
             Map<String, String> differing = new TreeMap<>();
             Map<String, Set<String>> pruned = new HashMap<>();
+            // The BOM or entry of the member's own table that pins each differing row's version, by
+            // row identity; a row its own table does not pin at that version has no entry.
+            Map<String, String> ownPinned = new HashMap<>();
+            // Every module the member's own solve carries: an edge onto one of these at another
+            // version is moved, not pruned.
+            Set<String> mineModules = new HashSet<>();
+            for (Lockfile.Artifact row : mine.artifacts())
+                mineModules.add(PackageId.parse(row.packageKey()).ga());
             for (Lockfile.Artifact row : mine.artifacts()) {
                 String key = row.packageKey() + "@" + row.version();
                 UnionRow union = unionRows.get(key);
@@ -146,9 +154,10 @@ final class MemberPartitions {
                 }
                 if (union != null) {
                     Set<String> lacking = new TreeSet<>();
-                    for (String dep : union.depKeys())
-                        if (!keys.contains(dep))
-                            lacking.add(PackageId.parse(dep).ga());
+                    for (String dep : union.depKeys()) {
+                        String ga = PackageId.parse(dep).ga();
+                        if (!keys.contains(dep) && !mineModules.contains(ga)) lacking.add(ga);
+                    }
                     pruned.put(row.displayIdentity(), lacking);
                 }
                 partitions.putIfAbsent(key, row);
@@ -158,8 +167,10 @@ final class MemberPartitions {
                 EnumMap<Scope, Boolean> scopes = partitionScopes.computeIfAbsent(key, k -> new EnumMap<>(Scope.class));
                 for (Scope scope : row.scopes()) scopes.put(scope, Boolean.TRUE);
                 differing.put(row.displayIdentity(), row.version());
+                String pinner = own.pinnedBy(PackageId.parse(row.packageKey()).ga(), row.version());
+                if (pinner != null) ownPinned.put(row.displayIdentity(), pinner);
             }
-            if (!differing.isEmpty()) observer.onNote(note(member.path(), differing, pruned, merged));
+            if (!differing.isEmpty()) observer.onNote(note(member.path(), differing, pruned, ownPinned, merged));
         }
         if (partitions.isEmpty() && carried.isEmpty()) return merged;
         List<Lockfile.Artifact> rows = new ArrayList<>(merged.artifacts().size() + partitions.size());
@@ -493,13 +504,30 @@ final class MemberPartitions {
 
     /**
      * One line per member: which coordinates it reads its own rows for, and what the workspace has —
-     * its version, or, at the same version, the edges the member's row lacks.
+     * its version, or, at the same version, the edges the member's row lacks or has at versions of
+     * its own. A member whose own rows are every one pinned by a BOM or entry of its own table — the
+     * shape a member-held BOM documents, its versions and its exclusions alike — is one sentence
+     * naming the count and the pinning tables, since the rows say what its table says and name
+     * nothing to act on.
      */
     private static String note(
-            String path, Map<String, String> differing, Map<String, Set<String>> pruned, Lockfile merged) {
+            String path,
+            Map<String, String> differing,
+            Map<String, Set<String>> pruned,
+            Map<String, String> ownPinned,
+            Lockfile merged) {
         Map<String, String> mergedVersions = new HashMap<>();
         for (Lockfile.Artifact row : merged.artifacts())
             mergedVersions.putIfAbsent(row.displayIdentity(), row.version());
+        if (ownPinned.keySet().containsAll(differing.keySet())) {
+            // A BOM is named once: the provenance of a family it aligns carries the family in
+            // parentheses after the BOM, and the sentence names the BOM.
+            Set<String> pinners = new LinkedHashSet<>();
+            for (String pinner : ownPinned.values()) pinners.add(pinner.replaceFirst(" \\(.*\\)$", ""));
+            int n = differing.size();
+            return path + " reads its own rows for " + n + (n == 1 ? " coordinate " : " coordinates ")
+                    + String.join(", ", pinners) + (pinners.size() == 1 ? " manages" : " manage");
+        }
         StringBuilder out = new StringBuilder(path)
                 .append(" reads its own rows for ")
                 .append(differing.size())
@@ -520,6 +548,8 @@ final class MemberPartitions {
                 out.append(" (the workspace's without ")
                         .append(String.join(", ", lacking))
                         .append(')');
+            } else if (workspace.equals(e.getValue())) {
+                out.append(" (the workspace's, its edges at this member's versions)");
             } else {
                 out.append(" (workspace ").append(workspace).append(')');
             }

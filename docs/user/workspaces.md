@@ -207,7 +207,11 @@ belongs to. `jk lock` prints one note per member solved on its own, after the su
 the coordinates it reads its own rows for with the member's version and the workspace's
 (`lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)`; a row at the
 workspace's version that lacks edges its exclusions pruned reads `com.foo:leaf 1.0 (the
-workspace's without com.foo:deep)`); the same notes land
+workspace's without com.foo:deep)`). A member whose own rows are every one pinned by a BOM or
+entry of its own table — the shape a member-held BOM documents, its versions and its exclusions
+alike — gets one sentence naming the count and the table instead (`plugins/quarkus reads its own
+rows for 37 coordinates io.quarkus:quarkus-bootstrap-bom:3.38.0 manages`): the rows say what the
+BOM says and name nothing to act on. The same notes land
 in the run record — the `Lock notes` section of `jk-results.md` and its `details.jsonl` — and the
 web view. While the pass runs, the progress label names the member being solved and how many
 are flagged (`Solving members on their own… 2 of 7: services/api`): each flagged member costs a

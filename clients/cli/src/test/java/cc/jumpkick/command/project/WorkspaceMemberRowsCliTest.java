@@ -36,7 +36,8 @@ import org.junit.jupiter.api.io.TempDir;
 @SysProps.TempRoots("jk.m2.local")
 class WorkspaceMemberRowsCliTest {
 
-    private static final String APP_NOTE = "app reads its own rows for 1 coordinate: com.foo:leaf 2.0 (workspace 1.0)";
+    /** The one-sentence form: every row of app's own is what its BOM manages. */
+    private static final String APP_NOTE = "app reads its own rows for 1 coordinate org.example:the-bom:1.0 manages";
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
