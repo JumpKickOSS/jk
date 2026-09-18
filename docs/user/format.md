@@ -148,12 +148,25 @@ nested lambdas can hold a thread far longer than a 60 KB class does.
 | Threshold | Default | What happens |
 |-----------|---------|--------------|
 | **Named** | 500 ms | The file is printed as `slow`, with its elapsed time, *while it is still being formatted*. Repeats on a doubling interval, so a long stall is named a handful of times rather than hundreds. |
-| **Timed out** | 3 s | jk gives up on that file. It is reported as an `error` naming the path, the rest of the run keeps going, and `jk format` exits non-zero. |
+| **Timed out** | 3 s on a quiet host, stretched by the host's load per processor up to 30 s | jk gives up on that file. It is reported as an `error` naming the path, the rest of the run keeps going, and `jk format` exits non-zero. |
 
 Three seconds is a wide margin, not a tight one: across a 3,000-file Java and Kotlin tree the
 slowest single file is around 120 ms, and the 60 KB classes are nearer 110 ms. A file that has been
 running for three seconds is not a big file — it is a search that has stopped tracking the size of
 the source. The margin is deliberately generous for hosts that are nothing like that one.
+
+It is a quiet host's reading, though, and a host that fifteen builds share is not quiet: every
+core oversubscribed several times over turns a 100 ms search into seconds. So the limit grows with
+the load — the 3 s default is multiplied by the one-minute load average per online processor,
+rounded up, at most ten times — and a file that still blows it says so, so a slow host is told
+apart from a slow file:
+
+```
+  error  src/main/java/example/Wide.java: timed out after 31.2s (limit 30000 ms, the 3000 ms
+         default stretched 10× for a load average of 290.4 over 24 processors); …
+```
+
+A limit set by hand (`jk.format.file-timeout-ms`, below) is taken as written, whatever the load.
 
 A timed-out file is **not** formatted and **not** recorded as clean, so `jk format` keeps
 reporting it and keeps exiting non-zero until you deal with it. That holds even when the

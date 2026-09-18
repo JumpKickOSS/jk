@@ -2,6 +2,8 @@
 package cc.jumpkick.format;
 
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.HostLoad;
+import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
@@ -162,7 +164,7 @@ public final class CodeFormatter implements Plugin {
         AtomicInteger abandoned = new AtomicInteger();
         FormatWatchdog dog = new FormatWatchdog(
                 spec.fileWarnMs,
-                spec.fileTimeoutMs,
+                new FormatTimeout(spec.fileTimeoutMs, spec.fileTimeoutWhy),
                 Clock.SYSTEM,
                 (file, elapsedMs) ->
                         emitFile(out, file, "slow", "still formatting after " + FormatWatchdog.human(elapsedMs)),
@@ -722,6 +724,9 @@ public final class CodeFormatter implements Plugin {
         /** How long one file may be in flight before the run gives up on it. 0 or less disables the bound. */
         long fileTimeoutMs = FormatWatchdog.DEFAULT_TIMEOUT_MS;
 
+        /** Why {@link #fileTimeoutMs} differs from the default — the host's load — or {@code ""}; see {@link FormatTimeout}. */
+        String fileTimeoutWhy = "";
+
         /** Files to format at once; 0 lets {@link #concurrency} size the run to the machine. */
         int threads = 0;
 
@@ -745,7 +750,11 @@ public final class CodeFormatter implements Plugin {
             s.importOrder = c.bool("importOrder", true);
             s.removeUnusedImports = c.bool("removeUnusedImports", true);
             s.fileWarnMs = longProperty("jk.format.file-warn-ms", s.fileWarnMs);
-            s.fileTimeoutMs = longProperty("jk.format.file-timeout-ms", s.fileTimeoutMs);
+            FormatTimeout timeout = hasProperty("jk.format.file-timeout-ms")
+                    ? FormatTimeout.explicit(longProperty("jk.format.file-timeout-ms", s.fileTimeoutMs))
+                    : FormatTimeout.forHost(HostLoad.loadAverage(), HostProcessors.count());
+            s.fileTimeoutMs = timeout.ms();
+            s.fileTimeoutWhy = timeout.why();
             s.threads = (int) longProperty("jk.format.threads", s.threads);
             c.stringOpt("cacheDir").ifPresent(p -> s.cacheDir = Path.of(p));
             c.stringOpt("configKey").ifPresent(k -> s.configKey = k);
@@ -769,6 +778,11 @@ public final class CodeFormatter implements Plugin {
          * reach the worker through {@code [jvm] args} or {@code JK_JVM_ARGS}, the same way any other
          * worker-JVM flag does.
          */
+        private static boolean hasProperty(String name) {
+            String raw = System.getProperty(name);
+            return raw != null && !raw.isBlank();
+        }
+
         private static long longProperty(String name, long fallback) {
             String raw = System.getProperty(name);
             if (raw == null || raw.isBlank()) return fallback;
