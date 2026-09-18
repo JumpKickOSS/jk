@@ -23,8 +23,11 @@ checkstyle-fail-on = { type = "string", example = "warning", hint = "Checkstyle'
 pmd-fail-on    = { type = "string", example = "warning", hint = "PMD's own threshold, in place of fail-on: error, warning or never" }
 spotbugs-fail-on = { type = "string", example = "warning", hint = "SpotBugs's own threshold, in place of fail-on: error, warning or never" }
 detekt-fail-on = { type = "string", example = "warning", hint = "detekt's own threshold, in place of fail-on: error, warning or never" }
-checkstyle     = { type = "string", example = "config/checkstyle.xml", hint = "enable Checkstyle with this module-relative configuration file, or with the rule set at an http(s) URL, fetched once into the store" }
-checkstyle-suppressions = { type = "string", example = "config/checkstyle-suppressions.xml", hint = "a module-relative suppressions file, or one at an http(s) URL, handed to the rule set as Maven does: the checkstyle.suppressions.file property a SuppressionFilter reads" }
+checkstyle     = { type = "string", example = "config/checkstyle.xml", hint = "enable Checkstyle with this module-relative configuration file, with the rule set at an http(s) URL, fetched once into the store, or with a resource inside a checkstyle-classpath jar" }
+checkstyle-suppressions = { type = "string", example = "config/checkstyle-suppressions.xml", hint = "a module-relative suppressions file, one at an http(s) URL, or a checkstyle-classpath resource, handed to the rule set as Maven does: the checkstyle.suppressions.file property a SuppressionFilter reads" }
+checkstyle-header = { type = "string", example = "config/checkstyle-header.txt", hint = "a header file — module-relative, at an http(s) URL, or a checkstyle-classpath resource — handed to the rule set as Maven's <headerLocation> is: the checkstyle.header.file property a Header check reads" }
+checkstyle-properties = { type = "string-map", example = "{ \"checkstyle.build.directory\" = \"target\" }", hint = "properties the rule set reads as ${name}, as Maven's <propertyExpansion> hands them over; checkstyle.suppressions.file and checkstyle.header.file come from their own keys" }
+checkstyle-classpath = { type = "string-list", example = "[\"org.springframework.cloud:spring-cloud-build-tools:5.0.3\"]", hint = "coordinates whose jars join Checkstyle's classpath with their closures — a rule set, header, suppressions or check classes a build ships in a jar, as a Maven plugin's <dependencies> do" }
 checkstyle-version = { type = "string", default = "14.1.0", hint = "the Checkstyle release; a bare version is exact" }
 pmd            = { type = "string-list", default = [], example = "[\"category/java/bestpractices.xml\", \"config/pmd.xml\"]", hint = "enable PMD with these rulesets: a built-in category, rulesets/java/maven-pmd-plugin-default.xml (Maven's default, which jk carries) or a module-relative ruleset file" }
 pmd-exclude    = { type = "string", example = "pmd-exclude.properties", hint = "a module-relative file in maven-pmd-plugin's excludeFromFailureFile shape — package.Class=Rule,Rule per line — whose findings are left out of the report" }
@@ -38,6 +41,22 @@ detekt         = { type = "bool", default = false, hint = "enable detekt over th
 detekt-config  = { type = "string", example = "config/detekt.yml", hint = "a module-relative detekt configuration laid over the default rule set" }
 detekt-version = { type = "string", default = "1.23.8", hint = "the detekt release; a bare version is exact" }
 
+# A further Checkstyle run beside the table's own: [lint.<name>] names a rule set of its own and
+# what it reads, and runs as the step lint-checkstyle-<name> with its own report. The table's
+# thresholds do not reach it; its fail-on is its own, error unless written.
+[entries]
+schema = "checkstyle-run"
+
+[sub-schema.checkstyle-run]
+checkstyle     = { type = "string", required = true, example = "config/nohttp-checkstyle.xml", hint = "the run's rule set: a module-relative file, one at an http(s) URL, or a checkstyle-classpath resource" }
+checkstyle-suppressions = { type = "string", example = "config/nohttp-suppressions.xml", hint = "the run's suppressions file, as the table's checkstyle-suppressions" }
+checkstyle-header = { type = "string", example = "config/header.txt", hint = "the run's header file, as the table's checkstyle-header" }
+checkstyle-properties = { type = "string-map", example = "{ \"checkstyle.build.directory\" = \"target\" }", hint = "properties the run's rule set reads, as the table's checkstyle-properties" }
+checkstyle-classpath = { type = "string-list", example = "[\"io.spring.nohttp:nohttp-checkstyle:0.0.11\"]", hint = "coordinates whose jars join this run's Checkstyle classpath, as the table's checkstyle-classpath" }
+sources        = { type = "string-list", default = ["src/main/java"], hint = "the module-relative roots this run reads; \".\" for every file of the module" }
+exclude        = { type = "string-list", default = [], hint = "module-relative Ant-style path globs this run leaves out" }
+fail-on        = { type = "string", default = "error", hint = "the finding severity that fails this run: error, warning or never" }
+
 # One tool per step, each with its runtime closure and read only by the step that forks it; a
 # table that leaves a tool off registers no step for it, so its tool is never fetched.
 [[contribute.step-dependency]]
@@ -45,6 +64,53 @@ artifact   = "checkstyle"
 coordinate = "com.puppycrawl.tools:checkstyle:${config.checkstyle-version}"
 transitive = true
 for-step   = "lint-checkstyle"
+
+# The jars a rule set's resources and checks live in, every coordinate of the list a root of one
+# closure; a table without the key declares no such tool.
+[[contribute.step-dependency]]
+artifact   = "checkstyle-classpath"
+coordinate = "${config.checkstyle-classpath}"
+transitive = true
+for-step   = "lint-checkstyle"
+
+[[contribute.step-dependency]]
+artifact   = "checkstyle-header"
+url        = "${config.checkstyle-header}"
+for-step   = "lint-checkstyle"
+
+# Each [lint.<name>] run forks the table's Checkstyle release over its own rule set, classpath,
+# suppressions and header, fetched for that run's step alone.
+[[contribute.step-dependency]]
+per-entry  = true
+artifact   = "checkstyle-${entry.name}"
+coordinate = "com.puppycrawl.tools:checkstyle:${config.checkstyle-version}"
+transitive = true
+for-step   = "lint-checkstyle-${entry.name}"
+
+[[contribute.step-dependency]]
+per-entry  = true
+artifact   = "checkstyle-classpath-${entry.name}"
+coordinate = "${entry.checkstyle-classpath}"
+transitive = true
+for-step   = "lint-checkstyle-${entry.name}"
+
+[[contribute.step-dependency]]
+per-entry  = true
+artifact   = "checkstyle-config-${entry.name}"
+url        = "${entry.checkstyle}"
+for-step   = "lint-checkstyle-${entry.name}"
+
+[[contribute.step-dependency]]
+per-entry  = true
+artifact   = "checkstyle-suppressions-${entry.name}"
+url        = "${entry.checkstyle-suppressions}"
+for-step   = "lint-checkstyle-${entry.name}"
+
+[[contribute.step-dependency]]
+per-entry  = true
+artifact   = "checkstyle-header-${entry.name}"
+url        = "${entry.checkstyle-header}"
+for-step   = "lint-checkstyle-${entry.name}"
 
 # A rule set at a URL is the engine's to fetch, once into the store, and to key the step on; a
 # module file under the same key is the step's own project input and declares no tool here.

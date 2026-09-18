@@ -176,7 +176,11 @@ for-step   = "lint-checkstyle"        # an http(s) URL (a module path, or an uns
 
 An entry names exactly one of `coordinate`, `sdk-component` or `url`; `transitive`, `with` and
 `managed-by` belong to a coordinate. A `url` value is the file's identity: a cached copy is never
-fetched again, and an `--offline` build with no copy fails naming the URL.
+fetched again, and an `--offline` build with no copy fails naming the URL. A `coordinate` or
+`url` over a key the table leaves unset declares no tool; a `coordinate` that is one
+`${config.<key>}` (or `${entry.<key>}`) over a string-list key is every coordinate of the list —
+the first the root, the rest `with` it in one closure — so the lint plugin's
+`checkstyle-classpath = ["g:a:1", "g:b:1"]` is one tool holding both jars' closures.
 
 A tool both lanes need is declared once, as a `step-dependency` — commands receive both lanes,
 so one artifact may not sit in both (parse error). `[[contribute.provided-classpath]]` resolves

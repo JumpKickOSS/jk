@@ -11,28 +11,36 @@ import cc.jumpkick.repo.RepoGroup;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The lint plugins are one {@code [lint]} table. {@code maven-checkstyle-plugin}: {@code
+ * The lint plugins are one {@code [lint]} table. {@code maven-checkstyle-plugin}: each execution
+ * binding {@code check} is one Checkstyle run — the first the table's own keys, every further one
+ * a {@code [lint.<execution-id>]} entry, an execution Maven skips a row — and in each {@code
  * <configLocation>} is {@code checkstyle} — a URL as written, which the step fetches; a path
  * through {@code ${maven.multiModuleProjectDirectory}} the reactor root's file by its path from
  * the module; a built-in {@code sun_checks.xml} / {@code google_checks.xml} is a row, since the
- * key reads a file in the module — {@code <suppressionsLocation>} is {@code
- * checkstyle-suppressions}, the Checkstyle
+ * key reads a file in the module; a name the module does not hold is a resource of the plugin's
+ * {@code <dependencies>}, which are {@code checkstyle-classpath} — {@code <suppressionsLocation>}
+ * is {@code checkstyle-suppressions}, {@code <headerLocation>} {@code checkstyle-header}, {@code
+ * <propertyExpansion>} {@code checkstyle-properties}, the Checkstyle
  * version the plugin's own {@code <dependencies>} pin is {@code checkstyle-version}, {@code
  * <includeTestSourceDirectory>} adds {@code src/test/java} to {@code sources}, a {@code
  * <violationSeverity>} of {@code warning} is {@code fail-on = "warning"}. {@code maven-pmd-plugin}:
@@ -208,10 +216,46 @@ final class LintPlugins {
     }
 
     /**
-     * Maps the plugin and returns the threshold Checkstyle's {@code <violationSeverity>} means.
-     * {@code <suppressionsLocation>} is {@code checkstyle-suppressions}, which the step hands the
-     * rule set as Maven does; a path through the reactor-root launcher property resolves against
-     * {@code reactorRoot}.
+     * One Checkstyle run as Maven makes it: an execution's configuration merged over the plugin's
+     * own, or the plugin's own when no execution binds. {@code id} is the execution's, null for the
+     * plugin-level run.
+     */
+    private record Run(@Nullable String id, Xpp3Dom dom) {}
+
+    /**
+     * The runs the plugin's executions make, in order: each execution binding {@code check} (or
+     * {@code checkstyle}) is one, its configuration over the plugin's; an execution Maven skips
+     * ({@code <skip>true</skip>}) is a row and no run; two executions over one rule set are one
+     * run. Without such an execution the plugin's own configuration is the one run.
+     */
+    private static List<Run> checkstyleRuns(Plugin plugin, ImportReport.Builder report) {
+        Xpp3Dom base = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : new Xpp3Dom("configuration");
+        List<Run> runs = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (PluginExecution execution : plugin.getExecutions()) {
+            List<String> goals = execution.getGoals();
+            if (!goals.isEmpty() && !goals.contains("check") && !goals.contains("checkstyle")) continue;
+            Xpp3Dom own = execution.getConfiguration() instanceof Xpp3Dom dom ? new Xpp3Dom(dom) : null;
+            Xpp3Dom merged = own == null ? base : Objects.requireNonNull(Xpp3Dom.mergeXpp3Dom(own, base));
+            if (EnvValues.parseBool(PluginFacts.child(merged, "skip")).orElse(false)) {
+                report.warning("execution `" + execution.getId() + "` of `" + CHECKSTYLE
+                        + "` is skipped under Maven (`<skip>` is true), so no Checkstyle run was written for it.");
+                continue;
+            }
+            String location = PluginFacts.text(merged.getChild("configLocation"));
+            if (!seen.add(location == null ? "" : location.strip())) continue;
+            runs.add(new Run(execution.getId(), merged));
+        }
+        if (runs.isEmpty()) runs.add(new Run(null, base));
+        return runs;
+    }
+
+    /**
+     * Maps the plugin — its first run as the table's own keys, every further run as a {@code
+     * [lint.<execution-id>]} entry — and returns the threshold the first run's {@code
+     * <violationSeverity>} means. The plugin's own {@code <dependencies>} other than Checkstyle
+     * itself are {@code checkstyle-classpath}, on the table and on every entry: the jars a rule
+     * set, header, suppressions or check classes live in as resources.
      */
     private static String checkstyle(
             Plugin plugin,
@@ -220,48 +264,154 @@ final class LintPlugins {
             Map<String, Object> values,
             Set<String> sources,
             ImportReport.Builder report) {
-        String config = null;
-        String suppressions = null;
+        List<String> classpath = new ArrayList<>();
+        for (Dependency dependency : plugin.getDependencies()) {
+            String version = PluginFacts.usable(dependency.getVersion());
+            if (version == null) continue;
+            if ("checkstyle".equals(dependency.getArtifactId())
+                    && "com.puppycrawl.tools".equals(dependency.getGroupId())) {
+                if (!version.equals("14.1.0")) values.put("checkstyle-version", version);
+                continue;
+            }
+            classpath.add(dependency.getGroupId() + ":" + dependency.getArtifactId() + ":" + version);
+        }
+        List<Run> runs = checkstyleRuns(plugin, report);
+        Run first = runs.getFirst();
+        if (!classpath.isEmpty()) values.put("checkstyle-classpath", List.copyOf(classpath));
+        String failOn = checkstyleRun(first.dom(), baseDir, reactorRoot, values, sources, !classpath.isEmpty(), report);
+        Map<String, Map<String, Object>> entries = new LinkedHashMap<>();
+        for (Run run : runs.subList(1, runs.size())) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            Set<String> roots = new LinkedHashSet<>(List.of("src/main/java"));
+            if (!classpath.isEmpty()) entry.put("checkstyle-classpath", List.copyOf(classpath));
+            String threshold =
+                    checkstyleRun(run.dom(), baseDir, reactorRoot, entry, roots, !classpath.isEmpty(), report);
+            if (roots.size() != 1 || !roots.contains("src/main/java")) entry.put("sources", List.copyOf(roots));
+            if (!threshold.equals("error")) entry.put("fail-on", threshold);
+            entries.put(Objects.requireNonNull(run.id()), entry);
+        }
+        if (!entries.isEmpty()) values.put(PluginConfig.ENTRIES, entries);
+        return failOn;
+    }
+
+    /**
+     * One run's keys into {@code values} from its merged configuration, and the threshold its
+     * {@code <violationSeverity>} means. {@code <configLocation>} is {@code checkstyle}, {@code
+     * <suppressionsLocation>} {@code checkstyle-suppressions}, {@code <headerLocation>} {@code
+     * checkstyle-header}; {@code <propertyExpansion>} lines are {@code checkstyle-properties},
+     * except {@code checkstyle.suppressions.file} and {@code checkstyle.header.file}, which are the
+     * keys above; {@code <sourceDirectories>} and {@code <includeTestSourceDirectory>} shape
+     * {@code sources}. A location the module does not hold is written as spelled when the run has
+     * a classpath — a resource in one of its jars — and a row otherwise.
+     */
+    private static String checkstyleRun(
+            Xpp3Dom dom,
+            @Nullable Path baseDir,
+            @Nullable Path reactorRoot,
+            Map<String, Object> values,
+            Set<String> sources,
+            boolean classpath,
+            ImportReport.Builder report) {
         String failOn = "error";
-        for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
-            String location = PluginFacts.text(dom.getChild("configLocation"));
-            if (location != null && !location.isBlank()) config = location.strip();
-            String suppressionsLocation = PluginFacts.text(dom.getChild("suppressionsLocation"));
-            if (suppressionsLocation != null && !suppressionsLocation.isBlank()) {
-                suppressions = suppressionsLocation.strip();
-            }
-            if (EnvValues.parseBool(PluginFacts.child(dom, "includeTestSourceDirectory"))
-                    .orElse(false)) {
-                sources.add(TEST_ROOT);
-            }
-            String severity = PluginFacts.child(dom, "violationSeverity");
-            if ("warning".equalsIgnoreCase(severity) || "info".equalsIgnoreCase(severity)) failOn = "warning";
-            if (!EnvValues.parseBool(PluginFacts.child(dom, "failsOnError")).orElse(true)
-                    || !EnvValues.parseBool(PluginFacts.child(dom, "failOnViolation"))
-                            .orElse(true)) {
-                failOn = "never";
-            }
-            String excludes = PluginFacts.child(dom, "excludes");
-            if (excludes != null) {
-                List<String> globs = new ArrayList<>();
-                for (String glob : excludes.split(",")) {
-                    if (!glob.isBlank()) globs.add(glob.strip());
+        String config = PluginFacts.text(dom.getChild("configLocation"));
+        String suppressions = PluginFacts.text(dom.getChild("suppressionsLocation"));
+        String header = PluginFacts.text(dom.getChild("headerLocation"));
+        Map<String, String> properties = new LinkedHashMap<>();
+        String expansion = PluginFacts.text(dom.getChild("propertyExpansion"));
+        if (expansion != null) {
+            for (String line : expansion.split("\\R")) {
+                int eq = line.indexOf('=');
+                if (eq < 1) continue;
+                String name = line.substring(0, eq).strip();
+                String value = line.substring(eq + 1).strip();
+                if (name.isEmpty() || value.isEmpty()) continue;
+                switch (name) {
+                    case "checkstyle.suppressions.file" -> suppressions = suppressions == null ? value : suppressions;
+                    case "checkstyle.header.file" -> header = header == null ? value : header;
+                    default -> properties.put(name, propertyValue(value, baseDir, reactorRoot));
                 }
-                if (!globs.isEmpty()) values.put("exclude", globs);
             }
         }
-        // A rule set at a URL is the key as written: the step fetches it. One the module does not
-        // hold is written as the POM spelled it, so the step's warning names it; the step runs
-        // nothing until the file is there.
+        Xpp3Dom directories = dom.getChild("sourceDirectories");
+        if (directories != null) {
+            List<String> roots = new ArrayList<>();
+            for (Xpp3Dom child : directories.getChildren()) {
+                String dir = PluginFacts.usable(child.getValue());
+                if (dir != null) roots.add(sourceRoot(dir, baseDir));
+            }
+            String inline = PluginFacts.usable(directories.getValue());
+            if (roots.isEmpty() && inline != null) roots.add(sourceRoot(inline, baseDir));
+            if (!roots.isEmpty()) {
+                sources.clear();
+                sources.addAll(roots);
+            }
+        }
+        if (EnvValues.parseBool(PluginFacts.child(dom, "includeTestSourceDirectory"))
+                .orElse(false)) {
+            sources.add(TEST_ROOT);
+        }
+        String severity = PluginFacts.child(dom, "violationSeverity");
+        if ("warning".equalsIgnoreCase(severity) || "info".equalsIgnoreCase(severity)) failOn = "warning";
+        if (!EnvValues.parseBool(PluginFacts.child(dom, "failsOnError")).orElse(true)
+                || !EnvValues.parseBool(PluginFacts.child(dom, "failOnViolation"))
+                        .orElse(true)) {
+            failOn = "never";
+        }
+        String excludes = PluginFacts.child(dom, "excludes");
+        if (excludes != null) {
+            List<String> globs = new ArrayList<>();
+            for (String glob : excludes.split(",")) {
+                if (!glob.isBlank()) globs.add(glob.strip());
+            }
+            if (!globs.isEmpty()) values.put("exclude", globs);
+        }
+        values.put(
+                "checkstyle", ruleSet(config == null ? null : config.strip(), baseDir, reactorRoot, classpath, report));
+        if (suppressions != null) {
+            location(
+                    suppressions.strip(),
+                    "checkstyle-suppressions",
+                    "suppressions",
+                    baseDir,
+                    reactorRoot,
+                    values,
+                    report);
+        }
+        if (header != null)
+            location(header.strip(), "checkstyle-header", "header", baseDir, reactorRoot, values, report);
+        if (!properties.isEmpty()) values.put("checkstyle-properties", properties);
+        return failOn;
+    }
+
+    /** A {@code <sourceDirectories>} entry as a module-relative root: {@code ./} and {@code .} are the module itself. */
+    private static String sourceRoot(String dir, @Nullable Path baseDir) {
+        String root = Path.of(SourceTreePlugins.moduleRelativeFile(dir, baseDir))
+                .normalize()
+                .toString()
+                .replace('\\', '/');
+        return root.isEmpty() ? "." : root;
+    }
+
+    /**
+     * The {@code checkstyle} key for {@code config}: a URL as written, which the step fetches; a
+     * path through the reactor-root launcher property the root's file by its path from the module;
+     * a built-in {@code sun_checks.xml} / {@code google_checks.xml}, or a path through a property
+     * no POM defines, as spelled plus a row to copy the rule set in; any other name the module's
+     * file, or, when the run has a {@code classpath}, the resource one of its jars holds.
+     */
+    private static String ruleSet(
+            @Nullable String config,
+            @Nullable Path baseDir,
+            @Nullable Path reactorRoot,
+            boolean classpath,
+            ImportReport.Builder report) {
         if (config != null && reactorRoot != null && config.contains(REACTOR_ROOT_PROPERTY)) {
             config = launcherPath(config, baseDir, reactorRoot);
         }
         boolean url = config != null && (config.startsWith("http://") || config.startsWith("https://"));
         boolean property = config != null && config.contains("${");
         boolean builtIn = config != null && (config.endsWith("sun_checks.xml") || config.endsWith("google_checks.xml"));
-        if (url) {
-            values.put("checkstyle", config);
-        } else if (config == null || property || builtIn) {
+        if (config == null || property || builtIn) {
             String named = config == null ? "sun_checks.xml" : config;
             report.warning("`" + CHECKSTYLE + "` reads "
                     + (config == null ? "Checkstyle's default rule set" : "`" + config + "`")
@@ -269,28 +419,62 @@ final class LintPlugins {
                     + "; `[lint] checkstyle` names a configuration file in the module,"
                     + " so copy the rule set in and point the key at it — until then the step lints nothing"
                     + " and says so.");
-            values.put("checkstyle", named);
-        } else {
-            values.put("checkstyle", SourceTreePlugins.moduleRelativeFile(config, baseDir));
+            return named;
         }
-        if (suppressions != null) {
-            String resolved = launcherPath(suppressions, baseDir, reactorRoot);
-            if (resolved.startsWith("http://") || resolved.startsWith("https://") || !resolved.contains("${")) {
-                values.put("checkstyle-suppressions", resolved);
-            } else {
-                report.warning("`" + CHECKSTYLE + "` reads its suppressions from `" + suppressions
-                        + "`, a path through a property no POM defines; `[lint] checkstyle-suppressions` names a"
-                        + " file in the module, so copy the suppressions in and point the key at it.");
-            }
+        if (url) return config;
+        String file = SourceTreePlugins.moduleRelativeFile(config, baseDir);
+        return classpath && (baseDir == null || !Files.isRegularFile(baseDir.resolve(file))) ? config : file;
+    }
+
+    /**
+     * {@code key} for a suppressions or header {@code location}: a URL, a module path (through the
+     * reactor-root launcher property when spelled so) or a classpath resource as written; a path
+     * through a property no POM defines is a row instead.
+     */
+    private static void location(
+            String location,
+            String key,
+            String what,
+            @Nullable Path baseDir,
+            @Nullable Path reactorRoot,
+            Map<String, Object> values,
+            ImportReport.Builder report) {
+        String resolved = launcherPath(location, baseDir, reactorRoot);
+        if (resolved.startsWith("http://") || resolved.startsWith("https://") || !resolved.contains("${")) {
+            values.put(key, resolved);
+            return;
         }
-        for (Dependency dependency : plugin.getDependencies()) {
-            if ("checkstyle".equals(dependency.getArtifactId())
-                    && "com.puppycrawl.tools".equals(dependency.getGroupId())) {
-                String version = PluginFacts.usable(dependency.getVersion());
-                if (version != null && !version.equals("14.1.0")) values.put("checkstyle-version", version);
-            }
+        report.warning("`" + CHECKSTYLE + "` reads its " + what + " from `" + location
+                + "`, a path through a property no POM defines; `[lint] " + key + "` names a file in the module,"
+                + " so copy the " + what + " in and point the key at it.");
+    }
+
+    /**
+     * A {@code <propertyExpansion>} value as the module names it: a path through the reactor-root
+     * launcher property, or an absolute path under the module or the reactor root, by its path from
+     * the module — so {@code ${project.build.directory}} is {@code target} — and anything else as
+     * written.
+     */
+    private static String propertyValue(String value, @Nullable Path baseDir, @Nullable Path reactorRoot) {
+        if (value.contains(REACTOR_ROOT_PROPERTY)) return launcherPath(value, baseDir, reactorRoot);
+        if (baseDir == null || value.contains("${") || value.startsWith("http://") || value.startsWith("https://")) {
+            return value;
         }
-        return failOn;
+        Path path;
+        try {
+            path = Path.of(value);
+        } catch (InvalidPathException notAPath) {
+            return value;
+        }
+        if (!path.isAbsolute()) return value;
+        Path module = baseDir.toAbsolutePath().normalize();
+        Path target = path.normalize();
+        if (target.startsWith(module)
+                || (reactorRoot != null
+                        && target.startsWith(reactorRoot.toAbsolutePath().normalize()))) {
+            return module.relativize(target).toString().replace('\\', '/');
+        }
+        return value;
     }
 
     /**

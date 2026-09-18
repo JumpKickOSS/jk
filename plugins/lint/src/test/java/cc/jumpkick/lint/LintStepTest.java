@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -14,6 +15,7 @@ import java.util.Objects;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
@@ -165,7 +167,8 @@ class LintStepTest {
         assertThat(io.diagnostics())
                 .containsExactly("warning: checkstyle: `config/sun_checks.xml` is not a file in the module, so"
                         + " nothing was linted — copy the rule set to that path, or point `[lint] checkstyle` at"
-                        + " the file that holds it");
+                        + " the file that holds it (a resource of a jar is one when `checkstyle-classpath` names"
+                        + " the jar)");
         assertThat(io.labels()).containsExactly("checkstyle (no configuration)");
         assertThat(tmp.resolve("scratch/lint/checkstyle/checkstyle.xml")).isEmptyFile();
     }
@@ -213,6 +216,77 @@ class LintStepTest {
 
         assertThat(io.diagnostics()).isEmpty();
         assertThat(io.labels()).containsExactly("checkstyle (1 root)");
+    }
+
+    /**
+     * A rule set inside a jar on {@code checkstyle-classpath} — the shape spring-cloud-build ships
+     * in spring-cloud-build-tools — runs as Checkstyle reads a classpath resource, with {@code
+     * checkstyle-header} reaching a Header check as {@code checkstyle.header.file} and every {@code
+     * checkstyle-properties} entry reaching the rule set through the same {@code -p} file.
+     */
+    @Test
+    void a_rule_set_inside_a_classpath_jar_runs_with_its_header_and_properties(@TempDir Path tmp) throws Exception {
+        String rules = CONFIG.formatted("warning")
+                .replace(
+                        "<module name=\"TreeWalker\">",
+                        "<module name=\"Header\"><property name=\"headerFile\" value=\"${checkstyle.header.file}\"/></module>"
+                                + "<module name=\"SuppressionFilter\"><property name=\"file\" value=\"${acme.suppressions}\"/></module>"
+                                + "<module name=\"TreeWalker\">");
+        Path jar = tmp.resolve("tool/acme-rules.jar");
+        Files.createDirectories(jar.getParent());
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new ZipEntry("acme/checkstyle.xml"));
+            out.write(rules.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+            out.putNextEntry(new ZipEntry("acme/header.txt"));
+            out.write("// Copyright Acme\n".getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+        FakeBuildIo io = lintModule(tmp, "warning", SOURCE)
+                .config("checkstyle", "acme/checkstyle.xml")
+                .config("checkstyle-classpath", List.of("com.acme:acme-rules:1.0"))
+                .config("checkstyle-header", "acme/header.txt")
+                .config("checkstyle-properties", Map.of("acme.suppressions", "config/suppressions.xml"))
+                .extra("checkstyle-classpath", jar);
+        Files.delete(tmp.resolve("checkstyle.xml"));
+        FakeBuildIo.write(tmp.resolve("config/suppressions.xml"), """
+                <?xml version="1.0"?>
+                <!DOCTYPE suppressions PUBLIC "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+                    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+                <suppressions>
+                  <suppress files="Sample\\.java" checks="MagicNumber"/>
+                </suppressions>
+                """);
+
+        LintStep.run(io, LintTool.CHECKSTYLE);
+
+        assertThat(io.diagnostics())
+                .singleElement()
+                .asString()
+                .contains("[Header]")
+                .doesNotContain("MagicNumber");
+        assertThat(io.labels()).containsExactly("checkstyle (1 root)");
+    }
+
+    /** A {@code [lint.<name>]} entry is a Checkstyle run of its own, under its own step, output and extras. */
+    @Test
+    void an_entry_is_a_checkstyle_run_of_its_own(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = lintModule(tmp, "warning", SOURCE)
+                .config("*", Map.of("nohttp", Map.of("checkstyle", "https://example.com/build/nohttp.xml")))
+                .extra("checkstyle-nohttp", closureJar(tmp, "checkstyle-nohttp-closure.jar"))
+                .extra(
+                        "checkstyle-config-nohttp",
+                        FakeBuildIo.write(tmp.resolve("fetched/nohttp.xml"), CONFIG.formatted("warning")));
+
+        LintStep.run(io, LintTool.CHECKSTYLE, "nohttp");
+
+        assertThat(io.diagnostics())
+                .singleElement()
+                .asString()
+                .startsWith("warning: ")
+                .contains("[MagicNumber]");
+        assertThat(io.labels()).containsExactly("checkstyle:nohttp (1 root)");
+        assertThat(tmp.resolve("scratch/lint/checkstyle-nohttp/checkstyle.xml")).isRegularFile();
     }
 
     /** SpotBugs runs over the compiled classes; a high-priority pattern is an error that fails the step. */

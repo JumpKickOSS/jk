@@ -33,22 +33,50 @@ public final class OutputArtifacts {
      *
      * @param module the workspace-relative module path, {@code ""} at the root
      * @param pluginDir the module's plugin scratch root, under which each lint step leaves its report
+     * @param checkstyleRuns the {@code [lint.<name>]} entries, each a Checkstyle run with a report of its own
      */
     public record Module(
-            String module, Path dir, Path jar, Path pom, Path nativeBinary, Path coverage, Path pluginDir) {
+            String module,
+            Path dir,
+            Path jar,
+            Path pom,
+            Path nativeBinary,
+            Path coverage,
+            Path pluginDir,
+            List<String> checkstyleRuns) {
 
         /** The XML report the {@code lint-<tool>} step writes: {@code plugin/lint-<tool>/lint/<tool>/<tool>.xml}. */
         public Path lintReport(String tool) {
+            return lintReport(tool, null);
+        }
+
+        /** The report of one {@code [lint.<run>]} Checkstyle run: {@code plugin/lint-<tool>-<run>/lint/<tool>-<run>/<tool>.xml}. */
+        public Path lintReport(String tool, @Nullable String run) {
+            String step = tool + (run == null ? "" : "-" + run);
             return pluginDir
-                    .resolve("lint-" + tool)
+                    .resolve("lint-" + step)
                     .resolve("lint")
-                    .resolve(tool)
+                    .resolve(step)
                     .resolve(tool + ".xml");
         }
 
-        public @Nullable Path existingLintReport(String tool) {
-            Path report = lintReport(tool);
-            return Files.isRegularFile(report) ? report : null;
+        /** Every report {@code tool} leaves: the table's own, and for Checkstyle one per {@code [lint.<name>]} run. */
+        public List<Path> lintReports(String tool) {
+            List<Path> reports = new ArrayList<>();
+            reports.add(lintReport(tool));
+            if (tool.equals("checkstyle")) {
+                for (String run : checkstyleRuns) reports.add(lintReport(tool, run));
+            }
+            return reports;
+        }
+
+        /** The reports of {@link #lintReports} that exist. */
+        public List<Path> existingLintReports(String tool) {
+            List<Path> existing = new ArrayList<>();
+            for (Path report : lintReports(tool)) {
+                if (Files.isRegularFile(report)) existing.add(report);
+            }
+            return existing;
         }
 
         public @Nullable Path existingJar() {
@@ -107,7 +135,11 @@ public final class OutputArtifacts {
             Path coverage = coverageReport != null
                     ? root.resolve(coverageReport)
                     : layout.reportsDir().resolve(DEFAULT_COVERAGE);
-            out.add(new Module(rel, dir, jar, pom, layout.nativeBinary(), coverage, layout.pluginDir()));
+            List<String> checkstyleRuns = build.pluginConfig("lint")
+                    .map(lint -> List.copyOf(lint.entries().keySet()))
+                    .orElse(List.of());
+            out.add(new Module(
+                    rel, dir, jar, pom, layout.nativeBinary(), coverage, layout.pluginDir(), checkstyleRuns));
         }
         return out;
     }
