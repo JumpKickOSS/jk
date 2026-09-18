@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.gradle;
 
+import static cc.jumpkick.gradle.GradleScriptText.STR;
+import static cc.jumpkick.gradle.GradleScriptText.extractBlock;
+import static cc.jumpkick.gradle.GradleScriptText.firstNonNull;
+import static cc.jumpkick.gradle.GradleScriptText.firstString;
+import static cc.jumpkick.gradle.GradleScriptText.stripComments;
+
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -18,7 +23,6 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -36,12 +40,6 @@ import org.jspecify.annotations.Nullable;
 public final class GradleImporter {
 
     public record Result(JkBuild jkBuild, ImportReport report) {}
-
-    // No regex for comment stripping — naive `//` would eat the `//` inside URL
-    // literals. See stripComments below.
-
-    // String literal: "foo" or 'bar', preserving the quoted body.
-    private static final String STR = "(?:\"([^\"\\n]*)\"|'([^'\\n]*)')";
 
     private static final Pattern GROUP_ASSIGN = Pattern.compile("(?m)^\\s*group\\s*[=]?\\s*" + STR);
     private static final Pattern VERSION_ASSIGN = Pattern.compile("(?m)^\\s*version\\s*[=]?\\s*" + STR);
@@ -133,20 +131,6 @@ public final class GradleImporter {
     private static final Pattern MANIFEST_ATTR =
             Pattern.compile(STR + "\\s*(?:to|:)\\s*(?:" + STR + "|([A-Za-z_][\\w.]*))");
 
-    // dependencies entries: implementation("g:a:v"), testImplementation 'g:a:v',
-    // or the unquoted Groovy catalog form `implementation libs.junit.jupiter`.
-    private static final Pattern DEP_ENTRY = Pattern.compile("(?m)^\\s*(?<config>[a-zA-Z][a-zA-Z0-9_]*)\\s*"
-            + "(?:\\(\\s*(?<paren>.+?)\\s*\\)|"
-            + STR
-            + "|(?<accessor>[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+))"
-            + "\\s*$");
-
-    // A type-safe version-catalog accessor, e.g. libs.junit.platform.launcher.
-    private static final Pattern CATALOG_ACCESSOR = Pattern.compile("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+");
-    // platform(libs.spring.bom) — a catalog accessor wrapped in platform(...).
-    private static final Pattern PLATFORM_ACCESSOR =
-            Pattern.compile("platform\\s*\\(\\s*(" + CATALOG_ACCESSOR.pattern() + ")\\s*\\)");
-
     // java { sourceCompatibility = JavaVersion.VERSION_25 }
     private static final Pattern JAVA_VERSION_TOKEN =
             Pattern.compile("JavaVersion\\.VERSION_([0-9_]+)|JavaLanguageVersion\\.of\\(\\s*([0-9]+)\\s*\\)"
@@ -161,8 +145,8 @@ public final class GradleImporter {
 
     public static Result importFrom(Path script) throws IOException {
         String text = Files.readString(script);
-        String defaultArtifact = defaultArtifactFor(script);
         Path projectDir = Objects.requireNonNull(script.toAbsolutePath().getParent());
+        String defaultArtifact = projectName(projectDir);
         GradleVersionCatalog catalog =
                 GradleVersionCatalog.forProject(projectDir).orElse(null);
         return importFromString(text, defaultArtifact, catalog);
@@ -240,7 +224,7 @@ public final class GradleImporter {
         // alone -- the rule's warning asks the user to fill it in.
         List<PluginConfig> pluginConfigs = mapPluginTables(pluginsBody, importRules, report);
 
-        Map<Scope, List<Dependency>> deps = parseDependencies(stripped, catalog, report);
+        Map<Scope, List<Dependency>> deps = GradleDependencies.parse(stripped, catalog, report);
         List<RepositorySpec> repos = parseRepositories(stripped, report);
         warnUnsupportedSections(stripped, report);
 
@@ -369,260 +353,21 @@ public final class GradleImporter {
         return null;
     }
 
-    private static String defaultArtifactFor(Path script) {
-        Path parent = script.toAbsolutePath().getParent();
-        if (parent != null && parent.getFileName() != null) {
-            String name = parent.getFileName().toString();
-            if (!name.isEmpty()) return name;
-        }
-        return "app";
-    }
-
-    // --- dependency block ---------------------------------------------------
-
-    private static Map<Scope, List<Dependency>> parseDependencies(
-            String text, @Nullable GradleVersionCatalog catalog, ImportReport.Builder report) {
-        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-        String body = extractBlock(text, "dependencies").orElse(null);
-        if (body == null) return byScope;
-        for (String rawLine : body.split("\\n")) {
-            String line = rawLine.trim();
-            if (line.isEmpty() || line.startsWith("//")) continue;
-            Matcher m = DEP_ENTRY.matcher(line);
-            if (!m.matches()) {
-                if (!line.equals("{") && !line.equals("}")) {
-                    report.error("dependencies entry not understood: `"
-                            + line
-                            + "` — jk import is best-effort and only handles string-form deps."
-                            + " Re-state the dep in jk.toml under [dependencies] as `\"g:a\" = { version = \"=v\" }`.");
-                }
-                continue;
-            }
-            String configuration = m.group("config");
-            String paren = m.group("paren");
-            String accessor = m.group("accessor");
-            String s1 = m.group(3);
-            String s2 = m.group(4);
-            String quoted = firstNonNull(s1, s2);
-
-            Scope scope = mapConfiguration(configuration);
-            if (scope == null) {
-                report.error("Gradle configuration `"
-                        + configuration
-                        + "` is not a recognised jk scope; entry dropped (`"
-                        + line
-                        + "`).");
-                continue;
-            }
-
-            // Unquoted Groovy catalog form: `implementation libs.junit.jupiter`.
-            if (accessor != null) {
-                resolveCatalogAccessor(accessor, scope, byScope, catalog, report);
-                continue;
-            }
-
-            if (paren != null) {
-                // platform(libs.x) — version-catalog accessor wrapped in platform().
-                Matcher platformAccessor = PLATFORM_ACCESSOR.matcher(paren);
-                if (platformAccessor.find()) {
-                    resolveCatalogAccessor(platformAccessor.group(1), Scope.PLATFORM, byScope, catalog, report);
-                    continue;
-                }
-                // Could be platform("g:a:v"), project(":core"), kotlin("test"), or a bare "g:a:v".
-                Matcher platform =
-                        Pattern.compile("platform\\s*\\(\\s*" + STR + "\\s*\\)").matcher(paren);
-                if (platform.find()) {
-                    String coord = Objects.requireNonNull(firstNonNull(platform.group(1), platform.group(2)));
-                    addDependency(byScope, Scope.PLATFORM, coord, report);
-                    continue;
-                }
-                Matcher project =
-                        Pattern.compile("project\\s*\\(\\s*" + STR + "\\s*\\)").matcher(paren);
-                if (project.find()) {
-                    String path = firstNonNull(project.group(1), project.group(2));
-                    report.warning(
-                            "Project dependency `"
-                                    + path
-                                    + "` on configuration `"
-                                    + configuration
-                                    + "` was not mapped. Convert via a jk workspace module reference once you import the sibling module.");
-                    continue;
-                }
-                Matcher kotlinShortcut =
-                        Pattern.compile("kotlin\\s*\\(\\s*" + STR + "\\s*\\)").matcher(paren);
-                if (kotlinShortcut.find()) {
-                    String token = firstNonNull(kotlinShortcut.group(1), kotlinShortcut.group(2));
-                    report.warning("Kotlin shortcut `kotlin(\""
-                            + token
-                            + "\")` was not mapped to a concrete coord."
-                            + " Add the explicit `org.jetbrains.kotlin:kotlin-"
-                            + token
-                            + ":<version>` to jk.toml.");
-                    continue;
-                }
-                Matcher bareString = Pattern.compile("^\\s*" + STR + "\\s*$").matcher(paren);
-                if (bareString.find()) {
-                    String coord = Objects.requireNonNull(firstNonNull(bareString.group(1), bareString.group(2)));
-                    addDependency(byScope, scope, coord, report);
-                    continue;
-                }
-                // implementation(libs.junit.platform.launcher) — catalog accessor.
-                if (CATALOG_ACCESSOR.matcher(paren.trim()).matches()) {
-                    resolveCatalogAccessor(paren.trim(), scope, byScope, catalog, report);
-                    continue;
-                }
-                report.error("complex dependency expression `"
-                        + line
-                        + "` not understood;"
-                        + " re-state as a string-form coord in jk.toml.");
-            } else if (quoted != null) {
-                addDependency(byScope, scope, quoted, report);
-            }
-        }
-        return byScope;
-    }
-
-    private static void addDependency(
-            Map<Scope, List<Dependency>> byScope, Scope scope, String coord, ImportReport.Builder report) {
-        if (coord == null || coord.isBlank()) return;
-        // Expect g:a:v with optional :classifier!type — strip extras with a warning.
-        String[] parts = coord.split(":");
-        if (parts.length == 2 && !parts[0].isBlank() && !parts[1].isBlank()) {
-            // Versionless `g:a` -- normal in Boot builds, where the plugin's BOM manages the
-            // version. jk models it as platform-managed; [spring-boot] (or an explicit
-            // [platform-dependencies] BOM) supplies the pin at resolve time.
-            String shortName = shortNameFor(coord).orElse(parts[1]);
-            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(shortName, coord));
-            return;
-        }
-        if (parts.length < 3) {
-            report.error("dependency coord `" + coord + "` is not `group:artifact:version`; dropped.");
-            return;
-        }
-        String module = parts[0] + ":" + parts[1];
-        String artifactId = parts[1];
-        String versionToken = parts[2];
-        if (parts.length > 3) {
-            report.warning("classifier/type on `" + coord + "` dropped; jk support arrives in a later slice.");
-        }
-        if (versionToken.contains("$")) {
-            report.warning("dependency `"
-                    + coord
-                    + "` uses a Gradle variable for its version;"
-                    + " jk wrote `"
-                    + versionToken
-                    + "` verbatim — resolve the variable manually.");
-        }
-        VersionSelector selector = VersionSelector.parse(versionToken);
-        // Prefer a unique jk library-catalog short name when the GA matches (PRD S1).
-        String shortName = shortNameFor(module).orElse(artifactId);
-        byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.of(shortName, module, selector));
-    }
-
     /**
-     * Reverse-map {@code group:artifact} to a unique short name in the layered library catalog.
-     * Empty when zero or multiple catalog names share the GA (never invent a name).
+     * The project's name: {@code rootProject.name} from the {@code settings.gradle(.kts)} beside the
+     * build file, else the directory's name, else {@code app}.
      */
-    private static Optional<String> shortNameFor(String groupArtifact) {
-        if (groupArtifact == null || groupArtifact.isBlank()) return Optional.empty();
-        try {
-            LibraryCatalog catalog = LibraryCatalog.layered();
-            List<String> hits = new ArrayList<>();
-            for (String name : catalog.names()) {
-                var mod = catalog.lookup(name);
-                if (mod.isPresent() && groupArtifact.equals(mod.get().moduleKey())) {
-                    hits.add(name);
-                    if (hits.size() > 1) return Optional.empty();
-                }
-            }
-            return hits.size() == 1 ? Optional.of(hits.get(0)) : Optional.empty();
-        } catch (RuntimeException e) {
-            return Optional.empty();
+    static String projectName(Path projectDir) throws IOException {
+        for (String settings : SETTINGS_FILES) {
+            Optional<String> named = readRootProjectName(projectDir.resolve(settings));
+            if (named.isPresent()) return named.get();
         }
+        Path dirName = projectDir.toAbsolutePath().getFileName();
+        return dirName == null || dirName.toString().isEmpty() ? "app" : dirName.toString();
     }
 
-    /**
-     * Resolve a version-catalog accessor (e.g. {@code libs.junit.platform.launcher} or {@code
-     * libs.bundles.testing}) against the located catalog and add the resulting coordinate(s). The
-     * leading segment is the catalog name and is stripped before lookup. Unresolvable accessors —
-     * missing catalog, unknown alias, or a version/plugin accessor that isn't a dependency — are
-     * reported.
-     */
-    private static void resolveCatalogAccessor(
-            String accessor,
-            Scope scope,
-            Map<Scope, List<Dependency>> byScope,
-            @Nullable GradleVersionCatalog catalog,
-            ImportReport.Builder report) {
-        if (catalog == null) {
-            report.error("dependency `"
-                    + accessor
-                    + "` references a Gradle version catalog, but no"
-                    + " gradle/libs.versions.toml was found (searched the project dir and its parent)."
-                    + " Declare the coordinate directly in jk.toml.");
-            return;
-        }
-        int firstDot = accessor.indexOf('.');
-        String rest = accessor.substring(firstDot + 1); // drop the catalog name (e.g. "libs.")
-
-        if (rest.startsWith("bundles.")) {
-            String bundle = rest.substring("bundles.".length());
-            Optional<GradleVersionCatalog.BundleResolution> resolved = catalog.resolveBundle(bundle);
-            if (resolved.isEmpty()) {
-                report.error("bundle `" + accessor + "` was not found in the version catalog; dropped.");
-                return;
-            }
-            GradleVersionCatalog.BundleResolution br = resolved.get();
-            for (String missing : br.missingMembers()) {
-                report.warning("bundle `"
-                        + accessor
-                        + "` member `"
-                        + missing
-                        + "` was not found in [libraries] (or had no resolvable module); skipped.");
-            }
-            if (br.isEmpty()) {
-                report.error("bundle `" + accessor + "` expanded to no libraries; dropped.");
-                return;
-            }
-            for (String coord : br.coordinates()) {
-                addDependency(byScope, scope, coord, report);
-            }
-            return;
-        }
-        if (rest.startsWith("versions.") || rest.startsWith("plugins.")) {
-            report.warning("catalog accessor `"
-                    + accessor
-                    + "` refers to a version/plugin, not a"
-                    + " library; jk import only maps library and bundle accessors. Skipped.");
-            return;
-        }
-
-        Optional<String> coord = catalog.resolveLibrary(rest);
-        if (coord.isEmpty()) {
-            report.error("library `"
-                    + accessor
-                    + "` was not found in the version catalog"
-                    + "; dropped. Declare it directly in jk.toml.");
-            return;
-        }
-        addDependency(byScope, scope, coord.get(), report);
-    }
-
-    private static @Nullable Scope mapConfiguration(String configuration) {
-        return switch (configuration) {
-            case "implementation", "api", "compile" -> Scope.MAIN;
-            case "runtimeOnly", "runtime" -> Scope.RUNTIME;
-            // Boot dev-loop configurations map 1:1 to jk's dev scopes.
-            case "developmentOnly" -> Scope.DEV;
-            case "testAndDevelopmentOnly" -> Scope.TEST_DEV;
-            case "compileOnly", "compileOnlyApi", "providedRuntime", "providedCompile" -> Scope.PROVIDED;
-            case "testImplementation", "testApi", "testCompile", "testRuntimeOnly", "testRuntime", "testCompileOnly" ->
-                Scope.TEST;
-            case "annotationProcessor", "kapt", "ksp" -> Scope.PROCESSOR;
-            case "testAnnotationProcessor", "kaptTest", "kspTest" -> Scope.TEST_PROCESSOR;
-            default -> null;
-        };
-    }
+    /** The settings file names a Gradle build root carries, Kotlin DSL first. */
+    public static final List<String> SETTINGS_FILES = List.of("settings.gradle.kts", "settings.gradle");
 
     // --- repositories block -------------------------------------------------
 
@@ -693,72 +438,6 @@ public final class GradleImporter {
 
     // --- helpers ------------------------------------------------------------
 
-    /**
-     * Strip {@code //} line comments and {@code /* * /} block comments while leaving string literals
-     * untouched. A regex-based pass would mis-eat the {@code //} inside URL strings like {@code
-     * "https://example.com"}.
-     */
-    private static String stripComments(String text) {
-        StringBuilder out = new StringBuilder(text.length());
-        int i = 0;
-        int n = text.length();
-        while (i < n) {
-            char c = text.charAt(i);
-            // Block comment.
-            if (c == '/' && i + 1 < n && text.charAt(i + 1) == '*') {
-                int end = text.indexOf("*/", i + 2);
-                i = end < 0 ? n : end + 2;
-                out.append(' ');
-                continue;
-            }
-            // Line comment.
-            if (c == '/' && i + 1 < n && text.charAt(i + 1) == '/') {
-                int eol = text.indexOf('\n', i + 2);
-                i = eol < 0 ? n : eol;
-                continue;
-            }
-            // Double-quoted string — copy through, honouring \"escapes\".
-            if (c == '"') {
-                out.append(c);
-                i++;
-                while (i < n) {
-                    char d = text.charAt(i);
-                    out.append(d);
-                    i++;
-                    if (d == '\\' && i < n) {
-                        out.append(text.charAt(i));
-                        i++;
-                    } else if (d == '"') {
-                        break;
-                    } else if (d == '\n') {
-                        break; // bail out on unterminated literal — Groovy permits.
-                    }
-                }
-                continue;
-            }
-            // Single-quoted string.
-            if (c == '\'') {
-                out.append(c);
-                i++;
-                while (i < n) {
-                    char d = text.charAt(i);
-                    out.append(d);
-                    i++;
-                    if (d == '\\' && i < n) {
-                        out.append(text.charAt(i));
-                        i++;
-                    } else if (d == '\'' || d == '\n') {
-                        break;
-                    }
-                }
-                continue;
-            }
-            out.append(c);
-            i++;
-        }
-        return out.toString();
-    }
-
     private static Optional<Integer> parseInt(@Nullable String s) {
         if (s == null) return Optional.empty();
         try {
@@ -766,40 +445,6 @@ public final class GradleImporter {
         } catch (NumberFormatException e) {
             return Optional.empty();
         }
-    }
-
-    private static Optional<String> firstString(Pattern pattern, String text) {
-        Matcher m = pattern.matcher(text);
-        if (!m.find()) return Optional.empty();
-        String s = firstNonNull(m.group(1), m.group(2));
-        return s == null ? Optional.empty() : Optional.of(s);
-    }
-
-    /** Extract the contents of the first top-level {@code name { ... }} block by brace matching. */
-    private static Optional<String> extractBlock(String text, String name) {
-        Pattern header = Pattern.compile("(?m)^\\s*" + Pattern.quote(name) + "\\s*\\{");
-        Matcher m = header.matcher(text);
-        if (!m.find()) return Optional.empty();
-        int open = m.end() - 1; // position of the '{'
-        int depth = 0;
-        for (int i = open; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '{') depth++;
-            else if (c == '}') {
-                depth--;
-                if (depth == 0) {
-                    return Optional.of(text.substring(open + 1, i));
-                }
-            }
-        }
-        return Optional.empty();
-    }
-
-    private static @Nullable String firstNonNull(@Nullable String... values) {
-        for (String v : values) {
-            if (v != null && !v.isBlank()) return v;
-        }
-        return null;
     }
 
     /** Read {@code rootProject.name} from a {@code settings.gradle(.kts)} if present. */
