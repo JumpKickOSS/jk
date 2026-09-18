@@ -11,7 +11,7 @@ model. Never loads the JumpKick engine jar into the IDE.
 | Project open with `jk.toml` at the base | Links the JumpKick project (first open) and resolves it once; no prompt, no generated files |
 | `jk.toml` or `jk-lock.toml` changes under the project (editor save or a terminal `jk add` / `jk remove`) | Re-resolves after a 2 s quiet window; libraries and roots update in place |
 | **Tools → JumpKick → Sync project** | Explicit re-resolve; progress and the CLI's output in the Build tool window's Sync tab |
-| Tools → JumpKick → Build / Test / Lock / Sync dependencies only / Install BSP connection | `jk build` / `test` / `lock` / `sync` / `bsp install` |
+| Tools → JumpKick → Build / Test / Lock / Sync dependencies and sources / Install BSP connection | `jk build` / `test` / `lock` / `sync --sources` / `bsp install` |
 
 A resolve runs `jk ide --print-model` in the linked directory, decodes the engine's `ide-model`
 JSON with the plugin's own small reader, and hands IntelliJ:
@@ -21,9 +21,10 @@ JSON with the plugin's own small reader, and hands IntelliJ:
 - every source, resource, test and test-resource root as it lies on disk — every discovered test
   suite and the guard suite are test roots — read the way `jk ide` reads them;
 - generated-source roots when a module has annotation processors;
-- project-level libraries by coordinate with their sources jars when the engine reports them,
-  and per-module dependencies in IntelliJ's scope vocabulary (a tests-kind edge is one module
-  dependency with *production on test*);
+- project-level libraries by coordinate with their sources jars — every `-sources.jar` the store
+  or the Maven local repository holds; **Sync dependencies and sources** (`jk sync --sources`)
+  fetches one for every library that publishes it — and per-module dependencies in IntelliJ's
+  scope vocabulary (a tests-kind edge is one module dependency with *production on test*);
 - the per-module JDK under its stable `jk-<vendor>-<level>` name, registered in the IDE's JDK
   table when missing, and the project default JDK;
 - compiler output pointed at the IDE-owned `target/jdt/classes/{main,test}` of each module, never
@@ -79,13 +80,12 @@ extension (`clients/vscode/`).
 - IntelliJ Platform tests (`HeavyPlatformTestCase`): the debounced trigger over real VFS
   events, and `JkWorkspaceImportTest`, which imports this repository's own workspace through the
   real external-system path — link, resolver running the installed `jk`, platform applying the
-  result — and asserts every module, roots, libraries, SDKs, `target/jdt` outputs and that no
-  `.iml` lands in the checkout. It skips, printing why, when no `jk` is on PATH.
+  result — and asserts every module, roots, libraries (with sources jars, after a
+  `jk sync --sources` of the checkout), SDKs, `target/jdt` outputs and that no `.iml` lands in
+  the checkout. It skips, printing why, when no `jk` is on PATH.
 
 ## Manual today
 
-- Sources jars appear when the engine's model lists them (only jars already in the local Maven
-  repository); fetching sources for a workspace is a CLI/engine concern, not the plugin's.
 - The JUnit gutter runs IntelliJ's own runner over the resolved classpath; a run-configuration
   producer that routes Debug through `jk test --debug` is a later slice.
 - The Build tool window rendering of a sync (progress, the first error line) is verified by

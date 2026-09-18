@@ -187,4 +187,42 @@ class ArtifactLocatorTest {
                     .isEmpty();
         }
     }
+
+    /**
+     * A sources jar the lock did not pin is answered from wherever a sync left it — the store, or
+     * the Maven local repository — while a pinned one is still held to its digest.
+     */
+    @Test
+    void an_unpinned_sources_jar_is_found_in_the_store_or_m2_and_a_pinned_one_is_verified(@TempDir Path dir)
+            throws Exception {
+        Path store = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        String source = "central+https://repo.maven.apache.org/maven2/";
+        Lockfile.Artifact pkg = new Lockfile.Artifact(
+                "com.google.guava:guava", "33.4.8", source, "sha256:pending", null, List.of(Scope.MAIN), List.of());
+        String rel = "com/google/guava/guava/33.4.8/guava-33.4.8-sources.jar";
+        ArtifactLocator locator = new ArtifactLocator(store, m2, true);
+        assertThat(locator.locateSources(pkg)).isEmpty();
+
+        Path m2Sources = m2.resolve(rel);
+        Files.createDirectories(m2Sources.getParent());
+        Files.writeString(m2Sources, "sources-in-m2");
+        assertThat(locator.locateSources(pkg))
+                .contains(m2Sources.toAbsolutePath().normalize());
+
+        Path fetched = dir.resolve("fetched.jar");
+        Files.writeString(fetched, "sources-in-store");
+        RepoArtifactStore.forSource(store, source)
+                .materialize(rel, fetched, Hashing.sha256Hex(Files.readAllBytes(fetched)));
+        Path inStore = RepoArtifactStore.forSource(store, source).locate(rel).orElseThrow();
+        assertThat(locator.locateSources(pkg)).contains(inStore.toAbsolutePath().normalize());
+
+        Lockfile.Artifact pinned = pkg.withSourcesChecksum("sha256:" + "0".repeat(64));
+        assertThat(locator.locateSources(pinned))
+                .as("a pin that matches nothing on disk")
+                .isEmpty();
+        assertThat(locator.locateSources(
+                        pkg.withSourcesChecksum("sha256:" + Hashing.sha256Hex(Files.readAllBytes(fetched)))))
+                .contains(inStore.toAbsolutePath().normalize());
+    }
 }

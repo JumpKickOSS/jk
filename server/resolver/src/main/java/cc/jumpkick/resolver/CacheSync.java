@@ -11,7 +11,6 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.M2Dirs;
-import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoCredentialResolver;
@@ -188,29 +187,30 @@ public final class CacheSync {
     }
 
     /**
-     * Fetch sources JARs for every locked package that has a {@code sources-checksum} field.
-     * Already-cached sources are skipped. Packages without a sources checksum are silently ignored.
+     * Fetch the {@code -sources.jar} of every Maven row in {@code lock}. A row whose lock pins a
+     * {@code sources} checksum is verified against it; any other row takes whatever its repository
+     * publishes, and a library that publishes no sources jar is reported skipped, not failed.
+     * Sources already in the store (or the Maven local repository) are up to date.
      *
-     * @return count of sources JARs fetched (not counting those already cached)
+     * @return count of sources JARs fetched (not counting those already present)
      */
     public int syncSources(Lockfile lock, ProgressObserver observer) throws IOException, InterruptedException {
         Map<String, MavenRepo> repoCache = new HashMap<>();
         List<PendingFetch> pending = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
-            if (pkg.sourcesChecksum() == null) continue;
-            String hex = Objects.requireNonNull(pkg.sourcesChecksumHex());
-            Coordinate sourcesCoord =
-                    new Coordinate(pkg.moduleGroup(), pkg.moduleArtifact(), pkg.version(), "sources", "jar");
-            String rel = MavenLayout.artifactPath(sourcesCoord);
-            if (locator.locate(pkg.source(), rel, hex, sourcesCoord.toGav()).isPresent()) {
+            if (pkg.checksum() == null || pkg.name().indexOf(':') < 0) continue;
+            if (locator.locateSources(pkg).isPresent()) {
                 observer.upToDate(pkg);
                 continue;
             }
-            // Reuse the existing repoFor with the package's original source.
+            MavenRepo repo;
             try {
-                pending.add(new PendingFetch(pkg, hex, repoFor(pkg.source(), repoCache)));
-            } catch (IllegalArgumentException ignored) {
-            } // non-maven source
+                repo = repoFor(pkg.source(), repoCache);
+            } catch (IllegalArgumentException nonMaven) {
+                observer.skipped(pkg);
+                continue;
+            }
+            pending.add(new PendingFetch(pkg, pkg.sourcesChecksumHex(), repo));
         }
 
         int fetched = 0;
@@ -227,7 +227,9 @@ public final class CacheSync {
                 observer.failed(pending.get(i).pkg, e.getMessage());
                 continue;
             }
-            if (r.error() == null) {
+            if (r.absent()) {
+                observer.skipped(pending.get(i).pkg);
+            } else if (r.error() == null) {
                 fetched++;
                 observer.fetched(pending.get(i).pkg);
             } else {
@@ -243,10 +245,12 @@ public final class CacheSync {
         try {
             // Pinned: the lock's sources checksum is the authority, as for the main artifact.
             MavenRepo.Fetched f = p.repo.fetchArtifact(sourcesCoord, p.expectedHex, () -> false);
-            if (!f.sha256().equals(p.expectedHex)) {
+            if (p.expectedHex != null && !f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name() + " sources: checksum mismatch");
             }
             return FetchResult.ok();
+        } catch (MavenRepo.ArtifactNotFoundException e) {
+            return FetchResult.notPublished();
         } catch (IOException e) {
             return FetchResult.failure(p.pkg.name() + " sources: " + e.getMessage());
         } catch (InterruptedException e) {
@@ -355,14 +359,21 @@ public final class CacheSync {
     private record PendingFetch(
             Lockfile.Artifact pkg, @Nullable String expectedHex, MavenRepo repo) {}
 
-    /** Outcome of one parallel fetch — null error means success. */
-    private record FetchResult(@Nullable String error) {
+    /**
+     * Outcome of one parallel fetch — null error means success; {@code absent} is a repository
+     * that has no such file, which only an unpinned sources fetch may report.
+     */
+    private record FetchResult(@Nullable String error, boolean absent) {
         static FetchResult ok() {
-            return new FetchResult(null);
+            return new FetchResult(null, false);
         }
 
         static FetchResult failure(String msg) {
-            return new FetchResult(msg);
+            return new FetchResult(msg, false);
+        }
+
+        static FetchResult notPublished() {
+            return new FetchResult(null, true);
         }
     }
 

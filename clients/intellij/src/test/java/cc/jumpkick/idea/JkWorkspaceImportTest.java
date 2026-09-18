@@ -97,6 +97,9 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
         Path checkout = checkoutRoot();
         assumeJkOnPath();
 
+        JkCliRunner.Result sources = JkCliRunner.run(checkout.toFile(), "sync", "--sources");
+        assertTrue("jk sync --sources: " + sources.stderr(), sources.ok());
+
         Import result = importProject(checkout.toFile());
         assertNull("sync failed: " + result.failure, result.failure);
         DataNode<ProjectData> graph = requireNonNull(result.graph);
@@ -168,9 +171,10 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
                 }
             }
         }
-        // Sources jars attach whenever the engine reports them (the acme graph test pins that); the
-        // engine lists only sources already in the local repository, which may be none.
+        // After `jk sync --sources` the model lists a sources jar for every library that publishes
+        // one, and each becomes a SOURCES root of its project library.
         assertEquals("libraries with sources jars", modelWithSources, withSources);
+        assertTrue("libraries with sources jars after jk sync --sources: " + withSources, withSources > 0);
         System.out.println("jk workspace import: " + resolved.size() + " modules, " + libraries.length + " libraries, "
                 + withSources + " with sources");
 
