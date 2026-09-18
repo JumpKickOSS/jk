@@ -265,14 +265,23 @@ public final class EngineClient {
 
     /** Thin-client tree render: engine walks the graph, client substitutes its Theme into the tags. */
     public static String treeRender(
-            EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
+            EnginePaths.Paths paths,
+            Path dir,
+            int maxDepth,
+            boolean flatten,
+            boolean stack,
+            List<String> scopes,
+            List<String> features,
+            boolean noDefaultFeatures)
             throws IOException {
-        return EngineReads.treeRender(paths, dir, maxDepth, flatten, stack, scopes);
+        return EngineReads.treeRender(paths, dir, maxDepth, flatten, stack, scopes, features, noDefaultFeatures);
     }
 
-    /** Thin-client why lookup: lock matching + provenance paths, engine-side. */
-    public static WhyReport why(EnginePaths.Paths paths, Path dir, String query) throws IOException {
-        return EngineReads.why(paths, dir, query);
+    /** Thin-client why lookup: lock matching + provenance paths, engine-side, under a feature selection. */
+    public static WhyReport why(
+            EnginePaths.Paths paths, Path dir, String query, List<String> features, boolean noDefaultFeatures)
+            throws IOException {
+        return EngineReads.why(paths, dir, query, features, noDefaultFeatures);
     }
 
     /** {@code jk guard test}: every fixture-bearing rule and guard test proven to bite; one sync round trip. */

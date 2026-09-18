@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
@@ -146,6 +147,27 @@ public final class DependencyTree {
             boolean flatten,
             @Nullable List<Scope> scopeOrder,
             boolean stack) {
+        return render(
+                project, lock, projectDir, maxDepth, styling, flatten, scopeOrder, stack, FeatureSelection.DEFAULTS);
+    }
+
+    /**
+     * As {@link #render(JkBuild, Lockfile, Path, int, Styling, boolean, List, boolean)} under a
+     * feature selection: the project and every workspace member are read as {@code selection}
+     * reads them, so an optional dependency of an inactive feature is not drawn — the closure jk
+     * builds with, as {@code jk lock} reads the same flags.
+     */
+    public static String render(
+            JkBuild declared,
+            Lockfile lock,
+            Path projectDir,
+            int maxDepth,
+            Styling styling,
+            boolean flatten,
+            @Nullable List<Scope> scopeOrder,
+            boolean stack,
+            FeatureSelection selection) {
+        JkBuild project = selection.apply(declared);
         List<Scope> order = DependencyTreeStyle.sectionOrder(scopeOrder);
         StringBuilder out = new StringBuilder();
         // Root node: styled via rootLine, which defaults to " ● boldCoord" but
@@ -161,13 +183,15 @@ public final class DependencyTree {
         int bodyStart = out.length();
         if (project.isWorkspaceRoot()) {
             if (flatten) {
-                DependencyFlatten.renderWorkspaceScopes(project, lock, projectDir, styling, order, stack, out);
+                DependencyFlatten.renderWorkspaceScopes(
+                        project, lock, projectDir, styling, order, stack, selection, out);
             } else {
-                renderWorkspaceScopes(project, lock, projectDir, maxDepth, styling, order, stack, seenModules, out);
+                renderWorkspaceScopes(
+                        project, lock, projectDir, maxDepth, styling, order, stack, selection, seenModules, out);
             }
         } else if (flatten) {
             DependencyFlatten.renderScopes(
-                    project, lock, styling, order, stack, WorkspaceGraph.forMember(projectDir, lock), out);
+                    project, lock, styling, order, stack, WorkspaceGraph.forMember(projectDir, lock, selection), out);
         } else {
             renderScopeSections(
                     project,
@@ -176,14 +200,14 @@ public final class DependencyTree {
                     maxDepth,
                     "",
                     styling,
-                    WorkspaceGraph.forMember(projectDir, lock),
+                    WorkspaceGraph.forMember(projectDir, lock, selection),
                     order,
                     stack,
                     seenModules,
                     out);
         }
         if (out.length() == bodyStart) {
-            appendEmptyScopesHint(project, projectDir, order, styling, out);
+            appendEmptyScopesHint(project, projectDir, order, styling, selection, out);
         }
         return out.toString();
     }
@@ -195,12 +219,17 @@ public final class DependencyTree {
      * how to show them instead.
      */
     private static void appendEmptyScopesHint(
-            JkBuild project, Path projectDir, List<Scope> scopeOrder, Styling styling, StringBuilder out) {
+            JkBuild project,
+            Path projectDir,
+            List<Scope> scopeOrder,
+            Styling styling,
+            FeatureSelection selection,
+            StringBuilder out) {
         Set<Scope> selected = new HashSet<>(DependencyTreeStyle.sectionOrder(scopeOrder));
         List<Scope> elsewhere = new ArrayList<>();
         List<LoadedModule> modules = project.isWorkspaceRoot()
                 ? WorkspaceGraph.withRoot(
-                        project, null, WorkspaceGraph.loadModules(project.workspaceModules(), projectDir))
+                        project, null, WorkspaceGraph.loadModules(project.workspaceModules(), projectDir, selection))
                 : List.of();
         for (Scope s : DependencyTreeStyle.allScopeOrder()) {
             if (selected.contains(s)) continue;
@@ -237,13 +266,14 @@ public final class DependencyTree {
             Styling styling,
             List<Scope> scopeOrder,
             boolean stack,
+            FeatureSelection selection,
             Set<String> seenModules,
             StringBuilder out) {
 
         List<String> moduleRels = root.workspaceModules();
         WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(moduleRels, rootDir));
         List<LoadedModule> modules =
-                WorkspaceGraph.withRoot(root, lock, WorkspaceGraph.loadModules(moduleRels, rootDir));
+                WorkspaceGraph.withRoot(root, lock, WorkspaceGraph.loadModules(moduleRels, rootDir, selection));
 
         // Scope sections present anywhere in the workspace, in display order.
         List<Scope> sections = new ArrayList<>();
@@ -647,12 +677,18 @@ public final class DependencyTree {
      * real roots — the root {@code jk.toml} typically has none.
      */
     static List<String> collectRoots(JkBuild project, @Nullable Path projectDir) {
-        if (project == null) return List.of();
+        return collectRoots(project, projectDir, FeatureSelection.DEFAULTS);
+    }
+
+    /** As {@link #collectRoots(JkBuild, Path)}, the project and its members read under {@code selection}. */
+    static List<String> collectRoots(JkBuild declared, @Nullable Path projectDir, FeatureSelection selection) {
+        if (declared == null) return List.of();
+        JkBuild project = selection.apply(declared);
         if (!project.isWorkspaceRoot() || projectDir == null) {
             return collectRoots(project);
         }
         Set<String> roots = new LinkedHashSet<>(collectRoots(project));
-        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir)) {
+        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir, selection)) {
             roots.addAll(collectRoots(m.build()));
         }
         return new ArrayList<>(roots);
@@ -666,15 +702,16 @@ public final class DependencyTree {
      * have no Maven selector and are left out.
      */
     static Map<String, LockGraph.RootDeclaration> collectRootDeclarations(
-            @Nullable JkBuild project, @Nullable Path projectDir) {
+            @Nullable JkBuild declared, @Nullable Path projectDir, FeatureSelection selection) {
         Map<String, LockGraph.RootDeclaration> out = new LinkedHashMap<>();
-        if (project == null) return out;
+        if (declared == null) return out;
+        JkBuild project = selection.apply(declared);
         if (!project.isWorkspaceRoot() || projectDir == null) {
             putRootDeclarations(project, false, out);
             return out;
         }
         putRootDeclarations(project, true, out);
-        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir)) {
+        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir, selection)) {
             putRootDeclarations(m.build(), true, out);
         }
         return out;

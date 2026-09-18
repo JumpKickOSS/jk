@@ -5,6 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.runtime.base.GraphOps;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.WhyReport;
@@ -47,7 +48,10 @@ public final class WhyVerb implements HostedVerb {
             WhyReport report;
             try {
                 WhyRequest req = WhyRequest.decode(requestLine);
-                report = GraphOps.why(Path.of(req.dir()), req.query());
+                report = GraphOps.why(
+                        Path.of(req.dir()),
+                        req.query(),
+                        new FeatureSelection(req.features(), !req.noDefaultFeatures()));
             } catch (RuntimeException e) {
                 report = WhyReport.error(Errors.text(e));
             }

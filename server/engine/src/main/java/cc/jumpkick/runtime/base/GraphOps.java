@@ -8,6 +8,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyTree;
@@ -33,7 +34,8 @@ public final class GraphOps {
     private GraphOps() {}
 
     /** The marker-tagged tree, ready for {@link DependencyTreeStyle#applyStyling} client-side. */
-    public static String treeRender(Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopeNames)
+    public static String treeRender(
+            Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopeNames, FeatureSelection selection)
             throws IOException {
         JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
         Path lockFile = LockPaths.lockFile(dir);
@@ -42,16 +44,21 @@ public final class GraphOps {
                 ? null
                 : scopeNames.stream().map(Scope::fromCanonical).toList();
         return DependencyTree.render(
-                project, lock, dir, maxDepth, DependencyTreeStyle.Styling.markers(), flatten, scopes, stack);
+                project, lock, dir, maxDepth, DependencyTreeStyle.Styling.markers(), flatten, scopes, stack, selection);
     }
 
+    /** As {@link #why(Path, String, FeatureSelection)} under the default features. */
     public static WhyReport why(Path dir, @Nullable String query) {
+        return why(dir, query, FeatureSelection.DEFAULTS);
+    }
+
+    public static WhyReport why(Path dir, @Nullable String query, FeatureSelection selection) {
         try {
             JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
             // One LockGraph per request: a fuzzy query with many matches must not rebuild the
             // whole reverse adjacency per match.
-            LockGraph graph = LockGraph.of(project, lock, dir);
+            LockGraph graph = LockGraph.of(project, lock, dir, selection);
             List<Lockfile.Artifact> matches = lock.artifacts().stream()
                     .filter(p -> matchesQuery(p.name(), query))
                     .toList();

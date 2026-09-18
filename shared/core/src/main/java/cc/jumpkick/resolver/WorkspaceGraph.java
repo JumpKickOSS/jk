@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
@@ -56,6 +57,11 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
 
     /** Member-scoped tree: map sibling GAV → loaded module so workspace deps expand. */
     static WorkspaceGraph forMember(Path projectDir, Lockfile lock) {
+        return forMember(projectDir, lock, FeatureSelection.DEFAULTS);
+    }
+
+    /** As {@link #forMember(Path, Lockfile)}, each sibling read under {@code selection}. */
+    static WorkspaceGraph forMember(Path projectDir, Lockfile lock, FeatureSelection selection) {
         if (projectDir == null) return none();
         try {
             var rootDir = WorkspaceLocator.findRoot(projectDir);
@@ -63,7 +69,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
             Path root = rootDir.get();
             JkBuild rootBuild = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root));
             if (!rootBuild.isWorkspaceRoot()) return none();
-            List<LoadedModule> loaded = loadModules(rootBuild.workspaceModules(), root, lock);
+            List<LoadedModule> loaded = loadModules(rootBuild.workspaceModules(), root, lock, selection);
             List<JkBuild> siblingBuilds = new ArrayList<>(loaded.size());
             for (LoadedModule m : loaded) siblingBuilds.add(m.build());
             Map<String, String> byName = new HashMap<>();
@@ -128,7 +134,12 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
      * dropped.
      */
     static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir) {
-        return loadModules(moduleRels, rootDir, null);
+        return loadModules(moduleRels, rootDir, null, FeatureSelection.DEFAULTS);
+    }
+
+    /** As {@link #loadModules(List, Path)}, each module read under {@code selection}. */
+    static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, FeatureSelection selection) {
+        return loadModules(moduleRels, rootDir, null, selection);
     }
 
     /**
@@ -137,9 +148,11 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
      * root {@code jk-lock.toml}), and re-parsing that ~2,300-line file once per member threw away
      * ~15 identical parses per render. With no shared lock, each distinct lock path is still
      * parsed at most once. Either way a member's node carries the lock as that member reads it:
-     * its own partition rows in place of the workspace's ({@link MemberRows#view}).
+     * its own partition rows in place of the workspace's ({@link MemberRows#view}) — and its
+     * manifest as {@code selection} reads it, an optional dependency of an inactive feature left out.
      */
-    static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, @Nullable Lockfile sharedLock) {
+    static List<LoadedModule> loadModules(
+            List<String> moduleRels, Path rootDir, @Nullable Lockfile sharedLock, FeatureSelection selection) {
         JkBuild rootBuild = null;
         if (rootDir != null) {
             try {
@@ -174,7 +187,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
                 if (rootBuild != null) {
                     build = WorkspaceLoader.inheritFromRoot(build, rootBuild);
                 }
-                modules.add(new LoadedModule(build, lock));
+                modules.add(new LoadedModule(selection.apply(build), lock));
             }
         }
         return modules;

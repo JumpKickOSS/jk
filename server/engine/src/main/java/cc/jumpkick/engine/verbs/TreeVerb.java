@@ -5,6 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.runtime.base.GraphOps;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoReads;
@@ -50,7 +51,12 @@ public final class TreeVerb implements HostedVerb {
             try {
                 TreeRequest req = TreeRequest.decode(requestLine);
                 rendered = GraphOps.treeRender(
-                        Path.of(req.dir()), req.maxDepth(), req.flatten(), req.stack(), req.scopes());
+                        Path.of(req.dir()),
+                        req.maxDepth(),
+                        req.flatten(),
+                        req.stack(),
+                        req.scopes(),
+                        new FeatureSelection(req.features(), !req.noDefaultFeatures()));
             } catch (IOException | RuntimeException e) {
                 error = Errors.text(e);
             }

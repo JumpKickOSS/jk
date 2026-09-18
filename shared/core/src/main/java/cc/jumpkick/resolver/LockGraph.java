@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
@@ -81,9 +82,16 @@ public final class LockGraph {
      * workspace root union every member's declared deps, same as {@code jk why} always did).
      */
     public static LockGraph of(@Nullable JkBuild project, @Nullable Lockfile lock, @Nullable Path projectDir) {
-        Set<String> roots =
-                project == null ? Set.of() : new LinkedHashSet<>(DependencyTree.collectRoots(project, projectDir));
-        return build(lock, roots, DependencyTree.collectRootDeclarations(project, projectDir), Set.of());
+        return of(project, lock, projectDir, FeatureSelection.DEFAULTS);
+    }
+
+    /** As {@link #of(JkBuild, Lockfile, Path)}, the declared roots read under {@code selection}. */
+    public static LockGraph of(
+            @Nullable JkBuild project, @Nullable Lockfile lock, @Nullable Path projectDir, FeatureSelection selection) {
+        Set<String> roots = project == null
+                ? Set.of()
+                : new LinkedHashSet<>(DependencyTree.collectRoots(project, projectDir, selection));
+        return build(lock, roots, DependencyTree.collectRootDeclarations(project, projectDir, selection), Set.of());
     }
 
     /** Lock-only graph (no declared roots) — per-member locks in workspace renders. */
