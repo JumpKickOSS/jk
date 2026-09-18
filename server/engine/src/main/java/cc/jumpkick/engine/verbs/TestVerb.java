@@ -5,6 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -14,6 +15,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.TestSupport;
+import cc.jumpkick.runtime.workspace.StandalonePlanTimings;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.TestRequest;
@@ -93,6 +95,7 @@ public final class TestVerb implements HostedVerb {
                             session)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
             BuildPlan plan = BuildPlanner.coreBuilder(inputs).build();
+            StandalonePlanTimings.attach(plan, entryDir, cache, Clock.SYSTEM);
 
             PlanBurst.announce(host, plan, writer);
             BuildPlanResult result = SessionContext.where(session, plan::run);

@@ -176,7 +176,9 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
 Per-class test walls are one table per package of a module in both files,
 `[test-class."<dir>"."<pkg>"]` with a `<SimpleName> = <ms>` row per class (a default-package class
 under `[test-class."<dir>"]` by its bare name), closing the file after the scalar rows; the run
-file carries the measured walls, the ledger their trimmed means. Naming the module and the package
+file carries the measured walls, the ledger their trimmed means. A standalone project's plan
+records them as a workspace member's does (`StandalonePlanTimings` attaches the same recorder
+and folds its step rates), so its ETA and slow-class hints read the same data. Naming the module and the package
 once each, instead of a qualified name per row, is what keeps a two-thousand-class ledger under
 200 KB.
 
