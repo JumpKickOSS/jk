@@ -151,6 +151,12 @@ public final class MavenPackageSource implements PackageSource {
     /** {@code group:artifact} → pattern → the {@code jk.toml:<handle>} entries that exclude it under the module. */
     private Map<String, Map<String, Set<String>>> managedExclusions = Map.of();
 
+    /** The {@code group:artifact} coordinates the workspace builds; see {@link #setWorkspaceModules}. */
+    private Set<String> workspaceModules = Set.of();
+
+    /** Per workspace coordinate a POM edge asked for, the sentence naming the first such edge. */
+    private final Map<String, String> workspaceSubstitutionNotes = new ConcurrentHashMap<>();
+
     /**
      * Speculative work not yet run, drained by at most {@link #PREFETCH_WORKERS} threads. A queue
      * rather than a thread per submission: a reactor's roots or a widening pass hand over hundreds
@@ -281,6 +287,27 @@ public final class MavenPackageSource implements PackageSource {
      */
     public void setManagedExclusions(Map<String, Map<String, Set<String>>> byModule) {
         this.managedExclusions = Map.copyOf(Objects.requireNonNull(byModule, "byModule"));
+    }
+
+    /**
+     * The {@code group:artifact} coordinates the workspace's own members publish under. A POM edge
+     * onto one of them is served by the member, as Maven's reactor stands in for a published
+     * artifact of the same coordinate: the edge is not followed, no row is locked for it, and the
+     * member's output is what every classpath carries. Set before the first expansion; the raw
+     * edge cache is built under it.
+     */
+    public void setWorkspaceModules(Set<String> gaKeys) {
+        this.workspaceModules = Set.copyOf(Objects.requireNonNull(gaKeys, "gaKeys"));
+    }
+
+    /**
+     * One sentence per workspace coordinate a dependency POM asked for, sorted: which package
+     * asked first, and that the member stands in for the published artifact.
+     */
+    public List<String> workspaceSubstitutionNotes() {
+        List<String> out = new ArrayList<>(workspaceSubstitutionNotes.values());
+        out.sort(null);
+        return List.copyOf(out);
     }
 
     /** Refresh soft-prefer lock pins for a subsequent scope solve (does not clear version/deps caches). */
@@ -795,6 +822,14 @@ public final class MavenPackageSource implements PackageSource {
             if (kmpDropped.contains(dep.module())) continue;
             String scope = dep.scope();
             if (scope != null && !scope.isEmpty() && !FOLLOWED_SCOPES.contains(scope)) continue;
+            if (workspaceModules.contains(dep.module())) {
+                workspaceSubstitutionNotes.putIfAbsent(
+                        dep.module(),
+                        PackageId.parse(pkg).ga() + " " + version + " depends on " + dep.module()
+                                + ", which this workspace builds: the member stands in for the published artifact"
+                                + " on every classpath, so no row is locked for it");
+                continue;
+            }
             if (dep.version() == null || dep.version().isBlank()) continue;
             String depPkg = packageKey(dep);
             String hostExpression = pom.hostClassified().get(dep.module());

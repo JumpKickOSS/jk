@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -67,6 +68,9 @@ public final class LockOrchestrator {
 
     /** The workspace members behind a merged manifest, each with its own effective manifest. */
     private List<Member> members = List.of();
+
+    /** The {@code group:artifact} coordinates the workspace builds: its members' and the root's own. */
+    private Set<String> workspaceModules = Set.of();
 
     /** URL → the repository a dependency POM declared during {@link #lock}, with the policy the POM wrote. */
     private final Map<String, Pom.Repository> declaredRepositories = new ConcurrentHashMap<>();
@@ -262,6 +266,7 @@ public final class LockOrchestrator {
             Map<String, Map<String, String>> memberPrefs)
             throws IOException, InterruptedException {
         LockProgress progress = new LockProgress(observer, timings);
+        workspaceModules = workspaceModules(project);
         // one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         // ... and one table per BOM, shared by the merged manifest's platform table and every member's.
@@ -474,7 +479,10 @@ public final class LockOrchestrator {
         MavenPackageSource sharedSource = resolverOverride != null
                 ? null
                 : new MavenPackageSource(repos, pomBuilder, bomConstraints, prefs, kmp, platformPolicy, unmappedPolicy);
-        if (sharedSource != null) sharedSource.setManagedExclusions(constraints.managedExclusions());
+        if (sharedSource != null) {
+            sharedSource.setManagedExclusions(constraints.managedExclusions());
+            sharedSource.setWorkspaceModules(workspaceModules);
+        }
 
         progress.graphPhase(roots.declaredCount());
         ScopeSolves scopeSolves = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinPolicy);
@@ -483,9 +491,26 @@ public final class LockOrchestrator {
         if (sharedSource != null) {
             for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
             for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);
+            for (String line : sharedSource.workspaceSubstitutionNotes()) observer.onNote(line);
             declaredRepositories.putAll(sharedSource.declaredRepositoriesByUrl());
         }
         return new Solve(constraints, roots, solved, sharedSource, kmp);
+    }
+
+    /**
+     * The coordinates a POM edge onto which the workspace itself serves: every member's {@code
+     * group:name} and, for a workspace root, the root's own. A standalone project builds one
+     * coordinate, its own.
+     */
+    private Set<String> workspaceModules(JkBuild project) {
+        Set<String> out = new LinkedHashSet<>();
+        for (Member member : members) out.add(coordinateOf(member.manifest()));
+        if (project.isWorkspaceRoot() || members.isEmpty()) out.add(coordinateOf(project));
+        return Set.copyOf(out);
+    }
+
+    private static String coordinateOf(JkBuild manifest) {
+        return manifest.project().group() + ":" + manifest.project().name();
     }
 
     private Lockfile assemble(
