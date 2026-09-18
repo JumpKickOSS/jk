@@ -28,9 +28,44 @@ class DiagnosticsTest {
         } catch (UnsatisfiableException e) {
             String rendered = Diagnostics.render(e.rootCause());
             assertThat(rendered).contains("Cannot resolve dependencies");
-            assertThat(rendered).contains("A 1.0 depends on shared 1.0");
-            assertThat(rendered).contains("B 1.0 depends on shared 2.0");
+            assertThat(rendered).contains("a 1.0 depends on shared 1.0");
+            assertThat(rendered).contains("b 1.0 depends on shared 2.0");
             assertThat(rendered).contains("cannot be resolved");
+        } catch (Exception e) {
+            fail("expected UnsatisfiableException, got: " + e);
+        }
+    }
+
+    /** A coordinate opening a sentence keeps its case: a group id is a name, not prose. */
+    @Test
+    void a_coordinate_at_sentence_start_keeps_its_case() {
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("org.slf4j:slf4j-api", "1.7.36")
+                .version("org.slf4j:slf4j-api", "2.0.13")
+                .version(
+                        "ch.qos.logback:logback-classic",
+                        "1.5.6",
+                        deps -> deps.require("org.slf4j:slf4j-api", VersionSet.exact("2.0.13")))
+                .version(
+                        "org.apache.zookeeper:zookeeper",
+                        "3.9.2",
+                        deps -> deps.require("org.slf4j:slf4j-api", VersionSet.exact("1.7.36")))
+                .build();
+        try {
+            new PubGrubSolver(src)
+                    .solve(
+                            "<root>",
+                            "1.0",
+                            List.of(
+                                    Term.positive("ch.qos.logback:logback-classic", VersionSet.exact("1.5.6")),
+                                    Term.positive("org.apache.zookeeper:zookeeper", VersionSet.exact("3.9.2"))));
+            fail("expected UnsatisfiableException");
+        } catch (UnsatisfiableException e) {
+            String rendered = Diagnostics.render(e.rootCause());
+            assertThat(rendered).contains("ch.qos.logback:logback-classic 1.5.6 depends on org.slf4j:slf4j-api 2.0.13");
+            assertThat(rendered).contains("org.apache.zookeeper:zookeeper 3.9.2 depends on org.slf4j:slf4j-api 1.7.36");
+            assertThat(rendered).doesNotContain("Ch.qos").doesNotContain("Org.apache");
+            assertThat(rendered).contains("The project depends on");
         } catch (Exception e) {
             fail("expected UnsatisfiableException, got: " + e);
         }
