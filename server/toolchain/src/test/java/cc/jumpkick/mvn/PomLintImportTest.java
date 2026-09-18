@@ -19,6 +19,63 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class PomLintImportTest {
 
+    /**
+     * nacos's shape: the root POM's checkstyle configuration and SpotBugs filter sit under the root's
+     * {@code style/}, and every module inherits the plugins; a module's table names them by the path
+     * from the module, so the step finds them where they are.
+     */
+    @Test
+    void an_inherited_configuration_file_is_named_by_its_path_from_the_module(@TempDir Path tempDir) throws Exception {
+        Path root = Files.createDirectories(tempDir.resolve("project"));
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <modules><module>api</module></modules>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-checkstyle-plugin</artifactId>
+                        <configuration><configLocation>style/checks.xml</configLocation></configuration>
+                      </plugin>
+                      <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                        <configuration><excludeFilterFile>style/spotbugs-exclude.xml</excludeFilterFile></configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+        Files.createDirectories(root.resolve("style"));
+        Files.writeString(root.resolve("style/checks.xml"), "<module name=\"Checker\"/>");
+        Files.writeString(root.resolve("style/spotbugs-exclude.xml"), "<FindBugsFilter/>");
+        Path api = Files.createDirectories(root.resolve("api"));
+        Files.writeString(api.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.acme</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                    <relativePath>../pom.xml</relativePath>
+                  </parent>
+                  <artifactId>api</artifactId>
+                </project>
+                """);
+
+        PomImporter.Result result = TestImporters.offline(tempDir).importFrom(api.resolve("pom.xml"));
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.values())
+                .containsEntry("checkstyle", "../style/checks.xml")
+                .containsEntry("spotbugs-exclude", "../style/spotbugs-exclude.xml");
+    }
+
     /** TheAlgorithms-Java's shape: all three plugins, Checkstyle at warning severity over the tests too. */
     @Test
     void the_three_lint_plugins_become_one_lint_table(@TempDir Path tempDir) throws Exception {

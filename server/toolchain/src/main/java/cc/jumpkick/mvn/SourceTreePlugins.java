@@ -5,6 +5,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.SourcesMode;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -170,6 +171,28 @@ final class SourceTreePlugins {
             }
         }
         return d;
+    }
+
+    /**
+     * {@link #moduleRelative}, and when the module holds no such file but an ancestor module of the
+     * same reactor does — a root POM's {@code style/checks.xml} inherited by every module — the
+     * path from the module to that file ({@code ../style/checks.xml}), the way Maven's resource
+     * lookup finds it past the module's own directory.
+     */
+    static String moduleRelativeFile(String file, @Nullable Path baseDir) {
+        String relative = moduleRelative(file, baseDir);
+        if (baseDir == null || Path.of(relative).isAbsolute() || Files.exists(baseDir.resolve(relative))) {
+            return relative;
+        }
+        Path module = baseDir.toAbsolutePath().normalize();
+        for (Path dir = module.getParent();
+                dir != null && Files.isRegularFile(dir.resolve("pom.xml"));
+                dir = dir.getParent()) {
+            if (Files.exists(dir.resolve(relative))) {
+                return module.relativize(dir.resolve(relative)).toString().replace('\\', '/');
+            }
+        }
+        return relative;
     }
 
     private static String stripLeadingSlashes(String s) {

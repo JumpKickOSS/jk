@@ -361,7 +361,7 @@ relates to the Maven one.
 | exec-maven-plugin | 16 | `java` goal → `[application]`; `exec` goal → row (build logic) | manual |
 | maven-dependency-plugin | 15 | an `unpack` / `unpack-dependencies` execution whose output directory a `wire-maven-plugin` reads → that recipe's `unpack` (the artifact at the module's dependency version); analysis / copy goals → row when bound to a phase | manual |
 | maven-clean-plugin | 15 | `jk clean` | exact |
-| maven-checkstyle-plugin | 14 | `[lint] checkstyle` ← `<configLocation>` (a built-in `sun_checks.xml` / `google_checks.xml` → a placeholder path and a row to copy the rule set in), `checkstyle-version` ← the plugin's own `<dependencies>` pin, `<includeTestSourceDirectory>` → `sources` + `src/test/java`, `<violationSeverity>warning` → `fail-on = "warning"` | approximate |
+| maven-checkstyle-plugin | 14 | `[lint] checkstyle` ← `<configLocation>` (a built-in `sun_checks.xml` / `google_checks.xml` → a placeholder path and a row to copy the rule set in; a file an ancestor POM's directory holds is named by its path from the module, `../style/checks.xml`), `checkstyle-version` ← the plugin's own `<dependencies>` pin, `<includeTestSourceDirectory>` → `sources` + `src/test/java`, `<violationSeverity>warning` → `fail-on = "warning"` | approximate |
 | maven-deploy-plugin | 14 | `jk publish` | exact |
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
 | maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` and system properties → the same `[test]` keys when Surefire set none, else a row | manual |
