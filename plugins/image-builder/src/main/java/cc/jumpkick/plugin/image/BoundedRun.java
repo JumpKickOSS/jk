@@ -29,7 +29,7 @@ final class BoundedRun {
      */
     static Optional<Outcome> await(Process process, Duration timeout) throws InterruptedException {
         StringBuffer captured = new StringBuffer();
-        Thread reader = Thread.ofVirtual().start(() -> {
+        Thread reader = Thread.ofPlatform().daemon().start(() -> {
             try (var in = process.inputReader(StandardCharsets.UTF_8)) {
                 in.lines().forEach(line -> captured.append(line).append('\n'));
             } catch (IOException ignored) {

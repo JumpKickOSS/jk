@@ -167,10 +167,14 @@ public final class Sidecars implements AutoCloseable {
         Running r = new Running(spec, process, failures, clock);
         listener.started(spec.name(), process.pid());
         CountDownLatch drained = new CountDownLatch(2);
-        Thread.ofVirtual()
+        // Pipe readers on platform threads: a pipe read blocks the thread making it, and a reader
+        // on a virtual thread would hold its carrier for as long as the sidecar is silent.
+        Thread.ofPlatform()
+                .daemon()
                 .name("sidecar-" + spec.name() + "-out")
                 .start(() -> pump(r, "stdout", process.getInputStream(), drained));
-        Thread.ofVirtual()
+        Thread.ofPlatform()
+                .daemon()
                 .name("sidecar-" + spec.name() + "-err")
                 .start(() -> pump(r, "stderr", process.getErrorStream(), drained));
         Thread.ofVirtual().name("sidecar-" + spec.name()).start(() -> supervise(r, drained));
