@@ -101,9 +101,10 @@ final class TestLauncherReport {
                     .append(" JVM ran out of memory (")
                     .append(e.headline())
                     .append(") before it ran a test; the frames above name the framework that filled it — a test"
-                            + " framework that starts the application while classes are still being listed. Raise"
-                            + " the limit with `[test] jvm-args` (`-XX:MaxMetaspaceSize=1g`, `-Xmx…`), which the"
-                            + " discovery JVM honours too.");
+                            + " framework that starts the application while classes are still being listed. jk caps"
+                            + " no test JVM's metaspace: the limit is the JVM's own unless `[test] jvm-args` or the"
+                            + " profile's `jvm-args` sets `-XX:MaxMetaspaceSize=…`, and the heap is what `-Xmx…` there"
+                            + " says; the discovery JVM runs under the same flags, so raise or drop the cap there.");
         } else if (!e.rootCause().isEmpty()) {
             sb.append("\n\nFix: the runner did not get to report; the failure is the framework's own — `")
                     .append(e.rootCause())

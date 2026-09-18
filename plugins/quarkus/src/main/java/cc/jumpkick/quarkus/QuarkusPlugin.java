@@ -56,8 +56,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     static final String TEST_MODEL_DIR = "test-model";
     /** The file the engine reads for the test JVM's arguments, under {@link #TEST_MODEL_DIR}. */
     static final String TEST_JVM_ARGS = TEST_MODEL_DIR + "/jvm.args";
-    /** Metaspace for a JVM that keeps an augmented Quarkus application per test profile. */
-    static final String TEST_MAX_METASPACE = "1g";
 
     private static final String BOOTSTRAP_EXTRA = "quarkus-bootstrap";
     static final String PLATFORM_PROPS_EXTRA = "quarkus-platform-properties";
@@ -181,17 +179,16 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     /**
-     * The arguments every test JVM of a Quarkus module forks with: the serialized model's path,
-     * and a metaspace cap sized for the test bootstrap, which keeps one augmented application
-     * resident per test profile for the JVM's life — the discovery JVM that lists the classes
-     * included, since {@code @QuarkusTest} augments as its classes load. The module's own {@code
-     * [test] jvm-args} come after these and win.
+     * The arguments every test JVM of a Quarkus module forks with: the serialized model's path.
+     * The test bootstrap keeps one augmented application resident per test profile for the JVM's
+     * life — the discovery JVM that lists the classes included, since {@code @QuarkusTest}
+     * augments as its classes load — and a test JVM's metaspace is the JVM's own, uncapped, as
+     * under Surefire; the module's {@code [test] jvm-args} come after this and are the one place a
+     * cap comes from.
      */
     static List<String> testJvmArgs(Path model) {
-        return List.of(
-                "-D" + QuarkusTestModelMain.SERIALIZED_TEST_APP_MODEL + "="
-                        + model.toAbsolutePath().normalize(),
-                "-XX:MaxMetaspaceSize=" + TEST_MAX_METASPACE);
+        return List.of("-D" + QuarkusTestModelMain.SERIALIZED_TEST_APP_MODEL + "="
+                + model.toAbsolutePath().normalize());
     }
 
     /**

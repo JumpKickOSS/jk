@@ -75,10 +75,11 @@ jk new -t quarkus/hello my-api
   bootstrap, with `target/classes/main` as the application's one root. The forked test JVM gets
   its path as `-Dquarkus-internal-test.serialized-app-model.path=…`, the seam Quarkus's Gradle
   plugin uses, so the bootstrap indexes the application archive once and augments once per test
-  profile; no `pom.xml` is read or written. The same step gives every test JVM of the module
-  `-XX:MaxMetaspaceSize=1g`, since the bootstrap keeps one augmented application per profile
-  resident; `[test] jvm-args` overrides it. The `[quarkus]` table is what turns this on — `jk
-  import` writes it from `quarkus-maven-plugin` at the platform version.
+  profile; no `pom.xml` is read or written. The bootstrap keeps one augmented application per
+  profile resident, in the discovery JVM as well as the suite JVMs, and a test JVM's metaspace is
+  the JVM's own — jk caps it only where `[test] jvm-args` says so, as Surefire does. The
+  `[quarkus]` table is what turns this on — `jk import` writes it from `quarkus-maven-plugin` at
+  the platform version.
 - **Quarkus's own reactor:** `[quarkus] version` implies `io.quarkus.platform:quarkus-bom` at that
   version, a BOM repositories publish for releases only. Importing a reactor that builds
   `quarkus-bom` itself writes no `[quarkus]` table on a member whose plugin runs at the reactor's

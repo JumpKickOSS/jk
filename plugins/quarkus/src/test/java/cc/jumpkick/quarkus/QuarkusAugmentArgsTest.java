@@ -103,13 +103,12 @@ class QuarkusAugmentArgsTest {
         assertThat(offline.subList(0, offline.size() - 1)).isEqualTo(online.subList(0, online.size() - 1));
     }
 
-    /** The fork's arguments name the model and the metaspace the bootstrap's resident applications need. */
+    /** The fork's arguments name the model and nothing else: its metaspace is the JVM's own, as under Surefire. */
     @Test
-    void the_test_jvm_arguments_name_the_model_and_the_metaspace_cap() {
+    void the_test_jvm_arguments_name_the_model_and_cap_nothing() {
         Path model = TEST_MODEL.resolve("test-app-model.json");
         assertThat(QuarkusPlugin.testJvmArgs(model))
-                .containsExactly(
-                        "-Dquarkus-internal-test.serialized-app-model.path=" + model, "-XX:MaxMetaspaceSize=1g");
+                .containsExactly("-Dquarkus-internal-test.serialized-app-model.path=" + model);
     }
 
     private static List<String> testModelArgsFor(boolean offline) {

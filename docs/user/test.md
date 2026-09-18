@@ -495,16 +495,16 @@ agent) and its system properties into these keys.
 A framework plugin can add arguments of its own: a TEST-window plugin step declares an output
 file (`contributesTestJvmArgs`) and every non-blank line of it is one argument of the fork. They
 come after jk's tuning and before `[test] jvm-args`, so the module's flags win over the plugin's.
-The Quarkus plugin hands `@QuarkusTest` the path of the application model it wrote this way, plus
-`-XX:MaxMetaspaceSize=1g` ([Frameworks](frameworks.md#quarkus)); the step prints them with the
-rest of the list.
+The Quarkus plugin hands `@QuarkusTest` the path of the application model it wrote this way
+([Frameworks](frameworks.md#quarkus)); the step prints it with the rest of the list.
 
 Test discovery runs in a JVM of its own before the suite JVMs start, with the same flags. A
 framework that starts the application while classes are still being listed — `@QuarkusTest`
 augments the application once per test profile as its classes load, and keeps each one resident —
-runs inside that JVM's limits too. jk caps a test JVM's metaspace at 256m unless the framework
-plugin or `[test] jvm-args` says otherwise; a discovery JVM that dies of it says so, naming the
-framework frames that filled it.
+runs inside that JVM's limits too. jk caps no test JVM's metaspace: the limit is the JVM's own, as
+under Surefire and Gradle, unless `[test] jvm-args` or the profile's `jvm-args` sets
+`-XX:MaxMetaspaceSize=…`, and that flag binds the discovery JVM as well. A discovery JVM that dies
+of it says so, naming the framework frames that filled it and the flag to raise or drop.
 
 ## A suite that needs a display
 

@@ -46,7 +46,11 @@ public final class JvmOptions {
     /** Acknowledges memory-access {@code sun.misc.Unsafe} use on JDK ≥ 23 batch hosts. */
     public static final String JEP498_UNSAFE_MEMORY_ACCESS_ALLOW = "--sun-misc-unsafe-memory-access=allow";
 
-    /** Metaspace cap outside the heap budget (avoids concurrent-worker native overcommit). */
+    /**
+     * Metaspace cap for jk-owned batch workers, outside the heap budget (avoids concurrent-worker
+     * native overcommit). Test suites never get it — see {@link #suiteFlags}: a framework that
+     * keeps an augmented application per test profile resident fills any cap jk could pick.
+     */
     public static final long DEFAULT_MAX_METASPACE_MB = 256;
 
     /**
@@ -56,11 +60,11 @@ public final class JvmOptions {
      */
     public static final long DEFAULT_STACK_KB = 512;
 
-    /** Which thread stack a fork gets: jk's batch reserve or the JVM's own default. */
+    /** Which thread stack and metaspace a fork gets: jk's batch reserve and cap, or the JVM's own defaults. */
     private enum Stack {
-        /** {@code -Xss} at {@link #DEFAULT_STACK_KB} unless the tuning pins one. */
+        /** {@code -Xss} at {@link #DEFAULT_STACK_KB} and the metaspace cap unless the tuning pins them. */
         BATCH,
-        /** No {@code -Xss}: the platform default, as Surefire's and Gradle's test forks run. */
+        /** No {@code -Xss}, no metaspace cap: the platform defaults, as Surefire's and Gradle's test forks run. */
         PLATFORM
     }
 
@@ -137,9 +141,12 @@ public final class JvmOptions {
 
     /**
      * {@link #workerFlags} for the JVMs that run a module's test suite: the same heap, GC and
-     * hardening, without jk's {@code -Xss} reserve. A test thread gets the JVM's platform default
-     * stack, exactly what Surefire's and Gradle's forks give it, so a recursive test that passes
-     * under Maven passes here. An {@code -Xss} in the tuning's extra args still wins.
+     * hardening, without jk's {@code -Xss} reserve and without its metaspace cap. A test thread
+     * gets the JVM's platform default stack and the suite the JVM's own metaspace, exactly what
+     * Surefire's and Gradle's forks give them, so a recursive test that passes under Maven passes
+     * here and a framework that keeps an augmented application per test profile resident — a
+     * {@code @QuarkusTest} suite, listing its classes included — loads what it needs. A cap the
+     * module sets ({@code [test] jvm-args}) still binds.
      */
     public static List<String> suiteFlags(int concurrency) {
         return workerFlags(concurrency, DEFAULT_GC, Stack.PLATFORM);
@@ -362,13 +369,13 @@ public final class JvmOptions {
     static final int ZGC_UNCOMMIT_DELAY_SECONDS = 10;
 
     /**
-     * Default metaspace, CPU share, the batch stack when {@code stack} asks for one, IPv4
+     * CPU share, the batch metaspace cap and stack when {@code stack} asks for them, IPv4
      * preference, and {@code ExitOnOutOfMemoryError} for workers, unless already set in {@code
      * extraArgs}.
      */
     private static void addHardening(List<String> out, PluginTuning s, int concurrency, Stack stack) {
         List<String> extra = s.extraArgs();
-        if (!hasArgPrefix(extra, "-XX:MaxMetaspaceSize", "-XX:MetaspaceSize")) {
+        if (stack == Stack.BATCH && !hasArgPrefix(extra, "-XX:MaxMetaspaceSize", "-XX:MetaspaceSize")) {
             out.add("-XX:MaxMetaspaceSize=" + DEFAULT_MAX_METASPACE_MB + "m");
         }
         if (!hasArgPrefix(extra, "-XX:ActiveProcessorCount")) {
