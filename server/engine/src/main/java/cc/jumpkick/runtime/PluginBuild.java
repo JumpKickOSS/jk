@@ -602,8 +602,8 @@ public final class PluginBuild {
     /**
      * The jar a plugin's code hooks fork: first-party plugins name a registered {@link PluginJar};
      * a third-party plugin IS its jar — the [plugins]-declared, lock-pinned, SHA-verified jar
-     * from the CAS — and it forks only once its coordinate is trusted (plugin-refactor Posture A:
-     * the engine refuses untrusted third-party code with the {@code jk trust plugin} remediation).
+     * from the CAS — and it forks only once its {@link #trustKey trust key} is trusted: the engine
+     * refuses untrusted third-party code with the {@code jk trust plugin} remediation.
      */
     static Path workerJarFor(ActivePlugin active, Path cache) throws IOException {
         PluginDeclaration declaration = active.declaration();
@@ -616,13 +616,29 @@ public final class PluginBuild {
             } catch (IOException e) {
                 trust = null;
             }
-            if (trust == null || !trust.isTrusted(declaration.coordinate())) {
-                throw new IOException("plugin " + declaration.coordinateWithVersion()
-                        + " is not trusted to run build code on this machine.\n"
-                        + "Trust it first: jk trust plugin " + declaration.coordinate());
-            }
+            if (trust == null || !trust.isTrusted(trustKey(declaration)))
+                throw new IOException(trustRefusal(declaration));
         }
         return workerJarPath(active, cache);
+    }
+
+    /**
+     * What {@code trusted-plugins.toml} must list for {@code declaration} to fork: a Maven pin's
+     * {@code group:artifact}; a path pin's {@code sha256:<hex>} — the bytes the row already pins,
+     * never the alias {@code path:<name>}, which is machine-wide and would survive a swap of the
+     * jar behind it.
+     */
+    static String trustKey(PluginDeclaration declaration) {
+        return declaration.isPathPin() ? "sha256:" + declaration.sha256() : declaration.coordinate();
+    }
+
+    /** The refusal a fork of an untrusted plugin fails with, naming the one command that trusts it. */
+    static String trustRefusal(PluginDeclaration declaration) {
+        String what = declaration.isPathPin()
+                ? "plugin " + declaration.alias() + " (the jar pinned by path, sha256 " + declaration.sha256() + ")"
+                : "plugin " + declaration.coordinateWithVersion();
+        return what + " is not trusted to run build code on this machine.\n" + "Trust it first: jk trust plugin "
+                + trustKey(declaration);
     }
 
     /**

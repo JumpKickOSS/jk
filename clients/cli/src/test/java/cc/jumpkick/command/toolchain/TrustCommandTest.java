@@ -30,6 +30,21 @@ class TrustCommandTest {
     }
 
     @Test
+    void a_path_pinned_plugin_is_trusted_by_its_sha256_and_never_by_its_alias(@TempDir Path state) {
+        String hex = "a".repeat(64);
+        assertThat(Jk.execute("trust", "plugin", "--state-dir", state.toString(), "sha256:" + hex))
+                .isEqualTo(0);
+        assertThat(Capture.stdout(() -> Jk.execute("trust", "list", "--state-dir", state.toString())))
+                .contains("plugin sha256:" + hex);
+        assertThat(Jk.execute("trust", "plugin", "--state-dir", state.toString(), "sha256:abc"))
+                .isEqualTo(64);
+        String refused = Capture.stderr(
+                () -> assertThat(Jk.execute("trust", "plugin", "--state-dir", state.toString(), "path:hello"))
+                        .isEqualTo(64));
+        assertThat(refused).contains("trusted by its bytes").contains("jk trust plugin sha256:<hex>");
+    }
+
+    @Test
     void add_rejects_non_urls(@TempDir Path state) {
         assertThat(Jk.execute("trust", "add", "--state-dir", state.toString(), "not-a-url"))
                 .isEqualTo(64);

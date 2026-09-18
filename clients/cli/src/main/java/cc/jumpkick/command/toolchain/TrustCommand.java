@@ -98,7 +98,7 @@ public final class TrustCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Trust a plugin coord (group:artifact or group:)";
+            return "Trust a plugin (group:artifact, group:, or sha256:<hex>)";
         }
 
         @Override
@@ -108,13 +108,29 @@ public final class TrustCommand extends GroupCommand {
 
         @Override
         public List<Param> parameters() {
-            return List.of(Param.of("coordinate", Arity.ONE, "Plugin coordinate to trust."));
+            // Held under HelpWidthTest's 78-column budget beside the parameter name.
+            return List.of(
+                    Param.of("coordinate", Arity.ONE, "group:artifact, a group: prefix, or sha256:<hex> (path pin)."));
         }
+
+        /** A path pin is trusted by its bytes, so the alias the manifest gives it is not a key. */
+        static final String PATH_ALIAS_REFUSAL =
+                "a path-pinned plugin is trusted by its bytes: jk trust plugin sha256:<hex> (the sha256 its [plugins] row carries)";
 
         @Override
         public int run(Invocation in) throws IOException {
             String coordinate = in.positionals().get(0);
-            if (coordinate.contains("://") || !coordinate.contains(":")) {
+            if (coordinate.startsWith("path:")) {
+                CommandWedge.printFail("Trust", PATH_ALIAS_REFUSAL);
+                return Exit.USAGE;
+            }
+            if (coordinate.regionMatches(true, 0, "sha256:", 0, 7)) {
+                String hex = coordinate.substring(7).trim();
+                if (hex.length() != 64 || !hex.chars().allMatch(c -> Character.digit(c, 16) >= 0)) {
+                    CommandWedge.printFail("Trust", "expected sha256:<64 hex chars>, got: " + coordinate);
+                    return Exit.USAGE;
+                }
+            } else if (coordinate.contains("://") || !coordinate.contains(":")) {
                 CommandWedge.printFail("Trust", "expected group:artifact (or a group: prefix), got: " + coordinate);
                 return Exit.USAGE;
             }
