@@ -104,6 +104,26 @@ class JkBuildParserRepositoryTest {
     }
 
     @Test
+    void a_blocked_plaintext_repository_parses_and_a_blocked_one_cannot_also_allow_insecure() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories.nm-repo]
+                url = "http://repo.numericalmethod.com/maven/"
+                blocked = true
+                """);
+        assertThat(parsed.repositories().get(0).blocked()).isTrue();
+        assertThat(parsed.repositories().get(0).allowInsecure()).isFalse();
+
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories.nm-repo]
+                url = "http://repo.numericalmethod.com/maven/"
+                blocked = true
+                allow-insecure = true
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.nm-repo is blocked and says allow-insecure = true");
+    }
+
+    @Test
     void allow_unverified_is_parsed_and_defaults_to_false() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.legacy]

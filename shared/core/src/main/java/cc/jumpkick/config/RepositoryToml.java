@@ -102,7 +102,8 @@ public final class RepositoryToml {
             "allow-insecure",
             "allow-unverified",
             "releases",
-            "snapshots");
+            "snapshots",
+            "blocked");
 
     /** One entry; {@code null} when it is malformed and the layer skips rather than rejects. */
     private static @Nullable RepositorySpec entry(String name, @Nullable Object value, VarPolicy vars, OnBad onBad) {
@@ -115,6 +116,7 @@ public final class RepositoryToml {
         boolean allowUnverified = false;
         boolean releases = true;
         boolean snapshots = true;
+        boolean blocked = false;
         if (value instanceof String s) {
             url = s;
         } else if (value instanceof TomlTable t) {
@@ -139,6 +141,7 @@ public final class RepositoryToml {
                 allowUnverified = flag(t, "allow-unverified", where);
                 releases = flag(t, "releases", where, true);
                 snapshots = flag(t, "snapshots", where, true);
+                blocked = flag(t, "blocked", where);
             } catch (IllegalArgumentException e) {
                 if (onBad == OnBad.SKIP) return null;
                 throw new JkBuildParseException(e.getMessage(), e);
@@ -160,11 +163,14 @@ public final class RepositoryToml {
             if (onBad == OnBad.SKIP) return null;
             throw new JkBuildParseException(where + " has malformed URL: " + url, e);
         }
-        if ("http".equalsIgnoreCase(uri.getScheme()) && !allowInsecure && !loopback(uri.getHost())) {
+        if (blocked && allowInsecure) {
             if (onBad == OnBad.SKIP) return null;
-            throw new JkBuildParseException(where + " uses plaintext http:// (" + url
-                    + "): anyone on the network path can replace the bytes jk pins into jk-lock.toml."
-                    + " Use https, or set allow-insecure = true on [" + where + "] to accept that.");
+            throw new JkBuildParseException(where + " is blocked and says allow-insecure = true: a blocked repository"
+                    + " is never asked, so drop one key or the other");
+        }
+        if ("http".equalsIgnoreCase(uri.getScheme()) && !allowInsecure && !blocked && !loopback(uri.getHost())) {
+            if (onBad == OnBad.SKIP) return null;
+            throw new JkBuildParseException(plaintextRefusal(where, url));
         }
         if (!releases && !snapshots) {
             if (onBad == OnBad.SKIP) return null;
@@ -180,7 +186,19 @@ public final class RepositoryToml {
                 allowInsecure,
                 allowUnverified,
                 releases,
-                snapshots);
+                snapshots,
+                blocked);
+    }
+
+    /**
+     * The sentence a plaintext {@code http://} repository is refused with: at {@code where} ({@code
+     * repositories.<name>}) with its URL, the threat, and the two ways out. The manifest parse
+     * throws it; a blocked repository's lock failure carries it once nothing else serves a package.
+     */
+    public static String plaintextRefusal(String where, String url) {
+        return where + " uses plaintext http:// (" + url
+                + "): anyone on the network path can replace the bytes jk pins into jk-lock.toml."
+                + " Use https, or set allow-insecure = true on [" + where + "] to accept that.";
     }
 
     /** The boolean at {@code key}, {@code false} when absent; any other type is an error naming the position. */

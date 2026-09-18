@@ -207,7 +207,14 @@ public final class RepoGroupBuilder {
         List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
         List<List<String>> routedGroups = new ArrayList<>(effective.size());
         List<List<String>> bindings = new ArrayList<>(effective.size());
+        List<RepositorySpec> blocked = new ArrayList<>();
+        List<RepositorySpec> asked = new ArrayList<>();
         for (RepositorySpec spec : effective) {
+            if (spec.blocked()) {
+                blocked.add(spec);
+                continue;
+            }
+            asked.add(spec);
             RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credentialOpt());
             maybeWarnUrlUserInfo(spec, cred);
             // Per-repo object-store config (region/endpoint/keys) flows to the
@@ -238,8 +245,8 @@ public final class RepoGroupBuilder {
             bound.addAll(routedGroupsFor(spec));
             bindings.add(List.copyOf(bound));
         }
-        maybeWarnMultiRepoWithoutBindings(effective, bindings);
-        return new RepoGroup(repos, exclusiveGroups, routedGroups);
+        maybeWarnMultiRepoWithoutBindings(asked, bindings);
+        return new RepoGroup(repos, exclusiveGroups, routedGroups).withBlocked(blocked);
     }
 
     /**

@@ -966,9 +966,10 @@ public final class PomImporter {
 
     /**
      * Every repository the effective model declares or inherits, with its {@code <releases>} /
-     * {@code <snapshots>} policy; Central is the implicit default.
+     * {@code <snapshots>} policy; Central is the implicit default. A plaintext {@code http://}
+     * repository is written {@code blocked}, as Maven 3.9 blocks it, and is a row.
      */
-    private static List<RepositorySpec> mapRepositories(List<Repository> repositories, ImportReport.Builder report) {
+    static List<RepositorySpec> mapRepositories(List<Repository> repositories, ImportReport.Builder report) {
         Map<String, RepositorySpec> deduped = new LinkedHashMap<>();
         for (Repository repo : repositories) {
             String id = repo.getId();
@@ -985,7 +986,15 @@ public final class PomImporter {
             if (!releases && !snapshots) continue;
             try {
                 URI written = RepositorySpec.normalizedUrl(new URI(url.trim()));
-                deduped.put(name, new RepositorySpec(name, written).withPolicy(releases, snapshots));
+                RepositorySpec spec = new RepositorySpec(name, written).withPolicy(releases, snapshots);
+                if ("http".equalsIgnoreCase(written.getScheme()) && !RepositorySpec.loopback(written.getHost())) {
+                    spec = spec.withBlocked();
+                    report.warning("`<repository>` `" + name + "` at " + written + " is plaintext http, which Maven"
+                            + " 3.9 blocks by default: it is written `blocked = true` under [repositories], so the"
+                            + " lock never asks it and names it when an artifact resolves nowhere else. Set"
+                            + " `allow-insecure = true` in place of `blocked` to ask it.");
+                }
+                deduped.put(name, spec);
             } catch (URISyntaxException e) {
                 report.warning("`<repository><url>" + url + "</url></repository>` is not a valid URI; skipped.");
             }

@@ -143,6 +143,7 @@
           "session-token": { "type": "string", "description": "Object-store session token; ${VAR} expands when the repository is used." },
           "groups": { "type": "array", "items": { "type": "string" }, "description": "Exclusive Maven groups: exact or prefix.* patterns that resolve only from this repository." },
           "allow-insecure": { "type": "boolean", "description": "Accept a plaintext http:// URL for this repository. Refused on central." },
+          "blocked": { "type": "boolean", "description": "The repository is asked of nothing and named when a package resolves nowhere, as Maven 3.9 blocks a plaintext http repository; written by jk import for a POM-declared http URL. Not beside allow-insecure." },
           "allow-unverified": { "type": "boolean", "description": "Pin an artifact this repository publishes no .sha256/.sha1 sidecar for; the lock summary counts them. Refused on central." },
           "releases": { "type": "boolean", "description": "Ask this repository for release versions (default true). false makes it snapshot-only." },
           "snapshots": { "type": "boolean", "description": "Ask this repository for -SNAPSHOT versions (default true). false makes it releases-only." }

@@ -107,6 +107,38 @@ class LockTrustPipelineTest {
         assertThat(trust.insecureRepos()).containsExactly("mirror");
     }
 
+    /**
+     * A blocked repository is what {@code jk import} writes for a POM's plaintext one: the lock
+     * proceeds while nothing needs it, and a package no repository serves fails with the blocked
+     * repository named and the plaintext refusal the manifest would have given it unblocked.
+     */
+    @Test
+    void a_blocked_repository_is_asked_of_nothing_and_named_when_a_package_resolves_nowhere(@TempDir Path tmp)
+            throws Exception {
+        String remote = "http://repo.numericalmethod.com/maven/";
+        String blocked = "\n[repositories.nm-repo]\nurl = \"" + remote + "\"\nblocked = true\n";
+        project(tmp, http.baseUrl(), blocked);
+
+        BuildPlanResult refused = plan(tmp).run();
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.errors()).anySatisfy(d -> assertThat(d.message())
+                .contains("com.foo:lib")
+                .contains("repository `nm-repo` at " + remote + " is blocked and was not asked")
+                .contains("repositories.nm-repo uses plaintext http:// (" + remote + ")")
+                .contains("allow-insecure = true on [repositories.nm-repo]"));
+
+        upstream.leaf("com.foo", "lib", "1.0");
+        RepoGroup.clearProcessFetchCache();
+        BuildPlan plan = plan(tmp);
+        BuildPlanResult result = plan.run();
+
+        assertThat(result.success()).as(result.errors().toString()).isTrue();
+        RepoGroup.TrustSummary trust = plan.get(LockPlans.TRUST).orElseThrow();
+        assertThat(trust.insecureRepos())
+                .as("a blocked repository is dialed by nothing")
+                .isEmpty();
+    }
+
     private BuildPlan plan(Path tmp) throws IOException {
         return LockPlans.plan(
                 tmp,

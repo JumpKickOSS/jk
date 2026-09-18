@@ -36,7 +36,13 @@ public record RepositorySpec(
          * {@code snapshots = true} (the default for a declared repository): {@code -SNAPSHOT} versions
          * are asked of this repository. Off for every built-in: Maven Central hosts no snapshots.
          */
-        boolean snapshots) {
+        boolean snapshots,
+        /**
+         * {@code blocked = true}: the repository is known and never asked, as Maven 3.9 blocks a
+         * plaintext {@code http://} repository. A package no other repository serves fails naming
+         * it; {@code jk import} writes a POM's plaintext repository this way.
+         */
+        boolean blocked) {
 
     /**
      * The one name Maven Central answers to inside jk — the {@code repos/<name>/} store directory,
@@ -156,7 +162,36 @@ public record RepositorySpec(
     /** This repository with the given release/snapshot policy. */
     public RepositorySpec withPolicy(boolean releases, boolean snapshots) {
         return new RepositorySpec(
-                name, url, credential, objectStore, groups, allowInsecure, allowUnverified, releases, snapshots);
+                name,
+                url,
+                credential,
+                objectStore,
+                groups,
+                allowInsecure,
+                allowUnverified,
+                releases,
+                snapshots,
+                blocked);
+    }
+
+    /** This repository blocked: kept in the manifest, never asked, named when nothing else serves a package. */
+    public RepositorySpec withBlocked() {
+        return new RepositorySpec(
+                name, url, credential, objectStore, groups, allowInsecure, allowUnverified, releases, snapshots, true);
+    }
+
+    /** Convenience: a repository that is asked — the ten-component form with {@code blocked} off. */
+    public RepositorySpec(
+            String name,
+            URI url,
+            @Nullable RepoCredential credential,
+            @Nullable ObjectStoreConfig objectStore,
+            List<String> groups,
+            boolean allowInsecure,
+            boolean allowUnverified,
+            boolean releases,
+            boolean snapshots) {
+        this(name, url, credential, objectStore, groups, allowInsecure, allowUnverified, releases, snapshots, false);
     }
 
     /** True when a version of the given kind is asked of this repository. */
