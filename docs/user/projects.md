@@ -190,7 +190,10 @@ jk remove <coord>
 ```
 
 `jk new` without `-t` is the wizard / flag scaffolder (library or `--executable` app).
-`--template` cannot be combined with `--plugin`.
+`--template` cannot be combined with `--plugin`. Every language it scaffolds — Java, Kotlin, Groovy,
+Scala — gets its level as `java = N` and no toolchain pin: the host JDK compiles to the level. A
+`jdk = "…"` line is written only for an explicit `--jdk` (`--jdk corretto-25`, `--jdk 21`), the one
+case where a particular install is being asked for.
 
 ## Related
 

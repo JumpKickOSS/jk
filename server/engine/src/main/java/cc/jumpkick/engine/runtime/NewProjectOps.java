@@ -294,7 +294,7 @@ public final class NewProjectOps {
         }
         int hostMajor = Runtime.version().feature();
         int jdkMajor = req.javaRelease() > 0 ? req.javaRelease() : hostMajor;
-        String jdk = req.jdk() == null || req.jdk().isBlank() ? String.valueOf(jdkMajor) : req.jdk();
+        String jdk = req.jdk() == null || req.jdk().isBlank() ? null : req.jdk();
         NewInputs inputs = new NewInputs(
                 prep.group(),
                 prep.name(),

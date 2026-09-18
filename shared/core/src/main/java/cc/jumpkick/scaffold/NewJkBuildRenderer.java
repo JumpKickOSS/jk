@@ -21,6 +21,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Every string value goes through {@link MinimalToml#quote}, so a project name, group or main
  * class containing a quote or a backslash — a Windows path in {@code main}, say — still produces
  * parseable TOML.
+ *
+ * <p>Every language writes its level as {@code java = N} — the bytecode target the host JDK
+ * compiles to, Java, Kotlin, Groovy and Scala alike — and a {@code jdk = "…"} toolchain pin only
+ * when {@link NewInputs#jdk()} carries one the caller asked for: a level needs no JDK download,
+ * a pin forces one.
  */
 public final class NewJkBuildRenderer {
 
@@ -32,9 +37,11 @@ public final class NewJkBuildRenderer {
         sb.append("name     = ").append(MinimalToml.quote(inputs.name())).append('\n');
         sb.append("group    = ").append(MinimalToml.quote(inputs.group())).append('\n');
         sb.append("version  = \"0.1.0\"\n");
-        sb.append("jdk      = ").append(MinimalToml.quote(inputs.jdk())).append('\n');
+        String jdk = inputs.jdk();
+        if (jdk != null) sb.append("jdk      = ").append(MinimalToml.quote(jdk)).append('\n');
+        sb.append("java     = ").append(inputs.javaRelease()).append('\n');
         switch (inputs.lang()) {
-            case JAVA -> sb.append("java     = ").append(inputs.javaRelease()).append('\n');
+            case JAVA -> {}
             case KOTLIN ->
                 sb.append("kotlin   = ")
                         .append(compilerVersion("org.jetbrains.kotlin:kotlin-compiler-embeddable", lookup))

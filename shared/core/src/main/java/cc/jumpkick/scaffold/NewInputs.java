@@ -8,11 +8,16 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
-/** Answers for {@link NewScaffolder} from flags or the interactive wizard. */
+/**
+ * Answers for {@link NewScaffolder} from flags or the interactive wizard. {@code javaRelease} is the
+ * language level the manifest writes as {@code java = N}; {@code jdk} is a toolchain pin ({@code jdk =
+ * "corretto-25"}, {@code "21"}) written only when the caller asked for one, and null when the level
+ * alone says what to build with.
+ */
 public record NewInputs(
         String group,
         String name,
-        String jdk,
+        @Nullable String jdk,
         int jdkMajor,
         int javaRelease,
         @Nullable String jdkIdentifier,
@@ -42,7 +47,7 @@ public record NewInputs(
     public NewInputs {
         Objects.requireNonNull(group, "group");
         Objects.requireNonNull(name, "name");
-        Objects.requireNonNull(jdk, "jdk");
+        if (jdk != null && jdk.isBlank()) jdk = null;
         Objects.requireNonNull(lang, "lang");
         Objects.requireNonNull(layout, "layout");
         Objects.requireNonNull(directory, "directory");
@@ -53,7 +58,7 @@ public record NewInputs(
     public NewInputs(
             String group,
             String name,
-            String jdk,
+            @Nullable String jdk,
             int jdkMajor,
             int javaRelease,
             @Nullable String jdkIdentifier,
@@ -89,7 +94,7 @@ public record NewInputs(
     public NewInputs(
             String group,
             String name,
-            String jdk,
+            @Nullable String jdk,
             int jdkMajor,
             @Nullable String jdkIdentifier,
             @Nullable String main,
