@@ -108,6 +108,52 @@ class JkBuildWorkspaceTest {
     }
 
     @Test
+    void workspace_loader_hands_members_the_roots_image_registry_facts(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "root"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = ["svc/api", "svc/worker"]
+
+                [image]
+                base     = "eclipse-temurin:25-jre"
+                registry = "ghcr.io/acme"
+                name     = "platform"
+                labels   = { team = "core" }
+                """);
+        Files.createDirectories(tempDir.resolve("svc/api"));
+        Files.writeString(tempDir.resolve("svc/api/jk.toml"), """
+                name = "api"
+
+                [image]
+                ports = [8080]
+                registry = "registry.acme.test"
+                """);
+        Files.createDirectories(tempDir.resolve("svc/worker"));
+        Files.writeString(tempDir.resolve("svc/worker/jk.toml"), "name = \"worker\"\n");
+
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
+        JkBuild api = Objects.requireNonNull(modules.get(tempDir.resolve("svc/api")));
+        JkBuild worker = Objects.requireNonNull(modules.get(tempDir.resolve("svc/worker")));
+
+        assertThat(api.image().base()).isEqualTo("eclipse-temurin:25-jre");
+        assertThat(api.image().registry()).as("the member's own key wins").isEqualTo("registry.acme.test");
+        assertThat(api.image().ports()).containsExactly(8080);
+        assertThat(api.image().labels()).containsEntry("team", "core");
+        assertThat(api.image().name()).as("the image name is per module").isNull();
+        assertThat(worker.image().registry()).isEqualTo("ghcr.io/acme");
+        assertThat(worker.image().name()).isNull();
+        // a member parsed on its own reads the same table
+        assertThat(JkBuildParser.parse(tempDir.resolve("svc/worker/jk.toml"))
+                        .image()
+                        .registry())
+                .isEqualTo("ghcr.io/acme");
+    }
+
+    @Test
     void concrete_member_parses_despite_a_broken_sibling(@TempDir Path tempDir) throws IOException {
         // Mid-refactor reality: one sibling's jk.toml is malformed. A member with fully
         // concrete project identity and no workspace: deps needs nothing from the siblings — its

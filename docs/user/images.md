@@ -60,6 +60,29 @@ but not the jk-side sources above.
 A registry on `localhost` / `127.0.0.1` is reached over plain HTTP, the same default docker and
 podman apply.
 
+## In a workspace
+
+`jk image` from a member's directory builds that member's image. The member's `[image]` table
+sits over the workspace root's, which sits over the user-global table in `~/.jk/config.toml`; the
+nearest value wins per key. The root answers for what is a workspace fact — `base`, `user`,
+`registry`, `tag`, `env`, `labels`, `platforms`, `docker-executable`, `aot-cache` — so one
+`[image]` on the root names the registry and the base image for every member, and a member sets
+only what differs. What names one image never flows down: `name`, `main`, `ports` and
+`docker-file` are read from the member alone, so two members cannot inherit one image name and
+push over each other. `env` and `labels` merge key by key, the member's entry winning.
+
+```toml
+# jk.toml (workspace root)
+[image]
+base     = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+registry = "ghcr.io/acme"
+labels   = { team = "core" }
+
+# svc/api/jk.toml
+[image]
+ports = [8080]          # image ghcr.io/acme/api:<version>, on the root's base, labelled team=core
+```
+
 ## AOT cache in the image
 
 ```toml

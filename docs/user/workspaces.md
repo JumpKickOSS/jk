@@ -36,6 +36,13 @@ fields members inherit.
 Inheritance is resolved when the workspace loads members. Resolved values are frozen into
 `jk-lock.toml` as `[[module]]` rows — re-lock after changing root or member identity.
 
+Three tables are workspace facts and read from the root as well: `[publish]` applies to every
+member that declares none, `[profiles.<name>]` merge by name with the member's winning, and the
+`[image]` registry facts — `base`, `user`, `registry`, `tag`, `env`, `labels`, `platforms`,
+`docker-executable`, `aot-cache` — sit under the member's own table (see
+[Images § In a workspace](images.md#in-a-workspace)). `[manifest]`, `[application]`, `[native]`
+and the dependency tables are each member's own and never inherit.
+
 `jk new path/to/mod` and `jk add ./path` register modules for you.
 
 ## One name in two groups

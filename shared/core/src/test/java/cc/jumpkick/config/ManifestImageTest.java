@@ -54,6 +54,58 @@ class ManifestImageTest {
     }
 
     @Test
+    void a_member_inherits_the_roots_registry_facts_and_keeps_its_own_image_identity() {
+        ImageTable root = new ImageTable(
+                "eclipse-temurin:25-jre",
+                "platform",
+                "app",
+                List.of(9000),
+                Map.of("LANG", "C.UTF-8", "TZ", "UTC"),
+                Map.of("team", "core"),
+                "ghcr.io/acme",
+                "edge",
+                List.of("linux/amd64", "linux/arm64"),
+                "acme.Platform",
+                "podman",
+                "Dockerfile",
+                true);
+        ImageTable member = new ImageTable(
+                null,
+                null,
+                null,
+                List.of(8080),
+                Map.of("TZ", "Europe/Oslo"),
+                Map.of(),
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null);
+
+        ImageTable inherited = ManifestImage.inheritFromRoot(member, root);
+
+        // workspace-wide facts flow down; the member's own value wins per key
+        assertThat(inherited.base()).isEqualTo("eclipse-temurin:25-jre");
+        assertThat(inherited.user()).isEqualTo("app");
+        assertThat(inherited.registry()).isEqualTo("ghcr.io/acme");
+        assertThat(inherited.tag()).isEqualTo("edge");
+        assertThat(inherited.platforms()).containsExactly("linux/amd64", "linux/arm64");
+        assertThat(inherited.env()).containsEntry("LANG", "C.UTF-8").containsEntry("TZ", "Europe/Oslo");
+        assertThat(inherited.labels()).containsEntry("team", "core");
+        assertThat(inherited.dockerExecutable()).isEqualTo("podman");
+        assertThat(inherited.aotCache()).isTrue();
+        // the image's identity is the member's alone: two members must not push the same name
+        assertThat(inherited.name()).isNull();
+        assertThat(inherited.main()).isNull();
+        assertThat(inherited.ports()).containsExactly(8080);
+        assertThat(inherited.dockerFile()).isNull();
+        // a root with no table changes nothing
+        assertThat(ManifestImage.inheritFromRoot(member, ImageTable.EMPTY)).isSameAs(member);
+    }
+
+    @Test
     void absent_table_is_empty() throws IOException {
         assertThat(image("")).isEqualTo(ImageTable.EMPTY);
     }

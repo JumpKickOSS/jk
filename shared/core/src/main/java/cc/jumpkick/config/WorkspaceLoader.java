@@ -123,7 +123,7 @@ public final class WorkspaceLoader {
                         + workspaceRoot
                         + "`.");
             }
-            modules.put(moduleDir, inheritPublish(inheritFromRoot(moduleBuild, root), root));
+            modules.put(moduleDir, inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root));
         }
         if (!bad.isEmpty()) {
             throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
@@ -157,6 +157,17 @@ public final class WorkspaceLoader {
         Objects.requireNonNull(root, "root");
         if (module.publish() != null || root.publish() == null) return module;
         return module.withPublish(root.publish());
+    }
+
+    /**
+     * {@code module} carrying the workspace root's {@code [image]} registry facts under its own
+     * table — {@link ManifestImage#inheritFromRoot}. One registry, one base image, one set of
+     * labels is a workspace fact; the image's name, entry point, ports and Dockerfile are not.
+     */
+    public static JkBuild inheritImage(JkBuild module, JkBuild root) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(root, "root");
+        return module.withImage(ManifestImage.inheritFromRoot(module.image(), root.image()));
     }
 
     /**

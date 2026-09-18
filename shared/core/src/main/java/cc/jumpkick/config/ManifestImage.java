@@ -59,6 +59,33 @@ public final class ManifestImage {
                 aotCache);
     }
 
+    /**
+     * A workspace member's table over the root's shared keys. The root answers for what is a
+     * workspace fact — {@code base}, {@code user}, {@code registry}, {@code tag}, {@code env},
+     * {@code labels}, {@code platforms}, {@code docker-executable}, {@code aot-cache} — and the
+     * member's own value wins per key, as it does over the user-global table. What names one image
+     * never flows down: {@code name}, {@code main}, {@code ports} and {@code docker-file} stay the
+     * member's, so two members cannot inherit one image name and push over each other.
+     */
+    public static ImageTable inheritFromRoot(ImageTable member, ImageTable root) {
+        if (root.isEmpty()) return member;
+        ImageTable shared = new ImageTable(
+                root.base(),
+                null,
+                root.user(),
+                List.of(),
+                root.env(),
+                root.labels(),
+                root.registry(),
+                root.tag(),
+                root.platforms(),
+                null,
+                root.dockerExecutable(),
+                null,
+                root.aotCache());
+        return merge(member, shared);
+    }
+
     private static @Nullable String nonBlank(@Nullable String s) {
         return (s != null && !s.isBlank()) ? s : null;
     }
