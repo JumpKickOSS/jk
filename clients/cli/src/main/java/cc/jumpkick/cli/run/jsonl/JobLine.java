@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import org.jspecify.annotations.Nullable;
 
 /** Engine job binding — jid (cancel), buildNumber (run dir), ETA and details path; each rides only when known. */

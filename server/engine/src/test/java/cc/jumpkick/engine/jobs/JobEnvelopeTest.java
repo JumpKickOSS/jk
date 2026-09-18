@@ -4,6 +4,7 @@ package cc.jumpkick.engine.jobs;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -17,6 +18,7 @@ import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.transcript.SessionStartLine;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
@@ -28,6 +30,7 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -144,6 +147,35 @@ class JobEnvelopeTest {
         assertThat(List.copyOf(host.teardownOrder)).containsExactly("writeJournal", "clearProgress");
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish")))
                 .isTrue();
+    }
+
+    @Test
+    void a_detached_run_opens_its_transcript_with_the_header_a_cli_run_gets(@TempDir Path dir) throws Exception {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        host.history = new JkHistoryConfig(true, 30, 512);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        CountDownLatch ran = new CountDownLatch(1);
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":" + Jsonl.quote(dir.toString())
+                        + ",\"trigger\":\"mcp\",\"session\":\"claude-code 3f9a\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    ran.countDown();
+                    return JobOutcome.ok();
+                }),
+                new JobTransport.FireAndForget());
+        assertThat(ran.await(30, TimeUnit.SECONDS)).isTrue();
+        Await.until(Duration.ofSeconds(30), () -> host.finished > 0);
+        Path details = host.journal()
+                .detailsFile(host.coordOf(dir.toString()), dir.toString(), host.lastBuildNumber)
+                .orElseThrow();
+        List<String> lines = Files.readAllLines(details);
+        assertThat(lines).isNotEmpty();
+        SessionStartLine header = SessionStartLine.decode(lines.getFirst());
+        assertThat(header.command()).isEqualTo("build");
+        assertThat(header.argv()).containsExactly("build");
+        assertThat(header.trigger()).isEqualTo("mcp");
+        assertThat(header.session()).isEqualTo("claude-code 3f9a");
+        assertThat(header.ts()).isPositive();
     }
 
     @Test

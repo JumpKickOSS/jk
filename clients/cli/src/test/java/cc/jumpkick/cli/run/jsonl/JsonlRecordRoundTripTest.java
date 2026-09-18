@@ -4,11 +4,13 @@ package cc.jumpkick.cli.run.jsonl;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.wire.transcript.SessionStartLine;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -63,19 +65,23 @@ class JsonlRecordRoundTripTest {
         }
     }
 
+    /** The CLI's own line records, and the header record the engine writes too from the wire module. */
     @Test
     void every_record_in_the_package_is_listed() throws Exception {
-        var dir = RepoRoot.dir(JsonlRecordRoundTripTest.class, "clients/cli/src/main/java/cc/jumpkick/cli/run/jsonl");
-        try (var files = Files.list(dir)) {
-            List<String> records = files.map(f -> f.getFileName().toString())
-                    .filter(n -> n.endsWith("Line.java"))
-                    .map(n -> n.substring(0, n.length() - ".java".length()))
-                    .sorted()
-                    .toList();
-            assertThat(records)
-                    .containsExactlyInAnyOrderElementsOf(
-                            RECORDS.stream().map(Class::getSimpleName).toList());
+        List<String> records = new ArrayList<>();
+        for (String pkg : List.of(
+                "clients/cli/src/main/java/cc/jumpkick/cli/run/jsonl",
+                "shared/wire/src/main/java/cc/jumpkick/wire/transcript")) {
+            try (var files = Files.list(RepoRoot.dir(JsonlRecordRoundTripTest.class, pkg))) {
+                files.map(f -> f.getFileName().toString())
+                        .filter(n -> n.endsWith("Line.java"))
+                        .map(n -> n.substring(0, n.length() - ".java".length()))
+                        .forEach(records::add);
+            }
         }
+        assertThat(records)
+                .containsExactlyInAnyOrderElementsOf(
+                        RECORDS.stream().map(Class::getSimpleName).toList());
     }
 
     private static Object populated(Class<?> type) throws ReflectiveOperationException {
