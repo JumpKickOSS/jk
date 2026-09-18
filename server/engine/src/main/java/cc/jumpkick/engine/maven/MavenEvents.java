@@ -14,10 +14,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The spy's event file: one line per event of eight tab-separated, percent-encoded fields — the
- * {@code ExecutionEvent.Type} name, the module's wall millis from Maven's build summary (project
- * events only), {@code project}, {@code dir}, {@code goal}, {@code execution}, {@code exception}
- * and {@code message}. Folded per module into an outcome, a mojo step chain and the first failed
- * mojo.
+ * {@code ExecutionEvent.Type} name, the millis (the module's wall time from Maven's build summary
+ * on a project event, the mojo's own elapsed time on a mojo event), {@code project}, {@code dir},
+ * {@code goal}, {@code execution}, {@code exception} and {@code message}. Folded per module into an
+ * outcome, a mojo step chain with each step's duration, and the first failed mojo.
  */
 public final class MavenEvents {
 
@@ -34,8 +34,11 @@ public final class MavenEvents {
             String exception,
             String message) {}
 
-    /** One mojo execution: {@code status} is {@code SUCCESS}, {@code FAIL} or {@code SKIPPED}. */
-    public record Step(String goal, String status) {}
+    /**
+     * One mojo execution: {@code status} is {@code SUCCESS}, {@code FAIL} or {@code SKIPPED};
+     * {@code millis} is how long it ran, as the spy timed it.
+     */
+    public record Step(String goal, String status, long millis) {}
 
     /** The first mojo that failed in a module, with what it threw. */
     public record Failure(String goal, String exception, String message) {}
@@ -143,10 +146,10 @@ public final class MavenEvents {
                         failure = new Failure("", e.exception(), e.message());
                 }
                 case "ProjectSkipped" -> outcome = "SKIPPED";
-                case "MojoSucceeded" -> steps.add(new Step(shortGoal(e.goal()), "SUCCESS"));
-                case "MojoSkipped" -> steps.add(new Step(shortGoal(e.goal()), "SKIPPED"));
+                case "MojoSucceeded" -> steps.add(new Step(shortGoal(e.goal()), "SUCCESS", e.millis()));
+                case "MojoSkipped" -> steps.add(new Step(shortGoal(e.goal()), "SKIPPED", e.millis()));
                 case "MojoFailed" -> {
-                    steps.add(new Step(shortGoal(e.goal()), "FAIL"));
+                    steps.add(new Step(shortGoal(e.goal()), "FAIL", e.millis()));
                     Failure f = new Failure(shortGoal(e.goal()), e.exception(), e.message());
                     if (failure == null || failure.goal().isEmpty()) failure = f;
                 }

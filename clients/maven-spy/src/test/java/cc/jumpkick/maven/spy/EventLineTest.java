@@ -30,7 +30,7 @@ class EventLineTest {
         result.addBuildSummary(new BuildSuccess(app, 400));
         MavenSession session = new MavenSession(null, null, new DefaultMavenExecutionRequest(), result);
 
-        List<String> f = fields(EventLine.of(event(ExecutionEvent.Type.ProjectSucceeded, session, app, null, null)));
+        List<String> f = fields(EventLine.of(event(ExecutionEvent.Type.ProjectSucceeded, session, app, null, null), 0));
         assertThat(f).hasSize(EventLine.FIELDS);
         assertThat(f.get(0)).isEqualTo("ProjectSucceeded");
         assertThat(f.get(1)).isEqualTo("400");
@@ -48,11 +48,13 @@ class EventLineTest {
         MojoExecution mojo = new MojoExecution(compiler, "compile", "default-compile");
         MojoFailureException boom = new MojoFailureException(
                 this, "Compilation failure", "Compilation failure\n/ws/app/src/A.java:[3,5] cannot find \"symbol\"\t!");
-        String line = EventLine.of(event(ExecutionEvent.Type.MojoFailed, null, app, mojo, boom));
+        String line = EventLine.of(event(ExecutionEvent.Type.MojoFailed, null, app, mojo, boom), 340);
         assertThat(line).doesNotContain("\n");
         List<String> f = fields(line);
         assertThat(f.get(0)).isEqualTo("MojoFailed");
-        assertThat(f.get(1)).isEqualTo("0");
+        assertThat(f.get(1))
+                .as("a mojo event carries the time the spy measured for it")
+                .isEqualTo("340");
         assertThat(f.get(4)).isEqualTo("maven-compiler-plugin:compile");
         assertThat(f.get(5)).isEqualTo("default-compile");
         assertThat(f.get(6)).isEqualTo("org.apache.maven.plugin.MojoFailureException");
@@ -63,10 +65,46 @@ class EventLineTest {
     void session_event_has_empty_project_fields_and_causes_join_the_message() {
         RuntimeException cause = new RuntimeException("root cause");
         List<String> f = fields(EventLine.of(
-                event(ExecutionEvent.Type.SessionEnded, null, null, null, new IllegalStateException("outer", cause))));
+                event(ExecutionEvent.Type.SessionEnded, null, null, null, new IllegalStateException("outer", cause)),
+                0));
         assertThat(f.get(0)).isEqualTo("SessionEnded");
         assertThat(f.subList(2, 6)).containsOnly("");
         assertThat(f.get(7)).isEqualTo("outer\nroot cause");
+    }
+
+    @Test
+    void a_mojo_reads_the_time_between_its_start_and_its_end_and_a_project_event_ignores_the_timer() {
+        long[] now = {1_000_000_000L};
+        MojoTimer timer = new MojoTimer(() -> now[0]);
+        MavenProject app = project("com.example", "app", "/ws/app");
+        Plugin compiler = new Plugin();
+        compiler.setArtifactId("maven-compiler-plugin");
+        MojoExecution compile = new MojoExecution(compiler, "compile", "default-compile");
+        MojoExecution testCompile = new MojoExecution(compiler, "testCompile", "default-testCompile");
+
+        assertThat(timer.observe(event(ExecutionEvent.Type.MojoStarted, null, app, compile, null)))
+                .isZero();
+        now[0] += 120_000_000L;
+        assertThat(timer.observe(event(ExecutionEvent.Type.MojoStarted, null, app, testCompile, null)))
+                .isZero();
+        now[0] += 35_000_000L;
+        assertThat(timer.observe(event(ExecutionEvent.Type.MojoSucceeded, null, app, compile, null)))
+                .as("each execution is timed from its own start")
+                .isEqualTo(155);
+        assertThat(timer.observe(event(ExecutionEvent.Type.MojoFailed, null, app, testCompile, null)))
+                .isEqualTo(35);
+        // A terminal event with no start behind it, and a project event, read nothing.
+        assertThat(timer.observe(event(ExecutionEvent.Type.MojoSucceeded, null, app, compile, null)))
+                .isZero();
+        assertThat(timer.observe(event(ExecutionEvent.Type.ProjectSucceeded, null, app, null, null)))
+                .isZero();
+        // The line takes the mojo's time on a mojo event and the build summary's on a project event.
+        assertThat(fields(EventLine.of(event(ExecutionEvent.Type.MojoSucceeded, null, app, compile, null), 155))
+                        .get(1))
+                .isEqualTo("155");
+        assertThat(fields(EventLine.of(event(ExecutionEvent.Type.ProjectSucceeded, null, app, null, null), 155))
+                        .get(1))
+                .isEqualTo("0");
     }
 
     /** The engine's read of a line: split on tabs, decode each field. */

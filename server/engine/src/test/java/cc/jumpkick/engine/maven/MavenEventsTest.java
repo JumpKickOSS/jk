@@ -34,7 +34,7 @@ class MavenEventsTest {
                                 ""),
                         MavenRunFixture.line(
                                 "MojoFailed",
-                                "0",
+                                "35",
                                 "g:lib",
                                 "/ws/lib",
                                 "maven-compiler-plugin:compile",
@@ -52,7 +52,7 @@ class MavenEventsTest {
         assertThat(lib.coord()).isEqualTo("g:lib");
         assertThat(lib.outcome()).isEqualTo("FAIL");
         assertThat(lib.millis()).isEqualTo(40);
-        assertThat(lib.steps()).containsExactly(new MavenEvents.Step("compiler:compile", "FAIL"));
+        assertThat(lib.steps()).containsExactly(new MavenEvents.Step("compiler:compile", "FAIL", 35));
         // The mojo's failure, not the lifecycle's wrapper, is the one the diagnostics read.
         MavenEvents.Failure failure = Objects.requireNonNull(lib.failure(), "lib failed");
         assertThat(failure.goal()).isEqualTo("compiler:compile");

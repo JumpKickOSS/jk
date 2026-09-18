@@ -32,13 +32,13 @@ class MavenRunReportTest {
         MavenRunReport.Module lib = report.modules().get(0);
         assertThat(lib.success()).isTrue();
         assertThat(lib.millis()).isEqualTo(400);
-        assertThat(lib.steps()).containsExactly(new MavenEvents.Step("compiler:compile", "SUCCESS"));
+        assertThat(lib.steps()).containsExactly(new MavenEvents.Step("compiler:compile", "SUCCESS", 120));
         assertThat(lib.errors()).isEmpty();
 
         MavenRunReport.Module app = report.modules().get(1);
         assertThat(app.success()).isFalse();
         assertThat(app.millis()).isEqualTo(1200);
-        assertThat(app.steps()).containsExactly(new MavenEvents.Step("surefire:test", "FAIL"));
+        assertThat(app.steps()).containsExactly(new MavenEvents.Step("surefire:test", "FAIL", 340));
         // The failing test explains the failed mojo, so no second diagnostic repeats it.
         assertThat(app.errors()).isEmpty();
         assertThat(app.tests()).hasSize(2);
@@ -98,7 +98,7 @@ class MavenRunReportTest {
         BuildAccumulator acc = new BuildAccumulator("mvn", tmp.toString(), "com.example:reactor", "cli");
         for (MavenRunReport.Module m : report.modules()) {
             String dir = m.dir().toString();
-            for (MavenEvents.Step s : m.steps()) acc.addTask(dir, s.goal(), "", s.status(), 0, 0);
+            for (MavenEvents.Step s : m.steps()) acc.addTask(dir, s.goal(), "", s.status(), s.millis(), 0);
             acc.addBuildPlan(
                     dir,
                     new BuildPlanResult(
@@ -128,6 +128,8 @@ class MavenRunReportTest {
         assertThat(md).contains("##### `" + MavenRunFixture.FAILING_METHOD + "`");
         assertThat(md).contains(MavenRunFixture.FAILURE_MESSAGE);
         assertThat(md).contains(MavenRunFixture.STACK_FRAME);
+        assertThat(md).contains("## Failed steps");
+        assertThat(md).as("mojo steps carry the time Maven spent in them").contains("`surefire:test` | FAIL | 340ms |");
         assertThat(md).contains("## Modules");
         assertThat(md).contains("| com.example:app | FAIL |");
         assertThat(md).contains("| com.example:lib | OK |");

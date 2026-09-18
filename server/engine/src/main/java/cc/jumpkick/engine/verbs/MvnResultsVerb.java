@@ -86,7 +86,7 @@ public final class MvnResultsVerb implements HostedVerb {
 
     private void record(long rid, MavenRunReport.Module m) {
         String dir = m.dir().toString();
-        for (MavenEvents.Step s : m.steps()) host.accStepFinish(rid, dir, s.goal(), s.status(), 0L);
+        for (MavenEvents.Step s : m.steps()) host.accStepFinish(rid, dir, s.goal(), s.status(), s.millis());
         host.accBuildPlanFinish(
                 rid,
                 dir,

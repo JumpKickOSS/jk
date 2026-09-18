@@ -14,8 +14,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One reactor event as one line of eight tab-separated, percent-encoded fields: the {@link
- * ExecutionEvent.Type} name; the module's wall millis from Maven's own build summary (project
- * events only, else 0); {@code groupId:artifactId}; the module's basedir; {@code
+ * ExecutionEvent.Type} name; the millis — the module's wall time from Maven's own build summary
+ * on a project event, the mojo's own elapsed time the {@link MojoTimer} measured on a mojo event,
+ * else 0; {@code groupId:artifactId}; the module's basedir; {@code
  * plugin-artifactId:goal}; the execution id; the exception's class name; its message, long form
  * and cause chain newline-joined. Absent fields are empty. Encoding is the JDK's, so the line
  * carries no separator or newline of its own.
@@ -27,14 +28,15 @@ public final class EventLine {
 
     private EventLine() {}
 
-    public static String of(ExecutionEvent e) {
+    /** The line for {@code e}; {@code mojoMillis} is what its mojo took, read only on a mojo event. */
+    public static String of(ExecutionEvent e, long mojoMillis) {
         MavenProject p = e.getProject();
         File basedir = p == null ? null : p.getBasedir();
         MojoExecution mojo = e.getMojoExecution();
         Throwable t = e.getException();
         String[] fields = {
             e.getType().name(),
-            Long.toString(millis(e.getSession(), p)),
+            Long.toString(mojo != null ? mojoMillis : millis(e.getSession(), p)),
             p == null ? "" : p.getGroupId() + ":" + p.getArtifactId(),
             basedir == null ? "" : basedir.getAbsolutePath(),
             mojo == null ? "" : mojo.getArtifactId() + ":" + mojo.getGoal(),

@@ -96,6 +96,10 @@ class MvnResultsCommandTest {
         assertThat(md).contains("##### `adds`");
         assertThat(md).contains("expected: <4> but was: <5>");
         assertThat(md).contains("at com.example.AppTest.adds(AppTest.java:12)");
+        assertThat(md).contains("## Failed steps");
+        assertThat(md)
+                .as("a mojo step carries the time Maven spent in it")
+                .contains("`surefire:test` | FAIL | 340ms |");
         assertThat(md).contains("## Modules");
         assertThat(md).contains("| com.example:app | FAIL |");
         assertThat(md).contains("| com.example:lib | OK |");
@@ -153,11 +157,11 @@ class MvnResultsCommandTest {
                 "\n",
                 "SessionStarted" + t + "0" + t + t + t + t + t + t,
                 "ProjectStarted" + t + "0" + t + "com.example%3Alib" + t + "$L" + t + t + t + t,
-                "MojoSucceeded" + t + "0" + t + "com.example%3Alib" + t + "$L" + t + "maven-compiler-plugin%3Acompile"
+                "MojoSucceeded" + t + "120" + t + "com.example%3Alib" + t + "$L" + t + "maven-compiler-plugin%3Acompile"
                         + t + "default-compile" + t + t,
                 "ProjectSucceeded" + t + "400" + t + "com.example%3Alib" + t + "$L" + t + t + t + t,
                 "ProjectStarted" + t + "0" + t + "com.example%3Aapp" + t + "$A" + t + t + t + t,
-                "MojoFailed" + t + "0" + t + "com.example%3Aapp" + t + "$A" + t + "maven-surefire-plugin%3Atest" + t
+                "MojoFailed" + t + "340" + t + "com.example%3Aapp" + t + "$A" + t + "maven-surefire-plugin%3Atest" + t
                         + "default-test" + t + "org.apache.maven.plugin.MojoFailureException" + t
                         + "There+are+test+failures.",
                 "ProjectFailed" + t + "1200" + t + "com.example%3Aapp" + t + "$A" + t + t + t + t,
