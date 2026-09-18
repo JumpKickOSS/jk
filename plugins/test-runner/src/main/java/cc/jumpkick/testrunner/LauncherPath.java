@@ -27,6 +27,7 @@ import org.junit.platform.launcher.TagFilter;
 import org.junit.platform.launcher.TestExecutionListener;
 import org.junit.platform.launcher.TestIdentifier;
 import org.junit.platform.launcher.TestPlan;
+import org.junit.platform.launcher.core.LauncherConfig;
 import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
 import org.junit.platform.launcher.core.LauncherFactory;
 
@@ -37,8 +38,10 @@ import org.junit.platform.launcher.core.LauncherFactory;
  * <p>Unlike raw {@code TestEngine.discover/execute}, the Launcher opens a {@code LauncherSession}
  * and fires {@code LauncherSessionListener} / {@code LauncherDiscoveryListener} SPIs. Quarkus
  * ({@code CustomLauncherInterceptor}) needs those to install {@code FacadeClassLoader} and register
- * {@code TestConfig} before {@code @QuarkusTest} runs. It is also the sole owner of tag filtering
- * and of the wire payloads ({@link Adapter}); nothing in this plugin re-decides either.
+ * {@code TestConfig} before {@code @QuarkusTest} runs, so every launcher that executes fires them.
+ * A discovery that only names classes runs on {@link #listingLauncher()}, which fires none. It is
+ * also the sole owner of tag filtering and of the wire payloads ({@link Adapter}); nothing in this
+ * plugin re-decides either.
  *
  * <p>Compile-only against launcher; the forked test JVM must put a matching launcher jar on the CP.
  * {@code jk lock} injects {@code org.junit.platform:junit-platform-launcher} into every project's
@@ -103,6 +106,24 @@ final class LauncherPath {
         return adapter.hasFailures() ? 1 : 0;
     }
 
+    /**
+     * The launcher for a discovery that names classes and runs nothing: the {@code --list-only}
+     * fork, and the second looks a run takes to explain an empty or tag-filtered plan. No
+     * auto-registered {@code LauncherSessionListener}, {@code LauncherDiscoveryListener} or {@code
+     * TestExecutionListener} fires on it — those are how a framework readies a JVM for the tests it
+     * is about to run, and Quarkus's augments one application per test profile as the classes load
+     * through its {@code FacadeClassLoader}, which a JVM that runs no test has no use for and, over
+     * hundreds of {@code @QuarkusTest} classes, no heap for. Engines and post-discovery filters stay
+     * auto-registered: they decide what the list holds.
+     */
+    static Launcher listingLauncher() {
+        return LauncherFactory.create(LauncherConfig.builder()
+                .enableLauncherSessionListenerAutoRegistration(false)
+                .enableLauncherDiscoveryListenerAutoRegistration(false)
+                .enableTestExecutionListenerAutoRegistration(false)
+                .build());
+    }
+
     /** Exit 0 with the plan's classes announced, or {@link Exit#SOFTWARE} after a discovery failure was printed. */
     static int runListOnly(
             Path scanClasspath,
@@ -122,7 +143,7 @@ final class LauncherPath {
         b.listeners(dropped);
         TestPlan plan;
         try {
-            plan = LauncherFactory.create().discover(b.build());
+            plan = listingLauncher().discover(b.build());
         } catch (RuntimeException e) {
             if (emptyRunWithoutEngine(e, scanClasspath, filter, adapter)) return 0;
             reportDiscoveryFailure(scanClasspath, e);
@@ -179,7 +200,7 @@ final class LauncherPath {
         if (selection == null) return;
         TestPlan unfiltered;
         try {
-            unfiltered = LauncherFactory.create().discover(selection.build());
+            unfiltered = listingLauncher().discover(selection.build());
         } catch (RuntimeException e) {
             return;
         }
@@ -278,7 +299,7 @@ final class LauncherPath {
         if (classes <= 0) return;
         TestPlan unfiltered;
         try {
-            unfiltered = LauncherFactory.create()
+            unfiltered = listingLauncher()
                     .discover(LauncherDiscoveryRequestBuilder.request()
                             .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)))
                             .build());

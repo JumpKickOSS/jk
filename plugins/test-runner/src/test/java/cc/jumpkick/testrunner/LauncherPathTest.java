@@ -236,6 +236,34 @@ class LauncherPathTest {
     }
 
     // --- discovery ---------------------------------------------------------------
+    /**
+     * A list-only discovery names classes and runs nothing, so the session and discovery
+     * listeners the classpath registers — a framework's hook to boot the application the tests will
+     * run against — do not fire in it. The control discovery shows the fixture is wired.
+     */
+    @Test
+    void a_list_only_discovery_fires_no_registered_session_or_discovery_listener(@TempDir Path tmp) throws IOException {
+        Path root = classpathRootOf(tmp, TagEmptiedFixture.class);
+        LifecycleListenerFixture.reset();
+        LauncherFactory.create()
+                .discover(LauncherDiscoveryRequestBuilder.request()
+                        .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(root)))
+                        .build());
+        assertThat(LifecycleListenerFixture.sessionsOpened())
+                .as("control: a plain launcher")
+                .isEqualTo(1);
+        assertThat(LifecycleListenerFixture.discoveriesStarted())
+                .as("control: a plain launcher")
+                .isEqualTo(1);
+
+        LifecycleListenerFixture.reset();
+        var events = new Recorder();
+        LauncherPath.runListOnly(root, null, List.of(), List.of("slow"), 0, events);
+        assertThat(events.discovered()).containsExactly(TagEmptiedFixture.class.getName());
+        assertThat(LifecycleListenerFixture.sessionsOpened()).isZero();
+        assertThat(LifecycleListenerFixture.discoveriesStarted()).isZero();
+    }
+
     @Test
     void discovery_announces_a_nested_class_through_its_enclosing_class_only() {
         assertThat(LauncherPath.discoveredClassesOf(WithNested.class)).containsExactly(WithNested.class.getName());
@@ -381,6 +409,15 @@ class LauncherPathTest {
             var out = new ArrayList<Map<String, Object>>();
             for (int i = 0; i < types.size(); i++) {
                 if (types.get(i) == EventType.WARNING) out.add(events.get(i));
+            }
+            return out;
+        }
+
+        List<String> discovered() {
+            var out = new ArrayList<String>();
+            for (int i = 0; i < types.size(); i++) {
+                if (types.get(i) == EventType.DISCOVERED)
+                    out.add(String.valueOf(events.get(i).get("class")));
             }
             return out;
         }
