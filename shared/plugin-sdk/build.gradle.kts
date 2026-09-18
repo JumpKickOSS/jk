@@ -10,14 +10,12 @@ description = "jk plugin SPI: the stable surface plugins compile against. " +
         "The JSONL codec and the host primitives (Hashing, PathUtil, Errors, Os, Exit) live " +
         "in :host, which every plugin therefore reaches."
 
-// Published as `cc.jumpkick:jk-plugin-sdk` on its OWN version line, independent of
-// cc.jumpkick.model.JkVersion (jk's release train): the SPI freezes on a different cadence. This
-// line is the ONE owner of the SDK version: it is what actually gets published, `test` hands it to
-// PublishedSdkConsumerTest below, and PluginSdkScaffoldVersionTest (in :core) reads it back to hold
-// the `jk new --plugin` scaffold pin against it. A later pass deleted the Java constant that used to
-// mirror it — nothing in production read it, and a mirror a compiler cannot check is a comment.
+// Published as `cc.jumpkick:jk-plugin-sdk` at the tree's version: the SDK rides jk's release train,
+// `jk install` shelves it under that version and `jk new --plugin` pins it there
+// (PluginSdkScaffoldVersionTest holds the scaffold to JkVersion). `test` hands the same number to
+// PublishedSdkConsumerTest below.
 group = "cc.jumpkick"
-version = "0.1.0"
+version = JkTreeVersion.of(rootProject.projectDir)
 
 // The plugin SPI leaf (plus :host for the shared codec and host primitives). Classes ride the user's
 // test JVM on the project's pinned JDK — JDK 17 floor. :jk-api carries

@@ -34,13 +34,11 @@ remedy.
 
 ## Where the SDK comes from
 
-The SDK resolves like any first-party coordinate: from `https://jumpkick.build/repo/` (and from
-Maven Central) once the jk release that publishes it is out. Before that release, publish the
-SDK the release script does — `jk publish --repo-url file:///tmp/sdk-repo` from `shared/host` and
-`shared/plugin-sdk` of a jk checkout — and lock against it: `jk lock --repo-url
-file:///tmp/sdk-repo`. The integration test that drives this sample end to end
-(`ThirdPartyPluginExampleTest`) does exactly that, so the sample carries no committed lock until
-the SDK is served publicly.
+The SDK resolves like any first-party coordinate, from `https://jumpkick.build/repo/`, and the
+sample's committed `jk-lock.toml` pins it there. The integration test that drives this sample end
+to end (`ThirdPartyPluginExampleTest`) publishes the SDK a checkout built — `jk publish --repo-url
+file:///tmp/sdk-repo` from `shared/host` and `shared/plugin-sdk` — and relocks the sample against
+that repository, so the bytes under test are the checkout's own.
 
 Two versions in `jk-plugin.toml` describe the SDK: `sdk` is the exact `jk-plugin-sdk` release the
 code compiled against — the same number as the `[dependencies]` pin in `jk.toml`, and what a

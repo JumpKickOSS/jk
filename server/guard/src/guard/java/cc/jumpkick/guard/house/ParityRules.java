@@ -484,12 +484,6 @@ final class ParityRules {
     /** Where the bootstrap build's own scripts live; benches, docs and fixtures hold other trees' scripts. */
     private static final List<String> BOOTSTRAP_ROOTS =
             List.of("buildSrc/", "shared/", "server/", "clients/", "plugins/");
-    /**
-     * The one bootstrap script whose {@code version} is not the tree's: {@code cc.jumpkick:jk-plugin-sdk}
-     * publishes on its own line, the SPI freezing on a different cadence, and this script is that
-     * line's one owner (PluginSdkScaffoldVersionTest reads it back).
-     */
-    private static final String INDEPENDENT_LINE = "shared/plugin-sdk/build.gradle.kts";
 
     private static final Pattern JK_VERSION_LITERAL = Pattern.compile("String VERSION\\s*=\\s*\"([^\"]+)\"");
     private static final Pattern GRADLE_VERSION_PIN = Pattern.compile("^version\\s*=\\s*\"([^\"]+)\"");
@@ -532,7 +526,7 @@ final class ParityRules {
             }
         }
         for (String script : text.files("**/*.gradle.kts")) {
-            if (!bootstrapScript(script) || script.equals(INDEPENDENT_LINE)) continue;
+            if (!bootstrapScript(script)) continue;
             List<String> lines = text.lines(script);
             for (int i = 0; i < lines.size(); i++) {
                 Matcher m = GRADLE_VERSION_PIN.matcher(lines.get(i).strip());

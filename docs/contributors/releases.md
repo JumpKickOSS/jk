@@ -387,10 +387,8 @@ JK_PUBLISH_CENTRAL=1 JK_CENTRAL_GPG_KEY_FILE=/owner-only/path/release-gpg.asc sc
 ```
 
 Central validates the POM's `<name>`, `<description>`, `<url>`, `<licenses>`, `<developers>` and
-`<scm>`: they come from the `[publish]` table, which the workspace root declares once for every
-member. The root gains it the first time a jk that reads the table is the installed one — the
-self-host build parses every manifest with the installed release, so a table the installed jk
-does not know fails the gate:
+`<scm>`: they come from the `[publish]` table the workspace root declares once for every member
+(a member's own table would win wholesale):
 
 ```toml
 [publish]
@@ -400,9 +398,8 @@ developers = [{ id = "bsant", name = "Bryan Sant" }]
 scm = { url = "https://github.com/JumpKickOSS/jk", connection = "scm:git:https://github.com/JumpKickOSS/jk.git", developer-connection = "scm:git:ssh://git@github.com/JumpKickOSS/jk.git" }
 ```
 
-Until then `jk publish --central` refuses with that table as the fix. A `--dry-run` writes the
-bundle to `target/shared/plugin-sdk/publish/central-bundle.zip` and lists it, for a look before
-the first real upload.
+A `--dry-run` writes the bundle to `target/shared/plugin-sdk/publish/central-bundle.zip` and lists
+it, for a look before the first real upload.
 
 ## Local dry-run
 

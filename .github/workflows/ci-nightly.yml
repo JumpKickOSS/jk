@@ -378,13 +378,6 @@ jobs:
           failed=0
           for manifest in docs/user/examples/*/jk.toml; do
             sample="$(dirname "$manifest")"
-            # A sample with no committed lock is one whose dependency the public repositories do
-            # not serve yet (third-party-plugin: the SDK lands on jumpkick.build/repo with the
-            # release that publishes it); its integration test builds it against a local repository.
-            if [[ ! -f "$sample/jk-lock.toml" ]]; then
-              echo "skipping $sample: no committed jk-lock.toml"
-              continue
-            fi
             echo "::group::$sample"
             if ! ( cd "$sample" && jk lock --no-ansi && jk build --no-ansi && jk test --no-ansi ); then
               echo "::error file=$manifest::sample failed: $sample"
