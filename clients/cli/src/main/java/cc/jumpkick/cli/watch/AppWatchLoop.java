@@ -344,7 +344,7 @@ public final class AppWatchLoop {
      * or the line itself on a terminal, and either way fed to the probe after it has been shown.
      */
     private void pumpApp(String stream, InputStream in, ReadyProbe probe) {
-        Thread.ofVirtual().name("app-" + stream).start(() -> {
+        Thread.ofPlatform().daemon().name("app-" + stream).start(() -> {
             try (Reader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
                 OutputLines.read(reader, line -> {
                     if (json()) {

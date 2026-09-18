@@ -385,7 +385,7 @@ public final class TrainRunner {
         // Drain the pipe: a chatty assembler fills the 64K buffer, stalls, gets force-killed at
         // the timeout, and is then misreported as "did not produce a cache".
         StringBuilder createOut = new StringBuilder();
-        Thread drain = SessionContext.startVirtual("jk-train-aot-drain", () -> {
+        Thread drain = SessionContext.startPlatform("jk-train-aot-drain", () -> {
             try (var in = p.inputReader()) {
                 in.lines().forEach(l -> createOut.append(l).append('\n'));
             } catch (IOException ignored) {
@@ -411,7 +411,7 @@ public final class TrainRunner {
         Process process = JobWorkers.start(pb);
         StringBuilder out = new StringBuilder();
         AtomicLong lastOutput = new AtomicLong(System.nanoTime());
-        Thread reader = SessionContext.startVirtual("jk-train-run-reader", () -> {
+        Thread reader = SessionContext.startPlatform("jk-train-run-reader", () -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {
                     synchronized (out) {

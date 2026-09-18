@@ -486,7 +486,7 @@ final class AotCacheTrainer {
         Process process = pb.start();
         StringBuilder out = new StringBuilder();
         AtomicLong lastOutput = new AtomicLong(System.nanoTime());
-        Thread reader = Thread.ofVirtual().start(() -> {
+        Thread reader = Thread.ofPlatform().daemon().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {
                     synchronized (out) {

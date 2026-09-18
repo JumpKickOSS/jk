@@ -154,6 +154,46 @@ final class HouseRules {
         v.population(files);
     }
 
+    private static final Pattern VIRTUAL_STARTER = Pattern.compile(
+            "SessionContext\\.startVirtual\\(|Thread\\.ofVirtual\\(\\)(?:\\s*\\.[A-Za-z]+\\([^()]*\\))*\\s*\\.(?:start|unstarted)\\(");
+    private static final Pattern PIPE_READ =
+            Pattern.compile("\\.(?:getInputStream|getErrorStream|inputReader|errorReader)\\([^()]*\\)");
+
+    @Guard(
+            id = "pipe-reader-platform-thread",
+            why =
+                    "a virtual thread parked in a Process pipe read holds its carrier for as long as the child is silent, and under one carrier every other virtual thread of the JVM waits behind it",
+            instead =
+                    "SessionContext.startPlatform, or Thread.ofPlatform().daemon(), for a body that reads a Process's getInputStream / getErrorStream / inputReader / errorReader")
+    @Fixture("server/guard/fixtures/pipe-reader-platform-thread")
+    void pipeReaderPlatformThread(Text text, Violations v) {
+        long files = 0;
+        for (String rel : text.files(MAIN_JAVA)) {
+            files++;
+            String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
+            Matcher m = VIRTUAL_STARTER.matcher(code);
+            while (m.find()) {
+                if (PIPE_READ.matcher(callArguments(code, m.end() - 1)).find()) {
+                    v.add(
+                            new TextSite(rel, lineOf(code, m.start()), m.group()),
+                            "reads a Process pipe on a virtual thread");
+                }
+            }
+        }
+        v.population(files);
+    }
+
+    /** The text between the {@code (} at {@code open} and its matching {@code )}; to the end when unbalanced. */
+    private static String callArguments(String code, int open) {
+        int depth = 0;
+        for (int i = open; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')' && --depth == 0) return code.substring(open + 1, i);
+        }
+        return code.substring(open + 1);
+    }
+
     @Guard(
             id = "single-truth-set",
             why =

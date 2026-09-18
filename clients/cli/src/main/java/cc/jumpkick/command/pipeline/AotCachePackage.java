@@ -119,7 +119,7 @@ public final class AotCachePackage {
                 .redirectErrorStream(true)
                 .start();
         StringBuilder output = new StringBuilder();
-        Thread reader = Thread.ofVirtual().start(() -> {
+        Thread reader = Thread.ofPlatform().daemon().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(l -> output.append(l).append('\n'));
             } catch (IOException ignored) {
@@ -196,7 +196,7 @@ public final class AotCachePackage {
                 .redirectErrorStream(true)
                 .start();
         StringBuilder out = new StringBuilder();
-        Thread reader = Thread.ofVirtual().start(() -> {
+        Thread reader = Thread.ofPlatform().daemon().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(l -> out.append(l).append('\n'));
             } catch (IOException ignored) {
@@ -365,7 +365,7 @@ public final class AotCachePackage {
                 .redirectErrorStream(true)
                 .start();
         StringBuilder captured = new StringBuilder();
-        Thread reader = Thread.ofVirtual().start(() -> {
+        Thread reader = Thread.ofPlatform().daemon().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(l -> captured.append(l).append('\n'));
             } catch (IOException ignored) {
