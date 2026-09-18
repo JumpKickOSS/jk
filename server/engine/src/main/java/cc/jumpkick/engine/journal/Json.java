@@ -172,8 +172,7 @@ final class Json {
     }
 
     static @Nullable JobDelta readDelta(Map<String, Object> o) {
-        if (!(o.get("delta") instanceof Map<?, ?> dm)) return null;
-        Map<String, Object> d = (Map<String, Object>) dm;
+        if (!(o.get("delta") instanceof Map<?, ?> d)) return null;
         JobDelta.Rows appeared = rows(d, "appeared");
         JobDelta.Rows gone = rows(d, "gone");
         return new JobDelta(
@@ -189,9 +188,8 @@ final class Json {
                 rows(d, "dropped"));
     }
 
-    private static JobDelta.@Nullable Rows rows(Map<String, Object> d, String key) {
-        if (!(d.get(key) instanceof Map<?, ?> rm)) return null;
-        Map<String, Object> r = (Map<String, Object>) rm;
+    private static JobDelta.@Nullable Rows rows(Map<?, ?> d, String key) {
+        if (!(d.get(key) instanceof Map<?, ?> r)) return null;
         return new JobDelta.Rows((int) lng(r, "count"), strList(r, "shown"));
     }
 
@@ -358,15 +356,15 @@ final class Json {
         return s == null ? "" : s;
     }
 
-    private static @Nullable String str(Map<String, Object> o, String key) {
+    private static @Nullable String str(Map<?, ?> o, String key) {
         return o.get(key) instanceof String s ? s : null;
     }
 
-    private static long lng(Map<String, Object> o, String key) {
+    private static long lng(Map<?, ?> o, String key) {
         return o.get(key) instanceof Number n ? n.longValue() : 0L;
     }
 
-    private static boolean bool(Map<String, Object> o, String key) {
+    private static boolean bool(Map<?, ?> o, String key) {
         return Boolean.TRUE.equals(o.get(key));
     }
 
@@ -375,7 +373,7 @@ final class Json {
         return o.get(key) instanceof List<?> l ? (List<Object>) l : List.of();
     }
 
-    private static List<String> strList(Map<String, Object> o, String key) {
+    private static List<String> strList(Map<?, ?> o, String key) {
         if (!(o.get(key) instanceof List<?> l) || l.isEmpty()) return List.of();
         List<String> out = new ArrayList<>(l.size());
         for (Object e : l) {
