@@ -1,0 +1,41 @@
+# The built-in jOOQ preset's declarative manifest. Owns [jooq]; the code layer turns the table into
+# one generator entry — jk's own main over jOOQ's GenerationTool, reading the module's DDL scripts
+# through DDLDatabase (or a live schema over JDBC), into the generate stage, contributed as sources
+# — and runs it through the generator plugin's step. `jk explain` shows that entry as the step
+# `generate-jooq`.
+
+[plugin]
+id        = "jooq"
+table     = "jooq"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-jooq"
+protocol-prefix = "##JKJOOQ:"
+
+[schema]
+sql       = { type = "string", default = "src/main/resources/db/migration/**/*.sql", hint = "the module-relative DDL scripts (Flyway migrations) that define the schema, as a file or glob; applied to an in-memory database in semantic version order, and the step's cache key" }
+package   = { type = "string", example = "com.acme.jooq", hint = "the package of the generated classes; default the project group + .jooq" }
+schema    = { type = "string", default = "PUBLIC", hint = "the input schema to generate from; the generated code is unqualified (output schema to default)" }
+name-case = { type = "string", default = "as_is", hint = "how DDLDatabase cases unquoted identifiers: as_is, upper or lower — lower for a PostgreSQL target" }
+includes  = { type = "string", default = ".*", hint = "a regex over the object names to generate" }
+excludes  = { type = "string", default = "", hint = "a regex over the object names to leave out (flyway_schema_history, …)" }
+records   = { type = "bool", default = true, hint = "generate UpdatableRecord classes" }
+pojos     = { type = "bool", default = false, hint = "generate POJOs" }
+daos      = { type = "bool", default = false, hint = "generate DAOs (implies pojos)" }
+fluent-setters = { type = "bool", default = false, hint = "setters return this" }
+properties = { type = "string-map", default = {}, hint = "further DDLDatabase properties (parseIgnoreComments, logExecutedQueries, …)" }
+jdbc-url  = { type = "string", example = "jdbc:postgresql://localhost:5432/app", hint = "generate from a live database instead of the scripts: the URL; the scripts named in sql stay the cache key, so name the migrations that built that schema" }
+jdbc-user = { type = "string" }
+jdbc-password = { type = "string" }
+driver    = { type = "string", default = "com.h2database:h2:2.5.250", example = "org.postgresql:postgresql:42.7.9", hint = "the JDBC driver on the generator's classpath; H2 serves the scripts, a live database needs its own" }
+version   = { type = "string", default = "3.21.8", example = "3.21.8", hint = "the jOOQ release; a bare version is exact, and the module's jooq dependency is expected to match" }
+
+# The code generator, the DDLDatabase meta extension (with H2) and the driver come together.
+[[contribute.step-dependency]]
+artifact   = "jooq-codegen"
+coordinate = "org.jooq:jooq-codegen:${config.version}"
+with       = ["org.jooq:jooq-meta-extensions:${config.version}", "${config.driver}"]
+transitive = true
+for-step   = "generate-jooq"

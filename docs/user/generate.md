@@ -266,11 +266,42 @@ in the step's action key, so a closure that changes moves the key. A closure tha
 materialized — a jar no declared repository holds, a checksum that does not match — fails the
 step naming the tool, the directory it was bound for and the cause.
 
-## Presets to come
+## `[jooq]` — jOOQ classes from the migrations
 
-`[jooq]` follows the same shape `[openapi]`, `[avro]` and `[antlr]` take — a manifest with a
-schema and a tool coordinate, a small expansion into a generator entry. Until it lands, jOOQ
-codegen works through `[generate]` today.
+[jOOQ](https://www.jooq.org/)'s code generator needs a schema to read. The preset reads it from
+the module's **DDL scripts** — the Flyway migrations under `src/main/resources/db/migration` by
+default — through jOOQ's `DDLDatabase`: the scripts are applied to an in-memory H2 database in
+semantic version order (`V1__`, `V2__`, …) and the resulting tables, keys and sequences generate
+their classes. No database runs for the build, and the scripts are the step's cache key, so a
+migration edit regenerates and an unchanged schema is a hit.
+
+```toml
+[jooq]
+# sql       = "src/main/resources/db/migration/**/*.sql"   # the DDL scripts, a file or glob
+# package   = "com.acme.jooq"                              # default <group>.jooq
+# schema    = "PUBLIC"                                     # the input schema; the output is unqualified
+# name-case = "as_is"                                      # upper | lower — lower for a PostgreSQL target
+# includes  = ".*"                                         # a regex over the object names
+# excludes  = "flyway_schema_history"
+# records   = true
+# pojos     = false
+# daos      = false                                        # implies pojos
+# fluent-setters = false
+# properties = { parseIgnoreComments = "true" }            # further DDLDatabase properties
+# version   = "3.21.8"                                     # the jOOQ release; a bare version is exact
+
+[dependencies]
+jooq = "3.21.8"                          # the generated classes read it at run time; keep it at the generator's version
+```
+
+The step is `generate-jooq`. A **live database** is opt-in: `jdbc-url` (with `jdbc-user`,
+`jdbc-password`) reads the schema over JDBC instead, jOOQ detecting the dialect from the
+connection, and `driver = "org.postgresql:postgresql:42.7.9"` puts its driver on the generator's
+classpath. The scripts named in `sql` stay the cache key — they are what built that schema — so
+name the migrations that did; a database jk cannot see is a database jk cannot key on. Running
+one for the build (a Testcontainer, a compose file) is the module's own affair. `jk import`
+writes the table from a POM's `jooq-codegen-maven`
+([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
 ## Related
 

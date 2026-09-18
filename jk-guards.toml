@@ -205,6 +205,10 @@ in     = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolInstallCom
 reason = "a CLI parameter named target (a coordinate, a file, a directory or a git URL)"
 
 [[guards.target-dir.allow]]
+in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/JooqPlugin.java"
+reason = "jooq-codegen-maven's <generator><target> element: the POM block naming the generated package and directory"
+
+[[guards.target-dir.allow]]
 in     = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolRunCommand.java"
 reason = "a CLI parameter named target (a coordinate, a file, a directory or a git URL)"
 

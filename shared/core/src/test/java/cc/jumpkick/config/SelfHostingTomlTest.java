@@ -100,6 +100,7 @@ class SelfHostingTomlTest {
                         "plugins/taglib",
                         "plugins/avro",
                         "plugins/jaxb",
+                        "plugins/jooq",
                         "plugins/android",
                         "plugins/micronaut");
     }

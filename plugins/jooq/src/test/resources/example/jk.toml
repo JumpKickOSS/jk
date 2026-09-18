@@ -1,0 +1,16 @@
+# jOOQ classes from the migrations: [jooq] applies the Flyway scripts under db/migration to an
+# in-memory database in the generate stage and generates the tables' classes, which join the
+# compile; a migration edit regenerates and no database runs for the build.
+name    = "jooq-shop"
+group   = "com.acme"
+version = "1.0.0"
+java    = 25
+
+[application]
+main = "com.acme.Main"
+
+[jooq]
+excludes = "flyway_schema_history"
+
+[dependencies]
+jooq = { group = "org.jooq", version = "3.21.8" }

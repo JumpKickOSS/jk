@@ -4,7 +4,7 @@ generated-by-build = "dda0e8917a5b"
 generated-by-build-time = "2026-09-17T21:58:40Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "d4aa8d6108a36d5f61de1eab15ee384ae255cbf17afad792bf4e03ad3a33af4c"
+manifests-sha256 = "f1a8138d36f3b6da551c45c6cb64d574ebbc31638b42599e14702059c0b046f6"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -529,6 +529,13 @@ checksum = "sha256:d65226949713c4c61a784f41c51167e7b0316f93764398ebba9e4336b3d95
 scopes   = ["main"]
 
 [[artifact]]
+name     = "com.h2database:h2:jar:"
+version  = "2.4.240"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:29b70e427cc1c40cdc376283adbb0cc62853073797bb5fe5761f81fe73d57ce0"
+scopes   = ["test"]
+
+[[artifact]]
 name     = "com.ibm.icu:icu4j:jar:"
 version  = "72.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -977,6 +984,16 @@ version  = "3.39.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f968285d91f2359038d417911b90dde11f90c1356e517636c3959c02f91078fb"
 scopes   = ["provided"]
+
+[[artifact]]
+name     = "io.r2dbc:r2dbc-spi:jar:"
+version  = "1.0.0.RELEASE"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a5846c59fea336431a4ae72ca14edbf5299b78486fa308eafb383f4ae0ea74e5"
+scopes   = ["test"]
+deps = [
+  "org.reactivestreams:reactive-streams:jar:@1.0.3 <- 1.0.3",
+]
 
 [[artifact]]
 name     = "io.smallrye.beanbag:smallrye-beanbag-maven:jar:"
@@ -2560,6 +2577,49 @@ deps = [
 ]
 
 [[artifact]]
+name     = "org.jooq:jooq-codegen:jar:"
+version  = "3.21.8"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3145d454a14678e60eced976c4f55cf976aad1014bff5d4da86b656aa3d3cc6f"
+scopes   = ["test"]
+deps = [
+  "org.jooq:jooq-meta:jar:@3.21.8 <- 3.21.8",
+  "org.jooq:jooq:jar:@3.21.8 <- 3.21.8",
+]
+
+[[artifact]]
+name     = "org.jooq:jooq-meta-extensions:jar:"
+version  = "3.21.8"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:ed0b0ec4daa1e8f657c16f7902fa9d382710f72d66f72e9d484b0d5168d038bc"
+scopes   = ["test"]
+deps = [
+  "com.h2database:h2:jar:@2.4.240 <- 2.4.240",
+  "org.jooq:jooq-meta:jar:@3.21.8 <- 3.21.8",
+]
+
+[[artifact]]
+name     = "org.jooq:jooq-meta:jar:"
+version  = "3.21.8"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:2f5636d7d02d74d570c4fef023b41528f182a584d344f9095b17c154fc8c06f4"
+scopes   = ["test"]
+deps = [
+  "jakarta.xml.bind:jakarta.xml.bind-api:jar:@4.0.5 <- 4.0.2",
+  "org.jooq:jooq:jar:@3.21.8 <- 3.21.8",
+]
+
+[[artifact]]
+name     = "org.jooq:jooq:jar:"
+version  = "3.21.8"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e1c7728d54b869a1ad16dfe0ec8f4fad29408bcac434924f9bc3f7037728ad08"
+scopes   = ["test"]
+deps = [
+  "io.r2dbc:r2dbc-spi:jar:@1.0.0.RELEASE <- 1.0.0.RELEASE",
+]
+
+[[artifact]]
 name     = "org.jspecify:jspecify:jar:"
 version  = "1.0.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -2709,6 +2769,13 @@ version  = "1.18.48"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:85477a4655ebb2c074a9099cfb749be454449fee564d4282610df1b85f7c508b"
 scopes   = ["provided", "processor"]
+
+[[artifact]]
+name     = "org.reactivestreams:reactive-streams:jar:"
+version  = "1.0.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1dee0481072d19c929b623e155e14d2f6085dc011529a0a0dbefc84cf571d865"
+scopes   = ["test"]
 
 [[artifact]]
 name     = "org.scala-lang.modules:scala-asm:jar:"
@@ -3220,6 +3287,14 @@ name    = "jk-jaxb"
 version = "0.13.7"
 java    = 25
 description = "JumpKick's JAXB preset: [jaxb] as one generator entry running the xjc schema compiler over a module's XML schemas"
+
+[[module]]
+path    = "plugins/jooq"
+group   = "cc.jumpkick"
+name    = "jk-jooq"
+version = "0.13.7"
+java    = 25
+description = "JumpKick's jOOQ preset: [jooq] as one generator entry running jOOQ codegen over a module's DDL scripts or a live schema"
 
 [[module]]
 path    = "plugins/kotlin-compiler"

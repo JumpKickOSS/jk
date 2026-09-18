@@ -36,7 +36,8 @@ import org.jspecify.annotations.Nullable;
  * {@code localizer-maven-plugin} {@link LocalizerPlugin}'s {@code [localizer]}, {@code antlr4-maven-plugin}
  * {@link AntlrPlugin}'s {@code [antlr]}, {@code maven-hpi-plugin}'s taglib goal {@link TaglibPlugin}'s
  * {@code [taglib]}, {@code avro-maven-plugin} {@link AvroPlugin}'s {@code [avro]}, the JAXB compiler
- * plugins {@link JaxbPlugin}'s {@code [jaxb]}, {@code wire-maven-plugin} {@link WirePlugin}'s
+ * plugins {@link JaxbPlugin}'s {@code [jaxb]}, {@code jooq-codegen-maven} {@link JooqPlugin}'s
+ * {@code [jooq]}, {@code wire-maven-plugin} {@link WirePlugin}'s
  * {@code [generate.wire]} entry; the GraphQL codegen plugins are a row naming the recipe.
  */
 final class GeneratorPlugins {
@@ -55,6 +56,7 @@ final class GeneratorPlugins {
             @Nullable PluginConfig taglib,
             @Nullable PluginConfig avro,
             @Nullable PluginConfig jaxb,
+            @Nullable PluginConfig jooq,
             @Nullable PluginConfig generate,
             Map<String, String> outputRoots,
             /** Plugins another mapping consumed, which get no "not imported" row of their own. */
@@ -64,7 +66,7 @@ final class GeneratorPlugins {
         List<PluginConfig> tables() {
             List<PluginConfig> tables = new ArrayList<>();
             for (PluginConfig table :
-                    new PluginConfig[] {openapi, protobuf, localizer, antlr, taglib, avro, jaxb, generate}) {
+                    new PluginConfig[] {openapi, protobuf, localizer, antlr, taglib, avro, jaxb, jooq, generate}) {
                 if (table != null) tables.add(table);
             }
             return tables;
@@ -120,6 +122,8 @@ final class GeneratorPlugins {
         outputRoots.putAll(avro.outputRoots());
         JaxbPlugin.Mapped jaxb = JaxbPlugin.map(model, report);
         outputRoots.putAll(jaxb.outputRoots());
+        JooqPlugin.Mapped jooq = JooqPlugin.map(model, report);
+        outputRoots.putAll(jooq.outputRoots());
         WirePlugin.Mapped wire = WirePlugin.map(model, report);
         outputRoots.putAll(wire.outputRoots());
         PluginConfig generate = wire.entry() == null
@@ -136,6 +140,7 @@ final class GeneratorPlugins {
                 taglib.table(),
                 avro.table(),
                 jaxb.table(),
+                jooq.table(),
                 generate,
                 Collections.unmodifiableMap(outputRoots),
                 Collections.unmodifiableSet(consumed));

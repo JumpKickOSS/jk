@@ -56,6 +56,7 @@ final class PluginFacts {
             "jaxb2-maven-plugin",
             "maven-jaxb2-plugin",
             "jaxb-maven-plugin",
+            "jooq-codegen-maven",
             "wire-maven-plugin",
             "graphqlcodegen-maven-plugin",
             "graphql-codegen-maven-plugin",
