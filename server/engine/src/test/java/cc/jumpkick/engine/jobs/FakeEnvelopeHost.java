@@ -89,6 +89,9 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     @Nullable
     Boolean lastNoTimeline;
 
+    /** The build number the last admitted job was registered under. */
+    volatile long lastBuildNumber = -1;
+
     @Override
     public void registerAccumulator(
             long id,
@@ -101,6 +104,7 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
             long buildNumber,
             @Nullable String journalId) {
         lastNoTimeline = noTimeline;
+        lastBuildNumber = buildNumber;
     }
 
     @Override

@@ -17,6 +17,11 @@ class BuildHistoryKindsTest {
     }
 
     @Test
+    void a_maven_run_driven_through_jk_mvn_is_a_build() {
+        assertThat(BuildHistoryKinds.isBuildLike("mvn")).isTrue();
+    }
+
+    @Test
     void non_builds_are_not_history() {
         // Resolve / refresh / format / tooling — may run as engine plans, not project builds.
         for (String kind : new String[] {

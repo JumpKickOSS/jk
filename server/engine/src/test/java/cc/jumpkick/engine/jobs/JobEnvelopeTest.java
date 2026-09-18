@@ -109,6 +109,19 @@ class JobEnvelopeTest {
     }
 
     @Test
+    void a_maven_run_journaled_through_jk_mvn_takes_a_build_number(@TempDir Path dir) {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        StringWriter out = new StringWriter();
+        env.submit(
+                "{\"type\":\"mvn-results-request\",\"dir\":\"" + dir + "\"}",
+                JobRequest.plan("mvn", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
+                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+        assertThat(host.lastBuildNumber).isPositive();
+        assertThat(out.toString()).contains("\"buildNumber\":" + host.lastBuildNumber);
+    }
+
+    @Test
     void fire_and_forget_returns_jid_and_finishes_detached() throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);

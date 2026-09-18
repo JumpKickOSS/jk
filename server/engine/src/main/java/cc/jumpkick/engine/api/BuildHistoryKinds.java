@@ -22,6 +22,8 @@ import java.util.Set;
  *   <li>{@code compile} — {@code jk compile} (main sources only)
  *   <li>{@code native} — {@code jk native}
  *   <li>{@code image} — {@code jk image}
+ *   <li>{@code mvn} — a Maven run driven through {@code jk mvn}: what an agent ran on a Maven
+ *       repo is the whole story for the supervisor watching it
  * </ul>
  *
  * <p><strong>Not build-like (still journaled):</strong> {@code lock}, {@code update}, {@code
@@ -34,7 +36,7 @@ public final class BuildHistoryKinds {
      * Engine {@code kind} strings that are project builds. Keep in lock-step with exclusive
      * admission ({@link BuildJobFingerprint#EXCLUSIVE_KINDS}).
      */
-    public static final Set<String> ALL = Set.of("build", "test", "compile", "native", "image");
+    public static final Set<String> ALL = Set.of("build", "test", "compile", "native", "image", "mvn");
 
     private BuildHistoryKinds() {}
 

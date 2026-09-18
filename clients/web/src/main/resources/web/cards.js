@@ -207,11 +207,13 @@ export const cardMethods = {
   },
   /**
    * Activity kind label. Wire kind stays {@code build}; finished runs use past tense so a
-   * fully-cached monorepo (no / few module rows, ~100ms) reads "built" not "build".
+   * fully-cached monorepo (no / few module rows, ~100ms) reads "built" not "build". A run an
+   * external tool did reads {@code tool: mvn}, as the results header spells it.
    */
   kindLabel(card) {
     const k = (card && card.kind) || '';
     if (k === 'build' && this.outcome(card) !== 'running') return 'built';
+    if (k === 'mvn') return 'tool: mvn';
     return k;
   },
   // The capitalized phase a diagnostic belongs to, joined from the module's step rows (which carry

@@ -39,6 +39,13 @@ test('request-start ignores format and lock (Activity is build-like only)', () =
   assert.equal(cards[0].kind, 'build');
 });
 
+test('request-start of a jk mvn run opens a card that names the tool', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { jid: 4, kind: 'mvn', dir: '/w' } });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].kind, 'mvn');
+});
+
 test('request-queued opens a queued card that request-start turns live', () => {
   const cards = [];
   foldEvent(cards, queued(7, '/w/q', { ahead: 2 }));
