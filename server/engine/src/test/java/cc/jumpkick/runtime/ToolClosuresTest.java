@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.resolver.KmpRedirects;
+import cc.jumpkick.resolver.Resolution;
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -64,6 +67,35 @@ class ToolClosuresTest {
         assertThat(alias)
                 .isEqualTo(staging.resolve("spring-context-6.1.15.jar"))
                 .hasSameBinaryContentAs(jar);
+    }
+
+    /**
+     * A classified jar of a GAV lands beside its plain jar under its own name, so a data jar of
+     * resources never takes the name of the jar that holds the classes.
+     */
+    @Test
+    void a_classified_jar_keeps_its_classifier_in_its_name_beside_the_plain_jar(@TempDir Path tmp) throws Exception {
+        Path staging = Files.createDirectories(tmp.resolve("staging"));
+        Files.createDirectories(tmp.resolve("cas"));
+        Path classes = Files.writeString(tmp.resolve("cas/classes.jar"), "classes");
+        Path data = Files.writeString(tmp.resolve("cas/data.jar"), "data");
+        Resolution resolution = new Resolution(Map.of(
+                "org.xmlresolver:xmlresolver:jar:",
+                new Resolution.ResolvedModule("org.xmlresolver:xmlresolver:jar:", "5.3.3", List.of()),
+                "org.xmlresolver:xmlresolver:jar:data",
+                new Resolution.ResolvedModule("org.xmlresolver:xmlresolver:jar:data", "5.3.3", List.of())));
+
+        ToolClosures.stage(
+                staging,
+                List.of(Coordinate.of("org.xmlresolver", "xmlresolver", "5.3.3")),
+                resolution,
+                coord -> "data".equals(coord.classifier()) ? data : classes,
+                KmpRedirects.NONE);
+
+        assertThat(staging.resolve("xmlresolver-5.3.3.jar")).hasSameBinaryContentAs(classes);
+        assertThat(staging.resolve("xmlresolver-5.3.3-data.jar")).hasSameBinaryContentAs(data);
+        assertThat(ToolClosures.alias(staging, Coordinate.parse("org.acme:tool:1.0:linux-x64"), data))
+                .isEqualTo(staging.resolve("tool-1.0-linux-x64.jar"));
     }
 
     @Test
