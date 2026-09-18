@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.VersionSelector;
@@ -69,11 +70,11 @@ public final class DokkaResolver {
     }
 
     /** Fetch the CLI and the plugin closure for {@code version} and {@code format} into the CAS. */
-    public static Tool resolve(RepoGroup repos, Cas cas, String version, JkBuild.Dokka.Format format)
+    public static Tool resolve(RepoGroup repos, Cas cas, String version, BuildBlock.Dokka.Format format)
             throws IOException, InterruptedException {
         Path cli = ToolClosure.single(repos, Coordinate.ofModule(CLI, version));
         LinkedHashSet<Path> plugins = new LinkedHashSet<>();
-        String entry = format == JkBuild.Dokka.Format.HTML ? BASE_PLUGIN : JAVADOC_PLUGIN;
+        String entry = format == BuildBlock.Dokka.Format.HTML ? BASE_PLUGIN : JAVADOC_PLUGIN;
         plugins.addAll(ToolClosure.resolve(repos, cas, "dokka-" + format.wireName(), "Dokka", entry, version));
         plugins.addAll(ToolClosure.resolve(repos, cas, "dokka-analysis", "Dokka analysis", ANALYSIS, version));
         return new Tool(version, cli, new ArrayList<>(plugins));

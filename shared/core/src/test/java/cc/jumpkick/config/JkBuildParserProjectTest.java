@@ -5,6 +5,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.PROJECT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
@@ -169,7 +170,7 @@ class JkBuildParserProjectTest {
     @Test
     void absent_build_block_yields_empty_order_after() {
         JkBuild parsed = JkBuildParser.parse(PROJECT);
-        assertThat(parsed.build()).isEqualTo(JkBuild.Build.EMPTY);
+        assertThat(parsed.build()).isEqualTo(BuildBlock.EMPTY);
         assertThat(parsed.build().orderAfter()).isEmpty();
     }
 
@@ -308,14 +309,14 @@ class JkBuildParserProjectTest {
      */
     @Test
     void a_zero_pin_takes_the_builds_share_and_a_positive_pin_wins() {
-        JkBuild.Build zero = JkBuildParser.parse(PROJECT + """
+        BuildBlock zero = JkBuildParser.parse(PROJECT + """
 
                 [test]
                 workers = 0
                 """).build();
         assertThat(zero.effectiveTestWorkers(6)).isEqualTo(6);
         assertThat(zero.effectiveTestWorkers(0)).isEqualTo(0);
-        JkBuild.Build pinned = JkBuildParser.parse(PROJECT + """
+        BuildBlock pinned = JkBuildParser.parse(PROJECT + """
 
                 [test]
                 workers = 3
@@ -333,7 +334,7 @@ class JkBuildParserProjectTest {
                 fixtures = true
                 """);
         assertThat(parsed.build().hasFixtures()).isTrue();
-        assertThat(parsed.build().fixtures()).isEqualTo(JkBuild.Build.DEFAULT_FIXTURES);
+        assertThat(parsed.build().fixtures()).isEqualTo(BuildBlock.DEFAULT_FIXTURES);
     }
 
     @Test

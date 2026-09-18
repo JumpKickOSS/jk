@@ -2,7 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.run.TaskNames;
 import java.util.ArrayList;
@@ -45,23 +45,23 @@ final class BuildInfoPlugins {
      * bound only to its {@code dokka} goal (HTML, no javadoc jar) keeps that format. Without a
      * usable version the table is jk's default Dokka, which the report says.
      */
-    static Optional<JkBuild.Dokka> mapDokka(EffectiveModel em, ImportReport.Builder report) {
+    static Optional<BuildBlock.Dokka> mapDokka(EffectiveModel em, ImportReport.Builder report) {
         Optional<Plugin> dokka = PluginFacts.plugin(em.model(), DOKKA);
         if (dokka.isEmpty()) return Optional.empty();
         Set<String> goals = new LinkedHashSet<>();
         for (PluginExecution execution : dokka.get().getExecutions()) goals.addAll(execution.getGoals());
-        JkBuild.Dokka.Format format =
-                goals.equals(Set.of("dokka")) ? JkBuild.Dokka.Format.HTML : JkBuild.Dokka.Format.JAVADOC;
+        BuildBlock.Dokka.Format format =
+                goals.equals(Set.of("dokka")) ? BuildBlock.Dokka.Format.HTML : BuildBlock.Dokka.Format.JAVADOC;
         String version = PluginFacts.usable(dokka.get().getVersion());
         if (version == null) {
             report.warning("`" + DOKKA + "` is declared without a resolvable version; `[dokka]` documents with Dokka "
-                    + JkBuild.Dokka.DEFAULT_VERSION + " — set `[dokka] version` yourself to keep the plugin's.");
-            return Optional.of(new JkBuild.Dokka(JkBuild.Dokka.DEFAULT.version(), format));
+                    + BuildBlock.Dokka.DEFAULT_VERSION + " — set `[dokka] version` yourself to keep the plugin's.");
+            return Optional.of(new BuildBlock.Dokka(BuildBlock.Dokka.DEFAULT.version(), format));
         }
-        return Optional.of(new JkBuild.Dokka(VersionSelector.parse(version), format));
+        return Optional.of(new BuildBlock.Dokka(VersionSelector.parse(version), format));
     }
 
-    static Optional<JkBuild.BuildInfo> map(EffectiveModel em, ImportReport.Builder report) {
+    static Optional<BuildBlock.BuildInfo> map(EffectiveModel em, ImportReport.Builder report) {
         Optional<Plugin> git = PluginFacts.plugin(em.model(), GIT_COMMIT_ID)
                 .or(() -> PluginFacts.plugin(em.model(), GIT_COMMIT_ID_LEGACY));
         if (git.isPresent()) return Optional.of(mapGitCommitId(git.get(), outputDirectory(em.model()), report));
@@ -69,7 +69,7 @@ final class BuildInfoPlugins {
                 .flatMap(boot -> boot.getExecutions().stream())
                 .map(PluginExecution::getGoals)
                 .anyMatch(goals -> goals.contains(BOOT_GOAL));
-        return bootGoal ? Optional.of(JkBuild.BuildInfo.DEFAULT) : Optional.empty();
+        return bootGoal ? Optional.of(BuildBlock.BuildInfo.DEFAULT) : Optional.empty();
     }
 
     /** The effective model's output directory: interpolated to an absolute path when the POM had a file. */
@@ -79,7 +79,7 @@ final class BuildInfoPlugins {
                 : PluginFacts.usable(model.getBuild().getOutputDirectory());
     }
 
-    private static JkBuild.BuildInfo mapGitCommitId(
+    private static BuildBlock.BuildInfo mapGitCommitId(
             Plugin plugin, @Nullable String outputDirectory, ImportReport.Builder report) {
         String id = "`" + plugin.getArtifactId() + "`";
         String file = null;
@@ -97,7 +97,7 @@ final class BuildInfoPlugins {
             String filename = PluginFacts.usable(PluginFacts.child(config, "generateGitPropertiesFilename"));
             if (filename != null) file = fileInsideJar(filename, outputDirectory, id, report);
         }
-        return file == null ? JkBuild.BuildInfo.DEFAULT : new JkBuild.BuildInfo(file, false);
+        return file == null ? BuildBlock.BuildInfo.DEFAULT : new BuildBlock.BuildInfo(file, false);
     }
 
     /**

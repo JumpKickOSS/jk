@@ -2,6 +2,7 @@
 package cc.jumpkick.compat;
 
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.Feature;
@@ -79,7 +80,7 @@ public final class JkBuildRenderer {
      * {@code [build] extra-src}; {@code [test]} extra source roots, the baseline tag filters, and
      * the test JVM's flags and system properties.
      */
-    private static void renderBuild(StringBuilder sb, JkBuild.Build build) {
+    private static void renderBuild(StringBuilder sb, BuildBlock build) {
         if (!build.extraSrc().isEmpty()) {
             sb.append("\n[build]\nextra-src = ").append(list(build.extraSrc())).append('\n');
         }
@@ -106,23 +107,23 @@ public final class JkBuildRenderer {
     }
 
     /** {@code [build-info]} — the table itself is the declaration; only keys off their defaults are written. */
-    private static void renderBuildInfo(StringBuilder sb, JkBuild.@Nullable BuildInfo info) {
+    private static void renderBuildInfo(StringBuilder sb, BuildBlock.@Nullable BuildInfo info) {
         if (info == null) return;
         sb.append("\n[build-info]\n");
-        if (!info.file().equals(JkBuild.BuildInfo.DEFAULT_FILE)) {
+        if (!info.file().equals(BuildBlock.BuildInfo.DEFAULT_FILE)) {
             sb.append("file = ").append(quote(info.file())).append('\n');
         }
         if (info.buildTime()) sb.append("time = \"build\"\n");
     }
 
     /** {@code [dokka]} — only when a key is off its default. */
-    private static void renderDokka(StringBuilder sb, JkBuild.Dokka dokka) {
+    private static void renderDokka(StringBuilder sb, BuildBlock.Dokka dokka) {
         if (dokka.isDefault()) return;
         sb.append("\n[dokka]\n");
-        if (!dokka.version().equals(JkBuild.Dokka.DEFAULT.version())) {
+        if (!dokka.version().equals(BuildBlock.Dokka.DEFAULT.version())) {
             sb.append("version = ").append(quote(dokka.version().raw())).append('\n');
         }
-        if (dokka.format() != JkBuild.Dokka.DEFAULT.format()) {
+        if (dokka.format() != BuildBlock.Dokka.DEFAULT.format()) {
             sb.append("format = ").append(quote(dokka.format().wireName())).append('\n');
         }
     }
@@ -140,7 +141,7 @@ public final class JkBuildRenderer {
     }
 
     /** {@code [resolve]} — only the policies that differ from their defaults. */
-    private static void renderResolve(StringBuilder sb, JkBuild.Build build) {
+    private static void renderResolve(StringBuilder sb, BuildBlock build) {
         boolean platform = build.platformPolicy() != PlatformPolicy.ENFORCED;
         boolean unmapped = build.unmappedPolicy() != UnmappedPolicy.MEDIATE;
         boolean pins = build.pinPolicy() != PinPolicy.EXACT;

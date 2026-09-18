@@ -2,7 +2,7 @@
 package cc.jumpkick.audit;
 
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.BuildBlock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -67,7 +67,7 @@ public final class AuditReport {
         }
 
         /** {@code entry} judged on {@code today}. */
-        public static Ignore of(JkBuild.AuditIgnore entry, LocalDate today) {
+        public static Ignore of(BuildBlock.AuditIgnore entry, LocalDate today) {
             return new Ignore(entry.reason(), entry.until(), entry.expiredOn(today));
         }
     }
@@ -120,8 +120,8 @@ public final class AuditReport {
         }
 
         /** This finding as {@code ignores} judges it on {@code today}; the first entry naming the advisory wins. */
-        public Finding under(List<JkBuild.AuditIgnore> ignores, LocalDate today) {
-            for (JkBuild.AuditIgnore entry : ignores) {
+        public Finding under(List<BuildBlock.AuditIgnore> ignores, LocalDate today) {
+            for (BuildBlock.AuditIgnore entry : ignores) {
                 if (entry.id().equalsIgnoreCase(vulnId)) return withIgnore(Ignore.of(entry, today));
             }
             return withIgnore(null);

@@ -9,6 +9,7 @@ import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
@@ -73,7 +74,7 @@ final class PlannerBuildInfo {
                 .ticks(1)
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);
-                    JkBuild.BuildInfo info = project.build().buildInfo();
+                    BuildBlock.BuildInfo info = project.build().buildInfo();
                     if (info == null)
                         throw new IllegalStateException("build-info planned without a [build-info] table");
                     Path classes = ctx.require(MAIN_CLASSES);
@@ -94,7 +95,7 @@ final class PlannerBuildInfo {
     static boolean write(
             Path moduleDir,
             JkBuild project,
-            JkBuild.BuildInfo info,
+            BuildBlock.BuildInfo info,
             Path classes,
             Clock clock,
             BiConsumer<String, String> warn)
@@ -115,7 +116,7 @@ final class PlannerBuildInfo {
     }
 
     /** True when the files {@link #write} would produce differ from what {@code classes} holds. */
-    static boolean outOfSync(Path moduleDir, JkBuild project, JkBuild.BuildInfo info, Path classes, Clock clock)
+    static boolean outOfSync(Path moduleDir, JkBuild project, BuildBlock.BuildInfo info, Path classes, Clock clock)
             throws IOException {
         Optional<GitFetcher.Worktree> worktree = worktree(moduleDir);
         if (worktree.isEmpty()) return Files.exists(classes.resolve(info.file()));
@@ -131,7 +132,7 @@ final class PlannerBuildInfo {
 
     /** Every file the table writes, by its path inside the classes tree, rendered deterministically. */
     static Map<String, byte[]> render(
-            JkBuild project, JkBuild.BuildInfo info, GitFetcher.Worktree worktree, Clock clock) {
+            JkBuild project, BuildBlock.BuildInfo info, GitFetcher.Worktree worktree, Clock clock) {
         Instant buildTime = info.buildTime() ? clock.instant() : worktree.commitTime();
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put(info.file(), bytes(gitProperties(project, worktree, buildTime)));

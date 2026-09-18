@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import java.util.List;
@@ -53,14 +54,14 @@ class PomBuildInfoImportTest {
         JkBuild build = result.jkBuild();
         List<String> messages = TestImporters.messages(result);
 
-        assertThat(build.build().buildInfo()).isEqualTo(new JkBuild.BuildInfo("apollo-git.properties", false));
+        assertThat(build.build().buildInfo()).isEqualTo(new BuildBlock.BuildInfo("apollo-git.properties", false));
         assertThat(messages).noneMatch(m -> m.startsWith("`<plugin>"));
         assertThat(messages).noneMatch(m -> m.contains("git-commit-id"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered).contains("\n[build-info]\nfile = \"apollo-git.properties\"\n");
         assertThat(JkBuildParser.parse(rendered).build().buildInfo())
-                .isEqualTo(new JkBuild.BuildInfo("apollo-git.properties", false));
+                .isEqualTo(new BuildBlock.BuildInfo("apollo-git.properties", false));
     }
 
     @Test
@@ -76,12 +77,12 @@ class PomBuildInfoImportTest {
                 """ + TAIL);
         JkBuild build = result.jkBuild();
 
-        assertThat(build.build().buildInfo()).isEqualTo(JkBuild.BuildInfo.DEFAULT);
+        assertThat(build.build().buildInfo()).isEqualTo(BuildBlock.BuildInfo.DEFAULT);
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("git-commit-id"));
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered).contains("\n[build-info]\n");
         assertThat(rendered).doesNotContain("file = ");
-        assertThat(JkBuildParser.parse(rendered).build().buildInfo()).isEqualTo(JkBuild.BuildInfo.DEFAULT);
+        assertThat(JkBuildParser.parse(rendered).build().buildInfo()).isEqualTo(BuildBlock.BuildInfo.DEFAULT);
     }
 
     @Test
@@ -97,7 +98,7 @@ class PomBuildInfoImportTest {
         JkBuild build = result.jkBuild();
 
         assertThat(build.pluginConfig("spring-boot")).isPresent();
-        assertThat(build.build().buildInfo()).isEqualTo(JkBuild.BuildInfo.DEFAULT);
+        assertThat(build.build().buildInfo()).isEqualTo(BuildBlock.BuildInfo.DEFAULT);
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("build-info"));
     }
 
@@ -134,7 +135,7 @@ class PomBuildInfoImportTest {
 
         assertThat(result.jkBuild().build().buildInfo())
                 .as("the file keeps its name inside the jar; the directory outside classes does not travel")
-                .isEqualTo(new JkBuild.BuildInfo("git.json", false));
+                .isEqualTo(new BuildBlock.BuildInfo("git.json", false));
         assertThat(messages).anyMatch(m -> m.contains("`<format>json`"));
         assertThat(messages).anyMatch(m -> m.contains("`<dateFormat>`"));
         assertThat(messages).anyMatch(m -> m.contains("`<generateGitPropertiesFilename>`"));

@@ -6,14 +6,14 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The components of a {@link JkBuild.Build}, mutable for the length of one {@link #with}: the one
- * spelling of the copy every {@code Build.with*} shares, so a new component is added here and in
+ * The components of a {@link BuildBlock}, mutable for the length of one {@link #with}: the one
+ * spelling of the copy every {@code BuildBlock.with*} shares, so a new component is added here and in
  * the record once.
  */
 final class BuildFields {
 
     /** {@code b} with {@code change} applied to a mutable copy of its components. */
-    static JkBuild.Build with(JkBuild.Build b, Consumer<BuildFields> change) {
+    static BuildBlock with(BuildBlock b, Consumer<BuildFields> change) {
         BuildFields f = new BuildFields(b);
         change.accept(f);
         return f.build();
@@ -23,7 +23,7 @@ final class BuildFields {
     List<String> testPluginJars;
     boolean lint;
     DebugInfo debug;
-    List<JkBuild.KotlinPluginDecl> kotlinPlugins;
+    List<BuildBlock.KotlinPluginDecl> kotlinPlugins;
     List<String> kspOptions;
     JavacConfig javac;
     List<String> extraSrc;
@@ -50,13 +50,13 @@ final class BuildFields {
     @Nullable
     DevReady devReady;
 
-    List<JkBuild.AuditIgnore> auditIgnores;
+    List<BuildBlock.AuditIgnore> auditIgnores;
     EnvConfig env;
 
-    JkBuild.@Nullable BuildInfo buildInfo;
-    JkBuild.Dokka dokka;
+    BuildBlock.@Nullable BuildInfo buildInfo;
+    BuildBlock.Dokka dokka;
 
-    private BuildFields(JkBuild.Build b) {
+    private BuildFields(BuildBlock b) {
         orderAfter = b.orderAfter();
         testPluginJars = b.testPluginJars();
         lint = b.lint();
@@ -87,8 +87,8 @@ final class BuildFields {
         dokka = b.dokka();
     }
 
-    JkBuild.Build build() {
-        return new JkBuild.Build(
+    BuildBlock build() {
+        return new BuildBlock(
                 orderAfter,
                 testPluginJars,
                 lint,

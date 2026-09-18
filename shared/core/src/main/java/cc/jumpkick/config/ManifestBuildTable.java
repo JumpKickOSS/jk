@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DebugInfo;
-import cc.jumpkick.model.JkBuild;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -175,7 +175,7 @@ final class ManifestBuildTable {
         if (test.contains("fixtures")) {
             Object raw = test.get("fixtures");
             if (raw instanceof Boolean flag) {
-                s.fixtures = flag ? JkBuild.Build.DEFAULT_FIXTURES : null;
+                s.fixtures = flag ? BuildBlock.DEFAULT_FIXTURES : null;
             } else if (raw instanceof String path) {
                 if (path.isBlank()) {
                     throw new JkBuildParseException(

@@ -8,7 +8,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.base.AuditPlans;
@@ -63,7 +63,7 @@ public final class AuditVerb implements HostedVerb {
                 Path cache = Path.of(body.cache());
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                List<JkBuild.AuditIgnore> ignores = auditIgnores(entryDir);
+                List<BuildBlock.AuditIgnore> ignores = auditIgnores(entryDir);
                 LocalDate today = LocalDate.ofInstant(Clock.SYSTEM.instant(), ZoneId.systemDefault());
                 BuildPlan plan = AuditPlans.auditBuildPlan(
                         LockPaths.lockFile(entryDir),
@@ -89,7 +89,7 @@ public final class AuditVerb implements HostedVerb {
      * The {@code [audit] ignore} list of the manifest beside the lock — the workspace root's, or
      * the standalone project's. None when that manifest is absent (a bare lock still audits).
      */
-    private static List<JkBuild.AuditIgnore> auditIgnores(Path entryDir) throws IOException {
+    private static List<BuildBlock.AuditIgnore> auditIgnores(Path entryDir) throws IOException {
         Path manifest = ManifestPaths.manifestIn(LockPaths.lockOwnerDir(entryDir));
         if (!Files.isRegularFile(manifest)) return List.of();
         return JkBuildParser.parse(manifest).build().auditIgnores();

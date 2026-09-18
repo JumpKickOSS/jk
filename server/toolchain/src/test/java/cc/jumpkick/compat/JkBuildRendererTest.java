@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.Feature;
@@ -245,7 +246,7 @@ class JkBuildRendererTest {
 
         JkBuild nearest = JkBuild.builder(
                         Project.builder("com.example", "widget", "1.0.0").build())
-                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
         String out = JkBuildRenderer.render(nearest);
         assertThat(out).contains("[resolve]\npins = \"nearest\"").doesNotContain("platform =");
@@ -256,7 +257,7 @@ class JkBuildRendererTest {
     void test_jvm_args_and_system_properties_round_trip() {
         JkBuild model = JkBuild.builder(
                         Project.builder("com.example", "widget", "1.0.0").build())
-                .build(JkBuild.Build.EMPTY.withTestJvm(new TestJvm(
+                .build(BuildBlock.EMPTY.withTestJvm(new TestJvm(
                         List.of("-Xmx1g", "--add-opens", "java.base/java.lang=ALL-UNNAMED"),
                         new LinkedHashMap<>(Map.of("spring.profiles.active", "test")))))
                 .build();
@@ -287,7 +288,7 @@ class JkBuildRendererTest {
                 .profiles(new Profiles(Map.of(
                         "preview",
                         new Profile("preview", null, List.of("--enable-preview"), List.of("--enable-preview")))))
-                .build(JkBuild.Build.EMPTY
+                .build(BuildBlock.EMPTY
                         .withJavac(new JavacConfig(Map.of(), List.of("-parameters")))
                         .withExtraSrc(List.of("src/main/generated"))
                         .withTestExtraSrc(List.of("src/it/java")))

@@ -19,6 +19,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -811,7 +812,7 @@ final class ModuleForecast {
         knownResourceDrift = null;
         if (!compileDirty && Files.isDirectory(layout.classesDir())) {
             mainResourceDrift = TaskForecaster.mainResourcesOutOfSync(dir, compact, layout.classesDir());
-            JkBuild.BuildInfo buildInfo = project.build().buildInfo();
+            BuildBlock.BuildInfo buildInfo = project.build().buildInfo();
             if (buildInfo != null) {
                 // A rewritten git.properties changes the classes tree package-jar keys on, so the
                 // jar is forecast as the resource drift it is.

@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DenyPolicy;
 import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.EnvConfig;
@@ -373,8 +374,8 @@ public final class JkBuildParser {
         boolean nativeDeclared = nativeConfig != null || (application != null && application.nativeImage());
         deps = ManifestBuild.withPlatformContributions(
                 deps, project, nativeDeclared, pluginConfigs, installedManifests);
-        JkBuild.Build build = ManifestBuild.parseBuild(result);
-        List<JkBuild.KotlinPluginDecl> kotlinPlugins = ManifestBuild.parseKotlinPlugins(result);
+        BuildBlock build = ManifestBuild.parseBuild(result);
+        List<BuildBlock.KotlinPluginDecl> kotlinPlugins = ManifestBuild.parseKotlinPlugins(result);
         if (!kotlinPlugins.isEmpty()) build = build.withKotlinPlugins(kotlinPlugins);
         // [javac] is a compile input: compile-main and compile-test both lower it into javac's argv.
         build = build.withJavac(ManifestBuild.parseJavac(result));
@@ -391,13 +392,13 @@ public final class JkBuildParser {
         Optional<DevReady> devReady = ManifestBuild.parseDevReady(result);
         if (devReady.isPresent()) build = build.withDevReady(devReady.get());
         // [audit] is a report policy, not a build input; it folds into the same block as [test] and [dev].
-        List<JkBuild.AuditIgnore> auditIgnores = ManifestBuild.parseAuditIgnores(result);
+        List<BuildBlock.AuditIgnore> auditIgnores = ManifestBuild.parseAuditIgnores(result);
         if (!auditIgnores.isEmpty()) build = build.withAuditIgnores(auditIgnores);
         // [build-info] shapes the jar's resources; it folds into the same block as [javac].
-        Optional<JkBuild.BuildInfo> buildInfo = ManifestTables.parseBuildInfo(result);
+        Optional<BuildBlock.BuildInfo> buildInfo = ManifestTables.parseBuildInfo(result);
         if (buildInfo.isPresent()) build = build.withBuildInfo(buildInfo.get());
         // [dokka] shapes the javadoc jar of a Kotlin module; it folds in beside [build-info].
-        Optional<JkBuild.Dokka> dokka = ManifestTables.parseDokka(result);
+        Optional<BuildBlock.Dokka> dokka = ManifestTables.parseDokka(result);
         if (dokka.isPresent()) build = build.withDokka(dokka.get());
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
         JkBuild.Install install = ManifestTables.parseInstall(result).orElse(null);
