@@ -146,7 +146,7 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 | depend | require |  | table | g:a = version floor |
 | depend | licenses |  | table | forbid = [SPDX globs] |
 | depend | scopes |  | string list | scopes the rule reads; default all |
-| depend | convergence |  | bool | one version per artifact in the lock |
+| depend | convergence |  | bool | one version per artifact in each set of rows one classpath reads: the workspace's plain rows, then each partitioned member's view of the lock; a member's own row under its BOM beside the workspace's is not divergence |
 | depend | no-dynamic |  | bool | no floating selectors |
 | depend | no-snapshot |  | bool | no -SNAPSHOT versions |
 | toolchain | java |  | string | JDK release range, e.g. >=21 |

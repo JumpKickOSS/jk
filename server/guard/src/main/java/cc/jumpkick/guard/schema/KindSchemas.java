@@ -190,7 +190,10 @@ final class KindSchemas {
                         optional("require", TABLE, "g:a = version floor"),
                         optional("licenses", TABLE, "forbid = [SPDX globs]"),
                         optional("scopes", STRING_LIST, "scopes the rule reads; default all"),
-                        optional("convergence", BOOL, "one version per artifact in the lock"),
+                        optional(
+                                "convergence",
+                                BOOL,
+                                "one version per artifact in each set of rows one classpath reads: the workspace's plain rows, then each partitioned member's view of the lock; a member's own row under its BOM beside the workspace's is not divergence"),
                         optional("no-dynamic", BOOL, "no floating selectors"),
                         optional("no-snapshot", BOOL, "no -SNAPSHOT versions")),
                 List.of(new KeyGroup(
