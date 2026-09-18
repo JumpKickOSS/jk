@@ -462,10 +462,11 @@ public final class LockOrchestrator {
         // Engine classpath injection alone is not enough for standalone `java -jar`.
         // Runs AFTER BOM collection: a platform that manages the runtime (grails-bom's groovy)
         // owns its version — the inject must not smuggle the scaffold default past it.
-        Set<String> injected =
+        LanguageRuntimeInject.Injected injected =
                 LanguageRuntimeInject.inject(project, projectDir, bomConstraints, declared.main(), toolVersions);
+        for (String note : injected.notes()) observer.onNote(note);
 
-        LockRoots.Roots roots = constraints.apply(declared.split(), injected);
+        LockRoots.Roots roots = constraints.apply(declared.split(), injected.runtimes());
         for (String line : constraints.renderedOverrides()) observer.onOverride(line);
         // The framework a suite declares is the framework it runs on: an injected engine's own edge
         // onto it takes the declared pin, as a transitive takes a direct dependency's in Maven. A

@@ -65,6 +65,62 @@ class LanguageRuntimeInjectTest {
                 .isEqualTo("5.0.4");
     }
 
+    /**
+     * The compiler's stdlib family is the compiler's. A platform that manages {@code kotlin-stdlib}
+     * at the line the manifest declared — a Kotlin the lock floored to the compiler jk drives —
+     * would otherwise put its stdlib beside the compiler's own on the compile classpath, and the
+     * suite would run classes the newer compiler wrote against the older library. Every family
+     * coordinate the table manages follows the compiler, a {@code managed} root included; a
+     * coordinate the table does not manage is left to the solve.
+     */
+    @Test
+    void kotlin_stdlib_family_a_platform_manages_follows_the_compiler(@TempDir Path dir) throws IOException {
+        Files.createDirectories(dir.resolve("src/main/kotlin"));
+        Files.writeString(dir.resolve("src/main/kotlin/K.kt"), "class K");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nkotlin=\"2.4.10\"\n");
+        Map<String, String> bom = new LinkedHashMap<>(Map.of(
+                KOTLIN_STDLIB,
+                "2.2.21",
+                "org.jetbrains.kotlin:kotlin-reflect",
+                "2.2.21",
+                "com.fasterxml.jackson.core:jackson-databind",
+                "2.19.0"));
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        Dependency managed = new Dependency(KOTLIN_STDLIB, VersionSelector.parse(Dependency.PLATFORM_MANAGED_VERSION));
+        deps.put(managed.packageKey(), managed);
+        var injected = LanguageRuntimeInject.inject(
+                p, dir, bom, deps, new LanguageRuntimeInject.ToolVersions("2.4.10", null, null));
+        assertThat(injected.notes())
+                .singleElement()
+                .asString()
+                .startsWith("the module compiles with Kotlin 2.4.10, so its stdlib family follows the compiler")
+                .contains(KOTLIN_STDLIB + " at 2.4.10 instead of 2.2.21")
+                .contains("org.jetbrains.kotlin:kotlin-reflect at 2.4.10 instead of 2.2.21")
+                .doesNotContain("jackson");
+        assertThat(bom)
+                .containsEntry(KOTLIN_STDLIB, "2.4.10")
+                .containsEntry("org.jetbrains.kotlin:kotlin-reflect", "2.4.10")
+                .containsEntry("com.fasterxml.jackson.core:jackson-databind", "2.19.0");
+        assertThat(deps).hasSize(1);
+    }
+
+    /** A root the manifest pins at another version of the family is rewritten to the compiler's. */
+    @Test
+    void a_declared_kotlin_stdlib_root_is_rewritten_to_the_compiler_version(@TempDir Path dir) throws IOException {
+        Files.createDirectories(dir.resolve("src/main/kotlin"));
+        Files.writeString(dir.resolve("src/main/kotlin/K.kt"), "class K");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nkotlin=\"2.4.10\"\n");
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        Dependency declared = new Dependency(KOTLIN_STDLIB, VersionSelector.parse("2.2.21"));
+        deps.put(declared.packageKey(), declared);
+        LanguageRuntimeInject.inject(
+                p, dir, new LinkedHashMap<>(), deps, new LanguageRuntimeInject.ToolVersions("2.4.10", null, null));
+        assertThat(requireNonNull(deps.get(key(KOTLIN_STDLIB))).version())
+                .isInstanceOf(VersionSelector.Exact.class)
+                .extracting(v -> ((VersionSelector.Exact) v).version())
+                .isEqualTo("2.4.10");
+    }
+
     @Test
     void explicit_java_release_disables_inference_like_the_lanes(@TempDir Path dir) throws IOException {
         // Mirrors BuildPlanner: java = 25 declared → groovy sources are ignored, no lane,
@@ -106,7 +162,7 @@ class LanguageRuntimeInjectTest {
                 .isInstanceOf(VersionSelector.Exact.class)
                 .extracting(v -> ((VersionSelector.Exact) v).version())
                 .isEqualTo("2.2.20");
-        assertThat(skipStrip)
+        assertThat(skipStrip.runtimes())
                 .as("an exact pin is deliberate: not on the BOM strip skip-list")
                 .isEmpty();
     }
@@ -134,7 +190,7 @@ class LanguageRuntimeInjectTest {
         var skipStrip = LanguageRuntimeInject.inject(
                 p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(requireNonNull(deps.get(key(GROOVY))).version().raw()).contains("5.0.7");
-        assertThat(skipStrip).isEmpty();
+        assertThat(skipStrip.runtimes()).isEmpty();
     }
 
     @Test
@@ -146,7 +202,7 @@ class LanguageRuntimeInjectTest {
         var skipStrip = LanguageRuntimeInject.inject(
                 p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(requireNonNull(deps.get(key(GROOVY))).version().raw()).contains("5.0.6");
-        assertThat(skipStrip).containsExactly("org.apache.groovy:groovy");
+        assertThat(skipStrip.runtimes()).containsExactly("org.apache.groovy:groovy");
     }
 
     @Test
@@ -218,6 +274,6 @@ class LanguageRuntimeInjectTest {
         var skipStrip = LanguageRuntimeInject.inject(
                 p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
         assertThat(requireNonNull(deps.get(key(GROOVY))).version()).isInstanceOf(VersionSelector.Latest.class);
-        assertThat(skipStrip).isEmpty();
+        assertThat(skipStrip.runtimes()).isEmpty();
     }
 }
