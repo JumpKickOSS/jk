@@ -217,6 +217,17 @@ final class LockfileAssembler {
             // lock row that ClasspathResolver silently drops. KMP aliases and packaging=pom
             // (BOMs / aggregators) legitimately have no file; everything else fails the lock.
             throw unfetchableArtifact(coord, fallbackSource);
+        } else {
+            // No file of its own: the row stands for its POM — or, for a KMP root, its Gradle
+            // module file — at the repository that served it. That repository answered for the
+            // coordinate; the group's first entry may have served nothing at all. The file is
+            // named on the row so a reader can tell a row without a file by design from one whose
+            // jar nobody fetched.
+            MavenRepo holder = group.pomRepository(coord).orElse(null);
+            if (holder != null) source = holder.name() + "+" + holder.baseUrl();
+            if (coord.type() == null || !"pom".equalsIgnoreCase(coord.type())) {
+                artifactFile = coord.artifact() + "-" + coord.version() + (kmpAlias ? ".module" : ".pom");
+            }
         }
 
         if (tags.isEmpty()) tags = EnumSet.of(Scope.MAIN);

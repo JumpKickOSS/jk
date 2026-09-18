@@ -34,28 +34,49 @@ public final class PackageProviders {
     /** The detail label the hint reads the coordinate from. */
     public static final String LABEL = "provided by:";
 
+    /**
+     * The detail label under which a missing-package error names the rows of this module's lock
+     * that stand for a POM alone — a {@code packaging=pom} module whose jar no repository served
+     * when the lock was written — and so put nothing on the classpath the package was missing from.
+     */
+    public static final String WITHOUT_FILE = "locked without a file:";
+
     static final String IN_LOCK = "in the lock, not on this module's compile classpath";
     static final String IN_CATALOG = "library catalog";
 
     private static final Pattern PACKAGE = Pattern.compile("package (\\S+) does not exist");
 
     private final List<ClasspathResolver.Entry> lockEntries;
+    private final List<Lockfile.Artifact> withoutFile;
     private final Set<Path> classpath;
     private final Path indexDir;
     private final LibraryCatalog catalog;
 
     /**
      * @param lockEntries every lock row with the jar it resolves to in the store
+     * @param withoutFile the jar-typed lock rows that stand for a POM alone ({@link
+     *     ClasspathResolver#lockedWithoutFile}), named under every missing-package error
      * @param classpath this module's compile classpath; a row whose jar is on it is never named
      * @param indexDir where {@link PackageIndex} keeps each jar's package list
      */
     public PackageProviders(
-            List<ClasspathResolver.Entry> lockEntries, List<Path> classpath, Path indexDir, LibraryCatalog catalog) {
+            List<ClasspathResolver.Entry> lockEntries,
+            List<Lockfile.Artifact> withoutFile,
+            List<Path> classpath,
+            Path indexDir,
+            LibraryCatalog catalog) {
         this.lockEntries = List.copyOf(lockEntries);
+        this.withoutFile = List.copyOf(withoutFile);
         this.classpath = new HashSet<>();
         for (Path p : classpath) this.classpath.add(p.toAbsolutePath().normalize());
         this.indexDir = indexDir;
         this.catalog = catalog;
+    }
+
+    /** As above for a lock with no row standing for a POM alone. */
+    public PackageProviders(
+            List<ClasspathResolver.Entry> lockEntries, List<Path> classpath, Path indexDir, LibraryCatalog catalog) {
+        this(lockEntries, List.of(), classpath, indexDir, catalog);
     }
 
     /**
@@ -63,26 +84,37 @@ public final class PackageProviders {
      * store, {@code classpath} as what the step compiled against, the store's index directory and
      * the layered catalog. Null when the plan has no lock, in which case no diagnostic is enriched.
      */
-    public static @Nullable PackageProviders forContext(TaskContext ctx, List<Path> classpath) {
+    public static @Nullable PackageProviders forContext(TaskContext ctx, List<Path> classpath, Set<Scope> scopes) {
         Optional<Lockfile> lock = ctx.get(BuildPlanner.LOCKFILE);
         if (lock.isEmpty()) return null;
         return of(
                 new ClasspathResolver(JkStores.storeCas()),
                 lock.get(),
                 classpath,
+                scopes,
                 JkStores.resolve(PackageIndex.DIR),
                 LibraryCatalog.layered());
     }
 
     /**
-     * The providers over every scope of {@code lock} as {@code resolver}'s store holds it. A row the
-     * store lacks — a scope this build never synced — is simply not a candidate; nothing is logged
-     * about it, since the lookup answers a diagnostic and never materializes anything.
+     * The providers over every scope of {@code lock} as {@code resolver}'s store holds it — a row
+     * the store lacks, a scope this build never synced, is simply not a candidate, and nothing is
+     * logged about it since the lookup answers a diagnostic and never materializes anything — and
+     * the rows without a file in {@code scopes}, the ones this compile read.
      */
     public static PackageProviders of(
-            ClasspathResolver resolver, Lockfile lock, List<Path> classpath, Path indexDir, LibraryCatalog catalog) {
+            ClasspathResolver resolver,
+            Lockfile lock,
+            List<Path> classpath,
+            Set<Scope> scopes,
+            Path indexDir,
+            LibraryCatalog catalog) {
         return new PackageProviders(
-                resolver.entriesOnDisk(lock, EnumSet.allOf(Scope.class)), classpath, indexDir, catalog);
+                resolver.entriesOnDisk(lock, EnumSet.allOf(Scope.class)),
+                ClasspathResolver.lockedWithoutFile(lock, scopes),
+                classpath,
+                indexDir,
+                catalog);
     }
 
     /** {@code diagnostics} with a {@code provided by:} line under each missing-package error that has a provider. */
@@ -95,10 +127,26 @@ public final class PackageProviders {
     private CompileResult.Diagnostic enrich(CompileResult.Diagnostic d) {
         String pkg = missingPackage(d);
         if (pkg == null) return d;
+        StringBuilder details = new StringBuilder();
         String provider = provider(pkg);
-        if (provider == null) return d;
+        if (provider != null) details.append("\n  ").append(LABEL).append(' ').append(provider);
+        if (!withoutFile.isEmpty())
+            details.append("\n  ").append(WITHOUT_FILE).append(' ').append(withoutFile());
+        if (details.isEmpty()) return d;
         return new CompileResult.Diagnostic(
-                d.severity(), d.source(), d.line(), d.column(), d.message() + "\n  " + LABEL + " " + provider, d.key());
+                d.severity(), d.source(), d.line(), d.column(), d.message() + details, d.key());
+    }
+
+    /**
+     * {@code g:a:v (source), …}: every row of this module's lock that stands for a POM alone. A
+     * package one of them was expected to provide is missing because its jar was never fetched —
+     * the repository that publishes it was not asked, or answered not-found when the lock was
+     * written.
+     */
+    String withoutFile() {
+        List<String> named = new ArrayList<>();
+        for (Lockfile.Artifact a : withoutFile) named.add(a.displayCoord() + " (" + a.source() + ")");
+        return String.join(", ", named);
     }
 
     /** The package a {@code compiler.err.doesnt.exist} error names, or null for any other diagnostic. */

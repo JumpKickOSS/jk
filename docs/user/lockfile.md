@@ -197,6 +197,34 @@ without the project declaring it. The lock output names each such repository onc
 that introduced it; the trust rule is a declared repository's (https, published checksums), with
 no opt-out. See [Dependencies](dependencies.md#repositories-a-dependencys-pom-declares).
 
+## Rows without a file
+
+A row that pins no `checksum` has no file of its own: a BOM (`type = "pom"`), an aggregator or a
+`packaging=pom` module with no jar beside it, a relocation stub whose POM points at another
+coordinate, a Kotlin multiplatform root whose `-jvm` row holds the bytes. Such a row names the file
+it stands for as its `path` — `aggregator-1.0.pom`, `widget-1.0.0.module` — and its `source` is the
+repository that served that file, never a repository that served nothing:
+
+```toml
+[[artifact]]
+name    = "com.foo:aggregator:jar:"
+version = "1.0"
+source  = "central+https://repo.maven.apache.org/maven2/"
+path    = "aggregator-1.0.pom"
+scopes  = ["main"]
+```
+
+A row without a file puts nothing on a classpath and is skipped without a word. A row that pins no
+checksum *and* names no such file pins a jar nobody fetched, and a compile classpath fails on it by
+name (`dependency org.picketbox:picketbox:5.0.3.Final has no file …`) rather than compiling without
+it — re-run `jk lock`. That rule holds for a lock whose `generated-by-build-time` says its writer
+marked such rows; a lock from an earlier writer carries its BOMs and aggregators unmarked, is read
+by that writer's rule — every checksum-less row is file-less — and builds as before, and the next
+`jk lock` rewrites it with the marks. When a compile fails on `package X does not exist` and the module's lock
+carries a jar-typed row standing for a POM alone, the error names that row under `locked without a
+file:` with the repository that served its POM: the jar was not there when the lock was written, so
+add the repository that publishes it to `[repositories]` and re-run `jk lock`.
+
 ## Rows that follow the host
 
 A dependency POM may spell a classifier with a property Maven values from the machine —

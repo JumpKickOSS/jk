@@ -12,6 +12,7 @@ import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -258,7 +259,8 @@ public final class PlannerFixtures {
                                     in.dir(),
                                     ctx.require(LAYOUT).moduleTargetDir()));
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
-                    boolean errored = JavacDiagnostics.report(ctx, request.classpath(), r.diagnostics());
+                    boolean errored = JavacDiagnostics.report(
+                            ctx, request.classpath(), ClasspathResolver.COMPILE_TEST, r.diagnostics());
                     if (!r.success()) {
                         if (!errored) {
                             ctx.error(

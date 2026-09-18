@@ -95,7 +95,12 @@ class PackageProvidersTest {
         PackageProviders providers;
         try {
             providers = PackageProviders.of(
-                    new ClasspathResolver(store), lock, List.of(), tmp.resolve("index"), LibraryCatalog.bundled());
+                    new ClasspathResolver(store),
+                    lock,
+                    List.of(),
+                    ClasspathResolver.COMPILE_MAIN,
+                    tmp.resolve("index"),
+                    LibraryCatalog.bundled());
         } finally {
             Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
@@ -105,6 +110,32 @@ class PackageProvidersTest {
                 .isEmpty();
         assertThat(providers.provider("org.acme.util")).startsWith("org.acme:acme-util");
         assertThat(providers.provider("org.acme.test")).isNull();
+    }
+
+    /**
+     * A row that stands for a POM alone put nothing on the classpath, so a missing package may be
+     * one its jar would have carried: the error names it, with the repository that served the POM.
+     */
+    @Test
+    void a_row_locked_without_a_file_is_named_under_a_missing_package_error(@TempDir Path tmp) {
+        Lockfile.Artifact picketbox = new Lockfile.Artifact(
+                "org.picketbox:picketbox:jar:",
+                "5.0.3.Final",
+                "central+https://repo.maven.apache.org/maven2/",
+                null,
+                "picketbox-5.0.3.Final.pom",
+                List.of(Scope.PROVIDED),
+                List.of());
+        PackageProviders providers = new PackageProviders(
+                List.of(), List.of(picketbox), List.of(), tmp.resolve("index"), LibraryCatalog.bundled());
+
+        List<CompileResult.Diagnostic> enriched = providers.enrich(List.of(error(
+                "/ws/adapter/src/Main.java:3:22: error: package org.jboss.security does not exist",
+                "compiler.err.doesnt.exist")));
+
+        assertThat(enriched.get(0).message())
+                .endsWith("\n  locked without a file: org.picketbox:picketbox:5.0.3.Final"
+                        + " (central+https://repo.maven.apache.org/maven2/)");
     }
 
     @Test

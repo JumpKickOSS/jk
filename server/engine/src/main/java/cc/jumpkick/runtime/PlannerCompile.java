@@ -16,6 +16,7 @@ import static cc.jumpkick.runtime.PlannerSupport.mergeLanguageOutput;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathProcessors;
+import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -583,7 +584,8 @@ public final class PlannerCompile {
      * the console renderer adds its own ✗/⚠ marker.
      */
     private static void reportJavacResult(TaskContext ctx, CompileRequest request, JavaCompile.Result r) {
-        boolean errored = JavacDiagnostics.report(ctx, request.classpath(), r.diagnostics());
+        boolean errored =
+                JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, r.diagnostics());
         if (!r.success()) {
             // Never fail silently: if no ERROR diagnostic surfaced (crash,
             // swallowed output), say so explicitly.

@@ -139,6 +139,18 @@ final class JkResultsHints {
         if (removed != null) return new Hint(DOESNT_EXIST, removed.hint(pkg));
         String provider = field(message, "provided by:");
         if (provider.isEmpty()) {
+            String withoutFile = field(message, "locked without a file:");
+            if (!withoutFile.isEmpty()) {
+                return new Hint(
+                        DOESNT_EXIST,
+                        "nothing on this module's compile classpath provides package `" + pkg
+                                + "`, and the lock carries " + withoutFile
+                                + " without a file — each stands for its POM alone: `packaging=pom` with no jar"
+                                + " found beside it when the lock was written, or a relocation stub. If the"
+                                + " package is one of theirs, add the repository that publishes the jar to"
+                                + " `[repositories]` and re-run `jk lock`; otherwise `jk add <group:artifact>` the"
+                                + " library that ships it.");
+            }
             return new Hint(
                     DOESNT_EXIST,
                     "nothing on this module's compile classpath provides package `" + pkg

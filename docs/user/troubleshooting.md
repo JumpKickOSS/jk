@@ -86,6 +86,7 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | Symptom | Where to look | Typical fix |
 |---------|---------------|-------------|
 | Compile error | `jk-results.md` (file:line) | Edit the source; `jk compile` or `jk build` |
+| `package X does not exist` with a `locked without a file:` line, or `dependency g:a:v has no file` | the named lock row: its POM is `packaging=pom` and no jar was found beside it when the lock was written | Add the repository that publishes the jar to `[repositories]` and re-run `jk lock`; [Lockfile § Rows without a file](lockfile.md#rows-without-a-file) |
 | Test failure | `jk-results.md` (class, stack); JUnit XML under `target/reports/test-results/` | Fix, then **replay the same selection** (`jk test`, not `--all`). Suites/tags: [Test](test.md) |
 | Resolve / lock conflict | `jk lock` prose; `jk why <coord>`; `jk tree` | Relax a range, add a BOM, or pin; [Lockfile](lockfile.md), [Platforms](platforms.md) |
 | `HTTP 403` / `HTTP 429` from `repo.maven.apache.org` | **Lock notes** in `jk-results.md`: `Maven Central is blocking this host (Cloudflare)` or `is rate-limiting this host (HTTP 429)`, `using the mirror for 4 h` | Nothing: Central-bound requests go to Google's mirror for the window. Only when `JK_CENTRAL_MIRROR=off` is set does the refusal reach the build; [Repositories](repositories.md#when-central-refuses-this-host) |
