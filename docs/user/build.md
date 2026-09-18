@@ -7,7 +7,7 @@ jk build --guard         # guards + unit + integration green; the same flag on a
 jk build --guard --skip-tests   # package graph + guard scripts, no JUnit
 jk build --scripts-only        # guard scripts, no JUnit (same as test --scripts-only)
 jk build --skip-tests
-jk build --redo         # ignore action cache (full rebuild)
+jk build --redo         # ignore action cache (full rebuild): every step runs, plugin steps too
 jk clean                # delete target/; unchanged inputs restore from cache
 jk clean --force        # also invalidate this project's action-cache entries
 ```
@@ -55,6 +55,11 @@ tree can hold the class of a source the analysis never saw — and the Kotlin co
 incremental state over when a restore lays down a tree other than the one that state produced.
 The record a compile stores is the swept tree, so a later restore of it cannot bring a deleted
 test back to the runner or a deleted class into the jar.
+
+`jk build --redo` (`-r`) runs every step of the modules it enters without reading the action
+cache — compile, package, tests, and the steps plugins contribute, a lint or a generator among
+them — and stores each step's record again, so the build after it is served as before. Nothing
+is re-fetched; `--force` re-fetches too.
 
 The first build after `jk install` of a new engine runs every plugin step, guard lane,
 build-logic run and packaging step once more: their keys carry the identity of the engine that
