@@ -186,7 +186,7 @@ public final class ClasspathResolver {
     /** As {@link #classpathFor(Lockfile, Set, boolean, JkBuild)}, each path paired with its lock row. */
     public List<Entry> entriesFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module) {
         List<Lockfile.Artifact> rows = ordered(lock, selected(lock, scopes), declaredExternalRoots(module, scopes));
-        return resolveEntries(rows, Missing.of(requirePresent), effectiveLocator(lock));
+        return resolveEntries(lock, rows, Missing.of(requirePresent), effectiveLocator(lock));
     }
 
     /**
@@ -285,7 +285,7 @@ public final class ClasspathResolver {
 
     /** As {@link #entriesFor(Lockfile, Set)} with optional post-sync presence enforcement. */
     public List<Entry> entriesFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent) {
-        return resolveEntries(selected(lock, scopes), Missing.of(requirePresent), effectiveLocator(lock));
+        return resolveEntries(lock, selected(lock, scopes), Missing.of(requirePresent), effectiveLocator(lock));
     }
 
     /**
@@ -294,7 +294,7 @@ public final class ClasspathResolver {
      * package — a row of a scope this build never synced is not a shortfall worth a warning.
      */
     public List<Entry> entriesOnDisk(Lockfile lock, Set<Scope> scopes) {
-        return resolveEntries(selected(lock, scopes), Missing.SKIP, effectiveLocator(lock));
+        return resolveEntries(lock, selected(lock, scopes), Missing.SKIP, effectiveLocator(lock));
     }
 
     /** What a checksummed row the store lacks does to the resolve. */
@@ -346,7 +346,7 @@ public final class ClasspathResolver {
             if (pkg.inAnyScope(scopes)) matched.add(pkg);
         }
         // Prefer main-scoped dual rows when the walk hit both; same collapse as the full-lock path.
-        return resolveEntries(selectPerModule(matched, scopes), Missing.WARN, effectiveLocator(lock));
+        return resolveEntries(lock, selectPerModule(matched, scopes), Missing.WARN, effectiveLocator(lock));
     }
 
     /**
@@ -440,21 +440,28 @@ public final class ClasspathResolver {
         return at > 0 ? depRef.substring(0, at) : depRef;
     }
 
-    private List<Entry> resolveEntries(List<Lockfile.Artifact> selected, Missing missing, ArtifactLocator locator) {
+    private List<Entry> resolveEntries(
+            Lockfile lock, List<Lockfile.Artifact> selected, Missing missing, ArtifactLocator locator) {
+        boolean marksFileless = lock.marksFilelessRows();
         List<Entry> result = new ArrayList<>(selected.size());
         List<String> absent = new ArrayList<>();
+        List<String> unpinned = new ArrayList<>();
         for (Lockfile.Artifact pkg : selected) {
             String checksum = pkg.checksum();
             if (checksum == null) {
-                // POM-only aliases (KMP roots, packaging=pom) legitimately have none — they are
-                // not classpath jars. Soft-skip either way; Missing.FAIL only enforces rows
-                // that claim a sha256 (a miss there is a sync/store bug).
-                Log.warn("jk: warning: lock row "
-                        + pkg.name()
-                        + "@"
-                        + pkg.version()
-                        + " has no checksum — skipped from classpath"
-                        + " (POM-only alias, or incomplete lock; re-run `jk lock`)");
+                // A row without a file by design — a BOM, an aggregator, a relocation stub, a KMP
+                // root — is not a classpath jar and says so on the row. One that says nothing pins
+                // a jar nobody fetched: a classpath built to compile against fails on it by name.
+                // A lock whose writer marked no row is read by that writer's rule — every such row
+                // is file-less — and the next `jk lock` rewrites it with the marks.
+                if (pkg.pomOnly() || !marksFileless) continue;
+                if (missing == Missing.SKIP) continue;
+                if (missing == Missing.FAIL) {
+                    unpinned.add(pkg.displayCoord());
+                    continue;
+                }
+                Log.warn("jk: warning: lock row " + pkg.name() + "@" + pkg.version()
+                        + " pins no checksum and names no POM-only file — skipped from classpath; re-run `jk lock`");
                 continue;
             }
             Path jar = locate(locator, pkg);
@@ -484,8 +491,40 @@ public final class ClasspathResolver {
             }
             result.add(new Entry(pkg, jar));
         }
+        if (!unpinned.isEmpty()) throw new IllegalStateException(noFile(unpinned));
         if (!absent.isEmpty()) throw new IllegalStateException(notOnDisk(absent));
         return result;
+    }
+
+    /**
+     * Every row that pins no checksum and is not a POM-only row, named in one line: no jar was
+     * fetched for it when the lock was written, so the compile would run without it.
+     */
+    private static String noFile(List<String> coords) {
+        return (coords.size() == 1
+                        ? "dependency " + coords.get(0)
+                                + " has no file: its lock row pins no checksum and names no POM-only file"
+                        : "dependencies " + String.join(", ", coords)
+                                + " have no file: their lock rows pin no checksum and name no POM-only file")
+                + " — run `jk lock`: a lock written before rows named the POM or module file they stand for"
+                + " is rewritten with them, and a jar the lock still cannot find fails the lock naming the"
+                + " repositories asked";
+    }
+
+    /**
+     * The jar-typed rows in {@code scopes} that stand for a POM alone — a {@code packaging=pom}
+     * module or aggregator with no jar beside it, a relocation stub — and so put nothing on a
+     * classpath. A compile that fails on a package one of them was expected to provide names them.
+     * A BOM ({@code pom} type) and a Kotlin multiplatform root (whose {@code -jvm} row holds the
+     * bytes) are not among them.
+     */
+    public static List<Lockfile.Artifact> lockedWithoutFile(Lockfile lock, Set<Scope> scopes) {
+        List<Lockfile.Artifact> out = new ArrayList<>();
+        for (Lockfile.Artifact pkg : selected(lock, scopes)) {
+            String path = pkg.path();
+            if (pkg.checksum() == null && path != null && path.endsWith(".pom")) out.add(pkg);
+        }
+        return out;
     }
 
     /** Every checksummed row the store lacks, named in one line: the whole repair, not its first step. */

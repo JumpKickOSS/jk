@@ -330,7 +330,10 @@ itself fails, or no repository is known to hold the POM, the failure stands. A d
 not its POM's `packaging`, says which file it is: a module whose POM declares `packaging=pom` is
 still asked for its jar — SpotBugs publishes that way through Gradle, picketbox as a Maven assembly
 beside its POM — and a jar the repository serves is pinned like any other row's, while a BOM or an
-aggregator with no jar beside it stays a row without a file.
+aggregator with no jar beside it stays a row without a file, naming the POM it stands for as its
+`path` and the repository that served that POM as its `source`. A compile that then fails on a
+package such a row's jar would have carried names the row under `locked without a file:`; see
+[Lockfile § Rows without a file](lockfile.md#rows-without-a-file).
 
 ### Classifiers that follow the host
 

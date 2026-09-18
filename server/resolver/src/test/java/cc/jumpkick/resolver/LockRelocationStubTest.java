@@ -70,6 +70,8 @@ class LockRelocationStubTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(stub.checksum()).as("the stub stands beside no jar").isNull();
+        assertThat(stub.path()).as("the row names the POM it stands for").isEqualTo("old-1.0.pom");
+        assertThat(stub.pomOnly()).isTrue();
         assertThat(target.checksum()).as("the target's bytes are pinned").startsWith("sha256:");
         assertThat(http.requestsFor(MavenStub.path("com.foo", "old", "1.0", ".jar")))
                 .as("no repository is asked for a jar the stub's POM says does not exist")

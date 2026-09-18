@@ -295,6 +295,19 @@ public final class RepoGroup {
     }
 
     /**
+     * The repository that served {@code coord}'s POM through this group — the process memo, a
+     * local copy or a fetch — or empty when none did. What a row with no file of its own records as
+     * its source: the repository that answered for the coordinate, never one that served nothing.
+     */
+    public Optional<MavenRepo> pomRepository(Coordinate coord) throws InterruptedException {
+        try {
+            return tryFetchPom(coord).map(RepoFetched::repo);
+        } catch (IOException unreachable) {
+            return Optional.empty();
+        }
+    }
+
+    /**
      * As {@link #tryFetchArtifact(Coordinate)} with a cooperative abort signal: once
      * {@code abort} turns true the fetch stops at the next leg boundary — after a local probe,
      * before the network leg, before/after host-permit acquisition — with a

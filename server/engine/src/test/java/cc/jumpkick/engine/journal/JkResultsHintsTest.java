@@ -52,6 +52,18 @@ class JkResultsHintsTest {
      * that carried it.
      */
     @Test
+    void javac_package_does_not_exist_names_a_row_locked_without_a_file() {
+        String md = render(javac("""
+                /ws/adapter/src/Main.java:3:22: error: package org.jboss.security does not exist
+                  locked without a file: org.picketbox:picketbox:5.0.3.Final (central+https://repo.maven.apache.org/maven2/)"""));
+        assertThat(md)
+                .contains("the lock carries org.picketbox:picketbox:5.0.3.Final"
+                        + " (central+https://repo.maven.apache.org/maven2/) without a file")
+                .contains("`packaging=pom`")
+                .contains("add the repository that publishes the jar to `[repositories]` and re-run `jk lock`");
+    }
+
+    @Test
     void javac_cannot_access_a_removed_jdk_type_names_the_release_that_carries_it() {
         String md = render(keyed("compiler.err.cant.access", """
                 /ws/app/src/com/acme/LoginModule.java:40:8: error: cannot access java.security.acl.Group

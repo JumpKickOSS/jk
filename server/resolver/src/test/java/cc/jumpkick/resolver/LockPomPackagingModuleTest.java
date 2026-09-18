@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
@@ -15,6 +17,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
@@ -64,8 +67,12 @@ class LockPomPackagingModuleTest {
                   <packaging>pom</packaging>
                 </project>
                 """);
-        RepoGroup repos =
-                RepoGroup.of(new MavenRepo("maven-stub", http.base(), new Http(), new Cas(dir.resolve("cache"))));
+        // A first repository that serves nothing at all, ahead of the one that holds the POMs.
+        Path empty = Files.createDirectories(dir.resolve("empty"));
+        Cas cas = new Cas(dir.resolve("cache"));
+        RepoGroup repos = new RepoGroup(List.of(
+                new MavenRepo("empty", empty.toUri(), new Http(), cas),
+                new MavenRepo("maven-stub", http.base(), new Http(), cas)));
 
         Lockfile lock = new LockOrchestrator(repos).lock(project(), "test");
 
@@ -74,10 +81,24 @@ class LockPomPackagingModuleTest {
                 .as("the jar beside the pom-packaging POM is what the provided row means")
                 .startsWith("sha256:");
         assertThat(picketbox.source()).startsWith("maven-stub+");
+        assertThat(picketbox.path()).isNull();
+        assertThat(picketbox.pomOnly()).isFalse();
         assertThat(picketbox.scopes()).containsExactly(Scope.PROVIDED);
-        assertThat(row(lock, "com.foo:aggregator").checksum())
+        Lockfile.Artifact aggregator = row(lock, "com.foo:aggregator");
+        assertThat(aggregator.checksum())
                 .as("an aggregator with no jar is a row without a file")
                 .isNull();
+        assertThat(aggregator.source())
+                .as("a row without a file records the repository that served its POM, never one that served nothing")
+                .startsWith("maven-stub+");
+        assertThat(aggregator.path())
+                .as("the row names the POM it stands for, so a reader can tell it from a jar nobody fetched")
+                .isEqualTo("aggregator-1.0.pom");
+        assertThat(aggregator.pomOnly()).isTrue();
+        Lockfile reread = LockfileReader.parse(LockfileWriter.render(lock));
+        assertThat(row(reread, "com.foo:aggregator").pomOnly())
+                .as("the mark survives the round trip through jk-lock.toml")
+                .isTrue();
     }
 
     private static Lockfile.Artifact row(Lockfile lock, String ga) {

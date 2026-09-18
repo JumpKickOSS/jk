@@ -784,10 +784,13 @@ public final class LockPipeline {
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             String checksum = pkg.checksum();
             if (checksum == null) {
-                // Nothing to materialize for POM-only rows. Still say so — a checksum-less jar row
-                // must not be silently treated as present.
-                Log.info("jk: note: lock row " + pkg.name() + "@" + pkg.version()
-                        + " has no checksum — offline check skipped it (POM-only alias, or incomplete lock)");
+                // Nothing to materialize for a row without a file by design. A checksum-less row
+                // that names no such file pins a jar nobody fetched; the compile classpath fails
+                // on it by name, so here it is only noted.
+                if (!pkg.pomOnly() && lock.marksFilelessRows()) {
+                    Log.info("jk: note: lock row " + pkg.name() + "@" + pkg.version()
+                            + " pins no checksum and names no POM-only file — offline check skipped it");
+                }
                 continue;
             }
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;

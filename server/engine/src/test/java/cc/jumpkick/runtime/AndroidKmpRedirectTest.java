@@ -54,7 +54,10 @@ class AndroidKmpRedirectTest {
         Lockfile.Artifact root = artifact(lockfile, "androidx.compose.runtime:runtime-annotation");
         // POM-only alias: no artifact bytes, classpath-inert, sync-skipped.
         assertThat(root.checksum()).isNull();
-        assertThat(root.path()).isNull();
+        assertThat(root.path())
+                .as("the alias names the Gradle module file it stands for")
+                .endsWith(".module");
+        assertThat(root.pomOnly()).isTrue();
         assertThat(root.deps())
                 .anyMatch(d -> d.startsWith("androidx.compose.runtime:runtime-annotation-android@")
                         || d.startsWith("androidx.compose.runtime:runtime-annotation-android:jar:@"));
