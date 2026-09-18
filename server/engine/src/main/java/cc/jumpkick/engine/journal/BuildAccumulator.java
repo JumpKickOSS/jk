@@ -91,6 +91,9 @@ public final class BuildAccumulator {
     private volatile @Nullable String cancelReason;
     private volatile @Nullable Boolean success;
     private volatile int exitCode;
+    // The wall another tool measured for the run this row journals; 0 when the job's own elapsed
+    // is the run.
+    private volatile long toolWallMillis;
 
     public BuildAccumulator(String kind, String dir, @Nullable String coord, String trigger) {
         this(kind, dir, coord, trigger, null, false);
@@ -158,6 +161,15 @@ public final class BuildAccumulator {
         return rebuild;
     }
 
+    /**
+     * The wall clock of the run another tool performed — Maven's, for a {@code jk mvn} — which
+     * {@link #toRecord} takes as the record's headline duration in place of the journaling job's
+     * own elapsed. Ignored when not positive.
+     */
+    public void noteToolWall(long millis) {
+        if (millis > 0) toolWallMillis = millis;
+    }
+
     public long buildNumber() {
         return buildNumber;
     }
@@ -172,6 +184,11 @@ public final class BuildAccumulator {
 
     public String dir() {
         return dir;
+    }
+
+    /** The engine request kind this row journals ({@code build}, {@code test}, {@code mvn}, …). */
+    public String kind() {
+        return kind;
     }
 
     /** True only when the runner explicitly reported success (not merely "no failure seen yet"). */
@@ -868,6 +885,7 @@ public final class BuildAccumulator {
         BuildRecord.Io ioRow = bytes.isEmpty()
                 ? null
                 : new BuildRecord.Io(bytes.remoteUp(), bytes.remoteDown(), bytes.localUp(), bytes.localDown());
+        long wall = toolWallMillis > 0 ? toolWallMillis : millis;
         return new BuildRecord(
                 null,
                 0L,
@@ -876,9 +894,9 @@ public final class BuildAccumulator {
                 dir,
                 coord,
                 projectId,
-                finishedAt - millis,
+                finishedAt - wall,
                 finishedAt,
-                millis,
+                wall,
                 ok,
                 cancelledEffective,
                 exit,

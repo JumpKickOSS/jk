@@ -49,7 +49,9 @@ never bypasses a checksum that is published.
 row behind `jk results`, MCP `jk_results` and `jk_diagnostics` (header `trigger: cli · tool: mvn`).
 The run counts as a build: it takes the project's next build number (`#N` in the header), appears
 in `jk history` and on the dashboard's Activity feed labelled `tool: mvn`, so a supervisor sees
-what an agent ran through Maven beside what it ran through jk. Provisioning Maven writes no
+what an agent ran through Maven beside what it ran through jk. The row's duration is Maven's wall
+clock, from the launch to Maven's exit, and its `Saved` column stays empty: jk ran none of the
+steps and cached none of them, so there is no cache saving to price. Provisioning Maven writes no
 report of its own — a `jk mvn -v` leaves no `target/jk-results.md` behind.
 A small Maven core extension, `jk-maven-spy-<version>.jar`, rides Maven's `-Dmaven.ext.class.path`
 and records the reactor's events; after Maven exits the engine folds those events, each module's

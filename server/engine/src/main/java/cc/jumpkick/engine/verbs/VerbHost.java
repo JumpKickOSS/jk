@@ -71,6 +71,11 @@ public interface VerbHost {
         throw new UnsupportedOperationException("accBuildPlanFinish");
     }
 
+    /** The wall clock another tool measured for the run this request journals. */
+    default void accToolWall(long rid, long millis) {
+        throw new UnsupportedOperationException("accToolWall");
+    }
+
     /** One plan's {@code --affected} ranking slice; merged per request, written at request-finish. */
     default void accAffected(long rid, cc.jumpkick.test.@Nullable AffectedTests affected) {}
 
