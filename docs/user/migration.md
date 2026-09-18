@@ -28,6 +28,11 @@ Neither Maven nor Gradle has a flag of those names, and only the exact spelling 
 therefore provisions Maven under `/opt/jk-tools` and runs `mvn clean`; `jk --help mvn` lists the
 four.
 
+With no wrapper in the checkout, `jk mvn` provisions the newest Maven 3.9.x jk knows — or, when the
+root POM's `maven-enforcer-plugin` states a `requireMavenVersion` floor above that (`3.9.11`,
+`[3.9.11,)`, or a `${property}` the POM's own `<properties>` resolve), the floor itself — so a repo
+that requires a newer Maven is never run on an older one. A wrapper's `distributionUrl` always wins.
+
 A distribution jk downloads is verified before it is unpacked, against the first of these that
 exists: the wrapper's own `distributionSha256Sum`; a digest accepted for that version earlier;
 the checksum its publisher puts beside the archive — Apache Maven's `.sha512` (3.7 and later),

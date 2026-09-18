@@ -5,6 +5,7 @@ import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.WrapperDistribution;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -16,12 +17,17 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Picks the Maven distribution: wrapper {@code distributionUrl}, else {@link #DEFAULT_VERSION}.
+ * Picks the Maven distribution: the wrapper's {@code distributionUrl} when the project has one,
+ * else the newest Maven 3.9.x jk knows — or the higher floor the POM's enforcer rule states
+ * ({@link EnforcerMavenVersion}), so a repo that requires a newer Maven is not run on an older one.
  */
 public final class MavenResolver {
 
-    /** jk's bundled default when no wrapper is present. */
-    public static final String DEFAULT_VERSION = "3.9.9";
+    /**
+     * The newest Maven 3.9.x jk knows: the release the Maven spy ({@code clients/maven-spy})
+     * compiles against, moved together with that pin.
+     */
+    public static final String DEFAULT_VERSION = "3.9.16";
 
     /** Apache Maven's own distribution zips, published to Central like any other artifact. */
     private static final String DEFAULT_BASE = RepositorySpec.MAVEN_CENTRAL.url() + "org/apache/maven/apache-maven/";
@@ -35,11 +41,21 @@ public final class MavenResolver {
             ToolDistribution fromWrapper = fromWrapperProperties(wrapperProps);
             if (fromWrapper != null) return fromWrapper;
         }
-        return defaultDistribution();
+        return defaultDistribution(projectDir);
     }
 
     public static ToolDistribution defaultDistribution() {
         return distributionFor(DEFAULT_VERSION);
+    }
+
+    /**
+     * The default for a project with no wrapper: {@link #DEFAULT_VERSION}, or the enforcer's floor
+     * when the POM asks for a newer Maven than that.
+     */
+    static ToolDistribution defaultDistribution(Path projectDir) {
+        String floor = EnforcerMavenVersion.minimum(projectDir);
+        boolean above = floor != null && Versions.compare(floor, DEFAULT_VERSION) > 0;
+        return distributionFor(above ? floor : DEFAULT_VERSION);
     }
 
     /** The distribution for an explicit Maven version; blank means {@link #DEFAULT_VERSION}. */
