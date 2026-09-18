@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -15,6 +16,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -45,6 +51,7 @@ class MavenMetadataCacheTest {
         unconditional304s = 0;
         lastIfNoneMatch = null;
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.setExecutor(Executors.newCachedThreadPool());
         server.createContext("/g/a/maven-metadata.xml", exchange -> {
             hits.incrementAndGet();
             lastIfNoneMatch = exchange.getRequestHeaders().getFirst("If-None-Match");
@@ -175,5 +182,41 @@ class MavenMetadataCacheTest {
         assertThat(lastIfNoneMatch).isNull();
         Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
         assertThat(body).hasBinaryContent(BODY);
+    }
+    /**
+     * A metadata GET runs under the per-host permit like an artifact download: four cold catalogs
+     * asked of one host at once reach a limiter with one permit one at a time.
+     */
+    @Test
+    void metadata_gets_run_under_the_hosts_permit(@TempDir Path dir) throws Exception {
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicInteger widest = new AtomicInteger();
+        server.createContext("/limited/", exchange -> {
+            int now = inFlight.incrementAndGet();
+            widest.accumulateAndGet(now, Math::max);
+            try {
+                Thread.sleep(150);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                inFlight.decrementAndGet();
+            }
+            exchange.sendResponseHeaders(200, BODY.length);
+            exchange.getResponseBody().write(BODY);
+            exchange.close();
+        });
+        MavenMetadataCache cache = new MavenMetadataCache(new Http(), dir, Duration.ZERO, new HostRateLimiter(1));
+        ExecutorService pool = Executors.newFixedThreadPool(4);
+        try {
+            List<Future<byte[]>> asked = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                URI catalog = URI.create(uri.toString().replace("/g/a/", "/limited/a" + i + "/"));
+                asked.add(pool.submit(() -> cache.fetch(catalog, RepoCredential.ANONYMOUS)));
+            }
+            for (Future<byte[]> f : asked) assertThat(f.get()).isEqualTo(BODY);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(widest.get()).as("requests in flight at once on the host").isEqualTo(1);
     }
 }
