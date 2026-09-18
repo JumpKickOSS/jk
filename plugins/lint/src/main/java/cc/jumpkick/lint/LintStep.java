@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -22,6 +23,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,7 +31,9 @@ import org.jspecify.annotations.Nullable;
  * the tool's XML report as its output, read the report back as {@link Finding}s, report each as a
  * diagnostic with its rule id, and fail the step when a finding reaches the tool's threshold —
  * its own {@code <tool>-fail-on}, else the table's {@code fail-on}. A tool that wrote no report
- * failed on its own terms: the step fails with the tool's last lines.
+ * failed on its own terms: the step fails with the tool's last lines. Checkstyle's classpath is
+ * its closure plus the {@code checkstyle-classpath} jars, so a rule set, header or suppressions
+ * file may be a resource inside one of them, named as Checkstyle resolves it.
  */
 final class LintStep {
 
@@ -48,41 +52,58 @@ final class LintStep {
     private LintStep() {}
 
     static void run(TaskExec exec, LintTool tool) throws Exception {
-        PluginConfig config = exec.config();
+        run(exec, tool, null);
+    }
+
+    /**
+     * {@link #run(TaskExec, LintTool)} for the table's own tool ({@code run} null) or for one {@code
+     * [lint.<run>]} Checkstyle run, whose configuration is the entry's ({@link LintPlugin#scoped})
+     * and whose tool, rule set, classpath, suppressions and header extras carry the run's name.
+     */
+    static void run(TaskExec exec, LintTool tool, @Nullable String run) throws Exception {
+        PluginConfig config = run == null ? exec.config() : LintPlugin.scoped(exec.config(), run);
+        String label = tool.id() + (run == null ? "" : ":" + run);
         if (tool == LintTool.SPOTBUGS) {
             config.stringOpt("spotbugs-version").ifPresent(v -> SpotBugsFloor.check(v, exec.javaHome()));
         }
         List<Path> roots = existingRoots(exec.moduleDir(), LintPlugin.sourceRoots(tool, config));
-        Path out = exec.outputDir(tool.out());
+        Path out = exec.outputDir(tool.out(run));
         Path report = out.resolve(tool.report());
         Files.deleteIfExists(report);
         if (tool != LintTool.SPOTBUGS && !hasFiles(tool, roots, config)) {
-            exec.label(tool.id() + " (no sources)");
+            exec.label(label + " (no sources)");
             Files.writeString(report, "");
             return;
         }
-        String missing = missingConfiguration(tool, exec.moduleDir(), config);
+        List<Path> classpath = new ArrayList<>(toolClasspath(exec.requireExtra(extra(tool.id(), run))));
+        if (tool == LintTool.CHECKSTYLE) {
+            Optional<Path> jars = exec.extra(extra("checkstyle-classpath", run));
+            if (jars.isPresent()) classpath.addAll(toolClasspath(jars.get()));
+        }
+        String missing = missingConfiguration(tool, exec.moduleDir(), config, classpath);
         if (missing != null) {
             exec.diagnostic(
                     Finding.WARNING,
                     null,
                     0,
                     0,
-                    tool.id() + ": `" + missing + "` is not a file in the module, so nothing was linted — copy the"
-                            + " rule set to that path, or point `[lint] " + tool.id() + "` at the file that holds it");
-            exec.label(tool.id() + " (no configuration)");
+                    label + ": `" + missing + "` is not a file in the module, so nothing was linted — copy the rule"
+                            + " set to that path, or point `[lint] " + tool.id() + "` at the file that holds it"
+                            + (tool == LintTool.CHECKSTYLE
+                                    ? " (a resource of a jar is one when `checkstyle-classpath` names the jar)"
+                                    : ""));
+            exec.label(label + " (no configuration)");
             Files.writeString(report, "");
             return;
         }
-        List<Path> classpath = toolClasspath(exec.requireExtra(tool.id()));
-        List<String> args = arguments(tool, exec, roots, report);
-        exec.label(tool.id() + " (" + roots.size() + (roots.size() == 1 ? " root" : " roots") + ")");
+        List<String> args = arguments(tool, exec, config, roots, report, run);
+        exec.label(label + " (" + roots.size() + (roots.size() == 1 ? " root" : " roots") + ")");
         List<String> output = new ArrayList<>();
         int exit = exec.java().classpath(classpath).mainClass(tool.main()).args(args).cwd(exec.moduleDir()).stream(
                 output::add);
         if (!Files.isRegularFile(report) || !ran(tool, exit)) {
             List<String> tail = output.subList(Math.max(0, output.size() - TAIL), output.size());
-            throw new IllegalStateException(tool.id() + " failed (exit " + exit + ") before writing its report"
+            throw new IllegalStateException(label + " failed (exit " + exit + ") before writing its report"
                     + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
         }
         List<Finding> findings = Reports.parse(tool, report, roots, exclusions(tool, exec));
@@ -94,9 +115,14 @@ final class LintStep {
             if (fails(finding, failOn)) errors++;
         }
         if (errors > 0) {
-            throw new IllegalStateException(tool.id() + ": " + errors + (errors == 1 ? " finding" : " findings")
+            throw new IllegalStateException(label + ": " + errors + (errors == 1 ? " finding" : " findings")
                     + " at or above `" + failOnKey + " = \"" + failOn + "\"` (" + findings.size() + " in all)");
         }
+    }
+
+    /** The name an extra is handed to the step under: the table's own, or the run's with the run's name after it. */
+    static String extra(String artifact, @Nullable String run) {
+        return run == null ? artifact : artifact + "-" + run;
     }
 
     /** Whether {@code finding} fails the step under {@code failOn}: error, warning or never. */
@@ -118,20 +144,35 @@ final class LintStep {
         };
     }
 
-    /** The tool's command line, its report at {@code report}. */
+    /** The tool's command line for the table's own run, its report at {@code report}. */
     static List<String> arguments(LintTool tool, TaskExec exec, List<Path> roots, Path report) {
-        PluginConfig config = exec.config();
+        return arguments(tool, exec, exec.config(), roots, report, null);
+    }
+
+    /** The tool's command line under {@code config}, its report at {@code report}; {@code run} names a Checkstyle run's extras. */
+    static List<String> arguments(
+            LintTool tool, TaskExec exec, PluginConfig config, List<Path> roots, Path report, @Nullable String run) {
         Path module = exec.moduleDir();
         List<String> args = new ArrayList<>();
         switch (tool) {
             case CHECKSTYLE -> {
-                args.addAll(List.of(
-                        "-c",
-                        checkstyleFile(exec, "checkstyle", "checkstyle-config").toString()));
+                args.addAll(
+                        List.of("-c", checkstyleLocation(exec, config, "checkstyle", extra("checkstyle-config", run))));
+                Map<String, String> properties = new LinkedHashMap<>(config.stringMap("checkstyle-properties"));
                 if (config.stringOpt("checkstyle-suppressions").isPresent()) {
-                    Path suppressions = checkstyleFile(exec, "checkstyle-suppressions", "checkstyle-suppressions");
+                    properties.put(
+                            "checkstyle.suppressions.file",
+                            checkstyleLocation(
+                                    exec, config, "checkstyle-suppressions", extra("checkstyle-suppressions", run)));
+                }
+                if (config.stringOpt("checkstyle-header").isPresent()) {
+                    properties.put(
+                            "checkstyle.header.file",
+                            checkstyleLocation(exec, config, "checkstyle-header", extra("checkstyle-header", run)));
+                }
+                if (!properties.isEmpty()) {
                     args.addAll(List.of(
-                            "-p", checkstyleProperties(report, suppressions).toString()));
+                            "-p", checkstyleProperties(report, properties).toString()));
                 }
                 args.addAll(List.of("-f", "xml", "-o", report.toString()));
                 for (String glob : config.stringList("exclude")) args.addAll(List.of("-x", excludeRegex(glob)));
@@ -182,30 +223,31 @@ final class LintStep {
         return args;
     }
 
-    /** The file the table names under {@code key}: the engine-fetched {@code extra} for a URL, else the module's. */
-    private static Path checkstyleFile(TaskExec exec, String key, String extra) {
-        String configured = exec.config().string(key);
-        return LintPlugin.isUrl(configured)
-                ? exec.requireExtra(extra)
-                : exec.moduleDir().resolve(configured);
+    /**
+     * The location {@code config} names under {@code key}, as Checkstyle is handed it: the
+     * engine-fetched {@code extra} for a URL, the module's file when the module holds it, else the
+     * value as written — a resource Checkstyle finds on its classpath.
+     */
+    private static String checkstyleLocation(TaskExec exec, PluginConfig config, String key, String extra) {
+        String configured = config.string(key);
+        if (LintPlugin.isUrl(configured)) return exec.requireExtra(extra).toString();
+        Path file = exec.moduleDir().resolve(configured);
+        return Files.isRegularFile(file) ? file.toString() : configured;
     }
 
     /**
-     * Checkstyle's {@code -p} file beside {@code report}, defining {@code checkstyle.suppressions.file}
-     * — the property {@code maven-checkstyle-plugin} binds {@code <suppressionsLocation>} to and a
-     * rule set's {@code SuppressionFilter} reads — as {@code suppressions}, absolute.
+     * Checkstyle's {@code -p} file beside {@code report}, defining {@code properties}: {@code
+     * checkstyle.suppressions.file} and {@code checkstyle.header.file} — the properties {@code
+     * maven-checkstyle-plugin} binds {@code <suppressionsLocation>} and {@code <headerLocation>} to,
+     * which a rule set's {@code SuppressionFilter} and {@code Header} read — and every {@code
+     * checkstyle-properties} entry, as {@code <propertyExpansion>} hands them over.
      */
-    static Path checkstyleProperties(Path report, Path suppressions) {
+    static Path checkstyleProperties(Path report, Map<String, String> properties) {
         Path out = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report dir");
         Path file = out.resolve("checkstyle.properties");
         try {
             Files.createDirectories(out);
-            Files.writeString(
-                    file,
-                    DeterministicProperties.render(Map.of(
-                            "checkstyle.suppressions.file",
-                            suppressions.toAbsolutePath().toString())),
-                    StandardCharsets.UTF_8);
+            Files.writeString(file, DeterministicProperties.render(properties), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -304,9 +346,11 @@ final class LintStep {
     /**
      * The configured file {@code tool} cannot run without when the module does not hold it — the
      * path {@code jk import} writes for a rule set it could not carry — or null when it is there,
-     * the tool needs none, or the engine fetched it from a URL.
+     * the tool needs none, the engine fetched it from a URL, or a jar on {@code classpath} holds it
+     * as a resource.
      */
-    static @Nullable String missingConfiguration(LintTool tool, Path module, PluginConfig config) {
+    static @Nullable String missingConfiguration(LintTool tool, Path module, PluginConfig config, List<Path> classpath)
+            throws IOException {
         Optional<String> configured =
                 switch (tool) {
                     case CHECKSTYLE -> config.stringOpt("checkstyle").filter(c -> !LintPlugin.isUrl(c));
@@ -314,7 +358,20 @@ final class LintStep {
                     case PMD, SPOTBUGS -> Optional.empty();
                 };
         if (configured.isEmpty() || Files.isRegularFile(module.resolve(configured.get()))) return null;
+        if (tool == LintTool.CHECKSTYLE && onClasspath(configured.get(), classpath)) return null;
         return configured.get();
+    }
+
+    /** Whether a jar of {@code classpath} holds {@code resource} — a rule set a build ships in a jar. */
+    static boolean onClasspath(String resource, List<Path> classpath) throws IOException {
+        String name = resource.startsWith("/") ? resource.substring(1) : resource;
+        for (Path jar : classpath) {
+            if (!Files.isRegularFile(jar) || !jar.getFileName().toString().endsWith(".jar")) continue;
+            try (ZipFile zip = new ZipFile(jar.toFile())) {
+                if (zip.getEntry(name) != null) return true;
+            }
+        }
+        return false;
     }
 
     /** The declared source roots that exist under the module, absolute. */

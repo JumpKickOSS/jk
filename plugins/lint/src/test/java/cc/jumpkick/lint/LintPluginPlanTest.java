@@ -71,6 +71,52 @@ class LintPluginPlanTest {
         assertThat(spec.body()).isNotNull();
     }
 
+    /**
+     * A {@code [lint.<name>]} entry is a Checkstyle run of its own: its step, output and inputs
+     * carry the entry's name and configuration, the table's shared {@code checkstyle-version}
+     * included and the table's own run and thresholds left out.
+     */
+    @Test
+    void an_entry_is_a_checkstyle_step_of_its_own_over_its_scoped_configuration() {
+        PluginConfig table = new PluginConfig(
+                "lint",
+                Map.of(
+                        "checkstyle",
+                        "config/checkstyle.xml",
+                        "checkstyle-version",
+                        "12.1.2",
+                        "fail-on",
+                        "warning",
+                        PluginConfig.ENTRIES,
+                        Map.of(
+                                "nohttp",
+                                Map.of(
+                                        "checkstyle",
+                                        "config/nohttp-checkstyle.xml",
+                                        "checkstyle-suppressions",
+                                        "config/nohttp-suppressions.xml",
+                                        "sources",
+                                        List.of(".")))));
+
+        assertThat(LintPlugin.checkstyleRuns(table)).containsExactly("nohttp");
+        PluginConfig scoped = LintPlugin.scoped(table, "nohttp");
+        assertThat(scoped.values())
+                .containsEntry("checkstyle", "config/nohttp-checkstyle.xml")
+                .containsEntry("checkstyle-version", "12.1.2")
+                .doesNotContainKey("fail-on")
+                .doesNotContainKey(PluginConfig.ENTRIES);
+        TaskSpec spec = LintPlugin.task(LintTool.CHECKSTYLE, scoped, "nohttp");
+        assertThat(spec.name()).isEqualTo("lint-checkstyle-nohttp");
+        assertThat(spec.declaredInputs())
+                .containsExactly(
+                        In.projectFiles("."),
+                        In.projectFiles("config/nohttp-checkstyle.xml"),
+                        In.projectFiles("config/nohttp-suppressions.xml"),
+                        In.classes(),
+                        In.config());
+        assertThat(spec.declaredOutputs()).containsExactly("lint/checkstyle-nohttp");
+    }
+
     /** A rule set at a URL is the engine's to fetch and key: no module file is declared for it. */
     @Test
     void a_checkstyle_rule_set_at_a_url_is_not_a_project_input() {

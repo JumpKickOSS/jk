@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -329,6 +330,7 @@ public final class PluginContributions {
                 for (var entry : config.entries().entrySet()) {
                     Interpolation.Entry scope = new Interpolation.Entry(entry.getKey(), entry.getValue());
                     if (!Interpolation.entryProvides(sd.coordinate(), scope)) continue;
+                    if (!Interpolation.entryProvides(sd.url(), scope)) continue;
                     StepDep dep = toolDependency(sd, config, build.project(), manifest.id(), kind, scope);
                     if (dep != null) out.add(dep);
                 }
@@ -339,7 +341,10 @@ public final class PluginContributions {
 
     /**
      * One declaration resolved against the table (and, for a per-entry tool, one entry); null for
-     * a {@code url} entry whose value is not an http(s) URL — a module file, or a key left unset.
+     * a {@code url} entry whose value is not an http(s) URL — a module file, or a key left unset —
+     * and for a {@code coordinate} over a key left unset or an empty list. A coordinate that is one
+     * {@code ${config.<key>}} or {@code ${entry.<key>}} over a string-list key is every coordinate
+     * of the list: the first the root, the rest {@code with} it in the same closure.
      */
     private static @Nullable StepDep toolDependency(
             PluginDescriptor.StepDependency sd,
@@ -360,15 +365,21 @@ public final class PluginContributions {
             String component = Interpolation.resolve(sd.sdkComponent(), config, project, null, entry);
             return new StepDep(artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps, null);
         }
-        String coordinate = Interpolation.resolve(sd.coordinate(), config, project, null, entry);
-        String[] parts = coordinate.split(":");
-        if (parts.length < 3 || parts.length > 4) {
-            throw new JkBuildParseException("[" + pluginId + "] " + kind + " coordinate must be"
-                    + " \"group:artifact:version[:classifier]\" — got: " + coordinate);
+        String template = Objects.requireNonNull(sd.coordinate(), "coordinate");
+        if (!Interpolation.configProvides(template, config)) return null;
+        List<String> roots = Interpolation.resolveAll(template, config, project, null, entry);
+        if (roots.isEmpty()) return null;
+        for (String root : roots) {
+            String[] parts = root.split(":");
+            if (parts.length < 3 || parts.length > 4) {
+                throw new JkBuildParseException("[" + pluginId + "] " + kind + " coordinate must be"
+                        + " \"group:artifact:version[:classifier]\" — got: " + root);
+            }
         }
+        String coordinate = roots.getFirst();
         String managedBy =
                 sd.managedBy() == null ? null : Interpolation.resolve(sd.managedBy(), config, project, null, entry);
-        List<String> with = new ArrayList<>();
+        List<String> with = new ArrayList<>(roots.subList(1, roots.size()));
         for (String w : sd.with()) {
             String resolved = Interpolation.resolve(w, config, project, null, entry);
             String[] wp = resolved.split(":");

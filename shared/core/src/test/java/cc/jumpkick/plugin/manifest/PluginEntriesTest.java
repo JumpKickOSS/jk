@@ -169,6 +169,72 @@ class PluginEntriesTest {
                         tuple("wire-unpack", "io.zipkin.proto3:zipkin-proto3:1.0.0"));
     }
 
+    /**
+     * A coordinate that is one {@code ${config.<key>}} or {@code ${entry.<key>}} over a string-list
+     * key is every coordinate of the list: the first the root, the rest with it in one closure; an
+     * empty list or an unset key declares no tool.
+     */
+    @Test
+    void a_string_list_key_stands_for_several_coordinates_of_one_closure() {
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                        [plugin]
+                        id = "jars-fixture"
+                        table = "jars-fixture"
+
+                        [schema]
+                        jars = { type = "string-list", default = [] }
+
+                        [entries]
+                        schema = "run"
+
+                        [sub-schema.run]
+                        jars = { type = "string-list" }
+
+                        [[contribute.step-dependency]]
+                        artifact   = "jars"
+                        coordinate = "${config.jars}"
+                        transitive = true
+                        for-step   = "run"
+
+                        [[contribute.step-dependency]]
+                        per-entry  = true
+                        artifact   = "jars-${entry.name}"
+                        coordinate = "${entry.jars}"
+                        transitive = true
+                        for-step   = "run-${entry.name}"
+                        """, "jars-fixture.toml"), null);
+        String base = """
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [jars-fixture]
+                """;
+
+        assertThat(PluginContributions.stepDependencies(
+                        JkBuildParser.parse(base + "jars = [\"com.acme:rules:1.0\", \"com.acme:checks:2.0\"]\n"),
+                        null,
+                        Map.of()))
+                .singleElement()
+                .satisfies(dep -> {
+                    assertThat(dep.artifact()).isEqualTo("jars");
+                    assertThat(dep.coordinateSpec()).isEqualTo("com.acme:rules:1.0");
+                    assertThat(dep.with()).containsExactly("com.acme:checks:2.0");
+                    assertThat(dep.transitive()).isTrue();
+                });
+        assertThat(PluginContributions.stepDependencies(JkBuildParser.parse(base), null, Map.of()))
+                .as("an empty list declares no tool")
+                .isEmpty();
+        assertThat(PluginContributions.stepDependencies(
+                        JkBuildParser.parse(base
+                                + "\n[jars-fixture.nohttp]\njars = [\"io.spring.nohttp:nohttp-checkstyle:0.0.11\"]\n"),
+                        null,
+                        Map.of()))
+                .extracting(PluginContributions.StepDep::artifact, PluginContributions.StepDep::coordinateSpec)
+                .containsExactly(tuple("jars-nohttp", "io.spring.nohttp:nohttp-checkstyle:0.0.11"));
+    }
+
     @Test
     void entry_variables_need_a_per_entry_declaration() {
         assertThatThrownBy(() -> PluginDescriptors.parse("""

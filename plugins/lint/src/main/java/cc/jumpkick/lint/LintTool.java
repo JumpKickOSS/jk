@@ -2,6 +2,7 @@
 package cc.jumpkick.lint;
 
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The tools {@code [lint]} runs, each one step named {@code lint-<tool>} forking one
@@ -29,7 +30,12 @@ public enum LintTool {
 
     /** The step's name on the plan: {@code lint-<tool>}, the name the manifest's {@code for-step} uses. */
     public String stepName() {
-        return "lint-" + id();
+        return stepName(null);
+    }
+
+    /** The step of one {@code [lint.<run>]} Checkstyle run: {@code lint-checkstyle-<run>}; the table's own for null. */
+    public String stepName(@Nullable String run) {
+        return "lint-" + id() + (run == null ? "" : "-" + run);
     }
 
     /** The class the forked JVM runs. */
@@ -44,6 +50,11 @@ public enum LintTool {
 
     /** The step's output dir under its scratch: {@code lint/<tool>}. */
     public String out() {
-        return "lint/" + id();
+        return out(null);
+    }
+
+    /** The output dir of one {@code [lint.<run>]} run: {@code lint/checkstyle-<run>}; the table's own for null. */
+    public String out(@Nullable String run) {
+        return "lint/" + id() + (run == null ? "" : "-" + run);
     }
 }

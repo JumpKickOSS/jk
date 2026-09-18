@@ -23,8 +23,11 @@ detekt     = true                                               # detekt over th
 | `exclude` | Module-relative Ant-style path globs Checkstyle and detekt leave out (`**/generated/**`); PMD excludes through its ruleset's `exclude-pattern`, SpotBugs through `spotbugs-exclude` | `[]` |
 | `fail-on` | The finding severity that fails a step: `error`, `warning`, or `never`. Findings render as diagnostics either way | `"error"` |
 | `checkstyle-fail-on`, `pmd-fail-on`, `spotbugs-fail-on`, `detekt-fail-on` | One tool's own threshold, taking precedence over `fail-on` for that tool — Maven's plugins each fail on their own terms (Checkstyle on errors, PMD and SpotBugs on every finding), and `jk import` writes these when the tools of a module differ | `fail-on` |
-| `checkstyle` | Enable Checkstyle with this configuration file — a module-relative path, or the rule set at an `https://` URL, fetched once into the store and read from there on every build after | off |
-| `checkstyle-suppressions` | A suppressions file — module-relative, or at an `https://` URL — handed to the rule set the way Maven's `<suppressionsLocation>` is: as the `checkstyle.suppressions.file` property a `SuppressionFilter` reads (`<property name="file" value="${checkstyle.suppressions.file}"/>`) | none |
+| `checkstyle` | Enable Checkstyle with this configuration file — a module-relative path, the rule set at an `https://` URL, fetched once into the store and read from there on every build after, or a resource inside a `checkstyle-classpath` jar, named as Checkstyle resolves it (`checkstyle.xml`) | off |
+| `checkstyle-suppressions` | A suppressions file — module-relative, at an `https://` URL, or a `checkstyle-classpath` resource — handed to the rule set the way Maven's `<suppressionsLocation>` is: as the `checkstyle.suppressions.file` property a `SuppressionFilter` reads (`<property name="file" value="${checkstyle.suppressions.file}"/>`) | none |
+| `checkstyle-header` | A header file — module-relative, at an `https://` URL, or a `checkstyle-classpath` resource — handed to the rule set the way Maven's `<headerLocation>` is: as the `checkstyle.header.file` property a `Header` check reads | none |
+| `checkstyle-properties` | Properties the rule set reads as `${name}`, the way Maven's `<propertyExpansion>` hands them over: `{ "checkstyle.build.directory" = "target" }`; `checkstyle.suppressions.file` and `checkstyle.header.file` come from their own keys | `{}` |
+| `checkstyle-classpath` | Coordinates whose jars join Checkstyle's classpath with their closures — the jars a build ships its rule set, header, suppressions or check classes in, as a Maven plugin's `<dependencies>` do (`["org.springframework.cloud:spring-cloud-build-tools:5.0.3", "io.spring.javaformat:spring-javaformat-checkstyle:0.0.47"]`) | `[]` |
 | `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.1.0"` |
 | `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, `rulesets/java/maven-pmd-plugin-default.xml` (Maven's default, which jk carries), or a module-relative ruleset file | off |
 | `pmd-exclude` | A module-relative file in `maven-pmd-plugin`'s `excludeFromFailureFile` shape — `package.Class=Rule,Rule` per line — whose findings are left out of the report | none |
@@ -37,6 +40,28 @@ detekt     = true                                               # detekt over th
 | `detekt` | Enable detekt over the Kotlin sources | `false` |
 | `detekt-config` | A detekt configuration laid over the default rule set | none |
 | `detekt-version` | The detekt release | `"1.23.8"` |
+
+A second Checkstyle run over another rule set is a `[lint.<name>]` entry beside the table:
+
+```toml
+[lint]
+checkstyle           = "checkstyle.xml"                 # a resource of spring-cloud-build-tools
+checkstyle-classpath = ["org.springframework.cloud:spring-cloud-build-tools:5.0.3"]
+checkstyle-header    = "checkstyle-header.txt"
+
+[lint.nohttp]                                           # the step lint-checkstyle-nohttp
+checkstyle           = "https://raw.githubusercontent.com/spring-cloud/spring-cloud-build/main/spring-cloud-build-tools/src/checkstyle/nohttp-checkstyle.xml"
+checkstyle-classpath = ["io.spring.nohttp:nohttp-checkstyle:0.0.11"]
+sources              = ["."]
+exclude              = ["**/target/**/*", "**/.git/**/*"]
+```
+
+An entry carries its own `checkstyle`, `checkstyle-suppressions`, `checkstyle-header`,
+`checkstyle-properties`, `checkstyle-classpath`, `sources`, `exclude` and `fail-on` (`error`
+unless written — the table's thresholds do not reach it) and runs the table's
+`checkstyle-version` as the step `lint-checkstyle-<name>`, with a report of its own that the
+`lint.checkstyle` guard measure counts beside the table's. `jk import` writes one entry per
+further `maven-checkstyle-plugin` execution, named by the execution's id.
 
 Each enabled tool is one step named `lint-<tool>` — `jk explain` shows them. A step's **cache
 key** is the source roots it reads, its configuration files, the module's compiled classes (and,
@@ -75,10 +100,16 @@ The files are yours and live in the module: jk ships no house rule set. A Checks
 may instead be the one a build shares from a URL (`checkstyle = "https://raw.githubusercontent.com/…/checkstyle.xml"`,
 the shape `jk import` keeps from a POM's `<configLocation>`): the engine fetches it once into
 the store — `--offline` with no copy yet fails naming the URL — and its content is part of the
-step's cache key, so the file is re-read, never re-fetched, until the URL changes. A rule set
-whose `SuppressionFilter` reads `${checkstyle.suppressions.file}` — the property
+step's cache key, so the file is re-read, never re-fetched, until the URL changes. A rule set a
+build ships inside a jar — spring-cloud-build's `checkstyle.xml` in spring-cloud-build-tools,
+with the `io.spring.javaformat` checks it names — is a resource of a `checkstyle-classpath` jar:
+the jars join Checkstyle's classpath and `checkstyle`, `checkstyle-suppressions` and
+`checkstyle-header` name their resources as Checkstyle resolves them. A rule set whose
+`SuppressionFilter` reads `${checkstyle.suppressions.file}` — the property
 `maven-checkstyle-plugin` binds `<suppressionsLocation>` to — gets it from
-`checkstyle-suppressions`, through Checkstyle's own `-p` properties file. A PMD ruleset is either
+`checkstyle-suppressions`, one whose `Header` check reads `${checkstyle.header.file}` from
+`checkstyle-header`, and any other `${name}` from `checkstyle-properties`, all through
+Checkstyle's own `-p` properties file. A PMD ruleset is either
 one of PMD's built-in categories (`category/java/bestpractices.xml`, `rulesets/java/quickstart.xml`),
 `rulesets/java/maven-pmd-plugin-default.xml` — the ruleset `maven-pmd-plugin` runs when a POM names
 none, which PMD itself does not ship and jk carries so an imported build lints as Maven did — or a

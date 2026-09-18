@@ -555,21 +555,22 @@ final class MetricEvaluator implements BatchEvaluator {
 
     /**
      * {@code lint.findings} sums every tool's report the module has; {@code lint.<tool>} reads that
-     * tool's alone. A module with no report is skipped, naming the first report looked for.
+     * tool's alone — every Checkstyle run's, the table's own and each {@code [lint.<name>]}
+     * entry's. A module with no report is skipped, naming the first report looked for.
      */
     private static LintCount lintFindings(OutputArtifacts.Module m, String which) throws IOException {
         List<String> tools = which.equals("findings") ? OutputArtifacts.LINT_TOOLS : List.of(which);
         Path first = null;
         double total = 0;
         for (String tool : tools) {
-            Path report = m.existingLintReport(tool);
-            if (report == null) continue;
-            Integer count = LintReport.findings(report);
-            if (count == null) {
-                throw new IOException(report + " is not a report of " + tool + "'s");
+            for (Path report : m.existingLintReports(tool)) {
+                Integer count = LintReport.findings(report);
+                if (count == null) {
+                    throw new IOException(report + " is not a report of " + tool + "'s");
+                }
+                if (first == null) first = report;
+                total += count;
             }
-            if (first == null) first = report;
-            total += count;
         }
         return new LintCount(first, total, m.lintReport(tools.getFirst()).toString());
     }

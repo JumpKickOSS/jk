@@ -5,6 +5,8 @@ import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Project;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -140,6 +142,34 @@ public final class Interpolation {
     public static String resolve(
             @Nullable String template, PluginConfig config, Project project, @Nullable String kotlinVersion) {
         return resolve(template, config, project, kotlinVersion, null);
+    }
+
+    /** A template that is one variable and nothing else: {@code ${config.key}} or {@code ${entry.key}}. */
+    private static final Pattern ONE_VAR = Pattern.compile("^\\$\\{(config|entry)\\.([^}]+)}$");
+
+    /**
+     * {@code template} resolved to every value it stands for: a template that is one {@code
+     * ${config.<key>}} or {@code ${entry.<key>}} over a string-list key is that list, element by
+     * element; any other template is the one string {@link #resolve} makes of it.
+     */
+    public static List<String> resolveAll(
+            String template,
+            PluginConfig config,
+            Project project,
+            @Nullable String kotlinVersion,
+            @Nullable Entry entry) {
+        Matcher one = ONE_VAR.matcher(template);
+        if (one.matches()) {
+            Object raw = one.group(1).equals("config")
+                    ? config.values().get(one.group(2))
+                    : entry == null ? null : entry.values().get(one.group(2));
+            if (raw instanceof List<?> list) {
+                List<String> out = new ArrayList<>(list.size());
+                for (Object element : list) out.add(String.valueOf(element));
+                return out;
+            }
+        }
+        return List.of(resolve(template, config, project, kotlinVersion, entry));
     }
 
     /** As {@link #resolve(String, PluginConfig, Project, String)} inside one entry's scope. */

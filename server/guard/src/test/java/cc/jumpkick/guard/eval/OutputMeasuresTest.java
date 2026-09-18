@@ -158,6 +158,60 @@ class OutputMeasuresTest {
         assertThat(checkstyle.population()).containsEntry("units", 1L);
     }
 
+    /** A {@code [lint.<name>]} entry's report counts under {@code lint.checkstyle} and {@code lint.findings} beside the table's own. */
+    @Test
+    void every_checkstyle_runs_report_is_counted(@TempDir Path root) throws Exception {
+        OutputArtifacts.Module m = OutputEvaluatorTest.scaffold(root);
+        Files.writeString(root.resolve("core/jk.toml"), """
+                group = "com.acme"
+                name = "core"
+                version = "1.0.0"
+                jdk = 25
+
+                [lint]
+                checkstyle = "config/checkstyle.xml"
+
+                [lint.nohttp]
+                checkstyle = "config/nohttp-checkstyle.xml"
+                """);
+        m = OutputArtifacts.of(root, List.of(root.resolve("core")), null).get(0);
+        assertThat(m.checkstyleRuns()).containsExactly("nohttp");
+        Path nohttp = m.lintReport("checkstyle", "nohttp");
+        assertThat(nohttp.toString()).endsWith("lint-checkstyle-nohttp/lint/checkstyle-nohttp/checkstyle.xml");
+        Files.createDirectories(
+                Objects.requireNonNull(m.lintReport("checkstyle").getParent()));
+        Files.writeString(m.lintReport("checkstyle"), CHECKSTYLE_REPORT);
+        Files.createDirectories(Objects.requireNonNull(nohttp.getParent()));
+        Files.writeString(nohttp, CHECKSTYLE_REPORT);
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.checkstyle-cap]
+                kind     = "metric"
+                measure  = "lint.checkstyle"
+                cap      = 5
+                why      = "checkstyle findings only go down"
+                """);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        EvalContext ctx = new EvalContext(
+                        Lane.OUTPUT,
+                        root,
+                        "",
+                        null,
+                        List.of(root.resolve("core")),
+                        () -> FactsIndex.EMPTY,
+                        () -> null,
+                        List::of)
+                .withRules(load.rules());
+        List<Rule> rules = LaneRun.rulesFor(Lane.OUTPUT, load.rules(), "");
+
+        Evaluation checkstyle =
+                Objects.requireNonNull(LaneRun.evaluate(rules, ctx).get("checkstyle-cap"));
+
+        assertThat(checkstyle.outcome()).isEqualTo(Outcome.VIOLATIONS);
+        assertThat(checkstyle.observations()).singleElement().satisfies(o -> assertThat(o.detail())
+                .contains("lint.checkstyle = 6 in core (cap 5)"));
+    }
+
     @Test
     void coverage_below_the_floor_fires_per_module_with_allow_and_a_missing_report_is_not_evaluated(@TempDir Path root)
             throws Exception {

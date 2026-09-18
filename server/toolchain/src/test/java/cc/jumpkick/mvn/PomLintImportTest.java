@@ -10,6 +10,7 @@ import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -275,6 +276,157 @@ class PomLintImportTest {
         assertThat(rendered).contains("[lint]").contains("spotbugs = true");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("lint")).isPresent();
     }
+
+    /**
+     * spring-cloud-build's shape: the plugin's own {@code <dependencies>} carry the rule set, a
+     * header and the checks it names as classpath resources, one execution reads {@code
+     * checkstyle.xml} from them with {@code <headerLocation>} and {@code <propertyExpansion>}, and
+     * a second execution runs the nohttp rule set from a URL over every file. Each execution is one
+     * Checkstyle run: the first the table's own keys, the second a {@code [lint.<execution-id>]}
+     * entry; the plugin's dependencies are {@code checkstyle-classpath}; {@code
+     * checkstyle.suppressions.file} in the expansion is {@code checkstyle-suppressions}, the header
+     * {@code checkstyle-header}, and the rest of the expansion {@code checkstyle-properties}.
+     */
+    @Test
+    void two_checkstyle_executions_are_two_runs_and_a_classpath_rule_set_has_its_keys(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, SPRING_CLOUD_BUILD.formatted("false"));
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.values())
+                .containsEntry("checkstyle", "checkstyle.xml")
+                .containsEntry(
+                        "checkstyle-classpath",
+                        List.of(
+                                "io.spring.javaformat:spring-javaformat-checkstyle:0.0.47",
+                                "org.springframework.cloud:spring-cloud-build-tools:5.0.3",
+                                "io.spring.nohttp:nohttp-checkstyle:0.0.11"))
+                .containsEntry("checkstyle-version", "12.1.2")
+                .containsEntry("checkstyle-header", "checkstyle-header.txt")
+                .containsEntry(
+                        "checkstyle-suppressions",
+                        "https://raw.githubusercontent.com/spring-cloud/spring-cloud-build/master/checkstyle-suppressions.xml")
+                .containsEntry(
+                        "checkstyle-properties",
+                        Map.of(
+                                "checkstyle.build.directory",
+                                "target",
+                                "checkstyle.additional.suppressions.file",
+                                "src/checkstyle/checkstyle-suppressions.xml",
+                                "checkstyle.header.check",
+                                "src/checkstyle/header-check.txt"))
+                .containsEntry("sources", List.of("src/main/java", "src/test/java"));
+        assertThat(lint.entries()).containsOnlyKeys("no-http-checkstyle-validation");
+        assertThat(lint.entries().get("no-http-checkstyle-validation"))
+                .containsEntry(
+                        "checkstyle",
+                        "https://raw.githubusercontent.com/spring-cloud/spring-cloud-build/master/nohttp-checkstyle.xml")
+                .containsEntry("sources", List.of("."))
+                .containsEntry("exclude", List.of("**/.idea/**/*", "**/.git/**/*", "**/target/**/*", "**/*.log"))
+                .containsEntry(
+                        "checkstyle-classpath",
+                        List.of(
+                                "io.spring.javaformat:spring-javaformat-checkstyle:0.0.47",
+                                "org.springframework.cloud:spring-cloud-build-tools:5.0.3",
+                                "io.spring.nohttp:nohttp-checkstyle:0.0.11"))
+                .doesNotContainKey("checkstyle-header")
+                .doesNotContainKey("checkstyle-properties");
+        assertThat(messages(result)).noneMatch(m -> m.contains("copy the rule set in"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("[lint.no-http-checkstyle-validation]");
+        PluginConfig reparsed =
+                JkBuildParser.parse(rendered).pluginConfig("lint").orElseThrow();
+        assertThat(reparsed.entries()).containsOnlyKeys("no-http-checkstyle-validation");
+        assertThat(reparsed.stringMap("checkstyle-properties")).containsEntry("checkstyle.build.directory", "target");
+    }
+
+    /** An execution Maven skips ({@code <skip>true</skip>}) is no run: a row says so, and the table carries the other. */
+    @Test
+    void a_skipped_checkstyle_execution_is_a_row_not_a_run(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, SPRING_CLOUD_BUILD.formatted("true"));
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.values()).containsEntry("checkstyle", "checkstyle.xml");
+        assertThat(lint.entries()).isEmpty();
+        assertThat(messages(result))
+                .anyMatch(m -> m.contains("`no-http-checkstyle-validation`") && m.contains("skipped"));
+    }
+
+    private static final String SPRING_CLOUD_BUILD = """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>org.springframework.cloud</groupId>
+              <artifactId>spring-cloud-build</artifactId>
+              <version>5.0.3</version>
+              <properties>
+                <disable.nohttp.checks>%s</disable.nohttp.checks>
+                <checkstyle.suppressions.file>https://raw.githubusercontent.com/spring-cloud/spring-cloud-build/master/checkstyle-suppressions.xml</checkstyle.suppressions.file>
+                <checkstyle.additional.suppressions.file>${project.basedir}/src/checkstyle/checkstyle-suppressions.xml</checkstyle.additional.suppressions.file>
+              </properties>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>3.6.0</version>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <artifactId>checkstyle</artifactId>
+                        <version>12.1.2</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>io.spring.javaformat</groupId>
+                        <artifactId>spring-javaformat-checkstyle</artifactId>
+                        <version>0.0.47</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>org.springframework.cloud</groupId>
+                        <artifactId>spring-cloud-build-tools</artifactId>
+                        <version>5.0.3</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>io.spring.nohttp</groupId>
+                        <artifactId>nohttp-checkstyle</artifactId>
+                        <version>0.0.11</version>
+                      </dependency>
+                    </dependencies>
+                    <executions>
+                      <execution>
+                        <id>checkstyle-validation</id>
+                        <phase>validate</phase>
+                        <configuration>
+                          <configLocation>checkstyle.xml</configLocation>
+                          <headerLocation>checkstyle-header.txt</headerLocation>
+                          <propertyExpansion>
+                            checkstyle.build.directory=${project.build.directory}
+                            checkstyle.suppressions.file=${checkstyle.suppressions.file}
+                            checkstyle.additional.suppressions.file=${checkstyle.additional.suppressions.file}
+                            checkstyle.header.check=${maven.multiModuleProjectDirectory}/src/checkstyle/header-check.txt
+                          </propertyExpansion>
+                          <consoleOutput>true</consoleOutput>
+                          <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                        </configuration>
+                        <goals><goal>check</goal></goals>
+                      </execution>
+                      <execution>
+                        <id>no-http-checkstyle-validation</id>
+                        <phase>validate</phase>
+                        <configuration>
+                          <skip>${disable.nohttp.checks}</skip>
+                          <configLocation>https://raw.githubusercontent.com/spring-cloud/spring-cloud-build/master/nohttp-checkstyle.xml</configLocation>
+                          <includes>**/*</includes>
+                          <excludes>**/.idea/**/*,**/.git/**/*,**/target/**/*,**/*.log</excludes>
+                          <sourceDirectories>./</sourceDirectories>
+                        </configuration>
+                        <goals><goal>check</goal></goals>
+                      </execution>
+                    </executions>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """;
 
     /** A Checkstyle plugin left at its defaults reads a rule set the module does not hold. */
     @Test
