@@ -109,6 +109,85 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void a_resolve_failure_why_line_carries_the_whole_explanation_not_its_header() {
+        String explanation = "\u203c Cannot resolve dependencies:\n"
+                + "  \u2502 ch.qos.logback:logback-classic 1.5.6 depends on org.slf4j:slf4j-api [2.0.13,+\u221e)\n"
+                + "  \u2502 The project depends on ch.qos.logback:logback-classic 1.5.6\n"
+                + "  \u2502 Therefore, not org.slf4j:slf4j-api [2.0.13,+\u221e) and the project cannot be resolved\n"
+                + "  \u2502 The project depends on org.slf4j:slf4j-api 1.7.36\n"
+                + "  \u2502 Therefore, the project's requirements cannot be resolved\n"
+                + "\n"
+                + "Suggestions:\n"
+                + "  \u2022 Relax or remove the project constraint on ch.qos.logback:logback-classic\n"
+                + "  \u2022 Relax or remove the project constraint on org.slf4j:slf4j-api\n";
+        BuildRecord.Diag err = new BuildRecord.Diag(
+                "error",
+                "/ws/app",
+                "parse-build",
+                "verbatim",
+                explanation,
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0);
+        BuildRecord r = record(false, List.of(), List.of(err), List.of(task("parse-build", "resolve", "FAIL", 300)));
+        String md = JkResultsMarkdown.render(r);
+        String why = md.substring(0, md.indexOf("Diagnostics: "));
+        assertThat(why)
+                .as("the why-line is the solver's whole explanation, each line a continuation of the bullet")
+                .contains(
+                        "- `app` `parse-build`: \u203c Cannot resolve dependencies:\n"
+                                + "    \u2502 ch.qos.logback:logback-classic 1.5.6 depends on org.slf4j:slf4j-api [2.0.13,+\u221e)\n")
+                .contains("    \u2502 Therefore, the project's requirements cannot be resolved\n")
+                .contains(
+                        "\n\n  Suggestions:\n    \u2022 Relax or remove the project constraint on ch.qos.logback:logback-classic\n"
+                                + "    \u2022 Relax or remove the project constraint on org.slf4j:slf4j-api\n");
+    }
+
+    @Test
+    void a_long_explanation_line_wraps_under_its_own_rail() {
+        String chain = "  \u2502 " + "org.example.group:an-artifact-with-a-long-name 1.0.0 depends on ".repeat(3)
+                + "org.example:leaf [1.0,2.0)";
+        BuildRecord.Diag err = new BuildRecord.Diag(
+                "error",
+                "/ws/app",
+                "parse-build",
+                "verbatim",
+                "\u203c Cannot resolve dependencies:\n" + chain + "\n",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0);
+        BuildRecord r = record(false, List.of(), List.of(err), List.of(task("parse-build", "resolve", "FAIL", 300)));
+        String why = JkResultsMarkdown.render(r);
+        why = why.substring(0, why.indexOf("Diagnostics: "));
+        List<String> lines = why.lines().toList();
+        assertThat(lines)
+                .as("no why line runs past the wrap width, and a wrapped remainder hangs two columns inside the rail")
+                .allMatch(l -> l.length() <= JkResultsMarkdown.MAX_WHY_WRAP + 2)
+                .anyMatch(l -> l.startsWith("    \u2502 org.example.group"))
+                .anyMatch(l -> l.startsWith("      ") && l.endsWith("org.example:leaf [1.0,2.0)"));
+    }
+
+    @Test
     void a_launcher_failure_is_a_failed_step_with_the_runner_output_not_a_red_test() {
         String message = "test discovery exited 70 before any test ran"
                 + " — TestEngine with ID 'junit-jupiter' failed to discover tests\n"

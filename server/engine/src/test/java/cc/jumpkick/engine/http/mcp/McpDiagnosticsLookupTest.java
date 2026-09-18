@@ -56,6 +56,24 @@ class McpDiagnosticsLookupTest {
         assertThat(deduped.getFirst().get("count")).isEqualTo(2);
     }
 
+    /** The resolver's explanation is one diagnostic: the header as the message, the whole chain as its detail. */
+    @Test
+    void a_resolve_failure_is_one_row_whose_detail_carries_the_whole_explanation() {
+        String chain = "  \u2502 ch.qos.logback:logback-classic 1.5.6 depends on org.slf4j:slf4j-api [2.0.13,+\u221e)\n"
+                + "  \u2502 The project depends on org.slf4j:slf4j-api 1.7.36\n"
+                + "  \u2502 Therefore, the project's requirements cannot be resolved\n\nSuggestions:\n"
+                + "  \u2022 Relax or remove the project constraint on org.slf4j:slf4j-api";
+        Map<String, Object> diag = Map.of(
+                "severity", "error",
+                "code", "verbatim",
+                "dir", "/ws/app",
+                "message", "\u203c Cannot resolve dependencies:\n" + chain);
+        List<Map<String, Object>> rows = McpDiagnostics.unique(List.of(diag), true);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().get("message")).isEqualTo("\u203c Cannot resolve dependencies:");
+        assertThat(rows.getFirst().get("detail")).isEqualTo(chain);
+    }
+
     @Test
     void explicit_run_id_bypasses_the_dir_filter() {
         Map<String, Object> rec = requireNonNull(McpDiagnostics.findRun(List.of(FAIL, OTHER), "x", "/ws"));
