@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -188,6 +189,13 @@ public final class TaskForecaster {
             dirByName.put(unit.manifest().project().name(), unit.dir());
         }
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+            // A cancelled job stops at the module boundary: a walk over a thousand-module reactor
+            // otherwise runs on for minutes after the client has gone, and the abandoned forecast
+            // holds its request's scope the whole time.
+            if (SessionContext.current().cancelled()) {
+                throw new CancellationException("forecast cancelled after " + out.size() + " of "
+                        + graph.topoOrder().size() + " modules");
+            }
             // Scope-aware: a dirty *test-only* sibling (e.g. cli → engine via test-dependencies)
             // must not force compile/package/native — only tests re-run against the new jar.
             // Treating every graph edge as compile-dirty was pricing full native-image (~35s)

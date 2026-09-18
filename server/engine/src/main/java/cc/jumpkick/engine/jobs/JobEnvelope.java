@@ -605,6 +605,10 @@ public final class JobEnvelope {
                         JobWorkers.shutdownForRequest(eventRequestId, 0L);
                         LiveJobRegistry.interruptRunner(runnerRef.get());
                     });
+            // The runner is abandoned: whatever it is still doing, the facts it memoized for this
+            // request are released now rather than when — if ever — its thread reaches its own
+            // teardown. Idempotent with that teardown.
+            if (done.getCount() > 0) RequestScope.release(host.runIo(eventRequestId));
         } finally {
             // A late runner/cancel interrupt may have landed after the joins: clear it before any
             // teardown I/O, or journal completion dies on ClosedByInterruptException and jk jobs

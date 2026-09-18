@@ -155,6 +155,25 @@ class RequestScopeTest {
         assertThat(ledger).isNotNull(); // still strongly held here, and the scope is gone regardless
     }
 
+    @Test
+    void a_named_ledgers_scope_can_be_released_from_a_thread_that_does_not_hold_it() throws Exception {
+        // The engine gives up waiting on an abandoned runner and releases its scope from the
+        // connection thread; the runner's own release, whenever it comes, finds nothing to do.
+        IoLedger ledger = new IoLedger();
+        IoLedger.open(ledger);
+        try {
+            RequestScope before = RequestScope.current();
+            before.get("k", k -> "heavy");
+            Thread other = Thread.ofPlatform().start(() -> RequestScope.release(ledger));
+            other.join(10_000);
+            assertThat(RequestScope.current()).isNotSameAs(before);
+            assertThat(RequestScope.current().size()).isZero();
+            RequestScope.release();
+        } finally {
+            IoLedger.close();
+        }
+    }
+
     /** Run {@code work} on the shared CPU pool and hand back its result. */
     private static <T> T onCpuPool(Supplier<T> work) {
         return CompletableFuture.supplyAsync(work, JkThreads.cpu()).join();
