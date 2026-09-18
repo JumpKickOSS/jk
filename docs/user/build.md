@@ -39,7 +39,9 @@ in a dependency recompiles and re-packages that dependency and re-runs the tests
 but leaves every consumer's compile cached: no compiler forks. A change to a public signature, an
 inlined constant or an inline function recompiles the consumers, and `jk explain --verbose` names
 the dependency whose API moved. Annotation processors are keyed on their full content, so a
-processor jar change always recompiles the modules that run it.
+processor jar change always recompiles the modules that run it. A jar's ABI is read from its
+central directory as a stream, a window of names at a time, so a bundle jar of several hundred
+thousand classes is keyed in the same few megabytes of engine heap as a small one.
 
 When a Java consumer does recompile, its Zinc session is handed the analyses of the workspace
 siblings on its classpath, so a changed sibling invalidates only the consumer classes that

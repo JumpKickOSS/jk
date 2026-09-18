@@ -44,6 +44,29 @@ class ClasspathAbiTest {
     }
 
     @Test
+    void a_jar_written_in_reverse_order_shares_the_token_of_the_classes_dir(@TempDir Path dir) throws Exception {
+        byte[] cls = classWithReturn(1);
+        List<String> names = List.of("b/B.class", "a/b/cd.class", "a/b/c/X.class", "a/A.class", "a/bc.class");
+        Path classes = dir.resolve("classes");
+        for (String name : names) writeClass(classes, name, cls);
+        Path jar = dir.resolve("reversed.jar");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+            for (String name : names.reversed()) {
+                out.putNextEntry(new ZipEntry(name));
+                out.write(cls);
+                out.closeEntry();
+            }
+        }
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                assertThat(ClasspathAbi.token(jar)).isEqualTo(ClasspathAbi.token(classes));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
     void body_only_and_private_and_resource_keep_the_token(@TempDir Path dir) throws Exception {
         Path jar1 = jar(dir.resolve("a.jar"), "C.class", classWithReturn(1));
         Path jar2 = jar(dir.resolve("b.jar"), "C.class", classWithReturn(2));

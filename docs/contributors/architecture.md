@@ -394,7 +394,11 @@ and exclusions stay GA-scoped.
    by declaration digest (`JavaSourceApi`), and options, the JDK and the compiler closure ride
    along. The processor path stays full content. A body-only change in a dependency therefore
    leaves every consumer's compile key — and its freshness stamp — alone; the compilers still see
-   the full jars and directories. **Package, test, native and image** keys hash full bytes
+   the full jars and directories. A jar's ABI is extracted through `JarClassReader`, which scans
+   the central directory as a stream and holds one window of class names at a time (never
+   `java.util.zip.ZipFile`, whose heap-resident directory and per-entry objects cost a hundred
+   megabytes on a bundle jar of four hundred thousand classes), and digests each class's API
+   lines as they are read, so no jar's size decides whether a build fits the engine's heap. **Package, test, native and image** keys hash full bytes
    (`ClasspathFingerprint`), so the same change re-packages the producer and re-runs every suite
    whose runtime classpath carries it. Artifact keys also carry the producing engine's identity
    (`BuildIdentity.buildId()`), so a reinstalled engine re-runs plugin steps, guard lanes,

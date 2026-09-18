@@ -6,7 +6,6 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,9 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
-import java.util.zip.ZipFile;
 
 /**
  * Whole-entry JVM ABI token for a jar or classes directory. {@code abi:<sha256>} of the sorted
@@ -162,20 +159,17 @@ public final class ClasspathAbi {
         }
     }
 
+    /**
+     * The classes in name order through {@link JarClassReader}, which holds a window of names at a
+     * time rather than the jar's whole directory: a bundle jar of four hundred thousand classes
+     * costs the same few megabytes as a small one.
+     */
     private static void extractJar(Path jar, Lines out) throws IOException {
-        try (ZipFile zip = new ZipFile(jar.toFile())) {
-            List<? extends ZipEntry> classes = zip.stream()
-                    .filter(e -> !e.isDirectory() && e.getName().endsWith(".class"))
-                    .sorted(Comparator.comparing(ZipEntry::getName))
-                    .toList();
-            for (ZipEntry e : classes) {
-                byte[] bytes;
-                try (InputStream in = zip.getInputStream(e)) {
-                    bytes = in.readAllBytes();
-                }
-                out.accept(e.getName());
+        try (JarClassReader classes = JarClassReader.open(jar)) {
+            classes.forEachClass((name, bytes) -> {
+                out.accept(name);
                 for (String line : ClassAbi.apiLines(bytes)) out.accept(line);
-            }
+            });
         }
     }
 }
