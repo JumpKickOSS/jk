@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import java.util.ArrayList;
@@ -21,17 +22,21 @@ import org.jspecify.annotations.Nullable;
  * [application] assembly = true}; a relocation, filter or transformer jk's merge rules do not
  * cover is a row. {@code spring-boot-maven-plugin} is the {@code [spring-boot]} table at the Boot
  * version the chain resolves; {@code quarkus-maven-plugin} is the {@code [quarkus]} table at the
- * platform version; {@code native-maven-plugin} is {@code [native]}. Jib and the Docker plugins are
- * rows carrying the {@code [image]} lines to paste, and a war has no jk shape at all.
+ * platform version; {@code native-maven-plugin} is {@code [native]}. Jib's and the Docker plugins'
+ * base and target images are the {@code [image]} table, and a war has no jk shape at all.
  */
 final class PackagingPlugins {
 
-    /** What the packaging plugins add: a fat jar, a native table, a Boot table and a Quarkus table, each optional. */
+    /**
+     * What the packaging plugins add: a fat jar, a native table, a Boot table, a Quarkus table and
+     * an image table, each optional ({@code image} is {@link ImageTable#EMPTY} without one).
+     */
     record Packaging(
             boolean fatJar,
             JkBuild.@Nullable NativeConfig nativeConfig,
             @Nullable PluginConfig springBoot,
-            @Nullable PluginConfig quarkus) {}
+            @Nullable PluginConfig quarkus,
+            ImageTable image) {}
 
     /** One shade {@code <relocation>}: the package moved and where to; {@code shaded} is null when the POM omits it. */
     record Relocation(String pattern, @Nullable String shaded) {
@@ -75,17 +80,17 @@ final class PackagingPlugins {
         JkBuild.NativeConfig nativeConfig = active(em, NATIVE, "no `[native]` table is written", report)
                 .map(plugin -> mapNative(plugin, mainClass))
                 .orElse(null);
-        active(em, "jib-maven-plugin", "no `[image]` lines are proposed", report)
-                .ifPresent(jib -> reportImage(jib, report));
-        active(em, "docker-maven-plugin", "no `[image]` lines are proposed", report)
-                .ifPresent(docker -> reportImage(docker, report));
+        ImageTable image = active(em, "jib-maven-plugin", "no `[image]` table is written", report)
+                .or(() -> active(em, "docker-maven-plugin", "no `[image]` table is written", report))
+                .map(plugin -> mapImage(plugin, report))
+                .orElse(ImageTable.EMPTY);
         // Packaging decides: a parent's <build><plugins> declaration of the war plugin is inherited
         // by every jar module and binds nothing there.
         if ("war".equals(model.getPackaging())) {
             report.error("packaging `war` (`maven-war-plugin`) is not supported: jk builds jars, Boot jars and"
                     + " native images. Keep building this module with `jk mvn package`.");
         }
-        return new Packaging(fatJar, nativeConfig, springBoot, quarkus);
+        return new Packaging(fatJar, nativeConfig, springBoot, quarkus, image);
     }
 
     /** Every {@code <relocation>} of the module's shade plugin, in declaration order; empty without the plugin. */
@@ -304,10 +309,12 @@ final class PackagingPlugins {
 
     /**
      * Jib's {@code <from><image>} / {@code <to><image>} (and the Docker plugins' {@code <from>} /
-     * {@code <imageName>} / {@code <name>}) as the {@code [image]} lines to paste: jk builds the
-     * image from the module itself, so the table is the whole configuration.
+     * {@code <baseImage>} and {@code <imageName>} / {@code <name>}) as the {@code [image]} table's
+     * {@code base}, {@code registry}, {@code name} and {@code tag}: jk builds the image from the
+     * module itself, so the table is the whole configuration and a row points at the keys the
+     * plugin's other settings land in.
      */
-    private static void reportImage(Plugin plugin, ImportReport.Builder report) {
+    private static ImageTable mapImage(Plugin plugin, ImportReport.Builder report) {
         String base = null;
         String target = null;
         for (Xpp3Dom config : PluginFacts.configurations(plugin)) {
@@ -329,36 +336,50 @@ final class PackagingPlugins {
                 if (!names.isEmpty()) target = names.getFirst();
             }
         }
-        StringBuilder lines = new StringBuilder("[image]");
-        if (base != null) lines.append(" base = \"").append(base).append('"');
-        if (target != null) lines.append(imageReference(target));
-        report.warning("`" + plugin.getArtifactId() + "` — jk builds the image itself (`jk image`); paste `"
-                + lines + "` into jk.toml" + (base == null && target == null ? " and fill in the keys" : "")
-                + ", then compare against docs/user/images.md for ports, env and labels.");
+        ImageReference reference = target == null ? new ImageReference(null, null, null) : ImageReference.parse(target);
+        report.warning("`" + plugin.getArtifactId() + "` `<from>` and `<to>` are written as `[image]` base, registry,"
+                + " name and tag; jk builds the image itself (`jk image`)"
+                + (base == null && target == null ? " — the plugin names neither image, so fill the keys in" : "")
+                + ". Ports, env, labels and the entry point live under the same table: see docs/user/images.md.");
+        return new ImageTable(
+                base,
+                reference.name(),
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                reference.registry(),
+                reference.tag(),
+                List.of(),
+                null,
+                null,
+                null,
+                null);
     }
 
-    /** {@code registry/name:tag} as the {@code [image]} keys, each written only when the reference carries it. */
-    private static String imageReference(String reference) {
-        String rest = reference;
-        String tag = null;
-        int colon = rest.lastIndexOf(':');
-        if (colon > rest.lastIndexOf('/')) {
-            tag = rest.substring(colon + 1);
-            rest = rest.substring(0, colon);
-        }
-        String registry = null;
-        int slash = rest.indexOf('/');
-        if (slash > 0) {
-            String head = rest.substring(0, slash);
-            if (head.contains(".") || head.contains(":") || head.equals("localhost")) {
-                registry = head;
-                rest = rest.substring(slash + 1);
+    /** {@code registry/name:tag} split into the {@code [image]} keys, each set only when the reference carries it. */
+    record ImageReference(
+            @Nullable String registry,
+            @Nullable String name,
+            @Nullable String tag) {
+        static ImageReference parse(String reference) {
+            String rest = reference;
+            String tag = null;
+            int colon = rest.lastIndexOf(':');
+            if (colon > rest.lastIndexOf('/')) {
+                tag = rest.substring(colon + 1);
+                rest = rest.substring(0, colon);
             }
+            String registry = null;
+            int slash = rest.indexOf('/');
+            if (slash > 0) {
+                String head = rest.substring(0, slash);
+                if (head.contains(".") || head.contains(":") || head.equals("localhost")) {
+                    registry = head;
+                    rest = rest.substring(slash + 1);
+                }
+            }
+            return new ImageReference(registry, rest, tag);
         }
-        StringBuilder out = new StringBuilder();
-        if (registry != null) out.append(" registry = \"").append(registry).append('"');
-        out.append(" name = \"").append(rest).append('"');
-        if (tag != null) out.append(" tag = \"").append(tag).append('"');
-        return out.toString();
     }
 }

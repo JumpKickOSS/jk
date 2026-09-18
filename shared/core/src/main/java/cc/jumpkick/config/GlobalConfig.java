@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.model.ImageTable;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -205,20 +207,20 @@ public final class GlobalConfig {
 
     /**
      * User-global {@code [image]} defaults from {@code ~/.jk/config.toml} — the layer under
-     * a project's {@code [image]} table ({@link JkBuildParser#imageConfig(Path)}). Lenient, like
+     * a project's {@code [image]} table ({@link JkBuild#image()}). Lenient, like
      * everything else read from this file: a malformed config yields
-     * {@link ManifestImage.ImageConfigData#EMPTY} rather than failing a packaging run.
+     * {@link ImageTable#EMPTY} rather than failing a packaging run.
      */
-    public static ManifestImage.ImageConfigData image() {
+    public static ImageTable image() {
         return image(JkDirs.userConfigFile());
     }
 
     /** As {@link #image()} but against an explicit config file — for tests. */
-    static ManifestImage.ImageConfigData image(Path configFile) {
+    static ImageTable image(Path configFile) {
         try {
-            return parseConfig(configFile).map(ManifestImage::parse).orElse(ManifestImage.ImageConfigData.EMPTY);
+            return parseConfig(configFile).map(ManifestImage::parse).orElse(ImageTable.EMPTY);
         } catch (RuntimeException e) {
-            return ManifestImage.ImageConfigData.EMPTY;
+            return ImageTable.EMPTY;
         }
     }
 

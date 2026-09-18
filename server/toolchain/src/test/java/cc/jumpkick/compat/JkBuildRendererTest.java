@@ -11,6 +11,7 @@ import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
@@ -64,6 +65,41 @@ class JkBuildRendererTest {
         assertThat(out).contains("main       = \"com.example.App\"");
         assertThat(out).contains("assembly = true");
         assertThat(out).contains("[native]");
+    }
+
+    @Test
+    void renders_the_image_table_with_only_the_keys_that_are_set() {
+        ImageTable image = new ImageTable(
+                "eclipse-temurin:{java-major-version}-jre",
+                "ex/fastcli",
+                null,
+                List.of(8080, 9990),
+                Map.of("LANG", "C.UTF-8"),
+                Map.of(),
+                "ghcr.io",
+                "1.0.0",
+                List.of(),
+                null,
+                null,
+                null,
+                null);
+        JkBuild model = JkBuild.builder(new Project("com.example", "widget", "1.0.0", 25))
+                .image(image)
+                .build();
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains(
+                        "\n[image]\nbase = \"eclipse-temurin:{java-major-version}-jre\"\nname = \"ex/fastcli\"\n"
+                                + "registry = \"ghcr.io\"\ntag = \"1.0.0\"\nports = [8080, 9990]\nenv = { LANG = \"C.UTF-8\" }\n")
+                .doesNotContain("user =")
+                .doesNotContain("labels =");
+        assertThat(JkBuildParser.parse(out).image())
+                .as("the table reads back as it was written")
+                .isEqualTo(image);
+        assertThat(JkBuildRenderer.render(JkBuild.builder(new Project("com.example", "widget", "1.0.0", 25))
+                        .build()))
+                .as("no table for a module that builds no image")
+                .doesNotContain("[image]");
     }
 
     @Test

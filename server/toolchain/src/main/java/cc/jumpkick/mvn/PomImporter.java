@@ -165,6 +165,7 @@ public final class PomImporter {
                 .profiles(toProfiles(profiles.profiles()))
                 .application(application)
                 .nativeConfig(packaging.nativeConfig())
+                .image(packaging.image())
                 .pluginConfig(packaging.springBoot())
                 .pluginConfig(packaging.quarkus())
                 .pluginConfig(generators.openapi())

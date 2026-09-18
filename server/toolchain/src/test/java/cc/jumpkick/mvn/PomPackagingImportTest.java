@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import java.util.List;
@@ -14,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Where the packaging plugins land: Shade and {@code jar-with-dependencies} in {@code [application]
  * assembly}, Boot in {@code [spring-boot]}, Quarkus in {@code [quarkus]}, native-image in {@code
- * [native]}, Jib in an {@code [image]} row, and a war in a Tier-3 row.
+ * [native]}, Jib and the Docker plugins in {@code [image]}, and a war in a Tier-3 row.
  */
 class PomPackagingImportTest {
 
@@ -236,7 +237,7 @@ class PomPackagingImportTest {
     }
 
     @Test
-    void native_plugin_is_the_native_table_and_jib_is_an_image_row(@TempDir Path tempDir) throws Exception {
+    void native_plugin_is_the_native_table_and_jib_is_the_image_table(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importFixture(tempDir, "plugins", "native-image-pom.xml");
         JkBuild build = result.jkBuild();
         List<String> messages = TestImporters.messages(result);
@@ -249,17 +250,27 @@ class PomPackagingImportTest {
         assertThat(nativeConfig.name()).isEqualTo("fastcli");
         assertThat(nativeConfig.args()).containsExactly("--no-fallback", "-H:+ReportExceptionStackTraces");
         assertThat(nativeConfig.enabled()).isEqualTo(JkBuild.NativeMode.SUPPORTED);
+        ImageTable image = build.image();
+        assertThat(image.base()).isEqualTo("eclipse-temurin:21-jre");
+        assertThat(image.registry()).isEqualTo("ghcr.io");
+        assertThat(image.name()).isEqualTo("ex/fastcli");
+        assertThat(image.tag()).isEqualTo("1.0.0");
         assertThat(messages)
-                .anyMatch(m -> m.startsWith("`jib-maven-plugin` — jk builds the image itself (`jk image`); paste"
-                        + " `[image] base = \"eclipse-temurin:21-jre\" registry = \"ghcr.io\" name = \"ex/fastcli\""
-                        + " tag = \"1.0.0\"` into jk.toml"))
+                .anyMatch(m ->
+                        m.startsWith("`jib-maven-plugin` `<from>` and `<to>` are written as `[image]` base, registry,"
+                                + " name and tag; jk builds the image itself (`jk image`)"))
+                .noneMatch(m -> m.contains("paste"))
                 .noneMatch(m -> m.startsWith("`<plugin>"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
                 .contains(
-                        "[native]\nname       = \"fastcli\"\nargs       = [\"--no-fallback\", \"-H:+ReportExceptionStackTraces\"]\n");
+                        "[native]\nname       = \"fastcli\"\nargs       = [\"--no-fallback\", \"-H:+ReportExceptionStackTraces\"]\n")
+                .contains(
+                        "\n[image]\nbase = \"eclipse-temurin:21-jre\"\nname = \"ex/fastcli\"\nregistry = \"ghcr.io\"\n"
+                                + "tag = \"1.0.0\"\n");
         JkBuild reparsed = JkBuildParser.parse(rendered);
+        assertThat(reparsed.image()).isEqualTo(image);
         assertThat(reparsed.nativeConfigOpt().orElseThrow().args()).isEqualTo(nativeConfig.args());
     }
 

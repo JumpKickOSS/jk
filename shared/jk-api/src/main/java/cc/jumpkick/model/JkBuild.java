@@ -48,7 +48,9 @@ public record JkBuild(
          * {@code [publish]}: the POM metadata a release carries — name, url, licenses, developers,
          * scm. {@code null} when the manifest (and its workspace root) declares none.
          */
-        @Nullable PomMetadata publish) {
+        @Nullable PomMetadata publish,
+        /** {@code [image]}: the OCI image the module builds; {@link ImageTable#EMPTY} when the table is absent. */
+        ImageTable image) {
 
     public JkBuild {
         Objects.requireNonNull(project, "project");
@@ -70,6 +72,7 @@ public record JkBuild(
         build = build == null ? Build.EMPTY : build;
         format = format == null ? FormatConfig.EMPTY : format;
         variants = variants == null ? Variants.EMPTY : variants;
+        image = image == null ? ImageTable.EMPTY : image;
     }
 
     /** Project + deps only; anything richer uses {@link #builder(Project)}. */
@@ -90,7 +93,8 @@ public record JkBuild(
                 FormatConfig.EMPTY,
                 Variants.EMPTY,
                 null,
-                null);
+                null,
+                ImageTable.EMPTY);
     }
 
     /** Project + deps + repos; anything richer uses {@link #builder(Project)}. */
@@ -111,7 +115,8 @@ public record JkBuild(
                 FormatConfig.EMPTY,
                 Variants.EMPTY,
                 null,
-                null);
+                null,
+                ImageTable.EMPTY);
     }
 
     /** {@code [application].main}, or {@code null} when {@code [application]} is absent or unset. */
@@ -166,7 +171,8 @@ public record JkBuild(
                 format,
                 variants,
                 install,
-                publish);
+                publish,
+                image);
     }
 
     /** This build without the plugin config {@code id} (no-op when absent). */
@@ -190,7 +196,8 @@ public record JkBuild(
                 format,
                 variants,
                 install,
-                publish);
+                publish,
+                image);
     }
 
     /**
@@ -218,7 +225,8 @@ public record JkBuild(
                 format,
                 variants,
                 install,
-                publish);
+                publish,
+                image);
     }
 
     /** This build with its {@code [plugins]} list replaced (user-config merge / tests). */
@@ -239,7 +247,8 @@ public record JkBuild(
                 format,
                 variants,
                 install,
-                publish);
+                publish,
+                image);
     }
 
     /** This build with its {@code [build]} block replaced — the variant extra-src fold point. */
@@ -260,7 +269,8 @@ public record JkBuild(
                 format,
                 variants,
                 install,
-                publish);
+                publish,
+                image);
     }
 
     /** This build with its dependencies replaced — the variant dependency-overlay fold point. */
@@ -281,7 +291,8 @@ public record JkBuild(
                 format,
                 variants,
                 install,
-                publish);
+                publish,
+                image);
     }
 
     /** True when the {@code [spring-boot]} plugin table is declared. */
@@ -374,7 +385,8 @@ public record JkBuild(
                 .format(format)
                 .variants(variants)
                 .install(install)
-                .publish(publish);
+                .publish(publish)
+                .image(image);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -402,7 +414,8 @@ public record JkBuild(
                 .format(format)
                 .variants(variants)
                 .install(install)
-                .publish(publish);
+                .publish(publish)
+                .image(image);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -427,6 +440,7 @@ public record JkBuild(
         private Variants variants = Variants.EMPTY;
         private @Nullable Install install;
         private @Nullable PomMetadata publish;
+        private ImageTable image = ImageTable.EMPTY;
 
         private Builder(Project project) {
             this.project = project;
@@ -507,6 +521,12 @@ public record JkBuild(
             return this;
         }
 
+        /** The {@code [image]} table; {@code null} means none. */
+        public Builder image(@Nullable ImageTable image) {
+            this.image = image == null ? ImageTable.EMPTY : image;
+            return this;
+        }
+
         public JkBuild build() {
             return new JkBuild(
                     project,
@@ -524,7 +544,8 @@ public record JkBuild(
                     format,
                     variants,
                     install,
-                    publish);
+                    publish,
+                    image);
         }
     }
 
@@ -550,7 +571,8 @@ public record JkBuild(
                 .format(format)
                 .variants(variants)
                 .install(install)
-                .publish(publish);
+                .publish(publish)
+                .image(image);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -575,7 +597,8 @@ public record JkBuild(
                 format,
                 variants,
                 install,
-                publish);
+                publish,
+                image);
     }
 
     /** True iff this is a workspace root (has a non-empty {@code workspace} block). */

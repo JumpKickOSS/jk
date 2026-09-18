@@ -5,7 +5,6 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ManifestImage;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -23,6 +22,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
@@ -306,8 +306,7 @@ public final class ImagePlans {
             @Nullable String dockerExecutableArg)
             throws IOException {
         // Merge user-global [image] from ~/.jk/config.toml underneath the project layer.
-        ManifestImage.ImageConfigData data =
-                ManifestImage.merge(JkBuildParser.imageConfig(jkBuild), GlobalConfig.image());
+        ImageTable data = ManifestImage.merge(project.image(), GlobalConfig.image());
 
         // Resolve the java major version for template substitution.
         int javaMajor = project.project().javaRelease();

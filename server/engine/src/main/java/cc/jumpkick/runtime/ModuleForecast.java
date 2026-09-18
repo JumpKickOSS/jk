@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -20,7 +19,6 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -540,12 +538,7 @@ final class ModuleForecast {
         }
 
         producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
-        try {
-            var img = JkBuildParser.imageConfig(ManifestPaths.manifestIn(dir));
-            producesImage = img.base() != null || img.registry() != null;
-        } catch (Exception e) {
-            Log.debug("compileGroovy: Exception ignored", e);
-        }
+        producesImage = project.image().base() != null || project.image().registry() != null;
     }
 
     /** The Kotlin and Groovy arms, over this module's dirtiness and its dependencies' hint. */
