@@ -25,7 +25,7 @@ the root lock. Never write per-module lockfiles.
 |---------|------|
 | `jk lock` | Resolve and write the lock, keeping every version it already holds; only what a changed constraint rules out moves. Metadata warm within 24h TTL (local first) |
 | `jk lock -F` | The same resolve, but every opt-in selector (`^`, `~`, range, `latest`) takes the newest version it allows; exact pins do not move. Revalidates metadata past the TTL |
-| `jk sync` | Materialize cache; `--offline-prepare` for offline CI |
+| `jk sync` | Materialize cache; `--offline-prepare` for offline CI; `--sources` fetches every library's `-sources.jar` for the IDE |
 | `jk outdated` | Current / Compatible / Latest table (exit 0 always on success) |
 | `jk update` | Rewrite declared pins in `jk.toml` to the newest stable on the same major, then relock — [below](#jk-update) |
 | `jk build` | Uses the lock; does not re-resolve |

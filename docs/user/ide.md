@@ -31,6 +31,18 @@ IntelliJ and JDT compile into the IDE-owned `target/jdt/classes/{main,test}` of 
 never into jk's `target/classes`: a gutter run leaves nothing where the action cache stamps
 jk's own compile, so the next `jk build` is still a cache hit.
 
+## Library sources
+
+The `ide-model` names a sources jar for every library whose `-sources.jar` the store or the Maven
+local repository holds, pinned in the lock or not, and every consumer attaches it: the IntelliJ
+plugin's project libraries, `jk ide --idea` / `--vscode` files, BSP `dependencyModules`.
+`jk sync --sources` fetches one for every library in the lock that publishes it (a library without
+one is skipped, not an error); in IntelliJ, **Tools → JumpKick → Sync dependencies and sources**
+runs the same command, and the next resolve attaches them. A resolve alone never fetches sources —
+it lists what is already on disk — so a workspace navigates into decompiled classes until that one
+sync has run. `jk lock --sources` additionally pins each sources jar's checksum in the lock, and a
+pinned jar is verified against it.
+
 ## BSP
 
 | Capability | Status |
@@ -115,7 +127,7 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
 - **IntelliJ** — the plugin in `clients/intellij/` is the IntelliJ path; package it with
   `./scripts/package-intellij.sh`. It is an IntelliJ *external system*: opening a project with
   `jk.toml` links it and resolves modules, every source and test-suite root, libraries with
-  sources, per-module JDKs and the `target/jdt` compiler outputs from the engine `ide-model`
+  sources ([above](#library-sources)), per-module JDKs and the `target/jdt` compiler outputs from the engine `ide-model`
   (`jk ide --print-model`), with no `*.iml` or `.idea/modules.xml` written. A change to
   `jk.toml` or `jk-lock.toml` — from the editor or a terminal `jk add` — re-resolves after a
   2 s quiet window; **Tools → JumpKick → Sync project** re-resolves on demand with progress in

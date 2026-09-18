@@ -48,6 +48,28 @@ public final class ArtifactLocator {
     }
 
     /**
+     * The row's {@code -sources.jar}: verified against the lock's {@code sources} pin when the row
+     * carries one, else wherever a sync or the Maven local repository left it. An editor reads a
+     * sources jar and a build never does, so an unpinned one is answered without a digest.
+     */
+    public Optional<Path> locateSources(Lockfile.Artifact pkg) {
+        if (pkg.checksum() == null || pkg.name().indexOf(':') < 0) return Optional.empty();
+        Coordinate sources = new Coordinate(pkg.moduleGroup(), pkg.moduleArtifact(), pkg.version(), "sources", "jar");
+        String rel = MavenLayout.artifactPath(sources);
+        String hex = pkg.sourcesChecksumHex();
+        if (hex != null) return locate(pkg.source(), rel, hex, sources.toGav());
+        if (!RepoArtifactResolver.isNamedRemote(RepoArtifactResolver.repoName(pkg.source()))) return Optional.empty();
+        Optional<Path> found =
+                RepoArtifactStore.forSource(storeRoot, pkg.source()).locate(rel);
+        if (found.isPresent()) return found.map(p -> p.toAbsolutePath().normalize());
+        Path m2 = m2Root;
+        Path m2File = m2integration && m2 != null ? MavenLayout.safeResolve(m2, rel) : null;
+        return m2File != null && Files.isRegularFile(m2File)
+                ? Optional.of(m2File.toAbsolutePath().normalize())
+                : Optional.empty();
+    }
+
+    /**
      * @param source the lock row's {@code "<name>+<url>"} source; a bare {@code jk-local} or a
      *     synthetic source reads the first-party shelf only
      */

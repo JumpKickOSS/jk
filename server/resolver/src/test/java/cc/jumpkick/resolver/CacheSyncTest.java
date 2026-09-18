@@ -164,6 +164,64 @@ class CacheSyncTest {
                 .isGreaterThan(1);
     }
 
+    @Test
+    void sources_are_fetched_for_every_row_and_a_library_without_them_is_skipped(@TempDir Path tempDir)
+            throws Exception {
+        byte[] sources = "leaf-sources".getBytes(StandardCharsets.UTF_8);
+        registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        http.served().put("/com/foo/leaf/1.0/leaf-1.0-sources.jar", sources);
+        registerJar("com.foo", "nosrc", "1.0", "nosrc".getBytes(StandardCharsets.UTF_8));
+        Lockfile lock = lockOf(pkg("com.foo:leaf", "1.0", "sha256:aa"), pkg("com.foo:nosrc", "1.0", "sha256:bb"));
+
+        List<String> skipped = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
+        var observer = new CacheSync.ProgressObserver() {
+            @Override
+            public void skipped(Lockfile.Artifact pkg) {
+                skipped.add(pkg.name());
+            }
+
+            @Override
+            public void failed(Lockfile.Artifact pkg, @Nullable String error) {
+                failed.add(pkg.name() + ": " + error);
+            }
+        };
+        CacheSync sync = newSync(tempDir);
+        assertThat(sync.syncSources(lock, observer)).isEqualTo(1);
+        assertThat(skipped).containsExactly("com.foo:nosrc");
+        assertThat(failed).isEmpty();
+        assertThat(centralStore(tempDir.resolve("cache")).locate("com/foo/leaf/1.0/leaf-1.0-sources.jar"))
+                .isPresent();
+
+        // A second pass finds the fetched jar and asks the repository for nothing new.
+        long before = http.requestsFor("/com/foo/leaf/1.0/leaf-1.0-sources.jar");
+        assertThat(sync.syncSources(lock, observer)).isZero();
+        assertThat(http.requestsFor("/com/foo/leaf/1.0/leaf-1.0-sources.jar")).isEqualTo(before);
+    }
+
+    @Test
+    void a_pinned_sources_checksum_is_held_to_its_digest(@TempDir Path tempDir) throws Exception {
+        byte[] sources = "leaf-sources".getBytes(StandardCharsets.UTF_8);
+        http.served().put("/com/foo/leaf/1.0/leaf-1.0-sources.jar", sources);
+        List<String> failed = new ArrayList<>();
+        var observer = new CacheSync.ProgressObserver() {
+            @Override
+            public void failed(Lockfile.Artifact pkg, @Nullable String error) {
+                failed.add(String.valueOf(error));
+            }
+        };
+        Lockfile wrong =
+                lockOf(pkg("com.foo:leaf", "1.0", "sha256:aa").withSourcesChecksum("sha256:" + "0".repeat(64)));
+        assertThat(newSync(tempDir).syncSources(wrong, observer)).isZero();
+        assertThat(failed).hasSize(1);
+        assertThat(failed.get(0)).contains("sources");
+
+        Lockfile right = lockOf(
+                pkg("com.foo:leaf", "1.0", "sha256:aa").withSourcesChecksum("sha256:" + Hashing.sha256Hex(sources)));
+        assertThat(newSync(tempDir.resolve("second")).syncSources(right, CacheSync.ProgressObserver.NOOP))
+                .isEqualTo(1);
+    }
+
     private CacheSync newSync(Path tempDir, boolean mirrorToM2) {
         return new CacheSync(new Cas(tempDir.resolve("cache")), new Http(), mirrorToM2);
     }

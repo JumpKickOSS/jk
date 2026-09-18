@@ -66,7 +66,7 @@ public final class SyncCommand implements CliCommand {
                 Opt.value("<url>", "Override declared repos with a single URL (for tests).", "--repo-url")
                         .hide(),
                 Opt.flag("Prepare for an offline build.", "--offline-prepare"),
-                Opt.flag("Also download sources JARs when available.", "--sources"));
+                Opt.flag("Also fetch every library's sources JAR (for the IDE).", "--sources"));
     }
 
     @Override

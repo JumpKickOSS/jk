@@ -134,10 +134,10 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
         }
     }
 
-    /** Materialize lock artifacts only (deps). */
+    /** Materialize the lock's artifacts and every library's sources jar; a Sync project then attaches them. */
     public static final class SyncDeps extends JkCliAction {
         public SyncDeps() {
-            super("Sync dependencies only", "sync");
+            super("Sync dependencies and sources", "sync", "--sources");
         }
     }
 }

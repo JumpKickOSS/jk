@@ -401,8 +401,8 @@ public final class SyncPlans {
         }
     }
 
+    /** {@code --sources}: every Maven row's {@code -sources.jar}, for the editor; a library that publishes none is skipped. */
     private static Task syncSourcesStep(boolean sources) {
-        // Sync sources JARs for packages that have sourcesChecksum pinned in lock.
         return Task.builder(TaskNames.SYNC_SOURCES)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_LOCK)
@@ -410,11 +410,11 @@ public final class SyncPlans {
                 .execute(ctx -> {
                     if (!sources) return; // opt-in only
                     Lockfile lock = ctx.require(LOCKFILE);
-                    long withSrc = lock.artifacts().stream()
-                            .filter(p -> p.sourcesChecksum() != null)
+                    long rows = lock.artifacts().stream()
+                            .filter(p -> p.checksum() != null && p.name().indexOf(':') >= 0)
                             .count();
-                    if (withSrc == 0) return;
-                    ctx.updateTicks((int) withSrc);
+                    if (rows == 0) return;
+                    ctx.updateTicks((int) rows);
                     ctx.label("sync sources");
                     Cas cas = JkStores.storeCas();
                     var observer = new CacheSync.ProgressObserver() {
@@ -427,6 +427,11 @@ public final class SyncPlans {
                         @Override
                         public void upToDate(Lockfile.Artifact pkg) {
                             ctx.progress(1);
+                        }
+
+                        @Override
+                        public void skipped(Lockfile.Artifact pkg) {
+                            ctx.progress(1); // publishes no sources jar
                         }
 
                         @Override

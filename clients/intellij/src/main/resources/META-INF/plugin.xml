@@ -36,8 +36,8 @@
               description="Re-resolve modules, roots, libraries and SDKs from the engine ide-model"/>
       <action id="JumpKick.SyncDeps"
               class="cc.jumpkick.idea.JkCliAction$SyncDeps"
-              text="Sync dependencies only"
-              description="Run jk sync (materialize lock artifacts)"/>
+              text="Sync dependencies and sources"
+              description="Run jk sync --sources (materialize lock artifacts and every library's sources jar)"/>
       <action id="JumpKick.BspInstall"
               class="cc.jumpkick.idea.JkCliAction$BspInstall"
               text="Install BSP connection"

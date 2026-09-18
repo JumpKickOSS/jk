@@ -25,13 +25,11 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
-import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.M2Dirs;
-import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
@@ -424,22 +422,12 @@ public final class IdeOps {
             if (allLibs.containsKey(pkg.name() + ":" + pkg.version())) continue;
 
             if (pkg.name().indexOf(':') < 0) continue;
-            Coordinate coord = pkg.coordinate();
 
             Path jar = locator.locate(pkg).orElse(null);
             if (jar == null) continue; // not yet synced / non-Maven dep
 
-            Path sourcesPath = null;
-            if (pkg.sourcesChecksum() != null) {
-                Coordinate srcCoord =
-                        new Coordinate(coord.group(), coord.artifact(), coord.version(), "sources", "jar");
-                sourcesPath = locator.locate(
-                                pkg.source(),
-                                MavenLayout.artifactPath(srcCoord),
-                                pkg.sourcesChecksumHex(),
-                                srcCoord.toGav())
-                        .orElse(null);
-            }
+            // Whatever `jk sync --sources` (or ~/.m2) holds for this row, pinned or not.
+            Path sourcesPath = locator.locateSources(pkg).orElse(null);
 
             String libName = pkg.name() + ":" + pkg.version();
             allLibs.put(libName, new String[] {
