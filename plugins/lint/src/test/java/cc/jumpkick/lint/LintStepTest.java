@@ -128,6 +128,33 @@ class LintStepTest {
         assertThat(tmp.resolve("scratch/lint/checkstyle/checkstyle.xml")).isEmptyFile();
     }
 
+    /** nacos's maintainer-sdk-test: every source under the roots matches an exclude glob, so there is nothing to lint. */
+    @Test
+    void a_module_whose_sources_are_all_excluded_is_a_no_op(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = lintModule(tmp, "error", SOURCE).config("exclude", List.of("**/demo/**"));
+
+        LintStep.run(io, LintTool.CHECKSTYLE);
+
+        assertThat(io.diagnostics()).isEmpty();
+        assertThat(io.labels()).containsExactly("checkstyle (no sources)");
+        assertThat(tmp.resolve("scratch/lint/checkstyle/checkstyle.xml")).isEmptyFile();
+    }
+
+    /** The import names a rule set the module does not hold; the step is a warning row, not a failed build. */
+    @Test
+    void a_configuration_the_module_does_not_hold_is_a_warning_and_the_step_passes(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = lintModule(tmp, "error", SOURCE).config("checkstyle", "config/sun_checks.xml");
+
+        LintStep.run(io, LintTool.CHECKSTYLE);
+
+        assertThat(io.diagnostics())
+                .containsExactly("warning: checkstyle: `config/sun_checks.xml` is not a file in the module, so"
+                        + " nothing was linted — copy the rule set to that path, or point `[lint] checkstyle` at"
+                        + " the file that holds it");
+        assertThat(io.labels()).containsExactly("checkstyle (no configuration)");
+        assertThat(tmp.resolve("scratch/lint/checkstyle/checkstyle.xml")).isEmptyFile();
+    }
+
     /** SpotBugs runs over the compiled classes; a high-priority pattern is an error that fails the step. */
     @Test
     void spotbugs_reports_a_pattern_against_the_classes_and_a_high_priority_one_fails_the_step(@TempDir Path tmp)

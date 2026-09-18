@@ -121,8 +121,8 @@ final class LintPlugins {
             ImportReport.Builder report) {
         String config = null;
         for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
-            String location = PluginFacts.child(dom, "configLocation");
-            if (location != null) config = location;
+            String location = PluginFacts.text(dom.getChild("configLocation"));
+            if (location != null && !location.isBlank()) config = location.strip();
             if (EnvValues.parseBool(PluginFacts.child(dom, "includeTestSourceDirectory"))
                     .orElse(false)) {
                 sources.add(TEST_ROOT);
@@ -140,14 +140,24 @@ final class LintPlugins {
                 if (!globs.isEmpty()) values.put("exclude", globs);
             }
         }
+        // A rule set the module does not hold is written as the POM spelled it, so the step's
+        // warning names it; the step runs nothing until the file is there.
         boolean url = config != null && (config.startsWith("http://") || config.startsWith("https://"));
-        if (config == null || url || config.endsWith("sun_checks.xml") || config.endsWith("google_checks.xml")) {
+        boolean property = config != null && config.contains("${");
+        boolean builtIn = config != null && (config.endsWith("sun_checks.xml") || config.endsWith("google_checks.xml"));
+        if (config == null || url || property || builtIn) {
+            String named = config == null ? "sun_checks.xml" : config;
             report.warning("`" + CHECKSTYLE + "` reads "
                     + (config == null ? "Checkstyle's default rule set" : "`" + config + "`")
-                    + (url ? ", a rule set at a URL" : ", a rule set inside the plugin")
+                    + (url
+                            ? ", a rule set at a URL"
+                            : property
+                                    ? ", a path through a property no POM defines"
+                                    : ", a rule set inside the plugin")
                     + "; `[lint] checkstyle` names a configuration file in the module,"
-                    + " so copy the rule set in and point the key at it.");
-            values.put("checkstyle", "config/checkstyle.xml");
+                    + " so copy the rule set in and point the key at it — until then the step lints nothing"
+                    + " and says so.");
+            values.put("checkstyle", named);
         } else {
             values.put("checkstyle", SourceTreePlugins.moduleRelativeFile(config, baseDir));
         }

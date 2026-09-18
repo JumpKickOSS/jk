@@ -11,7 +11,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The lint step's body: fork {@code java -cp <tool closure> <main> <args>} on the build JDK with
@@ -39,8 +42,21 @@ final class LintStep {
         Path out = exec.outputDir(tool.out());
         Path report = out.resolve(tool.report());
         Files.deleteIfExists(report);
-        if (roots.isEmpty() && tool != LintTool.SPOTBUGS) {
+        if (tool != LintTool.SPOTBUGS && !hasFiles(tool, roots, config)) {
             exec.label(tool.id() + " (no sources)");
+            Files.writeString(report, "");
+            return;
+        }
+        String missing = missingConfiguration(tool, exec.moduleDir(), config);
+        if (missing != null) {
+            exec.diagnostic(
+                    Finding.WARNING,
+                    null,
+                    0,
+                    0,
+                    tool.id() + ": `" + missing + "` is not a file in the module, so nothing was linted — copy the"
+                            + " rule set to that path, or point `[lint] " + tool.id() + "` at the file that holds it");
+            exec.label(tool.id() + " (no configuration)");
             Files.writeString(report, "");
             return;
         }
@@ -168,6 +184,44 @@ final class LintStep {
         List<String> names = new ArrayList<>();
         for (Path root : roots) names.add(root.toString());
         return String.join(",", names);
+    }
+
+    /**
+     * Whether {@code roots} hold a file for {@code tool} to read: Checkstyle refuses an empty file
+     * set, so its {@code exclude} globs are applied here the way its {@code -x} applies them, and a
+     * module whose every source they cover has nothing to lint.
+     */
+    static boolean hasFiles(LintTool tool, List<Path> roots, PluginConfig config) throws IOException {
+        if (roots.isEmpty()) return false;
+        if (tool != LintTool.CHECKSTYLE) return true;
+        List<Pattern> excludes = new ArrayList<>();
+        for (String glob : config.stringList("exclude")) excludes.add(Pattern.compile(excludeRegex(glob)));
+        boolean[] found = {false};
+        for (Path root : roots) {
+            if (found[0]) break;
+            PathUtil.forEachRegularFile(root, (file, attrs) -> {
+                if (found[0]) return;
+                String path = file.toAbsolutePath().toString().replace('\\', '/');
+                if (excludes.stream().noneMatch(p -> p.matcher(path).find())) found[0] = true;
+            });
+        }
+        return found[0];
+    }
+
+    /**
+     * The configured file {@code tool} cannot run without when the module does not hold it — the
+     * path {@code jk import} writes for a rule set it could not carry — or null when it is there
+     * or the tool needs none.
+     */
+    static @Nullable String missingConfiguration(LintTool tool, Path module, PluginConfig config) {
+        Optional<String> configured =
+                switch (tool) {
+                    case CHECKSTYLE -> config.stringOpt("checkstyle");
+                    case DETEKT -> config.stringOpt("detekt-config");
+                    case PMD, SPOTBUGS -> Optional.empty();
+                };
+        if (configured.isEmpty() || Files.isRegularFile(module.resolve(configured.get()))) return null;
+        return configured.get();
     }
 
     /** The declared source roots that exist under the module, absolute. */
