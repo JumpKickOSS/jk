@@ -562,7 +562,11 @@ engine's shutdown hook drains it. The host's stdout is read on a platform thread
 blocks natively for as long as the host is silent, and a virtual reader would hold a carrier
 that a one-carrier test fork cannot spare. No wait on the host is open-ended: `READY` within
 two minutes or the host is killed with a named error, and a host that exits fails the request
-naming the script. A running script is bounded by its build's cancel.
+naming the script. A running script is bounded by its build's cancel: the cancel probe and an
+interrupt of the request thread both send `CANCEL`, and a host that has not answered within the
+grace is killed. A `RUN` the host receives while a script is in flight is answered `BUSY` naming
+both scripts; the engine replaces that host so the running script's reply cannot answer a later
+request.
 Compiled `.java` / `.kt` under the logic dir is rejected. The engine action-caches each
 task’s `outDir` and merges into the classes tree (`BEFORE_COMPILE` is a generated-source
 root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,

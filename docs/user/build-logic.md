@@ -105,12 +105,16 @@ This matters because compiling a `.kts` is expensive and starting a JVM to do it
 so — together about 5 s for a large script, previously paid on every run of every script.
 A second script in an already-running session costs milliseconds.
 
-Two consequences worth knowing:
+Three consequences worth knowing:
 
 - **A `.kts` that calls `System.exit` (or exhausts the heap) takes the shared host with
   it.** The build fails against that script, and the next script gets a fresh host. Groovy
   scripts still fork per script, so they keep per-script isolation.
 - **A `.kts` has no per-script working directory.** Resolve paths from `projectDir`.
+- **A cancelled build cancels its script.** Ctrl-C, or a sibling step's failure, interrupts
+  the script in the host; the run reports as cancelled, not as a script failure. A script that
+  ignores the interrupt is killed with the host after a short grace, and the next build starts
+  a fresh one.
 
 Supported `@file:` annotations are Kotlin's own: `@file:DependsOn`, `@file:Repository`,
 `@file:CompilerOptions` and `@file:Import`. `@file:Import` compiles the imported files into

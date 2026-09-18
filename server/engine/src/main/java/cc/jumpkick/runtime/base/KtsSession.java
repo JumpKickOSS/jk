@@ -82,6 +82,13 @@ import org.jspecify.annotations.Nullable;
  * the interrupt would otherwise hold the lock for every later build, so a host that has not
  * answered within {@link #CANCEL_GRACE} is killed and the next script starts a fresh one. Either
  * way the run reports as {@link Cancelled}, not as a script failure.
+ *
+ * <p>A request thread interrupted while it waits — a job torn down, a watch that gave up on it —
+ * sends the same {@code CANCEL} before the interrupt goes on, so the script it leaves is not still
+ * running when the next request writes its {@code RUN}. The host keeps its side of that: a {@code
+ * RUN} arriving while a script is in flight is answered {@code BUSY}, naming both scripts, rather
+ * than dropped; a request refused that way kills the host, so the running script's reply cannot
+ * land on a later request, and fails naming the script.
  */
 final class KtsSession {
 
@@ -160,25 +167,39 @@ final class KtsSession {
             try {
                 return session.request(script, projectDir, outDir, cancelled);
             } catch (SessionDied e) {
-                // The child is gone; the next script gets a new one rather than inheriting a corpse.
-                current = null;
-                session.dismissReaper();
+                // The child is gone — its stdout ended before the OS has necessarily reaped it, so
+                // the liveness check below could still see it; the next script gets a new one
+                // rather than inheriting a corpse.
+                drop(session);
                 throw new IllegalStateException(
                         "[build] logic: the .kts host died running " + script.getFileName()
                                 + " (a script calling System.exit, or an out-of-memory, takes the shared host with it)"
                                 + (e.tail().isEmpty() ? "" : ":\n" + e.tail()),
                         e);
-            } catch (Cancelled e) {
-                // A host that would not stop its script was killed; the next script starts fresh.
-                if (!session.process.isAlive()) {
-                    current = null;
-                    session.dismissReaper();
-                }
-                throw e;
+            } catch (Refused e) {
+                // The host was running another script when this RUN reached it: the protocol is
+                // out of step, and the running script's reply would land on a later request. The
+                // host goes; the next script starts a fresh one.
+                session.process.destroyForcibly();
+                session.process.waitFor(5, TimeUnit.SECONDS);
+                drop(session);
+                throw new IllegalStateException(
+                        "[build] logic: the .kts host refused " + script.getFileName() + " — " + e.getMessage()
+                                + "; the host was replaced",
+                        e);
             } finally {
+                // A host killed for ignoring a cancel — the probe's or an interrupt's — is dropped
+                // whichever way the request left, so the next script does not inherit a corpse.
+                if (!session.process.isAlive()) drop(session);
                 session.lastUsedNanos = clock.nanos();
             }
         }
+    }
+
+    /** Forget {@code session} as the shared host and let its reaper go. Under {@link #LOCK}. */
+    private static void drop(KtsSession session) {
+        if (current == session) current = null;
+        session.dismissReaper();
     }
 
     /** Shut the session down, if one is running: the engine-stop drain, and the test seam. */
@@ -239,24 +260,13 @@ final class KtsSession {
     }
 
     private String request(Path script, Path projectDir, Path outDir, BooleanSupplier cancelled)
-            throws IOException, InterruptedException, SessionDied {
+            throws IOException, InterruptedException, SessionDied, Refused {
         toChild.write("RUN\t" + script + "\t" + projectDir + "\t" + outDir + "\n");
         toChild.flush();
-        String reply;
-        while ((reply = replies.poll(CANCEL_POLL.toMillis(), TimeUnit.MILLISECONDS)) == null) {
-            if (cancelled.getAsBoolean()) {
-                cancelInFlight();
-                throw new Cancelled(script);
-            }
-            if (!process.isAlive()) {
-                // The reader's EOF follows the exit at once, unless a grandchild the script started
-                // still holds the pipe's write end; either way the request ends here.
-                reply = replies.poll(EXIT_GRACE.toMillis(), TimeUnit.MILLISECONDS);
-                if (reply == null) throw new SessionDied("exited " + process.exitValue() + " without replying");
-                break;
-            }
-        }
+        String reply = awaitReply(script, cancelled);
         if (EOF.equals(reply)) throw new SessionDied(drain());
+        if (reply.startsWith("BUSY "))
+            throw new Refused(decode(reply.substring(5)).strip());
         if (reply.startsWith("OK ")) return decode(reply.substring(3));
         if (reply.startsWith("FAIL ")) {
             // Verbatim compiler/runtime output — its first line is the script's own file:line.
@@ -264,6 +274,37 @@ final class KtsSession {
             throw new IllegalStateException(decode(reply.substring(5)).strip());
         }
         throw new SessionDied("unrecognised reply from the .kts host: " + reply);
+    }
+
+    /**
+     * The next reply, watching the build's cancel probe and the host's life while it waits. An
+     * interrupt while waiting cancels the script in the host first: a request that left with its
+     * script running would have the next request's {@code RUN} answered by this script's reply.
+     */
+    private String awaitReply(Path script, BooleanSupplier cancelled) throws InterruptedException, SessionDied {
+        String reply;
+        try {
+            while ((reply = replies.poll(CANCEL_POLL.toMillis(), TimeUnit.MILLISECONDS)) == null) {
+                if (cancelled.getAsBoolean()) {
+                    cancelInFlight();
+                    throw new Cancelled(script);
+                }
+                if (!process.isAlive()) {
+                    // The reader's EOF follows the exit at once, unless a grandchild the script
+                    // started still holds the pipe's write end; either way the request ends here.
+                    reply = replies.poll(EXIT_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+                    if (reply == null) throw new SessionDied("exited " + process.exitValue() + " without replying");
+                    break;
+                }
+            }
+        } catch (InterruptedException e) {
+            // The thrown interrupt cleared the flag, so the cancel exchange below can wait; the
+            // interrupt is put back once the host is free again, or killed.
+            cancelInFlight();
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+        return reply;
     }
 
     /**
@@ -304,7 +345,12 @@ final class KtsSession {
         return new String(Base64.getDecoder().decode(base64.strip()), StandardCharsets.UTF_8);
     }
 
-    private static KtsSession start() throws IOException, InterruptedException {
+    /**
+     * The host process, ready to start: the provisioned Kotlin, the compiled host jar, and the
+     * compiled-script cache in its environment. Its stdout carries the protocol; stderr is dropped,
+     * since a JVM warning merged into stdout would be read as a reply.
+     */
+    static ProcessBuilder hostProcess() throws IOException, InterruptedException {
         Path kotlinHome = CompileToolchain.resolveKotlinHome(JkDirs.cache(), null, msg -> {
             // Silent: engine labels surface the task, not toolchain chatter.
         });
@@ -322,18 +368,19 @@ final class KtsSession {
         cmd.add("cc.jumpkick.kts.JkKtsHostKt");
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
-        // Not redirectErrorStream: the child's stdout carries the protocol, and a JVM warning on
-        // stderr merged into it would be read as a reply.
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         Path cacheDir = compiledScriptCache();
         Files.createDirectories(cacheDir);
         pb.environment().put("JK_KTS_CACHE", cacheDir.toString());
+        return pb;
+    }
 
+    private static KtsSession start() throws IOException, InterruptedException {
         // Started directly, not through JobWorkers: that registry belongs to the request on this
         // thread and kills its members when the request ends, and this host is the engine's —
         // reused by later builds, and possibly mid-script for another build right now. Its own
         // owners are the idle reaper below and the shutdown hook.
-        Process p = pb.start();
+        Process p = hostProcess().start();
         registerShutdownHook();
         KtsSession session = new KtsSession(p);
         String ready = session.replies.poll(START_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
@@ -413,6 +460,13 @@ final class KtsSession {
     static final class Cancelled extends RuntimeException {
         Cancelled(Path script) {
             super("[build] logic: " + script.getFileName() + " cancelled with its build");
+        }
+    }
+
+    /** The host answered {@code BUSY}: another script was in flight when the request reached it. */
+    private static final class Refused extends Exception {
+        Refused(String detail) {
+            super(detail);
         }
     }
 

@@ -12,6 +12,9 @@
 //     RUN <script>\t<projectDir>\t<outDir>   ->    OK <base64 output>
 //                                                  FAIL <base64 output + error>
 //                                                  CANCELLED
+//                                                  BUSY <base64 error>  (a RUN that arrived while
+//                                                  another script was in flight; that script's
+//                                                  own reply still follows)
 //     CANCEL                                 ->    (interrupts the script in flight; its RUN
 //                                                  answers CANCELLED once the script has stopped)
 //     EXIT                                   ->    (exit 0)
@@ -196,13 +199,27 @@ fun main() {
                 is Done -> reply = if (cancelled) "CANCELLED" else next.reply
                 Eof -> return
                 is Command ->
-                    when (next.line) {
-                        "CANCEL" -> {
+                    when {
+                        next.line == "CANCEL" -> {
                             cancelled = true
                             inFlight.cancel(true)
                         }
-                        "EXIT" -> return
-                        else -> {} // requests are serialised by the engine; nothing else arrives mid-run
+                        next.line == "EXIT" -> return
+                        // The engine serialises requests, so a RUN here means its side lost track
+                        // of this one. Refused by name rather than dropped: dropped, the running
+                        // script's reply would answer it.
+                        next.line.startsWith("RUN\t") -> {
+                            val arrived = File(next.line.removePrefix("RUN\t").substringBefore("\t")).name
+                            control.println(
+                                "BUSY " +
+                                    encode(
+                                        "jk kts host: ${File(parts[0]).name} is still running and $arrived arrived " +
+                                            "before its reply; the host runs one script at a time"
+                                    )
+                            )
+                            control.flush()
+                        }
+                        else -> {} // a blank or unknown line mid-run is nothing to answer
                     }
             }
         }
