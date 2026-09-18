@@ -7,6 +7,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.StableVersions;
 import cc.jumpkick.util.AtomicWrites;
@@ -56,10 +57,13 @@ public final class McpManifest {
                         notes.add("skip " + c + " (need group:artifact[:version])");
                         continue;
                     }
-                    String version = StableVersions.pinnedVersion(
+                    String version = StableVersions.versionToWrite(
                             file, p.group, p.artifact, p.version == null ? "latest" : p.version);
                     after = JkBuildEditor.addDependency(after, scope, p.name, p.group, p.artifact, version, catalog);
-                    notes.add("add " + p.group + ":" + p.artifact + ":" + version);
+                    notes.add(
+                            Dependency.MANAGED_KEYWORD.equals(version)
+                                    ? "add " + p.group + ":" + p.artifact + " (version managed by the platform)"
+                                    : "add " + p.group + ":" + p.artifact + ":" + version);
                 }
             }
             String refusal = after.equals(before) ? null : MutationCheck.check(file, after);

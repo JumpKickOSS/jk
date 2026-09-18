@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.Feature;
@@ -41,8 +42,19 @@ public final class JkBuildRenderer {
 
     private JkBuildRenderer() {}
 
+    /** {@link #render(JkBuild, LibraryCatalog)} against the bundled catalog. */
     public static String render(JkBuild jkBuild) {
+        return render(jkBuild, LibraryCatalog.bundled());
+    }
+
+    /**
+     * The manifest as TOML. {@code catalog} decides the spelling of a platform-managed dependency:
+     * a handle it maps to the dependency's coordinate is written {@code handle = "managed"}, any
+     * other {@code handle = "group:artifact"}.
+     */
+    public static String render(JkBuild jkBuild, LibraryCatalog catalog) {
         Objects.requireNonNull(jkBuild, "jkBuild");
+        Objects.requireNonNull(catalog, "catalog");
         StringBuilder sb = new StringBuilder();
         renderProject(sb, jkBuild.project());
         renderPluginTables(sb, jkBuild);
@@ -59,7 +71,7 @@ public final class JkBuildRenderer {
         renderProfiles(sb, jkBuild);
         renderFeatures(sb, jkBuild);
         renderRepositories(sb, jkBuild.repositories());
-        renderDependencies(sb, jkBuild);
+        renderDependencies(sb, jkBuild, catalog);
         return sb.toString();
     }
 
@@ -475,7 +487,7 @@ public final class JkBuildRenderer {
         }
     }
 
-    private static void renderDependencies(StringBuilder sb, JkBuild jkBuild) {
+    private static void renderDependencies(StringBuilder sb, JkBuild jkBuild, LibraryCatalog catalog) {
         Map<Scope, List<Dependency>> byScope = jkBuild.dependencies().byScope();
         if (byScope.isEmpty()) return;
         for (Scope scope : new Scope[] {
@@ -495,7 +507,7 @@ public final class JkBuildRenderer {
             sb.append('\n');
             sb.append('[').append(scope.tomlSection()).append("]\n");
             for (Dependency d : ordered(scope, deps)) {
-                sb.append(renderEntry(d)).append('\n');
+                sb.append(renderEntry(d, catalog)).append('\n');
             }
         }
     }
@@ -512,8 +524,17 @@ public final class JkBuildRenderer {
         return sorted.values();
     }
 
-    /** One dependency line: workspace flag, git table, or versioned table (with its classifier when set). */
-    private static String renderEntry(Dependency d) {
+    /**
+     * One dependency line: workspace flag, a platform-managed coordinate's string, git table, or
+     * versioned table (with its classifier when set).
+     */
+    private static String renderEntry(Dependency d, LibraryCatalog catalog) {
+        if (d.isPlatformManaged() && plainMavenEdge(d)) {
+            boolean catalogHit = catalog.lookup(d.library())
+                    .map(m -> m.moduleKey().equals(d.module()))
+                    .orElse(false);
+            return safeKey(d.library()) + " = " + quote(catalogHit ? Dependency.MANAGED_KEYWORD : d.module());
+        }
         if (d.isWorkspace()) {
             // Shorthand only for the default main kind; a group, kind=tests and optional need the table form.
             String group = d.workspaceGroup();
@@ -567,6 +588,19 @@ public final class JkBuildRenderer {
         if (!d.exclusions().isEmpty()) sb.append(", exclude = ").append(list(d.exclusions()));
         sb.append(" }");
         return sb.toString();
+    }
+
+    /** A Maven coordinate with nothing the string forms cannot carry: the main jar, required, unpruned. */
+    private static boolean plainMavenEdge(Dependency d) {
+        return !d.isWorkspace()
+                && !d.isGit()
+                && !d.isPath()
+                && !d.isFile()
+                && d.classifier() == null
+                && d.kind() == DependencyKind.MAIN
+                && !d.optional()
+                && d.exclusions().isEmpty()
+                && d.requestedFeatures().isEmpty();
     }
 
     /**

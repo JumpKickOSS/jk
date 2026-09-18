@@ -68,11 +68,14 @@ public final class EditVerb implements HostedVerb {
         return JobOutcome.declined();
     }
 
-    /** {@code add-dependency} args with {@code latest} replaced by the number to write. */
+    /**
+     * {@code add-dependency} args with {@code latest} replaced by the selector to write: {@code
+     * managed} under a platform that manages the coordinate, else the number.
+     */
     private static List<String> pinned(Path file, @Nullable String op, List<String> args) throws IOException {
         if (!"add-dependency".equals(op) || args.size() < 5) return args;
         List<String> out = new ArrayList<>(args);
-        out.set(4, StableVersions.pinnedVersion(file, args.get(2), args.get(3), args.get(4)));
+        out.set(4, StableVersions.versionToWrite(file, args.get(2), args.get(3), args.get(4)));
         return out;
     }
 }

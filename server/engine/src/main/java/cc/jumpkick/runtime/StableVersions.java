@@ -3,13 +3,19 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.PlatformConstraints;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * The number a writer pins when the user named a coordinate without a version: the newest stable
@@ -21,16 +27,38 @@ public final class StableVersions {
     private StableVersions() {}
 
     /**
-     * The selector a manifest edit writes: {@code latest} becomes the newest stable release of
-     * {@code group:artifact} in the repositories {@code manifest} declares; any other selector is
-     * written as given.
+     * The selector a manifest edit writes for {@code group:artifact}: any selector but {@code
+     * latest} as given; {@code latest} becomes {@code managed} when a BOM or {@code
+     * [managed-dependencies]} entry of the manifest's platform table — a workspace root's BOMs
+     * count for a member — supplies the coordinate's version, else the newest stable release in
+     * the repositories {@code manifest} declares.
      */
-    public static String pinnedVersion(Path manifest, String group, String artifact, String selector)
+    public static String versionToWrite(Path manifest, String group, String artifact, String selector)
             throws IOException {
         if (!(VersionSelector.parse(selector) instanceof VersionSelector.Latest)) return selector;
-        var project = JkBuildParser.parse(manifest);
-        var repos = RepoGroupBuilder.buildFor(project, null, JkStores.storeCas());
+        JkBuild project = JkBuildParser.parse(manifest);
+        Path dir = Objects.requireNonNull(manifest.toAbsolutePath().getParent(), "manifest directory");
+        JkBuild effective = LockPlans.applyWorkspaceContextIfModule(dir, project);
+        RepoGroup repos = RepoGroupBuilder.buildFor(effective, null, JkStores.storeCas());
+        if (platformManages(effective, repos, group + ":" + artifact)) return Dependency.MANAGED_KEYWORD;
         return newest(repos, group, artifact);
+    }
+
+    /** True when a BOM or managed entry of {@code project}'s table manages {@code module}. */
+    private static boolean platformManages(JkBuild project, RepoGroup repos, String module) {
+        if (project.dependencies().of(Scope.PLATFORM).isEmpty()
+                && project.dependencies().of(Scope.MANAGED).isEmpty()) {
+            return false;
+        }
+        try {
+            return PlatformConstraints.managedVersions(project, repos).containsKey(module);
+        } catch (IOException | IllegalStateException e) {
+            Log.debug("versionToWrite: the platform table could not be read; the coordinate is pinned", e);
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /**

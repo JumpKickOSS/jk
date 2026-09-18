@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
@@ -355,6 +356,45 @@ class JkBuildRendererTest {
         int jacksonIdx = out.indexOf("jackson-databind");
         int springIdx = out.indexOf("spring-boot-starter-web");
         assertThat(jacksonIdx).isLessThan(springIdx);
+    }
+
+    /**
+     * A platform-managed dependency the string forms can carry is a string: the word {@code
+     * managed} where the handle is the catalog's name for the coordinate, the bare coordinate
+     * otherwise; one with more to say stays an inline table without {@code version}. Each reparses
+     * to the same edge.
+     */
+    @Test
+    void a_platform_managed_dependency_is_a_string_where_the_string_can_carry_it() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.MAIN,
+                List.of(
+                        Dependency.platformManaged(
+                                "spring-boot-starter-web", "org.springframework.boot:spring-boot-starter-web"),
+                        Dependency.platformManaged("web", "org.springframework.boot:spring-boot-starter-webflux"),
+                        Dependency.platformManaged("guava", "com.google.guava:guava")
+                                .withOptional(true)));
+        JkBuild model =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 25), new JkBuild.Dependencies(byScope));
+
+        String out = JkBuildRenderer.render(model);
+
+        assertThat(out)
+                .contains("spring-boot-starter-web = \"managed\"\n")
+                .contains("web = \"org.springframework.boot:spring-boot-starter-webflux\"\n")
+                .contains("guava = { group = \"com.google.guava\", optional = true }\n");
+        assertThat(JkBuildParser.parse(out).dependencies().of(Scope.MAIN))
+                .extracting(
+                        Dependency::library, Dependency::module, Dependency::isPlatformManaged, Dependency::optional)
+                .containsExactlyInAnyOrder(
+                        tuple(
+                                "spring-boot-starter-web",
+                                "org.springframework.boot:spring-boot-starter-web",
+                                true,
+                                false),
+                        tuple("web", "org.springframework.boot:spring-boot-starter-webflux", true, false),
+                        tuple("guava", "com.google.guava:guava", true, true));
     }
 
     @Test

@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalToml;
 import java.util.ArrayList;
@@ -136,9 +137,10 @@ public final class JkBuildEditor {
      * </ol>
      *
      * An exact selector is written bare ({@code =1.2.3} becomes {@code 1.2.3}); {@code ^}, {@code ~},
-     * ranges and {@code latest} are written as given. Entries that need more fields (sha256,
-     * classifier, optional, features, git, path) are inline tables and are rendered by their own
-     * writers.
+     * ranges and {@code latest} are written as given. The literal {@code managed} leaves the
+     * version to the platform: {@code name = "managed"} on a catalog hit, {@code name =
+     * "group:artifact"} otherwise. Entries that need more fields (sha256, classifier, optional,
+     * features, git, path) are inline tables and are rendered by their own writers.
      */
     public static String renderDependencyEntry(
             LibraryCatalog catalog, String name, String group, String artifact, String versionLiteral) {
@@ -150,11 +152,11 @@ public final class JkBuildEditor {
         if (artifact == null || artifact.isBlank()) artifact = name;
         String literal = bareLiteral(versionLiteral);
         var hit = catalog.lookup(name);
-        if (hit.isPresent()
+        boolean catalogHit = hit.isPresent()
                 && hit.get().group().equals(group)
-                && hit.get().artifact().equals(artifact)) {
-            return name + " = " + MinimalToml.quote(literal);
-        }
+                && hit.get().artifact().equals(artifact);
+        if (catalogHit) return name + " = " + MinimalToml.quote(literal);
+        if (Dependency.MANAGED_KEYWORD.equals(literal)) return name + " = " + MinimalToml.quote(group + ":" + artifact);
         return name + " = " + MinimalToml.quote(group + ":" + artifact + ":" + literal);
     }
 
@@ -597,6 +599,10 @@ public final class JkBuildEditor {
         String replacement;
         if (ManifestDeps.isPathShorthand(value) || ManifestDeps.isGitUrlShorthand(value)) {
             throw new IllegalStateException(displayPath + " is a path or git dependency; it has no version to rewrite");
+        } else if (Dependency.MANAGED_KEYWORD.equals(value)) {
+            throw new IllegalStateException(displayPath
+                    + " is platform-managed (`managed`); the BOM under [platform-dependencies] or the"
+                    + " [managed-dependencies] entry owns its version");
         } else if (value.indexOf(':') >= 0) {
             String[] parts = value.split(":", 3);
             if (parts.length < 3) {

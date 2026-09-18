@@ -17,6 +17,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -177,10 +178,13 @@ public final class AddCommand implements CliCommand {
             CommandWedge.printFail("Add", e.getMessage());
             return 1;
         }
+        boolean managed = Dependency.MANAGED_KEYWORD.equals(version);
         String msg = "Added "
                 + Coords.shortName(parsed.library())
                 + " ("
-                + Coords.gav(parsed.group(), parsed.name(), version)
+                + (managed
+                        ? parsed.group() + ":" + parsed.name() + ", version managed by the platform"
+                        : Coords.gav(parsed.group(), parsed.name(), version))
                 + (parsed.classifier() == null ? "" : ":" + parsed.classifier())
                 + ") to "
                 + Theme.colorize("dependency", Theme.active().cyan())
@@ -194,10 +198,15 @@ public final class AddCommand implements CliCommand {
 
     /**
      * What happens to the written selector from here: an exact pin stays where it is until {@code
-     * jk update} moves it; a float is picked at the next lock.
+     * jk update} moves it; a float is picked at the next lock; a managed version follows the
+     * platform BOM.
      */
     static String settleLine(String version) {
         String lock = Theme.colorize("jk lock", Theme.active().warning());
+        if (Dependency.MANAGED_KEYWORD.equals(version)) {
+            return "Version managed by the platform BOM; " + lock + " reads it there and "
+                    + Theme.colorize("jk update", Theme.active().warning()) + " moves the BOM";
+        }
         if (VersionSelector.parse(version) instanceof VersionSelector.Exact) {
             return "Pinned to " + version + "; " + lock + " keeps it and "
                     + Theme.colorize("jk update", Theme.active().warning()) + " moves it";

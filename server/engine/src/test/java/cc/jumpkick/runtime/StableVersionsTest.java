@@ -38,6 +38,31 @@ class StableVersionsTest {
         return dir;
     }
 
+    /** {@link #project}, with a platform BOM in the same repository that manages {@code com.acme:thing} at 1.0.0. */
+    private static Path projectUnderBom(Path tmp) throws IOException {
+        Path dir = project(tmp);
+        Path bom = Files.createDirectories(tmp.resolve("repo/com/acme/bom/1.0"));
+        Files.writeString(bom.resolve("bom-1.0.pom"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>bom</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement><dependencies>
+                    <dependency><groupId>com.acme</groupId><artifactId>thing</artifactId><version>1.0.0</version></dependency>
+                  </dependencies></dependencyManagement>
+                </project>
+                """);
+        Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+        Files.writeString(manifest, Files.readString(manifest) + """
+
+                [platform-dependencies]
+                bom = "com.acme:bom:1.0"
+                """);
+        return dir;
+    }
+
     private static void metadata(Path repo, String group, String artifact, String... versions) throws IOException {
         Path dir = Files.createDirectories(repo.resolve(group.replace('.', '/')).resolve(artifact));
         StringBuilder list = new StringBuilder();
@@ -58,18 +83,43 @@ class StableVersionsTest {
     @Test
     void latest_pins_the_newest_stable_and_explicit_selectors_pass_through(@TempDir Path tmp) throws Exception {
         Path manifest = project(tmp).resolve(ManifestPaths.MANIFEST);
-        assertThat(StableVersions.pinnedVersion(manifest, "com.acme", "thing", "latest"))
+        assertThat(StableVersions.versionToWrite(manifest, "com.acme", "thing", "latest"))
                 .isEqualTo("1.2.0");
-        assertThat(StableVersions.pinnedVersion(manifest, "com.acme", "thing", "1.0.0"))
+        assertThat(StableVersions.versionToWrite(manifest, "com.acme", "thing", "1.0.0"))
                 .isEqualTo("1.0.0");
-        assertThat(StableVersions.pinnedVersion(manifest, "com.acme", "thing", "^1"))
+        assertThat(StableVersions.versionToWrite(manifest, "com.acme", "thing", "^1"))
                 .isEqualTo("^1");
+    }
+
+    /**
+     * A coordinate the manifest's platform BOM manages is written {@code managed} when no version
+     * is given, so the BOM keeps owning it; a version given explicitly is written as given.
+     */
+    @Test
+    void a_coordinate_a_platform_bom_manages_is_written_managed(@TempDir Path tmp) throws Exception {
+        Path manifest = projectUnderBom(tmp).resolve(ManifestPaths.MANIFEST);
+        assertThat(StableVersions.versionToWrite(manifest, "com.acme", "thing", "latest"))
+                .isEqualTo("managed");
+        assertThat(StableVersions.versionToWrite(manifest, "com.acme", "thing", "1.2.0"))
+                .isEqualTo("1.2.0");
+    }
+
+    @Test
+    void mcp_deps_writes_a_managed_coordinate_versionless_and_says_so(@TempDir Path tmp) throws Exception {
+        Path dir = projectUnderBom(tmp);
+        Map<String, Object> out = McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing"), "main", false);
+        assertThat(out.get("error")).isNull();
+        assertThat(out.get("changed")).isEqualTo(true);
+        assertThat((String) out.get("preview"))
+                .contains("thing = \"com.acme:thing\"\n")
+                .doesNotContain("managed");
+        assertThat(String.valueOf(out.get("notes"))).contains("add com.acme:thing (version managed by the platform)");
     }
 
     @Test
     void a_line_with_only_pre_releases_is_refused_with_the_number_to_pass(@TempDir Path tmp) throws Exception {
         Path manifest = project(tmp).resolve(ManifestPaths.MANIFEST);
-        assertThatThrownBy(() -> StableVersions.pinnedVersion(manifest, "com.acme", "preview", "latest"))
+        assertThatThrownBy(() -> StableVersions.versionToWrite(manifest, "com.acme", "preview", "latest"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("1.0.0-M2")
                 .hasMessageContaining("pass it explicitly");

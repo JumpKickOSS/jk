@@ -118,6 +118,9 @@ class AddRemoveParseTest {
     void settle_line_distinguishes_a_pin_from_a_float() {
         assertThat(AddCommand.settleLine("3.1.0")).contains("Pinned to 3.1.0").contains("jk update");
         assertThat(AddCommand.settleLine("^3.1")).contains("floats").contains("jk lock");
+        assertThat(AddCommand.settleLine("managed"))
+                .contains("managed by the platform BOM")
+                .contains("jk update");
     }
 
     @Test

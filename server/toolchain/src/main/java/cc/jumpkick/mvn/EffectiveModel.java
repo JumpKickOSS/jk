@@ -48,8 +48,16 @@ import org.jspecify.annotations.Nullable;
  */
 final class EffectiveModel {
 
-    /** A parent in the chain, nearest first. {@code inReactor}: read from a sibling pom.xml. */
-    record Ancestor(String groupId, String artifactId, String version, Model raw, boolean inReactor) {
+    /**
+     * A parent in the chain, nearest first. {@code inReactor}: read from a sibling pom.xml; {@code
+     * onDisk}: read from the file its {@code relativePath} names, so no repository need have it.
+     */
+    record Ancestor(String groupId, String artifactId, String version, Model raw, boolean inReactor, boolean onDisk) {
+
+        /** True when a repository served this parent, so a lock can read it as a platform entry. */
+        boolean published() {
+            return !inReactor && !onDisk;
+        }
 
         String gav() {
             return groupId + ":" + artifactId + ":" + version;
@@ -165,7 +173,7 @@ final class EffectiveModel {
             String[] gav = ids.get(i).split(":", 3);
             if (gav.length < 3) continue;
             boolean inReactor = reactor != null && reactor.contains(ids.get(i));
-            out.add(new Ancestor(gav[0], gav[1], gav[2], raw, inReactor));
+            out.add(new Ancestor(gav[0], gav[1], gav[2], raw, inReactor, raw.getPomFile() != null));
         }
         return out;
     }
@@ -349,6 +357,23 @@ final class EffectiveModel {
             }
         }
         return new Management(platform, parentCarries ? nearestExternal().orElse(null) : null, inline);
+    }
+
+    /**
+     * True when a {@code [platform-dependencies]} entry {@code mgmt} writes, and a lock can read,
+     * supplies the version of the dependency {@code key}, which this POM declares without one: a BOM
+     * this POM or an ancestor imports at a version the import could resolve, or a published parent
+     * chain carried as a platform entry. A version an inline {@code dependencyManagement} entry of
+     * this POM, of a reactor parent or of a parent read off the disk supplies is not such a
+     * platform's — no repository serves that entry — so the dependency keeps the version as written.
+     */
+    boolean platformSupplies(String key, Management mgmt) {
+        if (ownManaged().stream().anyMatch(m -> !isImport(m) && key.equals(m.getManagementKey()))) return false;
+        Ancestor parent = mgmt.parentPlatform();
+        boolean publishedParent = parent != null && parent.published();
+        Optional<Ancestor> inline = managedBy(key);
+        if (inline.isPresent()) return inline.get().published() && publishedParent;
+        return publishedParent || mgmt.platform().stream().anyMatch(bom -> PluginFacts.usable(bom.version()) != null);
     }
 
     private List<Dependency> ownManaged() {
