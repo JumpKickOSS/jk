@@ -171,7 +171,30 @@ class GuardRulesTest {
                 .singleElement()
                 .extracting(LoadError::message)
                 .asString()
-                .contains("tokens; the budget is 60");
+                .contains("over the 60-token budget", "x 83");
+    }
+
+    @Test
+    void every_oversized_rule_in_a_file_shares_one_warning(@TempDir Path dir) throws IOException {
+        // One block per over-budget rule is one block per build, forever, for rules exactly as
+        // long as they were yesterday. The count and the worst offenders carry the same signal,
+        // and a rule going over still changes the line.
+        StringBuilder sb = new StringBuilder();
+        for (String id : List.of("aa", "bb", "cc", "dd")) {
+            sb.append("[guards.@ID@]\nkind = \"forbid\"\ninstead = \"i\"\nwhy = \"w\"\nsignatures = ["
+                    .replace("@ID@", id));
+            for (int i = 0; i < 70; i++) sb.append("\"a.B").append(i).append("\", ");
+            sb.append("]\n");
+        }
+
+        LoadResult r = load(dir, sb.toString());
+
+        assertThat(r.hasErrors()).isFalse();
+        assertThat(r.warnings())
+                .singleElement()
+                .extracting(LoadError::message)
+                .asString()
+                .contains("4 rules are over the 60-token budget", "+1 more");
     }
 
     @Test
