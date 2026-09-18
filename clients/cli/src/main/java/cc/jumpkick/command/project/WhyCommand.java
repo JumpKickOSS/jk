@@ -14,6 +14,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -23,7 +24,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/** {@code jk why &lt;module&gt;} — explain why a module is in the dependency graph. */
+/**
+ * {@code jk why &lt;module&gt;} — explain why a module is in the dependency graph, the declared roots
+ * read under the same feature selection {@code jk lock} takes.
+ */
 public final class WhyCommand implements CliCommand {
 
     @Override
@@ -34,6 +38,14 @@ public final class WhyCommand implements CliCommand {
     @Override
     public String description() {
         return "Explain why an item is in the dependency graph";
+    }
+
+    @Override
+    public List<Opt> options() {
+        return List.of(
+                Opt.value("<a,b,...>", "Activate listed features beyond the defaults.", "--features")
+                        .splitOn(","),
+                Opt.flag("Don't activate the project's default features.", "--no-default-features"));
     }
 
     @Override
@@ -60,7 +72,8 @@ public final class WhyCommand implements CliCommand {
 
         String query = moduleOnly(in.positionals().get(0));
         // The graph reasoning is engine-side (thin client): matching + provenance ride WHY_ACK.
-        WhyReport report = EngineClient.why(EnginePaths.current(), dir, query);
+        WhyReport report = EngineClient.why(
+                EnginePaths.current(), dir, query, in.values("features"), in.isSet("no-default-features"));
         if (report.error() != null) {
             CommandWedge.printFail("Why", report.error());
             return Exit.CONFIG;

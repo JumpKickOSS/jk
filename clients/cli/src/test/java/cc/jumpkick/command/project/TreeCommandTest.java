@@ -76,7 +76,9 @@ class TreeCommandTest {
                 .contains("-f, --flatten")
                 .contains("-S, --stack")
                 .contains("-s, --scopes")
-                .contains("exec/run/all");
+                .contains("exec/run/all")
+                .contains("--features")
+                .contains("--no-default-features");
     }
 
     @Test

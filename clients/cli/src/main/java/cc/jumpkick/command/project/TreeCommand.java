@@ -47,7 +47,10 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
-/** {@code jk tree} — print the resolved dependency tree. */
+/**
+ * {@code jk tree} — print the resolved dependency tree, read under the same feature selection
+ * {@code jk lock} takes ({@code --features}, {@code --no-default-features}).
+ */
 public final class TreeCommand implements CliCommand {
 
     @Override
@@ -67,7 +70,10 @@ public final class TreeCommand implements CliCommand {
                 Opt.flag("Show transitive lockfile dependencies.", "-t", "--transitive"),
                 Opt.flag("Flatten each scope to a sorted, deduped list.", "-f", "--flatten"),
                 Opt.flag("Blend all scopes into one tree, one badge row.", "-S", "--stack"),
-                Opt.value("<scopes>", "Scopes to show, in order; meta: exec/run/all.", "-s", "--scopes"));
+                Opt.value("<scopes>", "Scopes to show, in order; meta: exec/run/all.", "-s", "--scopes"),
+                Opt.value("<a,b,...>", "Activate listed features beyond the defaults.", "--features")
+                        .splitOn(","),
+                Opt.flag("Don't activate the project's default features.", "--no-default-features"));
     }
 
     @Override
@@ -81,6 +87,8 @@ public final class TreeCommand implements CliCommand {
         boolean flatten = in.isSet("flatten");
         boolean stack = in.isSet("stack");
         boolean transitive = in.isSet("transitive");
+        List<String> features = in.values("features");
+        boolean noDefaultFeatures = in.isSet("no-default-features");
 
         List<Scope> scopes;
         try {
@@ -120,7 +128,8 @@ public final class TreeCommand implements CliCommand {
         List<String> scopeNames = scopes.stream().map(Scope::canonical).toList();
         String tagged;
         try {
-            tagged = EngineClient.treeRender(EnginePaths.current(), dir, max, flatten, stack, scopeNames);
+            tagged = EngineClient.treeRender(
+                    EnginePaths.current(), dir, max, flatten, stack, scopeNames, features, noDefaultFeatures);
         } catch (IOException | RuntimeException e) {
             CommandWedge.printFail("Tree", e.getMessage());
             return Exit.CONFIG;

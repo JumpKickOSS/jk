@@ -8,6 +8,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
@@ -534,6 +535,91 @@ class DependencyTreeTest {
                 .contains("com.foo:api:1.0")
                 .contains("com.acme:inner:1.0")
                 .contains("com.foo:deep:1.0");
+    }
+
+    /**
+     * The tree reads the closure jk builds with: an optional dependency a feature names is drawn
+     * only while that feature is active — the defaults with no selection, {@code --features} names
+     * beyond them, none of the defaults under {@code --no-default-features} — and a member of a
+     * workspace activates a name only where its own {@code [features]} declares it.
+     */
+    @Test
+    void a_feature_selection_decides_which_optional_dependencies_the_tree_draws(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "1.0"
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
+        Path a = Files.createDirectories(root.resolve("a"));
+        Files.writeString(a.resolve("jk.toml"), """
+                name = "a"
+
+                [features]
+                default = ["fast"]
+
+                [features.fast]
+                deps = ["lz4"]
+
+                [features.noshade]
+                deps = ["mysql"]
+
+                [dependencies]
+                api = { group = "com.foo", name = "api", version = "1.0" }
+                lz4 = { group = "com.foo", name = "lz4", version = "1.0", optional = true }
+                mysql = { group = "com.foo", name = "mysql", version = "1.0", optional = true }
+                own = { group = "com.foo", name = "own", version = "1.0", optional = true }
+                """);
+        Path b = Files.createDirectories(root.resolve("b"));
+        Files.writeString(b.resolve("jk.toml"), """
+                name = "b"
+
+                [dependencies]
+                plain = { group = "com.foo", name = "plain", version = "1.0" }
+                """);
+        Lockfile lock = lockOf(
+                pkg("com.foo:api", "1.0", List.of()),
+                pkg("com.foo:lz4", "1.0", List.of()),
+                pkg("com.foo:mysql", "1.0", List.of()),
+                pkg("com.foo:own", "1.0", List.of()),
+                pkg("com.foo:plain", "1.0", List.of()));
+        JkBuild member = JkBuildParser.parse(a.resolve("jk.toml"));
+        JkBuild ws = JkBuildParser.parse(root.resolve("jk.toml"));
+
+        String defaults = DependencyTree.render(
+                member, lock, a, 0, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.MAIN), false);
+        assertThat(defaults)
+                .as("the default features and the optional dependency no feature names")
+                .contains("com.foo:api:1.0")
+                .contains("com.foo:lz4:1.0")
+                .contains("com.foo:own:1.0")
+                .doesNotContain("com.foo:mysql");
+
+        FeatureSelection noshade = new FeatureSelection(List.of("noshade"), true);
+        String withNoshade = DependencyTree.render(
+                member, lock, a, 0, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.MAIN), false, noshade);
+        assertThat(withNoshade).contains("com.foo:lz4:1.0").contains("com.foo:mysql:1.0");
+
+        FeatureSelection none = new FeatureSelection(List.of(), false);
+        String withoutDefaults = DependencyTree.render(
+                member, lock, a, 0, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.MAIN), false, none);
+        assertThat(withoutDefaults)
+                .contains("com.foo:own:1.0")
+                .doesNotContain("com.foo:lz4")
+                .doesNotContain("com.foo:mysql");
+
+        String workspace = DependencyTree.render(
+                ws, lock, root, 0, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.MAIN), false, noshade);
+        assertThat(workspace)
+                .as("a name reaches the member whose [features] declares it; b, which lacks it, is drawn whole")
+                .contains("com.foo:mysql")
+                .contains("com.foo:plain");
+        String flat = DependencyTree.render(
+                ws, lock, root, 0, DependencyTreeStyle.Styling.plain(), true, List.of(Scope.MAIN), false, none);
+        assertThat(flat).contains("com.foo:api").doesNotContain("com.foo:lz4").doesNotContain("com.foo:mysql");
     }
 
     @Test

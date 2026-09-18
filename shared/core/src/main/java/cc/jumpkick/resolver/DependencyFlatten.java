@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyTreeStyle.Styling;
@@ -103,11 +104,12 @@ final class DependencyFlatten {
             Styling styling,
             List<Scope> scopeOrder,
             boolean stack,
+            FeatureSelection selection,
             StringBuilder out) {
 
         WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(root.workspaceModules(), rootDir));
-        List<LoadedModule> modules =
-                WorkspaceGraph.withRoot(root, lock, WorkspaceGraph.loadModules(root.workspaceModules(), rootDir));
+        List<LoadedModule> modules = WorkspaceGraph.withRoot(
+                root, lock, WorkspaceGraph.loadModules(root.workspaceModules(), rootDir, selection));
 
         List<Scope> sections = new ArrayList<>();
         for (Scope s : DependencyTreeStyle.sectionOrder(scopeOrder)) {

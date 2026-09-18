@@ -282,11 +282,18 @@ final class EngineReads {
 
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
     static String treeRender(
-            EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
+            EnginePaths.Paths paths,
+            Path dir,
+            int maxDepth,
+            boolean flatten,
+            boolean stack,
+            List<String> scopes,
+            List<String> features,
+            boolean noDefaultFeatures)
             throws IOException {
         return request(
                 paths,
-                new TreeRequest(dir.toString(), maxDepth, flatten, stack, scopes).encode(),
+                new TreeRequest(dir.toString(), maxDepth, flatten, stack, scopes, features, noDefaultFeatures).encode(),
                 EngineProtocol.TREE_ACK,
                 "tree request",
                 line -> {
@@ -297,10 +304,12 @@ final class EngineReads {
     }
 
     /** One engine-hosted why lookup. */
-    static WhyReport why(EnginePaths.Paths paths, Path dir, String query) throws IOException {
+    static WhyReport why(
+            EnginePaths.Paths paths, Path dir, String query, List<String> features, boolean noDefaultFeatures)
+            throws IOException {
         return request(
                 paths,
-                new WhyRequest(dir.toString(), query).encode(),
+                new WhyRequest(dir.toString(), query, features, noDefaultFeatures).encode(),
                 EngineProtocol.WHY_ACK,
                 "why request",
                 WhyReport::decode);

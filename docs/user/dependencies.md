@@ -416,8 +416,17 @@ Workspace siblings: [Workspaces](workspaces.md).
 jk tree                  # workspace graph (even from a member dir)
 jk tree :foo             # one module
 jk tree -t               # include transitives
+jk tree --features noshade            # with a feature active beyond the defaults
 jk why com.foo:bar       # why a pin is on the graph, and what each step declared for the next
+jk why --no-default-features com.foo:bar
 ```
+
+Both read the closure jk builds with: an optional dependency a `[features]` entry names is drawn,
+and walked from, only while that feature is active — the defaults with no flag, `--features a,b`
+names beyond them, none of the defaults under `--no-default-features` — the same selection
+`jk lock` takes. An optional dependency no feature names is the module's own root and is always
+drawn. In a workspace a name reaches each member whose own `[features]` declares it and is left
+out for the rest.
 
 `jk why` prints one path per declared root, each step as `coordinate (declared <selector> by
 <parent>)`, so a surprising transitive version is traced to the declaration that produced it.
