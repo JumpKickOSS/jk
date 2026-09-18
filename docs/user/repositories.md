@@ -166,6 +166,15 @@ serve releases only. A snapshot is a candidate only when a pin or a dependency's
 the `snapshot` selector asks for the newest published version: see
 [Dependencies](dependencies.md#snapshots).
 
+A repository nothing answers at — the connection refused, the host unknown, the connect timed
+out — stops a resolve at once, naming the repository and its URL: a lock computed without a
+configured repository is not the lock that was asked for, and asking it again for every
+coordinate would only wait out the retry ladder each time. Fix the URL, start the server, or
+remove the entry. A remote that accepts and then drops a request is that request's failure
+alone; the remaining repositories are still asked. Pinned bytes are another matter: a build
+whose lock names an unreachable repository still takes the artifact from any repository that
+serves the same sha256.
+
 When a repository has opted out, the lock summary says so — `Resolved 42 dependencies ·
 2 unverified (allowed) · insecure (allowed): mirror` — so the count is visible on every lock
 instead of scrolling past as a warning. After the lock, builds enforce the pinned sha256 as

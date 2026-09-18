@@ -310,7 +310,12 @@ public final class RepoGroup {
         RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
         if (hit != null) return Optional.of(hit);
         Optional<RepoFetched> found = tryFetch(
-                coord, MavenRepo::tryLocalArtifact, (repo, c) -> repo.fetchArtifact(c, abort), abort, pomHolder(coord));
+                coord,
+                MavenRepo::tryLocalArtifact,
+                (repo, c) -> repo.fetchArtifact(c, abort),
+                abort,
+                pomHolder(coord),
+                false);
         if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
             ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
         }
@@ -360,7 +365,8 @@ public final class RepoGroup {
                 (repo, c) -> repo.tryLocalArtifact(c).filter(f -> expectedSha256Hex.equalsIgnoreCase(f.sha256())),
                 (repo, c) -> repo.fetchArtifact(c, expectedSha256Hex, NO_ABORT),
                 NO_ABORT,
-                pomHolder(coord));
+                pomHolder(coord),
+                false);
         if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
             // put, not putIfAbsent: a pinned fetch is the authority on what is on disk now.
             ARTIFACT_HIT_CACHE.put(key, found.get());
@@ -450,6 +456,8 @@ public final class RepoGroup {
                 List<String> found;
                 try {
                     found = fanOut ? RepoLegs.await(catalogs.get(i).future()) : repo.availableVersions(coord);
+                } catch (MavenRepo.RepositoryUnreachableException dead) {
+                    throw dead; // nothing answers there: the resolve stops, as on the POM leg
                 } catch (IOException transport) {
                     // One remote's 429, 5xx or reset is that remote's problem, not an answer about the
                     // coordinate: the remaining candidates are still asked. Said once per run per
@@ -597,25 +605,34 @@ public final class RepoGroup {
      * bound specialists are already skipped by {@link #eligibleRepos}, and the first
      * eligible repo's warm mirror short-circuits without network.)
      */
+    /** The resolve leg — a POM or a metadata file: which versions exist and what they need. */
     private Optional<RepoFetched> tryFetch(Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
             throws IOException, InterruptedException {
-        return tryFetch(coord, localProbe, fetcher, NO_ABORT, null);
+        return tryFetch(coord, localProbe, fetcher, NO_ABORT, null, true);
     }
 
     /**
      * @param holder the repository whose answer settles {@code coord} — the one that served its POM —
      *     or null when none is known, in which case every candidate's answer counts
+     * @param resolve true on the resolve leg, where a repository nothing answers at stops the work;
+     *     false for pinned bytes, which fall through it
      */
     private Optional<RepoFetched> tryFetch(
-            Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort, @Nullable MavenRepo holder)
+            Coordinate coord,
+            LocalProbe localProbe,
+            Fetcher fetcher,
+            BooleanSupplier abort,
+            @Nullable MavenRepo holder,
+            boolean resolve)
             throws IOException, InterruptedException {
         List<MavenRepo> eligible = eligibleRepos(coord);
         FetchFanOut fanOut = new FetchFanOut(coord, holder);
-        Optional<RepoFetched> found = tryFetchFrom(serving(eligible, coord), coord, localProbe, fetcher, abort, fanOut);
+        Optional<RepoFetched> found =
+                tryFetchFrom(serving(eligible, coord), coord, localProbe, fetcher, abort, fanOut, resolve);
         if (found.isPresent()) return found;
         // Full miss on the fast path: consult non-claiming specialists before giving up.
         found = tryFetchFrom(
-                serving(lastResortRepos(coord, eligible), coord), coord, localProbe, fetcher, abort, fanOut);
+                serving(lastResortRepos(coord, eligible), coord), coord, localProbe, fetcher, abort, fanOut, resolve);
         if (found.isPresent()) return found;
         fanOut.settle();
         return Optional.empty();
@@ -644,7 +661,8 @@ public final class RepoGroup {
             LocalProbe localProbe,
             Fetcher fetcher,
             BooleanSupplier abort,
-            FetchFanOut fanOut)
+            FetchFanOut fanOut,
+            boolean resolve)
             throws IOException, InterruptedException {
         int networkLegs = candidates.size();
         Optional<RepoFetched> local = Optional.empty();
@@ -675,6 +693,13 @@ public final class RepoGroup {
                     fanOut.notFound(candidates.get(i)); // the next candidate in order
                 } catch (MavenRepo.FetchAbortedException aborted) {
                     throw aborted;
+                } catch (MavenRepo.RepositoryUnreachableException dead) {
+                    // Nothing answers at this repository's address. On the resolve leg the next
+                    // candidate is not asked: a lock computed without a configured repository is not
+                    // the lock that was asked for, so the resolve stops here naming it. Pinned bytes
+                    // still fall through — the lock's sha256 says what is accepted.
+                    if (resolve) throw dead;
+                    fanOut.failed(candidates.get(i), dead);
                 } catch (IOException transport) {
                     // A failed remote falls through to the next candidate silently: the artifact that
                     // arrives is still checked against the lock's sha256, so where it came from does
