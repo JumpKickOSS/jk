@@ -246,4 +246,74 @@ class PomProtobufImportTest {
                 .isEqualTo("3.25.5");
         assertThat(messages(result)).noneMatch(m -> m.contains("protoc plugin"));
     }
+
+    /**
+     * hadoop-common's shape: the {@code compile} execution excludes a proto another generation
+     * covers, while the {@code test-compile} execution's excludes are the test protos' business.
+     */
+    @Test
+    void the_compile_executions_excludes_are_the_tables_exclude_list(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), ROOT.formatted(""));
+        Path protoDir = Files.createDirectories(tempDir.resolve("project/src/main/proto"));
+        Files.writeString(protoDir.resolve("ProtobufRpcEngine.proto"), "syntax = \"proto3\";\nmessage Rpc {}\n");
+        Files.writeString(protoDir.resolve("ProtobufRpcEngine2.proto"), "syntax = \"proto3\";\nmessage Rpc {}\n");
+        String plugin = """
+                <plugin>
+                  <groupId>org.xolstice.maven.plugins</groupId>
+                  <artifactId>protobuf-maven-plugin</artifactId>
+                  <version>0.6.1</version>
+                  <executions>
+                    <execution>
+                      <id>src-compile-protoc</id>
+                      <goals><goal>compile</goal></goals>
+                      <configuration>
+                        <excludes><exclude>ProtobufRpcEngine.proto</exclude></excludes>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>src-test-compile-protoc</id>
+                      <goals><goal>test-compile</goal></goals>
+                      <configuration>
+                        <excludes><exclude>*legacy.proto</exclude></excludes>
+                      </configuration>
+                    </execution>
+                  </executions>
+                </plugin>
+                """;
+        PomImporter.Result result = TestImporters.importXml(tempDir, MODULE.formatted(plugin));
+
+        PluginConfig protobuf = result.jkBuild().pluginConfig("protobuf").orElseThrow();
+        assertThat(protobuf.stringList("exclude"))
+                .as("the compile execution's excludes, not the test-compile execution's")
+                .containsExactly("ProtobufRpcEngine.proto");
+        assertThat(messages(result)).noneMatch(m -> m.contains("`<excludes>`"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("exclude = [\"ProtobufRpcEngine.proto\"]");
+        assertThat(JkBuildParser.parse(rendered)
+                        .pluginConfig("protobuf")
+                        .orElseThrow()
+                        .stringList("exclude"))
+                .containsExactly("ProtobufRpcEngine.proto");
+    }
+
+    /** Every proto excluded leaves the module with none to compile: no table, and the output root row says so. */
+    @Test
+    void a_module_whose_every_proto_is_excluded_gets_no_table(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), ROOT.formatted(""));
+        Path protoDir = Files.createDirectories(tempDir.resolve("project/src/main/proto"));
+        Files.writeString(protoDir.resolve("Legacy.proto"), "syntax = \"proto3\";\nmessage Rpc {}\n");
+        String plugin = """
+                <plugin>
+                  <groupId>org.xolstice.maven.plugins</groupId>
+                  <artifactId>protobuf-maven-plugin</artifactId>
+                  <version>0.6.1</version>
+                  <configuration><excludes><exclude>**/*.proto</exclude></excludes></configuration>
+                  <executions><execution><goals><goal>compile</goal></goals></execution></executions>
+                </plugin>
+                """;
+        PomImporter.Result result = TestImporters.importXml(tempDir, MODULE.formatted(plugin));
+
+        assertThat(result.jkBuild().pluginConfig("protobuf")).isEmpty();
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m).contains("no `.proto` sources to fill"));
+    }
 }
