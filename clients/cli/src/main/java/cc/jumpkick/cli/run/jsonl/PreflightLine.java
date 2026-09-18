@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 
 /** Workspace preflight verdict: the stage, its unit counts and the engine's label. */
 public record PreflightLine(long ts, String stage, int done, int totalUnits, String label) {

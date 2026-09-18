@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 
 /** A task starts: task, stage and tick budget. */
 public record TaskStartLine(long ts, String task, String stage, int ticks) {

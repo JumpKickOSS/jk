@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 
 /** The workspace graph starts: how many modules it holds. */
 public record WorkspaceStartLine(long ts, int modules) {

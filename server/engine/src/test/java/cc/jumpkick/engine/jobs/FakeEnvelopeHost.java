@@ -219,9 +219,12 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
         return "0.0.0-test";
     }
 
+    /** Off by default: a unit test writes no journal stubs unless it is about them. */
+    JkHistoryConfig history = new JkHistoryConfig(false, 0, 0);
+
     @Override
     public JkHistoryConfig historyConfig() {
-        return new JkHistoryConfig(false, 0, 0); // never write real journal stubs from a unit test
+        return history;
     }
 
     @Override

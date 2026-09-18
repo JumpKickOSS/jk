@@ -8,7 +8,13 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.runtime.base.BuildNumberAllocator;
 import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.transcript.SessionStartLine;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** Exclusive fingerprint + start-time journal stub for one job. */
@@ -82,18 +88,51 @@ public final class JobAdmit {
      * journal id instead.
      */
     public static String jobStartLine(JobEnvelope.Host host, long jid, String kind, String dir, AdmitResult admit) {
-        String detailsPath = null;
+        Path details = detailsFile(host, dir, admit);
+        return ProtoLifecycle.jobStart(
+                jid, kind, dir, admit.buildNumber(), details == null ? null : details.toString(), -1);
+    }
+
+    /** The admitted run's {@code details.jsonl}, or {@code null} when the run has no journal dir. */
+    static @Nullable Path detailsFile(JobEnvelope.Host host, String dir, AdmitResult admit) {
         if (admit.buildNumber() > 0) {
-            detailsPath = host.journal()
+            return host.journal()
                     .detailsFile(host.coordOf(dir), dir, admit.buildNumber())
-                    .map(Path::toString)
-                    .orElse(null);
-        } else if (admit.journalId() != null) {
-            detailsPath = host.journal()
-                    .detailsFile(admit.journalId())
-                    .map(Path::toString)
                     .orElse(null);
         }
-        return ProtoLifecycle.jobStart(jid, kind, dir, admit.buildNumber(), detailsPath, -1);
+        if (admit.journalId() != null) {
+            return host.journal().detailsFile(admit.journalId()).orElse(null);
+        }
+        return null;
+    }
+
+    /**
+     * Open a detached run's transcript with the {@code session-start} header the CLI writes for its
+     * own runs — the command, and the {@code trigger} and {@code session} that asked — so an MCP or
+     * web run's {@code details.jsonl} says who asked the way a CLI run's does. Best-effort: a run
+     * with no journal dir, or a disk that refuses, leaves no transcript and fails nothing.
+     */
+    public static void openDetachedTranscript(
+            JobEnvelope.Host host,
+            String kind,
+            String dir,
+            String trigger,
+            @Nullable String session,
+            AdmitResult admit) {
+        Path details = detailsFile(host, dir, admit);
+        if (details == null) return;
+        String header = new SessionStartLine(host.nowMillis(), kind, List.of(kind), trigger, session).encode();
+        try {
+            Files.createDirectories(details.getParent());
+            Files.writeString(
+                    details,
+                    header + "\n",
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE);
+        } catch (IOException | RuntimeException e) {
+            host.log("jk engine: detached transcript header skipped: " + e);
+        }
     }
 }

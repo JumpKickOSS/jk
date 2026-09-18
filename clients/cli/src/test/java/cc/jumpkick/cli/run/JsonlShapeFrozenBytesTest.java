@@ -15,7 +15,6 @@ import cc.jumpkick.cli.run.jsonl.PlanStartLine;
 import cc.jumpkick.cli.run.jsonl.PreflightLine;
 import cc.jumpkick.cli.run.jsonl.ProgressLine;
 import cc.jumpkick.cli.run.jsonl.SessionFinishLine;
-import cc.jumpkick.cli.run.jsonl.SessionStartLine;
 import cc.jumpkick.cli.run.jsonl.TaskFinishLine;
 import cc.jumpkick.cli.run.jsonl.TaskStartLine;
 import cc.jumpkick.cli.run.jsonl.TestFailureErrorLine;
@@ -24,6 +23,7 @@ import cc.jumpkick.cli.run.jsonl.WarnLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceFinishLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceProgressLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceStartLine;
+import cc.jumpkick.wire.transcript.SessionStartLine;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

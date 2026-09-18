@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.watch;
 
-import cc.jumpkick.cli.run.jsonl.JsonlEnvelope;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.terminal.Style;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import java.util.List;
 import java.util.function.Consumer;
 

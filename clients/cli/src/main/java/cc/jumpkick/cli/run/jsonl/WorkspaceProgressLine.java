@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 
 /** Engine workspace aggregate progress, mirrored from the engine's tracker snapshot. */
 public record WorkspaceProgressLine(

@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 

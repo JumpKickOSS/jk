@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.run.jsonl;
+package cc.jumpkick.wire.transcript;
 
 import cc.jumpkick.jsonl.JsonFields;
 

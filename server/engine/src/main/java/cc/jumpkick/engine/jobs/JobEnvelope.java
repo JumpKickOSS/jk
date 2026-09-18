@@ -176,6 +176,8 @@ public final class JobEnvelope {
                 // client gone before job body — still run cancel registration below
             }
         }
+        // A detached run has no CLI to open its transcript: the engine writes the header itself.
+        if (detached) JobAdmit.openDetachedTranscript(host, eventKind, eventDir, trigger, session, admit);
         // Capture this connection thread so remote cancel can wake it off client-readLine. The
         // wake is Thread.interrupt, which on a thread blocked in an InterruptibleChannel read also
         // CLOSES the channel — so only interrupt while actually parked on the read;

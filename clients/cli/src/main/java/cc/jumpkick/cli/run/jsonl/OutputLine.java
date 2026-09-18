@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 
 /** One line of a task's output. */
 public record OutputLine(long ts, String task, String line) {

@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 
 /** A workspace module finished. */
 public record ModuleFinishLine(long ts, String dir, String coord, boolean success, long durationMs) {

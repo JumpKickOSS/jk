@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import org.jspecify.annotations.Nullable;
 
 /** An error against a task; {@code test} and {@code exceptionClass} ride only when non-empty. */

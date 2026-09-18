@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.transcript.JsonlEnvelope;
 
 /** The workspace graph finished: success, wall duration and module count. */
 public record WorkspaceFinishLine(long ts, boolean success, long durationMs, int modules) {
