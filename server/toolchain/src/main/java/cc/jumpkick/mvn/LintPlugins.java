@@ -139,7 +139,7 @@ final class LintPlugins {
                     + " so copy the rule set in and point the key at it.");
             values.put("checkstyle", "config/checkstyle.xml");
         } else {
-            values.put("checkstyle", SourceTreePlugins.moduleRelative(config, baseDir));
+            values.put("checkstyle", SourceTreePlugins.moduleRelativeFile(config, baseDir));
         }
         for (Dependency dependency : plugin.getDependencies()) {
             if ("checkstyle".equals(dependency.getArtifactId())
@@ -180,7 +180,7 @@ final class LintPlugins {
                     } else if (value.startsWith("category/") || value.startsWith("rulesets/")) {
                         rulesets.add(value);
                     } else {
-                        rulesets.add(SourceTreePlugins.moduleRelative(value.replaceFirst("^file://", ""), baseDir));
+                        rulesets.add(SourceTreePlugins.moduleRelativeFile(value.replaceFirst("^file://", ""), baseDir));
                     }
                 }
             }
@@ -205,7 +205,7 @@ final class LintPlugins {
         values.put("spotbugs", true);
         for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
             String exclude = PluginFacts.child(dom, "excludeFilterFile");
-            if (exclude != null) values.put("spotbugs-exclude", SourceTreePlugins.moduleRelative(exclude, baseDir));
+            if (exclude != null) values.put("spotbugs-exclude", SourceTreePlugins.moduleRelativeFile(exclude, baseDir));
             String effort = PluginFacts.child(dom, "effort");
             if (effort != null && !effort.equalsIgnoreCase("default")) {
                 values.put("spotbugs-effort", effort.toLowerCase(Locale.ROOT));
