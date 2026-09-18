@@ -30,6 +30,11 @@ import org.jspecify.annotations.Nullable;
  * {@code <includeTests>} adds the test root. {@code spotbugs-maven-plugin}: {@code spotbugs = true},
  * {@code <excludeFilterFile>} is {@code spotbugs-exclude}, {@code <effort>} is {@code
  * spotbugs-effort}, {@code <plugins>} (fb-contrib, find-sec-bugs) are a row.
+ *
+ * <p>A lint plugin that binds no {@code <execution>} runs under Maven only by hand ({@code mvn
+ * pmd:check}). A module declaring one in its own POM gets the table all the same — the tool is
+ * that module's, and jk runs it on every build — while one that only inherits it from a parent gets
+ * no table and the parent's declaration is one row, counted over the modules it reaches.
  */
 final class LintPlugins {
 
@@ -42,25 +47,31 @@ final class LintPlugins {
 
     private LintPlugins() {}
 
-    /** The table, or null when the POM declares none of the three plugins. */
-    static @Nullable PluginConfig map(Model model, ImportReport.Builder report) {
+    /**
+     * The table, or null when the POM declares none of the three plugins — or only inherits ones
+     * that bind no execution. {@code inherited} collects the rows of a workspace module; null for a
+     * POM imported on its own.
+     */
+    static @Nullable PluginConfig map(
+            EffectiveModel em, ImportReport.Builder report, @Nullable InheritedRows inherited) {
+        Model model = em.model();
         Path baseDir = model.getProjectDirectory() == null
                 ? null
                 : model.getProjectDirectory().toPath();
         Map<String, Object> values = new LinkedHashMap<>();
         Set<String> sources = new LinkedHashSet<>(List.of("src/main/java"));
         boolean any = false;
-        Plugin checkstyle = PluginFacts.plugin(model, CHECKSTYLE).orElse(null);
+        Plugin checkstyle = bound(em, CHECKSTYLE, "checkstyle:check", report, inherited);
         if (checkstyle != null) {
             any = true;
             checkstyle(checkstyle, baseDir, values, sources, report);
         }
-        Plugin pmd = PluginFacts.plugin(model, PMD).orElse(null);
+        Plugin pmd = bound(em, PMD, "pmd:check", report, inherited);
         if (pmd != null) {
             any = true;
             pmd(pmd, baseDir, values, sources, report);
         }
-        Plugin spotbugs = PluginFacts.plugin(model, SPOTBUGS).orElse(null);
+        Plugin spotbugs = bound(em, SPOTBUGS, "spotbugs:check", report, inherited);
         if (spotbugs != null) {
             any = true;
             spotbugs(spotbugs, baseDir, values, sources, report);
@@ -70,6 +81,36 @@ final class LintPlugins {
         report.warning("the lint plugins are `[lint]`: each tool runs as a cached step after compile and its findings"
                 + " are diagnostics in jk-results.md with the rule id; `fail-on` says which severity fails the build.");
         return new PluginConfig("lint", values);
+    }
+
+    /**
+     * The lint plugin {@code artifactId} when the module gets its table: declared in the module's
+     * own POM, or inherited with an execution bound. One inherited with none is null and a row —
+     * at the declaring POM, once, when {@code inherited} collects rows.
+     */
+    private static @Nullable Plugin bound(
+            EffectiveModel em,
+            String artifactId,
+            String goal,
+            ImportReport.Builder report,
+            @Nullable InheritedRows inherited) {
+        Plugin plugin = PluginFacts.plugin(em.model(), artifactId).orElse(null);
+        if (plugin == null) return null;
+        boolean own = InheritedRows.declaresPlugin(em.raw(), artifactId, em.activeProfiles());
+        if (own || !plugin.getExecutions().isEmpty()) return plugin;
+        String key = artifactId.equals(CHECKSTYLE) ? "checkstyle" : artifactId.equals(PMD) ? "pmd" : "spotbugs";
+        String message = "`" + artifactId + "` binds no `<execution>`, so Maven runs it only by hand (`mvn " + goal
+                + "`); no `[lint] " + key + "` was written for the modules inheriting it. Declare the table on a"
+                + " module to lint it on every build.";
+        if (inherited == null) {
+            report.warning(message);
+        } else {
+            inherited.inherited(
+                    inherited.declaredBy(em, raw -> InheritedRows.declaresPlugin(raw, artifactId)),
+                    ImportReport.Severity.WARNING,
+                    message);
+        }
+        return null;
     }
 
     private static void checkstyle(
@@ -121,7 +162,15 @@ final class LintPlugins {
             if (declared != null) {
                 for (Xpp3Dom ruleset : declared.getChildren()) {
                     String value = PluginFacts.usable(ruleset.getValue());
-                    if (value == null) continue;
+                    if (value == null) {
+                        if (ruleset.getValue() != null && !ruleset.getValue().isBlank()) {
+                            report.warning("`" + PMD + "` names the ruleset `"
+                                    + ruleset.getValue().trim()
+                                    + "` through a property no POM defines; `rulesets/java/quickstart.xml` stands in —"
+                                    + " point `[lint] pmd` at the module's ruleset file.");
+                        }
+                        continue;
+                    }
                     if (value.endsWith(MAVEN_PMD_DEFAULT)) {
                         report.warning("`" + PMD + "` uses the Maven plugin's own default ruleset; `[lint] pmd` names"
                                 + " PMD's, so `rulesets/java/quickstart.xml` stands in — tune it to taste.");
