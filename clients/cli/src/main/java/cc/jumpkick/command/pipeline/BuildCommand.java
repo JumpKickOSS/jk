@@ -281,6 +281,11 @@ public final class BuildCommand implements CliCommand {
         if (sel != null && sel.confines()) {
             nativeMembers = AlwaysNativeGraal.within(nativeMembers, sel.dirs());
         }
+        // A member that inherits its `java` from the root declares none of its own, and the
+        // bootstrap read above cannot see the root's. The summary can, and it is one round-trip.
+        if (!nativeMembers.isEmpty()) {
+            nativeMembers = AlwaysNativeGraal.withEffectiveReleases(nativeMembers, ProjectInfos.orNull(entryDir));
+        }
         Optional<Map<Path, Path>> graal =
                 AlwaysNativeGraal.homes(nativeMembers, new GraalResolver(jdksDir, global.yes, mode)::resolve);
         if (graal.isEmpty()) return Exit.FAILURE; // the resolver printed why

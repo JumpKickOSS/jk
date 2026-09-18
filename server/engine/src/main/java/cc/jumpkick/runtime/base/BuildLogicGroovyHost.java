@@ -79,7 +79,7 @@ public final class BuildLogicGroovyHost {
             cmd.add(Classpaths.join(cp));
             cmd.add("groovy.ui.GroovyMain");
             cmd.add(wrapper.toString());
-            ProcessBuilder pb = new ProcessBuilder(cmd);
+            ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
             pb.redirectErrorStream(true);
             pb.directory(projectDir.toFile());
             Process p = JobWorkers.start(pb);

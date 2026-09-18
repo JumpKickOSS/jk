@@ -70,7 +70,9 @@ public final class JavadocTool {
         Path argfile = Files.createTempFile(outDir.getParent(), "javadoc-", ".args");
         try {
             Files.write(argfile, argfileLines(outDir, sources, classpath, options), StandardCharsets.UTF_8);
-            ProcessBuilder pb = new ProcessBuilder(executable(javaHome).toString(), "@" + argfile.toAbsolutePath())
+            ProcessBuilder pb = JavaHomes.underJdk(
+                            new ProcessBuilder(executable(javaHome).toString(), "@" + argfile.toAbsolutePath()),
+                            javaHome)
                     .directory(workdir.toFile())
                     .redirectErrorStream(true);
             Process proc = JobWorkers.start(pb);

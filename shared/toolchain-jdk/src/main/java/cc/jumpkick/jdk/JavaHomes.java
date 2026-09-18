@@ -25,6 +25,23 @@ public final class JavaHomes {
 
     private JavaHomes() {}
 
+    /**
+     * Tell a child JVM which JDK it is running under, by setting {@code JAVA_HOME} on {@code pb}.
+     *
+     * <p>A child that inherits this process's environment inherits its {@code JAVA_HOME}, and
+     * inside a resident engine that names whichever JDK the shell that started the daemon had —
+     * not the one the child is executing. The two disagreeing is a fault line: anything the child
+     * runs that reads the variable (a compiler plugin, a script, a nested launcher) is told about
+     * a different JDK than the one it is in.
+     *
+     * <p>{@code WorkerEnv.withJavaHome} is the same rule for a worker composed through
+     * {@code WorkerEnv}. This one is for a fork that builds its own {@link ProcessBuilder}.
+     */
+    public static ProcessBuilder underJdk(ProcessBuilder pb, Path javaHome) {
+        pb.environment().put("JAVA_HOME", javaHome.toAbsolutePath().toString());
+        return pb;
+    }
+
     public static Path resolveJavaHome(Path projectDir) {
         return resolveJavaHome(projectDir, new JdkRegistry());
     }

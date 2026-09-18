@@ -128,6 +128,31 @@ class AlwaysNativeGraalTest {
         assertThat(seen).containsExactly(Map.entry("graalvm", 25));
     }
 
+    @Test
+    void a_release_the_summary_knows_wins_over_the_manifest_read() {
+        // The bootstrap read sees each member's own manifest. A member that inherits `java` from
+        // the workspace root carries 0 from it — no floor at all — so the engine's summary, where
+        // the inheritance is already applied, is laid over the top. A member the summary says
+        // nothing about keeps what it declared.
+        Path root = Path.of("/w").toAbsolutePath().normalize();
+        Path app = root.resolve("app");
+        Path tool = root.resolve("tool");
+        var modules = List.of(
+                new AlwaysNativeGraal.Module(app, "graalvm", 0),
+                new AlwaysNativeGraal.Module(tool, "graalvm", 17));
+
+        assertThat(AlwaysNativeGraal.withReleases(modules, Map.of(app, 25)))
+                .containsExactly(
+                        new AlwaysNativeGraal.Module(app, "graalvm", 25),
+                        new AlwaysNativeGraal.Module(tool, "graalvm", 17));
+    }
+
+    @Test
+    void without_an_engine_answer_the_manifest_values_stand() {
+        var modules = List.of(new AlwaysNativeGraal.Module(Path.of("/w/app"), "graalvm", 0));
+        assertThat(AlwaysNativeGraal.withEffectiveReleases(modules, null)).isEqualTo(modules);
+    }
+
     private static void write(Path file, String text) throws IOException {
         Files.createDirectories(file.getParent());
         Files.writeString(file, text);

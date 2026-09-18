@@ -128,7 +128,7 @@ final class KtsHostJar {
             cmd.add("-d");
             cmd.add(staging.toString());
             cmd.add(src.toString());
-            ProcessBuilder pb = new ProcessBuilder(cmd);
+            ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
             pb.redirectErrorStream(true);
             Process p = JobWorkers.start(pb);
             String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
