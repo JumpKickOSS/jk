@@ -92,7 +92,7 @@ public final class PluginBuild {
 
     /** A step's scratch root — its declared output dirs resolve under this. */
     public static Path taskScratch(BuildLayout layout, @Nullable String stepName) {
-        return layout.moduleTargetDir().resolve("plugin").resolve(stepName);
+        return layout.pluginStepScratch(Objects.requireNonNull(stepName, "step"));
     }
 
     /** Every dir the declared steps contribute as classes/resources, in declaration order. */

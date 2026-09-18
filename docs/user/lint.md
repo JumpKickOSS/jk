@@ -88,6 +88,15 @@ laid over detekt's default configuration (`--build-upon-default-config`). Suppre
 tool's own idiom — `@SuppressWarnings("PMD.Rule")`, `@SuppressFBWarnings`, a Checkstyle
 `SuppressionFilter`, `@Suppress("MagicNumber")`.
 
+## Ratcheting the findings down
+
+The reports are what a guard reads: a `metric` rule with `measure = "lint.findings"` (or one
+tool's `lint.checkstyle`, `lint.pmd`, `lint.spotbugs`, `lint.detekt`) counts a module's findings
+from the XML each step leaves, and with `cap` and `baseline = true` refuses a build whose count
+rises above the baseline's entry while the entry follows the count down — so a project that
+adopts a rule set with hundreds of findings sets `fail-on = "never"`, lets the diagnostics show,
+and tightens the ratchet as they are fixed. The shape is [Guards](guards.md#keys)' `metric` kind.
+
 ## Beside the other tables
 
 `[lint]` sits beside `[spring-boot]`, `[kotlin]` or any generator table in one module. What

@@ -67,7 +67,7 @@ public final class PluginCommands {
             ActivePlugin active = plugins.commandOwners().get(declared.name());
             if (active == null) return PluginCommandReport.notFound();
 
-            Path scratch = layout.moduleTargetDir().resolve("plugin").resolve("command-" + command);
+            Path scratch = layout.pluginStepScratch("command-" + command);
             Files.createDirectories(scratch);
             SpecWriter specWriter = new SpecWriter()
                     .op(PluginProtocol.OP_COMMAND, command, active.manifest().id())

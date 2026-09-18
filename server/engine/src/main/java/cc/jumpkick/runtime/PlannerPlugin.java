@@ -665,7 +665,7 @@ public final class PlannerPlugin {
                 .op(PluginProtocol.OP_PACKAGE, null, active.manifest().id())
                 .configValues(active.config().values())
                 .project(facts)
-                .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
+                .layout(classes, in.dir(), layout.pluginDir())
                 .javaHome(ctx.require(JAVA_HOME))
                 .artifact(jarPath);
         for (PluginBuild.ProdEntry e : entries) {

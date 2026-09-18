@@ -274,7 +274,7 @@ final class KindSchemas {
                         required(
                                 "measure",
                                 STRING,
-                                "lines, fqcn, matches:<rule>, comment-lines, methods, params, public-members, cyclomatic, coverage.line, coverage.branch, jar-size, native-size"),
+                                "lines, fqcn, matches:<rule>, comment-lines, methods, params, public-members, cyclomatic, coverage.line, coverage.branch, jar-size, native-size, lint.findings, lint.<tool>"),
                         optional("cap", NUMBER_OR_TABLE, "maximum, scalar or per-language table"),
                         optional("min", NUMBER_OR_TABLE, "minimum, scalar or per-language table"),
                         optional(
