@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -50,6 +54,23 @@ class BuildPlanConsoleTest {
         assertThat(plan.lines()).allSatisfy(line -> assertThat(line).contains("\"progress\":null"));
         assertThat(LiveProgress.get().percent()).isNull();
         assertThat(first).contains("\"progress\":null").doesNotContain("\"progress\":100");
+    }
+
+    @Test
+    void a_hosted_runs_console_mirrors_its_step_events_into_the_open_transcript(@TempDir Path project)
+            throws Exception {
+        CliSessionTranscript session = requireNonNull(CliSessionTranscript.open(project, "test", List.of("test")));
+        try {
+            Path details = project.resolve("runs").resolve("7").resolve(CliSessionTranscript.FILE_NAME);
+            session.bindJob(42, 7, details.toString(), 0);
+            BuildPlanListener console =
+                    BuildPlanConsole.chooseConsoleListener("test", "app", List.of(), BuildPlanConsole.Mode.QUIET);
+            console.stepStart("run-tests", "test", 1);
+            assertThat(Files.readAllLines(details))
+                    .anyMatch(l -> l.contains("\"type\":\"task-start\"") && l.contains("\"run-tests\""));
+        } finally {
+            session.finish(0);
+        }
     }
 
     @Test

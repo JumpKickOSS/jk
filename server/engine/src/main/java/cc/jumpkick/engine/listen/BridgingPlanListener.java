@@ -32,6 +32,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
         default void planFinished(String dir, BuildPlanResult result) {}
 
         default void planDiagnostics(String dir, BuildPlanResult result) {}
+
+        /** A line a step's fork printed outside its protocol; journal-only, never a wire event. */
+        default void forkOutput(String dir, String step, String line) {}
     }
 
     private final String dir;
@@ -136,6 +139,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
     public void output(String step, String line) {
         String safe = redact(line);
         sink.emit(new EngineEvent.Output(dir, step, safe));
+    }
+
+    @Override
+    public void forkOutput(String step, String line) {
+        hooks.forkOutput(dir, step, redact(line));
     }
 
     @Override

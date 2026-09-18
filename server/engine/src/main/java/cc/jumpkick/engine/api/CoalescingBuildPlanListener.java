@@ -234,6 +234,12 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         if (due) flushIfFree();
     }
 
+    /** Journal-only and never batched: the record's tail wants every line, in order, as it is printed. */
+    @Override
+    public void forkOutput(String step, String line) {
+        delegate.forkOutput(step, line);
+    }
+
     @Override
     public void warn(String step, String code, String message) {
         structural(() -> delegate.warn(step, code, message));

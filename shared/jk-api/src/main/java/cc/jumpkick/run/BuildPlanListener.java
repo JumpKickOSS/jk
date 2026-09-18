@@ -34,6 +34,9 @@ public interface BuildPlanListener {
 
     default void output(String step, String line) {}
 
+    /** A line the step's fork printed outside its protocol; the run's record keeps the last of them, the view none. */
+    default void forkOutput(String step, String line) {}
+
     default void warn(String step, String code, String message) {}
 
     default void error(String step, String code, String message) {}

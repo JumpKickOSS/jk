@@ -17,6 +17,7 @@ import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.CancelledShortfall;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -65,6 +66,10 @@ public final class BuildAccumulator {
     // uses the "" (SINGLE_PLAN_DIR) bucket; workspace modules use their real dir. Rendered as a
     // chain per module (the dashboard shows one chain per module, not one merged strip).
     private final Map<String, Map<String, BuildRecord.Task>> stepsByDir = new ConcurrentHashMap<>();
+    // When each step in flight started (dir + step → epoch millis) and the last lines its fork
+    // printed, both dropped as the step finishes: they exist for the step a cancel interrupts.
+    private final Map<String, Long> stepStartedAt = new ConcurrentHashMap<>();
+    private final Map<String, ArrayDeque<String>> forkTails = new ConcurrentHashMap<>();
     // Step dependency edges (dir → step name → requires), captured from the genuine in-process
     // BuildPlanResult in addBuildPlan. Reconstructs each module's step DAG for the critical-path
     // cache-benefit metric; the wire's stepFinish carries no edges, so this is the only source.
@@ -367,11 +372,15 @@ public final class BuildAccumulator {
         }
     }
 
+    /** How many of a fork's last lines a step in flight keeps for the record of a cancelled run. */
+    static final int FORK_TAIL_LINES = 60;
+
     /**
-     * Currently-running step (dashboard rehydrate). No-op when the step already has a
-     * terminal status so a late {@code stepStart} cannot resurrect a finished row.
+     * Currently-running step (dashboard rehydrate), started at {@code nowMillis}. No-op when the
+     * step already has a terminal status so a late {@code stepStart} cannot resurrect a finished
+     * row.
      */
-    public void noteTaskStart(String dir, String step, String phase) {
+    public void noteTaskStart(String dir, String step, String phase, long nowMillis) {
         if (step == null || step.isBlank()) return;
         String d = dir == null ? "" : dir;
         Map<String, BuildRecord.Task> m =
@@ -380,6 +389,110 @@ public final class BuildAccumulator {
             BuildRecord.Task existing = m.get(step);
             if (existing != null && isTerminalTaskStatus(existing.status())) return;
             m.put(step, new BuildRecord.Task(step, phase == null ? "" : phase, "RUN", 0L, 0L));
+        }
+        stepStartedAt.put(stepKey(d, step), nowMillis);
+    }
+
+    /**
+     * A line the step's fork printed outside its protocol, kept while the step runs — the last
+     * {@link #FORK_TAIL_LINES} of them — so a run cancelled with the step in flight can say what
+     * the fork was printing when it was killed.
+     */
+    public void noteForkOutput(String dir, String step, String line) {
+        if (step == null || step.isBlank() || line == null) return;
+        ArrayDeque<String> tail =
+                forkTails.computeIfAbsent(stepKey(dir == null ? "" : dir, step), k -> new ArrayDeque<>());
+        synchronized (tail) {
+            if (tail.size() == FORK_TAIL_LINES) tail.pollFirst();
+            tail.addLast(line);
+        }
+    }
+
+    private static String stepKey(String dir, String step) {
+        return dir + '\u0000' + step;
+    }
+
+    /**
+     * Every step still {@code RUN} when a cancelled run is written: its row becomes {@code
+     * CANCELLED} carrying the time it had run, and one error under its module names it with the
+     * fork's last lines, so the record says what the cancel interrupted rather than nothing.
+     */
+    private void closeRunningSteps(long finishedAt) {
+        for (Map.Entry<String, Map<String, BuildRecord.Task>> byDir : stepsByDir.entrySet()) {
+            Map<String, BuildRecord.Task> m = byDir.getValue();
+            List<BuildRecord.Task> running = new ArrayList<>();
+            synchronized (m) {
+                for (BuildRecord.Task t : m.values()) {
+                    if ("RUN".equals(t.status())) running.add(t);
+                }
+            }
+            for (BuildRecord.Task t : running) {
+                String key = stepKey(byDir.getKey(), t.name());
+                Long started = stepStartedAt.remove(key);
+                long millis = started == null ? 0L : Math.max(0L, finishedAt - started);
+                synchronized (m) {
+                    m.put(t.name(), new BuildRecord.Task(t.name(), t.stage(), "CANCELLED", millis, 0L));
+                }
+                ArrayDeque<String> tail = forkTails.remove(key);
+                List<String> lines;
+                if (tail == null) {
+                    lines = List.of();
+                } else {
+                    synchronized (tail) {
+                        lines = List.copyOf(tail);
+                    }
+                }
+                addDiag(new BuildRecord.Diag(
+                        "error",
+                        byDir.getKey(),
+                        t.name(),
+                        JkResultsStopped.CANCELLED_CODE,
+                        inFlightMessage(t.name(), millis, lines.size()),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        lines.isEmpty() ? null : String.join("\n", lines),
+                        "",
+                        0,
+                        0,
+                        0,
+                        List.of(),
+                        0));
+            }
+        }
+    }
+
+    /** The one line of the error a cancel leaves under a step it interrupted. */
+    static String inFlightMessage(String step, long millis, int tailLines) {
+        String ran = millis > 0 ? " for " + JkResultsMarkdown.fmtDuration(millis) : "";
+        String fork = tailLines == 0
+                ? "; its fork printed nothing"
+                : " — the fork's last " + (tailLines == 1 ? "line" : tailLines + " lines") + ":";
+        return "`" + step + "` was in flight" + ran + " when the run was cancelled" + fork;
+    }
+
+    /**
+     * A workspace module whose steps began but whose outcome never arrived — the module a cancel
+     * caught mid-flight — as a module row, so its {@code CANCELLED} step has a place in the record.
+     */
+    private List<BuildRecord.Module> inFlightModules(Set<String> covered) {
+        List<BuildRecord.Module> out = new ArrayList<>();
+        for (String d : stepsByDir.keySet()) {
+            if (d.isEmpty() || covered.contains(d)) continue;
+            out.add(new BuildRecord.Module(moduleNameOf(d), d, false, Exit.INTERRUPTED, 0L, stepsFor(d)));
+        }
+        return out;
+    }
+
+    private static String moduleNameOf(String dir) {
+        try {
+            Path name = Path.of(dir).getFileName();
+            return name == null ? dir : name.toString();
+        } catch (RuntimeException e) {
+            return dir;
         }
     }
 
@@ -417,9 +530,12 @@ public final class BuildAccumulator {
     /** One finished step, stored under its module dir ("" for a single-plan build). */
     public void addTask(String dir, String step, String phase, String status, long millis, long waitMillis) {
         anyFact = true;
+        String d = dir == null ? "" : dir;
         stepsByDir
-                .computeIfAbsent(dir == null ? "" : dir, k -> Collections.synchronizedMap(new LinkedHashMap<>()))
+                .computeIfAbsent(d, k -> Collections.synchronizedMap(new LinkedHashMap<>()))
                 .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis));
+        stepStartedAt.remove(stepKey(d, step));
+        forkTails.remove(stepKey(d, step));
         if (timeline != null) {
             timeline.complete(timelineModule(dir), step, status == null ? "" : status, millis);
         }
@@ -720,6 +836,7 @@ public final class BuildAccumulator {
         // success is never cancelled; an explicit failure is cancelled only when the user/deadline
         // stamp was set (not merely cancelled=true from cooperative fail-fast / EOF race).
         boolean cancelledEffective = resolveCancelledFlag(success, userCancelled, cancelled);
+        if (cancelledEffective) closeRunningSteps(finishedAt);
         // One derivation, cancelled arm first: a row labelled cancelled carries the code every
         // shell already means by an interrupt, so `$?` and `jk history` agree about the same run.
         // Until every cancel wrote FAILURE and read back as an ordinary failed build; the
@@ -731,11 +848,14 @@ public final class BuildAccumulator {
         // build has no module rows, so its steps live in the record's top-level list (the ""
         // bucket). This is exactly the two shapes the dashboard renders (per-module vs compact).
         List<BuildRecord.Module> moduleList = new ArrayList<>();
+        Set<String> covered = new HashSet<>();
         for (ModuleOutcome o : moduleSnapshot()) {
             String mdir = o.dir() == null ? "" : o.dir().toString();
+            covered.add(mdir);
             moduleList.add(
                     new BuildRecord.Module(o.coord(), mdir, o.success(), o.exitCode(), o.millis(), stepsFor(mdir)));
         }
+        if (cancelledEffective && !moduleList.isEmpty()) moduleList.addAll(inFlightModules(covered));
         List<BuildRecord.Task> topSteps = moduleList.isEmpty() ? stepsFor("") : List.of();
         BuildRecord.CacheBenefit benefitRow = benefit == null
                 ? null

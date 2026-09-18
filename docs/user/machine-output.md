@@ -87,7 +87,11 @@ row (`code`, `message`, `detail`, `exceptionClass`). [Test](test.md#when-the-lau
 
 The headline outcome is the run's own verdict. `FAIL` with the failed step's exit (`1`, or `4` for
 red tests) is a build that stopped at a failure; `CANCELLED` with `exit 130` is a run a user or a
-deadline interrupted, and only that. When one module fails, the build stops admitting the others
+deadline interrupted, and only that. A cancelled run names what it interrupted: the step that was
+in flight is a `CANCELLED` row under `## Failed steps` carrying the time it had run, and one error
+under `## Failures` says so — `` `run-tests` was in flight for 20m 43s when the run was cancelled ``
+— with the last 60 lines the step's forked process printed as its fenced block; `details.jsonl`
+holds every step event up to the cancel. When one module fails, the build stops admitting the others
 and the modules already in flight are stopped where they stand and waited for before the record
 is written, so every module that had started is in it — the same failure produces the same record
 however the siblings were timed. Their unfinished steps are one
