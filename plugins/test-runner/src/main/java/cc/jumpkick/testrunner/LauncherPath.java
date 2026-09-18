@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -23,6 +24,7 @@ import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.engine.support.descriptor.ClassSource;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
+import org.junit.platform.launcher.PostDiscoveryFilter;
 import org.junit.platform.launcher.TagFilter;
 import org.junit.platform.launcher.TestExecutionListener;
 import org.junit.platform.launcher.TestIdentifier;
@@ -64,6 +66,7 @@ final class LauncherPath {
     static int runOneShot(
             Path scanClasspath,
             @Nullable String filter,
+            List<MethodSelection> methods,
             List<String> includeTags,
             List<String> excludeTags,
             int workerId,
@@ -75,12 +78,14 @@ final class LauncherPath {
         if (filter != null && !filter.isBlank()) {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
+        applyMethodFilter(b, methods);
         applyTagFilters(b, includeTags, excludeTags);
         DiscoveryFailures dropped = new DiscoveryFailures(scanClasspath, filter);
         b.listeners(dropped);
 
         LauncherDiscoveryRequest request = b.build();
-        long planStart = System.nanoTime();
+        Clock clock = Clock.SYSTEM;
+        long planStart = clock.nanos();
         Launcher launcher;
         TestPlan plan;
         try {
@@ -99,9 +104,9 @@ final class LauncherPath {
         if (dropped.report(System.err)) return Exit.SOFTWARE;
         emitDiscovery(plan, adapter);
         warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
-        warnTagExcluded(() -> named(scanClasspath, filter), includeTags, excludeTags, plan, adapter);
+        warnTagExcluded(() -> named(scanClasspath, filter, methods), includeTags, excludeTags, plan, adapter);
         launcher.execute(request, adapter);
-        long planMs = Math.max(0, (System.nanoTime() - planStart) / 1_000_000);
+        long planMs = Math.max(0, (clock.nanos() - planStart) / 1_000_000);
         adapter.emitPlanFinished(planMs);
         return adapter.hasFailures() ? 1 : 0;
     }
@@ -128,6 +133,7 @@ final class LauncherPath {
     static int runListOnly(
             Path scanClasspath,
             @Nullable String filter,
+            List<MethodSelection> methods,
             List<String> includeTags,
             List<String> excludeTags,
             int workerId,
@@ -138,6 +144,7 @@ final class LauncherPath {
         if (filter != null && !filter.isBlank()) {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
+        applyMethodFilter(b, methods);
         applyTagFilters(b, includeTags, excludeTags);
         DiscoveryFailures dropped = new DiscoveryFailures(scanClasspath, filter);
         b.listeners(dropped);
@@ -153,19 +160,28 @@ final class LauncherPath {
         if (dropped.report(System.err)) return Exit.SOFTWARE;
         emitDiscovery(plan, adapter);
         warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
-        warnTagExcluded(() -> named(scanClasspath, filter), includeTags, excludeTags, plan, adapter);
+        warnTagExcluded(() -> named(scanClasspath, filter, methods), includeTags, excludeTags, plan, adapter);
         return 0;
     }
 
     /**
-     * The classes {@code --class} names under {@code scanClasspath}, before any tag filter: the
-     * selection the tag filter is judged against. Null when no class filter is in force.
+     * The classes and methods {@code --class} names under {@code scanClasspath}, before any tag
+     * filter: the selection the tag filter is judged against. Null when no class filter is in force.
      */
-    private static @Nullable LauncherDiscoveryRequestBuilder named(Path scanClasspath, @Nullable String filter) {
+    private static @Nullable LauncherDiscoveryRequestBuilder named(
+            Path scanClasspath, @Nullable String filter, List<MethodSelection> methods) {
         if (filter == null || filter.isBlank()) return null;
-        return LauncherDiscoveryRequestBuilder.request()
+        LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
                 .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)))
                 .filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
+        applyMethodFilter(b, methods);
+        return b;
+    }
+
+    /** {@code --class Foo#bar}: the post-discovery filter that keeps only the named methods of the named classes. */
+    private static void applyMethodFilter(LauncherDiscoveryRequestBuilder b, List<MethodSelection> methods) {
+        PostDiscoveryFilter filter = MethodSelection.filter(methods);
+        if (filter != null) b.filters(filter);
     }
 
     /** {@link #warnTagExcluded(Supplier, List, List, TestPlan, Adapter)} writing to {@code writer}. */
@@ -436,10 +452,16 @@ final class LauncherPath {
      * merges that into its session failure bit.
      */
     static boolean runClass(
-            String className, List<String> includeTags, List<String> excludeTags, int workerId, EventWriter writer) {
+            String className,
+            List<MethodSelection> methods,
+            List<String> includeTags,
+            List<String> excludeTags,
+            int workerId,
+            EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
         LauncherDiscoveryRequestBuilder b =
                 LauncherDiscoveryRequestBuilder.request().selectors(DiscoverySelectors.selectClass(className));
+        applyMethodFilter(b, methods);
         applyTagFilters(b, includeTags, excludeTags);
         LauncherFactory.create().execute(b.build(), adapter);
         return adapter.hasFailures();

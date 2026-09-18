@@ -177,7 +177,7 @@ class DiscoveryFailuresTest {
         thread.setContextClassLoader(loader);
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         try {
-            int exit = LauncherPath.runListOnly(root, filter, List.of(), List.of(), 0, events);
+            int exit = LauncherPath.runListOnly(root, filter, List.of(), List.of(), List.of(), 0, events);
             return new Run(exit, err.toString(StandardCharsets.UTF_8));
         } finally {
             System.setErr(prevErr);

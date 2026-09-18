@@ -42,7 +42,7 @@ final class JkRunConfigurationEditor extends SettingsEditor<JkRunConfiguration> 
                 .addLabeledComponent("Command:", kind)
                 .addLabeledComponent("Workspace root:", rootDir)
                 .addLabeledComponent("Module (relative):", moduleRel)
-                .addLabeledComponent("Test class:", className)
+                .addLabeledComponent("Test class (or Class#method):", className)
                 .getPanel();
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cli.CommandModels;
 import cc.jumpkick.cli.HelpRenderer;
@@ -44,6 +45,16 @@ class TestCommandOptionsTest {
         Invocation in = parse("-s", "integration", "-p", "ci");
         assertThat(in.values("suite")).containsExactly("integration");
         assertThat(in.value("profile")).contains("ci");
+    }
+
+    @Test
+    void a_class_method_selector_rides_class_and_a_bare_hash_is_refused() throws Exception {
+        assertThat(TestCommand.resolveTestSelection(parse("--class", "OrdersTest#refunds", "--class", "BarTest"))
+                        .classes())
+                .containsExactly("OrdersTest#refunds", "BarTest");
+        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("--class", "OrdersTest#")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("names no method after '#'");
     }
 
     @Test

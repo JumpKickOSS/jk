@@ -19,8 +19,8 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * One {@code jk} command as a run configuration: the workspace root it runs in, the module
- * directory relative to it, and for a test the class to select. Debug runs the same command with
- * a JDWP listener the IDE attaches to ({@link JkCommandState}).
+ * directory relative to it, and for a test the class — or {@code Class#method} — to select. Debug
+ * runs the same command with a JDWP listener the IDE attaches to ({@link JkCommandState}).
  */
 public final class JkRunConfiguration extends LocatableConfigurationBase<RunConfigurationOptions> {
 
@@ -48,7 +48,7 @@ public final class JkRunConfiguration extends LocatableConfigurationBase<RunConf
         return moduleRel;
     }
 
-    /** The test class the run selects; null for an application run. */
+    /** The test class, or {@code Class#method}, the run selects; null for an application run. */
     public @Nullable String className() {
         return className;
     }
@@ -67,7 +67,9 @@ public final class JkRunConfiguration extends LocatableConfigurationBase<RunConf
             return "jk run " + what;
         }
         String cls = className == null ? "" : className;
-        return "jk test " + cls.substring(cls.lastIndexOf('.') + 1);
+        int hash = cls.indexOf('#');
+        String qualified = hash < 0 ? cls : cls.substring(0, hash);
+        return "jk test " + qualified.substring(qualified.lastIndexOf('.') + 1) + (hash < 0 ? "" : cls.substring(hash));
     }
 
     @Override

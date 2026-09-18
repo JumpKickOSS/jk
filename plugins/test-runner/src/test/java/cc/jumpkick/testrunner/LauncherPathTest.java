@@ -2,6 +2,7 @@
 package cc.jumpkick.testrunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
@@ -162,7 +164,7 @@ class LauncherPathTest {
             throws IOException {
         Path root = classpathRootOf(tmp, TagEmptiedFixture.class);
         var events = new Recorder();
-        LauncherPath.runListOnly(root, null, List.of("integration"), List.of(), 0, events);
+        LauncherPath.runListOnly(root, null, List.of(), List.of("integration"), List.of(), 0, events);
         assertThat(events.warnings()).isEmpty();
         assertThat(events.finishedTests()).isEmpty();
     }
@@ -172,7 +174,7 @@ class LauncherPathTest {
             throws IOException {
         Path root = classpathRootOf(tmp, TestableOnlyFixture.class, EventType.class);
         var events = new Recorder();
-        LauncherPath.runListOnly(root, null, List.of("integration"), List.of(), 0, events);
+        LauncherPath.runListOnly(root, null, List.of(), List.of("integration"), List.of(), 0, events);
         assertThat(events.warnings()).singleElement().satisfies(w -> {
             assertThat(w.get("code")).isEqualTo(LauncherPath.NO_TESTS_DISCOVERED);
             assertThat(String.valueOf(w.get("message"))).contains("no tests discovered in 2 classes");
@@ -184,7 +186,7 @@ class LauncherPathTest {
             throws IOException {
         Path root = classpathRootOf(tmp, EventType.class, Exit.class);
         var events = new Recorder();
-        LauncherPath.runListOnly(root, null, List.of(), List.of(), 0, events);
+        LauncherPath.runListOnly(root, null, List.of(), List.of(), List.of(), 0, events);
         assertThat(events.warnings()).singleElement().satisfies(w -> {
             assertThat(w.get("code")).isEqualTo("no-test-classes");
             assertThat(String.valueOf(w.get("message")))
@@ -258,7 +260,7 @@ class LauncherPathTest {
 
         LifecycleListenerFixture.reset();
         var events = new Recorder();
-        LauncherPath.runListOnly(root, null, List.of(), List.of("slow"), 0, events);
+        LauncherPath.runListOnly(root, null, List.of(), List.of(), List.of("slow"), 0, events);
         assertThat(events.discovered()).containsExactly(TagEmptiedFixture.class.getName());
         assertThat(LifecycleListenerFixture.sessionsOpened()).isZero();
         assertThat(LifecycleListenerFixture.discoveriesStarted()).isZero();
@@ -272,7 +274,7 @@ class LauncherPathTest {
     @Test
     void a_parameterized_invocation_carries_its_display_name_and_a_plain_test_does_not() {
         var events = new Recorder();
-        LauncherPath.runClass(Parameterized.class.getName(), List.of(), List.of(), 0, events);
+        LauncherPath.runClass(Parameterized.class.getName(), List.of(), List.of(), List.of(), 0, events);
         List<Map<String, Object>> finished = events.finishedTests();
         assertThat(finished).hasSize(3);
         assertThat(finished.stream().filter(e -> e.containsKey("display")).map(e -> e.get("display")))
@@ -286,7 +288,7 @@ class LauncherPathTest {
     @Test
     void finished_events_carry_split_identity_status_and_worker_id() {
         var events = new Recorder();
-        LauncherPath.runClass(Tagged.class.getName(), List.of("slow"), List.of(), 7, events);
+        LauncherPath.runClass(Tagged.class.getName(), List.of(), List.of("slow"), List.of(), 7, events);
         Map<String, Object> finished = events.finishedTests().get(0);
         assertThat(finished)
                 .containsEntry("testClass", Tagged.class.getName())
@@ -301,8 +303,69 @@ class LauncherPathTest {
 
     @Test
     void a_passing_run_reports_no_failures() {
-        assertThat(LauncherPath.runClass(Tagged.class.getName(), List.of(), List.of(), 0, new Recorder()))
+        assertThat(LauncherPath.runClass(Tagged.class.getName(), List.of(), List.of(), List.of(), 0, new Recorder()))
                 .isFalse();
+    }
+
+    // --- a method selection ------------------------------------------------------
+
+    @Test
+    void a_method_selection_runs_one_method_of_the_named_class() {
+        var events = new Recorder();
+        LauncherPath.runClass(
+                Tagged.class.getName(), selecting(Tagged.class, "slowOne"), List.of(), List.of(), 0, events);
+        assertThat(methods(events)).containsExactly("slowOne()");
+    }
+
+    @Test
+    void a_method_glob_selects_every_matching_method() {
+        var events = new Recorder();
+        LauncherPath.runClass(Tagged.class.getName(), selecting(Tagged.class, "*One"), List.of(), List.of(), 0, events);
+        assertThat(methods(events)).containsExactly("slowOne()");
+    }
+
+    @Test
+    void a_nested_class_is_reached_through_its_outermost_class() {
+        var events = new Recorder();
+        LauncherPath.runClass(
+                WithNested.class.getName(), selecting(WithNested.class, "inner"), List.of(), List.of(), 0, events);
+        assertThat(methods(events)).containsExactly("inner()");
+    }
+
+    @Test
+    void a_class_no_selection_names_runs_whole() {
+        var events = new Recorder();
+        LauncherPath.runClass(
+                Tagged.class.getName(), selecting(Parameterized.class, "plain"), List.of(), List.of(), 0, events);
+        assertThat(methods(events)).containsExactlyInAnyOrder("plain()", "slowOne()", "bracketed()");
+    }
+
+    @Test
+    void the_argument_names_a_class_regex_and_a_method_or_is_refused() {
+        List<MethodSelection> one = MethodSelection.parse(List.of("^(a\\.B)$#c"));
+        assertThat(one).singleElement().satisfies(s -> {
+            assertThat(s.namesClass("a.B")).isTrue();
+            assertThat(s.namesClass("a.B$Inner")).isTrue();
+            assertThat(s.namesClass("a.BC")).isFalse();
+            assertThat(s.methodPattern().matcher("c").matches()).isTrue();
+        });
+        assertThatThrownBy(() -> MethodSelection.parse(List.of("a.B")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("#");
+        assertThatThrownBy(() -> MethodSelection.parse(List.of("a.B#")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no method");
+    }
+
+    /** {@code --class <c>#<method>} as the engine spells it for the runner: an anchored class regex. */
+    private static List<MethodSelection> selecting(Class<?> c, String method) {
+        return MethodSelection.parse(List.of("^" + Pattern.quote(c.getName()) + "$#" + method));
+    }
+
+    private static List<String> methods(Recorder events) {
+        return events.finishedTests().stream()
+                .map(p -> String.valueOf(p.get("testMethod")))
+                .toList();
     }
 
     // --- the message cap -----------------------------------------------------
@@ -382,7 +445,7 @@ class LauncherPathTest {
 
     private static List<String> run(List<String> include, List<String> exclude) {
         var events = new Recorder();
-        LauncherPath.runClass(Tagged.class.getName(), include, exclude, 0, events);
+        LauncherPath.runClass(Tagged.class.getName(), List.of(), include, exclude, 0, events);
         return events.finishedTests().stream()
                 .map(p -> String.valueOf(p.get("testMethod")))
                 .toList();

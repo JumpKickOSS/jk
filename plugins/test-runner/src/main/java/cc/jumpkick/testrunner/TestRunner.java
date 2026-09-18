@@ -37,7 +37,7 @@ public final class TestRunner implements Plugin {
             System.err.println("jk-test-runner: " + e.getMessage());
             System.err.println("usage: jk-test-runner --scan-classpath=<dir> "
                     + "[--list-only] [--pull --worker=<id>] [--filter=<regex>] "
-                    + "[--include-tags=a,b] [--exclude-tags=c,d]");
+                    + "[--method=<class regex>#<method>]... [--include-tags=a,b] [--exclude-tags=c,d]");
             return Exit.USAGE;
         }
 
@@ -94,12 +94,24 @@ public final class TestRunner implements Plugin {
 
     private static int runOneShot(Args args, EventWriter writer) {
         return LauncherPath.runOneShot(
-                args.scanClasspath, args.filter, args.includeTags, args.excludeTags, args.workerId, writer);
+                args.scanClasspath,
+                args.filter,
+                args.methods,
+                args.includeTags,
+                args.excludeTags,
+                args.workerId,
+                writer);
     }
 
     private static int runListOnly(Args args, EventWriter writer) {
         return LauncherPath.runListOnly(
-                args.scanClasspath, args.filter, args.includeTags, args.excludeTags, args.workerId, writer);
+                args.scanClasspath,
+                args.filter,
+                args.methods,
+                args.includeTags,
+                args.excludeTags,
+                args.workerId,
+                writer);
     }
 
     private static int runPullMode(Args args, EventWriter writer) throws Exception {
@@ -126,7 +138,7 @@ public final class TestRunner implements Plugin {
                 continue;
             }
             String className = line.substring(4).trim();
-            LauncherPath.runClass(className, args.includeTags, args.excludeTags, args.workerId, writer);
+            LauncherPath.runClass(className, args.methods, args.includeTags, args.excludeTags, args.workerId, writer);
             LauncherPath.emitReady(writer, args.workerId);
         }
         System.err.println("jk-test-runner: stdin closed before DONE");
@@ -144,9 +156,11 @@ public final class TestRunner implements Plugin {
         return ".*" + f + ".*";
     }
 
+    /** {@code methods} are the parsed {@code --method=} selections; empty when {@code --class} named whole classes. */
     record Args(
             Path scanClasspath,
             @Nullable String filter,
+            List<MethodSelection> methods,
             boolean listOnly,
             boolean pull,
             int workerId,
@@ -156,6 +170,7 @@ public final class TestRunner implements Plugin {
         static Args parse(String[] argv) {
             Path scan = null;
             String filter = null;
+            List<String> methods = new ArrayList<>();
             boolean listOnly = false;
             boolean pull = false;
             int workerId = 0;
@@ -166,6 +181,8 @@ public final class TestRunner implements Plugin {
                     scan = Path.of(a.substring("--scan-classpath=".length()));
                 } else if (a.startsWith("--filter=")) {
                     filter = a.substring("--filter=".length());
+                } else if (a.startsWith("--method=")) {
+                    methods.add(a.substring("--method=".length()));
                 } else if (a.equals("--list-only")) {
                     listOnly = true;
                 } else if (a.equals("--pull")) {
@@ -192,7 +209,15 @@ public final class TestRunner implements Plugin {
             if (listOnly && pull) {
                 throw new IllegalArgumentException("--list-only and --pull are mutually exclusive");
             }
-            return new Args(scan, filter, listOnly, pull, workerId, List.copyOf(includeTags), List.copyOf(excludeTags));
+            return new Args(
+                    scan,
+                    filter,
+                    MethodSelection.parse(methods),
+                    listOnly,
+                    pull,
+                    workerId,
+                    List.copyOf(includeTags),
+                    List.copyOf(excludeTags));
         }
 
         private static void splitCsv(String csv, List<String> out) {

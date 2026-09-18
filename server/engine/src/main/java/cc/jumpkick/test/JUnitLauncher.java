@@ -82,15 +82,22 @@ public final class JUnitLauncher {
     /** {@code --class} patterns as one class-name regex for the runner, or null for every class. */
     private @Nullable String classFilter;
 
+    /** The runner's {@code --method=} arguments when a {@code --class} pattern names a method; else empty. */
+    private List<String> methodArgs = List.of();
+
     /**
      * {@code --class}: run only classes matching these names (fully qualified, simple, or with
-     * {@code *} wildcards). Discovery and the one-shot runner both apply the filter, so a sharded
-     * run dispatches exactly the classes a single JVM would have run. Ignored when {@link
-     * #withClassNames} named exact classes. A filter that matches nothing comes back as an empty
-     * summary; whether that is a skip or a failure is the caller's call, not the launcher's.
+     * {@code *} wildcards), or only the methods a {@code Class#method} pattern names within them.
+     * Discovery and the one-shot runner both apply the filter, so a sharded run dispatches exactly
+     * the classes a single JVM would have run, and every JVM that runs tests applies the method
+     * selection. Ignored when {@link #withClassNames} named exact classes. A filter that matches
+     * nothing comes back as an empty summary; whether that is a skip or a failure is the caller's
+     * call, not the launcher's.
      */
     public JUnitLauncher withClassPatterns(List<String> patterns) {
-        this.classFilter = patterns == null || patterns.isEmpty() ? null : JUnitClassFilter.patternRegex(patterns);
+        boolean none = patterns == null || patterns.isEmpty();
+        this.classFilter = none ? null : JUnitClassFilter.patternRegex(patterns);
+        this.methodArgs = none ? List.of() : JUnitClassFilter.methodArgs(patterns);
         return this;
     }
 
@@ -374,7 +381,10 @@ public final class JUnitLauncher {
 
     private List<String> withTagArgs(List<String> base) {
         var out = new ArrayList<>(base);
-        if (classFilter != null && classNames.isEmpty()) out.add("--filter=" + classFilter);
+        if (classFilter != null && classNames.isEmpty()) {
+            out.add("--filter=" + classFilter);
+            out.addAll(methodArgs);
+        }
         if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
         if (!excludeTags.isEmpty()) out.add("--exclude-tags=" + String.join(",", excludeTags));
         return out;

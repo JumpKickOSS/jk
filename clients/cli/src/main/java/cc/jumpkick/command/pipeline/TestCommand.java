@@ -105,7 +105,7 @@ public final class TestCommand implements CliCommand {
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
                 .splitOn(","));
-        opts.add(Opt.value("<name>", "Only these test classes (repeatable)", "--class")
+        opts.add(Opt.value("<name>", "Classes or Class#method (repeatable)", "--class")
                 .repeat());
         opts.add(Opt.value("<port>", "Debug test JVM (JDWP; 5005, 0=free)", "--debug-jvm")
                 .withFallback(""));
@@ -743,7 +743,13 @@ public final class TestCommand implements CliCommand {
                 suites = new ArrayList<>(TestSuites.GUARD_SUITES);
             }
         }
-        return TestSelection.of(
-                suites, all, include, exclude, spoke, applyGuard, scriptsOnly, noScripts, in.values("class"));
+        List<String> classes = in.values("class");
+        for (String pattern : classes) {
+            if (pattern.trim().endsWith("#")) {
+                throw new IllegalArgumentException("--class " + pattern.trim()
+                        + " names no method after '#' — write Class#method, or the class alone");
+            }
+        }
+        return TestSelection.of(suites, all, include, exclude, spoke, applyGuard, scriptsOnly, noScripts, classes);
     }
 }

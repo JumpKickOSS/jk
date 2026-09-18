@@ -15,6 +15,7 @@ jk test --all                        # every suite; tag excludes cleared. Nightl
 jk test --exclude-tags slow,bench
 jk test --include-tags smoke
 jk test --class OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
+jk test --class OrdersTest#refunds   # one method of it (* wildcards in the method too)
 jk test --debug-jvm                  # suspended test JVM listening on localhost:5005 — attach and go
 jk test --coverage                   # JaCoCo agent on every suite JVM; Coverage block in jk-results.md, HTML per module
 jk test --affected                   # ranked classes for the working tree (does not run them)
@@ -82,11 +83,19 @@ qualified name is exact, a simple name matches in any package, and `*` stands fo
 characters (`--class '*IT'`). Repeat the flag to union. Tags still apply. The filter is part of
 the run's stamp, so a green `--class` run never marks the whole suite up to date.
 
+`--class OrdersTest#refunds` runs one method of the class — the shape the IntelliJ gutter's
+method-level Run and Debug pass. The class half follows the rules above; the method half is the
+bare name, `*` standing for any run of characters (`#refund*`), and a `@Nested` class's method is
+reached through the outer class. The selection holds for every framework the Platform runs —
+JUnit Jupiter and Vintage, TestNG through its engine, Spock — because it is a post-discovery
+filter on the method the engine reports. A `--class OrdersTest` beside it still runs that whole
+class; `--class OrdersTest#` names no method and is refused.
+
 The patterns are judged against the **run**, not each module. In a workspace a module whose
 suites contain no matching class is skipped — its `run-tests` step reads
 `no classes matched --class OrdersTest — skipped`, the same shape as a module that lacks the
-selected suite. The run **fails** with `no test classes matched --class OrdersTest` only when no
-module matched anything: a typo must not pass green. A standalone project is its own run, so
+selected suite. The run **fails** with `no test classes matched --class OrdersTest` (`no test
+methods matched` for a `Class#method`) only when no module matched anything: a typo must not pass green. A standalone project is its own run, so
 there the empty match fails on the spot. `[test] serial-tags` partitions inside one module are
 judged together: a pattern that only matches serial-tagged classes is a match.
 
