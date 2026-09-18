@@ -8,6 +8,7 @@ import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.jar.Attributes;
@@ -154,6 +155,22 @@ class LintStepTest {
 
         assertThat(io.diagnostics()).isEmpty();
         assertThat(tmp.resolve("scratch/lint/spotbugs/spotbugs.xml")).isRegularFile();
+    }
+
+    /** Two source roots: PMD takes one {@code --dir} per root, detekt one comma-separated {@code --input}. */
+    @Test
+    void two_source_roots_are_spelled_the_way_each_tool_reads_them(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "lint").config(Map.of("pmd", List.of("rulesets/java/quickstart.xml")));
+        Path main = tmp.resolve("src/main/java");
+        Path test = tmp.resolve("src/test/java");
+        Path report = tmp.resolve("report.xml");
+
+        List<String> pmd = LintStep.arguments(LintTool.PMD, io, List.of(main, test), report);
+        List<String> detekt = LintStep.arguments(LintTool.DETEKT, io, List.of(main, test), report);
+
+        assertThat(pmd).containsSequence("--dir", main.toString(), "--dir", test.toString());
+        assertThat(pmd).doesNotContain(main + File.pathSeparator + test);
+        assertThat(detekt).containsSequence("--input", main + "," + test);
     }
 
     @Test
