@@ -70,5 +70,6 @@ download instead of linking a host install.
 |---------|------|
 | **Format** (style rewrite) | [`jk format`](format.md) |
 | **Java lint** (Checkstyle, PMD, SpotBugs) and **Kotlin analysis** (detekt) | the [`[lint]` table](lint.md): cached steps after compile, findings in `jk-results.md` |
+| **Database migrations** (Flyway, Liquibase) | [a tool recipe](database.md): `jk tool install` with the driver, the URL from the environment |
 
 A one-off run of any of them is still `jk tool run <coordinate> -- <args>`.
