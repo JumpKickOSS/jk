@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -43,14 +44,19 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
     private static final int MAX_DEPTH = 32;
 
     private final ModelResolver repositories;
+    private final List<String> activeProfiles;
     private final Map<String, Entry> byRawGav = new LinkedHashMap<>();
     private final Map<Path, Entry> byFile = new HashMap<>();
     private final Map<Path, EffectiveModel> effective = new HashMap<>();
     private final Set<Path> building = new HashSet<>();
 
-    /** {@code repositories} answers what the reactor does not: published parents and BOMs. */
-    ReactorModelResolver(ModelResolver repositories) {
+    /**
+     * {@code repositories} answers what the reactor does not: published parents and BOMs; {@code
+     * activeProfiles} are the ids every model of the reactor is built with, as under {@code -P}.
+     */
+    ReactorModelResolver(ModelResolver repositories, List<String> activeProfiles) {
         this.repositories = repositories;
+        this.activeProfiles = List.copyOf(activeProfiles);
     }
 
     /** Register one pom.xml of the reactor; {@code raw} is read, never written, from here on. */
@@ -97,8 +103,8 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
         if (hit != null) return hit;
         if (!building.add(entry.pomFile())) return null;
         try {
-            EffectiveModel built =
-                    EffectiveModel.build(read(entry.pomFile()), entry.pomFile(), repositories.newCopy(), this);
+            EffectiveModel built = EffectiveModel.build(
+                    read(entry.pomFile()), entry.pomFile(), repositories.newCopy(), this, activeProfiles);
             effective.put(entry.pomFile(), built);
             return built;
         } finally {

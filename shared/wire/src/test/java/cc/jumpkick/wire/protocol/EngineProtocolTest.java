@@ -567,12 +567,15 @@ class EngineProtocolTest {
 
     @Test
     void import_request_note_and_finish_variant_round_trip() {
-        String req = new ImportRequest("/p/pom.xml", "/p/jk.toml", "/p", "/tmp/jk", true, null, "/cache").encode();
+        String req = new ImportRequest(
+                        "/p/pom.xml", "/p/jk.toml", "/p", "/tmp/jk", true, null, "/cache", List.of("default", "heavy"))
+                .encode();
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.IMPORT_REQUEST);
         assertThat(Jsonl.str(req, "source")).isEqualTo("/p/pom.xml");
         assertThat(Jsonl.str(req, "out")).isEqualTo("/p/jk.toml");
         assertThat(Jsonl.bool(req, "force", false)).isTrue();
         assertThat(Jsonl.str(req, "report")).isNull();
+        assertThat(ImportRequest.decode(req).profiles()).containsExactly("default", "heavy");
 
         String note = ProtoEvents.importNote("", "wrote", "/p/jk.toml");
         assertThat(EngineProtocol.typeOf(note)).isEqualTo(EngineProtocol.IMPORT_NOTE);

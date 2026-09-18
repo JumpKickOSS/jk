@@ -242,7 +242,8 @@ final class EngineHosted {
                                 req.tmpDir().toString(),
                                 req.force(),
                                 req.report() != null ? req.report().toString() : null,
-                                req.cache().toString())
+                                req.cache().toString(),
+                                req.profiles())
                         .encode(),
                 "import",
                 listenerFactory,

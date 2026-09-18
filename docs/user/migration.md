@@ -6,6 +6,7 @@ You do not have to rewrite the build on day one.
 jk mvn package                 # real Maven (wrapper-aware), managed by jk
 jk gradle build                # real Gradle
 jk import pom.xml              # → jk.toml + fidelity report
+jk import pom.xml -P default   # with a Maven profile activated by name, as mvn -P does
 jk import settings.gradle.kts  # Gradle evaluates the build in a fork; every module imports
 jk export maven                # publishable POM
 jk export gradle
@@ -171,8 +172,12 @@ entry is pinned like the profile would be under `-P`. CI-friendly versions —
 `${revision}`, `${changelist}`, `${sha1}` — take their values from the POM chain's
 `<properties>`, which is where Maven reads them without `-D`; a placeholder no POM defines is
 written as `0.0.0-SNAPSHOT` with a row naming the property. A module list that lives only in
-profiles Maven would not activate here is a Tier-3 row, and a workspace whose modules have no
-source tree fails `jk build` with a one-line `built nothing` reason instead of finishing green.
+profiles Maven would not activate here is a Tier-3 row naming them, and `jk import pom.xml -P
+<id>` activates a profile by name, as Maven's `-P` does — comma-separated or repeated — so a
+reactor whose profiles carry no `<activation>` at all (Baeldung's tutorials list every module
+under `default`, `default-heavy`, `default-jdk8`, …) imports the modules of the profiles named; a
+workspace whose modules have no source tree fails `jk build` with a one-line `built nothing`
+reason instead of finishing green.
 
 ### Building a Maven repository without importing
 
