@@ -11,6 +11,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PreferIpv4;
+import cc.jumpkick.jdk.JdkFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -135,8 +136,10 @@ class JvmOptionsTest {
         Files.createDirectories(j25);
         Files.writeString(j25.resolve("release"), "JAVA_VERSION=\"25.0.1\"\n");
         assertThat(JvmOptions.hostFeature(j25)).isEqualTo(25);
-        assertThat(JvmOptions.hostFeatureFromExe(j25.resolve("bin").resolve("javac")))
-                .isEqualTo(25);
+        // A JDK is named by its home here: the feature major comes from that home's release file
+        // and the launcher from JdkFingerprint. No caller recovers a home from an executable.
+        assertThat(JvmOptions.javaCommand(j25, 1, List.of("-version")).getFirst())
+                .isEqualTo(JdkFingerprint.java(j25).toString());
     }
 
     @Test

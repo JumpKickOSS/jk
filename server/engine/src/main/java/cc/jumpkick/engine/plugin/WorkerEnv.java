@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.model.EnvConfig;
 import java.nio.file.Path;
@@ -35,8 +36,13 @@ public final class WorkerEnv {
 
     /**
      * Names inherited from the engine's environment without a manifest asking: where the machine is
-     * and how it talks — the shell's search path and home, the JDK, the temp roots, locale and
-     * terminal, and on Windows the system roots a process needs to run anything at all. Both
+     * and how it talks — the shell's search path and home, the temp roots, locale and terminal,
+     * and on Windows the system roots a process needs to run anything at all.
+     *
+     * <p>{@code JAVA_HOME} is deliberately NOT here. It named a JDK, and the engine's copy of it
+     * belongs to whichever shell started the daemon — so a worker's {@code JAVA_HOME} could
+     * disagree with the JVM it was actually running in, and did. A worker is given the home it is
+     * launched under instead, by the fork site that chose it ({@link #withJavaHome}). Both
      * platforms' spellings, so the rule reads the same everywhere; {@link BuildEnv#MACHINE} is the
      * per-platform subset the client forwards on a request. {@code LC_*} is a prefix, matched in
      * {@link #allowed}. The proxy the machine talks through is part of how it talks:
@@ -47,7 +53,6 @@ public final class WorkerEnv {
             "PATH",
             "HOME",
             "USERPROFILE",
-            "JAVA_HOME",
             "TMPDIR",
             "TMP",
             "TEMP",
@@ -141,6 +146,19 @@ public final class WorkerEnv {
         return new WorkerEnv(inherit, Collections.unmodifiableMap(merged));
     }
 
+    /**
+     * This policy with {@code JAVA_HOME} set to the JDK the worker is launched under.
+     *
+     * <p>Every worker runs a {@code java} the fork site chose, and its {@code JAVA_HOME} has to be
+     * that same JDK: a child that reads the variable — a compiler plugin, a test that shells out,
+     * a toolchain probe — must not be told about a different one. The engine's own value is not an
+     * answer, because a resident daemon's environment is whichever shell started it. It rides in
+     * {@link #extras()}, so it also beats anything inherited.
+     */
+    public WorkerEnv withJavaHome(@Nullable Path javaHome) {
+        return javaHome == null ? this : with(Map.of("JAVA_HOME", javaHome.toAbsolutePath().toString()));
+    }
+
     /** Entries the fork supplies unless {@link #extras()} already carries them. */
     public WorkerEnv withDefaults(Map<String, String> defaults) {
         Map<String, String> merged = new LinkedHashMap<>(defaults);
@@ -163,7 +181,32 @@ public final class WorkerEnv {
      * variables over the engine's, then {@link #extras()}.
      */
     public Map<String, String> environment() {
-        return compose(ENGINE.orElse(System.getenv()), BuildEnv.fromRequest(), inherit, extras, Os.isWindows());
+        return compose(
+                ENGINE.orElse(System.getenv()),
+                BuildEnv.fromRequest(),
+                inherit,
+                withEngineJvmAsLastResort(extras),
+                Os.isWindows());
+    }
+
+    /**
+     * {@code extras} with {@code JAVA_HOME} defaulted to the JVM this engine is running in.
+     *
+     * <p>A worker always has one, and it always names the JDK the worker actually runs under. A
+     * fork that chose a JDK says so with {@link #withJavaHome} and wins here; the rest —
+     * the generic plugin forks, whose argv {@code PluginLaunch.javaCommand} heads with
+     * {@code JavaHomes.runningJavaHome()} — run in the engine's own JVM, so that is the honest
+     * answer for them and the default is not a guess.
+     *
+     * <p>What it is deliberately not is the engine's inherited {@code JAVA_HOME} variable. That
+     * one describes the shell that started the daemon and can name a different JDK entirely from
+     * the one the engine, and therefore the worker, is executing.
+     */
+    private static Map<String, String> withEngineJvmAsLastResort(Map<String, String> extras) {
+        if (extras.containsKey("JAVA_HOME")) return extras;
+        Map<String, String> out = new LinkedHashMap<>(extras);
+        out.put("JAVA_HOME", JavaHomes.runningJavaHome().toAbsolutePath().toString());
+        return Collections.unmodifiableMap(out);
     }
 
     /**

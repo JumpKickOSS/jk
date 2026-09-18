@@ -112,7 +112,7 @@ public final class TrainRunner {
                 // User-owned launcher; they attach the agent if needed.
                 cmd.addAll(shell(config.command()));
             } else {
-                cmd.add(javaBinary(agentJavaHome).toString());
+                cmd.add(JdkFingerprint.java(runnableHome(agentJavaHome)).toString());
                 cmd.add("-agentlib:native-image-agent=config-output-dir=" + agentOut.toAbsolutePath());
                 for (var e : profile.properties().entrySet()) {
                     cmd.add("-D" + e.getKey() + "=" + e.getValue());
@@ -123,6 +123,12 @@ public final class TrainRunner {
 
             ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
             pb.directory(moduleDir.toFile());
+            // The child's JAVA_HOME is the JDK it runs under, not the one the daemon inherited
+            // from the shell that started it. A profile's own [env] still wins, below.
+            pb.environment()
+                    .put(
+                            "JAVA_HOME",
+                            runnableHome(agentJavaHome).toAbsolutePath().toString());
             for (var e : profile.env().entrySet()) {
                 pb.environment().put(e.getKey(), e.getValue());
             }
@@ -278,12 +284,14 @@ public final class TrainRunner {
         return false;
     }
 
-    private static Path javaBinary(Path javaHome) {
-        if (javaHome != null) {
-            Path j = JdkFingerprint.java(javaHome);
-            if (PathUtil.isRunnable(j)) return j;
-        }
-        return JdkFingerprint.java(JavaHomes.runningJavaHome());
+    /**
+     * The JDK a training run launches under: the one asked for when it has a runnable launcher,
+     * else this JVM's. Named as a HOME — the launcher comes off it, and so does the
+     * {@code JAVA_HOME} the child is given, which must be the same JDK it is executing.
+     */
+    private static Path runnableHome(@Nullable Path javaHome) {
+        if (javaHome != null && PathUtil.isRunnable(JdkFingerprint.java(javaHome))) return javaHome;
+        return JavaHomes.runningJavaHome();
     }
 
     private static List<String> shell(@Nullable String command) {
@@ -362,12 +370,14 @@ public final class TrainRunner {
         Files.deleteIfExists(cache);
         Path conf = target.resolve("train/app.aotconf");
         Files.deleteIfExists(conf);
-        Path java = javaBinary(javaHome);
+        Path home = runnableHome(javaHome);
+        Path java = JdkFingerprint.java(home);
         // Two-step record/create so SIGTERM still yields a cache (same as image trainer).
         List<String> record = new ArrayList<>(
                 List.of(java.toString(), "-XX:AOTMode=record", "-XX:AOTConfiguration=" + conf.toAbsolutePath()));
         record.addAll(launch);
         ProcessBuilder pb = new ProcessBuilder(record).redirectErrorStream(true).directory(moduleDir.toFile());
+        pb.environment().put("JAVA_HOME", home.toAbsolutePath().toString());
         runUntilSettled(pb, log);
         if (!Files.isRegularFile(conf) || Files.size(conf) == 0) {
             log.accept("AOT record produced no configuration — skipping AOT cache");

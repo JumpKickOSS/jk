@@ -576,9 +576,8 @@ public final class FormatPlans {
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(JvmOptions.batchFlags(1));
         if (!javaFiles.isEmpty()) jvmFlags.addAll(JAVAC_EXPORTS);
-        Path javaExe = JdkFingerprint.java(hostJavaHome);
         return PluginLoader.command(
-                javaExe, workerCp, jvmFlags, List.of(spec.toAbsolutePath().toString()));
+                hostJavaHome, workerCp, jvmFlags, List.of(spec.toAbsolutePath().toString()));
     }
 
     private static final String TRAIN_JAVA = """
