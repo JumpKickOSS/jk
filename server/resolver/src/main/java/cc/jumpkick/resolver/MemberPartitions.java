@@ -39,7 +39,8 @@ import java.util.TreeSet;
  * table manages the module at another version, or a dependency's POM declared one the pinned
  * version is below or past the compatible line of. A floating selector and a compatible lift are
  * floors the workspace's row satisfies. A member is also solved on its own when a BOM or entry of
- * its table that not every member holds excludes an edge the merged rows carry; its row is then the
+ * its table that not every member holds, or an {@code exclude} list on a root of its own that the
+ * merged root lacks, excludes an edge the merged rows carry under that root; its row is then the
  * merged version without that edge.
  * Where the member's solve disagrees with a merged row — its version, its scopes or the edges it
  * keeps — its row is added with {@code members = [path]}; where it agrees, nothing is added. A merged row a member's own table manages at the
@@ -259,19 +260,31 @@ final class MemberPartitions {
     }
 
     /**
-     * True when the member's own table excludes an edge the merged solve kept in the member's
-     * reach: a BOM of the table writes exclusions on a root the member declares without exclusions
-     * of its own, or a {@code [managed-dependencies]} entry of the table writes them on a module in
-     * the closure, and the workspace's table — solved under what every member holds — does not
-     * write the same pattern, so the merged row of that module still carries a matching edge.
+     * True when the member excludes an edge the merged solve kept in the member's reach, and the
+     * merged solve did not: a root the member declares carries an {@code exclude} list the merged
+     * root of that package lacks — the first declaration of a package is the merged manifest's, a
+     * later member's list never reaches it — or a BOM of the member's table writes exclusions on a
+     * root the member declares without a list of its own, or a {@code [managed-dependencies]} entry
+     * of the table writes them on a module in the closure, and the workspace's table — solved under
+     * what every member holds — does not write the same pattern. An exclusion prunes the whole
+     * subtree under the edge that carries it, as Maven's does, so the merged rows are walked from
+     * that root or module down.
      */
     private boolean prunes(Reach reach, PlatformConstraints own) {
         PlatformConstraints shared = union.constraints();
+        Map<String, Dependency> mergedRoots = mergedRootsByKey();
         for (Dependency root : reach.roots()) {
-            if (!root.exclusions().isEmpty() || root.isWorkspace() || root.isGit() || root.isPath()) continue;
-            Set<String> patterns = new LinkedHashSet<>(own.bomExclusions(root.module()));
-            shared.bomExclusions(root.module()).forEach(patterns::remove);
-            if (!patterns.isEmpty() && keepsExcludedEdge(root.packageKey(), patterns)) return true;
+            if (root.isWorkspace() || root.isGit() || root.isPath()) continue;
+            Set<String> patterns = new LinkedHashSet<>();
+            if (root.exclusions().isEmpty()) {
+                patterns.addAll(own.bomExclusions(root.module()));
+                shared.bomExclusions(root.module()).forEach(patterns::remove);
+            } else {
+                patterns.addAll(root.exclusions());
+                Dependency merged = mergedRoots.get(root.packageKey());
+                if (merged != null) merged.exclusions().forEach(patterns::remove);
+            }
+            if (!patterns.isEmpty() && keepsExcludedEdgeUnder(root.packageKey(), patterns)) return true;
         }
         for (Map.Entry<String, Map<String, Set<String>>> e :
                 own.managedExclusions().entrySet()) {
@@ -280,19 +293,41 @@ final class MemberPartitions {
             if (sharedPatterns != null) patterns.removeAll(sharedPatterns.keySet());
             if (patterns.isEmpty()) continue;
             for (String key : reach.closure()) {
-                if (PackageId.parse(key).ga().equals(e.getKey()) && keepsExcludedEdge(key, patterns)) return true;
+                if (PackageId.parse(key).ga().equals(e.getKey()) && keepsExcludedEdgeUnder(key, patterns)) return true;
             }
         }
         return false;
     }
 
-    /** True when the merged module at {@code key} edges onto a package one of {@code patterns} covers. */
-    private boolean keepsExcludedEdge(String key, Set<String> patterns) {
-        Resolution.ResolvedModule merged = unionByKey.get(key);
-        if (merged == null) return false;
-        for (String ref : merged.deps()) {
-            int at = ref.indexOf('@');
-            if (ExclusionLedger.isExcluded(at > 0 ? ref.substring(0, at) : ref, patterns)) return true;
+    /** The merged manifest's roots as the merged solve read them, by package key. */
+    private Map<String, Dependency> mergedRootsByKey() {
+        Map<String, Dependency> byKey = new HashMap<>();
+        LockRoots.Roots roots = union.roots();
+        for (List<Dependency> graph : List.of(roots.main(), roots.test(), roots.processor())) {
+            for (Dependency root : graph) byKey.putIfAbsent(root.packageKey(), root);
+        }
+        return byKey;
+    }
+
+    /**
+     * True when a merged module at or below {@code key} edges onto a package one of {@code
+     * patterns} covers — the edge the member's own solve prunes under that key.
+     */
+    private boolean keepsExcludedEdgeUnder(String key, Set<String> patterns) {
+        Set<String> visited = new HashSet<>();
+        Deque<String> queue = new ArrayDeque<>();
+        queue.add(key);
+        while (!queue.isEmpty()) {
+            String next = queue.poll();
+            if (!visited.add(next)) continue;
+            Resolution.ResolvedModule merged = unionByKey.get(next);
+            if (merged == null) continue;
+            for (String ref : merged.deps()) {
+                int at = ref.indexOf('@');
+                String dep = at > 0 ? ref.substring(0, at) : ref;
+                if (ExclusionLedger.isExcluded(dep, patterns)) return true;
+                queue.add(dep);
+            }
         }
         return false;
     }
