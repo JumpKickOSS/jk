@@ -1,0 +1,218 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// jk import's model query. Gradle evaluates the build with this init script and runs the one task
+// it registers on the root project, `jkImportModel`, which writes what the import maps — every
+// project, the plugins it applies, the dependencies each configuration declares, its source roots,
+// toolchain, repositories and script-declared tasks — as JSON to the file `-Pjk.import.out` names.
+// `-Pjk.import.plugins` is the comma-separated list of plugin ids the import knows how to map;
+// each project answers which of them it applies.
+import groovy.json.JsonOutput
+import groovy.transform.Field
+import org.gradle.api.Project
+import org.gradle.api.Task
+import org.gradle.api.artifacts.Dependency
+import org.gradle.api.artifacts.ExternalModuleDependency
+import org.gradle.api.artifacts.FileCollectionDependency
+import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.artifacts.repositories.MavenArtifactRepository
+import org.gradle.api.attributes.Category
+
+def outPath = gradle.startParameter.projectProperties['jk.import.out']
+def probeIds = (gradle.startParameter.projectProperties['jk.import.plugins'] ?: '').split(',').findAll { it }
+
+// One line per evaluated project: the import's progress counter.
+gradle.afterProject { Project p -> println("jk-import: evaluated " + p.path) }
+
+gradle.rootProject { Project root ->
+    root.tasks.register('jkImportModel') { Task t ->
+        if (t.metaClass.respondsTo(t, 'notCompatibleWithConfigurationCache', String)) {
+            t.notCompatibleWithConfigurationCache('reads the evaluated project model')
+        }
+        t.doLast {
+            def settingsRepos = []
+            try {
+                settingsRepos = gradle.settings.dependencyResolutionManagement.repositories
+                        .findAll { it instanceof MavenArtifactRepository }
+                        .collect { it.url.toString() }
+            } catch (Throwable ignored) {
+            }
+            def model = [
+                gradle: gradle.gradleVersion,
+                rootName: root.name,
+                settingsRepositories: settingsRepos,
+                projects: root.allprojects.sort { it.path }.collect { describeProject(it, root, probeIds) },
+            ]
+            new File(outPath).text = JsonOutput.toJson(model)
+        }
+    }
+}
+
+// Names Gradle and its core plugins give the tasks they register with an ad-hoc type, so a
+// task of that type not named here is one the build's own scripts registered.
+@Field final Set<String> PLUGIN_TASK_NAMES = [
+    'assemble', 'build', 'check', 'classes', 'testClasses', 'clean', 'buildDependents', 'buildNeeded',
+    'jar', 'javadoc', 'test', 'processResources', 'processTestResources', 'compileJava', 'compileTestJava',
+    'distZip', 'distTar', 'installDist', 'assembleDist', 'startScripts', 'run',
+    'bootDistZip', 'bootDistTar', 'bootStartScripts', 'bootRun', 'bootJar', 'bootBuildInfo',
+    'publish', 'publishToMavenLocal', 'generatePomFileForMavenPublication', 'sourcesJar', 'javadocJar',
+    'kotlinSourcesJar', 'allTests', 'apiCheck', 'apiBuild', 'apiDump', 'jkImportModel', 'prepareKotlinBuildScriptModel',
+] as Set
+@Field final Set<String> PLUGIN_TASK_PREFIXES = ['spotless', 'publish', 'generateMetadataFileFor', 'generatePomFileFor',
+    'sign', 'dokka', 'kotlin', 'compileKotlin', 'kapt', 'ksp', 'checkstyle', 'pmd', 'jacoco', 'japicmp',
+    'ktlint', 'detekt', 'sonar', 'shadow', 'boot', 'quarkus', 'errorprone', 'nativeCompile', 'nativeRun',
+    'nativeTest', 'metadataCopy', 'collectReachabilityMetadata', 'processAot', 'processTestAot',
+    'generateSarif', 'resolve', 'animalsniffer', 'cleanEclipse', 'cleanIdea', 'eclipse', 'idea', 'openIdea'] as Set
+// Types a build script reaches for when it declares a task of its own.
+@Field final Set<String> AD_HOC_TASK_TYPES = [
+    'org.gradle.api.DefaultTask', 'org.gradle.api.tasks.Copy', 'org.gradle.api.tasks.Sync',
+    'org.gradle.api.tasks.Exec', 'org.gradle.api.tasks.JavaExec', 'org.gradle.api.tasks.bundling.Zip',
+    'org.gradle.api.tasks.bundling.Tar', 'org.gradle.api.tasks.Delete', 'org.gradle.api.tasks.WriteProperties',
+] as Set
+
+def describeProject(Project p, Project root, List<String> probeIds) {
+    def m = [:]
+    m.path = p.path
+    m.projectName = p.name
+    m.dir = root.projectDir.toPath().relativize(p.projectDir.toPath()).toString().replace('\\', '/')
+    m.group = p.group.toString()
+    m.version = p.version.toString()
+    if (p.description) m.description = p.description
+    m.plugins = probeIds.findAll { p.pluginManager.hasPlugin(it) }
+    m.pluginClasses = p.plugins.collect { taskType(it) }.findAll { !it.startsWith('org.gradle.') }
+    def versions = [:]
+    for (String id : m.plugins) {
+        try {
+            def plugin = p.plugins.findPlugin(id)
+            if (plugin == null || plugin.class.name.startsWith('org.gradle.')) continue
+            def v = plugin.class.package?.implementationVersion
+            if (v) versions[id] = v
+        } catch (Throwable ignored) {
+        }
+    }
+    m.pluginVersions = versions
+    def javaExt = p.extensions.findByName('java')
+    if (javaExt != null) {
+        def j = [:]
+        try { def lv = javaExt.toolchain.languageVersion.orNull; if (lv != null) j.toolchain = lv.asInt() } catch (Throwable ignored) { }
+        try { j.sourceCompatibility = javaExt.sourceCompatibility.majorVersion } catch (Throwable ignored) { }
+        try { j.targetCompatibility = javaExt.targetCompatibility.majorVersion } catch (Throwable ignored) { }
+        try { def r = p.tasks.findByName('compileJava')?.options?.release?.orNull; if (r != null) j.release = r } catch (Throwable ignored) { }
+        m.java = j
+    }
+    def kotlinExt = p.extensions.findByName('kotlin')
+    if (kotlinExt != null) {
+        try { m.kotlinVersion = kotlinExt.coreLibrariesVersion } catch (Throwable ignored) { }
+        try { def jt = kotlinExt.jvmToolchain; } catch (Throwable ignored) { }
+    }
+    try { m.mainClass = p.extensions.findByName('application')?.mainClass?.orNull } catch (Throwable ignored) { }
+    if (!m.mainClass) {
+        try { m.mainClass = p.extensions.findByName('springBoot')?.mainClass?.orNull } catch (Throwable ignored) { }
+    }
+    if (!m.mainClass) m.remove('mainClass')
+    m.bootBuildInfo = p.tasks.findByName('bootBuildInfo') != null
+    try {
+        def jar = p.tasks.findByName('jar')
+        if (jar != null) m.manifest = jar.manifest.attributes.collectEntries { k, v -> [k.toString(), v.toString()] }
+    } catch (Throwable ignored) {
+    }
+    m.repositories = p.repositories.findAll { it instanceof MavenArtifactRepository }.collect { it.url.toString() }
+    def sourceSets = p.extensions.findByName('sourceSets')
+    if (sourceSets != null) {
+        m.sourceSets = sourceSets.collect { s ->
+            def kotlinDirs = []
+            try { kotlinDirs = s.extensions.findByName('kotlin')?.srcDirs ?: [] } catch (Throwable ignored) { }
+            [name: s.name, java: relDirs(p, s.java.srcDirs), resources: relDirs(p, s.resources.srcDirs), kotlin: relDirs(p, kotlinDirs)]
+        }
+    }
+    m.configurations = p.configurations
+            .findAll { !it.dependencies.isEmpty() || !it.dependencyConstraints.isEmpty() }
+            .collect { c ->
+                [name: c.name,
+                 dependencies: c.dependencies.collect { describeDependency(it, root) },
+                 constraints: c.dependencyConstraints.collect { [module: it.group + ':' + it.name, version: constraintVersion(it)] }]
+            }
+    def dm = p.extensions.findByName('dependencyManagement')
+    if (dm != null) {
+        try {
+            // Only the versions the plugin supplies to this project's own version-less dependencies.
+            def versionless = [] as Set
+            m.configurations.each { c -> c.dependencies.each { d -> if (d.kind == 'module' && !d.version) versionless << (d.group + ':' + d.artifact) } }
+            m.managedVersions = dm.managedVersions.findAll { k, v -> versionless.contains(k.toString()) }.collectEntries { k, v -> [k.toString(), v.toString()] }
+        } catch (Throwable ignored) {
+        }
+        try {
+            m.springBootBom = p.buildscript.classLoader.loadClass('org.springframework.boot.gradle.plugin.SpringBootPlugin')
+                    .getField('BOM_COORDINATES').get(null).toString()
+        } catch (Throwable ignored) {
+        }
+    }
+    m.tasks = p.tasks.findAll { isScriptTask(it) }.collect { [name: it.name, type: taskType(it), group: it.group ?: ''] }
+    return m
+}
+
+def relDirs(Project p, Collection dirs) {
+    dirs.collect { p.projectDir.toPath().relativize(it.toPath()).toString().replace('\\', '/') }
+}
+
+def constraintVersion(constraint) {
+    try {
+        def vc = constraint.versionConstraint
+        if (vc.strictVersion) return vc.strictVersion
+        if (vc.requiredVersion) return vc.requiredVersion
+        if (vc.preferredVersion) return vc.preferredVersion
+    } catch (Throwable ignored) {
+    }
+    return constraint.version ?: ''
+}
+
+def describeDependency(Dependency d, Project root) {
+    if (d instanceof ProjectDependency) {
+        def path
+        try { path = d.path } catch (Throwable ignored) { path = d.dependencyProject.path }
+        return [kind: 'project', projectPath: path]
+    }
+    if (d instanceof ExternalModuleDependency) {
+        def r = [kind: 'module', group: d.group ?: '', artifact: d.name, version: d.version ?: '']
+        try {
+            def vc = d.versionConstraint
+            if (vc.strictVersion) r.strict = vc.strictVersion
+            if (vc.requiredVersion) r.required = vc.requiredVersion
+            if (vc.preferredVersion) r.prefer = vc.preferredVersion
+        } catch (Throwable ignored) {
+        }
+        try {
+            def category = d.attributes.getAttribute(Category.CATEGORY_ATTRIBUTE)
+            if (category != null) r.category = category.name
+        } catch (Throwable ignored) {
+        }
+        if (!d.transitive) r.intransitive = true
+        r.excludes = d.excludeRules.collect { (it.group ?: '*') + ':' + (it.module ?: '*') }
+        if (!d.artifacts.isEmpty()) {
+            def a = d.artifacts.first()
+            if (a.classifier) r.classifier = a.classifier
+            if (a.type && a.type != 'jar') r.type = a.type
+        }
+        return r
+    }
+    if (d instanceof FileCollectionDependency) {
+        return [kind: 'files', files: d.files.collect { root.projectDir.toPath().relativize(it.toPath()).toString().replace('\\', '/') }]
+    }
+    return [kind: 'other', text: d.toString()]
+}
+
+// The declared class of a task or plugin, under the subclass Gradle decorates it with.
+def taskType(Object t) {
+    def type = t.class
+    if (type.name.endsWith('_Decorated') && type.superclass != null) type = type.superclass
+    return type.name
+}
+
+def isScriptTask(Task t) {
+    if (PLUGIN_TASK_NAMES.contains(t.name)) return false
+    if (PLUGIN_TASK_PREFIXES.any { t.name.startsWith(it) }) return false
+    if (t.name.endsWith('Classes')) return false
+    def type = taskType(t)
+    if (!type.contains('.')) return true
+    if (type.contains('_gradle')) return true
+    return AD_HOC_TASK_TYPES.contains(type)
+}

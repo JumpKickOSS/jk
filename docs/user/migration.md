@@ -6,7 +6,7 @@ You do not have to rewrite the build on day one.
 jk mvn package                 # real Maven (wrapper-aware), managed by jk
 jk gradle build                # real Gradle
 jk import pom.xml              # → jk.toml + fidelity report
-jk import build.gradle.kts     # declarative only (no script evaluation)
+jk import settings.gradle.kts  # Gradle evaluates the build in a fork; every module imports
 jk export maven                # publishable POM
 jk export gradle
 jk export idea | vscode
@@ -319,6 +319,22 @@ directory: the test hard-codes Maven's layout, and the portable spelling is the 
 (`user.dir`), which both Surefire and jk set to the module directory. Until the test says that,
 the module's suite fails under jk and the corpus row names it.
 
+### Where Gradle import stands on real repositories
+
+Seven public Gradle builds, each imported from a fresh clone with the Gradle its wrapper pins
+(downloaded and verified on first use; 8.3 and 8.14.2 ran on the installed JDK 17 and 21 because
+neither runs on 25) and read from a fork whose whole evaluation stayed inside the resolve budget:
+
+| Repository | Build | Import | What the manifest carries |
+|---|---|---|---:|
+| spring-guides/gs-multi-module `complete/` | Gradle 9.3.1, 2 modules, Boot + dependency-management | 54 s, lossless | root `[workspace]`, `library.workspace = true`, `[spring-boot] version`, Boot BOM as the library's platform; `jk build --skip-tests` compiles both modules |
+| square/moshi | Gradle 9.5.1, 11 modules, Kotlin DSL, version catalog, KSP, dokka, japicmp | 10 s, 18 Tier-2 rows | one manifest per module, sibling edges, `[provided-dependencies]`, `[processor-dependencies]`, two `japicmp` modules named by path; rows name the `checkLegacyAbi` tasks, the `java16` source set, the japicmp `baseline`/`latest` configurations and the publish plugin |
+| spring-petclinic/spring-petclinic-kotlin | Gradle 9.7.0, Kotlin, Boot 4 | 16 s, 3 rows | `kotlin = "2.4.10"`, `[spring-boot]`, `bootstrap = "…:5.3.8"` and `webjars-locator-lite = "…:1.1.4"` from the script's `val`s; rows name the Jib and allopen plugins |
+| junit-pioneer/junit-pioneer | Gradle 8.14.2 on JDK 21 | 37 s | `junit-bom = "org.junit:junit-bom:6.1.0"` from `gradle.properties`, `jimfs = "…:1.3.0"` |
+| mapstruct/mapstruct-examples `mapstruct-on-gradle/` | Gradle 8.3 on JDK 17, Groovy DSL, `ext {}` | 9 s | `mapstruct = "1.7.0.Beta1"`, both comma-listed TestNG/FEST test dependencies |
+| junit-team/junit-examples `junit-jupiter-extensions/` | Gradle 9.7.1 | 6 s | `[platform-dependencies] junit-bom`, `junit-jupiter-api` under `[dependencies]` through its `because` closure, both `testRuntimeOnly` entries |
+| jillesvangurp/kotlin4example | Gradle 9.0.0 on JDK 21, refreshVersions | 23 s | every `_` version is a row naming the dependency and the entry is written version-less |
+
 ### Which Maven plugins import, and how well
 
 Counted across 66 public repositories cloned for the Maven corpus and the agent-loop corpus on
@@ -416,26 +432,64 @@ place; `<file>` existence stays a checklist row. A profile with more than one pa
 one row per kind, each naming the same `<id>`; a `<dependencyManagement>` with no dependency of
 its own is a row and nothing is written.
 
-**Gradle import** does not execute build scripts (no Groovy/Kotlin evaluation). It does
-read on-disk `gradle/libs.versions.toml` (libraries, bundles, `version.ref`) and maps
-type-safe accessors like `libs.guava` into `[dependencies]`. Unresolved catalog refs show
-up in the import report rather than vanishing. Versions stay on deps/BOMs — they are not
-written into jk library catalog layers. `annotationProcessor`, `kapt` and `ksp` land in
-`[processor-dependencies]`; `testAnnotationProcessor`, `kaptTest` and `kspTest` in
-`[test-processor-dependencies]`. The project is named from `rootProject.name` in the
-`settings.gradle(.kts)` beside the build file, else from the directory. Every configuration lands
-in the table that means the same thing: `implementation` and `api` in `[dependencies]`,
-`compileOnly` and `compileOnlyApi` in `[provided-dependencies]`, `runtimeOnly` in
-`[runtime-dependencies]`, `testImplementation` and `testRuntimeOnly` in `[test-dependencies]` —
-`testCompileOnly` too, with a row saying jk has no test-provided table. A declaration's closure is
-read for its `exclude` rules (`isTransitive = false` is `*:*`) and otherwise skipped, so an
-`api("g:a") { because "…" }` imports; a Groovy comma list of coordinates imports each one.
-A version spelled through a property — `$junitVersion`, `${mapstructVersion}` — is written as the
-value the property has in `gradle.properties`, an `ext { }` block, a Kotlin `extra` entry or a
-script-level `val` / `def`, and `${libs.versions.x.get()}` reads the catalog; the same holds for
-`id("…") version someVal` in the plugins block. A property nothing defines, or refreshVersions'
-`_`, is a row naming it and the dependency is written without a version — a `$` never reaches the
-manifest. Keep `jk gradle` for modules that still need full Gradle.
+**Gradle import** reads the build through Gradle itself. A directory with a
+`settings.gradle(.kts)` — name the settings file, a build script beside it, or let auto-detection
+find either — is evaluated by the Gradle the wrapper pins (else jk's default), provisioned the
+way `jk gradle` provisions it: a healthy install on this machine, or a download verified against
+the wrapper's `distributionSha256Sum` or Gradle's published `.sha256`. Gradle runs in a fork, on
+the engine's JDK when the distribution accepts it and otherwise on the newest installed JDK it
+does (a wrapper pinned to 8.3 runs on JDK 20 or older; none installed is a refusal naming the
+range), and writes the evaluated project model: every project, the plugins it applies, the
+dependencies each configuration declares, its toolchain, source roots, repositories and
+script-registered tasks. Version catalogs, `subprojects { }` / `allprojects { }`, `ext` and
+`gradle.properties` placeholders, `buildSrc` and convention plugins therefore all import as what
+they evaluate to. The fork's output is the import's progress, and a fork whose output stands
+still for the resolve stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s) is stopped and refused with
+the last line it printed, so an import never sits silent.
+
+The evaluated build imports as a workspace: the root `jk.toml` names every compiled project under
+`[workspace] modules` (root-relative paths, a project that applies no JVM plugin and declares
+nothing is not a module, a `java-platform` project is a row — `jk export bom` writes a BOM), each
+member's manifest carries its own coordinates, `project(":sibling")` is a workspace edge on the
+sibling (two projects sharing a name are each named by their path, with a row), and every
+repository other than Central is hoisted onto the root. Configurations land in the table that
+means the same thing: `implementation` and `api` in `[dependencies]`, `compileOnly` and
+`compileOnlyApi` in `[provided-dependencies]`, `runtimeOnly` in `[runtime-dependencies]`,
+`testImplementation` and `testRuntimeOnly` in `[test-dependencies]` — `testCompileOnly` too, with
+a row saying jk has no test-provided table — `annotationProcessor`, `kapt` and `ksp` in
+`[processor-dependencies]`, their test forms in `[test-processor-dependencies]`,
+`platform(…)` / `enforcedPlatform(…)` in `[platform-dependencies]`, `constraints { }` in
+`[managed-dependencies]`, `developmentOnly` in `[dev-dependencies]`. A configuration jk has no
+table for (`intTestImplementation`, a japicmp `baseline`) is a row naming it and its
+dependencies; the tool configurations Gradle's own plugins declare (`kotlinCompilerClasspath`,
+`dokkaPlugin`, …) are not. `exclude` rules ride the edge (`isTransitive = false` is `*:*`); a
+classifier is kept; a dynamic version (`1.+`, `latest.release`) is written as `latest` with a row.
+A module under the Spring dependency-management plugin without the Boot plugin takes Boot's BOM as
+its `[platform-dependencies]` entry; with the Boot plugin the `[spring-boot]` table brings it. A
+task the build script registers (`tasks.register("release")`, an ad-hoc `Copy`) is a Tier-2 row
+naming the task, never an error; a source set other than `main` and `test`, or a source root
+outside jk's layout, is a row; a plugin nothing maps is a row naming its id or class.
+
+When Gradle cannot evaluate the build — no network for a download, no JDK in the distribution's
+range, a plugin the build cannot resolve — the import falls back to scanning the root build script
+alone and says so in a Tier-3 row; a `settings.gradle` with no build script beside it is then
+refused with Gradle's reason. Importing one project's `build.gradle` from inside a larger build
+scans that file alone and points at the root's settings file. The scanner reads the declarative
+idioms of a single script: the `plugins { }` block (a Kotlin plugin version is `project.kotlin`;
+the ids an installed jk plugin claims map to its table), `group`/`version`/`description`,
+`java { }` toolchain lines, `application { mainClass }`, `jar { manifest { attributes } }`,
+`repositories { }`, and the `dependencies { }` block including on-disk
+`gradle/libs.versions.toml` accessors (`libs.guava`, `libs.bundles.testing`; unresolved refs are
+rows). The project is named from `rootProject.name` in the settings file beside the build file,
+else from the directory. A declaration's closure is read for its `exclude` rules and otherwise
+skipped, so an `api("g:a") { because "…" }` imports; a Groovy comma list of coordinates imports
+each one. A version spelled through a property — `$junitVersion`, `${mapstructVersion}` — is
+written as the value the property has in `gradle.properties`, an `ext { }` block, a Kotlin `extra`
+entry or a script-level `val` / `def`, and `${libs.versions.x.get()}` reads the catalog; the same
+holds for `id("…") version someVal` in the plugins block. A property nothing defines, or
+refreshVersions' `_`, is a row naming it and the dependency is written without a version — a `$`
+never reaches the manifest. Versions stay on deps and BOMs — they are not written into jk library
+catalog layers. Keep `jk gradle` for modules that still need full Gradle.
 
 **Export** writes what the manifest says: `jk export maven` writes each dependency's `exclude`
 list as `<exclusions>`, a `[managed-dependencies]` entry's included on its

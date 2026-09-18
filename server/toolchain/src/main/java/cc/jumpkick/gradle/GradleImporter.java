@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -60,13 +61,13 @@ public final class GradleImporter {
             Pattern.compile("id\\s*\\(\\s*[\"']org\\.jetbrains\\.kotlin[^\"']*[\"']\\s*\\)\\s*version\\s*" + STR);
 
     /** One installed plugin's Gradle-import mapping: which table + config key a plugin id feeds. */
-    private record PluginImportRule(
+    record PluginImportRule(
             String manifestId,
             @Nullable String versionTo,
             @Nullable String missingVersionWarning) {}
 
     /** Gradle plugin id → import rule, from every installed manifest's [[import.gradle-plugin]]. */
-    private static Map<String, PluginImportRule> pluginImportRules() {
+    static Map<String, PluginImportRule> pluginImportRules() {
         Map<String, PluginImportRule> rules = new LinkedHashMap<>();
         for (var manifest : PluginTableRegistry.manifests()) {
             for (var rule : manifest.gradleImports()) {
@@ -78,28 +79,27 @@ public final class GradleImporter {
     }
 
     /**
-     * Evaluate the import rules against the plugins block: a rule with {@code version-to} maps
-     * the Gradle plugin's inline version into the owned table's config (only that key — schema
-     * defaults are exactly what the renderer omits, so the round trip stays minimal); declared
+     * Evaluate the import rules against the plugins a build applies: a rule with {@code version-to}
+     * maps the Gradle plugin's version into the owned table's config (only that key — schema
+     * defaults are exactly what the renderer omits, so the round trip stays minimal); applied
      * without a version, the rule's warning is reported instead. Version-less rules are
      * recognition-only (their construct is absorbed by another contribution, e.g. Boot's BOM
      * auto-import covering dependency-management).
      */
-    private static List<PluginConfig> mapPluginTables(
-            String pluginsBody, Map<String, PluginImportRule> rules, ImportReport.Builder report) {
+    static List<PluginConfig> mapPluginTables(
+            Set<String> applied,
+            Map<String, String> versions,
+            Map<String, PluginImportRule> rules,
+            ImportReport.Builder report) {
         List<PluginConfig> out = new ArrayList<>();
         for (Map.Entry<String, PluginImportRule> e : rules.entrySet()) {
-            if (!pluginsBody.contains(e.getKey())) continue;
+            if (!applied.contains(e.getKey())) continue;
             PluginImportRule rule = e.getValue();
             String versionTo = rule.versionTo();
             if (versionTo == null) continue; // recognition-only
-            Pattern versionPattern = Pattern.compile(
-                    "id\\s*\\(?\\s*[\"']" + Pattern.quote(e.getKey()) + "[\"']\\s*\\)?\\s*version\\s*" + STR);
-            Matcher m = versionPattern.matcher(pluginsBody);
-            if (m.find()) {
-                out.add(new PluginConfig(
-                        rule.manifestId(),
-                        Map.of(versionTo, Objects.requireNonNull(firstNonNull(m.group(1), m.group(2))))));
+            String version = versions.get(e.getKey());
+            if (version != null) {
+                out.add(new PluginConfig(rule.manifestId(), Map.of(versionTo, version)));
             } else if (rule.missingVersionWarning() != null) {
                 report.warning(rule.missingVersionWarning());
             }
@@ -107,11 +107,26 @@ public final class GradleImporter {
         return out;
     }
 
+    /** The plugin ids the block applies, each with its inline version when one is spelled. */
+    private static Map<String, @Nullable String> pluginsApplied(String pluginsBody) {
+        Map<String, @Nullable String> out = new LinkedHashMap<>();
+        for (Matcher m = PLUGIN_ID_VERSION.matcher(pluginsBody); m.find(); ) {
+            String id = firstNonNull(m.group(1), m.group(2));
+            if (id == null || id.isBlank()) continue;
+            out.put(id, firstNonNull(m.group(3), m.group(4)));
+        }
+        return out;
+    }
+
+    // id("x") [version "v"] / id 'x' [version 'v'] — the id in groups 1/2, the version in 3/4.
+    private static final Pattern PLUGIN_ID_VERSION =
+            Pattern.compile("id\\s*\\(?\\s*" + STR + "\\s*\\)?(?:\\s*version\\s*" + STR + ")?");
+
     /** The Gradle plugin that writes {@code git.properties}; the {@code [build-info]} table in jk. */
-    private static final String GIT_PROPERTIES_PLUGIN = "com.gorylenko.gradle-git-properties";
+    static final String GIT_PROPERTIES_PLUGIN = "com.gorylenko.gradle-git-properties";
 
     /** The Dokka Gradle plugin; its inline version is the {@code [dokka]} pin. */
-    private static final String DOKKA_PLUGIN = "org.jetbrains.dokka";
+    static final String DOKKA_PLUGIN = "org.jetbrains.dokka";
 
     private static final Pattern DOKKA_ID_VERSION =
             Pattern.compile("id\\s*\\(?\\s*[\"']" + Pattern.quote(DOKKA_PLUGIN) + "[\"']\\s*\\)?\\s*version\\s*" + STR);
@@ -236,7 +251,12 @@ public final class GradleImporter {
         // `version`, which auto-imports the BOM so versionless starters stay versionless).
         // Applied-without-version (settings pluginManagement) can't be resolved from this file
         // alone -- the rule's warning asks the user to fill it in.
-        List<PluginConfig> pluginConfigs = mapPluginTables(pluginsBody, importRules, report);
+        Map<String, @Nullable String> applied = pluginsApplied(pluginsBody);
+        Map<String, String> pluginVersions = new LinkedHashMap<>();
+        applied.forEach((id, v) -> {
+            if (v != null) pluginVersions.put(id, v);
+        });
+        List<PluginConfig> pluginConfigs = mapPluginTables(applied.keySet(), pluginVersions, importRules, report);
 
         Map<Scope, List<Dependency>> deps = GradleDependencies.parse(stripped, catalog, properties, report);
         List<RepositorySpec> repos = parseRepositories(stripped, report);
@@ -414,8 +434,7 @@ public final class GradleImporter {
             String url = firstNonNull(m.group(1), m.group(2));
             if (url == null || url.isBlank()) continue;
             // Skip the implicit Central — declaring it adds nothing.
-            if (url.startsWith("https://repo.maven.apache.org/") || url.startsWith("https://repo1.maven.org/"))
-                continue;
+            if (isCentral(url)) continue;
             try {
                 String name = "repo" + (deduped.size() + 1);
                 deduped.put(name, new RepositorySpec(name, RepositorySpec.normalizedUrl(new URI(url.trim()))));
@@ -427,6 +446,17 @@ public final class GradleImporter {
             report.warning("`mavenLocal()` recognised but not mapped — jk reads ~/.m2 by default.");
         }
         return new ArrayList<>(deduped.values());
+    }
+
+    /**
+     * Whether a build script's repository URL is Maven Central under any spelling a user may have
+     * typed — the canonical host or its {@code repo1} alias; a manifest never declares Central.
+     */
+    static boolean isCentral(String url) {
+        String trimmed = url.trim();
+        return trimmed.startsWith(RepositorySpec.MAVEN_CENTRAL.url().toString())
+                || trimmed.startsWith("https://repo.maven.apache.org/")
+                || trimmed.startsWith("https://repo1.maven.org/");
     }
 
     // --- java / kotlin toolchain --------------------------------------------

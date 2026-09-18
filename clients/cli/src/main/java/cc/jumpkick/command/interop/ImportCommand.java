@@ -29,11 +29,17 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk import <file>} — convert a Maven or Gradle build to {@code jk.toml} (engine-hosted
- * in-process converter). This command pre-flights sources/overwrite and renders progress.
+ * converter; a Gradle build's model comes from a Gradle fork). This command pre-flights
+ * sources/overwrite and renders progress.
  */
 public final class ImportCommand implements CliCommand {
 
-    private static final List<String> AUTO_DETECT_ORDER = List.of("build.gradle.kts", "build.gradle", "pom.xml");
+    private static final List<String> AUTO_DETECT_ORDER =
+            List.of("build.gradle.kts", "build.gradle", "settings.gradle.kts", "settings.gradle", "pom.xml");
+
+    /** The Gradle scripts an import takes: a project's build script, or the settings file of a build root. */
+    private static final List<String> GRADLE_SOURCES =
+            List.of("build.gradle.kts", "build.gradle", "settings.gradle.kts", "settings.gradle");
 
     @Override
     public String name() {
@@ -77,7 +83,8 @@ public final class ImportCommand implements CliCommand {
             if (source == null) {
                 CommandWedge.printFail(
                         "Import",
-                        "no build file found in " + baseDir + " (looked for build.gradle.kts, build.gradle, pom.xml).");
+                        "no build file found in " + baseDir + " (looked for " + String.join(", ", AUTO_DETECT_ORDER)
+                                + ").");
                 return Exit.NO_INPUT;
             }
             CliOutput.out("Importing " + PathDisplay.styled(source, baseDir));
@@ -90,8 +97,8 @@ public final class ImportCommand implements CliCommand {
         }
 
         String filename = source.getFileName().toString().toLowerCase(Locale.ROOT);
-        if (!filename.endsWith("pom.xml") && !filename.equals("build.gradle") && !filename.equals("build.gradle.kts")) {
-            CommandWedge.printFail("Import", "expected pom.xml, build.gradle, or build.gradle.kts");
+        if (!filename.endsWith("pom.xml") && !GRADLE_SOURCES.contains(filename)) {
+            CommandWedge.printFail("Import", "expected pom.xml, build.gradle(.kts) or settings.gradle(.kts)");
             return Exit.USAGE;
         }
 

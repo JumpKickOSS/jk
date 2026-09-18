@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
-import cc.jumpkick.gradle.GradleImporter;
+import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -18,11 +18,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Maven/Gradle → {@code jk.toml} conversion. Runs in the engine (the registry host) so import
- * does not need sibling plugin manifests on a worker classpath.
+ * does not need sibling plugin manifests on a worker classpath; a Gradle build is read through
+ * {@link GradleBuildImport}, which forks Gradle for its project model.
  */
 public final class ProjectImport {
 
@@ -38,20 +40,24 @@ public final class ProjectImport {
     public static final String OVERWRITE_FLAG = "--overwrite";
 
     /**
-     * Convert {@code source} (a {@code pom.xml} or Gradle build file) and write {@code jk.toml}
-     * files. {@code poms} resolves the parents and BOMs a POM inherits. {@code exit} 0 success,
-     * {@link Exit#USAGE} a missing argument or an unrecognised source, {@link Exit#CANT_CREATE}
-     * when any manifest the import would write is already there and {@code force} is off — nothing
-     * is written then, the root included, so the tree is never half converted — 1 IO error.
+     * Convert {@code source} (a {@code pom.xml}, or a Gradle build or settings script) and write
+     * {@code jk.toml} files. {@code poms} resolves the parents and BOMs a POM inherits; {@code
+     * gradle} reads a Gradle build; {@code progress} hears each stage of a Gradle read. {@code exit}
+     * 0 success, {@link Exit#USAGE} a missing argument or an unrecognised source, {@link
+     * Exit#CANT_CREATE} when any manifest the import would write is already there and {@code force}
+     * is off — nothing is written then, the root included, so the tree is never half converted — 1
+     * IO error.
      */
     public static Outcome run(
             PomImporter poms,
+            GradleBuildImport gradle,
             Path source,
             Path out,
             @Nullable Path baseDir,
             @Nullable Path tmpDir,
             boolean force,
-            @Nullable Path report) {
+            @Nullable Path report,
+            Consumer<String> progress) {
         if (source == null || out == null) {
             return new Outcome(Exit.USAGE, 0, "import requires source and out", List.of());
         }
@@ -66,9 +72,10 @@ public final class ProjectImport {
                 root = result.root();
                 modules.putAll(result.modules());
                 importReport = DeclaredPins.check(root, modules, result.report(), poms);
-            } else if (filename.equals("build.gradle") || filename.equals("build.gradle.kts")) {
-                GradleImporter.Result result = GradleImporter.importFrom(source);
-                root = result.jkBuild();
+            } else if (GradleBuildImport.isGradleSource(filename)) {
+                GradleBuildImport.Result result = gradle.importBuild(source, progress);
+                root = result.root();
+                modules.putAll(result.modules());
                 importReport = result.report();
             } else {
                 return new Outcome(Exit.USAGE, 0, "unrecognised source: " + source.getFileName(), List.of());

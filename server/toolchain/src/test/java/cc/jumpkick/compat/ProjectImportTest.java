@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.TestImporters;
 import java.nio.file.Files;
@@ -22,12 +23,14 @@ class ProjectImportTest {
 
         ProjectImport.Outcome outcome = ProjectImport.run(
                 TestImporters.offline(root.resolve("importer")),
+                GradleBuildImport.scannerOnly(),
                 root.resolve("pom.xml"),
                 root.resolve("jk.toml"),
                 root,
                 null,
                 false,
-                null);
+                null,
+                note -> {});
 
         assertThat(outcome.exit()).isEqualTo(Exit.CANT_CREATE);
         assertThat(outcome.wrote()).isEmpty();
@@ -48,12 +51,14 @@ class ProjectImportTest {
 
         ProjectImport.Outcome outcome = ProjectImport.run(
                 TestImporters.offline(root.resolve("importer")),
+                GradleBuildImport.scannerOnly(),
                 root.resolve("pom.xml"),
                 root.resolve("jk.toml"),
                 root,
                 null,
                 true,
-                root.resolve("report.md"));
+                root.resolve("report.md"),
+                note -> {});
 
         assertThat(outcome.exit()).isZero();
         assertThat(outcome.wrote())
