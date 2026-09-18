@@ -33,6 +33,10 @@ public final class ResolveProfile {
     private static final AtomicLong PHASE_RESOLVE_NS = new AtomicLong();
     private static final AtomicLong PHASE_POST_NS = new AtomicLong();
     private static final AtomicLong PHASE_PARTITION_NS = new AtomicLong();
+    private static final AtomicLong MEMBER_SOLVE_NS = new AtomicLong();
+    private static final AtomicLong MEMBER_SOLVE_CALLS = new AtomicLong();
+    private static final AtomicLong MEMBER_ASSEMBLE_NS = new AtomicLong();
+    private static final AtomicLong MEMBER_ASSEMBLE_CALLS = new AtomicLong();
 
     /**
      * Cached enable flag. {@link #on()} sits in the PubGrub inner loop ({@code relationTo} entry +
@@ -74,6 +78,10 @@ public final class ResolveProfile {
         PHASE_RESOLVE_NS.set(0);
         PHASE_POST_NS.set(0);
         PHASE_PARTITION_NS.set(0);
+        MEMBER_SOLVE_NS.set(0);
+        MEMBER_SOLVE_CALLS.set(0);
+        MEMBER_ASSEMBLE_NS.set(0);
+        MEMBER_ASSEMBLE_CALLS.set(0);
     }
 
     /** Wall time for lock plan prep (git/path materialize, repo build) outside PubGrub. */
@@ -102,6 +110,27 @@ public final class ResolveProfile {
     public static void phasePartition(long nanos) {
         if (!on()) return;
         PHASE_PARTITION_NS.addAndGet(nanos);
+    }
+
+    /**
+     * Wall time of one member's own solve inside the partition pass — its three scope graphs, the
+     * package source they share and the POM reads they miss — one call per member solved.
+     */
+    public static void memberSolve(long nanos) {
+        if (!on()) return;
+        MEMBER_SOLVE_NS.addAndGet(nanos);
+        MEMBER_SOLVE_CALLS.incrementAndGet();
+    }
+
+    /**
+     * Wall time of assembling one member's solved graph into rows — every module of it located in
+     * the store or fetched — one call per member solved. The partition pass is these two counters
+     * plus the flagging that precedes them.
+     */
+    public static void memberAssemble(long nanos) {
+        if (!on()) return;
+        MEMBER_ASSEMBLE_NS.addAndGet(nanos);
+        MEMBER_ASSEMBLE_CALLS.incrementAndGet();
     }
 
     /** A {@link Phases} over the JVM's clock. */
@@ -212,7 +241,15 @@ public final class ResolveProfile {
                 + ms(PHASE_RESOLVE_NS)
                 + "ms phasePartition="
                 + ms(PHASE_PARTITION_NS)
-                + "ms phasePost="
+                + "ms memberSolve="
+                + ms(MEMBER_SOLVE_NS)
+                + "ms/"
+                + MEMBER_SOLVE_CALLS.get()
+                + " memberAssemble="
+                + ms(MEMBER_ASSEMBLE_NS)
+                + "ms/"
+                + MEMBER_ASSEMBLE_CALLS.get()
+                + " phasePost="
                 + ms(PHASE_POST_NS)
                 + "ms";
     }
