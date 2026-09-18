@@ -151,6 +151,10 @@ first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 every aggregator (a `pom`-packaged module with `<modules>` of its own is a parent and a list, not
 a module jk builds) and into the modules a profile active on this machine adds, so a reactor of
 181 POMs becomes one `[workspace]` of root-relative paths (`community/kernel`, `websocket/spi`).
+The modules of one aggregator have their effective models built side by side — the parent and
+BOM POMs they read from a repository several at a time, Maven's model building on several cores —
+and are imported in the order listed, so a reactor of 1,350 modules imports in minutes rather
+than one module at a time.
 A dependency on any module of the reactor is a workspace edge — `{ workspace = true }`, with
 `kind = "tests"` for a `test-jar` — wherever the module sits and however its version is spelled,
 because siblings match by `groupId:artifactId`. Two leaves that share an artifactId under

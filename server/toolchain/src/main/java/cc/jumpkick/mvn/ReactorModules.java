@@ -189,15 +189,21 @@ final class ReactorModules {
         register(pomFile, xml, EffectiveModel.rawModel(xml));
     }
 
+    /**
+     * One aggregator's {@code <modules>}: every child pom.xml that is there, under the root and not
+     * walked yet is registered, then the children's effective models are built side by side and
+     * each child is visited in the order listed — a leaf to the visitor, an aggregator into its own
+     * walk.
+     */
     private void walk(Path pomFile, EffectiveModel em, Reactor found) throws IOException {
+        List<Path> children = new ArrayList<>();
         for (String module : em.model().getModules()) {
             Path childPom = childPom(pomFile, module);
             if (!Files.isRegularFile(childPom)) {
                 report.error("workspace module `" + module + "` has no pom.xml at " + childPom);
                 continue;
             }
-            String path = relativePath(childPom);
-            if (path == null) {
+            if (relativePath(childPom) == null) {
                 report.error(
                         "module `" + module + "` of " + relativeOrRoot(pomFile) + " lies outside the root directory;"
                                 + " a jk workspace lists modules under its root, so it was skipped.");
@@ -205,7 +211,12 @@ final class ReactorModules {
             }
             if (!walked.add(childPom)) continue;
             register(childPom);
-            EffectiveModel child = reactor.effective(childPom);
+            children.add(childPom);
+        }
+        Map<Path, EffectiveModel> built = reactor.effectiveAll(children);
+        for (Path childPom : children) {
+            String path = Objects.requireNonNull(relativePath(childPom));
+            EffectiveModel child = Objects.requireNonNull(built.get(childPom));
             Model model = child.model();
             Leaf leaf = new Leaf(path, childPom, model.getGroupId() + ":" + model.getArtifactId());
             boolean pom = "pom".equals(model.getPackaging());

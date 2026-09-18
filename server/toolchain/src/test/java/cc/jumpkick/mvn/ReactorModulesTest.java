@@ -4,13 +4,22 @@ package cc.jumpkick.mvn;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.repo.MavenRepo;
+import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.maven.model.Model;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -19,6 +28,90 @@ import org.junit.jupiter.api.io.TempDir;
  * a time; only the root and the BOMs other modules import stay built.
  */
 class ReactorModulesTest {
+
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp().concurrent();
+
+    /**
+     * The modules of one aggregator have their effective models built side by side — the parent
+     * and BOM POMs they read from a repository are fetched several at a time — and are handed to
+     * the visitor in walk order all the same: six modules each importing a BOM of its own from a
+     * repository that holds every answer for a moment have more than one read in flight at once.
+     */
+    @Test
+    void sibling_modules_read_their_parent_and_bom_poms_in_parallel_and_are_visited_in_order(@TempDir Path root)
+            throws Exception {
+        MavenStub upstream = new MavenStub(http);
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicInteger widest = new AtomicInteger();
+        http.beforeServe(path -> {
+            if (!path.endsWith(".pom")) return; // a checksum sidecar rides beside its POM
+            widest.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                inFlight.decrementAndGet();
+            }
+        });
+        StringBuilder modules = new StringBuilder();
+        List<String> expected = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            String name = "m" + i;
+            upstream.pomOnly(
+                    "org.remote", "bom-" + i, "1.0", MavenStub.bom("org.remote", "bom-" + i, "1.0", List.of()));
+            modules.append("<module>").append(name).append("</module>");
+            expected.add(name + "=" + name);
+            write(root, name + "/pom.xml", """
+                    <project>
+                      <modelVersion>4.0.0</modelVersion>
+                      %s
+                      <artifactId>%s</artifactId>
+                      <dependencyManagement>
+                        <dependencies>
+                          <dependency>
+                            <groupId>org.remote</groupId>
+                            <artifactId>bom-%d</artifactId>
+                            <version>1.0</version>
+                            <type>pom</type>
+                            <scope>import</scope>
+                          </dependency>
+                        </dependencies>
+                      </dependencyManagement>
+                    </project>
+                    """.formatted(parent(), name, i));
+        }
+        write(root, "pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.demo</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <modules>%s</modules>
+                </project>
+                """.formatted(modules));
+        Path rootPom = root.resolve("pom.xml");
+        byte[] rootXml = Files.readAllBytes(rootPom);
+        // No Maven local-repository adoption: a copy a run before left there would answer without a read.
+        Cas cas = new Cas(root.resolve("cache"));
+        MavenRepo fixture = new MavenRepo("fixture", http.base(), new Http(), cas, RepoCredential.ANONYMOUS, false);
+        ReactorModelResolver reactor =
+                new ReactorModelResolver(new RepoModelResolver(RepoGroup.of(fixture), cas), List.of());
+        List<String> visited = new ArrayList<>();
+
+        ReactorModules.collect(
+                rootPom,
+                rootXml,
+                EffectiveModel.rawModel(rootXml),
+                reactor,
+                ImportReport.builder(),
+                (leaf, model) -> visited.add(leaf.path() + "=" + model.model().getArtifactId()));
+
+        assertThat(visited).containsExactlyElementsOf(expected);
+        assertThat(widest.get()).as("POM reads in flight at once").isGreaterThan(1);
+    }
 
     @Test
     void modules_are_visited_in_walk_order_and_their_models_leave_the_memo(@TempDir Path root) throws Exception {
