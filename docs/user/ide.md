@@ -17,6 +17,12 @@ when a module does — so Metals imports a mixed Java/Scala module: its build ta
 Scala compiler version and jars, and `buildTarget/scalacOptions` answers with the arguments jk's
 Zinc session passes, the compile classpath and the class directory.
 
+A workspace sibling is a module edge — the IDE compiles it itself — except one whose fat jar
+relocates packages ([Shaded siblings](workspaces.md#shaded-siblings)): its consumers get a
+library entry on its `<name>-<version>-all.jar`, the jar jk compiles them against, so the IDE
+resolves the shaded names rather than the unshaded sources. The entry names the jar `jk build`
+writes; a module that has not packaged yet resolves once it has.
+
 ## Test suites in the IDE
 
 `jk ide` and the IntelliJ plugin register **every discovered test suite** as IDE **test** source
