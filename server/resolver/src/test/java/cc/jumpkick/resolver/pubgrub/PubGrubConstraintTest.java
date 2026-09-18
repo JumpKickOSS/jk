@@ -96,8 +96,8 @@ class PubGrubConstraintTest {
                 .isInstanceOf(UnsatisfiableException.class)
                 .satisfies(e -> {
                     String rendered = Diagnostics.render(((UnsatisfiableException) e).rootCause());
-                    assertThat(rendered).contains("Fragment 1.0 depends on ktx 1.0");
-                    assertThat(rendered).contains("Core 1.5 constrains ktx");
+                    assertThat(rendered).contains("fragment 1.0 depends on ktx 1.0");
+                    assertThat(rendered).contains("core 1.5 constrains ktx");
                 });
     }
 }

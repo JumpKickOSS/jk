@@ -234,7 +234,9 @@ public final class Diagnostics {
                         .append('\n');
             }
             case Incompatibility.Cause.Dependency dep -> {
-                String from = isRoot(dep.from()) ? "The project" : cap(describe(dep.from(), palette));
+                // A coordinate keeps its case at the head of the sentence: ch.qos.logback is a
+                // name, and capitalising it spells a group id nothing publishes.
+                String from = isRoot(dep.from()) ? "The project" : describe(dep.from(), palette);
                 // A negative target is a constraint: it bounds the package to the complement of
                 // its set without requiring it, so it reads as what it allows.
                 boolean constraint = !dep.to().positive();
@@ -378,12 +380,5 @@ public final class Diagnostics {
             return s.substring(1, s.length() - 1);
         }
         return s;
-    }
-
-    /** Capitalize the first character of a string (leaves ANSI-prefixed strings alone). */
-    private static String cap(String s) {
-        if (s.isEmpty()) return s;
-        // If the string starts with an ANSI escape, capitalize the visible first char after the reset.
-        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 }
