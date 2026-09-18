@@ -26,7 +26,7 @@ class ReportsTest {
                 </checkstyle>
                 """);
 
-        List<Finding> findings = Reports.parse(LintTool.CHECKSTYLE, report, List.of());
+        List<Finding> findings = Reports.parse(LintTool.CHECKSTYLE, report, List.of(), PmdExclusions.NONE);
 
         assertThat(findings)
                 .containsExactly(
@@ -58,7 +58,7 @@ class ReportsTest {
                 </checkstyle>
                 """);
 
-        assertThat(Reports.parse(LintTool.DETEKT, report, List.of()))
+        assertThat(Reports.parse(LintTool.DETEKT, report, List.of(), PmdExclusions.NONE))
                 .containsExactly(new Finding(
                         "warning",
                         "/m/src/main/kotlin/demo/App.kt",
@@ -66,6 +66,28 @@ class ReportsTest {
                         17,
                         "MagicNumber",
                         "This expression contains a magic number."));
+    }
+
+    /** Maven's {@code excludeFromFailureFile}: a class's listed rules are left out of the report, the rest stay. */
+    @Test
+    void pmd_violations_the_exclusion_file_lists_for_their_class_are_left_out(@TempDir Path tmp) throws Exception {
+        Path report = Files.writeString(tmp.resolve("pmd.xml"), """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <pmd xmlns="http://pmd.sourceforge.net/report/2.0.0" version="7.27.0">
+                <file name="/m/src/main/java/demo/Sample.java">
+                <violation beginline="9" endline="9" begincolumn="5" endcolumn="30" rule="UnusedPrivateField" ruleset="Best Practices" package="demo" class="Sample" priority="3">
+                Avoid unused private fields such as 'unused'.
+                </violation>
+                <violation beginline="14" endline="14" begincolumn="1" endcolumn="2" rule="UselessParentheses" ruleset="Code Style" package="demo" class="Sample" priority="4">Useless parentheses.</violation>
+                </file>
+                </pmd>
+                """);
+        PmdExclusions excluded = PmdExclusions.read(
+                Files.writeString(tmp.resolve("pmd-exclude.properties"), "demo.Sample=UnusedPrivateField\n"));
+
+        assertThat(Reports.parse(LintTool.PMD, report, List.of(), excluded))
+                .extracting(Finding::rule)
+                .containsExactly("UselessParentheses");
     }
 
     @Test
@@ -84,7 +106,7 @@ class ReportsTest {
                 </pmd>
                 """);
 
-        assertThat(Reports.parse(LintTool.PMD, report, List.of()))
+        assertThat(Reports.parse(LintTool.PMD, report, List.of(), PmdExclusions.NONE))
                 .containsExactly(
                         new Finding(
                                 "warning",
@@ -138,7 +160,7 @@ class ReportsTest {
                 </BugCollection>
                 """);
 
-        assertThat(Reports.parse(LintTool.SPOTBUGS, report, List.of(root)))
+        assertThat(Reports.parse(LintTool.SPOTBUGS, report, List.of(root), PmdExclusions.NONE))
                 .containsExactly(
                         new Finding(
                                 "warning",
@@ -159,7 +181,8 @@ class ReportsTest {
     @Test
     void an_empty_report_is_no_finding(@TempDir Path tmp) throws Exception {
         Path report = Files.writeString(tmp.resolve("checkstyle.xml"), "");
-        assertThat(Reports.parse(LintTool.CHECKSTYLE, report, List.of())).isEmpty();
+        assertThat(Reports.parse(LintTool.CHECKSTYLE, report, List.of(), PmdExclusions.NONE))
+                .isEmpty();
     }
 
     @Test

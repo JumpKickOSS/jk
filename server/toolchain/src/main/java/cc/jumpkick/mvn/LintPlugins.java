@@ -6,6 +6,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,10 +27,17 @@ import org.jspecify.annotations.Nullable;
  * <includeTestSourceDirectory>} adds {@code src/test/java} to {@code sources}, a {@code
  * <violationSeverity>} of {@code warning} is {@code fail-on = "warning"}. {@code maven-pmd-plugin}:
  * {@code <rulesets>} are {@code pmd} — a {@code /category/…} or {@code /rulesets/…} path a built-in
- * one, a {@code file://} URL a module file, the Maven plugin's own default ruleset a row — and
- * {@code <includeTests>} adds the test root. {@code spotbugs-maven-plugin}: {@code spotbugs = true},
- * {@code <excludeFilterFile>} is {@code spotbugs-exclude}, {@code <effort>} is {@code
- * spotbugs-effort}, {@code <plugins>} (fb-contrib, find-sec-bugs) are a row.
+ * one, Maven's own default ruleset included, a {@code file://} URL a module file — {@code
+ * <excludeFromFailureFile>} is {@code pmd-exclude}, {@code <includeTests>} adds the test root, and
+ * {@code fail-on} follows PMD's own threshold: {@code <failOnViolation>false</failOnViolation>} is
+ * {@code never}, a {@code <failurePriority>} of 1 or 2 is {@code error}, anything else — Maven's
+ * default of 5 fails on every finding — is {@code warning}. Tools that disagree get the stricter
+ * threshold and a row. The PMD release is the plugin's: the {@code pmd-java} its own {@code
+ * <dependencies>} pin, else the one the plugin version bundles, written as {@code pmd-version}; a
+ * plugin still on PMD 6 is a row, since the step runs PMD 7. {@code spotbugs-maven-plugin}:
+ * {@code spotbugs = true}, {@code <excludeFilterFile>} is {@code spotbugs-exclude}, {@code
+ * <effort>} is {@code spotbugs-effort}, {@code <threshold>} is {@code spotbugs-threshold}, {@code
+ * <plugins>} (fb-contrib, find-sec-bugs) are a row.
  *
  * <p>A lint plugin that binds no {@code <execution>} runs under Maven only by hand ({@code mvn
  * pmd:check}). A module declaring one in its own POM gets the table all the same — the tool is
@@ -43,7 +51,24 @@ final class LintPlugins {
     static final String SPOTBUGS = "spotbugs-maven-plugin";
 
     private static final String TEST_ROOT = "src/test/java";
-    private static final String MAVEN_PMD_DEFAULT = "maven-pmd-plugin-default.xml";
+    /** The ruleset {@code maven-pmd-plugin} runs when a POM names none, as the lint step spells it. */
+    private static final String MAVEN_PMD_DEFAULT = "rulesets/java/maven-pmd-plugin-default.xml";
+
+    /** The PMD release the lint step runs when the table names none. */
+    private static final String DEFAULT_PMD = "7.27.0";
+
+    /** The PMD each {@code maven-pmd-plugin} release bundles, from the plugin POM's {@code pmdVersion}. */
+    private static final Map<String, String> PMD_BY_PLUGIN = Map.of(
+            "3.20.0", "6.53.0",
+            "3.21.0", "6.55.0",
+            "3.21.2", "6.55.0",
+            "3.22.0", "7.0.0",
+            "3.23.0", "7.0.0",
+            "3.24.0", "7.3.0",
+            "3.25.0", "7.3.0",
+            "3.26.0", "7.7.0",
+            "3.27.0", "7.14.0",
+            "3.28.0", "7.17.0");
 
     private LintPlugins() {}
 
@@ -60,16 +85,17 @@ final class LintPlugins {
                 : model.getProjectDirectory().toPath();
         Map<String, Object> values = new LinkedHashMap<>();
         Set<String> sources = new LinkedHashSet<>(List.of("src/main/java"));
+        Map<String, String> failOn = new LinkedHashMap<>();
         boolean any = false;
         Plugin checkstyle = bound(em, CHECKSTYLE, "checkstyle:check", report, inherited);
         if (checkstyle != null) {
             any = true;
-            checkstyle(checkstyle, baseDir, values, sources, report);
+            failOn.put("Checkstyle", checkstyle(checkstyle, baseDir, values, sources, report));
         }
         Plugin pmd = bound(em, PMD, "pmd:check", report, inherited);
         if (pmd != null) {
             any = true;
-            pmd(pmd, baseDir, values, sources, report);
+            failOn.put("PMD", pmd(pmd, baseDir, values, sources, report));
         }
         Plugin spotbugs = bound(em, SPOTBUGS, "spotbugs:check", report, inherited);
         if (spotbugs != null) {
@@ -78,6 +104,7 @@ final class LintPlugins {
         }
         if (!any) return null;
         if (sources.size() > 1) values.put("sources", List.copyOf(sources));
+        failOn(failOn, values, report);
         report.warning("the lint plugins are `[lint]`: each tool runs as a cached step after compile and its findings"
                 + " are diagnostics in jk-results.md with the rule id; `fail-on` says which severity fails the build.");
         return new PluginConfig("lint", values);
@@ -113,13 +140,38 @@ final class LintPlugins {
         return null;
     }
 
-    private static void checkstyle(
+    /** The severities {@code fail-on} takes, least strict first. */
+    private static final List<String> FAIL_ON = List.of("never", "error", "warning");
+
+    /**
+     * One {@code fail-on} for the table: the stricter of the tools' thresholds, written when it is
+     * not the default {@code error}; a row when the tools disagree, since under Maven each fails on
+     * its own terms.
+     */
+    private static void failOn(Map<String, String> byTool, Map<String, Object> values, ImportReport.Builder report) {
+        if (byTool.isEmpty()) return;
+        String strictest = byTool.values().stream()
+                .max(Comparator.comparingInt(FAIL_ON::indexOf))
+                .orElseThrow();
+        if (!strictest.equals("error")) values.put("fail-on", strictest);
+        if (byTool.values().stream().distinct().count() > 1) {
+            List<String> parts = new ArrayList<>();
+            byTool.forEach((tool, level) -> parts.add(tool + " fails the build on `" + level + "`"));
+            report.warning("under Maven " + String.join(" and ", parts)
+                    + "; `[lint]` has one threshold, so `fail-on = \"" + strictest
+                    + "\"` applies to every tool of the module — lower it, or drop a tool, to taste.");
+        }
+    }
+
+    /** Maps the plugin and returns the {@code fail-on} Checkstyle's {@code <violationSeverity>} means. */
+    private static String checkstyle(
             Plugin plugin,
             @Nullable Path baseDir,
             Map<String, Object> values,
             Set<String> sources,
             ImportReport.Builder report) {
         String config = null;
+        String failOn = "error";
         for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
             String location = PluginFacts.text(dom.getChild("configLocation"));
             if (location != null && !location.isBlank()) config = location.strip();
@@ -128,8 +180,11 @@ final class LintPlugins {
                 sources.add(TEST_ROOT);
             }
             String severity = PluginFacts.child(dom, "violationSeverity");
-            if ("warning".equalsIgnoreCase(severity) || "info".equalsIgnoreCase(severity)) {
-                values.put("fail-on", "warning");
+            if ("warning".equalsIgnoreCase(severity) || "info".equalsIgnoreCase(severity)) failOn = "warning";
+            if (!EnvValues.parseBool(PluginFacts.child(dom, "failsOnError")).orElse(true)
+                    || !EnvValues.parseBool(PluginFacts.child(dom, "failOnViolation"))
+                            .orElse(true)) {
+                failOn = "never";
             }
             String excludes = PluginFacts.child(dom, "excludes");
             if (excludes != null) {
@@ -168,15 +223,23 @@ final class LintPlugins {
                 if (version != null && !version.equals("14.1.0")) values.put("checkstyle-version", version);
             }
         }
+        return failOn;
     }
 
-    private static void pmd(
+    /**
+     * Maps the plugin and returns the {@code fail-on} its threshold means: Maven fails on every
+     * violation whose priority is at most {@code <failurePriority>} (5 by default, so every one),
+     * and jk reads priorities 1 and 2 as errors, so a threshold of 1 or 2 is {@code error} and any
+     * other {@code warning}; {@code <failOnViolation>false</failOnViolation>} is {@code never}.
+     */
+    private static String pmd(
             Plugin plugin,
             @Nullable Path baseDir,
             Map<String, Object> values,
             Set<String> sources,
             ImportReport.Builder report) {
         List<String> rulesets = new ArrayList<>();
+        String failOn = "warning";
         for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
             Xpp3Dom declared = dom.getChild("rulesets");
             if (declared != null) {
@@ -188,14 +251,11 @@ final class LintPlugins {
                                     + ruleset.getValue().trim()
                                     + "` through a property no POM defines; `rulesets/java/quickstart.xml` stands in —"
                                     + " point `[lint] pmd` at the module's ruleset file.");
+                            rulesets.add("rulesets/java/quickstart.xml");
                         }
                         continue;
                     }
-                    if (value.endsWith(MAVEN_PMD_DEFAULT)) {
-                        report.warning("`" + PMD + "` uses the Maven plugin's own default ruleset; `[lint] pmd` names"
-                                + " PMD's, so `rulesets/java/quickstart.xml` stands in — tune it to taste.");
-                        rulesets.add("rulesets/java/quickstart.xml");
-                    } else if (value.startsWith("/category/") || value.startsWith("/rulesets/")) {
+                    if (value.startsWith("/category/") || value.startsWith("/rulesets/")) {
                         rulesets.add(value.substring(1));
                     } else if (value.startsWith("category/") || value.startsWith("rulesets/")) {
                         rulesets.add(value);
@@ -205,15 +265,51 @@ final class LintPlugins {
                 }
             }
             if (EnvValues.parseBool(PluginFacts.child(dom, "includeTests")).orElse(false)) sources.add(TEST_ROOT);
-            for (String name : List.of("excludeFromFailureFile", "excludeRoots", "excludes")) {
+            String exclude = PluginFacts.child(dom, "excludeFromFailureFile");
+            if (exclude != null) values.put("pmd-exclude", SourceTreePlugins.moduleRelativeFile(exclude, baseDir));
+            for (String name : List.of("excludeRoots", "excludes")) {
                 if (dom.getChild(name) != null) {
                     report.warning("`" + PMD + "` `<" + name + ">` has no `[lint]` key; suppress a finding in the"
                             + " ruleset or with PMD's own `@SuppressWarnings(\"PMD.Rule\")`.");
                 }
             }
+            String priority = PluginFacts.child(dom, "failurePriority");
+            if (priority != null && priority.matches("[12]")) failOn = "error";
+            if (!EnvValues.parseBool(PluginFacts.child(dom, "failOnViolation")).orElse(true)) failOn = "never";
         }
-        if (rulesets.isEmpty()) rulesets.add("rulesets/java/quickstart.xml");
+        if (rulesets.isEmpty()) rulesets.add(MAVEN_PMD_DEFAULT);
         values.put("pmd", rulesets);
+        pmdVersion(plugin, values, report);
+        return failOn;
+    }
+
+    /**
+     * {@code pmd-version}: the {@code pmd-java} (or {@code pmd-core}) the plugin's own dependencies
+     * pin, else the PMD the plugin release bundles. A PMD 6 is not written — the step runs PMD 7's
+     * command line — and is a row; jk's own default is not written either.
+     */
+    private static void pmdVersion(Plugin plugin, Map<String, Object> values, ImportReport.Builder report) {
+        String version = null;
+        for (Dependency dependency : plugin.getDependencies()) {
+            if ("net.sourceforge.pmd".equals(dependency.getGroupId())
+                    && ("pmd-java".equals(dependency.getArtifactId())
+                            || "pmd-core".equals(dependency.getArtifactId()))) {
+                version = PluginFacts.usable(dependency.getVersion());
+            }
+        }
+        if (version == null) {
+            String pluginVersion = PluginFacts.usable(plugin.getVersion());
+            if (pluginVersion == null) return;
+            version = PMD_BY_PLUGIN.get(pluginVersion);
+            if (version == null) return;
+        }
+        if (version.startsWith("6.")) {
+            report.warning("`" + PMD + "` runs PMD " + version + "; the lint step runs PMD 7 (" + DEFAULT_PMD
+                    + " unless `pmd-version` says otherwise), whose rulesets and rule names differ from PMD 6's —"
+                    + " a finding the Maven build did not report may be the newer release's.");
+            return;
+        }
+        if (!version.equals(DEFAULT_PMD)) values.put("pmd-version", version);
     }
 
     private static void spotbugs(
@@ -229,6 +325,16 @@ final class LintPlugins {
             String effort = PluginFacts.child(dom, "effort");
             if (effort != null && !effort.equalsIgnoreCase("default")) {
                 values.put("spotbugs-effort", effort.toLowerCase(Locale.ROOT));
+            }
+            String threshold = PluginFacts.child(dom, "threshold");
+            if (threshold != null) {
+                switch (threshold.toLowerCase(Locale.ROOT)) {
+                    case "high" -> values.put("spotbugs-threshold", "high");
+                    case "low", "exp", "ignore" -> values.put("spotbugs-threshold", "low");
+                    default -> {
+                        /* Default / Medium: the step's own floor */
+                    }
+                }
             }
             if (EnvValues.parseBool(PluginFacts.child(dom, "includeTests")).orElse(false)) sources.add(TEST_ROOT);
             if (dom.getChild("plugins") != null) {

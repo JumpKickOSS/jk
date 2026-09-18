@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lint;
 
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -30,6 +35,12 @@ final class LintStep {
 
     /** PMD's exit for violations found ({@code --no-fail-on-violation} keeps it at zero) and for recoverable errors. */
     private static final Set<Integer> PMD_RAN = Set.of(0, 4, 5);
+
+    /**
+     * The ruleset {@code maven-pmd-plugin} runs when a POM names none, by the name Maven gives it.
+     * PMD ships no such ruleset, so the step hands PMD the copy jk carries.
+     */
+    static final String MAVEN_PMD_DEFAULT = "rulesets/java/maven-pmd-plugin-default.xml";
 
     private LintStep() {}
 
@@ -71,7 +82,7 @@ final class LintStep {
             throw new IllegalStateException(tool.id() + " failed (exit " + exit + ") before writing its report"
                     + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
         }
-        List<Finding> findings = Reports.parse(tool, report, roots);
+        List<Finding> findings = Reports.parse(tool, report, roots, exclusions(tool, exec));
         String failOn = config.stringOpt("fail-on").orElse(Finding.ERROR).toLowerCase(Locale.ROOT);
         int errors = 0;
         for (Finding finding : findings) {
@@ -122,13 +133,24 @@ final class LintStep {
                 for (Path root : roots) args.addAll(List.of("--dir", root.toString()));
                 List<String> rulesets = new ArrayList<>();
                 for (String ruleset : config.stringList("pmd")) {
-                    rulesets.add(
-                            LintPlugin.isFile(ruleset) ? module.resolve(ruleset).toString() : ruleset);
+                    if (ruleset.equals(MAVEN_PMD_DEFAULT)) {
+                        Path out =
+                                Objects.requireNonNull(report.toAbsolutePath().getParent(), "report dir");
+                        rulesets.add(bundledMavenDefault(out).toString());
+                    } else {
+                        rulesets.add(
+                                LintPlugin.isFile(ruleset)
+                                        ? module.resolve(ruleset).toString()
+                                        : ruleset);
+                    }
                 }
                 args.addAll(List.of("--rulesets", String.join(",", rulesets)));
             }
             case SPOTBUGS -> {
-                args.addAll(List.of("-xml:withMessages", "-output", report.toString(), "-low"));
+                args.addAll(List.of("-xml:withMessages", "-output", report.toString()));
+                // The confidence floor, as SpotBugs spells it (-low, -medium, -high); medium is
+                // SpotBugs's own default and the Maven plugin's.
+                args.add("-" + config.stringOpt("spotbugs-threshold").orElse("medium"));
                 args.add("-effort:" + config.stringOpt("spotbugs-effort").orElse("default"));
                 if (!roots.isEmpty()) args.addAll(List.of("-sourcepath", Classpaths.join(roots)));
                 List<Path> aux = exec.compileClasspath();
@@ -148,6 +170,37 @@ final class LintStep {
             }
         }
         return args;
+    }
+
+    /** jk's copy of Maven's default ruleset, written under {@code out} for PMD to read as a file. */
+    static Path bundledMavenDefault(Path out) {
+        Path file = out.resolve("maven-pmd-plugin-default.xml");
+        try (InputStream in = LintStep.class.getResourceAsStream("maven-pmd-plugin-default.xml")) {
+            Files.createDirectories(out);
+            Files.copy(Objects.requireNonNull(in, "bundled maven-pmd-plugin-default.xml"), file, REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return file;
+    }
+
+    /** The module's {@code pmd-exclude} file read, or nothing left out; other tools have no such file. */
+    static PmdExclusions exclusions(LintTool tool, TaskExec exec) throws IOException {
+        if (tool != LintTool.PMD) return PmdExclusions.NONE;
+        Optional<String> file = exec.config().stringOpt("pmd-exclude");
+        if (file.isEmpty()) return PmdExclusions.NONE;
+        Path path = exec.moduleDir().resolve(file.get());
+        if (!Files.isRegularFile(path)) {
+            exec.diagnostic(
+                    Finding.WARNING,
+                    null,
+                    0,
+                    0,
+                    "pmd: `" + file.get() + "` (`[lint] pmd-exclude`) is not a file in the module; nothing is left out"
+                            + " of the report");
+            return PmdExclusions.NONE;
+        }
+        return PmdExclusions.read(path);
     }
 
     /**

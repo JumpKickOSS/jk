@@ -78,14 +78,22 @@ public final class LintPlugin implements Plugin, BuildExtension {
     static List<String> configFiles(LintTool tool, PluginConfig config) {
         return switch (tool) {
             case CHECKSTYLE -> config.stringOpt("checkstyle").map(List::of).orElse(List.of());
-            case PMD ->
-                config.stringList("pmd").stream().filter(LintPlugin::isFile).toList();
+            case PMD -> {
+                List<String> files = new ArrayList<>(config.stringList("pmd").stream()
+                        .filter(LintPlugin::isFile)
+                        .toList());
+                config.stringOpt("pmd-exclude").ifPresent(files::add);
+                yield files;
+            }
             case SPOTBUGS -> config.stringOpt("spotbugs-exclude").map(List::of).orElse(List.of());
             case DETEKT -> config.stringOpt("detekt-config").map(List::of).orElse(List.of());
         };
     }
 
-    /** A PMD ruleset that is a file in the module, as opposed to a built-in {@code category/java/…} or {@code rulesets/…}. */
+    /**
+     * A PMD ruleset that is a file in the module, as opposed to a built-in {@code category/java/…}
+     * or {@code rulesets/…} — Maven's own default among them, which jk carries.
+     */
     static boolean isFile(String ruleset) {
         return !ruleset.startsWith("category/") && !ruleset.startsWith("rulesets/");
     }

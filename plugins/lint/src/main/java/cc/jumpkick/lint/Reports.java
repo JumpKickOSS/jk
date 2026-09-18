@@ -23,12 +23,14 @@ final class Reports {
 
     private Reports() {}
 
-    static List<Finding> parse(LintTool tool, Path report, List<Path> sourceRoots) throws IOException {
+    /** The report's findings; {@code excluded} applies to PMD's alone and is {@link PmdExclusions#NONE} for the rest. */
+    static List<Finding> parse(LintTool tool, Path report, List<Path> sourceRoots, PmdExclusions excluded)
+            throws IOException {
         if (Files.size(report) == 0) return List.of();
         Element root = DomXml.parse(report).getDocumentElement();
         return switch (tool) {
             case CHECKSTYLE, DETEKT -> checkstyle(root);
-            case PMD -> pmd(root);
+            case PMD -> pmd(root, excluded);
             case SPOTBUGS -> spotbugs(root, sourceRoots);
         };
     }
@@ -53,12 +55,21 @@ final class Reports {
         return findings;
     }
 
-    /** PMD's XML: priorities 1 and 2 are errors, 3 to 5 warnings; a processing error is an error at the file. */
-    static List<Finding> pmd(Element root) {
+    /**
+     * PMD's XML: priorities 1 and 2 are errors, 3 to 5 warnings; a violation {@code excluded} lists
+     * for its class is left out; a processing error is an error at the file.
+     */
+    static List<Finding> pmd(Element root, PmdExclusions excluded) {
         List<Finding> findings = new ArrayList<>();
         for (Element file : DomXml.childElements(root, "file")) {
             String name = file.getAttribute("name");
             for (Element violation : DomXml.childElements(file, "violation")) {
+                if (excluded.excludes(
+                        violation.getAttribute("package"),
+                        violation.getAttribute("class"),
+                        violation.getAttribute("rule"))) {
+                    continue;
+                }
                 int priority = intAttr(violation, "priority");
                 findings.add(new Finding(
                         priority > 0 && priority <= 2 ? Finding.ERROR : Finding.WARNING,

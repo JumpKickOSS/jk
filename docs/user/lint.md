@@ -23,11 +23,13 @@ detekt     = true                                               # detekt over th
 | `fail-on` | The finding severity that fails the step: `error`, `warning`, or `never`. Findings render as diagnostics either way | `"error"` |
 | `checkstyle` | Enable Checkstyle with this configuration file | off |
 | `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.1.0"` |
-| `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, or a module-relative ruleset file | off |
-| `pmd-version` | The PMD release | `"7.27.0"` |
+| `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, `rulesets/java/maven-pmd-plugin-default.xml` (Maven's default, which jk carries), or a module-relative ruleset file | off |
+| `pmd-exclude` | A module-relative file in `maven-pmd-plugin`'s `excludeFromFailureFile` shape — `package.Class=Rule,Rule` per line — whose findings are left out of the report | none |
+| `pmd-version` | The PMD release; `jk import` writes the one the POM's plugin runs, since a newer PMD reports what an older one let through | `"7.27.0"` |
 | `spotbugs` | Enable SpotBugs over the module's classes, against its compile classpath | `false` |
 | `spotbugs-exclude` | A SpotBugs filter file of findings to leave out | none |
 | `spotbugs-effort` | `min`, `less`, `default`, `more`, `max` | `"default"` |
+| `spotbugs-threshold` | The lowest confidence SpotBugs reports: `high`, `medium` (SpotBugs's and the Maven plugin's default), `low` | `"medium"` |
 | `spotbugs-version` | The SpotBugs release. SpotBugs reads the class files of the build JDK it runs on, so a release older than that JDK is refused before anything is fetched, with the floor named: `4.2.2` on JDK 17, `4.8.0` on JDK 21, `4.9.4` on JDK 25 | `"4.10.4"` |
 | `detekt` | Enable detekt over the Kotlin sources | `false` |
 | `detekt-config` | A detekt configuration laid over the default rule set | none |
@@ -65,8 +67,11 @@ a rule set it could not carry, `sun_checks.xml` or a URL — is a warning naming
 ## Configuration files
 
 The files are yours and live in the module: jk ships no house rule set. A PMD ruleset is either
-one of PMD's built-in categories (`category/java/bestpractices.xml`, `rulesets/java/quickstart.xml`)
-or a file; SpotBugs's `spotbugs-exclude` is its filter-file format; detekt's `detekt-config` is
+one of PMD's built-in categories (`category/java/bestpractices.xml`, `rulesets/java/quickstart.xml`),
+`rulesets/java/maven-pmd-plugin-default.xml` — the ruleset `maven-pmd-plugin` runs when a POM names
+none, which PMD itself does not ship and jk carries so an imported build lints as Maven did — or a
+file; `pmd-exclude` leaves a class's listed rules out, as Maven's `excludeFromFailureFile` does;
+SpotBugs's `spotbugs-exclude` is its filter-file format; detekt's `detekt-config` is
 laid over detekt's default configuration (`--build-upon-default-config`). Suppressions stay in the
 tool's own idiom — `@SuppressWarnings("PMD.Rule")`, `@SuppressFBWarnings`, a Checkstyle
 `SuppressionFilter`, `@Suppress("MagicNumber")`.

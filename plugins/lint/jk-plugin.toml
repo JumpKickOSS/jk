@@ -21,11 +21,13 @@ exclude        = { type = "string-list", default = [], example = "[\"**/generate
 fail-on        = { type = "string", default = "error", hint = "the finding severity that fails the step: error (the default), warning, or never — findings render as diagnostics either way" }
 checkstyle     = { type = "string", example = "config/checkstyle.xml", hint = "enable Checkstyle with this module-relative configuration file" }
 checkstyle-version = { type = "string", default = "14.1.0", hint = "the Checkstyle release; a bare version is exact" }
-pmd            = { type = "string-list", default = [], example = "[\"category/java/bestpractices.xml\", \"config/pmd.xml\"]", hint = "enable PMD with these rulesets: a built-in category or a module-relative ruleset file" }
+pmd            = { type = "string-list", default = [], example = "[\"category/java/bestpractices.xml\", \"config/pmd.xml\"]", hint = "enable PMD with these rulesets: a built-in category, rulesets/java/maven-pmd-plugin-default.xml (Maven's default, which jk carries) or a module-relative ruleset file" }
+pmd-exclude    = { type = "string", example = "pmd-exclude.properties", hint = "a module-relative file in maven-pmd-plugin's excludeFromFailureFile shape — package.Class=Rule,Rule per line — whose findings are left out of the report" }
 pmd-version    = { type = "string", default = "7.27.0", hint = "the PMD release; a bare version is exact" }
 spotbugs       = { type = "bool", default = false, hint = "enable SpotBugs over the compiled classes" }
 spotbugs-exclude = { type = "string", example = "config/spotbugs-exclude.xml", hint = "a module-relative SpotBugs filter file of findings to leave out" }
 spotbugs-effort = { type = "string", default = "default", hint = "the analysis effort: min, less, default, more or max" }
+spotbugs-threshold = { type = "string", default = "medium", hint = "the lowest confidence SpotBugs reports: high, medium (SpotBugs's and the Maven plugin's default) or low" }
 spotbugs-version = { type = "string", default = "4.10.4", hint = "the SpotBugs release; a bare version is exact" }
 detekt         = { type = "bool", default = false, hint = "enable detekt over the Kotlin sources" }
 detekt-config  = { type = "string", example = "config/detekt.yml", hint = "a module-relative detekt configuration laid over the default rule set" }
