@@ -9,6 +9,7 @@ import static cc.jumpkick.runtime.PlannerSupport.unresolvedProcessorDeps;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.JavacDefaults;
+import cc.jumpkick.config.JavaRelease;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.groovy.GroovyResolver;
@@ -71,11 +72,15 @@ public final class PlannerSetup {
      * What the manifest has to say once it is parsed: a shadowed module says once, on the build
      * after its POM changed, what the effective POM declares that the in-place build does not
      * carry; a declared language set says which sources of another language it leaves uncompiled;
-     * a Kotlin, Groovy or Scala below its floor says what the module compiles with instead.
+     * a Kotlin, Groovy or Scala below its floor says what the module compiles with instead, and a
+     * {@code java} below jk's floor says the toolchain cross-compiles for it.
      */
     private static void warnManifestRows(TaskContext ctx, Path dir, JkBuild project) {
         for (String row : ShadowManifests.drainTier3(dir)) ctx.warn("pom", row);
         for (String row : Languages.undeclaredWithSources(project.project(), dir)) ctx.warn("languages", row);
+        if (JavaRelease.belowFloor(project.project().java())) {
+            ctx.warn("java", JavaRelease.floorNote(project.project().java()));
+        }
         if (project.project().kotlin() instanceof VersionSelector.Exact exact
                 && KotlinResolver.belowFloor(exact.version())) {
             ctx.warn("kotlin", KotlinResolver.floorNote(exact.version()));

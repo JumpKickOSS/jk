@@ -45,6 +45,46 @@ class JkResultsHintsTest {
                         + "(library catalog): `jk add com.google.guava:guava` in this module, or fix the import.");
     }
 
+    /**
+     * A type that left the JDK — {@code java.security.acl.Group} in 14 — reached by a dependency's
+     * class hierarchy or an import is not a missing library: the hint names the API, the JDK that
+     * removed it and the release to write, since the toolchain JDK cross-compiles for the last LTS
+     * that carried it.
+     */
+    @Test
+    void javac_cannot_access_a_removed_jdk_type_names_the_release_that_carries_it() {
+        String md = render(keyed("compiler.err.cant.access", """
+                /ws/app/src/com/acme/LoginModule.java:40:8: error: cannot access java.security.acl.Group
+                  class file for java.security.acl.Group not found"""));
+        assertThat(md)
+                .contains(
+                        "→ `java.security.acl.Group` left the JDK in 14 and this module compiles for a newer release: "
+                                + "a class it compiles against still needs it — write `java = 11` in this module, the last LTS "
+                                + "that carries it (the toolchain JDK cross-compiles with `--release 11`), or move off the API.");
+        assertThat(code(javac("""
+                        cannot access java.util.jar.Pack200
+                          class file for java.util.jar.Pack200 not found"""))).isEqualTo("compiler.err.cant.access");
+    }
+
+    @Test
+    void javac_package_that_left_the_jdk_is_the_removed_api_row_not_the_jk_add_row() {
+        String md =
+                render(javac("/ws/app/src/com/acme/Main.java:3:29: error: package java.security.acl does not exist"));
+        assertThat(md)
+                .contains(
+                        "→ `java.security.acl` left the JDK in 14 and this module compiles for a newer release: "
+                                + "a class it compiles against still needs it — write `java = 11` in this module, the last LTS "
+                                + "that carries it (the toolchain JDK cross-compiles with `--release 11`), or move off the API.")
+                .doesNotContain("jk add");
+        String rmi = render(javac("/ws/app/src/Main.java:3:1: error: package java.rmi.activation does not exist"));
+        assertThat(rmi).contains("`java.rmi.activation` left the JDK in 17").contains("write `java = 11`");
+        String compiler = render(keyed("compiler.err.cant.resolve.location", """
+                /ws/app/src/Main.java:9:5: error: cannot find symbol
+                  symbol:   class Compiler
+                  location: package java.lang"""));
+        assertThat(compiler).doesNotContain("left the JDK");
+    }
+
     @Test
     void javac_incompatible_types_names_both_types() {
         String md = render(

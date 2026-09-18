@@ -177,6 +177,30 @@ public final class ZincJavaCompiler {
         return compile(job, new MixedScala(scalaVersion, compilerClasspath, bridgeJar, libraryJar, compilerJar));
     }
 
+    /**
+     * No usable previous analysis ⇒ a full compile. Zinc only deletes removed-source products when
+     * it has a prior analysis to diff against, so a full compile must start from a clean class
+     * output or renamed/removed/no-longer-generated classes linger and ship in the jar. With an
+     * analysis, only the classes it does not own — and no processor wrote — are swept.
+     */
+    private static void clearOutput(
+            Optional<AnalysisContents> prev,
+            FileConverter converter,
+            Path classOutput,
+            Path workdir,
+            @Nullable Path sourceOutput)
+            throws IOException {
+        if (prev.isEmpty()) {
+            deleteClassFiles(classOutput);
+            return;
+        }
+        deleteClassFilesUnknownTo(
+                prev.get().getAnalysis(),
+                converter,
+                classOutput,
+                GeneratedProvenance.of(workdir).ownedClassFiles(sourceOutput, classOutput));
+    }
+
     private static Result compile(JavaCompileJob job, @Nullable MixedScala mixed) {
         List<Path> sources = job.sources();
         List<Path> classpath = job.classpath();
@@ -217,6 +241,12 @@ public final class ZincJavaCompiler {
             cp.add(classOutput);
             VirtualFile[] cpFiles = ZincSetup.virtual(cp, converter);
             phases.mark("virtualise");
+            String[] javacOpts = javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath);
+            Optional<String> analysisOff = zinced.analysisOff();
+            if (analysisOff.isPresent()) {
+                return AnalysisOffCompile.run(
+                        javac, sourceFiles, javacOpts, cp, classOutput, reporter, analysisOff.get());
+            }
 
             AnalysisStore store = zinced.store();
             // One stamper for the compile and for the classpath hash: both must see the same
@@ -238,34 +268,36 @@ public final class ZincJavaCompiler {
                     .withSources(sourceFiles)
                     .withClassesDirectory(classOutput)
                     .withScalacOptions(ScalaBridge.scalacOptions(mixed, release))
-                    .withJavacOptions(
-                            javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath))
+                    .withJavacOptions(javacOpts)
                     .withOrder(CompileOrder.Mixed)
                     .withConverter(converter)
                     .withStamper(stamper);
 
             Optional<AnalysisContents> prev = zinced.readAnalysis(store);
             phases.mark("read-analysis");
-            if (prev.isEmpty()) {
-                // No usable previous analysis ⇒ a full compile. Zinc only deletes removed-source
-                // products when it has a prior analysis to diff against, so a full compile must start
-                // from a clean class output or renamed/removed/no-longer-generated classes linger and
-                // ship in the jar.
-                deleteClassFiles(classOutput);
-            } else {
-                deleteClassFilesUnknownTo(
-                        prev.get().getAnalysis(),
-                        converter,
-                        classOutput,
-                        GeneratedProvenance.of(workdir).ownedClassFiles(sourceOutput, classOutput));
-            }
+            clearOutput(prev, converter, classOutput, workdir, sourceOutput);
             phases.mark("clear-output");
             PreviousResult previous = prev.isPresent()
                     ? PreviousResult.of(prev.get().getAnalysis(), prev.get().getMiniSetup())
                     : PreviousResult.of(Optional.empty(), Optional.empty());
 
             Inputs inputs = Inputs.of(compilers, options, setup, previous);
-            CompileResult compiled = zinc.compile(inputs, QuietLogger.INSTANCE);
+            CompileResult compiled;
+            try {
+                compiled = zinc.compile(inputs, QuietLogger.INSTANCE);
+            } catch (LinkageError e) {
+                // Zinc's Java analysis loaded a compiled class's library supertype with this JVM and
+                // reflected over members whose signatures name a type this JDK no longer has (a
+                // release-11 module extending a class that returns java.security.acl.Group[]).
+                // javac had no such trouble — --release reads the older API from ct.sym — so the
+                // module compiles without the analysis, from here on for this workdir.
+                if (reporter.hasErrors()) {
+                    return new Result(false, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
+                }
+                String missing = AnalysisOffCompile.missingType(e);
+                zinced.markAnalysisOff(missing);
+                return AnalysisOffCompile.run(javac, sourceFiles, javacOpts, cp, classOutput, reporter, missing);
+            }
             phases.mark("zinc-compile");
             if (reporter.hasErrors()) {
                 return new Result(false, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
@@ -361,7 +393,7 @@ public final class ZincJavaCompiler {
     }
 
     /** Remove every {@code .class} file under {@code dir} (used before an analysis-less full compile). */
-    private static void deleteClassFiles(Path dir) throws IOException {
+    static void deleteClassFiles(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) return;
         try (var walk = Files.walk(dir)) {
             for (Path p : (Iterable<Path>) walk::iterator) {

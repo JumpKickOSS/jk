@@ -139,8 +139,8 @@ class MavenImportRoundTripTest {
         assertThat(result.report().issues())
                 .extracting(i -> i.message())
                 .anyMatch(
-                        m -> m.equals(
-                                "`maven.compiler.target` declared 8; jk's floor is 17; bytecode level raised — written as `java = 17`."));
+                        m -> m.startsWith(
+                                "`maven.compiler.target` declared 8; jk's floor is 17; bytecode level raised — written as `java = 17`. A module whose sources or dependencies need an API a later JDK removed keeps `java = 8` instead"));
     }
 
     private static String levelPom(String properties) {

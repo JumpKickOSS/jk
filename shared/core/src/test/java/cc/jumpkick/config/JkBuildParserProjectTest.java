@@ -469,17 +469,33 @@ class JkBuildParserProjectTest {
                 .hasMessageContaining("[project] was removed");
     }
 
+    /**
+     * {@code java} is a release the toolchain JDK cross-compiles for, so a level below jk's floor
+     * of 17 is a manifest that parses: a module whose sources or dependencies still need an API a
+     * later JDK removed keeps the release that carries it. The runtime floor stays on {@code jdk}.
+     */
     @Test
-    void rejects_project_java_below_17() {
-        assertThatThrownBy(() -> JkBuildParser.parse("""
+    void java_below_the_floor_is_a_release_the_toolchain_cross_compiles() {
+        JkBuild parsed = JkBuildParser.parse("""
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
                 java     = 11
+                """);
+        assertThat(parsed.project().java()).isEqualTo(11);
+    }
+
+    @Test
+    void rejects_java_below_the_oldest_release_javac_compiles_for() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                java     = 7
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("java = 11")
-                .hasMessageContaining("JDK 17 and above");
+                .hasMessageContaining("java = 7")
+                .hasMessageContaining("8");
     }
 
     @Test

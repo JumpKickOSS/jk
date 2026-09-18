@@ -32,8 +32,10 @@ final class JkResultsHints {
     static final String MISSING_RETURN = "compiler.err.missing.ret.stmt";
     static final String UNINITIALIZED_VAR = "compiler.err.var.might.not.have.been.initialized";
     static final String NON_STATIC = "compiler.err.non-static.cant.be.ref";
+    static final String CANT_ACCESS = "compiler.err.cant.access";
 
     private static final Pattern PACKAGE = Pattern.compile("^package (\\S+) does not exist");
+    private static final Pattern CANNOT_ACCESS = Pattern.compile("^cannot access (\\S+)");
     private static final Pattern CONVERT = Pattern.compile("^incompatible types: (.+?) cannot be converted to (.+)$");
     private static final Pattern UNREPORTED = Pattern.compile("^unreported exception (\\S+?);");
     private static final Pattern UNINITIALIZED = Pattern.compile("^variable (\\S+) might not have been initialized");
@@ -69,6 +71,7 @@ final class JkResultsHints {
                     "compiler.err.cant.resolve",
                     "compiler.err.cant.resolve.args",
                     "compiler.err.cant.resolve.location.args" -> cantResolve(key, message);
+            case CANT_ACCESS -> cantAccess(group(CANNOT_ACCESS, first, ""));
             case DOESNT_EXIST -> doesntExist(group(PACKAGE, first, "the imported package"), message);
             case PROB_FOUND_REQ -> {
                 Matcher m = CONVERT.matcher(first);
@@ -89,7 +92,9 @@ final class JkResultsHints {
     /** The row the message's shape selects, for a javac diagnostic that arrived without a key. */
     private static @Nullable Hint javacByShape(String first, String message) {
         if (first.startsWith("cannot find symbol")) return cantResolve(CANT_RESOLVE, message);
-        Matcher m = PACKAGE.matcher(first);
+        Matcher m = CANNOT_ACCESS.matcher(first);
+        if (m.find()) return cantAccess(m.group(1));
+        m = PACKAGE.matcher(first);
         if (m.find()) return doesntExist(m.group(1), message);
         m = CONVERT.matcher(first);
         if (m.find()) return probFoundReq(m.group(1), m.group(2));
@@ -115,10 +120,23 @@ final class JkResultsHints {
     }
 
     /**
+     * A type javac cannot access because its class file is not there is, when it belongs to an API
+     * that left the JDK, the release this module compiles for: the row names the API and the
+     * release to write. Any other inaccessible type has no mechanical repair here.
+     */
+    private static @Nullable Hint cantAccess(String type) {
+        RemovedJdkApis.Removal removed = RemovedJdkApis.of(type);
+        return removed == null ? null : new Hint(CANT_ACCESS, removed.hint(type));
+    }
+
+    /**
      * The compile step writes {@code provided by: g:a (where)} under the error when the lock or the
-     * catalog knows the package; the hint then names that coordinate for {@code jk add}.
+     * catalog knows the package; the hint then names that coordinate for {@code jk add}. A package
+     * that left the JDK is not a library to add: its row names the release that carries it.
      */
     private static Hint doesntExist(String pkg, String message) {
+        RemovedJdkApis.Removal removed = RemovedJdkApis.of(pkg);
+        if (removed != null) return new Hint(DOESNT_EXIST, removed.hint(pkg));
         String provider = field(message, "provided by:");
         if (provider.isEmpty()) {
             return new Hint(

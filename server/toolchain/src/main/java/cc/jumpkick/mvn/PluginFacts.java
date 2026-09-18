@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.JavaRelease;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.repo.Pom;
 import java.io.File;
@@ -34,8 +35,11 @@ import org.jspecify.annotations.Nullable;
  */
 final class PluginFacts {
 
-    /** The lowest {@code java =} jk compiles for; an older declared level is raised to it. */
-    static final int JAVA_FLOOR = 17;
+    /**
+     * The lowest {@code java =} jk compiles for without a word; an older declared level is raised to
+     * it, and written back by hand when the module needs an API a later JDK removed.
+     */
+    static final int JAVA_FLOOR = JavaRelease.FLOOR;
 
     /**
      * Plugins the import maps (or reports on its own terms); every other plugin gets the generic

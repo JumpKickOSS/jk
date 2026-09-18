@@ -113,7 +113,7 @@ public final class ManifestProject {
             java = 0;
         } else {
             java = parseJavaRelease(root);
-            requireSupportedMajor("java", java);
+            requireCompilableRelease(java);
         }
 
         VersionSelector kotlin;
@@ -464,17 +464,30 @@ public final class ManifestProject {
     }
 
     /**
-     * jk only supports JDK 17 and above (LTS + latest). Reject any older value at parse time so users
+     * jk runs on JDK 17 and above (LTS + latest). Reject an older {@code jdk} at parse time so users
      * learn the constraint up front instead of in the middle of a resolve.
      */
     static void requireSupportedMajor(String path, int value) {
         if (value == 0) return;
-        if (value < 17) {
+        if (value < JavaRelease.FLOOR) {
             throw new JkBuildParseException(path
                     + " = "
                     + value
                     + " is not supported — jk targets JDK 17 and above "
                     + "(LTS: 17, 21, 25, … plus the latest release).");
+        }
+    }
+
+    /**
+     * {@code java} is a {@code --release} the toolchain JDK cross-compiles for: a level below jk's
+     * floor parses, and the build says once what it is doing with it; a level no current javac has a
+     * release for is refused.
+     */
+    static void requireCompilableRelease(int value) {
+        if (value == 0) return;
+        if (value < JavaRelease.OLDEST) {
+            throw new JkBuildParseException("java = " + value + " is not a release javac compiles for — the oldest is "
+                    + JavaRelease.OLDEST + "; jk's floor is " + JavaRelease.FLOOR + ".");
         }
     }
 }
