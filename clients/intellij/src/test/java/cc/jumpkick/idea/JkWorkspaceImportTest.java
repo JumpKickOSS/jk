@@ -3,6 +3,9 @@ package cc.jumpkick.idea;
 
 import static java.util.Objects.requireNonNull;
 
+import com.intellij.execution.PsiLocation;
+import com.intellij.execution.actions.ConfigurationContext;
+import com.intellij.execution.actions.ConfigurationFromContext;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder;
 import com.intellij.openapi.externalSystem.model.DataNode;
@@ -29,6 +32,11 @@ import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiJavaFile;
+import com.intellij.psi.PsiManager;
 import com.intellij.testFramework.HeavyPlatformTestCase;
 import com.intellij.testFramework.PlatformTestUtil;
 import java.io.File;
@@ -182,10 +190,40 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
                 requireNonNull(ProjectRootManager.getInstance(getProject()).getProjectSdk(), "project SDK set");
         assertTrue(projectSdk.getName(), projectSdk.getName().startsWith("jk-"));
 
+        assertGutterRoutesThroughJk(checkout);
+
         PlatformTestUtil.saveProject(getProject());
         assertEquals("no .iml written into the checkout", imlsBefore, imlFiles(checkout));
         assertFalse(
                 ".idea/modules.xml not written into the checkout", Files.exists(checkout.resolve(".idea/modules.xml")));
+    }
+
+    /**
+     * A test class of an imported module resolves, from its PSI alone, to a JumpKick run
+     * configuration: {@code jk test -m <module> --class <fqcn>} from the workspace root, and under
+     * Debug the same command with the JDWP address the debugger attaches to.
+     */
+    private void assertGutterRoutesThroughJk(Path checkout) throws Exception {
+        Path source = checkout.resolve("shared/host/src/test/java/cc/jumpkick/host/PathUtilTest.java");
+        assertTrue(source.toString(), Files.isRegularFile(source));
+        VirtualFile vf = requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source));
+        PsiJavaFile psi = (PsiJavaFile)
+                requireNonNull(PsiManager.getInstance(getProject()).findFile(vf));
+        PsiClass cls = psi.getClasses()[0];
+        ConfigurationContext context =
+                ConfigurationContext.createEmptyContextForLocation(new PsiLocation<>(getProject(), cls));
+        ConfigurationFromContext from =
+                requireNonNull(new JkRunConfigurationProducer().createConfigurationFromContext(context));
+        JkRunConfiguration config = (JkRunConfiguration) from.getConfiguration();
+        assertEquals(JkCommandLines.KIND_TEST, config.kind());
+        assertEquals(checkout.toString(), config.rootDir());
+        assertEquals("shared/host", config.moduleRel());
+        assertEquals(cls.getQualifiedName(), config.className());
+        assertEquals("jk test PathUtilTest", config.getName());
+        assertTrue(new JkRunConfigurationProducer().isConfigurationFromContext(config, context));
+        assertEquals(
+                List.of("test", "-m", "shared/host", "--class", cls.getQualifiedName(), "--debug-jvm=localhost:7007"),
+                JkCommandLines.args(config.kind(), config.moduleRel(), config.className(), "localhost:7007"));
     }
 
     public void test_a_failing_cli_surfaces_its_first_error_line() throws Exception {

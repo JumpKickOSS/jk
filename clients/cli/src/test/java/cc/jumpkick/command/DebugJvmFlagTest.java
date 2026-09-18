@@ -81,6 +81,15 @@ class DebugJvmFlagTest {
         assertThat(DebugAttach.fromFlag(test("--debug-jvm", "--all"))).isEqualTo(DebugJvm.DEFAULT);
     }
 
+    /** {@code --debug} is the one option of either verb that starts so, and resolves as its unique prefix. */
+    @Test
+    void the_short_spelling_is_the_unique_prefix_of_the_flag() throws Exception {
+        assertThat(DebugAttach.fromFlag(test("--debug"))).isEqualTo(DebugJvm.DEFAULT);
+        assertThat(DebugAttach.fromFlag(test("--debug=0"))).isEqualTo(DebugJvm.parse("0"));
+        assertThat(DebugAttach.fromFlag(ArgParser.parse(RUN, List.of("--debug=0,suspend=n", "."))))
+                .isEqualTo(DebugJvm.parse("0,suspend=n"));
+    }
+
     @Test
     void the_value_takes_both_spellings_and_the_suspend_override() throws Exception {
         assertThat(DebugAttach.fromFlag(test("--debug-jvm=0"))).isEqualTo(DebugJvm.parse("0"));

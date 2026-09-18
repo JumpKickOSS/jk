@@ -21,6 +21,11 @@
     <externalSystemManager implementation="cc.jumpkick.idea.JkExternalSystemManager"/>
     <projectService serviceImplementation="cc.jumpkick.idea.JkSettings"/>
     <projectService serviceImplementation="cc.jumpkick.idea.JkLocalSettings"/>
+    <!-- Gutter Run/Debug on a JumpKick module: one jk command; Debug attaches to the JDWP address
+         jk's debug listener waits on. -->
+    <configurationType implementation="cc.jumpkick.idea.JkRunConfigurationType"/>
+    <runConfigurationProducer implementation="cc.jumpkick.idea.JkRunConfigurationProducer"/>
+    <programRunner implementation="cc.jumpkick.idea.JkDebugRunner"/>
     <!-- The resolver only spawns the jk CLI, so it runs inside the IDE process (the platform's
          default is a separate JVM per external system). -->
     <registryKey key="JUMPKICK.system.in.process" defaultValue="true"
