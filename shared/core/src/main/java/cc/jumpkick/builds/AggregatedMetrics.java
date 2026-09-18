@@ -16,8 +16,6 @@ import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -28,15 +26,13 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Module keys are absolute in this view: the ledger spells a module relative to its project
  * root ({@link ModuleKeys}) and {@link #load} expands them against the directory it was asked for,
- * so a worktree reads the rows its siblings wrote. The files read are stamped (mtime and size);
- * {@link #fresh()} is two stats, which is what lets a memo hold a parsed view until a write lands.
+ * so a worktree reads the rows its siblings wrote. Per-class test walls come from the ledger's
+ * {@code [test-class."<dir>"]} tables ({@link MetricsFile}) and are read by module through
+ * {@link #classWalls()}. The files read are stamped (mtime and size); {@link #fresh()} is two
+ * stats, which is what lets a memo hold a parsed view until a write lands.
  */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class AggregatedMetrics {
-
-    private static final Pattern SECTION = Pattern.compile("(?m)^\\[([a-zA-Z0-9._-]+)\\]\\s*$");
-    private static final Pattern KEY_EQ =
-            Pattern.compile("(?m)^([a-zA-Z0-9._:/-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
 
     private static final AtomicLong PARSES = new AtomicLong();
 
@@ -44,6 +40,9 @@ public final class AggregatedMetrics {
     private final Map<String, Double> last;
     private final Map<String, Long> count;
     private final Map<String, Double> hostMean;
+    /** Sanitized absolute module dir → test class → wall ms. */
+    private final Map<String, Map<String, Long>> classWalls;
+
     private final List<FileStamp> stamps;
 
     /** One file as it stood when it was parsed; a missing file is {@code (-1, -1)}. */
@@ -63,7 +62,7 @@ public final class AggregatedMetrics {
     }
 
     public static AggregatedMetrics empty() {
-        return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), Map.of(), List.of());
+        return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of());
     }
 
     /** True while every file this view was parsed from still has the mtime and size it had then. */
@@ -94,15 +93,16 @@ public final class AggregatedMetrics {
         Map<String, Double> mean = new LinkedHashMap<>();
         Map<String, Double> last = new LinkedHashMap<>();
         Map<String, Long> count = new LinkedHashMap<>();
+        Map<String, Map<String, Long>> classWalls = new LinkedHashMap<>();
         List<FileStamp> stamps = new ArrayList<>(2);
         Path project = home.resolve(ProjectBuilds.PROJECT_METRICS);
         stamps.add(FileStamp.of(project));
-        parseProjectFile(project, rootKey(projectDir), mean, last, count);
+        parseProjectFile(project, rootKey(projectDir), mean, last, count, classWalls);
         Map<String, Double> hostMean = new LinkedHashMap<>();
         Path host = ProjectBuilds.hostMetricsFile(buildsRoot);
         stamps.add(FileStamp.of(host));
         parseHostMean(host, hostMean);
-        return new AggregatedMetrics(mean, last, count, hostMean, List.copyOf(stamps));
+        return new AggregatedMetrics(mean, last, count, hostMean, classWalls, List.copyOf(stamps));
     }
 
     /**
@@ -117,22 +117,29 @@ public final class AggregatedMetrics {
         Map<String, Double> mean = new LinkedHashMap<>();
         Map<String, Double> last = new LinkedHashMap<>();
         Map<String, Long> count = new LinkedHashMap<>();
+        Map<String, Map<String, Long>> classWalls = new LinkedHashMap<>();
         List<FileStamp> stamps = new ArrayList<>();
         // Prefer one home per checkout path so stale re-keyed identities do not re-enter.
         for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
             Map<String, Double> m = new LinkedHashMap<>();
             Map<String, Double> l = new LinkedHashMap<>();
             Map<String, Long> c = new LinkedHashMap<>();
+            Map<String, Map<String, Long>> w = new LinkedHashMap<>();
             Path project = home.resolve(ProjectBuilds.PROJECT_METRICS);
             stamps.add(FileStamp.of(project));
-            parseProjectFile(project, identityRoot(home), m, l, c);
+            parseProjectFile(project, identityRoot(home), m, l, c, w);
             mergePreferHigherCount(mean, last, count, m, l, c);
+            // The preferred home's walls win; a later home fills in only classes it alone saw.
+            for (var e : w.entrySet()) {
+                Map<String, Long> into = classWalls.computeIfAbsent(e.getKey(), k -> new LinkedHashMap<>());
+                for (var cw : e.getValue().entrySet()) into.putIfAbsent(cw.getKey(), cw.getValue());
+            }
         }
         Map<String, Double> hostMean = new LinkedHashMap<>();
         Path host = ProjectBuilds.hostMetricsFile(buildsRoot);
         stamps.add(FileStamp.of(host));
         parseHostMean(host, hostMean);
-        return new AggregatedMetrics(mean, last, count, hostMean, List.copyOf(stamps));
+        return new AggregatedMetrics(mean, last, count, hostMean, classWalls, List.copyOf(stamps));
     }
 
     /** The checkout a project home last recorded, as a key root; null when the home has none. */
@@ -255,8 +262,13 @@ public final class AggregatedMetrics {
     /** Measured class wall for {@code fqcn} under module {@code dir}, if any. */
     public OptionalLong testClassWallMs(String dir, String fqcn) {
         if (dir == null || dir.isBlank() || fqcn == null || fqcn.isBlank()) return OptionalLong.empty();
-        OptionalDouble v = value("module." + sanitize(dir) + ".test-class." + sanitize(fqcn) + ".wall-ms");
-        return v.isPresent() ? OptionalLong.of(Math.round(v.getAsDouble())) : OptionalLong.empty();
+        Long v = classWalls.getOrDefault(sanitize(dir), Map.of()).get(sanitize(fqcn));
+        return v != null && v > 0 ? OptionalLong.of(v) : OptionalLong.empty();
+    }
+
+    /** Per-class test walls by sanitized absolute module dir, then by class name. */
+    public Map<String, Map<String, Long>> classWalls() {
+        return classWalls;
     }
 
     public OptionalLong invocationWallMs(String kind, String dirKey) {
@@ -319,32 +331,32 @@ public final class AggregatedMetrics {
             @Nullable String root,
             Map<String, Double> mean,
             Map<String, Double> last,
-            Map<String, Long> count) {
+            Map<String, Long> count,
+            Map<String, Map<String, Long>> classWalls) {
         if (!Files.isRegularFile(file)) return;
         PARSES.incrementAndGet();
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);
-            String section = "";
-            for (String line : text.split("\n")) {
-                Matcher sm = SECTION.matcher(line);
-                if (sm.matches()) {
-                    section = sm.group(1);
-                    continue;
-                }
-                Matcher km = KEY_EQ.matcher(line);
-                if (!km.matches()) continue;
-                String key = ModuleKeys.absolute(km.group(1), root);
-                double v = Double.parseDouble(km.group(2));
-                switch (section) {
-                    case "mean" -> mean.put(key, v);
-                    case "last" -> last.put(key, v);
-                    case "count" -> count.put(key, Math.round(v));
-                    default -> {
-                        // flat keys without section → treat as mean
-                        if (section.isEmpty()) mean.putIfAbsent(key, v);
-                    }
-                }
-            }
+            MetricsFile.scan(
+                    text,
+                    (section, rawKey, v) -> {
+                        String key = ModuleKeys.absolute(rawKey, root);
+                        switch (section) {
+                            case "mean" -> mean.put(key, v);
+                            case "last" -> last.put(key, v);
+                            case "count" -> count.put(key, Math.round(v));
+                            default -> {
+                                // flat keys without section → treat as mean
+                                if (section.isEmpty()) mean.putIfAbsent(key, v);
+                            }
+                        }
+                    },
+                    (dir, fqcn, ms) -> {
+                        if (!(ms > 0)) return;
+                        classWalls
+                                .computeIfAbsent(ModuleKeys.absoluteDir(dir, root), k -> new LinkedHashMap<>())
+                                .put(fqcn, Math.round(ms));
+                    });
         } catch (IOException | RuntimeException e) {
             Log.debug("parseProjectFile: IOException|RuntimeException ignored", e);
         }
@@ -354,21 +366,14 @@ public final class AggregatedMetrics {
         if (!Files.isRegularFile(file)) return;
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);
-            String section = "";
-            for (String line : text.split("\n")) {
-                Matcher sm = SECTION.matcher(line);
-                if (sm.matches()) {
-                    section = sm.group(1);
-                    continue;
-                }
-                Matcher km = KEY_EQ.matcher(line);
-                if (!km.matches()) continue;
-                String key = km.group(1);
-                double v = Double.parseDouble(km.group(2));
-                if ("mean".equals(section) || section.isEmpty() || "calibration".equals(section)) {
-                    hostMean.putIfAbsent(key, v);
-                }
-            }
+            MetricsFile.scan(
+                    text,
+                    (section, key, v) -> {
+                        if ("mean".equals(section) || section.isEmpty() || "calibration".equals(section)) {
+                            hostMean.putIfAbsent(key, v);
+                        }
+                    },
+                    (dir, fqcn, ms) -> {});
         } catch (IOException | RuntimeException e) {
             Log.debug("parseHostMean: IOException|RuntimeException ignored", e);
         }

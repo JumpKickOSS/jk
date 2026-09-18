@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.builds.MetricsFile;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
@@ -377,20 +378,20 @@ public final class BuildJournal {
         }
     }
 
+    /**
+     * The module's class walls as one {@code [test-class."<dir>"]} table ({@link MetricsFile}).
+     * Written after every scalar row: a row after the header is one of the module's classes.
+     */
     private static void appendTestClassWalls(StringBuilder sb, String moduleDir, String root) {
         if (moduleDir == null || moduleDir.isBlank()) return;
         Map<String, Long> walls = TestClassWalls.take(moduleDir);
         if (walls.isEmpty()) return;
-        String mod = ModuleKeys.relative(moduleDir, root);
+        sb.append('\n')
+                .append(MetricsFile.testClassHeader(ModuleKeys.relative(moduleDir, root)))
+                .append('\n');
         for (var e : walls.entrySet()) {
             if (e.getKey() == null || e.getValue() == null || e.getValue() <= 0) continue;
-            sb.append("module.")
-                    .append(mod)
-                    .append(".test-class.")
-                    .append(sanitize(e.getKey()))
-                    .append(".wall-ms = ")
-                    .append(e.getValue())
-                    .append('\n');
+            sb.append(sanitize(e.getKey())).append(" = ").append(e.getValue()).append('\n');
         }
     }
 

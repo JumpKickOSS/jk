@@ -26,7 +26,7 @@ import java.util.stream.Stream;
 /**
  * Single serial worker that walks project run directories, reaps old runs, and writes host-metrics
  * plus each project's project-metrics as scalar trimmed means and last-success values (no sample
- * rings on disk).
+ * rings on disk), with per-class test walls as one table per module ({@link MetricsFile}).
  *
  * <p>Every build finish calls {@link #request()}; concurrent requests coalesce into one re-run.
  */
@@ -52,6 +52,9 @@ public final class MetricsHarvest {
 
     private static final Pattern KEY_EQ_NUM =
             Pattern.compile("(?m)^([a-zA-Z0-9._:/-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
+
+    /** Joins a module's key spelling and a class name into one class-wall key. */
+    private static final char CLASS_KEY_SEPARATOR = '\0';
 
     private static final MetricsHarvest INSTANCE = new MetricsHarvest();
 
@@ -144,12 +147,13 @@ public final class MetricsHarvest {
             Map<String, Agg> project = new LinkedHashMap<>();
             Map<String, Double> last = new LinkedHashMap<>();
             Map<String, Long> counts = new LinkedHashMap<>();
+            Map<String, Agg> classWalls = new LinkedHashMap<>();
             for (Path run : ProjectBuilds.listRuns(home)) {
                 Path metrics = run.resolve(ProjectBuilds.METRICS);
                 if (!Files.isRegularFile(metrics)) continue;
-                parseRunMetrics(metrics, hostSamples, project, last, counts);
+                parseRunMetrics(metrics, hostSamples, project, last, counts, classWalls);
             }
-            writeProjectMetrics(home.resolve(ProjectBuilds.PROJECT_METRICS), project, last, counts);
+            writeProjectMetrics(home.resolve(ProjectBuilds.PROJECT_METRICS), project, last, counts, classWalls);
         }
         writeHostMetrics(ProjectBuilds.hostMetricsFile(buildsRoot), hostSamples);
     }
@@ -180,28 +184,40 @@ public final class MetricsHarvest {
             Map<String, List<Double>> hostSamples,
             Map<String, Agg> project,
             Map<String, Double> last,
-            Map<String, Long> counts) {
+            Map<String, Long> counts,
+            Map<String, Agg> classWalls) {
         try {
             String text = Files.readString(metricsFile, StandardCharsets.UTF_8);
-            Matcher m = KEY_EQ_NUM.matcher(text);
-            while (m.find()) {
-                String key = m.group(1);
-                double v = Double.parseDouble(m.group(2));
-                if (v < 0 || Double.isNaN(v) || Double.isInfinite(v)) continue;
-                // Drop cache-restore blips for heavy steps (native-image "32ms" SUCCESS) so they
-                // never enter [mean]/[last]/[count] and poison ETA.
-                if (isImplausibleHeavyWall(key, v)) continue;
-                project.computeIfAbsent(key, k -> new Agg()).add(v);
-                // Newest-first listing → first write wins as last-success.
-                last.putIfAbsent(key, v);
-                counts.merge(key, 1L, Long::sum);
-                if (isHostKey(key)) {
-                    hostSamples.computeIfAbsent(key, k -> new ArrayList<>()).add(v);
-                }
-            }
+            MetricsFile.scan(
+                    text,
+                    (section, key, v) -> {
+                        if (v < 0) return;
+                        // Drop cache-restore blips for heavy steps (native-image "32ms" SUCCESS) so
+                        // they never enter [mean]/[last]/[count] and poison ETA.
+                        if (isImplausibleHeavyWall(key, v)) return;
+                        project.computeIfAbsent(key, k -> new Agg()).add(v);
+                        // Newest-first listing → first write wins as last-success.
+                        last.putIfAbsent(key, v);
+                        counts.merge(key, 1L, Long::sum);
+                        if (isHostKey(key)) {
+                            hostSamples
+                                    .computeIfAbsent(key, k -> new ArrayList<>())
+                                    .add(v);
+                        }
+                    },
+                    (dir, fqcn, ms) -> {
+                        if (ms > 0)
+                            classWalls
+                                    .computeIfAbsent(classKey(dir, fqcn), k -> new Agg())
+                                    .add(ms);
+                    });
         } catch (Exception e) {
             Log.debug("parseRunMetrics: Exception ignored", e);
         }
+    }
+
+    private static String classKey(String moduleDir, String fqcn) {
+        return moduleDir + CLASS_KEY_SEPARATOR + fqcn;
     }
 
     /**
@@ -237,21 +253,29 @@ public final class MetricsHarvest {
     }
 
     /**
-     * Rows a project ledger holds at most, per family: per-class test walls, and everything else.
-     * Past the cap the best-sampled rows stay (highest {@code [count]}, then key order), so a
-     * ledger is bounded by the project's shape, not by how many checkouts have built it.
+     * Rows a project ledger holds at most, per family: per-class test walls across every module's
+     * table, and the scalar rows. Past the cap the best-sampled rows stay (most runs sampled, then
+     * key order), so a ledger is bounded by the project's shape, not by how many checkouts have
+     * built it.
      */
     public static final int MAX_TEST_CLASS_ROWS = 2_000;
 
     public static final int MAX_OTHER_ROWS = 4_000;
 
     /**
-     * Write the ledger: {@code [mean]} and {@code [last]} for every kept row, {@code [count]} for
-     * every kept row that is not a per-class test wall — those are read as mean and last only, and
-     * a third copy of two thousand class names is most of a large ledger's bytes.
+     * Write the ledger: {@code [mean]}, {@code [last]} and {@code [count]} for every kept scalar
+     * row, then one {@code [test-class."<dir>"]} table per module holding each class's trimmed
+     * mean wall — one value per class, the module named once as the header, no {@code [last]} or
+     * {@code [count]} copy: a class wall is a scheduling weight, and two more copies of two
+     * thousand class names were most of a large ledger's bytes.
      */
     static void writeProjectMetrics(
-            Path file, Map<String, Agg> means, Map<String, Double> last, Map<String, Long> counts) throws IOException {
+            Path file,
+            Map<String, Agg> means,
+            Map<String, Double> last,
+            Map<String, Long> counts,
+            Map<String, Agg> classWalls)
+            throws IOException {
         List<String> kept = keptRows(means, last, counts);
         StringBuilder sb = new StringBuilder();
         sb.append("# project-metrics — derived by MetricsHarvest (scalars only)\n");
@@ -269,23 +293,52 @@ public final class MetricsHarvest {
         sb.append("\n[count]\n");
         for (String key : kept) {
             Long n = counts.get(key);
-            if (n != null && !isTestClassKey(key))
-                sb.append(key).append(" = ").append(n).append('\n');
+            if (n != null) sb.append(key).append(" = ").append(n).append('\n');
         }
+        appendClassWallTables(sb, classWalls);
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, sb.toString());
     }
 
-    /** The union of keys across the three sections, capped per family and returned in key order. */
+    /** The class tables close the file: every row after a module's header is one of its classes. */
+    private static void appendClassWallTables(StringBuilder sb, Map<String, Agg> classWalls) {
+        Map<String, Long> sampled = new LinkedHashMap<>();
+        for (var e : classWalls.entrySet())
+            sampled.put(e.getKey(), (long) e.getValue().vals.size());
+        String open = null;
+        for (String key : keptClassRows(sampled)) {
+            int at = key.indexOf(CLASS_KEY_SEPARATOR);
+            String module = key.substring(0, at);
+            if (!module.equals(open)) {
+                sb.append('\n').append(MetricsFile.testClassHeader(module)).append('\n');
+                open = module;
+            }
+            Agg agg = classWalls.get(key);
+            if (agg != null)
+                sb.append(key.substring(at + 1))
+                        .append(" = ")
+                        .append(fmt(agg.trimmedMean()))
+                        .append('\n');
+        }
+    }
+
+    /** The union of keys across the three scalar sections, capped and returned in key order. */
     static List<String> keptRows(Map<String, Agg> means, Map<String, Double> last, Map<String, Long> counts) {
         TreeSet<String> all = new TreeSet<>(means.keySet());
         all.addAll(last.keySet());
         all.addAll(counts.keySet());
-        List<String> classes = new ArrayList<>();
-        List<String> others = new ArrayList<>();
-        for (String key : all) (isTestClassKey(key) ? classes : others).add(key);
-        List<String> kept = new ArrayList<>(cap(classes, counts, MAX_TEST_CLASS_ROWS));
-        kept.addAll(cap(others, counts, MAX_OTHER_ROWS));
+        List<String> kept = new ArrayList<>(cap(new ArrayList<>(all), counts, MAX_OTHER_ROWS));
+        kept.sort(Comparator.naturalOrder());
+        return kept;
+    }
+
+    /**
+     * The class-wall keys ({@code <module>\0<fqcn>}) kept under the cap, grouped by module in
+     * module order and class order: the best-sampled classes stay when there are too many.
+     */
+    static List<String> keptClassRows(Map<String, Long> sampled) {
+        List<String> kept =
+                new ArrayList<>(cap(new ArrayList<>(new TreeSet<>(sampled.keySet())), sampled, MAX_TEST_CLASS_ROWS));
         kept.sort(Comparator.naturalOrder());
         return kept;
     }
@@ -296,11 +349,6 @@ public final class MetricsHarvest {
         ranked.sort(Comparator.<String>comparingLong(k -> -counts.getOrDefault(k, 0L))
                 .thenComparing(Comparator.naturalOrder()));
         return ranked.subList(0, max);
-    }
-
-    /** {@code module.<dir>.test-class.<fqcn>.wall-ms}: one row per test class the module ran. */
-    static boolean isTestClassKey(String key) {
-        return key.startsWith("module.") && key.contains(".test-class.");
     }
 
     private static void writeHostMetrics(Path file, Map<String, List<Double>> samples) throws IOException {

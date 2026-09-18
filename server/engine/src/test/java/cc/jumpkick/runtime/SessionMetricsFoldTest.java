@@ -49,13 +49,16 @@ class SessionMetricsFoldTest {
                 invocation.build.wall-ms = 4200
                 task.compile-java.wall-ms = 800
                 module./ws/app.task.run-tests.per-unit-ms = 12.5
-                module./ws/app.test-class.com.example.AppTest.wall-ms = 900
-                module./ws/lib.test-class.com.example.LibTest.wall-ms = 300
-                [last]
-                module./ws/app.test-class.com.example.SlowTest.wall-ms = 5000
                 [count]
                 invocation.build.wall-ms = 9
                 task.compile-java.wall-ms = 9
+
+                [test-class."/ws/app"]
+                com.example.AppTest = 900
+                com.example.SlowTest = 5000
+
+                [test-class."/ws/lib"]
+                com.example.LibTest = 300
                 """);
         Files.writeString(state.resolve("builds").resolve(ProjectBuilds.HOST_METRICS), """
                 [mean]
