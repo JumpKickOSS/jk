@@ -61,7 +61,7 @@ jk update --platform=floor     # relock with BOM pins as lower bounds — Platfo
 |----------|-------------|---------------------|
 | `"2.18.0"` (exact) | writes `"2.18.2"`, the newest stable **2.x** | may write `"3.0.0"` |
 | `"^2.18"` / `"~2.18"` / range / `"latest"` | the lock takes the newest match inside that selector; the text stays | same, unless the selector itself excludes the new major |
-| `"g:a"` (versionless) | untouched — the BOM decides | untouched |
+| `"g:a"` / `"managed"` (versionless) | untouched — the BOM decides | untouched |
 
 The tool tables move under the same rule and flags: an exact `[dokka] version`, `[protobuf] version`
 (protoc), a `[protobuf.<id>] plugin`, and a `[generate.<name>] tool` or `unpack` coordinate are

@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.JkBuildRenderer;
@@ -71,11 +72,15 @@ class SpringBootParentImportTest {
                 .as("the Boot parent's <parameters>true</parameters> is the flag the MVC tests bind by")
                 .contains("-parameters");
         assertThat(build.dependencies().of(Scope.MAIN))
-                .extracting(d -> d.module() + "=" + d.version().raw())
-                .containsExactly("org.springframework.boot:spring-boot-starter-web=" + BOOT);
+                .extracting(Dependency::module, Dependency::isPlatformManaged)
+                .as("the starter's version stays the parent platform's")
+                .containsExactly(tuple("org.springframework.boot:spring-boot-starter-web", true));
         assertThat(build.dependencies().of(Scope.TEST))
-                .extracting(d -> d.module() + "=" + d.version().raw())
-                .containsExactly("org.springframework.boot:spring-boot-starter-test=" + BOOT);
+                .extracting(Dependency::module, Dependency::isPlatformManaged)
+                .containsExactly(tuple("org.springframework.boot:spring-boot-starter-test", true));
+        assertThat(JkBuildRenderer.render(build))
+                .contains("spring-boot-starter-web = \"managed\"\n")
+                .contains("spring-boot-starter-test = \"managed\"\n");
         assertThat(build.dependencies().of(Scope.PLATFORM))
                 .extracting(Dependency::module)
                 .containsExactly("org.springframework.boot:spring-boot-starter-parent");

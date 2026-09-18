@@ -21,7 +21,7 @@ jk new -t spring-boot/hello my-api
 
 Pin the platform with `[spring-boot] version = "4.1.0"` (or `[platform-dependencies]`); `"^4"`
 is the opt-in floor for the newest 4.x. Starters are versionless under the BOM
-(`web = "org.springframework.boot:spring-boot-starter-web"`). `jk build` produces a Boot jar (plugin-owned, not assembly
+(`spring-boot-starter-web = "managed"`, or `web = "org.springframework.boot:spring-boot-starter-web"`). `jk build` produces a Boot jar (plugin-owned, not assembly
 packaging). DevTools is picked up by [`jk watch run` / `jk dev`](run.md).
 
 `[spring-boot]` keys beside `version`:

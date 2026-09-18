@@ -145,7 +145,9 @@ public final class ManifestDeps {
      * selector {@link VersionSelector#parse} accepts, so {@code g:a:1.2.3} pins and
      * {@code g:a:^1.2} floats. A classifier or type needs the inline table.
      * <li>A version spec or keyword: the key is looked up in the catalog and the value is the
-     * selector (the Cargo-style {@code jackson-databind = "2.18.2"} form).
+     * selector (the Cargo-style {@code jackson-databind = "2.18.2"} form); {@code managed} leaves
+     * the version to a {@code [platform-dependencies]} BOM or {@code [managed-dependencies]} entry,
+     * as a {@code group:artifact} string without a third slot does.
      * </ol>
      */
     static Dependency parseShorthandEntry(String name, String value, Scope scope, LibraryCatalog catalog) {
@@ -193,6 +195,7 @@ public final class ManifestDeps {
             }
             LibraryCatalog.Module mod = catalog.lookup(name)
                     .orElseThrow(() -> new JkBuildParseException(unknownLibraryMessage(displayPath, name, catalog)));
+            if (Dependency.MANAGED_KEYWORD.equals(value)) return Dependency.platformManaged(name, mod.moduleKey());
             VersionSelector selector = VersionSelector.parse(value);
             return Dependency.of(name, mod.moduleKey(), selector);
         }
@@ -269,7 +272,7 @@ public final class ManifestDeps {
      *
      * <ul>
      * <li>Reserved keywords: {@code latest}, {@code stable}, {@code lts}, {@code preview},
-     * {@code nightly}.
+     * {@code nightly}, and {@code managed} for a version a platform supplies.
      * <li>Version spec operators: leading {@code ^} (caret), {@code ~} (tilde), {@code =}
      * (exact), {@code >}, {@code <}.
      * <li>Bare version numbers: leading digit (e.g. {@code 1.2.3}, {@code 2.0}).
@@ -278,7 +281,7 @@ public final class ManifestDeps {
     static boolean isVersionSpecOrKeyword(String value) {
         if (value.isEmpty()) return false;
         return switch (value) {
-            case "latest", "stable", "lts", "preview", "nightly" -> true;
+            case "latest", "stable", "lts", "preview", "nightly", Dependency.MANAGED_KEYWORD -> true;
             default -> {
                 char first = value.charAt(0);
                 yield Character.isDigit(first)

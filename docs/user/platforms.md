@@ -30,8 +30,8 @@ spring-boot-dependencies = "4.1.0"     # exactly that BOM release
 version = "4.1.0"     # the same pin; "^4" floats within 4.x, "latest" takes the newest stable
 
 [dependencies]
-web  = "org.springframework.boot:spring-boot-starter-web"   # versionless: the BOM manages it
-jdbc = "org.springframework.boot:spring-boot-starter-jdbc"
+spring-boot-starter-web = "managed"                           # catalog name: the BOM manages it
+jdbc = "org.springframework.boot:spring-boot-starter-jdbc"    # versionless coordinate: the same
 ```
 
 The BOM version follows the [version grammar](projects.md#version-strings): a bare version is
@@ -40,9 +40,12 @@ are rejected. `jk lock` records the concrete BOM version (and `pinned-by` on man
 rows); `jk update` bumps the pin like any other. The tools a plugin fetches for packaging
 (Boot's loader, Quarkus's bootstrap) follow that locked version, not the selector you wrote.
 
-A managed dependency is a versionless GAV string — `group:artifact` with no third slot — or an
-inline table without `version`. Writing a version on it is a user root, and a user root beats
-the BOM for that coordinate.
+A managed dependency is a versionless GAV string — `group:artifact` with no third slot — a
+[catalog](dependencies.md#library-catalog) short name set to `"managed"`, or an inline table
+without `version`. Writing a version on it is a user root, and a user root beats the BOM for that
+coordinate. `jk add` given no version writes the managed spelling when the manifest's platform
+already covers the coordinate, and `jk import` writes it for every dependency whose version a BOM
+or parent supplied under Maven — [Dependencies](dependencies.md#managed-the-platforms-version-in-the-string-form).
 
 ```bash
 jk tree -s platform          # BOM under the platform section, tagged (platform)

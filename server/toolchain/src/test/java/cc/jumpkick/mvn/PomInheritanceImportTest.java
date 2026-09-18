@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.JkBuildRenderer;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -78,16 +79,22 @@ class PomInheritanceImportTest {
                 .isEqualTo(17);
         assertThat(build.applicationOpt()).map(JkBuild.Application::main).contains("com.ex.App");
         assertThat(versions(build.dependencies().of(Scope.MAIN)))
+                .as("versions the parent chain supplies stay the platform's; an inherited declaration keeps its own")
                 .containsExactly(
-                        "com.google.guava:guava=33.4.0-jre",
-                        "com.fasterxml.jackson.core:jackson-databind=2.18.2",
+                        "com.google.guava:guava=managed",
+                        "com.fasterxml.jackson.core:jackson-databind=managed",
                         "org.slf4j:slf4j-api=2.0.16");
         assertThat(versions(build.dependencies().of(Scope.TEST)))
                 .as("managed scope applies too, not only the version")
-                .containsExactly("org.junit.jupiter:junit-jupiter=5.11.4");
+                .containsExactly("org.junit.jupiter:junit-jupiter=managed");
         assertThat(versions(build.dependencies().of(Scope.PLATFORM)))
                 .as("the published parent carries the whole inherited dependencyManagement")
                 .containsExactly("org.demo:demo-starter-parent=1.0");
+        assertThat(rendered)
+                .as("a catalog name is the word, any other handle the bare coordinate")
+                .contains("guava = \"managed\"\n")
+                .contains("jackson-databind = \"com.fasterxml.jackson.core:jackson-databind\"\n")
+                .contains("junit-jupiter = \"managed\"\n");
 
         List<String> messages = result.report().issues().stream()
                 .map(ImportReport.Issue::message)
@@ -165,7 +172,9 @@ class PomInheritanceImportTest {
         assertThat(result.jkBuild().project().group()).isEqualTo("org.ex");
         assertThat(result.jkBuild().project().version()).isEqualTo("1");
         assertThat(versions(result.jkBuild().dependencies().of(Scope.MAIN)))
-                .containsExactly("org.apache.commons:commons-lang3=3.17.0");
+                .as("the parent chain is the [platform] entry, so it keeps the version")
+                .containsExactly("org.apache.commons:commons-lang3=managed");
+        assertThat(versions(result.jkBuild().dependencies().of(Scope.PLATFORM))).containsExactly("org.ex:bottom=1");
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .contains("versions for org.apache.commons:commons-lang3 managed by parent org.ex:top:1.");
@@ -270,6 +279,148 @@ class PomInheritanceImportTest {
         assertThat(result.report().hasErrors())
                 .as(String.join("\n", messages(result)))
                 .isFalse();
+        assertThat(versions(result.jkBuild().dependencies().of(Scope.MAIN)))
+                .containsExactly("org.apache.commons:commons-lang3=managed");
+    }
+
+    /**
+     * A version a BOM this POM imports supplies is the BOM's to keep: the dependency is written
+     * without one. A version this POM's own {@code dependencyManagement} supplies is written, because
+     * that entry is not carried once a dependency uses it.
+     */
+    @Test
+    void a_version_an_imported_bom_supplies_is_written_managed_and_an_inline_one_pinned(@TempDir Path tempDir)
+            throws Exception {
+        http.serve(TestImporters.pomPath("org.ex", "bom", "1"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.ex</groupId>
+                  <artifactId>bom</artifactId>
+                  <version>1</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.google.guava</groupId>
+                        <artifactId>guava</artifactId>
+                        <version>33.4.0-jre</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        byte[] child = """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.ex</groupId>
+                  <artifactId>leaf</artifactId>
+                  <version>1</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.ex</groupId>
+                        <artifactId>bom</artifactId>
+                        <version>1</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                      <dependency>
+                        <groupId>org.apache.commons</groupId>
+                        <artifactId>commons-lang3</artifactId>
+                        <version>3.17.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.google.guava</groupId>
+                      <artifactId>guava</artifactId>
+                    </dependency>
+                    <dependency>
+                      <groupId>org.apache.commons</groupId>
+                      <artifactId>commons-lang3</artifactId>
+                    </dependency>
+                    <dependency>
+                      <groupId>org.slf4j</groupId>
+                      <artifactId>slf4j-api</artifactId>
+                      <version>2.0.16</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.getBytes(StandardCharsets.UTF_8);
+
+        PomImporter.Result result = TestImporters.over(tempDir, http.base()).importFromBytes(child);
+        JkBuild build = result.jkBuild();
+
+        assertThat(result.report().hasErrors())
+                .as(String.join("\n", messages(result)))
+                .isFalse();
+        assertThat(versions(build.dependencies().of(Scope.PLATFORM))).containsExactly("org.ex:bom=1");
+        assertThat(versions(build.dependencies().of(Scope.MAIN)))
+                .containsExactly(
+                        "com.google.guava:guava=managed",
+                        "org.apache.commons:commons-lang3=3.17.0",
+                        "org.slf4j:slf4j-api=2.0.16");
+        assertThat(build.dependencies().of(Scope.MANAGED))
+                .as("an inline pin a declared dependency uses is not a [managed-dependencies] row")
+                .isEmpty();
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered)
+                .contains("guava = \"managed\"\n")
+                .contains("commons-lang3 = { group = \"org.apache.commons\", version = \"3.17.0\" }\n");
+        assertThat(JkBuildParser.parse(rendered).dependencies().of(Scope.MAIN))
+                .filteredOn(d -> d.module().equals("com.google.guava:guava"))
+                .singleElement()
+                .satisfies(d -> assertThat(d.isPlatformManaged()).isTrue());
+    }
+
+    /**
+     * A parent read off the disk through {@code relativePath} is in no repository, so a version its
+     * {@code dependencyManagement} supplies is written as the effective POM resolved it: nothing a
+     * lock can read would supply it.
+     */
+    @Test
+    void a_version_a_relative_path_parent_supplies_stays_written(@TempDir Path tempDir) throws Exception {
+        Path parent = Files.createDirectories(tempDir.resolve("parent"));
+        Files.writeString(parent.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.ex</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.apache.commons</groupId>
+                        <artifactId>commons-lang3</artifactId>
+                        <version>3.17.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        Path child = Files.createDirectories(tempDir.resolve("child"));
+        Path pom = child.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.ex</groupId><artifactId>parent</artifactId><version>1</version>
+                    <relativePath>../parent/pom.xml</relativePath>
+                  </parent>
+                  <artifactId>child</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.apache.commons</groupId>
+                      <artifactId>commons-lang3</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.Result result = TestImporters.offline(tempDir).importFrom(pom);
+
         assertThat(versions(result.jkBuild().dependencies().of(Scope.MAIN)))
                 .containsExactly("org.apache.commons:commons-lang3=3.17.0");
     }
@@ -396,7 +547,13 @@ class PomInheritanceImportTest {
         return TestImporters.messages(result);
     }
 
+    /** {@code module=version} per dependency; a platform-managed one reads {@code module=managed}. */
     private static List<String> versions(List<Dependency> deps) {
-        return deps.stream().map(d -> d.module() + "=" + d.version().raw()).toList();
+        return deps.stream()
+                .map(d -> d.module() + "="
+                        + (d.isPlatformManaged()
+                                ? Dependency.MANAGED_KEYWORD
+                                : d.version().raw()))
+                .toList();
     }
 }

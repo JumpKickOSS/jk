@@ -10,7 +10,8 @@ import java.util.Map;
 
 /**
  * {@code jk_deps} — preview or apply a surgical dependency edit in jk.toml. Entries are spelled
- * by the same writer as {@code jk add}; a {@code group:artifact} without a version is pinned to
+ * by the same writer as {@code jk add}; a {@code group:artifact} without a version is written
+ * versionless when a platform BOM or managed entry of the manifest supplies one, else pinned to
  * its newest stable release.
  */
 public final class DepsTool implements McpTool {

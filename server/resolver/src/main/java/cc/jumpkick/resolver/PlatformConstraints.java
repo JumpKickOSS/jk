@@ -208,6 +208,19 @@ public final class PlatformConstraints {
     }
 
     /**
+     * What {@code project}'s {@code [managed-dependencies]} entries and {@code [platform-dependencies]}
+     * BOMs manage, {@code group:artifact -> version}, read for an edit that asks whether a platform
+     * already owns a coordinate. Two BOMs that disagree resolve as under Maven; which of them wins
+     * is not the question here.
+     */
+    public static Map<String, String> managedVersions(JkBuild project, RepoGroup repos)
+            throws IOException, InterruptedException {
+        PlatformConstraints table =
+                collect(project, repos, new EffectivePomBuilder(repos), new BomTables(), PinPolicy.NEAREST);
+        return Map.copyOf(table.versions());
+    }
+
+    /**
      * The {@code exclude} lists of the {@code [managed-dependencies]} entries, per {@code
      * group:artifact}: each pattern with the {@code jk.toml:<handle>} that declared it. They apply
      * to every edge onto the module, as Maven's dependencyManagement exclusions do.

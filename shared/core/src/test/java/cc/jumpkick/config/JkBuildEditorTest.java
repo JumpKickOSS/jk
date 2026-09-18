@@ -769,6 +769,30 @@ class JkBuildEditorTest {
         assertThat(out).contains("picocli = \"^4.8\"");
     }
 
+    /** The literal {@code managed} is the platform's: a catalog hit writes the word, a miss the versionless coordinate. */
+    @Test
+    void render_entry_writes_a_managed_version_as_the_word_or_the_bare_coordinate() {
+        var catalog = LibraryCatalog.bundled();
+        assertThat(JkBuildEditor.renderDependencyEntry(catalog, "picocli", "info.picocli", "picocli", "managed"))
+                .isEqualTo("picocli = \"managed\"");
+        assertThat(JkBuildEditor.renderDependencyEntry(catalog, "mylib", "com.acme", "mylib", "managed"))
+                .isEqualTo("mylib = \"com.acme:mylib\"");
+        assertThat(JkBuildEditor.renderDependencyEntry(catalog, "web", "org.acme", "acme-web", "managed"))
+                .isEqualTo("web = \"org.acme:acme-web\"");
+    }
+
+    @Test
+    void set_version_refuses_a_managed_one_liner() {
+        String manifest = BASE + """
+
+                [dependencies]
+                picocli = "managed"
+                """;
+        assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(manifest, Scope.MAIN, "picocli", "4.7.7"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("platform-managed");
+    }
+
     @Test
     void set_version_refuses_entries_without_a_version() {
         assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "web", "1.0"))

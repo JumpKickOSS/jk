@@ -77,6 +77,7 @@ One grammar, every place `jk.toml` names a version: every dependency scope,
 | `"g:a:1.2.3"` | Maven GAV, exact `1.2.3` |
 | `"g:a:^1.2.3"` / `"g:a:latest"` | GAV with an explicit selector in the third slot |
 | `"g:a"` | Versionless / platform-managed |
+| `"managed"` | Platform-managed, on a catalog short name |
 
 A bare version is a pin: `jk build` and `jk lock` never move it. Floating is always spelled
 out with a decoration or a keyword. Maven's `LATEST` and `RELEASE` metaversions are not part of

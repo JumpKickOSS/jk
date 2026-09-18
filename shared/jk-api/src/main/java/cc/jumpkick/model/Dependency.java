@@ -542,11 +542,23 @@ public record Dependency(
         return new Dependency(library, module, VersionSelector.parse("=" + version), null, sha256, false);
     }
 
+    /** The version marker of an edge whose version a platform BOM or managed entry supplies. */
     public static final String PLATFORM_MANAGED_VERSION = "platform-managed";
+
+    /**
+     * The manifest's word for such an edge in the string form: {@code name = "managed"} where
+     * {@code name} is a catalog short name.
+     */
+    public static final String MANAGED_KEYWORD = "managed";
 
     public static Dependency platformManaged(String library, String module) {
         return new Dependency(
                 library, module, VersionSelector.parse("=" + PLATFORM_MANAGED_VERSION), null, null, false);
+    }
+
+    /** The same edge with its version left to the platform. */
+    public Dependency asPlatformManaged() {
+        return withVersion(VersionSelector.parse("=" + PLATFORM_MANAGED_VERSION));
     }
 
     public boolean isPlatformManaged() {

@@ -197,8 +197,32 @@ class JkBuildParserCatalogTest {
         assertThat(dep.version()).isInstanceOf(VersionSelector.Caret.class);
     }
 
+    /** {@code name = "managed"} is the catalog spelling of a version a platform supplies. */
+    @Test
+    void shorthand_managed_keyword_is_a_platform_managed_catalog_dependency() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                picocli = "managed"
+                """, TEST_CATALOG);
+        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(dep.isPlatformManaged()).isTrue();
+        assertThat(dep.module()).isEqualTo("info.picocli:picocli");
+        assertThat(dep.library()).isEqualTo("picocli");
+    }
+
+    @Test
+    void shorthand_managed_keyword_needs_a_catalog_name() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                unknown-lib = "managed"
+                """, TEST_CATALOG))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("unknown short name");
+    }
+
     @Test
     void isVersionSpecOrKeyword_covers_all_reserved_words() {
+        assertThat(JkBuildParser.isVersionSpecOrKeyword("managed")).isTrue();
         assertThat(JkBuildParser.isVersionSpecOrKeyword("latest")).isTrue();
         assertThat(JkBuildParser.isVersionSpecOrKeyword("stable")).isTrue();
         assertThat(JkBuildParser.isVersionSpecOrKeyword("lts")).isTrue();

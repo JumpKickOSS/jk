@@ -8,6 +8,7 @@ jk add jackson3-databind          # catalog short name; writes today's stable as
 jk add com.acme:mylib:1.2.3       # Maven coordinate, exact version
 jk add com.acme:mylib             # no version: today's stable, written as a number
 jk add org.lwjgl:lwjgl:3.3.6 --classifier natives-linux   # the classified jar, under lwjgl-natives-linux
+jk add spring-boot-starter-web    # no version under a BOM that manages it: written "managed"
 jk add ./path/to/module           # workspace / path
 jk remove jackson3-databind
 ```
@@ -19,6 +20,10 @@ jk remove jackson3-databind
 map to `group:artifact` only — versions live on the dependency or a BOM, never in the
 catalog. See [Catalogs](#library-catalog) below and [Platforms](platforms.md). The version
 `jk add` writes is a **pin**; move it later with `jk update` — [Lockfile](lockfile.md#jk-update).
+Given no version for a coordinate a `[platform-dependencies]` BOM or `[managed-dependencies]`
+entry of the manifest (the workspace root's included) already manages, `jk add` writes no pin:
+the entry is `name = "managed"` for a catalog name, `name = "group:artifact"` otherwise, and the
+platform keeps owning the version.
 
 A project with [guards](guards.md) may carry `depend` rules — banned coordinates, scopes a
 library must stay in, version floors, licence and snapshot policy. `jk add` and `jk remove`
@@ -34,8 +39,9 @@ Three spellings, one grammar. The left-hand key is the local handle (`jk why`, `
 ```toml
 [dependencies]
 jackson2-databind = "2.22.2"                                 # catalog short name → exact 2.22.2
+spring-boot-starter-web = "managed"                          # catalog short name; the platform BOM supplies the version
 mylib    = "com.acme:mylib:1.2.3"                            # Maven coordinate → exact 1.2.3
-web      = "org.springframework.boot:spring-boot-starter-web" # versionless: a BOM manages it
+web      = "org.springframework.boot:spring-boot-starter-webflux" # versionless: a BOM manages it
 guava    = "com.google.guava:guava:^33.4"                    # selector in the third slot, opt-in
 postgres = { group = "org.postgresql", name = "postgresql", version = "42.7.4", optional = true }
 ```
@@ -43,6 +49,7 @@ postgres = { group = "org.postgresql", name = "postgresql", version = "42.7.4", 
 | Spelling | When |
 |----------|------|
 | `name = "1.2.3"` | The key is a [catalog](#library-catalog) short name |
+| `name = "managed"` | The key is a catalog short name and a [platform BOM](platforms.md) or `[managed-dependencies]` entry supplies the version |
 | `name = "group:artifact:1.2.3"` | Any Maven coordinate; `group:artifact` alone is platform-managed |
 | `name = { group, name, version, … }` | Extra fields: `optional`, `features`, `classifier`, `kind`, `git`, `path`, `sha256` |
 
@@ -51,9 +58,10 @@ An inline table takes exactly the keys jk knows — `group`, `name`, `version`, 
 `default-features` and the git ref keys `tag`, `branch`, `rev`, `submodules`, `verify-signed` — and
 refuses any other by name (`dependencies.guava unknown key \`excludes\``), so a typo cannot parse
 cleanly and silently drop; a `[workspace.dependencies]` entry is held to its own list the same way.
-`jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table;
-`jk add --classifier <c>` always writes the inline table, under the handle `<name>-<c>` unless
-`--library` names one. `jk format` never rewrites one spelling into another. A classifier or type in a GAV string
+`jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table, and
+`jk import` writes a dependency whose version a BOM or parent supplied under Maven the same way,
+versionless. `jk add --classifier <c>` always writes the inline table, under the handle `<name>-<c>`
+unless `--library` names one. `jk format` never rewrites one spelling into another. A classifier or type in a GAV string
 (`g:a:v:classifier`) is an error — use the inline table. `classifier` names the classified jar of
 the module (`natives-linux`, `linux-x86_64`); the solver and the lock key that edge as
 `group:artifact:jar:classifier`, so the plain jar and a classified twin are two entries under two
@@ -62,6 +70,19 @@ handles. It applies to a Maven coordinate only, and `kind = "tests"` already nam
 
 Version syntax: [Projects](projects.md#version-strings). Scopes:
 [Projects](projects.md#dependency-scopes).
+
+### `managed`: the platform's version in the string form
+
+`managed` sits in the version slot, beside `latest`, and reads as the sentence it is:
+*spring-boot-starter-web is managed* — by the `[platform-dependencies]` BOM or the
+`[managed-dependencies]` entry that names the coordinate, whichever the resolver folds first. It is
+the catalog counterpart of the versionless `group:artifact` string, so a BOM-managed starter needs
+no inline table, and it is a word rather than `""` or `"*"` because an empty string says nothing
+and `*` would promise "any version" where the platform allows exactly one. `jk lock` refuses a `managed` entry no BOM or managed entry of the manifest
+covers — `` `group:artifact` is declared without a version, but no [platform-dependencies] BOM
+manages it `` — and `jk update` leaves the entry alone: moving the BOM moves the version. The
+inline table without `version` remains the spelling for a managed dependency that also needs
+`exclude`, `optional`, `classifier` or `kind`.
 
 ### Optional dependencies
 
