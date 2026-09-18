@@ -574,6 +574,30 @@ public record JkBuild(
         return b.build();
     }
 
+    /** This build carrying {@code image} as its {@code [image]} table — how a member takes the root's shared keys. */
+    public JkBuild withImage(ImageTable image) {
+        Objects.requireNonNull(image, "image");
+        if (image.equals(this.image)) return this;
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                application,
+                nativeConfig,
+                pluginConfigs,
+                build,
+                format,
+                variants,
+                install,
+                publish,
+                image);
+    }
+
     /** Return a copy with the given custom jar-manifest attributes. */
     public JkBuild withManifest(Map<String, String> manifest) {
         return new JkBuild(
