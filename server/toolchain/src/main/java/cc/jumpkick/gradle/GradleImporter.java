@@ -149,7 +149,7 @@ public final class GradleImporter {
         String defaultArtifact = projectName(projectDir);
         GradleVersionCatalog catalog =
                 GradleVersionCatalog.forProject(projectDir).orElse(null);
-        return importFromString(text, defaultArtifact, catalog);
+        return importFromString(text, defaultArtifact, catalog, GradleProperties.fileProperties(projectDir));
     }
 
     public static Result importFromString(String text, String defaultArtifact) {
@@ -157,8 +157,22 @@ public final class GradleImporter {
     }
 
     public static Result importFromString(String text, String defaultArtifact, @Nullable GradleVersionCatalog catalog) {
+        return importFromString(text, defaultArtifact, catalog, Map.of());
+    }
+
+    /**
+     * Import {@code text} as the build script of {@code defaultArtifact}; {@code gradleProperties}
+     * is the {@code gradle.properties} reading its {@code $property} placeholders resolve through,
+     * beside the script's own declarations.
+     */
+    public static Result importFromString(
+            String text,
+            String defaultArtifact,
+            @Nullable GradleVersionCatalog catalog,
+            Map<String, String> gradleProperties) {
         String stripped = stripComments(text);
         ImportReport.Builder report = ImportReport.builder();
+        GradleProperties properties = GradleProperties.of(stripped, gradleProperties, catalog);
         // Surface catalog parse notes (unresolved version.ref, …) before mapping deps.
         if (catalog != null) {
             for (String note : catalog.parseNotes()) {
@@ -174,7 +188,7 @@ public final class GradleImporter {
         // plugins block — the Kotlin plugin marks a Kotlin project (and carries
         // its compiler version); ids claimed by an installed jk plugin's [[import.gradle-plugin]]
         // rules map to that plugin's table below; the rest are diagnostics only.
-        String pluginsBody = extractBlock(stripped, "plugins").orElse("");
+        String pluginsBody = pluginsBlock(stripped, properties, report);
         VersionSelector kotlin = detectKotlinVersion(pluginsBody, report);
         // git.properties from the git-properties plugin, build-info.properties from Boot's
         // `springBoot { buildInfo() }`: both are the [build-info] table.
@@ -224,7 +238,7 @@ public final class GradleImporter {
         // alone -- the rule's warning asks the user to fill it in.
         List<PluginConfig> pluginConfigs = mapPluginTables(pluginsBody, importRules, report);
 
-        Map<Scope, List<Dependency>> deps = GradleDependencies.parse(stripped, catalog, report);
+        Map<Scope, List<Dependency>> deps = GradleDependencies.parse(stripped, catalog, properties, report);
         List<RepositorySpec> repos = parseRepositories(stripped, report);
         warnUnsupportedSections(stripped, report);
 
@@ -250,6 +264,27 @@ public final class GradleImporter {
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
         return new Result(jkBuild, report.build());
     }
+
+    /**
+     * The plugins block with every plugin version spelled as a literal: {@code version kotlinVersion}
+     * and {@code version "$bootVersion"} read the property. A version whose property nothing defines
+     * is a row naming it, and the clause is dropped so the plugin imports as applied without one.
+     */
+    private static String pluginsBlock(String stripped, GradleProperties properties, ImportReport.Builder report) {
+        String body = extractBlock(stripped, "plugins").orElse("");
+        GradleProperties.Interpolated resolved = properties.resolvePluginVersions(body);
+        if (resolved.complete()) return resolved.text();
+        for (String name : resolved.unresolved()) {
+            report.warning("a plugin version in the plugins block reads the Gradle property `" + name
+                    + "`, which neither gradle.properties nor the build script defines; the plugin is imported"
+                    + " as applied without a version.");
+        }
+        return UNRESOLVED_VERSION_CLAUSE.matcher(resolved.text()).replaceAll("");
+    }
+
+    /** {@code version "$x"} / {@code version someVal} left after interpolation: nothing defined the property. */
+    private static final Pattern UNRESOLVED_VERSION_CLAUSE =
+            Pattern.compile("\\bversion\\s+(?:\"[^\"\\n]*\\$[^\"\\n]*\"|'[^'\\n]*\\$[^'\\n]*'|[A-Za-z_][A-Za-z0-9_]*)");
 
     /**
      * Parse manifest attributes from a {@code manifest { attributes(...) }} block (inside {@code

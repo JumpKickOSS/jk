@@ -39,13 +39,20 @@ public final class GradleVersionCatalog {
     /** bundle accessor (dot-folded) → module library accessors. */
     private final Map<String, List<String>> bundles;
 
+    /** version accessor (dot-folded) → the {@code [versions]} entry's value. */
+    private final Map<String, String> versions;
+
     /** Non-fatal parse notes (unresolved version.ref, malformed entries). */
     private final List<String> parseNotes;
 
     private GradleVersionCatalog(
-            Map<String, String> coordinates, Map<String, List<String>> bundles, List<String> parseNotes) {
+            Map<String, String> coordinates,
+            Map<String, List<String>> bundles,
+            Map<String, String> versions,
+            List<String> parseNotes) {
         this.coordinates = coordinates;
         this.bundles = bundles;
+        this.versions = versions;
         this.parseNotes = List.copyOf(parseNotes);
     }
 
@@ -119,12 +126,19 @@ public final class GradleVersionCatalog {
                 bundles.put(accessor(key), modules);
             }
         }
-        return new GradleVersionCatalog(coordinates, bundles, notes);
+        Map<String, String> versionAccessors = new LinkedHashMap<>();
+        versions.forEach((key, value) -> versionAccessors.put(accessor(key), value));
+        return new GradleVersionCatalog(coordinates, bundles, versionAccessors, notes);
     }
 
     /** Notes from parse (unresolved version.ref, …). Never null. */
     public List<String> parseNotes() {
         return parseNotes;
+    }
+
+    /** The {@code [versions]} entry a {@code libs.versions.<alias>} accessor (catalog name stripped) names. */
+    public Optional<String> resolveVersion(String accessorPath) {
+        return Optional.ofNullable(versions.get(accessorPath));
     }
 
     /**
