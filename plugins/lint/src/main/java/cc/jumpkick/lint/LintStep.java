@@ -94,6 +94,7 @@ final class LintStep {
                 args.addAll(List.of(
                         "-c", module.resolve(config.string("checkstyle")).toString()));
                 args.addAll(List.of("-f", "xml", "-o", report.toString()));
+                for (String glob : config.stringList("exclude")) args.addAll(List.of("-x", excludeRegex(glob)));
                 for (Path root : roots) args.add(root.toString());
             }
             case PMD -> {
@@ -120,12 +121,43 @@ final class LintStep {
             }
             case DETEKT -> {
                 args.addAll(List.of("--input", commaJoined(roots), "--report", "xml:" + report));
+                List<String> excludes = config.stringList("exclude");
+                if (!excludes.isEmpty()) args.addAll(List.of("--excludes", String.join(",", excludes)));
                 config.stringOpt("detekt-config")
                         .ifPresent(cfg -> args.addAll(
                                 List.of("--config", module.resolve(cfg).toString(), "--build-upon-default-config")));
             }
         }
         return args;
+    }
+
+    /**
+     * A module-relative Ant-style path glob ({@code **}{@code /generated/**}) as the regular
+     * expression Checkstyle's {@code -x} finds in a file's absolute path: {@code **} spans
+     * directories, {@code *} and {@code ?} stay within one name, and the match starts at a name
+     * boundary and, unless the glob ends open, ends with the path.
+     */
+    static String excludeRegex(String glob) {
+        String g = glob.replace('\\', '/');
+        if (g.startsWith("**/")) g = g.substring(3);
+        StringBuilder re = new StringBuilder("(?:^|/)");
+        for (int i = 0; i < g.length(); i++) {
+            char c = g.charAt(i);
+            if (c == '*' && i + 1 < g.length() && g.charAt(i + 1) == '*') {
+                re.append(".*");
+                i++;
+            } else if (c == '*') {
+                re.append("[^/]*");
+            } else if (c == '?') {
+                re.append("[^/]");
+            } else if ("\\.[]{}()<>+-=!^$|".indexOf(c) >= 0) {
+                re.append('\\').append(c);
+            } else {
+                re.append(c);
+            }
+        }
+        if (!g.endsWith("**")) re.append('$');
+        return re.toString();
     }
 
     /** detekt's list form: paths separated by commas. */

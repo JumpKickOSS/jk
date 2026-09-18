@@ -40,7 +40,11 @@ class PomLintImportTest {
                       <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-checkstyle-plugin</artifactId>
-                        <configuration><configLocation>style/checks.xml</configLocation></configuration>
+                        <configuration>
+                          <configLocation>style/checks.xml</configLocation>
+                          <excludes>**/api/grpc/auto/**,**/istio/**
+                          </excludes>
+                        </configuration>
                       </plugin>
                       <plugin>
                         <groupId>com.github.spotbugs</groupId>
@@ -73,7 +77,36 @@ class PomLintImportTest {
         PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
         assertThat(lint.values())
                 .containsEntry("checkstyle", "../style/checks.xml")
+                .containsEntry("exclude", List.of("**/api/grpc/auto/**", "**/istio/**"))
                 .containsEntry("spotbugs-exclude", "../style/spotbugs-exclude.xml");
+    }
+
+    /** spring-cloud-alibaba's shape: the rule set is a URL, which no module-relative path can name. */
+    @Test
+    void a_checkstyle_rule_set_at_a_url_is_a_row_and_a_placeholder_path(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-checkstyle-plugin</artifactId>
+                        <configuration><configLocation>https://example.com/build-tools/nohttp-checkstyle.xml</configLocation></configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.values()).containsEntry("checkstyle", "config/checkstyle.xml");
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .contains("https://example.com/build-tools/nohttp-checkstyle.xml")
+                .contains("copy the rule set in"));
     }
 
     /** TheAlgorithms-Java's shape: all three plugins, Checkstyle at warning severity over the tests too. */
