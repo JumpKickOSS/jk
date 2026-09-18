@@ -37,7 +37,6 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -454,8 +453,16 @@ public final class PomImporter {
         JkBuild.Application rootApplication =
                 rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
 
-        Map<String, JkBuild> members = SelfHostedFrameworks.strip(
-                memberBuilds(imported, reactorManaged, found.unbuilt()), found.boms(), rootProject.version(), report);
+        List<RepositorySpec> rootRepositories =
+                withSettingsRepositories(mapRepositories(rootModel.model().getRepositories(), report), settings);
+        Map<String, JkBuild> members = WorkspaceRepositories.disambiguateRepositories(
+                rootRepositories,
+                SelfHostedFrameworks.strip(
+                        memberBuilds(imported, reactorManaged, found.unbuilt()),
+                        found.boms(),
+                        rootProject.version(),
+                        report),
+                report);
         SiblingNames.report(members, report);
         // The workspace root is a coordination point — no deps of its own — but it owns the one
         // repository list the workspace lock resolves against, so every member's `<repositories>`
@@ -463,10 +470,7 @@ public final class PomImporter {
         JkBuild rootJkBuild = JkBuild.builder(rootProject)
                 .workspace(new Workspace(
                         leaves.stream().map(ReactorModules.Leaf::path).toList()))
-                .repositories(hoistRepositories(
-                        withSettingsRepositories(
-                                mapRepositories(rootModel.model().getRepositories(), report), settings),
-                        members.values()))
+                .repositories(WorkspaceRepositories.hoistRepositories(rootRepositories, members.values()))
                 .application(rootApplication)
                 .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
@@ -1066,19 +1070,6 @@ public final class PomImporter {
             byName.putIfAbsent(spec.name(), spec);
         }
         return new ArrayList<>(byName.values());
-    }
-
-    /**
-     * The root's repositories followed by every member's, one entry per name, first declaration
-     * wins — the list the workspace lock resolves every member against.
-     */
-    static List<RepositorySpec> hoistRepositories(List<RepositorySpec> root, Collection<JkBuild> members) {
-        Map<String, RepositorySpec> byName = new LinkedHashMap<>();
-        for (RepositorySpec spec : root) byName.putIfAbsent(spec.name(), spec);
-        for (JkBuild member : members) {
-            for (RepositorySpec spec : member.repositories()) byName.putIfAbsent(spec.name(), spec);
-        }
-        return List.copyOf(byName.values());
     }
 
     // --- unsupported-section warnings ---------------------------------------
