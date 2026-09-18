@@ -473,7 +473,7 @@ final class MemberPartitions {
     }
 
     /** A member's manifest without the roots a member solve cannot resolve: git and path sources. */
-    private static JkBuild solvable(JkBuild manifest) {
+    static JkBuild solvable(JkBuild manifest) {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         boolean dropped = false;
         for (Map.Entry<Scope, List<Dependency>> e :

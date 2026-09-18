@@ -166,7 +166,10 @@ the workspace's answer cannot be its answer:
   row is the 2.0.3 `activemq-client` declares), or
 - a coordinate in its graph was pinned by a BOM the member does not hold — a versionless
   dependency (`group:artifact` alone) a sibling declares under such a BOM takes the BOM's version
-  as the workspace's row, as an exact pin would, while the BOM's `<exclusions>` on it reach the
+  as the workspace's row, as an exact pin would (the first member's say, in `[workspace] modules`
+  order, when two members each hold a BOM of their own that disagree on it: each member's table
+  folds its own BOMs alone, so no `platform BOM conflict` is raised where no member holds both,
+  and the later member reads a row of its own), while the BOM's `<exclusions>` on it reach the
   sibling alone through a row of its own — and the member's own platform table manages it
   at another version or a dependency's POM in the member's own graph declared a version the pinned
   one cannot stand in for: below the declaration, or past its compatible line (`^` of what the POM
