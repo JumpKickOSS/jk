@@ -61,6 +61,63 @@ class KotlinCompileTest {
     }
 
     @Test
+    void a_hit_laying_down_another_tree_starts_the_incremental_state_over(@TempDir Path dir) throws IOException {
+        Cas cas = new Cas(dir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, dir.resolve("actions"));
+        Path src = write(dir.resolve("A.kt"), "package x\nclass A");
+        Path out = dir.resolve("out");
+        Path worker = write(dir.resolve("worker.jar"), "not a real jar");
+        Path state = dir.resolve("ic");
+        KotlincRequest req = KotlincRequest.builder()
+                .sources(List.of(src))
+                .classpath(List.of())
+                .outputDir(out)
+                .jvmTarget(21)
+                .workerClasspath(List.of(worker))
+                .javaHome(Path.of(System.getProperty("java.home")))
+                .workingDir(state)
+                .build();
+        String key = ActionKey.forKotlinc("compile-kotlin", req, "jk-test", KotlinClasspathAbi.MEMOIZED_ONLY);
+        String sha = cas.hashFromPath(cas.put("CLASS BYTES".getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow();
+        Map<String, String> restored = Map.of("x/A.class", sha, "x/B.class", sha);
+        cache.storeWithOutputs("compile-kotlin", key, Map.of(), restored);
+
+        // The state's own compile wrote a tree without B: the hit brings B in, and the state goes.
+        Files.createDirectories(state);
+        write(state.resolve("caches.bin"), "state");
+        LangCompile.recordTree(state, Map.of("x/A.class", sha));
+        LangCompile.Result r = LangCompile.run(
+                "compile-kotlin",
+                req,
+                "jk-test",
+                true,
+                cas,
+                cache,
+                WorkerEnv.strict(),
+                KotlinClasspathAbi.MEMOIZED_ONLY);
+        assertThat(r.cacheHit()).isTrue();
+        assertThat(out.resolve("x/B.class")).isRegularFile();
+        assertThat(state).doesNotExist();
+
+        // The state's own compile wrote this very tree: the hit leaves it alone.
+        Files.createDirectories(state);
+        write(state.resolve("caches.bin"), "state");
+        LangCompile.recordTree(state, restored);
+        r = LangCompile.run(
+                "compile-kotlin",
+                req,
+                "jk-test",
+                true,
+                cas,
+                cache,
+                WorkerEnv.strict(),
+                KotlinClasspathAbi.MEMOIZED_ONLY);
+        assertThat(r.cacheHit()).isTrue();
+        assertThat(state.resolve("caches.bin")).isRegularFile();
+    }
+
+    @Test
     void key_changes_when_a_source_changes(@TempDir Path dir) throws IOException {
         Path out = dir.resolve("out");
         Path worker = write(dir.resolve("worker.jar"), "stub");

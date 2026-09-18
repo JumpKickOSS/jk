@@ -9,6 +9,7 @@ import cc.jumpkick.compile.KotlincInputs;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -99,10 +101,12 @@ public final class LangCompile {
             throws IOException {
         String key = ActionKey.forKotlinc(taskId, request, jkVersion, snapshotter);
 
+        Path workingDir = request.workingDir();
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             // A failed restore (missing/corrupt blob) falls through to a real compile.
             if (hit.isPresent() && actionCache.restore(hit.get(), request.outputDir())) {
+                dropStateOfAnotherTree(workingDir, hit.get().outputs());
                 return cacheHit(key);
             }
         }
@@ -112,7 +116,6 @@ public final class LangCompile {
         // dir is (now) empty of classes while IC state survives (a cleaned target/, a fresh
         // checkout with a warm cache), BTA would compile "only what changed" into the void
         // and report success with a near-empty dir. Start the IC state over instead.
-        Path workingDir = request.workingDir();
         if (request.incremental()
                 && workingDir != null
                 && Files.isDirectory(workingDir)
@@ -259,6 +262,7 @@ public final class LangCompile {
             if (stateDir != null && Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
             return new Result(true, "compiled", key, cr.diagnostics(), movedSources);
         }
+        if (stateDir != null && Files.isDirectory(stateDir)) recordTree(stateDir, outputs);
         // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
         // the next non-rebuild explain sees CACHE_HIT (same as JavaCompile). Only
         // ephemeral (verify-scratch) runs skip the write — their keys never recur.
@@ -280,6 +284,42 @@ public final class LangCompile {
 
     private static Result cacheHit(String key) {
         return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of());
+    }
+
+    /** The file in an incremental state dir naming the tree its last compile wrote; see {@link #recordTree}. */
+    static final String TREE_LEDGER = "tree";
+
+    /**
+     * Note in {@code stateDir} the digest of the tree the compile that owns it wrote — {@code
+     * outputs}, relative path to content hash, as the action record stores it — so a later
+     * restore can tell whether the state still describes what is on disk.
+     */
+    static void recordTree(Path stateDir, Map<String, String> outputs) throws IOException {
+        Files.writeString(stateDir.resolve(TREE_LEDGER), treeDigest(outputs) + "\n");
+    }
+
+    /**
+     * Start the incremental state over when a restore has laid down a tree other than the one
+     * the state's own compile wrote. The state is told nothing by a restore, so it would carry a
+     * class of a source it never saw — one since deleted among them — through every later
+     * incremental compile and into every record they store; a rebuild from no state clears the
+     * output dir before it writes.
+     */
+    private static void dropStateOfAnotherTree(@Nullable Path stateDir, Map<String, String> restored)
+            throws IOException {
+        if (stateDir == null || !Files.isDirectory(stateDir)) return;
+        Path ledger = stateDir.resolve(TREE_LEDGER);
+        String produced = Files.isRegularFile(ledger) ? Files.readString(ledger).trim() : "";
+        if (!produced.equals(treeDigest(restored))) PathUtil.deleteRecursively(stateDir);
+    }
+
+    /** One digest over a record's outputs, in path order; equal trees digest equal whatever map they arrive in. */
+    static String treeDigest(Map<String, String> outputs) {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : new TreeMap<>(outputs).entrySet()) {
+            sb.append(e.getKey()).append(' ').append(e.getValue()).append('\n');
+        }
+        return Hashing.sha256Hex(sb.toString());
     }
 
     /**

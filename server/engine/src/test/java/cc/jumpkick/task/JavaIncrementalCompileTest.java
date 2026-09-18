@@ -8,6 +8,7 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.compile.JavacFixture;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URL;
@@ -123,6 +124,31 @@ class JavaIncrementalCompileTest {
         assertThat(r.outcome).isEqualTo("compiled"); // incremental, not a full rebuild
         assertThat(p.classExists("a/B.class")).isFalse(); // the removed class is cleaned up
         assertThat(p.classExists("a/A.class")).isTrue();
+    }
+
+    @Test
+    void a_class_a_cache_restore_brought_back_leaves_with_its_source(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A { public int f() { return 1; } }");
+        p.write("a/B.java", "package a; public class B { public int g() { return 2; } }");
+        p.build(); // the record of a tree holding B.class
+        p.remove("a/B.java");
+        p.build(); // the analysis forgets B; the tree loses B.class
+        p.write("a/B.java", "package a; public class B { public int g() { return 2; } }");
+        assertThat(p.build().outcome).startsWith("cache-hit"); // B.class is back; the analysis is not told
+
+        p.remove("a/B.java");
+        p.write("a/A.java", "package a; public class A { public int f() { return 3; } }");
+        Run r = p.build();
+        assertThat(r.outcome).isEqualTo("compiled");
+        assertThat(p.classExists("a/A.class")).isTrue();
+        assertThat(p.classExists("a/B.class")).isFalse();
+
+        // The record of that compile is the pruned tree: a clean tree restoring it has no B.class.
+        PathUtil.deleteRecursively(p.out);
+        assertThat(p.build().outcome).startsWith("cache-hit");
+        assertThat(p.classExists("a/A.class")).isTrue();
+        assertThat(p.classExists("a/B.class")).isFalse();
     }
 
     @Test

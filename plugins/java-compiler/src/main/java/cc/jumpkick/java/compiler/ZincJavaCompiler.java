@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JavacLevel;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.java.compiler.ScalaBridge.MixedScala;
 import cc.jumpkick.java.compiler.ZincSetup.ClasspathLookup;
 import cc.jumpkick.java.compiler.ZincSetup.QuietLogger;
@@ -251,6 +252,12 @@ public final class ZincJavaCompiler {
                 // from a clean class output or renamed/removed/no-longer-generated classes linger and
                 // ship in the jar.
                 deleteClassFiles(classOutput);
+            } else {
+                deleteClassFilesUnknownTo(
+                        prev.get().getAnalysis(),
+                        converter,
+                        classOutput,
+                        GeneratedProvenance.of(workdir).ownedClassFiles(sourceOutput, classOutput));
             }
             phases.mark("clear-output");
             PreviousResult previous = prev.isPresent()
@@ -329,6 +336,28 @@ public final class ZincJavaCompiler {
         if (frames.length > CRASH_FRAMES)
             sb.append("\n\t... ").append(frames.length - CRASH_FRAMES).append(" more");
         return sb.toString();
+    }
+
+    /**
+     * Remove every {@code .class} under {@code dir} that is neither a product {@code analysis}
+     * recorded nor a generated class {@code owned} accounts for. An action-cache restore rewrites
+     * the tree and not the analysis, so the tree can hold the classes of sources the analysis never
+     * saw — one whose source is since deleted among them — and Zinc prunes only the products it
+     * recorded. A swept class whose source is present is compiled again as an added source.
+     */
+    private static void deleteClassFilesUnknownTo(
+            CompileAnalysis analysis, FileConverter converter, Path dir, GeneratedProvenance.Owned owned)
+            throws IOException {
+        if (!(analysis instanceof Analysis full)) return;
+        Set<Path> products = new HashSet<>();
+        var it = full.relations().allProducts().iterator();
+        while (it.hasNext())
+            products.add(converter.toPath(it.next()).toAbsolutePath().normalize());
+        PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+            if (!file.toString().endsWith(".class")) return;
+            Path abs = file.toAbsolutePath().normalize();
+            if (!products.contains(abs) && !owned.owns(abs)) Files.deleteIfExists(file);
+        });
     }
 
     /** Remove every {@code .class} file under {@code dir} (used before an analysis-less full compile). */

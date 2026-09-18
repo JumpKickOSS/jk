@@ -81,6 +81,43 @@ final class GeneratedProvenance {
         write(merged);
     }
 
+    /**
+     * The class files under {@code classOutput} the recorded generated files account for: a class
+     * a processor wrote itself, and every class of a generated source under {@code sourceOutput} —
+     * {@code Stem.class} and {@code Stem$*.class} in the package directory its path maps to.
+     */
+    Owned ownedClassFiles(@Nullable Path sourceOutput, Path classOutput) throws IOException {
+        Canon canon = new Canon(sourceOutput == null ? List.of(classOutput) : List.of(sourceOutput, classOutput));
+        Path srcRoot = sourceOutput == null ? null : canon.canonical(sourceOutput);
+        Path classRoot = canon.canonical(classOutput);
+        Set<Path> files = new HashSet<>();
+        Set<Path> stems = new HashSet<>();
+        for (Path gen : read(canon).keySet()) {
+            String name = gen.getFileName().toString();
+            if (srcRoot != null && name.endsWith(".java") && gen.startsWith(srcRoot)) {
+                Path pkgDir = classRoot.resolve(srcRoot.relativize(gen)).getParent();
+                if (pkgDir != null) stems.add(pkgDir.resolve(name.substring(0, name.length() - ".java".length())));
+            } else if (gen.startsWith(classRoot)) {
+                files.add(gen);
+            }
+        }
+        return new Owned(canon, files, stems);
+    }
+
+    /** Membership test over the class files under a class output; see {@link #ownedClassFiles}. */
+    record Owned(Canon canon, Set<Path> files, Set<Path> stems) {
+        boolean owns(Path classFile) {
+            Path c = canon.canonical(classFile);
+            if (files.contains(c)) return true;
+            Path dir = c.getParent();
+            String name = c.getFileName().toString();
+            if (dir == null || !name.endsWith(".class")) return false;
+            int nested = name.indexOf('$');
+            String stem = name.substring(0, nested < 0 ? name.length() - ".class".length() : nested);
+            return stems.contains(dir.resolve(stem));
+        }
+    }
+
     /** All three arguments are already {@link Canon#canonical}, which is what makes the containment test valid. */
     private static void deleteOutputs(Path gen, @Nullable Path srcRoot, @Nullable Path classRoot) throws IOException {
         Files.deleteIfExists(gen); // the generated source/resource itself
