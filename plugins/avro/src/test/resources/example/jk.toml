@@ -1,0 +1,15 @@
+# Avro schemas as generated classes: [avro] runs the compiler over src/main/avro in the generate
+# stage, the classes join the compile, and a schema edit regenerates.
+name    = "avro-events"
+group   = "com.acme"
+version = "1.0.0"
+java    = 25
+
+[application]
+main = "com.acme.Main"
+
+[avro]
+string-type = "String"
+
+[dependencies]
+avro = { group = "org.apache.avro", version = "1.12.2" }

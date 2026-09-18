@@ -433,10 +433,10 @@ the worker's jar alone. `jk explain` shows the step the preset expands to.
 | `[openapi]` | openapi-generator-cli | `api/*.yaml` | shipped (`plugins/openapi`): `generator`, `package`, `version`, `options` |
 | `[localizer]` | localizer-maven-plugin's jar + `LocalizerMain` from the worker's own jar | `src/main/resources/**/Messages.properties` | shipped (`plugins/localizer`): `mask`, `resources`, `encoding`, `access-modifier-annotations`, `strict-types`, `key-pattern`, `version` |
 | `[jooq]` | jooq-codegen | `src/main/resources/db/*.sql` via `DDLDatabase` | planned; a live JDBC schema is opt-in and marked uncached unless the user supplies a schema digest |
-| `[avro]` | avro-tools | `src/main/avro/**/*.avsc` | planned (`compile schema`) |
+| `[avro]` | avro-compiler's closure (+ avro-idl) + `AvroMain` from the worker's own jar | `src/main/avro/**/*.{avsc,avpr,avdl}` | shipped (`plugins/avro`): `src`, `string-type`, `field-visibility`, `setters`, `optional-getters`, `decimal-logical-type`, `encoding`, `version` |
 | `[antlr]` | antlr4's tool jar + `AntlrMain` from the worker's own jar | `src/main/antlr4/**/*.g4` | shipped (`plugins/antlr`): `src`, `lib`, `package`, `listener`, `visitor`, `encoding`, `arguments`, `options`, `version` |
 | `[taglib]` | none — `TaglibMain` from the worker's own jar | `src/main/resources/**/*.jelly` | shipped (`plugins/taglib`): `resources`, `encoding` |
-| `[jaxb]` | jaxb-xjc | `src/main/xsd/**/*.xsd` | planned (`-p` package) |
+| `[jaxb]` | jaxb-xjc's closure, `com.sun.tools.xjc.Driver` over the schema directory | `src/main/xsd/**/*.xsd` (+ `bindings`) | shipped (`plugins/jaxb`): `src`, `package`, `bindings`, `encoding`, `extension`, `arguments`, `version` |
 
 A tool with no preset works through `[generate]`.
 

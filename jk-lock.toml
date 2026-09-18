@@ -4,7 +4,7 @@ generated-by-build = "dda0e8917a5b"
 generated-by-build-time = "2026-09-17T21:58:40Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "0a61d88524d63f32172b6119ed74a83af1a1af8a5af7de62f2b21fa86fd12d9e"
+manifests-sha256 = "d4aa8d6108a36d5f61de1eab15ee384ae255cbf17afad792bf4e03ad3a33af4c"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -84,21 +84,21 @@ name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
 version  = "2.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-core:jar:"
 version  = "2.22.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ff167a6317be15895706c26668f45b898efe40ab8780970658210fe1393d52a6"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
 version  = "2.22.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d0da14c12b16b5d54719aa172d83b542ff4abeb8b0fb7db476fde8ceece760ca"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22 <- 2.22",
   "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2 <- 2.22.2",
@@ -543,6 +543,44 @@ checksum = "sha256:c2ba80841541272bc815bcadab910d2d716aa563eca15762450ab4c889440
 scopes   = ["main"]
 
 [[artifact]]
+name     = "com.sun.istack:istack-commons-runtime:jar:"
+version  = "4.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:7fd6792361f4dd00f8c56af4a20cecc0066deea4a8f3dec38348af23fc2296ee"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "com.sun.istack:istack-commons-tools:jar:"
+version  = "4.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:85b4fe7ad6fdfc64a586133f039d3de7b51db2c8111a1aa98a267891e27f386f"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "com.sun.xml.bind.external:relaxng-datatype:jar:"
+version  = "4.0.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:89933721c2dc654049ebea84a33e2f3d36e918e5871ccb6f08df1960779c5cb9"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "com.sun.xml.bind.external:rngom:jar:"
+version  = "4.0.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b3daa8902535f33ff90d66c2c327b95b3827f0b36a31f9a2c1094d7b82263e1b"
+scopes   = ["test"]
+deps = [
+  "com.sun.xml.bind.external:relaxng-datatype:jar:@4.0.9 <- 4.0.9",
+]
+
+[[artifact]]
+name     = "com.sun.xml.dtd-parser:dtd-parser:jar:"
+version  = "1.5.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:fd07c1b528e8649e956bd4c759a63badb79e8076260b5c23bdf37f2b11d06711"
+scopes   = ["test"]
+
+[[artifact]]
 name     = "com.swoval:file-tree-views:jar:"
 version  = "2.1.12"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -592,14 +630,14 @@ name     = "commons-codec:commons-codec:jar:"
 version  = "1.22.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:78a5d732fbd715e2d10bd7150d2f8030bae57267f8aacc5c88f642cb6c2e5d3f"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "commons-io:commons-io:jar:"
 version  = "2.22.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2b9a7b1f726fb86216dbd2c8321eabe0221dbd5b1be81c18e1cb53811b104758"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "commons-logging:commons-logging:jar:"
@@ -1245,11 +1283,28 @@ deps = [
 ]
 
 [[artifact]]
+name     = "jakarta.activation:jakarta.activation-api:jar:"
+version  = "2.1.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c9db52100ce6c8aac95cc39075f95720d2e561b11f8051b81c121ad4effd7004"
+scopes   = ["test"]
+
+[[artifact]]
 name     = "jakarta.json:jakarta.json-api:jar:"
 version  = "2.1.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:bc934142805ea1d794f1440563965a3861a2a9fb7414ecd3fe44f26500734414"
 scopes   = ["provided"]
+
+[[artifact]]
+name     = "jakarta.xml.bind:jakarta.xml.bind-api:jar:"
+version  = "4.0.5"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5e489b6c874c4119e003ff1403db523ee3a8959ec499f3de29e77245efccf216"
+scopes   = ["test"]
+deps = [
+  "jakarta.activation:jakarta.activation-api:jar:@2.1.4 <- 2.1.4",
+]
 
 [[artifact]]
 name     = "javax.annotation:javax.annotation-api:jar:"
@@ -1382,11 +1437,53 @@ deps = [
 ]
 
 [[artifact]]
+name     = "org.apache.avro:avro-compiler:jar:"
+version  = "1.12.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:2fc749a84cb3b8c9124a29c8b1eb135d021521b12f6a29dd9b7b1e95be398325"
+scopes   = ["test"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2 <- 2.22.1",
+  "org.apache.avro:avro:jar:@1.12.2 <- 1.12.2",
+  "org.apache.commons:commons-text:jar:@1.15.0 <- 1.15.0",
+  "org.apache.velocity:velocity-engine-core:jar:@2.4.1 <- 2.4.1",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.18",
+]
+
+[[artifact]]
+name     = "org.apache.avro:avro-idl:jar:"
+version  = "1.12.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b4b44005c8d7a5ff0f7a4602d9fca2517efb3c282b28c5ba03b44e8eebfff7ec"
+scopes   = ["test"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2 <- 2.22.1",
+  "org.antlr:antlr4-runtime:jar:@4.11.1 <- 4.13.2",
+  "org.apache.avro:avro:jar:@1.12.2 <- 1.12.2",
+  "org.apache.commons:commons-lang3:jar:@3.20.0 <- 3.20.0",
+  "org.apache.commons:commons-text:jar:@1.15.0 <- 1.15.0",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.18",
+]
+
+[[artifact]]
+name     = "org.apache.avro:avro:jar:"
+version  = "1.12.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:6522e2a146b859ad158bb024dcc3b0bc826680794a2523b0881dafcbd59ce2df"
+scopes   = ["test"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2 <- 2.22.1",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2 <- 2.22.1",
+  "org.apache.commons:commons-compress:jar:@1.28.0 <- 1.28.0",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.18",
+]
+
+[[artifact]]
 name     = "org.apache.commons:commons-compress:jar:"
 version  = "1.28.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:e1522945218456f3649a39bc4afd70ce4bd466221519dba7d378f2141a4642ca"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 deps = [
   "commons-codec:commons-codec:jar:@1.22.1 <- 1.19.0",
   "commons-io:commons-io:jar:@2.22.0 <- 2.20.0",
@@ -1398,7 +1495,17 @@ name     = "org.apache.commons:commons-lang3:jar:"
 version  = "3.20.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
+
+[[artifact]]
+name     = "org.apache.commons:commons-text:jar:"
+version  = "1.15.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:58d2da30f058512a1e7f914e39241deca4dff5c27a085b4ed2faa9e7208067f6"
+scopes   = ["test"]
+deps = [
+  "org.apache.commons:commons-lang3:jar:@3.20.0 <- 3.20.0",
+]
 
 [[artifact]]
 name     = "org.apache.groovy:groovy:jar:"
@@ -1888,6 +1995,17 @@ deps = [
 ]
 
 [[artifact]]
+name     = "org.apache.velocity:velocity-engine-core:jar:"
+version  = "2.4.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1c19157d1171d560088e485be97c93a7a2f7e9f56e517f0a30273c5c39df6231"
+scopes   = ["test"]
+deps = [
+  "org.apache.commons:commons-lang3:jar:@3.20.0 <- 3.17.0",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.36",
+]
+
+[[artifact]]
 name     = "org.apiguardian:apiguardian-api:jar:"
 version  = "1.1.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -2100,6 +2218,16 @@ checksum = "sha256:090f0a758ac2f4f51aa86dff9dff0fdf7403666d0efd29f59886dc8e8b1ea
 scopes   = ["processor"]
 
 [[artifact]]
+name     = "org.eclipse.angus:angus-activation:jar:"
+version  = "2.0.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a6bd35c538cf90fff941ad6258c40c08fca0b5c9c3f536c657114f27ce0527a7"
+scopes   = ["test"]
+deps = [
+  "jakarta.activation:jakarta.activation-api:jar:@2.1.4 <- 2.1.4",
+]
+
+[[artifact]]
 name     = "org.eclipse.jgit:org.eclipse.jgit:jar:"
 version  = "7.7.1.202607240634-r"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -2177,6 +2305,69 @@ version  = "2.4.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ec168cf31c4c3849348dfff7a04e90170615f7784f1255ee6747b98a854c04c5"
 scopes   = ["main"]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:codemodel:jar:"
+version  = "4.0.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:12c9ba587b85af187a71b25c531c9929bd1a53da334d102e485468a493a1f1d7"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:jaxb-core:jar:"
+version  = "4.0.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:6b014df25d22c8446cc2df0a378c5b2137747f197a731d99eb24c756b26f7e8d"
+scopes   = ["test"]
+deps = [
+  "com.sun.istack:istack-commons-runtime:jar:@4.1.2 <- 4.1.2",
+  "jakarta.activation:jakarta.activation-api:jar:@2.1.4 <- 2.1.4",
+  "jakarta.xml.bind:jakarta.xml.bind-api:jar:@4.0.5 <- 4.0.5",
+  "org.eclipse.angus:angus-activation:jar:@2.0.3 <- 2.0.3",
+  "org.glassfish.jaxb:txw2:jar:@4.0.9 <- 4.0.9",
+]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:jaxb-runtime:jar:"
+version  = "4.0.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:93e09b7316b6af68d6e2083e4c297daf28e8957f45d725077af812c0b12c39ab"
+scopes   = ["test"]
+deps = [
+  "org.glassfish.jaxb:jaxb-core:jar:@4.0.9 <- 4.0.9",
+]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:jaxb-xjc:jar:"
+version  = "4.0.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5556b3d06a4af1bbcd9d68ef80dbaa04bdc686c246c89b3d98db4acf7f8faf90"
+scopes   = ["test"]
+deps = [
+  "com.sun.istack:istack-commons-tools:jar:@4.1.2 <- 4.1.2",
+  "com.sun.xml.bind.external:rngom:jar:@4.0.9 <- 4.0.9",
+  "com.sun.xml.dtd-parser:dtd-parser:jar:@1.5.1 <- 1.5.1",
+  "org.glassfish.jaxb:codemodel:jar:@4.0.9 <- 4.0.9",
+  "org.glassfish.jaxb:jaxb-core:jar:@4.0.9 <- 4.0.9",
+  "org.glassfish.jaxb:xsom:jar:@4.0.9 <- 4.0.9",
+]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:txw2:jar:"
+version  = "4.0.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d6343e5945d87266ca4e8974a0a2a876e1bd147a00fb65ed3f2e1a3a00f3a82a"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:xsom:jar:"
+version  = "4.0.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:be584192033acb7424e0edb283e18f83ae681a46c9e3218fb4377f4df870ed07"
+scopes   = ["test"]
+deps = [
+  "com.sun.xml.bind.external:relaxng-datatype:jar:@4.0.9 <- 4.0.9",
+]
 
 [[artifact]]
 name     = "org.graalvm.sdk:nativeimage:jar:"
@@ -2967,6 +3158,14 @@ java    = 25
 description = "JumpKick's OSV audit plugin"
 
 [[module]]
+path    = "plugins/avro"
+group   = "cc.jumpkick"
+name    = "jk-avro"
+version = "0.13.7"
+java    = 25
+description = "JumpKick's Avro preset: [avro] as one generator entry running Avro's SpecificCompiler over a module's schemas, protocols and IDL files"
+
+[[module]]
 path    = "plugins/formatter"
 group   = "cc.jumpkick"
 name    = "jk-formatter"
@@ -3013,6 +3212,14 @@ name    = "jk-java-compiler"
 version = "0.13.7"
 java    = 25
 description = "JumpKick's Java compiler plugin"
+
+[[module]]
+path    = "plugins/jaxb"
+group   = "cc.jumpkick"
+name    = "jk-jaxb"
+version = "0.13.7"
+java    = 25
+description = "JumpKick's JAXB preset: [jaxb] as one generator entry running the xjc schema compiler over a module's XML schemas"
 
 [[module]]
 path    = "plugins/kotlin-compiler"

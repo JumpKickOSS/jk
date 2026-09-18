@@ -98,6 +98,8 @@ class SelfHostingTomlTest {
                         "plugins/localizer",
                         "plugins/antlr",
                         "plugins/taglib",
+                        "plugins/avro",
+                        "plugins/jaxb",
                         "plugins/android",
                         "plugins/micronaut");
     }

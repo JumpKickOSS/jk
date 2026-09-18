@@ -35,8 +35,9 @@ import org.jspecify.annotations.Nullable;
  * {@code protobuf-maven-plugin} is {@link ProtobufPlugin}'s {@code [protobuf]} table,
  * {@code localizer-maven-plugin} {@link LocalizerPlugin}'s {@code [localizer]}, {@code antlr4-maven-plugin}
  * {@link AntlrPlugin}'s {@code [antlr]}, {@code maven-hpi-plugin}'s taglib goal {@link TaglibPlugin}'s
- * {@code [taglib]}, {@code wire-maven-plugin} {@link WirePlugin}'s {@code [generate.wire]} entry; the
- * GraphQL codegen plugins are a row naming the recipe.
+ * {@code [taglib]}, {@code avro-maven-plugin} {@link AvroPlugin}'s {@code [avro]}, the JAXB compiler
+ * plugins {@link JaxbPlugin}'s {@code [jaxb]}, {@code wire-maven-plugin} {@link WirePlugin}'s
+ * {@code [generate.wire]} entry; the GraphQL codegen plugins are a row naming the recipe.
  */
 final class GeneratorPlugins {
 
@@ -52,10 +53,23 @@ final class GeneratorPlugins {
             @Nullable PluginConfig localizer,
             @Nullable PluginConfig antlr,
             @Nullable PluginConfig taglib,
+            @Nullable PluginConfig avro,
+            @Nullable PluginConfig jaxb,
             @Nullable PluginConfig generate,
             Map<String, String> outputRoots,
             /** Plugins another mapping consumed, which get no "not imported" row of their own. */
-            Set<String> consumedPlugins) {}
+            Set<String> consumedPlugins) {
+
+        /** Every table the POM's generators add, in declaration order, the absent ones left out. */
+        List<PluginConfig> tables() {
+            List<PluginConfig> tables = new ArrayList<>();
+            for (PluginConfig table :
+                    new PluginConfig[] {openapi, protobuf, localizer, antlr, taglib, avro, jaxb, generate}) {
+                if (table != null) tables.add(table);
+            }
+            return tables;
+        }
+    }
 
     private static final String DGS_CODEGEN = "graphqlcodegen-maven-plugin";
     private static final String GRAPHQL_JAVA_CODEGEN = "graphql-codegen-maven-plugin";
@@ -102,6 +116,10 @@ final class GeneratorPlugins {
         outputRoots.putAll(antlr.outputRoots());
         TaglibPlugin.Mapped taglib = TaglibPlugin.map(model, report);
         outputRoots.putAll(taglib.outputRoots());
+        AvroPlugin.Mapped avro = AvroPlugin.map(model, report);
+        outputRoots.putAll(avro.outputRoots());
+        JaxbPlugin.Mapped jaxb = JaxbPlugin.map(model, report);
+        outputRoots.putAll(jaxb.outputRoots());
         WirePlugin.Mapped wire = WirePlugin.map(model, report);
         outputRoots.putAll(wire.outputRoots());
         PluginConfig generate = wire.entry() == null
@@ -116,6 +134,8 @@ final class GeneratorPlugins {
                 localizer.table(),
                 antlr.table(),
                 taglib.table(),
+                avro.table(),
+                jaxb.table(),
                 generate,
                 Collections.unmodifiableMap(outputRoots),
                 Collections.unmodifiableSet(consumed));

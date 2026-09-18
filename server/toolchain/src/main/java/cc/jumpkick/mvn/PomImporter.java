@@ -9,6 +9,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
+import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
@@ -158,7 +159,7 @@ public final class PomImporter {
         PackagingPlugins.Packaging packaging = PackagingPlugins.map(em, mainClass, report);
         JkBuild.Application application =
                 mainClass != null ? new JkBuild.Application(mainClass, packaging.fatJar()) : null;
-        JkBuild jkBuild = JkBuild.builder(project)
+        JkBuild.Builder builder = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .repositories(repos)
                 .features(profiles.features())
@@ -167,14 +168,9 @@ public final class PomImporter {
                 .nativeConfig(packaging.nativeConfig())
                 .image(packaging.image())
                 .pluginConfig(packaging.springBoot())
-                .pluginConfig(packaging.quarkus())
-                .pluginConfig(generators.openapi())
-                .pluginConfig(generators.protobuf())
-                .pluginConfig(generators.localizer())
-                .pluginConfig(generators.antlr())
-                .pluginConfig(generators.taglib())
-                .pluginConfig(generators.generate())
-                .build(buildBlock(em.model(), sourceTree, tests, report)
+                .pluginConfig(packaging.quarkus());
+        for (PluginConfig table : generators.tables()) builder.pluginConfig(table);
+        JkBuild jkBuild = builder.build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
                         .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(JkBuild.Dokka.DEFAULT)))
                 .build();

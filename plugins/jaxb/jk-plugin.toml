@@ -1,0 +1,32 @@
+# The built-in JAXB preset's declarative manifest. Owns [jaxb]; the code layer turns the table into
+# one generator entry — the xjc schema compiler over the module's XML schemas, into the generate
+# stage, contributed as sources — and runs it through the generator plugin's step. `jk explain`
+# shows that entry as the step `generate-jaxb`.
+
+[plugin]
+id        = "jaxb"
+table     = "jaxb"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-jaxb"
+protocol-prefix = "##JKJAXB:"
+
+[schema]
+src       = { type = "string", default = "src/main/xsd", hint = "the module-relative directory holding the .xsd schemas xjc compiles, every schema under it in one run" }
+package   = { type = "string", example = "com.acme.schema", hint = "one package for every generated class (-p), in place of the one each schema's namespace derives" }
+bindings  = { type = "string-list", default = [], example = "[\"src/main/xjb\"]", hint = "module-relative .xjb binding files or directories of them (-b)" }
+encoding  = { type = "string", hint = "the generated sources' encoding" }
+extension = { type = "bool", default = false, hint = "allow vendor extensions in the bindings (-extension)" }
+arguments = { type = "string-list", default = [], hint = "further xjc arguments, as written on its command line (-npa, -mark-generated, …)" }
+version   = { type = "string", default = "4.0.9", example = "4.0.9", hint = "the jaxb-xjc release; a bare version is exact, and the module's jaxb-runtime is expected on the same line" }
+
+# The compiler and its closure (jaxb-core, codemodel, xsom, rngom) come together; the JAXB runtime
+# rides beside it, since xjc binds its own configuration through the API it compiles for.
+[[contribute.step-dependency]]
+artifact   = "jaxb-xjc"
+coordinate = "org.glassfish.jaxb:jaxb-xjc:${config.version}"
+with       = ["org.glassfish.jaxb:jaxb-runtime:${config.version}"]
+transitive = true
+for-step   = "generate-jaxb"
