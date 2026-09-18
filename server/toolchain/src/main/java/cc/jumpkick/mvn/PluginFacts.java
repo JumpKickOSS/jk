@@ -2,7 +2,10 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.layout.Languages;
 import cc.jumpkick.repo.Pom;
+import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -355,6 +358,36 @@ final class PluginFacts {
 
     /** A declared {@code kotlin-maven-plugin}; {@code version} is null when nothing in the chain pins it. */
     record Kotlin(@Nullable String version) {}
+
+    /**
+     * Whether the module's main tree carries Java sources for javac beside the Kotlin plugin: a
+     * {@code .java} file under {@link #mainSourceDirectory}. A model with no directory behind it
+     * (an archive's POM) is judged by the plugin's executions — one that never binds the {@code
+     * compile} goal leaves the main tree to javac.
+     */
+    static boolean javaMainSources(Model model) {
+        File dir = model.getProjectDirectory();
+        if (dir != null) {
+            return Languages.anySourceUnder(dir.toPath().resolve(mainSourceDirectory(model)), ".java");
+        }
+        Optional<Plugin> kotlin = plugin(model, "kotlin-maven-plugin");
+        return kotlin.isPresent()
+                && kotlin.get().getExecutions().stream()
+                        .noneMatch(e -> e.getGoals().contains("compile"));
+    }
+
+    /** The module-relative main source directory: {@code <build><sourceDirectory>}, else {@code src/main/java}. */
+    static String mainSourceDirectory(Model model) {
+        Build build = model.getBuild();
+        String declared = build == null ? null : usable(build.getSourceDirectory());
+        if (declared == null) return "src/main/java";
+        File dir = model.getProjectDirectory();
+        Path path = Path.of(declared);
+        if (dir != null && path.isAbsolute() && path.startsWith(dir.toPath())) {
+            return dir.toPath().relativize(path).toString().replace('\\', '/');
+        }
+        return declared.replace('\\', '/');
+    }
 
     /**
      * The Kotlin plugin when declared, with the plugin's own version, else the {@code

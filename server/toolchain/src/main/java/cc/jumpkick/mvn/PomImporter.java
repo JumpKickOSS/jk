@@ -385,8 +385,9 @@ public final class PomImporter {
         String description = model.getDescription();
         if (description != null && description.isBlank()) description = null;
         VersionSelector kotlin = kotlinFrom(model, report);
-        // A Kotlin project sets `kotlin` and leaves `java` at 0 (mutually exclusive).
-        int java = kotlin != null ? 0 : level;
+        // A Kotlin module leaves `java` at 0; one whose main tree also carries Java sources is
+        // mixed and declares both, so javac compiles those against kotlinc's output.
+        int java = kotlin == null || javaMainBesideKotlin(model, kotlin, report) ? level : 0;
         return Project.builder(group, model.getArtifactId(), version)
                 .jdk(toolchainPin(model, report))
                 .java(java)
@@ -453,6 +454,19 @@ public final class PomImporter {
             return VersionSelector.parse("latest");
         }
         return VersionSelector.parse(version);
+    }
+
+    /**
+     * Whether a module with the Kotlin plugin has Java main sources too ({@link
+     * PluginFacts#javaMainSources}); a row says the module is mixed and what each key compiles.
+     */
+    private static boolean javaMainBesideKotlin(Model model, VersionSelector kotlin, ImportReport.Builder report) {
+        if (!PluginFacts.javaMainSources(model)) return false;
+        report.warning("`kotlin-maven-plugin` beside Java sources under `" + PluginFacts.mainSourceDirectory(model)
+                + "`: the module is mixed — `java` is javac's level for those and `kotlin = \"" + kotlin.raw()
+                + "\"` kotlinc's for the Kotlin sources of main and test; kotlinc runs first and javac compiles"
+                + " against its output.");
+        return true;
     }
 
     // --- dependencies -------------------------------------------------------

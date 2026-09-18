@@ -328,7 +328,7 @@ relates to the Maven one.
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
 | maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` and system properties → the same `[test]` keys when Surefire set none, else a row | manual |
 | maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; relocations, filters, other transformers and `minimizeJar` → rows; a relocation whose shaded package another member's sources import → Tier-3 row on the shaded member (jk has no package relocation) naming the importers and the Maven-built artifact to depend on instead | approximate |
-| kotlin-maven-plugin | 12 | `kotlin =` on the module; `test-compile`-only → mixed module | exact |
+| kotlin-maven-plugin | 12 | `kotlin =` on the module at the plugin's version; when the main source directory also carries `.java` files (Kotlin tests beside a Java main tree, a `test-compile`-only plugin, or both languages in main) the module is mixed and `java =` is written beside it, so javac compiles the Java tree against kotlinc's output and the Kotlin test tree sees both — a row says so | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |
 | central-publishing-maven-plugin | 11 | `jk publish --central` (planned battery) | manual |
 | spotbugs-maven-plugin | 10 | lint step (planned battery) | manual |
