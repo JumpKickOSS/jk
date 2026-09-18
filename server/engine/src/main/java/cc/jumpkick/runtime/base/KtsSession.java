@@ -43,6 +43,22 @@ import org.jspecify.annotations.Nullable;
  * the engine stops. Nothing else does, so a build finishing while another build's script is running
  * is not an event the host notices.
  *
+ * <h2>Liveness</h2>
+ *
+ * The host's stdout is read on a platform thread. A pipe read is a native read that blocks the
+ * thread making it, and the host is silent for as long as it sits between scripts — up to the idle
+ * timeout. A reader on a virtual thread would hold its carrier for all of that time and rely on the
+ * scheduler lending a spare, which a JVM under load can be refused; a test fork runs with one
+ * carrier, so one held carrier is every carrier, and every other virtual thread of the JVM — a
+ * plan's step estimates, this class's own reaper — waits for the host to speak. The reaper stays
+ * virtual: a sleeping virtual thread holds nothing.
+ *
+ * <p>No wait on the host is open-ended. A host that has not said {@code READY} within {@link
+ * #START_TIMEOUT} is killed and the run fails naming the timeout; a request whose host exits fails
+ * naming the script once the reader's EOF arrives, or after {@link #EXIT_GRACE} if a grandchild
+ * holding the pipe keeps the EOF from coming. A script that is running is bounded by its build's
+ * cancel, as a running script should be.
+ *
  * <h2>What this trades away</h2>
  *
  * A forked-per-script host made each script its own process, so a script calling {@code System.exit}
@@ -75,6 +91,12 @@ final class KtsSession {
     /** How long a cancelled script may take to stop before its host is killed instead. */
     static final Duration CANCEL_GRACE = Duration.ofSeconds(2);
 
+    /** How long a starting host may take to say {@code READY} before it is killed instead. */
+    static final Duration START_TIMEOUT = Duration.ofMinutes(2);
+
+    /** How long a request waits for the reader's EOF once the host has exited under it. */
+    static final Duration EXIT_GRACE = Duration.ofSeconds(5);
+
     /** How often a waiting request looks at its build's cancel probe. */
     private static final Duration CANCEL_POLL = Duration.ofMillis(50);
 
@@ -99,13 +121,19 @@ final class KtsSession {
     /** When the last script finished, on the monotonic clock; the reaper measures idleness from it. */
     private long lastUsedNanos = clock.nanos();
 
+    /** The idle reaper, woken to leave when the session ends before its timeout. */
+    private @Nullable Thread reaper;
+
     private KtsSession(Process process) {
         this.process = process;
         this.toChild = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
         BufferedReader fromChild =
                 new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-        // The .kts host outlives any one build, so its reader must not carry a request's session.
-        Thread.ofVirtual().name("jk-kts-host-reader").start(() -> {
+        // A platform thread, not a virtual one: the read parks natively on the pipe for as long as
+        // the host is silent, and a carrier held that long starves every other virtual thread of a
+        // one-carrier JVM (see the class comment). The .kts host outlives any one build, so the
+        // reader must not carry a request's session either.
+        Thread.ofPlatform().daemon().name("jk-kts-host-reader").start(() -> {
             try {
                 String line;
                 while ((line = fromChild.readLine()) != null) replies.put(line);
@@ -134,6 +162,7 @@ final class KtsSession {
             } catch (SessionDied e) {
                 // The child is gone; the next script gets a new one rather than inheriting a corpse.
                 current = null;
+                session.dismissReaper();
                 throw new IllegalStateException(
                         "[build] logic: the .kts host died running " + script.getFileName()
                                 + " (a script calling System.exit, or an out-of-memory, takes the shared host with it)"
@@ -141,7 +170,10 @@ final class KtsSession {
                         e);
             } catch (Cancelled e) {
                 // A host that would not stop its script was killed; the next script starts fresh.
-                if (!session.process.isAlive()) current = null;
+                if (!session.process.isAlive()) {
+                    current = null;
+                    session.dismissReaper();
+                }
                 throw e;
             } finally {
                 session.lastUsedNanos = clock.nanos();
@@ -157,6 +189,14 @@ final class KtsSession {
             current = null;
             s.exit();
         }
+    }
+
+    /**
+     * Test seam: a session on {@code process} with its reader running and no handshake made — for
+     * measuring what the reader costs the JVM around it against a child that says nothing.
+     */
+    static void attachForTests(Process process) {
+        new KtsSession(process);
     }
 
     /** Test seam: whether a host is running. */
@@ -187,6 +227,7 @@ final class KtsSession {
 
     /** Ask the child to exit and wait briefly; a child that does not go is killed. */
     private void exit() {
+        dismissReaper();
         try {
             toChild.write("EXIT\n");
             toChild.flush();
@@ -206,6 +247,13 @@ final class KtsSession {
             if (cancelled.getAsBoolean()) {
                 cancelInFlight();
                 throw new Cancelled(script);
+            }
+            if (!process.isAlive()) {
+                // The reader's EOF follows the exit at once, unless a grandchild the script started
+                // still holds the pipe's write end; either way the request ends here.
+                reply = replies.poll(EXIT_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+                if (reply == null) throw new SessionDied("exited " + process.exitValue() + " without replying");
+                break;
             }
         }
         if (EOF.equals(reply)) throw new SessionDied(drain());
@@ -288,21 +336,25 @@ final class KtsSession {
         Process p = pb.start();
         registerShutdownHook();
         KtsSession session = new KtsSession(p);
-        String ready = session.replies.take();
+        String ready = session.replies.poll(START_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         if (!"READY".equals(ready)) {
             p.destroyForcibly();
-            throw new IllegalStateException(
-                    "[build] logic: the .kts host did not start" + (EOF.equals(ready) ? "" : " (said: " + ready + ")"));
+            String said = ready == null
+                    ? " within " + START_TIMEOUT.toSeconds() + " s"
+                    : EOF.equals(ready) ? "" : " (said: " + ready + ")";
+            throw new IllegalStateException("[build] logic: the .kts host did not start" + said);
         }
         // Idle reaper of the shared .kts host; reads no session.
-        Thread.ofVirtual().name("jk-kts-host-reaper").start(() -> reap(session));
+        session.reaper = Thread.ofVirtual().name("jk-kts-host-reaper").start(() -> reap(session));
         return session;
     }
 
     /**
      * Shut {@code session} down once it has been idle for the timeout. Sleeps until the earliest
      * moment that could be true and re-checks: a script that ran in between moves the deadline.
-     * Taking {@link #LOCK} means a script in flight is waited for, never cut off.
+     * Taking {@link #LOCK} means a script in flight is waited for, never cut off. A session ended
+     * by someone else — the shutdown hook, a dead host — interrupts the sleep so the thread leaves
+     * with the host rather than at the timeout.
      */
     private static void reap(KtsSession session) {
         while (true) {
@@ -327,6 +379,12 @@ final class KtsSession {
                 return;
             }
         }
+    }
+
+    /** Wake the reaper to find the session ended; it leaves instead of sleeping out the timeout. */
+    private void dismissReaper() {
+        Thread t = reaper;
+        if (t != null && t != Thread.currentThread()) t.interrupt();
     }
 
     /**

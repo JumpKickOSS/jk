@@ -554,7 +554,15 @@ to residual so both end on time with `R → 0`. See [progress-contract.md](progr
 Convention directories **`jk/`** (visible) or **`.jk/`** (hidden) next to that module's
 `jk.toml` hold project-local stem scripts (overridable via `[build].logic`):
 `before-compile.groovy` / `.kts` and sibling stems. If both dirs exist, `jk/` wins.
-`.kts` wins a same-stem `.groovy`. Groovy and Kotlin scripts run in forked processes.
+`.kts` wins a same-stem `.groovy`. Groovy scripts fork one process per script. Every `.kts`
+runs in one resident child JVM per engine (`KtsSession` ↔ `JkKtsHost.kt`, a line protocol on
+its stdin/stdout): requests are serialised on one lock, a script compiles once into
+`cache/kts/` keyed by its bytes, an idle reaper ends the host after ten minutes, and the
+engine's shutdown hook drains it. The host's stdout is read on a platform thread — a pipe read
+blocks natively for as long as the host is silent, and a virtual reader would hold a carrier
+that a one-carrier test fork cannot spare. No wait on the host is open-ended: `READY` within
+two minutes or the host is killed with a named error, and a host that exits fails the request
+naming the script. A running script is bounded by its build's cancel.
 Compiled `.java` / `.kt` under the logic dir is rejected. The engine action-caches each
 task’s `outDir` and merges into the classes tree (`BEFORE_COMPILE` is a generated-source
 root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
