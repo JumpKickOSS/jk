@@ -20,12 +20,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
@@ -271,6 +274,7 @@ public final class GuardRules {
             String origin,
             Map<String, Rule> inherited) {
         Map<String, Rule> rules = new LinkedHashMap<>();
+        List<OverBudget> overBudget = new ArrayList<>();
         TomlParseResult toml = Toml.parse(text);
         if (toml.hasErrors()) {
             for (TomlParseError e : toml.errors()) {
@@ -375,18 +379,46 @@ public final class GuardRules {
                 rule = tightenOnly(rule, origin, file, line, problems);
             if (rule != null) rules.put(key, rule);
             int tokens = tokenCount(text, key);
-            if (tokens > TOKEN_BUDGET) {
-                problems.add(new LoadError(
-                        Severity.WARNING,
-                        file,
-                        line,
-                        key,
-                        "rule is " + tokens + " tokens; the budget is " + TOKEN_BUDGET
-                                + " — a rule this long is a program, consider a guard test"));
-            }
+            if (tokens > TOKEN_BUDGET) overBudget.add(new OverBudget(key, tokens, line));
         }
+        budgetWarning(file, overBudget).ifPresent(problems::add);
         return rules;
     }
+
+    /**
+     * One warning for every rule in a file that is over {@link #TOKEN_BUDGET}, not one warning per
+     * rule.
+     *
+     * <p>The budget is worth keeping and the individual warnings were not worth printing: this file
+     * holds eleven rules above it, so eleven blocks appeared on every build and every {@code jk
+     * guard} run, unchanged for as long as the rules are. A wall of known warnings is where a new
+     * one goes unread, which is the opposite of what a warning is for. Collapsed, the count and the
+     * worst offenders still say how far over the file is, and a twelfth rule changes the line.
+     */
+    private static Optional<LoadError> budgetWarning(Path file, List<OverBudget> overBudget) {
+        if (overBudget.isEmpty()) return Optional.empty();
+        List<OverBudget> worst = overBudget.stream()
+                .sorted(Comparator.comparingInt(OverBudget::tokens).reversed())
+                .toList();
+        String named = worst.stream()
+                .limit(3)
+                .map(r -> r.id() + " " + r.tokens())
+                .collect(Collectors.joining(", "));
+        String more = worst.size() > 3 ? ", +" + (worst.size() - 3) + " more" : "";
+        // Positioned at the worst offender, so the one line the build prints still points
+        // somewhere a reader can open.
+        return Optional.of(new LoadError(
+                Severity.WARNING,
+                file,
+                worst.getFirst().line(),
+                null,
+                worst.size() + (worst.size() == 1 ? " rule is" : " rules are") + " over the " + TOKEN_BUDGET
+                        + "-token budget (" + named + more
+                        + ") — a rule this long is a program, consider a guard test"));
+    }
+
+    /** A rule above {@link #TOKEN_BUDGET}: its id, its size, and where it starts. */
+    private record OverBudget(String id, int tokens, int line) {}
 
     private static @Nullable Rule readRule(
             String id, TomlTable t, RuleSource source, TomlParseResult doc, List<LoadError> problems) {
