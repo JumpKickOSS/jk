@@ -34,7 +34,10 @@ import java.util.stream.Collectors;
  * <p>Rendering happens once per POM change; the rows of the import report that {@code jk import}
  * would grade Tier 3 are parked per module until the next build's parse step {@linkplain
  * #drainTier3 drains} them into its warnings, so a build says once what the shadow does not carry.
- * The reactor's own rows ride with the first leaf that drains.
+ * The reactor's own rows ride with the first leaf that drains. A render that failed on a read —
+ * a repository that stopped answering — is {@linkplain ShadowRenderFailures remembered}, so the
+ * job's next reader of the same POM gets the failure at once rather than waiting the stall window
+ * out again.
  */
 public final class ShadowManifests {
 
@@ -48,6 +51,8 @@ public final class ShadowManifests {
     /** Per-module render gate: two readers racing on the same POM render it once. */
     private static final Map<Path, Object> GATES = new ConcurrentHashMap<>();
 
+    private static final ShadowRenderFailures FAILURES = ShadowRenderFailures.forStallWindow();
+
     /** Make this class the process's shadow source. Idempotent. */
     public static void install() {
         ManifestPaths.installShadowSource(ShadowManifests::materialize);
@@ -57,7 +62,8 @@ public final class ShadowManifests {
      * The shadow manifest of {@code dir}, rendered now when absent or behind the POM files it read.
      * A leaf of a reactor is rendered by its root; a directory the root lists that Maven would not
      * build here (an aggregator, a module of an inactive profile) is a {@link NotBuiltHere} naming
-     * the profile and the remedies. An unreadable POM is an {@link UncheckedIOException}.
+     * the profile and the remedies. An unreadable POM, or a parent read that failed within the last
+     * stall window, is an {@link UncheckedIOException}.
      */
     public static Path materialize(Path dir) {
         Path module = dir.toAbsolutePath().normalize();
@@ -108,8 +114,13 @@ public final class ShadowManifests {
                 + " and list the module under [workspace] modules");
     }
 
-    /** Render {@code module}'s shadow, and with it every leaf's when {@code module} is a reactor root. */
+    /**
+     * Render {@code module}'s shadow, and with it every leaf's when {@code module} is a reactor root.
+     * A failure is remembered for the stall window and returned at once to the next caller.
+     */
     private static void render(Path module) {
+        Optional<IOException> remembered = FAILURES.recall(module);
+        if (remembered.isPresent()) throw new UncheckedIOException(remembered.get());
         Path pom = module.resolve(ManifestPaths.POM);
         try {
             Cas cas = JkStores.storeCas();
@@ -126,6 +137,7 @@ public final class ShadowManifests {
                 Log.debug("shadow manifest rendered", target);
             }
         } catch (IOException e) {
+            FAILURES.remember(module, e);
             throw new UncheckedIOException(e);
         }
     }

@@ -517,8 +517,7 @@ public final class EngineRequests {
             BuildPlanResult result,
             int exitCode,
             int warnings,
-            @Nullable String error,
-            @Nullable String diag) {}
+            @Nullable String error) {}
 
     // ---- hosted plan commands ----------------------------------------------------------------
 

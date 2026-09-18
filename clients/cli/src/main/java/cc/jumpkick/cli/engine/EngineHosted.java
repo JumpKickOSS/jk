@@ -254,7 +254,7 @@ final class EngineHosted {
         PlanFinishImportEvent e = PlanFinishImportEvent.decode(line);
         // An absent worker exit code is a failure here, where the record reads 0.
         int exitCode = Jsonl.has(line, "importExit") ? e.exitCode() : 1;
-        return new EngineRequests.ImportOutcome(finish.result(), exitCode, e.warnings(), e.error(), e.diag());
+        return new EngineRequests.ImportOutcome(finish.result(), exitCode, e.warnings(), e.error());
     }
 
     /**

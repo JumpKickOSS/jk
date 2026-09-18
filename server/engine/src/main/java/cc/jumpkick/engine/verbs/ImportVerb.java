@@ -143,8 +143,7 @@ public final class ImportVerb implements HostedVerb {
                                 result.success(),
                                 plan.get(CompatPlans.EXIT).orElse(1),
                                 plan.get(CompatPlans.WARNINGS).orElse(0),
-                                plan.get(CompatPlans.ERROR).orElse(null),
-                                plan.get(CompatPlans.DIAG).orElse(null)));
+                                plan.get(CompatPlans.ERROR).orElse(null)));
                 return verdict(planVerdict, plan.get(CompatPlans.EXIT).orElse(0));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
