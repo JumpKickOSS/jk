@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.lint;
+
+import cc.jumpkick.plugin.Plugin;
+import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.build.BuildContext;
+import cc.jumpkick.plugin.build.BuildExtension;
+import cc.jumpkick.plugin.build.BuildPluginHarness;
+import cc.jumpkick.plugin.build.In;
+import cc.jumpkick.plugin.build.TaskSpec;
+import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * The lint plugin's code layer: one step per tool the {@code [lint]} table enables, each after
+ * compile — the sources, the tool's configuration, the compiled classes and the table are its
+ * cache key — forking the tool over the module and reporting its findings as the step's own
+ * diagnostics. A clean module is a cache hit on the next build; a finding at or above
+ * {@code fail-on} fails the step, a finding below it is a warning on the report.
+ */
+public final class LintPlugin implements Plugin, BuildExtension {
+
+    @Override
+    public PluginManifest manifest() {
+        return new PluginManifest("jk-lint", "##JKLINT:");
+    }
+
+    @Override
+    public int run(List<String> args, ProtocolWriter out) throws Exception {
+        return BuildPluginHarness.run(this, args, out);
+    }
+
+    @Override
+    public void build(BuildContext ctx) {
+        for (LintTool tool : enabled(ctx.config())) ctx.task(task(tool, ctx.config()));
+    }
+
+    /** The tools the table turns on: a configuration named, rulesets listed, or a switch set. */
+    static Set<LintTool> enabled(PluginConfig config) {
+        Set<LintTool> tools = EnumSet.noneOf(LintTool.class);
+        if (config.stringOpt("checkstyle").isPresent()) tools.add(LintTool.CHECKSTYLE);
+        if (!config.stringList("pmd").isEmpty()) tools.add(LintTool.PMD);
+        if (config.bool("spotbugs", false)) tools.add(LintTool.SPOTBUGS);
+        if (config.bool("detekt", false)) tools.add(LintTool.DETEKT);
+        return tools;
+    }
+
+    /**
+     * One tool's step: the source roots it reads and its configuration files are project inputs,
+     * the classes dir orders it after compile (and is what SpotBugs analyses), the table's values
+     * complete the key; the report it writes is the declared output.
+     */
+    static TaskSpec task(LintTool tool, PluginConfig config) {
+        List<In> ins = new ArrayList<>();
+        for (String root : sourceRoots(tool, config)) ins.add(In.projectFiles(root));
+        for (String file : configFiles(tool, config)) ins.add(In.projectFiles(file));
+        ins.add(In.classes());
+        if (tool == LintTool.SPOTBUGS) ins.add(In.compileClasspath());
+        ins.add(In.config());
+        return TaskSpec.named(tool.stepName())
+                .inputs(ins.toArray(In[]::new))
+                .outputs(tool.out())
+                .run(exec -> LintStep.run(exec, tool));
+    }
+
+    /** The module-relative source roots {@code tool} reads: the Kotlin roots for detekt, the Java roots otherwise. */
+    static List<String> sourceRoots(LintTool tool, PluginConfig config) {
+        List<String> roots = config.stringList(tool == LintTool.DETEKT ? "kotlin-sources" : "sources");
+        if (!roots.isEmpty()) return roots;
+        return List.of(tool == LintTool.DETEKT ? "src/main/kotlin" : "src/main/java");
+    }
+
+    /** The module-relative files {@code tool}'s configuration names: a change to any re-runs the step. */
+    static List<String> configFiles(LintTool tool, PluginConfig config) {
+        return switch (tool) {
+            case CHECKSTYLE -> config.stringOpt("checkstyle").map(List::of).orElse(List.of());
+            case PMD ->
+                config.stringList("pmd").stream().filter(LintPlugin::isFile).toList();
+            case SPOTBUGS -> config.stringOpt("spotbugs-exclude").map(List::of).orElse(List.of());
+            case DETEKT -> config.stringOpt("detekt-config").map(List::of).orElse(List.of());
+        };
+    }
+
+    /** A PMD ruleset that is a file in the module, as opposed to a built-in {@code category/java/…} or {@code rulesets/…}. */
+    static boolean isFile(String ruleset) {
+        return !ruleset.startsWith("category/") && !ruleset.startsWith("rulesets/");
+    }
+}

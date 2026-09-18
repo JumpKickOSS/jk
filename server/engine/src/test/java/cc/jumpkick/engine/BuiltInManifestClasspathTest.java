@@ -36,6 +36,7 @@ class BuiltInManifestClasspathTest {
                         "avro",
                         "jaxb",
                         "jooq",
+                        "lint",
                         "minified");
     }
 

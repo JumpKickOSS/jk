@@ -56,6 +56,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 - [Test](test.md)
 - [Guards](guards.md) — house rules in `jk-guards.toml`: kinds, baseline, packs, hooks
 - [Generate](generate.md) — code generators as cached steps: `[generate.<name>]`, the `[openapi]` preset
+- [Lint](lint.md) — Checkstyle, PMD, SpotBugs and detekt as cached steps: `[lint]`, findings in `jk-results.md`
 - [Format](format.md)
 - [Run, watch, REPL](run.md)
 - [Explain and tasks](explain.md)

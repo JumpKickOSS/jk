@@ -323,7 +323,7 @@ relates to the Maven one.
 | exec-maven-plugin | 16 | `java` goal → `[application]`; `exec` goal → row (build logic) | manual |
 | maven-dependency-plugin | 15 | an `unpack` / `unpack-dependencies` execution whose output directory a `wire-maven-plugin` reads → that recipe's `unpack` (the artifact at the module's dependency version); analysis / copy goals → row when bound to a phase | manual |
 | maven-clean-plugin | 15 | `jk clean` | exact |
-| maven-checkstyle-plugin | 14 | lint step (planned battery) → row until then | manual |
+| maven-checkstyle-plugin | 14 | `[lint] checkstyle` ← `<configLocation>` (a built-in `sun_checks.xml` / `google_checks.xml` → a placeholder path and a row to copy the rule set in), `checkstyle-version` ← the plugin's own `<dependencies>` pin, `<includeTestSourceDirectory>` → `sources` + `src/test/java`, `<violationSeverity>warning` → `fail-on = "warning"` | approximate |
 | maven-deploy-plugin | 14 | `jk publish` | exact |
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
 | maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` and system properties → the same `[test]` keys when Surefire set none, else a row | manual |
@@ -331,10 +331,10 @@ relates to the Maven one.
 | kotlin-maven-plugin | 12 | `kotlin =` on the module at the plugin's version; when the main source directory also carries `.java` files (Kotlin tests beside a Java main tree, a `test-compile`-only plugin, or both languages in main) the module is mixed and `java =` is written beside it, so javac compiles the Java tree against kotlinc's output and the Kotlin test tree sees both — a row says so | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |
 | central-publishing-maven-plugin | 11 | `jk publish --central` (planned battery) | manual |
-| spotbugs-maven-plugin | 10 | lint step (planned battery) | manual |
+| spotbugs-maven-plugin | 10 | `[lint] spotbugs = true`, `<excludeFilterFile>` → `spotbugs-exclude`, `<effort>` → `spotbugs-effort`, `<includeTests>` → `sources` + `src/test/java`, the plugin version minus its last digit → `spotbugs-version`; `<plugins>` (fb-contrib, find-sec-bugs) → row | approximate |
 | spotless-maven-plugin | 10 | `jk format` | approximate |
 | maven-antrun-plugin | 10 | build logic script → row | manual |
-| maven-pmd-plugin | 8 | lint step (planned battery) | manual |
+| maven-pmd-plugin | 8 | `[lint] pmd` ← `<rulesets>` (a `/category/…` or `/rulesets/…` path as PMD's built-in, a `file://` URL as a module file, the Maven plugin's own default ruleset → `rulesets/java/quickstart.xml` and a row), `<includeTests>` → `sources` + `src/test/java`; `<excludeFromFailureFile>` / `<excludeRoots>` / `<excludes>` → row | approximate |
 | license-maven-plugin | 8 | nothing → row | manual |
 | avro-maven-plugin | 9 | `[avro]`: `<sourceDirectory>` → `src`, `<stringType>` → `string-type` (Maven's own default, `CharSequence`, written when the POM leaves it unset), `<fieldVisibility>` / `<createSetters>` / `<createOptionalGetters>` / `<enableDecimalLogicalType>` → their keys, the plugin version → `version`; the `<outputDirectory>` is the preset's contribution, so a build-helper root inside it is not written; `<imports>` needs no key (the preset orders schemas by definition); `<includes>` / `<excludes>` / `<testSourceDirectory>` → row; the module keeps its `org.apache.avro:avro` dependency at the compiler's version | exact |
 | protobuf-maven-plugin | 8 | `[protobuf]` on a module with `.proto` files under `<protoSourceRoot>` (default `src/main/proto`): the `<protocArtifact>` version → `version` (the protobuf-java dependency's when none), the root → `src`; the output under `target/generated-sources/protobuf` is the preset's contribution, so a build-helper root inside it is not written; a module the plugin reaches by inheritance without protos gets no table; `compile-custom`'s `<pluginId>` + `<pluginArtifact>` → `[protobuf.<pluginId>] plugin` (`<pluginParameter>` → `options`), a row when either is unresolvable | approximate |

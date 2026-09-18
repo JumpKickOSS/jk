@@ -64,14 +64,11 @@ They live in the **store**, not the cache, because a fetched distribution is an 
 `jk cache nuke` does not cost you an 83 MB Kotlin re-download. `--no-discover` forces a
 download instead of linking a host install.
 
-## Lint is a recipe, not a first-party matrix
+## Lint is a build step, not a tool
 
 | Concern | Path |
 |---------|------|
 | **Format** (style rewrite) | [`jk format`](format.md) |
-| **Java lint** | Checkstyle via `jk tool install` / `jk tool run` |
-| **Kotlin analysis** | Use `jk format` for style; detekt later as the same recipe pattern |
+| **Java lint** (Checkstyle, PMD, SpotBugs) and **Kotlin analysis** (detekt) | the [`[lint]` table](lint.md): cached steps after compile, findings in `jk-results.md` |
 
-JumpKick does **not** ship Mill’s full lint matrix as first-party plugins.
-
-Sample: [examples/checkstyle-recipe/](examples/checkstyle-recipe/).
+A one-off run of any of them is still `jk tool run <coordinate> -- <args>`.

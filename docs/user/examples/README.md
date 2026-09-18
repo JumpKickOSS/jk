@@ -7,7 +7,7 @@ Small in-tree samples used from the user docs. Larger adopter scenarios live in
 |--------|--------|
 | [assembly-app](assembly-app/) | Fat jar (`[application] assembly`) |
 | [minified-cli](minified-cli/) | R8 minified jar |
-| [checkstyle-recipe](checkstyle-recipe/) | Lint via `jk tool install` / `jk tool run` |
+| [lint-checkstyle](lint-checkstyle/) | `[lint] checkstyle` as a cached step; findings in `jk-results.md` |
 | [line-count-build](line-count-build/) | `jk/` / `.jk/` generate step |
 | [workspace-showcase](workspace-showcase/) | Tiny two-module workspace |
 | [vite-sidecar](vite-sidecar/) | `jk dev` running a Vite dev server beside the JVM (`[dev.sidecars]`) |

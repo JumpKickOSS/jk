@@ -36,6 +36,7 @@ register.
 | avro | `[avro]`: Avro's SpecificCompiler over a module's schemas, protocols and IDL files, one parser across the files | core | the Kafka services' generator; code-free sugar over the generator worker |
 | jooq | `[jooq]`: jOOQ codegen over the module's DDL scripts through DDLDatabase, no database for the build; a live schema opt-in | core | most jOOQ services carry their Flyway migrations; code-free sugar over the generator worker |
 | jaxb | `[jaxb]`: xjc over a module's XML schemas and bindings, timestamp-free output | core | the SOAP and XML services' generator; code-free sugar over the generator worker |
+| lint | `[lint]`: Checkstyle, PMD, SpotBugs and detekt as cached steps after compile, each finding a diagnostic with file, line and rule id in `jk-results.md` and the MCP diagnostics; `fail-on` picks the severity that fails | core | a finding an agent does not see is a finding that stays; the census ranks Checkstyle first among the Maven plugins with no jk home |
 | build-info | `[build-info]`: `git.properties` and Boot's `build-info.properties` as cached resources in the jar | core | Boot's `/info` endpoint on every imported service; the git-commit-id plugins' consumers |
 | android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
 | grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | tracks an 8.x milestone; `latest` would pick Grails 7 |
