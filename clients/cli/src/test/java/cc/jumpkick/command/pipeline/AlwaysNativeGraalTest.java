@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,9 +36,9 @@ class AlwaysNativeGraalTest {
         assertThat(modules)
                 .containsExactly(
                         new AlwaysNativeGraal.Module(
-                                root.toAbsolutePath().normalize().resolve("app"), "graalvm-25"),
+                                root.toAbsolutePath().normalize().resolve("app"), "graalvm-25", 0),
                         new AlwaysNativeGraal.Module(
-                                root.toAbsolutePath().normalize().resolve("tool"), AlwaysNativeGraal.DEFAULT_SPEC));
+                                root.toAbsolutePath().normalize().resolve("tool"), AlwaysNativeGraal.DEFAULT_SPEC, 0));
     }
 
     @Test
@@ -44,7 +46,7 @@ class AlwaysNativeGraalTest {
         write(dir.resolve("jk.toml"), "[project]\nname = \"cli\"\n\n[native]\nenabled = \"always\"\n");
         assertThat(AlwaysNativeGraal.fromManifests(dir))
                 .containsExactly(
-                        new AlwaysNativeGraal.Module(dir.toAbsolutePath().normalize(), AlwaysNativeGraal.DEFAULT_SPEC));
+                        new AlwaysNativeGraal.Module(dir.toAbsolutePath().normalize(), AlwaysNativeGraal.DEFAULT_SPEC, 0));
         write(dir.resolve("jk.toml"), "[project]\nname = \"cli\"\n");
         assertThat(AlwaysNativeGraal.fromManifests(dir)).isEmpty();
     }
@@ -57,9 +59,9 @@ class AlwaysNativeGraalTest {
     @Test
     void a_selector_confines_the_resolution_to_the_selected_members(@TempDir Path root) {
         var app = new AlwaysNativeGraal.Module(
-                root.resolve("app").toAbsolutePath().normalize(), "graalvm-25");
+                root.resolve("app").toAbsolutePath().normalize(), "graalvm-25", 0);
         var tool = new AlwaysNativeGraal.Module(
-                root.resolve("tool").toAbsolutePath().normalize(), "graalvm");
+                root.resolve("tool").toAbsolutePath().normalize(), "graalvm", 0);
         List<AlwaysNativeGraal.Module> all = List.of(app, tool);
 
         assertThat(AlwaysNativeGraal.within(
@@ -71,7 +73,7 @@ class AlwaysNativeGraalTest {
         assertThat(AlwaysNativeGraal.within(all, List.of(root.resolve("api").toString())))
                 .isEmpty();
         assertThat(AlwaysNativeGraal.within(all, List.of(root + "/x/../app"))).containsExactly(app);
-        assertThat(AlwaysNativeGraal.homes(List.of(), (dir, spec) -> {
+        assertThat(AlwaysNativeGraal.homes(List.of(), (dir, spec, release) -> {
                     throw new AssertionError("no member, no resolution");
                 }))
                 .contains(Map.of());
@@ -79,20 +81,51 @@ class AlwaysNativeGraalTest {
 
     @Test
     void homes_stop_at_the_first_unresolved_pin() {
-        var app = new AlwaysNativeGraal.Module(Path.of("/w/app"), "graalvm-25");
-        var tool = new AlwaysNativeGraal.Module(Path.of("/w/tool"), "graalvm");
+        var app = new AlwaysNativeGraal.Module(Path.of("/w/app"), "graalvm-25", 0);
+        var tool = new AlwaysNativeGraal.Module(Path.of("/w/tool"), "graalvm", 21);
         Path home = Path.of("/jdks/graalvm-25");
 
-        assertThat(AlwaysNativeGraal.homes(List.of(app, tool), (dir, spec) -> Optional.of(home)))
+        assertThat(AlwaysNativeGraal.homes(List.of(app, tool), (dir, spec, release) -> Optional.of(home)))
                 .contains(Map.of(app.dir(), home, tool.dir(), home));
         assertThat(AlwaysNativeGraal.homes(
                         List.of(app, tool),
-                        (dir, spec) -> spec.equals("graalvm") ? Optional.empty() : Optional.of(home)))
+                        (dir, spec, release) -> "graalvm".equals(spec) ? Optional.empty() : Optional.of(home)))
                 .as("one unresolved pin fails the whole build up front")
                 .isEmpty();
-        assertThat(AlwaysNativeGraal.homes(List.of(), (dir, spec) -> Optional.empty()))
+        assertThat(AlwaysNativeGraal.homes(List.of(), (dir, spec, release) -> Optional.empty()))
                 .as("no native module, nothing to resolve")
                 .contains(Map.of());
+    }
+
+    @Test
+    void a_modules_java_release_travels_with_it_as_the_floor(@TempDir Path dir) throws IOException {
+        // A module that pins no `graal` resolves with the bare flavour, which matches any installed
+        // major. Its `java` is what says which majors can actually build it.
+        // `java` sits at the top level of a manifest, the way jk.toml writes it.
+        write(dir.resolve("jk.toml"), "name = \"cli\"\njava = 25\n\n[native]\nenabled = \"always\"\n");
+
+        assertThat(AlwaysNativeGraal.fromManifest(dir.toAbsolutePath().normalize()))
+                .isEqualTo(new AlwaysNativeGraal.Module(
+                        dir.toAbsolutePath().normalize(), AlwaysNativeGraal.DEFAULT_SPEC, 25));
+
+        // Declared none: nothing to clear, and the resolution is left as it was.
+        write(dir.resolve("jk.toml"), "[project]\nname = \"cli\"\n\n[native]\nenabled = \"always\"\n");
+        assertThat(requireNonNull(AlwaysNativeGraal.fromManifest(dir.toAbsolutePath().normalize()))
+                        .javaRelease())
+                .isZero();
+    }
+
+    @Test
+    void the_release_reaches_the_resolver_with_its_module() {
+        var app = new AlwaysNativeGraal.Module(Path.of("/w/app"), "graalvm", 25);
+        Map<String, Integer> seen = new LinkedHashMap<>();
+
+        AlwaysNativeGraal.homes(List.of(app), (dir, spec, release) -> {
+            seen.put(spec, release);
+            return Optional.of(Path.of("/jdks/graalvm-25"));
+        });
+
+        assertThat(seen).containsExactly(Map.entry("graalvm", 25));
     }
 
     private static void write(Path file, String text) throws IOException {

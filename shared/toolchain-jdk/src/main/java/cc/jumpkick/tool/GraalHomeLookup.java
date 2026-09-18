@@ -66,6 +66,23 @@ public final class GraalHomeLookup {
         return registry.findBySpec(spec).map(InstalledJdk::home).filter(GraalHomeLookup::usable);
     }
 
+    /**
+     * The installed Graal matching {@code spec} that can build for {@code javaRelease} — the
+     * lowest major at or above it — when it carries native-image.
+     *
+     * <p>For a spec that names a flavour but no version, which is what a module declaring
+     * {@code [native] enabled = "always"} and no {@code graal} amounts to. {@link #bySpec} would
+     * take any major of that flavour, so an installed GraalVM 21 satisfied a module targeting
+     * Java 25 and the native build then ran a 21 against class files it could not read. The floor
+     * is the module's own {@code java} release, and it is a floor: a newer Graal is not a reason
+     * to download an older one.
+     */
+    public static Optional<Path> bySpecAtLeast(JdkRegistry registry, String spec, int javaRelease) {
+        return DefaultGraalPolicy.choose(registry.hitsMatching(spec), javaRelease)
+                .map(JdkHit::home)
+                .filter(GraalHomeLookup::usable);
+    }
+
     /** The best installed Graal satisfying the lock's pin, when it carries native-image. */
     public static Optional<Path> byLockPin(JdkRegistry registry, GraalPin pin) {
         return LockPinMatch.chooseGraal(registry.listHits(), pin)

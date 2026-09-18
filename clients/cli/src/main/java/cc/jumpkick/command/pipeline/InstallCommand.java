@@ -479,7 +479,7 @@ public final class InstallCommand {
         for (Path mod : moduleDirs) {
             var info = Objects.requireNonNull(infoByDir.get(mod), () -> "no project info for " + mod);
             if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
-            alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal()));
+            alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal(), info.javaRelease()));
         }
         Optional<Map<Path, Path>> resolved = AlwaysNativeGraal.homes(
                 alwaysNative, new GraalResolver(null, false, BuildPlanConsole.modeFor(global))::resolve);

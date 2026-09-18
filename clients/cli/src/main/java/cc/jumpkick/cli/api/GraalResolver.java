@@ -55,13 +55,41 @@ public final class GraalResolver {
      * non-empty result is suitable to pass as {@code graalHome} to {@code NativePlans.nativeStep}.
      */
     public Optional<Path> resolve(Path projectDir, @Nullable String graalSpec) {
-        String key = graalSpec == null ? "" : graalSpec;
+        return resolve(projectDir, graalSpec, 0);
+    }
+
+    /**
+     * As {@link #resolve(Path, String)} for a module that declares a {@code java} release.
+     *
+     * <p>{@code javaRelease} is a floor, and it only bites when the spec names a flavour without a
+     * version — {@code "graalvm"}, which is what a module linking a native image and pinning no
+     * {@code graal} resolves with. That spec matches any installed major, so a module targeting
+     * Java 25 was served by an installed GraalVM 21 and its native-image step then read class
+     * files it had no version for. A spec that names a version is the user's word and is not
+     * second-guessed; {@code 0} means the module declared no release and nothing is constrained.
+     */
+    public Optional<Path> resolve(Path projectDir, @Nullable String graalSpec, int javaRelease) {
+        String key = (graalSpec == null ? "" : graalSpec) + "@" + javaRelease;
         if (memo.containsKey(key)) {
             return Optional.ofNullable(memo.get(key));
         }
-        Path home = resolveUncached(projectDir, graalSpec);
+        Path home = resolveUncached(projectDir, graalSpec, javaRelease);
         memo.put(key, home);
         return Optional.ofNullable(home);
+    }
+
+    /**
+     * Whether {@code javaRelease} constrains this spec: only when the spec names a flavour and no
+     * version, and is not a keyword.
+     *
+     * <p>A spec with a major ({@code graalvm-25}) is an answer already. A keyword ({@code native},
+     * {@code lts}) is resolved against the catalog by {@link #install}, which has its own rules and
+     * would not know what {@code native-25} meant.
+     */
+    private static boolean floorApplies(String spec, int javaRelease) {
+        return javaRelease > 0
+                && !JdkKeywords.isKeyword(spec)
+                && JdkSelector.parseFlexible(spec).majorOpt().isEmpty();
     }
 
     private static @Nullable String firstNonBlank(@Nullable String... values) {
@@ -71,7 +99,7 @@ public final class GraalResolver {
         return null;
     }
 
-    private @Nullable Path resolveUncached(Path projectDir, @Nullable String graalSpec) {
+    private @Nullable Path resolveUncached(Path projectDir, @Nullable String graalSpec, int javaRelease) {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
 
         // Tiers 1-4 are GraalHomeLookup's — the same policy the engine runs for a request that
@@ -81,6 +109,15 @@ public final class GraalResolver {
         // 1. Explicit spec: --graal switch (jk.graal) > project.graal > JK_GRAAL env.
         String effective = firstNonBlank(SessionContext.current().graalSpec(), graalSpec, System.getenv("JK_GRAAL"));
         if (effective != null && !effective.isBlank()) {
+            if (floorApplies(effective, javaRelease)) {
+                // A flavour with no version, and a module that says which Java it targets: the
+                // installed Graal that can build it, else download one that can rather than
+                // whatever is newest in the catalog.
+                Optional<Path> atLeast = GraalHomeLookup.bySpecAtLeast(registry, effective, javaRelease);
+                if (atLeast.isPresent()) return atLeast.get();
+                String floored = effective + "-" + javaRelease;
+                return install(floored, registry, /*announce*/ "graal = \"" + effective + "\", java = " + javaRelease);
+            }
             Optional<Path> hit = GraalHomeLookup.bySpec(registry, effective);
             if (hit.isPresent()) return hit.get();
             return install(effective, registry, /*announce*/ "graal = \"" + effective + "\"");
