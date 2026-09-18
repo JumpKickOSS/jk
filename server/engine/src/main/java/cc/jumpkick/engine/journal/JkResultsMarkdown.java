@@ -219,7 +219,7 @@ public final class JkResultsMarkdown {
         if (out.isEmpty()) {
             for (Row row : failedSteps(r)) {
                 String who = row.module.isEmpty() ? "" : "`" + row.module + "` ";
-                out.add(who + "`" + row.task.name() + "` failed");
+                out.add(who + "`" + row.task.name() + "` " + verdictWord(r, row.task));
                 if (out.size() >= MAX_WHY) return List.copyOf(out);
             }
         }
@@ -227,6 +227,12 @@ public final class JkResultsMarkdown {
         if (r.cancelled()) return List.of("cancelled");
         if (r.exitCode() != 0) return List.of("failed (exit " + r.exitCode() + ")");
         return List.of("failed");
+    }
+
+    /** {@code failed}, or for the step a cancel interrupted {@code cancelled after <time>}. */
+    private static String verdictWord(BuildRecord r, BuildRecord.Task t) {
+        if (!r.cancelled() || !JkResultsStopped.isCancelledStatus(t.status())) return "failed";
+        return t.millis() > 0 ? "cancelled after " + fmtDuration(t.millis()) : "cancelled";
     }
 
     /**
@@ -523,7 +529,10 @@ public final class JkResultsMarkdown {
         }
         String stack = some(d.stack());
         if (stack != null) {
-            String clipped = JkResultsStack.clip(stack, d.className(), MAX_STACK_LINES);
+            // The step a cancel interrupted carries its fork's last lines, already bounded by the
+            // accumulator; the newest is the one that matters, so no head clip.
+            boolean forkTail = JkResultsStopped.CANCELLED_CODE.equals(d.code());
+            String clipped = forkTail ? stack : JkResultsStack.clip(stack, d.className(), MAX_STACK_LINES);
             fence(sb, clipped);
             if (isTest(d)) JkResultsCause.append(sb, stack, clipped);
         }

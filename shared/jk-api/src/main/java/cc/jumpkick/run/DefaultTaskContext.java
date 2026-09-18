@@ -195,6 +195,11 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
+    public void forkOutput(String line) {
+        plan.emit(l -> l.forkOutput(step, line));
+    }
+
+    @Override
     public void warn(String code, String message) {
         plan.warningsRef().add(new BuildPlanResult.Diagnostic(step, code, message));
         plan.emit(l -> l.warn(step, code, message));

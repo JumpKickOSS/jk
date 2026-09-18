@@ -47,11 +47,7 @@ public final class BuildPlanConsole {
      * decides what exit code to surface based on {@code result.success}.
      */
     public static BuildPlanResult run(BuildPlan plan, Mode mode, Path cacheRoot) {
-        attachSessionMirror(plan, mode);
-
-        BuildPlanListener console = chooseConsoleListener(plan, mode);
-        if (console != null) plan.addListener(console);
-
+        plan.addListener(chooseConsoleListener(plan, mode));
         return plan.run();
     }
 
@@ -110,8 +106,6 @@ public final class BuildPlanConsole {
      */
     public static BuildPlanResult runBuildPlan(
             BuildPlan plan, Mode mode, Path cacheRoot, ConsoleSpec spec, String module) {
-        attachSessionMirror(plan, mode);
-
         plan.addListener(chooseConsoleListener(plan.steps(), mode, spec, module));
         return plan.run();
     }
@@ -120,16 +114,20 @@ public final class BuildPlanConsole {
      * The listener {@link #runBuildPlan} picks per {@code mode} — split out so a caller that doesn't have
      * a real {@code BuildPlan} yet (a engine-hosted test run reconstructing the step list from wire
      * events; see {@code EngineEventDecoder}) can choose the same listener from just {@code
-     * steps} once it knows them, instead of duplicating this switch.
+     * steps} once it knows them, instead of duplicating this switch. The open session transcript
+     * listens beside the console, so a hosted run's step events reach {@code details.jsonl} as they
+     * happen and a run a cancel or a kill ends mid-step has its transcript up to that step.
      */
     public static BuildPlanListener chooseConsoleListener(
             List<Task> steps, Mode mode, ConsoleSpec spec, String module) {
-        return switch (mode) {
-            case JSON -> new JsonlListener(System.out);
-            case VERBOSE -> new VerboseListener(System.out, System.err);
-            case AUTO -> new CommandManagerListener(System.out, spec, module, steps, isInteractiveTerminal());
-            case QUIET -> new CommandManagerListener(System.out, spec, module, steps, false);
-        };
+        BuildPlanListener console =
+                switch (mode) {
+                    case JSON -> new JsonlListener(System.out);
+                    case VERBOSE -> new VerboseListener(System.out, System.err);
+                    case AUTO -> new CommandManagerListener(System.out, spec, module, steps, isInteractiveTerminal());
+                    case QUIET -> new CommandManagerListener(System.out, spec, module, steps, false);
+                };
+        return SessionMirrorListener.mirrored(console, mode);
     }
 
     /**
@@ -204,9 +202,10 @@ public final class BuildPlanConsole {
         // rider: its lines carry null, and the fraction it reaches does not leak into the first
         // lines of the build that follows.
         if (plan.interactive()) {
-            return mode == Mode.JSON
+            BuildPlanListener console = mode == Mode.JSON
                     ? new JsonlListener(System.out, false)
                     : new SilentListener(System.out, System.err, true);
+            return SessionMirrorListener.mirrored(console, mode);
         }
         return chooseConsoleListener(plan.name(), plan.steps(), mode);
     }
@@ -225,16 +224,19 @@ public final class BuildPlanConsole {
      * As {@link #chooseConsoleListener(String, List, Mode)} with a distinct header command and tree
      * module label (e.g. {@code Update} / {@code Updating versions}).
      */
+    /** As {@link #chooseConsoleListener(List, Mode, ConsoleSpec, String)}, the transcript mirrored the same way. */
     public static BuildPlanListener chooseConsoleListener(String command, String module, List<Task> steps, Mode mode) {
-        return switch (mode) {
-            case QUIET -> new SilentListener(System.out, System.err);
-            case JSON -> new JsonlListener(System.out);
-            case VERBOSE -> new VerboseListener(System.out, System.err);
-            case AUTO ->
-                isInteractiveTerminal()
-                        ? new CommandManagerListener(System.out, command, module, steps, true)
-                        : new SilentListener(System.out, System.err);
-        };
+        BuildPlanListener console =
+                switch (mode) {
+                    case QUIET -> new SilentListener(System.out, System.err);
+                    case JSON -> new JsonlListener(System.out);
+                    case VERBOSE -> new VerboseListener(System.out, System.err);
+                    case AUTO ->
+                        isInteractiveTerminal()
+                                ? new CommandManagerListener(System.out, command, module, steps, true)
+                                : new SilentListener(System.out, System.err);
+                };
+        return SessionMirrorListener.mirrored(console, mode);
     }
 
     /**

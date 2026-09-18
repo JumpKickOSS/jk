@@ -34,6 +34,13 @@ public interface TaskContext {
      */
     void output(@Nullable String line);
 
+    /**
+     * A line the step's forked process printed outside its protocol. Not shown to the view — {@link
+     * #output} is the shown channel — but kept by the run's record as the fork's last lines, so a
+     * step a cancel interrupted can say what its fork was printing when it was killed.
+     */
+    default void forkOutput(String line) {}
+
     /** Mark outputs already up-to-date/cached; recorded as {@link TaskStatus#SKIPPED}. Idempotent. */
     default void cached() {}
 

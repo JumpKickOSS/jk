@@ -173,6 +173,11 @@ public final class EngineListeners {
             public void planDiagnostics(String d, BuildPlanResult result) {
                 if (!result.success()) sse.publishDiagnostics(rid, d, result.errors());
             }
+
+            @Override
+            public void forkOutput(String d, String step, String line) {
+                journal.accForkOutput(rid, d, step, line);
+            }
         };
     }
 
