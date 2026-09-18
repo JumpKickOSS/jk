@@ -45,7 +45,12 @@ public record JkBuild(
          */
         @Nullable PomMetadata publish,
         /** {@code [image]}: the OCI image the module builds; {@link ImageTable#EMPTY} when the table is absent. */
-        ImageTable image) {
+        ImageTable image,
+        /**
+         * {@code [library]}: what a library ships beyond its thin jar — a fat {@code -all.jar}, with
+         * the packages it relocates. {@code null} when the table is absent.
+         */
+        @Nullable Library library) {
 
     public JkBuild {
         Objects.requireNonNull(project, "project");
@@ -89,7 +94,8 @@ public record JkBuild(
                 Variants.EMPTY,
                 null,
                 null,
-                ImageTable.EMPTY);
+                ImageTable.EMPTY,
+                null);
     }
 
     /** Project + deps + repos; anything richer uses {@link #builder(Project)}. */
@@ -111,7 +117,8 @@ public record JkBuild(
                 Variants.EMPTY,
                 null,
                 null,
-                ImageTable.EMPTY);
+                ImageTable.EMPTY,
+                null);
     }
 
     /** {@code [application].main}, or {@code null} when {@code [application]} is absent or unset. */
@@ -131,6 +138,25 @@ public record JkBuild(
 
     public Optional<Application> applicationOpt() {
         return Optional.ofNullable(application);
+    }
+
+    public Optional<Library> libraryOpt() {
+        return Optional.ofNullable(library);
+    }
+
+    /**
+     * The package relocations the fat jar applies, source package to shaded package in
+     * declaration order: {@code [application] relocate} or {@code [library] relocate}, whichever
+     * table the module declares; empty for a fat jar that bundles classes under their own names.
+     */
+    public Map<String, String> relocate() {
+        if (application != null) return application.relocate();
+        return library == null ? Map.of() : library.relocate();
+    }
+
+    /** True when the module's fat jar moves packages: its consumers read the {@code -all.jar}, not the classes tree. */
+    public boolean relocates() {
+        return !relocate().isEmpty();
     }
 
     public Optional<NativeConfig> nativeConfigOpt() {
@@ -167,7 +193,8 @@ public record JkBuild(
                 variants,
                 install,
                 publish,
-                image);
+                image,
+                library);
     }
 
     /** This build without the plugin config {@code id} (no-op when absent). */
@@ -192,7 +219,8 @@ public record JkBuild(
                 variants,
                 install,
                 publish,
-                image);
+                image,
+                library);
     }
 
     /**
@@ -221,7 +249,8 @@ public record JkBuild(
                 variants,
                 install,
                 publish,
-                image);
+                image,
+                library);
     }
 
     /** This build with its {@code [plugins]} list replaced (user-config merge / tests). */
@@ -243,7 +272,8 @@ public record JkBuild(
                 variants,
                 install,
                 publish,
-                image);
+                image,
+                library);
     }
 
     /** This build with its {@code [build]} block replaced — the variant extra-src fold point. */
@@ -265,7 +295,8 @@ public record JkBuild(
                 variants,
                 install,
                 publish,
-                image);
+                image,
+                library);
     }
 
     /** This build with its dependencies replaced — the variant dependency-overlay fold point. */
@@ -287,7 +318,8 @@ public record JkBuild(
                 variants,
                 install,
                 publish,
-                image);
+                image,
+                library);
     }
 
     /** True when the {@code [spring-boot]} plugin table is declared. */
@@ -306,9 +338,9 @@ public record JkBuild(
     /** The built-in micronaut plugin's id / table name. */
     public static final String MICRONAUT_ID = "micronaut";
 
-    /** True when a fat jar is requested — implied by {@link #minified()}. */
+    /** True when a fat jar is requested: {@code [application] assembly} (implied by {@link #minified()}) or {@code [library] assembly}. */
     public boolean assembly() {
-        return application != null && application.assembly();
+        return (application != null && application.assembly()) || (library != null && library.assembly());
     }
 
     /** True when an R8-minified jar is requested alongside the fat jar. */
@@ -381,7 +413,8 @@ public record JkBuild(
                 .variants(variants)
                 .install(install)
                 .publish(publish)
-                .image(image);
+                .image(image)
+                .library(library);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -410,7 +443,8 @@ public record JkBuild(
                 .variants(variants)
                 .install(install)
                 .publish(publish)
-                .image(image);
+                .image(image)
+                .library(library);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -436,6 +470,7 @@ public record JkBuild(
         private @Nullable Install install;
         private @Nullable PomMetadata publish;
         private ImageTable image = ImageTable.EMPTY;
+        private @Nullable Library library;
 
         private Builder(Project project) {
             this.project = project;
@@ -522,6 +557,11 @@ public record JkBuild(
             return this;
         }
 
+        public Builder library(@Nullable Library library) {
+            this.library = library;
+            return this;
+        }
+
         public JkBuild build() {
             return new JkBuild(
                     project,
@@ -540,7 +580,8 @@ public record JkBuild(
                     variants,
                     install,
                     publish,
-                    image);
+                    image,
+                    library);
         }
     }
 
@@ -567,7 +608,8 @@ public record JkBuild(
                 .variants(variants)
                 .install(install)
                 .publish(publish)
-                .image(image);
+                .image(image)
+                .library(library);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -595,7 +637,8 @@ public record JkBuild(
                 variants,
                 install,
                 publish,
-                image);
+                image,
+                library);
     }
 
     /** Return a copy with the given custom jar-manifest attributes. */
@@ -617,7 +660,8 @@ public record JkBuild(
                 variants,
                 install,
                 publish,
-                image);
+                image,
+                library);
     }
 
     /** True iff this is a workspace root (has a non-empty {@code workspace} block). */
@@ -717,6 +761,24 @@ public record JkBuild(
         /** Convenience: no config template. */
         public Application(String main, boolean assembly, boolean minified, boolean nativeImage) {
             this(main, assembly, minified, nativeImage, null);
+        }
+    }
+
+    /**
+     * {@code [library]} block: what a library ships beyond its thin jar. A library has no main and
+     * is never run, but it may publish a fat jar — a shaded library moves the packages it bundles
+     * so consumers see them under its own names. Relocation is a fact of the fat jar, so a table
+     * that relocates implies {@code assembly}.
+     *
+     * @param assembly build a fat {@code -all.jar} beside the thin jar
+     * @param relocate package prefixes the fat jar moves, source package to shaded package in
+     *     declaration order, as {@link Application#relocate}
+     */
+    public record Library(boolean assembly, Map<String, String> relocate) {
+
+        public Library {
+            relocate = relocate == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(relocate));
+            if (!relocate.isEmpty()) assembly = true;
         }
     }
 

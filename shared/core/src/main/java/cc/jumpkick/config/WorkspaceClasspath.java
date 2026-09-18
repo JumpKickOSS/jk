@@ -38,6 +38,12 @@ import org.jspecify.annotations.Nullable;
  * packages, tests or builds its native tail; everything that runs the sibling — packaging,
  * tests, a native image — reads the jar, which carries the resources and the plugin-contributed
  * classes the tree alone does not.
+ *
+ * <p>A sibling whose fat jar relocates packages ({@code relocate} under {@code [library]} or
+ * {@code [application]}) is the exception: what its consumers see — its own classes and the
+ * libraries it bundles, under the shaded names — exists only in its {@code -all.jar}, so that jar
+ * is the sibling in both views, a consumer's compile is admitted once the sibling has packaged
+ * it, and the sibling's own lock rows do not ride along, since the jar already carries them.
  */
 public final class WorkspaceClasspath {
 
@@ -144,6 +150,7 @@ public final class WorkspaceClasspath {
             Path siblingJar = siblingJarByModule.get(module);
             if (siblingJar == null) continue;
             Path siblingClasses = Objects.requireNonNull(siblingClassesByModule.get(module), "sibling classes");
+            boolean relocating = sib.relocating().contains(module);
             // The full declared closure, whether or not the sibling is built yet —
             // an IDE module graph depends on declared edges, not on compiled
             // artifacts (IntelliJ compiles the modules itself), and an action key on
@@ -152,10 +159,12 @@ public final class WorkspaceClasspath {
             closureClasses.add(siblingClasses);
             Path missingSibDir = siblingDirByModule.get(module);
             boolean sourceless = missingSibDir != null
-                    && (!Files.exists(siblingJar) || !Files.isDirectory(siblingClasses))
+                    && (!Files.exists(siblingJar) || !Files.exists(siblingClasses))
                     && !hasAnySource(missingSibDir.resolve("src"));
             String missingLabel = module + " (expected at " + siblingJar + ")";
-            String missingClassesLabel = module + " (expected classes at " + siblingClasses + ")";
+            String missingClassesLabel = relocating
+                    ? module + " (expected its relocating jar at " + siblingClasses + ")"
+                    : module + " (expected classes at " + siblingClasses + ")";
             if (sourceless) {
                 // Name the real cause: the sibling was never going to compile anything — its
                 // outputs only appear once the module is scheduled and packages empty.
@@ -165,7 +174,7 @@ public final class WorkspaceClasspath {
                         + " it once the module is scheduled; expected at " + siblingClasses;
             }
             addIfPresent(jars, seenPaths, siblingJar, missing, missingLabel);
-            if (!Files.isDirectory(siblingClasses)) missingClasses.add(missingClassesLabel);
+            if (!Files.exists(siblingClasses)) missingClasses.add(missingClassesLabel);
 
             if (testsKinds.contains(module)) {
                 // Main output is always required for a tests kind (test classes
@@ -204,9 +213,11 @@ public final class WorkspaceClasspath {
             // Collect the sibling's lock, with the manifest that orders it, so the caller can include
             // its external transitive deps on the compile classpath (e.g. tomlj declared in jk-core is
             // needed by jk-io via the transitive chain) in the order the sibling's own classpath has.
+            // A relocating sibling's jar bundles those deps — under the shaded names where a rule
+            // covers them — so its lock does not ride: the unshaded copies would sit beside them.
             Path sibDir = siblingDirByModule.get(module);
             JkBuild sibBuild = sib.manifestByCoord().get(module);
-            if (sibDir != null && sibBuild != null) {
+            if (sibDir != null && sibBuild != null && !relocating) {
                 Path lockFile = LockPaths.lockFile(sibDir);
                 if (Files.exists(lockFile)) siblingLocks.add(new SiblingLock(lockFile, sibDir, sibBuild));
             }
@@ -251,7 +262,11 @@ public final class WorkspaceClasspath {
         return rootManifest.isWorkspaceRoot() ? new Root(rootOpt.get(), rootManifest) : null;
     }
 
-    /** Every other build unit in the workspace, by {@code group:name} coord, with its layout paths. */
+    /**
+     * Every other build unit in the workspace, by {@code group:name} coord, with its layout paths.
+     * For a coord in {@code relocating} both {@code jarByModule} and {@code classesByModule} name
+     * the unit's {@code -all.jar}.
+     */
     private record Siblings(
             Map<String, Path> dirByModule,
             Map<String, Path> jarByModule,
@@ -260,7 +275,8 @@ public final class WorkspaceClasspath {
             Map<String, Path> testResourcesByModule,
             Map<String, Path> fixturesByModule,
             Map<String, JkBuild> manifestByCoord,
-            Map<String, String> coordByName) {}
+            Map<String, String> coordByName,
+            Set<String> relocating) {}
 
     /**
      * Every build unit in the workspace — the members AND the buildable root — is a resolvable
@@ -278,6 +294,7 @@ public final class WorkspaceClasspath {
         Map<String, Path> siblingFixturesByModule = new HashMap<>();
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
+        Set<String> relocating = new HashSet<>();
         // One load for the whole workspace, not one parse per sibling.
         // loadModules returns every member with root inheritance applied — the index below. It
         // throws for a member with no manifest; applyWorkspace already rethrows for any module
@@ -297,8 +314,15 @@ public final class WorkspaceClasspath {
             // a million such walks.
             BuildLayout layout = BuildLayout.of(root, unitDir, unit);
             siblingDirByModule.put(coord, unitDir);
-            siblingJarByModule.put(coord, layout.mainJar());
-            siblingClassesByModule.put(coord, layout.classesDir());
+            if (unit.relocates()) {
+                // The shaded names exist only in the fat jar: it is the sibling in both views.
+                relocating.add(coord);
+                siblingJarByModule.put(coord, layout.assemblyJar());
+                siblingClassesByModule.put(coord, layout.assemblyJar());
+            } else {
+                siblingJarByModule.put(coord, layout.mainJar());
+                siblingClassesByModule.put(coord, layout.classesDir());
+            }
             siblingTestClassesByModule.put(coord, layout.testClassesDir());
             siblingTestResourcesByModule.put(coord, layout.testResourcesDir());
             siblingFixturesByModule.put(coord, layout.testFixturesClassesDir());
@@ -313,7 +337,8 @@ public final class WorkspaceClasspath {
                 siblingTestResourcesByModule,
                 siblingFixturesByModule,
                 siblingManifestByCoord,
-                siblingCoordByName);
+                siblingCoordByName,
+                relocating);
     }
 
     /** The transitive workspace closure in discovery order, plus the direct tests/fixtures asks. */
@@ -409,8 +434,9 @@ public final class WorkspaceClasspath {
      *     classes, test resources and fixtures of the direct edges that select them
      * @param siblingCoords full {@code group:name} coords of workspace siblings in this resolve
      * @param siblingClosureClasses the declared compile view: {@link BuildLayout#classesDir} per
-     *     sibling in place of its jar, then the same test classes, test resources and fixtures.
-     *     A compile classpath, and the key that fingerprints it, read this list
+     *     sibling in place of its jar — its {@link BuildLayout#assemblyJar} for a sibling that
+     *     relocates packages — then the same test classes, test resources and fixtures. A compile
+     *     classpath, and the key that fingerprints it, read this list
      * @param missingSiblingClasses the siblings whose classes tree is not on disk, each named with
      *     its cause — the compile's concern, and the only sibling absence a compile has to fail on
      */

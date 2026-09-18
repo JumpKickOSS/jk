@@ -618,27 +618,52 @@ public final class ManifestTables {
         if (main == null || main.isBlank()) {
             throw new JkBuildParseException("[application].main is required");
         }
-        return Optional.of(
-                new JkBuild.Application(main, assembly, minified, nativeImage, config, parseRelocate(application)));
+        return Optional.of(new JkBuild.Application(
+                main, assembly, minified, nativeImage, config, parseRelocate(application, "[application]")));
     }
+
+    /**
+     * The optional {@code [library]} table: what a library ships beyond its thin jar. {@code
+     * Optional.empty} when the table is absent. A module declares {@code [library]} or {@code
+     * [application]}, never both — an application's fat jar is already the application's.
+     */
+    static Optional<JkBuild.Library> parseLibrary(TomlTable root) {
+        TomlTable library = root.getTable("library");
+        if (library == null) return Optional.empty();
+        if (root.getTable("application") != null) {
+            throw new JkBuildParseException("[library] and [application] are exclusive: an application's fat jar and"
+                    + " relocations belong under [application]; drop the [library] table");
+        }
+        for (String key : library.keySet()) {
+            if (!LIBRARY_KEYS.contains(key)) {
+                throw new JkBuildParseException(
+                        "[library] unknown key `" + key + "` — expected one of: " + String.join(", ", LIBRARY_KEYS));
+            }
+        }
+        return Optional.of(new JkBuild.Library(
+                artifactFlag(library, "assembly", "[library]"), parseRelocate(library, "[library]")));
+    }
+
+    /** Every key that belongs to {@code [library]}. */
+    static final List<String> LIBRARY_KEYS = List.of("assembly", "relocate");
 
     /**
      * {@code relocate}: a table of package prefix to shaded package prefix, declaration order kept.
      * Both sides are dotted package names; an empty side or a non-string value is a parse error
-     * rather than a rule that silently moves nothing.
+     * rather than a rule that silently moves nothing. {@code owner} names the table for the message.
      */
-    private static Map<String, String> parseRelocate(TomlTable application) {
-        if (!application.contains("relocate")) return Map.of();
-        if (!application.isTable("relocate")) {
+    private static Map<String, String> parseRelocate(TomlTable table0, String owner) {
+        if (!table0.contains("relocate")) return Map.of();
+        if (!table0.isTable("relocate")) {
             throw new JkBuildParseException(
-                    "[application].relocate must be a table of `\"from.package\" =" + " \"to.package\"` entries");
+                    owner + ".relocate must be a table of `\"from.package\" =" + " \"to.package\"` entries");
         }
-        TomlTable table = Objects.requireNonNull(application.getTable("relocate"));
+        TomlTable table = Objects.requireNonNull(table0.getTable("relocate"));
         Map<String, String> relocate = new LinkedHashMap<>();
         for (String from : table.keySet()) {
             Object to = table.get(List.of(from));
             if (!(to instanceof String shaded) || shaded.isBlank() || from.isBlank()) {
-                throw new JkBuildParseException("[application].relocate." + from
+                throw new JkBuildParseException(owner + ".relocate." + from
                         + " must name the shaded package as a string, e.g. \"com.example.shaded." + from + "\"");
             }
             relocate.put(from, shaded);
@@ -677,7 +702,8 @@ public final class ManifestTables {
             String alsoATable = key.equals("native") || key.equals("config")
                     ? ", or as the `[" + key + "]` table if its settings were the intent"
                     : "";
-            throw new JkBuildParseException("`" + key + "` belongs in [application] — write it as"
+            String orLibrary = LIBRARY_KEYS.contains(key) ? " (or in [library] for a library's fat jar)" : "";
+            throw new JkBuildParseException("`" + key + "` belongs in [application]" + orLibrary + " — write it as"
                     + " `[application]` with `" + key + " = …`" + alsoATable + ", not at the top level");
         }
     }
@@ -688,6 +714,11 @@ public final class ManifestTables {
      * boolean rather than a mode.
      */
     static boolean artifactFlag(TomlTable application, String key) {
+        return artifactFlag(application, key, "[application]");
+    }
+
+    /** As {@link #artifactFlag(TomlTable, String)}; {@code owner} names the table a rejection quotes. */
+    static boolean artifactFlag(TomlTable application, String key, String owner) {
         if (!application.contains(key)) return false;
         if (application.isBoolean(key)) return Boolean.TRUE.equals(application.getBoolean(key));
         String raw = application.isString(key) ? application.getString(key) : null;
@@ -697,12 +728,12 @@ public final class ManifestTables {
         Optional<Boolean> flag = EnvValues.parseBool(value);
         if (flag.isPresent()) return flag.get();
         if (value.equals("shrink") || value.equals("shrunk") || value.equals("r8")) {
-            throw new JkBuildParseException("[application]." + key + " is a boolean, not \"" + raw
+            throw new JkBuildParseException(owner + "." + key + " is a boolean, not \"" + raw
                     + "\" — artifacts are additive: set `minified = true` for an R8 jar (it builds"
                     + " the fat jar too)");
         }
         throw new JkBuildParseException(
-                "[application]." + key + " must be true or false (got \"" + (raw == null ? "" : raw) + "\")");
+                owner + "." + key + " must be true or false (got \"" + (raw == null ? "" : raw) + "\")");
     }
 
     /** Schema-validate each installed plugin's owned table into a {@link PluginConfig}. */

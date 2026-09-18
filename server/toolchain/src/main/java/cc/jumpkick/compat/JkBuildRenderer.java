@@ -60,6 +60,7 @@ public final class JkBuildRenderer {
         renderProject(sb, jkBuild.project());
         renderPluginTables(sb, jkBuild);
         renderApplication(sb, jkBuild.applicationOpt().orElse(null));
+        renderLibrary(sb, jkBuild.libraryOpt().orElse(null));
         renderNative(sb, jkBuild.nativeConfigOpt().orElse(null));
         renderImage(sb, jkBuild.image());
         renderManifest(sb, jkBuild.manifest());
@@ -385,6 +386,16 @@ public final class JkBuildRenderer {
         if (app.nativeImage()) sb.append("native   = true\n");
         if (app.config() != null)
             sb.append("config   = ").append(quote(app.config())).append('\n');
+    }
+
+    /** {@code [library]} table — a library's fat jar and the packages it relocates. */
+    private static void renderLibrary(StringBuilder sb, JkBuild.@Nullable Library library) {
+        if (library == null) return;
+        sb.append("\n[library]\n");
+        if (library.assembly()) sb.append("assembly = true\n");
+        if (!library.relocate().isEmpty()) {
+            sb.append("relocate = ").append(inlineTable(library.relocate())).append('\n');
+        }
     }
 
     /** {@code [native]} table — {@code enabled} defaults true when the table is present. */

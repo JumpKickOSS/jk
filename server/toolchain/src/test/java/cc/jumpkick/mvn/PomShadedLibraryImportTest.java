@@ -5,17 +5,21 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.JkBuildRenderer;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A member shaded with relocations publishes packages its workspace classes tree never carries;
- * when another member's sources import them, the shaded member is a Tier-3 row naming the
- * relocations, the importers and the Maven-built artifact to depend on instead.
+ * A member shaded with relocations and no main is a library whose fat jar moves packages: it
+ * imports as a {@code [library]} module carrying the relocations, and the members that import the
+ * shaded packages keep their workspace edge — they compile and run against its {@code -all.jar}.
  */
-class PomShadedSiblingImportTest {
+class PomShadedLibraryImportTest {
 
     private static final String PARENT = """
             <parent>
@@ -26,21 +30,13 @@ class PomShadedSiblingImportTest {
             """;
 
     @Test
-    void a_member_importing_a_siblings_relocated_packages_makes_the_sibling_a_tier_three_row(@TempDir Path root)
+    void a_shaded_member_without_a_main_imports_as_a_library_assembly_its_importers_depend_on(@TempDir Path root)
             throws Exception {
         writeReactor(root);
         write(root, "index/src/main/java/org/demo/index/Reader.java", """
                 package org.demo.index;
                 import org.demo.shaded.lucene9.index.IndexReader;
                 class Reader { IndexReader r; }
-                """);
-        write(root, "index/src/main/java/org/demo/index/Writer.java", """
-                package org.demo.index;
-                class Writer { org.demo.shaded.lucene9.index.IndexWriter w; }
-                """);
-        write(root, "index/src/test/java/org/demo/index/ReaderTest.java", """
-                package org.demo.index;
-                class ReaderTest {}
                 """);
         write(root, "server/src/main/java/org/demo/server/Main.java", """
                 package org.demo.server;
@@ -51,38 +47,37 @@ class PomShadedSiblingImportTest {
         PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
 
         assertThat(requireNonNull(result.root().workspace()).modules()).contains("lucene9-shaded", "index", "server");
+        JkBuild shaded = requireNonNull(result.modules().get("lucene9-shaded"));
+        assertThat(shaded.applicationOpt())
+                .as("a library has no main and so no [application]")
+                .isEmpty();
+        assertThat(shaded.libraryOpt()).isPresent();
+        assertThat(shaded.assembly()).isTrue();
+        assertThat(shaded.relocate()).containsExactly(Map.entry("org.apache.lucene", "org.demo.shaded.lucene9"));
+        assertThat(JkBuildRenderer.render(shaded))
+                .contains(
+                        "[library]\nassembly = true\nrelocate = { \"org.apache.lucene\" = \"org.demo.shaded.lucene9\" }");
+        assertThat(requireNonNull(result.modules().get("index")).dependencies().of(Scope.MAIN))
+                .as("the importer keeps the workspace edge: the sibling's -all.jar is what index compiles against")
+                .anyMatch(d -> d.isWorkspace() && "lucene9-shaded".equals(d.workspaceName()));
         assertThat(result.report().issues())
                 .filteredOn(i -> i.severity() == ImportReport.Severity.ERROR)
-                .singleElement()
-                .satisfies(issue -> assertThat(issue.message())
-                        .startsWith("[lucene9-shaded] `maven-shade-plugin` relocates org.apache.lucene →"
-                                + " org.demo.shaded.lucene9; jk relocates packages only in the fat jar of an"
-                                + " `[application]`")
-                        .contains("`index` (2 files), `server` (1 file) import them")
-                        .contains("`jk mvn -pl lucene9-shaded install` publishes org.demo:lucene9-shaded:2.1.0"));
+                .isEmpty();
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .noneMatch(m -> m.contains("no `<mainClass>`"))
+                .noneMatch(m -> m.contains("Keep building this module with Maven"));
     }
 
     @Test
-    void relocations_nobody_imports_stay_a_tier_two_row(@TempDir Path root) throws Exception {
+    void the_raw_string_twin_of_a_package_rule_is_covered_by_it(@TempDir Path root) throws Exception {
         writeReactor(root);
-        write(root, "index/src/main/java/org/demo/index/Reader.java", """
-                package org.demo.index;
-                import org.apache.lucene.index.IndexReader;
-                class Reader { IndexReader r; }
-                """);
 
         PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
 
         assertThat(result.report().issues())
-                .filteredOn(i -> i.severity() == ImportReport.Severity.ERROR)
-                .isEmpty();
-        // a library has no main and so no [application]; the relocation is a row, not a rule
-        assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.startsWith("[lucene9-shaded] a fat jar was requested but no `<mainClass>` was found"));
-        assertThat(result.report().issues())
-                .extracting(ImportReport.Issue::message)
-                .noneMatch(m -> m.contains("jk's fat jar does not rewrite packages"));
+                .noneMatch(m -> m.contains("`<relocations>`"));
     }
 
     /** A shaded member relocating lucene, an `index` member depending on it, and a `server` member depending on `index`. */

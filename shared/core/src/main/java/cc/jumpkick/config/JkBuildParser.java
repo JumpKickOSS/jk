@@ -376,6 +376,7 @@ public final class JkBuildParser {
         List<PluginDeclaration> plugins = ManifestBuild.parsePlugins(result);
         JkBuild.Application application =
                 ManifestTables.parseApplication(result).orElse(null);
+        JkBuild.Library library = ManifestTables.parseLibrary(result).orElse(null);
         if (application != null && PluginModule.isWorker(moduleDir)) {
             throw new JkBuildParseException(
                     "[application] is for apps — a plugin worker (jk-plugin.toml or Plugin service)"
@@ -454,7 +455,8 @@ public final class JkBuildParser {
                 variants,
                 install,
                 publish,
-                ManifestImage.parse(result));
+                ManifestImage.parse(result),
+                library);
     }
 
     /** The {@link Scope} whose toml section is {@code name}, or null. */

@@ -123,6 +123,30 @@ widget-core = { workspace = true, fixtures = true }
 `fixtures = true` does not imply `kind = "tests"` and is illegal outside test scopes. The
 output is `{target}/test-fixtures/classes/` — it never enters a POM.
 
+## Shaded siblings
+
+A sibling compiles against a module's classes tree, which is whole as soon as the module has
+compiled, so the sibling's compile starts while the module still packages and tests. A module whose
+fat jar relocates packages — `relocate` under [`[library]`](packaging.md#package-relocation) or
+`[application]` — is the exception: the shaded names exist only in its `-all.jar`, so that jar is
+what its siblings compile and run against, in every scope, and a sibling's compile is admitted once
+the module's `package-assembly` has written it. The module's own `[dependencies]` do not ride to its
+siblings the way another sibling's do: the fat jar already bundles them, under the shaded names
+where a rule covers them.
+
+```toml
+# lucene9-shaded/jk.toml
+[library]
+relocate = { "org.apache.lucene" = "org.neo4j.shaded.lucene9" }
+
+# lucene-index/jk.toml
+[dependencies]
+lucene9-shaded = { workspace = true }     # compiles against lucene9-shaded-<v>-all.jar
+```
+
+`jk import` writes a `maven-shade-plugin` member with relocations and no main this way, and keeps
+the reactor edges onto it as workspace edges.
+
 ## Members that disagree
 
 One lock, one solve: the workspace's dependencies are resolved together, and a row of

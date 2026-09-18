@@ -148,9 +148,22 @@ a string constant that spells it (what `Class.forName` reads), the resource path
 package and the `META-INF/services` files that name its providers, both the file name and the
 provider lines. A rule matches whole package segments (`org.apache.lucene` moves
 `org.apache.lucene.index.IndexReader`, not `org.apache.lucenex.Other`); the first matching rule
-wins, in declaration order. The thin jar is untouched, so a workspace sibling that compiles against
-this module's classes sees the packages under their own names — relocation is a fact of the
-`-all.jar` alone. The rules are part of the fat jar's action key.
+wins, in declaration order. The thin jar is untouched — relocation is a fact of the `-all.jar`
+alone. The rules are part of the fat jar's action key.
+
+A library ships a shaded jar too — neo4j's `lucene9-shaded`, nacos's `client` — and a library
+has no main, so its fat jar lives under `[library]`:
+
+```toml
+[library]
+relocate = { "org.apache.lucene" = "org.neo4j.shaded.lucene9" }   # implies assembly = true
+```
+
+`[library] assembly = true` alone is a fat jar that keeps every name. A module declares
+`[library]` or `[application]`, never both. A workspace sibling that depends on a relocating
+module compiles and runs against its `-all.jar` — the shaded names exist nowhere else — and is
+scheduled after that jar is packaged; see
+[Workspaces § Shaded siblings](workspaces.md#shaded-siblings).
 
 This is Maven Shade's `<relocation>` and Gradle Shadow's `relocate`: `jk import` writes a shade
 relocation of a whole package as a `relocate` entry; a relocation with `<includes>`, `<excludes>`

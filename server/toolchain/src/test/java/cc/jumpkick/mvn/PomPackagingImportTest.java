@@ -68,7 +68,7 @@ class PomPackagingImportTest {
     }
 
     @Test
-    void a_fat_jar_without_a_main_class_is_a_row_not_a_table(@TempDir Path tempDir) throws Exception {
+    void a_fat_jar_without_a_main_class_is_the_librarys(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -83,9 +83,11 @@ class PomPackagingImportTest {
                 </project>
                 """);
         assertThat(result.jkBuild().applicationOpt()).isEmpty();
-        assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("a fat jar was requested but no `<mainClass>` was found"));
-        assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("[application]");
+        assertThat(result.jkBuild().libraryOpt()).isPresent();
+        assertThat(result.jkBuild().assembly()).isTrue();
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("no `<mainClass>`"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).doesNotContain("[application]").contains("[library]\nassembly = true");
     }
 
     @Test

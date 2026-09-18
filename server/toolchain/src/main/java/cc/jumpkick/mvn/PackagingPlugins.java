@@ -21,10 +21,10 @@ import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The plugins that shape the artifact. Shade and {@code jar-with-dependencies} are {@code
- * [application] assembly = true}; a shade {@code <relocation>} of a package is the assembly's
- * {@code relocate} rule, and a filter, a transformer or a relocation shape jk's rules do not cover
- * is a row. {@code spring-boot-maven-plugin} is the {@code [spring-boot]} table at the Boot
+ * The plugins that shape the artifact. Shade and {@code jar-with-dependencies} are the fat jar —
+ * {@code [application] assembly = true} on a module with a main, {@code [library] assembly = true}
+ * on one without; a shade {@code <relocation>} of a package is the assembly's {@code relocate}
+ * rule, and a filter, a transformer or a relocation shape jk's rules do not cover is a row. {@code spring-boot-maven-plugin} is the {@code [spring-boot]} table at the Boot
  * version the chain resolves; {@code quarkus-maven-plugin} is the {@code [quarkus]} table at the
  * platform version; {@code native-maven-plugin} is {@code [native]}. Jib's and the Docker plugins'
  * base and target images are the {@code [image]} table, and a war has no jk shape at all.
@@ -73,24 +73,16 @@ final class PackagingPlugins {
     private PackagingPlugins() {}
 
     /**
-     * {@code mainClass} is the application main the import already found, if any. A plugin the POM
-     * declares bare whose executions live only in an inactive profile ({@link
-     * PluginFacts#boundOnlyInProfile}) runs under Maven only with {@code -P}, so it shapes nothing
-     * here: a row names the profile and the table or fat jar it would have written.
+     * {@code mainClass} is the application main the import already found, if any; the Boot and
+     * native mappings read it. A plugin the POM declares bare whose executions live only in an
+     * inactive profile ({@link PluginFacts#boundOnlyInProfile}) runs under Maven only with {@code
+     * -P}, so it shapes nothing here: a row names the profile and the table or fat jar it would
+     * have written.
      */
     static Packaging map(EffectiveModel em, @Nullable String mainClass, ImportReport.Builder report) {
         Model model = em.model();
         Map<String, String> relocate = new LinkedHashMap<>();
         boolean fatJar = mapShade(em, relocate, report) | mapAssembly(em, report);
-        if (fatJar && mainClass == null) {
-            report.warning("a fat jar was requested but no `<mainClass>` was found; `[application] assembly = true`"
-                    + " needs `[application] main`, so no `[application]` table was written — add both"
-                    + (relocate.isEmpty()
-                            ? "."
-                            : ", and `relocate = " + relocate + "` beside them for the shade relocations."));
-            fatJar = false;
-            relocate.clear();
-        }
         PluginConfig springBoot = PluginFacts.plugin(model, SPRING_BOOT)
                 .filter(boot -> repackages(boot, mainClass, report))
                 .map(boot -> mapSpringBoot(boot, model, report))
