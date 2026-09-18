@@ -19,6 +19,7 @@ detekt     = true                                               # detekt over th
 |---|---|---|
 | `sources` | The module-relative Java source roots the Java tools read; add `src/test/java` to lint the tests | `["src/main/java"]` |
 | `kotlin-sources` | The Kotlin roots detekt reads | `["src/main/kotlin"]` |
+| `exclude` | Module-relative Ant-style path globs Checkstyle and detekt leave out (`**/generated/**`); PMD excludes through its ruleset's `exclude-pattern`, SpotBugs through `spotbugs-exclude` | `[]` |
 | `fail-on` | The finding severity that fails the step: `error`, `warning`, or `never`. Findings render as diagnostics either way | `"error"` |
 | `checkstyle` | Enable Checkstyle with this configuration file | off |
 | `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.1.0"` |

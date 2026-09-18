@@ -173,6 +173,39 @@ class LintStepTest {
         assertThat(detekt).containsSequence("--input", main + "," + test);
     }
 
+    /** {@code exclude} globs reach Checkstyle as {@code -x} path patterns and detekt as {@code --excludes}. */
+    @Test
+    void exclude_globs_are_passed_the_way_each_tool_leaves_paths_out(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "lint")
+                .config(Map.of(
+                        "checkstyle",
+                        "checkstyle.xml",
+                        "detekt",
+                        true,
+                        "exclude",
+                        List.of("**/grpc/auto/**", "**/istio/**")));
+        Path main = tmp.resolve("src/main/java");
+        Path report = tmp.resolve("report.xml");
+
+        List<String> checkstyle = LintStep.arguments(LintTool.CHECKSTYLE, io, List.of(main), report);
+        List<String> detekt = LintStep.arguments(LintTool.DETEKT, io, List.of(main), report);
+
+        assertThat(checkstyle)
+                .containsSequence("-x", LintStep.excludeRegex("**/grpc/auto/**"))
+                .containsSequence("-x", LintStep.excludeRegex("**/istio/**"));
+        assertThat(detekt).containsSequence("--excludes", "**/grpc/auto/**,**/istio/**");
+    }
+
+    @Test
+    void an_exclude_glob_is_the_regex_checkstyle_finds_in_an_absolute_path() {
+        String regex = LintStep.excludeRegex("**/api/grpc/auto/**");
+        assertThat("/w/api/src/main/java/com/acme/api/grpc/auto/Stub.java").containsPattern(regex);
+        assertThat("/w/api/src/main/java/com/acme/api/grpc/Client.java").doesNotContainPattern(regex);
+        assertThat("/w/src/gen/Model.java").containsPattern(LintStep.excludeRegex("src/gen/*.java"));
+        assertThat("/w/src/gen/deep/Model.java").doesNotContainPattern(LintStep.excludeRegex("src/gen/*.java"));
+        assertThat("/w/src/Model.java.bak").doesNotContainPattern(LintStep.excludeRegex("src/Model.java"));
+    }
+
     @Test
     void exit_codes_after_a_completed_analysis_are_not_failures() {
         assertThat(LintStep.ran(LintTool.CHECKSTYLE, 3)).isTrue();

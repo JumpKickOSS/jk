@@ -131,11 +131,21 @@ final class LintPlugins {
             if ("warning".equalsIgnoreCase(severity) || "info".equalsIgnoreCase(severity)) {
                 values.put("fail-on", "warning");
             }
+            String excludes = PluginFacts.child(dom, "excludes");
+            if (excludes != null) {
+                List<String> globs = new ArrayList<>();
+                for (String glob : excludes.split(",")) {
+                    if (!glob.isBlank()) globs.add(glob.strip());
+                }
+                if (!globs.isEmpty()) values.put("exclude", globs);
+            }
         }
-        if (config == null || config.endsWith("sun_checks.xml") || config.endsWith("google_checks.xml")) {
+        boolean url = config != null && (config.startsWith("http://") || config.startsWith("https://"));
+        if (config == null || url || config.endsWith("sun_checks.xml") || config.endsWith("google_checks.xml")) {
             report.warning("`" + CHECKSTYLE + "` reads "
                     + (config == null ? "Checkstyle's default rule set" : "`" + config + "`")
-                    + ", a rule set inside the plugin; `[lint] checkstyle` names a configuration file in the module,"
+                    + (url ? ", a rule set at a URL" : ", a rule set inside the plugin")
+                    + "; `[lint] checkstyle` names a configuration file in the module,"
                     + " so copy the rule set in and point the key at it.");
             values.put("checkstyle", "config/checkstyle.xml");
         } else {
