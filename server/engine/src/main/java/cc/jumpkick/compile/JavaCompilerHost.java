@@ -49,9 +49,11 @@ public final class JavaCompilerHost {
 
     /**
      * Pools keyed by job, by the JDK their workers run on, by the environment the workers start
-     * with and by the {@link WorkerHeap} they start with: one job may compile modules at two levels,
-     * a module that opted into {@code [env] inherit} must not share a resident worker with one that
-     * did not, and a module whose classpath needs a larger heap gets a worker started with one.
+     * with, by the {@link WorkerHeap} they start with and by the module's own {@code -J} flags: one
+     * job may compile modules at two levels, a module that opted into {@code [env] inherit} must not
+     * share a resident worker with one that did not, a module whose classpath needs a larger heap
+     * gets a worker started with one, and a JVM flag a module asked for is on its worker's command
+     * line, which a running worker cannot be given.
      */
     private static final ConcurrentHashMap<String, Lanes> POOLS = new ConcurrentHashMap<>();
 
@@ -111,7 +113,8 @@ public final class JavaCompilerHost {
 
     private static Lanes pool(long id, ForkedJavac.Request req, @Nullable Long heapBytes) {
         Path home = ForkedJavac.workerJavaHome(req);
-        String key = id + "|" + home + "|" + req.env().fingerprint() + "|" + (heapBytes == null ? "" : heapBytes);
+        String key = id + "|" + home + "|" + req.env().fingerprint() + "|" + (heapBytes == null ? "" : heapBytes) + "|"
+                + String.join(" ", req.jvmArgs());
         return POOLS.computeIfAbsent(key, k -> new Lanes(id, req, home, heapBytes));
     }
 
@@ -510,7 +513,8 @@ public final class JavaCompilerHost {
                             workerCp,
                             (aotOutput, scratch) ->
                                     ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)),
-                    heapBytes);
+                    heapBytes,
+                    template.jvmArgs());
             List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
             int exit = new PluginClient(ForkedJavac.PREFIX)
                     .passthrough(this::output)

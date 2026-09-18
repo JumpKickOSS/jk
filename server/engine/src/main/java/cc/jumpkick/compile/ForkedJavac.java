@@ -124,6 +124,33 @@ public final class ForkedJavac {
             label = label == null ? "" : label;
         }
 
+        /**
+         * javac's launcher spelling of a flag for the JVM running the compiler rather than for
+         * javac: {@code -J<flag>}. javac itself rejects the argument as an invalid flag, so the
+         * engine splits it the way the launcher does.
+         */
+        public static final String JVM_FLAG_PREFIX = "-J";
+
+        /** The flags the worker JVM starts with: every {@code -J} argument, prefix stripped, in order. */
+        public List<String> jvmArgs() {
+            List<String> out = new ArrayList<>();
+            for (String arg : extraArgs) {
+                if (arg.startsWith(JVM_FLAG_PREFIX) && arg.length() > JVM_FLAG_PREFIX.length()) {
+                    out.add(arg.substring(JVM_FLAG_PREFIX.length()));
+                }
+            }
+            return out;
+        }
+
+        /** What javac itself receives: {@link #extraArgs} without the {@code -J} arguments. */
+        public List<String> javacArgs() {
+            List<String> out = new ArrayList<>();
+            for (String arg : extraArgs) {
+                if (!(arg.startsWith(JVM_FLAG_PREFIX) && arg.length() > JVM_FLAG_PREFIX.length())) out.add(arg);
+            }
+            return out;
+        }
+
         /** The same request for a worker started under {@code env}. */
         public Request withEnv(WorkerEnv env) {
             return new Request(
@@ -357,7 +384,8 @@ public final class ForkedJavac {
                             hostJavaHome,
                             workerCp,
                             (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)),
-                    heapBytes);
+                    heapBytes,
+                    req.jvmArgs());
             List<String> command =
                     PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
             int exit = new PluginClient(PREFIX)
@@ -425,7 +453,7 @@ public final class ForkedJavac {
         if (req.scalaCompilerJar() != null) sw.extra("scala-compiler", req.scalaCompilerJar());
         if (req.scalaBridgeJar() != null) sw.extra("scala-bridge", req.scalaBridgeJar());
         for (Map.Entry<Path, Path> e : req.classpathAnalyses().entrySet()) sw.cpAnalysis(e.getKey(), e.getValue());
-        for (String a : req.extraArgs()) sw.arg(a);
+        for (String a : req.javacArgs()) sw.arg(a);
         Path spec = Files.createTempFile("jk-javac-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(spec);
@@ -489,18 +517,23 @@ public final class ForkedJavac {
      * the compile would record a cache the compile cannot use.
      */
     static List<String> workerJvmFlags(List<String> aot) {
-        return workerJvmFlags(aot, null);
+        return workerJvmFlags(aot, null, List.of());
     }
 
     /**
      * {@link #workerJvmFlags(List)} with the worker's {@link WorkerHeap} as {@code -Xmx}, after the
-     * batch flags so it wins over the plan's share; {@code null} leaves the plan's heap in force.
+     * batch flags so it wins over the plan's share ({@code null} leaves the plan's heap in force),
+     * then the module's own {@link Request#jvmArgs() -J flags} last, so what the module wrote wins
+     * over jk's tuning; one jk already passes is not passed twice.
      */
-    static List<String> workerJvmFlags(List<String> aot, @Nullable Long heapBytes) {
+    static List<String> workerJvmFlags(List<String> aot, @Nullable Long heapBytes, List<String> module) {
         List<String> flags = new ArrayList<>(aot);
         flags.addAll(JdkCompilerAccess.JVM_FLAGS);
         flags.addAll(JvmOptions.batchFlags(1));
         if (heapBytes != null) flags.add("-Xmx" + WorkerHeap.mib(heapBytes) + "m");
+        for (String flag : module) {
+            if (!flags.contains(flag)) flags.add(flag);
+        }
         return flags;
     }
 

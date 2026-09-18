@@ -101,10 +101,10 @@ class WorkerHeapTest {
     @Test
     void the_heap_is_the_last_jvm_flag_so_it_wins_over_the_plans_share() {
         SessionContext.install(SessionContext.current().withJvm(PluginTuning.NONE));
-        List<String> flags = ForkedJavac.workerJvmFlags(List.of("-XX:AOTCache=x.aot"), 1536 * MIB);
+        List<String> flags = ForkedJavac.workerJvmFlags(List.of("-XX:AOTCache=x.aot"), 1536 * MIB, List.of());
         assertThat(flags).first().isEqualTo("-XX:AOTCache=x.aot");
         assertThat(flags).last().isEqualTo("-Xmx1536m");
-        assertThat(ForkedJavac.workerJvmFlags(List.of(), null)).noneMatch(f -> f.equals("-Xmx1536m"));
+        assertThat(ForkedJavac.workerJvmFlags(List.of(), null, List.of())).noneMatch(f -> f.equals("-Xmx1536m"));
     }
 
     @Test
