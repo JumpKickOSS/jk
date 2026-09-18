@@ -3,6 +3,7 @@ package cc.jumpkick.resolver.pubgrub;
 
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.resolve.ResolveProfile;
+import cc.jumpkick.resolver.StallWatch;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -247,8 +248,13 @@ public class PubGrubSolver {
         noteDecision(rootPkg, rootVersion);
 
         String next = rootPkg;
-        StallWatch stalls =
-                new StallWatch(Clock.SYSTEM, stallWindowMs, () -> decisionCount + source.readsCompleted(), () -> phase);
+        StallWatch stalls = new StallWatch(
+                Clock.SYSTEM,
+                stallWindowMs,
+                StallWatch.SOLVER_ADVANCES,
+                () -> decisionCount + source.readsCompleted(),
+                () -> phase,
+                source::waitingOn);
         this.watch = stalls;
         stalls.start(Thread.currentThread());
         try {
