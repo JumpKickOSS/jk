@@ -38,11 +38,23 @@ public final class BuildHistoryKinds {
      */
     public static final Set<String> ALL = Set.of("build", "test", "compile", "native", "image", "mvn");
 
+    /**
+     * The build-like kinds whose work another tool performed: jk journals the run, but ran none of
+     * its steps and cached none of them, so the row carries the tool's own wall and is not priced
+     * for a cache saving.
+     */
+    public static final Set<String> EXTERNAL_TOOLS = Set.of("mvn");
+
     private BuildHistoryKinds() {}
 
     /** True when {@code kind} is a durable project-build kind (case-sensitive wire tokens). */
     public static boolean isBuildLike(String kind) {
         return kind != null && ALL.contains(kind);
+    }
+
+    /** True when {@code kind} is a run another tool performed ({@link #EXTERNAL_TOOLS}). */
+    public static boolean isExternalTool(String kind) {
+        return kind != null && EXTERNAL_TOOLS.contains(kind);
     }
 
     /**

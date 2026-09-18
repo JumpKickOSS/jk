@@ -153,6 +153,12 @@ public final class JournalWriter {
         if (a != null && tests != null) a.addTests(tests);
     }
 
+    /** The wall another tool measured for the run; the record's headline in place of the job's own. */
+    public void accToolWall(long requestId, long millis) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.noteToolWall(millis);
+    }
+
     /** One module's {@code --affected} ranking slice; merged per request, written at finish. */
     public void accAffected(long requestId, @Nullable AffectedTests affected) {
         BuildAccumulator a = sessions.accumulator(requestId);
@@ -343,8 +349,16 @@ public final class JournalWriter {
         return !PROJECT_SILENT_KINDS.contains(kind.trim().toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * Whether a run of {@code kind} is priced for what the action cache saved: a run another tool
+     * performed had no jk cache to save it anything, and a figure for it would be one for nothing.
+     */
+    static boolean pricesCacheBenefit(String kind) {
+        return !BuildHistoryKinds.isExternalTool(kind);
+    }
+
     private CacheBenefit.@Nullable Result computeBenefit(BuildAccumulator a, long millis) {
-        if (!a.succeeded() || a.wasCancelled()) return null;
+        if (!a.succeeded() || a.wasCancelled() || !pricesCacheBenefit(a.kind())) return null;
         BuildMetrics metrics = BuildMetrics.load(metricsFile.get());
         BiFunction<String, String, OptionalLong> baseline = (dir, step) -> {
             Optional<BuildMetrics.Entry> e = metrics.step(dir, step).filter(x -> x.ok().count() > 0);

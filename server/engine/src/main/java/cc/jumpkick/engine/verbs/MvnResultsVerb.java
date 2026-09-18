@@ -68,6 +68,8 @@ public final class MvnResultsVerb implements HostedVerb {
             Path projectDir = Path.of(body.dir());
             MavenRunReport report = MavenRunReport.read(projectDir, Path.of(body.events()));
             long rid = host.eventRequestId();
+            // The row's headline is Maven's wall, not the few hundred milliseconds this job takes.
+            host.accToolWall(rid, body.millis());
             for (MavenRunReport.Module m : report.modules()) record(rid, m);
             if (!report.isEmpty()) host.accTests(rid, report.tests());
             String results = report.isEmpty()
