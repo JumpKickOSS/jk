@@ -55,8 +55,9 @@ pinned jar is verified against it.
 | `buildTarget/outputPaths` | yes (main + test classes dirs) |
 | `buildTarget/scalacOptions`, `buildTarget/javacOptions` | yes: `-java-output-version N` / `--release N` for the module's Java level, the compile classpath (library jars, the Scala library, sibling classes) and the class directory |
 | Scala targets | a module that compiles Scala is a `scala` build target (`scalaVersion`, `scalaBinaryVersion`, the compiler jars a build fetched, the JDK); every other module carries `jvm` data naming its JDK |
+| Target tags | a module whose manifest names an `[application] main` is tagged `application`, every other `library` |
 | `buildTarget/dependencySources`, `scalaMainClasses`, `scalaTestClasses` | yes (sources jars when present; the declared main class; test classes are discovered by `buildTarget/test`, so the listing is empty) |
-| `buildTarget/compile` | yes; `publishDiagnostics` with file/line/column for javac, kotlinc and groovyc blocks (errors severity 1, warnings 2; anything unparseable lands at project root) |
+| `buildTarget/compile` | yes; `publishDiagnostics` with file/line/column for javac, kotlinc, groovyc and scalac blocks, colour escapes stripped (errors severity 1, warnings 2; anything unparseable lands at project root) |
 | `buildTarget/test` | yes; optional suite/tag/class `data`, optional `debug` |
 | `buildTarget/run` | yes when main class known; optional `debug` |
 | `build/cancel` | yes |

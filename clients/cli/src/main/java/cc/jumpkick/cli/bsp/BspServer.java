@@ -295,7 +295,8 @@ public final class BspServer {
     /**
      * One build target. Its {@code languageIds} are the languages module {@code i} compiles; a
      * module that compiles Scala carries the {@code scala} data Metals imports it by, any other
-     * the {@code jvm} data naming its JDK.
+     * the {@code jvm} data naming its JDK. A module whose manifest names an {@code [application]}
+     * main is tagged {@code application}, every other {@code library}.
      */
     static String targetJson(
             String id, String display, String baseDir, boolean canRun, @Nullable IdeWireModel model, int i) {
@@ -304,7 +305,7 @@ public final class BspServer {
                 .token("id", uriJson(id))
                 .string("displayName", display)
                 .string("baseDirectory", baseDir)
-                .array("tags", List.of("library"))
+                .array("tags", List.of(canRun ? "application" : "library"))
                 .array("languageIds", languages.isEmpty() ? LANGUAGE_IDS : languages)
                 .array("dependencies", List.of())
                 .token(
@@ -715,11 +716,23 @@ public final class BspServer {
         }
     }
 
-    /** BSP severity: 1 = error, 2 = warning. An unparseable block lands at project root line 0. */
+    /** ANSI CSI sequences — the colour a compiler paints a message with; an IDE shows them as text. */
+    private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;?]*[ -/]*[@-~]");
+
+    /** {@code text} without its ANSI escapes. */
+    static String plain(String text) {
+        return text.indexOf('\u001B') < 0 ? text : ANSI.matcher(text).replaceAll("");
+    }
+
+    /**
+     * BSP severity: 1 = error, 2 = warning. A block is read without its colour escapes, so a
+     * scalac message is parsed and shown as text; an unparseable block lands at project root line 0.
+     */
     static void collectDiagnostics(Map<String, List<String>> byFile, List<String> raw, int severity, Path projectDir) {
         if (raw == null) return;
-        for (String text : raw) {
-            if (text == null || text.isBlank()) continue;
+        for (String coloured : raw) {
+            if (coloured == null || coloured.isBlank()) continue;
+            String text = plain(coloured);
             CompilerLocus locus = CompilerLocus.parse(text);
             if (locus != null) {
                 byFile.computeIfAbsent(pathUri(Path.of(locus.file())), k -> new ArrayList<>())

@@ -48,6 +48,15 @@ class CompilerLocusTest {
         assertThat(loc.col()).isZero();
     }
 
+    /** The header the engine synthesises for a scalac problem: the Scala source, its line and column. */
+    @Test
+    void scalac_header_parses_file_line_and_column() {
+        CompilerLocus locus = CompilerLocus.parse("/w/proj/src/main/scala/demo/App.scala:5:10: error: Not found: foo");
+        assertThat(locus).isEqualTo(new CompilerLocus("/w/proj/src/main/scala/demo/App.scala", 5, 10));
+        assertThat(CompilerLocus.parse("/w/build.sc:2: error: expected class or object definition"))
+                .isEqualTo(new CompilerLocus("/w/build.sc", 2, 0));
+    }
+
     @Test
     void non_compiler_text_is_null() {
         assertThat(CompilerLocus.parse("just some text")).isNull();

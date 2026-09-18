@@ -24,7 +24,7 @@ class BspJsonFrozenBytesTest {
         assertThat(BspServer.targetJson("file:///p#app", "g:app", "file:///p/app", true))
                 .isEqualTo(
                         "{\"id\":{\"uri\":\"file:///p#app\"},\"displayName\":\"g:app\",\"baseDirectory\":\"file:///p/app\","
-                                + "\"tags\":[\"library\"],\"languageIds\":[\"java\",\"kotlin\",\"groovy\",\"scala\"],\"dependencies\":[],"
+                                + "\"tags\":[\"application\"],\"languageIds\":[\"java\",\"kotlin\",\"groovy\",\"scala\"],\"dependencies\":[],"
                                 + "\"capabilities\":{\"canCompile\":true,\"canTest\":true,\"canRun\":true}}");
     }
 

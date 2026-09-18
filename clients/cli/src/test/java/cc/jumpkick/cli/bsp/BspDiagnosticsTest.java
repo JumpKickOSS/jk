@@ -62,6 +62,23 @@ class BspDiagnosticsTest {
         assertThat(diag).contains("\"character\":14");
     }
 
+    /**
+     * A scalac problem arrives as the engine's {@code file:line:col} header over scalac's message,
+     * colour escapes and all; it publishes at the Scala file and range, and the message is plain text.
+     */
+    @Test
+    void a_scalac_block_publishes_at_its_file_and_column_without_colour_escapes() {
+        String block = "/w/proj/src/main/scala/demo/App.scala:5:10: error: Not found: \u001B[35mfoo\u001B[0m\n"
+                + "\u001B[31m    foo(1)\u001B[0m\n"
+                + "         ^";
+        Map<String, List<String>> byFile = collect(1, block);
+
+        assertThat(byFile.keySet()).singleElement().asString().endsWith("App.scala");
+        String diag = byFile.values().iterator().next().getFirst();
+        assertThat(diag).contains("\"line\":4").contains("\"character\":9").contains("\"severity\":1");
+        assertThat(diag).contains("Not found: foo").doesNotContain("\u001B");
+    }
+
     @Test
     void a_windows_drive_path_is_a_file_not_project_root() {
         Map<String, List<String>> byFile = collect(1, "C:\\src\\Foo.java:7: error: ';' expected");

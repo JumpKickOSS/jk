@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * File / line / column parsed from a javac, kotlinc, or groovyc diagnostic block. The header is
+ * File / line / column parsed from a javac, kotlinc, groovyc or scalac diagnostic block. The header is
  * {@code path:line[:col]:…}, or kotlinc's {@code file:///path:line:col message} with a space
  * after the column; when the header has no column, a following caret line supplies a 1-based
  * column. A {@code file:} URI in the header is reported as its filesystem path. Used when
@@ -25,7 +25,7 @@ public record CompilerLocus(String file, int line, int col) {
      * the header's own text; {@link #fileName} turns a {@code file:} URI into a path.
      */
     public static final Pattern HEADER = Pattern.compile(
-            "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy)): ?(?<line>\\d+)(?::(?<col>\\d+))?[: ](?<rest>.*)$");
+            "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy|scala|sc)): ?(?<line>\\d+)(?::(?<col>\\d+))?[: ](?<rest>.*)$");
 
     /** groovyc's column trailer: {@code … @ line 5, column 1.} (header carries no inline col). */
     public static final Pattern GROOVY_TRAILER = Pattern.compile("@ line \\d+, column (?<col>\\d+)\\.?\\s*$");

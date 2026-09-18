@@ -47,17 +47,22 @@ final class CollectingReporter implements Reporter {
         return toDiag(p, "");
     }
 
+    /**
+     * Zinc positions are 1-based lines and a 0-based {@code pointer} column; the diagnostic carries
+     * the column 1-based, so a header synthesised from it reads {@code file:line:col} as javac's.
+     */
     private static Diag toDiag(Problem p, String key) {
         Position pos = p.position();
         String file = pos.sourcePath().orElse(null);
         long line = pos.line().map(Integer::longValue).orElse(0L);
+        long col = pos.pointer().map(c -> c.longValue() + 1).orElse(0L);
         String kind =
                 switch (p.severity()) {
                     case Error -> "ERROR";
                     case Warn -> "WARNING";
                     case Info -> "NOTE";
                 };
-        return new Diag(kind, file, line, 0, p.message(), key);
+        return new Diag(kind, file, line, col, p.message(), key);
     }
 
     List<Diag> diagnostics() {
