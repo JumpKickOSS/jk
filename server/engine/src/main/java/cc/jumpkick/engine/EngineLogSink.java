@@ -144,15 +144,46 @@ public final class EngineLogSink extends OutputStream {
         rolls++;
     }
 
-    /** {@code true} while {@link #log} still names the file {@link #out} is open on. */
+    /**
+     * {@code true} while {@link #log} still names the file {@link #out} is open on.
+     *
+     * <p>Where the OS gives a file key this is exact. Windows gives none — {@code fileKey()} is
+     * null for every file — so the fallback is creation time, and creation time cannot carry this
+     * alone: NTFS hands a new file the creation time of the one that was renamed out of that name
+     * in that directory moments before. Which is this scenario exactly, a successor's spawner
+     * rotating the log aside and opening a fresh one at the same path. Measured on the reporting
+     * host: the successor's log inherits the predecessor's creation time in 58% of runs, so the
+     * check passed, the predecessor rolled a log it did not own, and the successor lost its file.
+     *
+     * <p>So the size has to agree too. This is only ever asked at the moment the sink has filled
+     * its own file past {@link #capBytes}, and a successor's log is a freshly written header line;
+     * a file below the cap is therefore not the file this sink is about to roll. The pair is not a
+     * proof of identity, but the two failure directions are not equal — skipping a roll costs a
+     * larger log, taking someone else's costs their log — so the doubt goes to not rolling.
+     */
     private boolean stillOwnsPath() {
         try {
             BasicFileAttributes attrs = Files.readAttributes(log, BasicFileAttributes.class);
-            if (fileKey != null) return fileKey.equals(attrs.fileKey());
-            return created != null && created.equals(attrs.creationTime());
+            return sameFile(fileKey, created, capBytes, attrs.fileKey(), attrs.creationTime(), attrs.size());
         } catch (IOException pathGone) {
             return false;
         }
+    }
+
+    /**
+     * The decision itself, as a pure function of what was recorded at open and what the path shows
+     * now — so the Windows fallback can be tested on a host that has file keys, rather than only
+     * where NTFS happens to collide.
+     */
+    static boolean sameFile(
+            @Nullable Object openedKey,
+            @Nullable FileTime openedCreated,
+            long capBytes,
+            @Nullable Object pathKey,
+            @Nullable FileTime pathCreated,
+            long pathSize) {
+        if (openedKey != null && pathKey != null) return openedKey.equals(pathKey);
+        return openedCreated != null && openedCreated.equals(pathCreated) && pathSize >= capBytes;
     }
 
     private void open(boolean truncate) throws IOException {
