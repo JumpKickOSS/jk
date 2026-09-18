@@ -68,6 +68,13 @@ public final class KmpRedirects {
         PROCESS_CACHE.clear();
     }
 
+    /** Drop the selection memo and return how many selections went; for the idle engine. */
+    public static int dropProcessMemo() {
+        int dropped = PROCESS_CACHE.size();
+        PROCESS_CACHE.clear();
+        return dropped;
+    }
+
     /**
      * Every non-selected platform sibling of every redirected root seen this resolve (A5f
      * finding 20). A platform artifact's own POM can name a SIBLING concretely

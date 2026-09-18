@@ -185,13 +185,17 @@ with a low `MaxHeapFreeRatio`), and returns freed native memory to the operating
 (`malloc_trim`, the same operation as `jcmd <pid> System.trim_native_heap`). Thirty seconds
 of idleness later it does both again, once the harvest and the client disconnects that trail a
 job have finished, and also empties the memos a next build of the same workspace would have
-reused — parsed manifests, scanned TOML files, parsed versions, the interned-string table, and
-the file-hash and ABI stores (persisted first; the next build reloads them from disk) — so an
-engine that has built many workspaces does not keep every one of their manifest trees. The
-workspace built last keeps its manifests and TOML files, so a first build after a pause on a
-large reactor re-reads nothing. It logs one `idle trim:` line with what came back, what was
-dropped and which root was kept. Each manifest and TOML memo is
-also bounded at 4,096 files and starts over past that. Two settings on the
+reused — parsed manifests, scanned TOML files, parsed versions, the interned-string table, the
+file-hash and ABI stores (persisted first; the next build reloads them from disk), and the
+resolve memos: effective POMs, repository hits, version lists and Gradle module metadata — so an
+engine that has built many workspaces does not keep every one of their manifest trees or POM
+graphs. The workspace built last keeps its manifests and TOML files, so a first build after a
+pause on a large reactor re-reads nothing. It logs one `idle trim:` line with what came back,
+what was dropped and which root was kept. Between trims every memo is bounded by entries and
+starts over past its cap — 4,096 manifests or TOML files, 8,192 effective POMs, 16,384
+repository hits — so a long session that locks many projects cannot hold every POM it built.
+The remembered not-found answers stay through a trim: they expire on their own, and a re-lock
+after a pause is what they save. Two settings on the
 spawn line keep the native side bounded between trims: HotSpot's periodic trim
 (`-XX:TrimNativeHeapInterval`, every 30 s) and a glibc arena cap (`MALLOC_ARENA_MAX=4`,
 inherited from the shell when it sets its own). `jk engine status` shows heap and RSS.

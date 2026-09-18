@@ -69,8 +69,30 @@ public final class RepoGroup {
         }
     }
 
+    /** Entries a hit memo holds before it starts over, so a long session cannot keep every fetch. */
     private static final int HIT_CACHE_MAX = 16_384;
+
     private static final int VERSIONS_CACHE_MAX = 8_192;
+
+    /** Drop the POM and artifact hit memos and return how many entries went; for the idle engine. */
+    public static int dropHitMemos() {
+        int dropped = POM_HIT_CACHE.size() + ARTIFACT_HIT_CACHE.size();
+        POM_HIT_CACHE.clear();
+        ARTIFACT_HIT_CACHE.clear();
+        return dropped;
+    }
+
+    /** Drop the version-list memo and return how many lists went; for the idle engine. */
+    public static int dropVersionsMemo() {
+        int dropped = VERSIONS_CACHE.size();
+        VERSIONS_CACHE.clear();
+        return dropped;
+    }
+
+    /** {@code cache.put}-ready: a memo at its cap starts over rather than refusing the entry. */
+    private static void admit(ConcurrentHashMap<String, ?> cache, int max) {
+        if (cache.size() >= max) cache.clear();
+    }
 
     /** Drop the process fetch memos, the hits and the misses alike (force / tests). */
     public static void clearProcessFetchCache() {
@@ -284,7 +306,8 @@ public final class RepoGroup {
         RepoFetched hit = liveHit(POM_HIT_CACHE, key);
         if (hit != null) return Optional.of(hit);
         Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalPom, MavenRepo::fetchPom);
-        if (found.isPresent() && POM_HIT_CACHE.size() < HIT_CACHE_MAX) {
+        if (found.isPresent()) {
+            admit(POM_HIT_CACHE, HIT_CACHE_MAX);
             POM_HIT_CACHE.putIfAbsent(key, found.get());
         }
         return found;
@@ -331,7 +354,8 @@ public final class RepoGroup {
                 abort,
                 pomHolder(coord),
                 false);
-        if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
+        if (found.isPresent()) {
+            admit(ARTIFACT_HIT_CACHE, HIT_CACHE_MAX);
             ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
         }
         return found;
@@ -382,7 +406,8 @@ public final class RepoGroup {
                 NO_ABORT,
                 pomHolder(coord),
                 false);
-        if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
+        if (found.isPresent()) {
+            admit(ARTIFACT_HIT_CACHE, HIT_CACHE_MAX);
             // put, not putIfAbsent: a pinned fetch is the authority on what is on disk now.
             ARTIFACT_HIT_CACHE.put(key, found.get());
         }
@@ -504,7 +529,8 @@ public final class RepoGroup {
         // every expand. Expires like any other entry: an artifact that does not exist yet may exist
         // later.
         List<String> immutable = List.copyOf(union);
-        if (memoable && VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
+        if (memoable) {
+            admit(VERSIONS_CACHE, VERSIONS_CACHE_MAX);
             VERSIONS_CACHE.put(key, new VersionsEntry(immutable, Clock.SYSTEM.nanos() + VERSIONS_TTL_NANOS));
         }
         return immutable;

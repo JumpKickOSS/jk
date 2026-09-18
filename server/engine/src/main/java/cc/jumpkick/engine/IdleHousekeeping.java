@@ -9,7 +9,6 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.CachePlans;
@@ -243,17 +242,19 @@ public final class IdleHousekeeping {
     }
 
     /**
-     * Release the per-build memos. The class-wall buffer is dropped only when history is on: the
-     * finish path has harvested it into {@code metrics.toml} by then and the estimator reads it
-     * back from disk. With history off there is no harvest, so the buffer is the only cross-build
-     * test ETA the process has, and an idle boundary must not reset it to cold priors.
+     * Release the per-build memos. The resolve memos are not among them: they are bounded, and the
+     * settled trim ({@link MemoTrim}) drops them once the engine has sat idle, so a build that
+     * follows a lock inside that window still finds its POMs built. The class-wall buffer is
+     * dropped only when history is on: the finish path has harvested it into {@code metrics.toml}
+     * by then and the estimator reads it back from disk. With history off there is no harvest, so
+     * the buffer is the only cross-build test ETA the process has, and an idle boundary must not
+     * reset it to cold priors.
      */
     static void dropHeapResidue(boolean historyEnabled) {
         try {
             FileHashMemo.flush();
             AbiMemo.flush();
             ActionCache.clearStampCache();
-            ResolveProcessCacheControl.clearAll();
             BuildMetrics.clearSessionAggregatesMemo();
             if (historyEnabled) TestClassWalls.takeAll();
         } catch (RuntimeException e) {

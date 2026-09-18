@@ -55,6 +55,13 @@ public final class GradleModuleMetadata {
         PARSE_CACHE.clear();
     }
 
+    /** Drop the parse memo and return how many module files went; for the idle engine. */
+    public static int dropParseMemo() {
+        int dropped = PARSE_CACHE.size();
+        PARSE_CACHE.clear();
+        return dropped;
+    }
+
     @SuppressWarnings("unchecked")
     public static GradleModuleMetadata parse(Path moduleFile) throws IOException {
         BasicFileAttributes attrs = Files.readAttributes(moduleFile, BasicFileAttributes.class);
@@ -88,9 +95,8 @@ public final class GradleModuleMetadata {
     }
 
     private static void remember(String cacheKey, GradleModuleMetadata parsed) {
-        if (PARSE_CACHE.size() < PARSE_CACHE_MAX) {
-            PARSE_CACHE.putIfAbsent(cacheKey, parsed);
-        }
+        if (PARSE_CACHE.size() >= PARSE_CACHE_MAX) PARSE_CACHE.clear();
+        PARSE_CACHE.putIfAbsent(cacheKey, parsed);
     }
 
     /**

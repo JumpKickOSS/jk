@@ -33,12 +33,14 @@ class MemoTrimTest {
         // The parse also scans the catalog beside the manifest, so the TOML count is at least one.
         assertThat(line)
                 .matches("memos dropped: manifests 2, toml files [1-9]\\d*, versions 2, strings [1-9]\\d*,"
-                        + " file hashes \\d+, abi tokens \\d+");
+                        + " file hashes \\d+, abi tokens \\d+, effective poms \\d+, repository hits \\d+,"
+                        + " version lists \\d+, module metadata \\d+");
 
         assertThat(MemoTrim.drop(null))
                 .as("a second trim on an untouched engine finds nothing")
                 .isEqualTo(
-                        "memos dropped: manifests 0, toml files 0, versions 0, strings 0, file hashes 0, abi tokens 0");
+                        "memos dropped: manifests 0, toml files 0, versions 0, strings 0, file hashes 0, abi tokens 0,"
+                                + " effective poms 0, repository hits 0, version lists 0, module metadata 0");
     }
 
     /**

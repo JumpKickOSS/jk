@@ -42,7 +42,8 @@ public final class EffectivePomBuilder {
      * Process-wide effective-POM memo. Keyed by the repositories asked <em>and</em> GAV — parent
      * and BOM walks use this group's repo set, so one group's answer cannot stand in for another's.
      * No TTL: published release GAVs are immutable; force / {@link #clearProcessCache} drop the
-     * memo. Capped so a long-lived engine cannot retain unbounded POM graphs.
+     * memo, the idle engine drops it through {@link #dropProcessMemo}, and past {@value
+     * #PROCESS_CACHE_MAX} entries it starts over, so a long session cannot hold every POM it built.
      */
     private static final ConcurrentHashMap<String, EffectivePom> PROCESS_CACHE = new ConcurrentHashMap<>();
 
@@ -78,7 +79,14 @@ public final class EffectivePomBuilder {
 
     private static final int PROCESS_CACHE_MAX = 8_192;
 
-    /** Drop process-wide memo (tests; never required in production). */
+    /** Drop the effective-POM memo and return how many models went; for the idle engine. */
+    public static int dropProcessMemo() {
+        int dropped = PROCESS_CACHE.size();
+        PROCESS_CACHE.clear();
+        return dropped;
+    }
+
+    /** Drop every process-wide resolve memo, the misses included (force / tests). */
     public static void clearProcessCache() {
         PROCESS_CACHE.clear();
         IN_FLIGHT.clear();
@@ -188,9 +196,8 @@ public final class EffectivePomBuilder {
         Pom raw = PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
         EffectivePom effective = merge(raw, visiting, depth);
         cache.put(localKey, effective);
-        if (PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
-            PROCESS_CACHE.putIfAbsent(processKey, effective);
-        }
+        if (PROCESS_CACHE.size() >= PROCESS_CACHE_MAX) PROCESS_CACHE.clear();
+        PROCESS_CACHE.putIfAbsent(processKey, effective);
         if (flight != null) {
             flight.complete(effective);
         }

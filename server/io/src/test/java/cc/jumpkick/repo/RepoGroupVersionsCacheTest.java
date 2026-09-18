@@ -141,6 +141,36 @@ class RepoGroupVersionsCacheTest {
         }
     }
 
+    /**
+     * The idle engine drops the positive resolve memos and says how many went: the effective POMs
+     * built, the repository hits and the version lists — each count a memo's size at the time.
+     * The memos are process-wide, and an earlier test's prefetch may still be writing hits and
+     * POMs into them, so those two counts are read as at least what this test put there.
+     */
+    @Test
+    void the_idle_drop_counts_each_memo_and_leaves_it_empty(@TempDir Path tmp) throws Exception {
+        RemoteStub remote = new RemoteStub("memo.example.test");
+        new MavenStub(remote.served)
+                .metadata("com.example", "lib", "1.0")
+                .pom("com.example", "lib", "1.0", MavenStub.emptyPom("com.example", "lib", "1.0"));
+        MavenRepo repo = remote.repo(tmp, "remote");
+        RepoGroup group = new RepoGroup(List.of(repo));
+        Coordinate coord = Coordinate.of("com.example", "lib", "1.0");
+
+        assertThat(group.availableVersions(Coordinate.of("com.example", "lib", "0")))
+                .containsExactly("1.0");
+        new EffectivePomBuilder(group).build(coord);
+
+        assertThat(RepoGroup.dropVersionsMemo()).isEqualTo(1);
+        assertThat(RepoGroup.dropHitMemos())
+                .as("the POM the effective-POM build fetched")
+                .isGreaterThanOrEqualTo(1);
+        assertThat(EffectivePomBuilder.dropProcessMemo()).isGreaterThanOrEqualTo(1);
+        assertThat(RepoGroup.dropVersionsMemo())
+                .as("a drop leaves the memo empty")
+                .isZero();
+    }
+
     private static void goOffline() {
         SessionContext.installConfig(JkConfig.empty().withOffline(true));
     }
