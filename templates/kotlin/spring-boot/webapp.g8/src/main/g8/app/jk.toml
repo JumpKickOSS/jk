@@ -24,7 +24,7 @@ web = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173"
 
 [dependencies]
 starter-webmvc = "org.springframework.boot:spring-boot-starter-webmvc"
-kotlin-reflect = "org.jetbrains.kotlin:kotlin-reflect"
+kotlin-reflect = "managed"
 # the SPA bundle: a resource jar with static/ at its root
 web = { workspace = true }
 
