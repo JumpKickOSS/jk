@@ -99,7 +99,7 @@ final class LintStep {
             case PMD -> {
                 args.addAll(List.of("check", "--no-cache", "--no-progress", "--no-fail-on-violation"));
                 args.addAll(List.of("--format", "xml", "--report-file", report.toString()));
-                args.addAll(List.of("--dir", Classpaths.join(roots)));
+                for (Path root : roots) args.addAll(List.of("--dir", root.toString()));
                 List<String> rulesets = new ArrayList<>();
                 for (String ruleset : config.stringList("pmd")) {
                     rulesets.add(
@@ -119,13 +119,20 @@ final class LintStep {
                 args.add(exec.classesDir().toString());
             }
             case DETEKT -> {
-                args.addAll(List.of("--input", Classpaths.join(roots), "--report", "xml:" + report));
+                args.addAll(List.of("--input", commaJoined(roots), "--report", "xml:" + report));
                 config.stringOpt("detekt-config")
                         .ifPresent(cfg -> args.addAll(
                                 List.of("--config", module.resolve(cfg).toString(), "--build-upon-default-config")));
             }
         }
         return args;
+    }
+
+    /** detekt's list form: paths separated by commas. */
+    private static String commaJoined(List<Path> roots) {
+        List<String> names = new ArrayList<>();
+        for (Path root : roots) names.add(root.toString());
+        return String.join(",", names);
     }
 
     /** The declared source roots that exist under the module, absolute. */
