@@ -10,6 +10,7 @@ import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.SourcesMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,6 +41,38 @@ class JkBuildParserApplicationTest {
         JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"com.example.Main\"\n");
         assertThat(parsed.isApplication()).isTrue();
         assertThat(parsed.mainClass()).isEqualTo("com.example.Main");
+    }
+
+    @Test
+    void application_relocate_maps_each_package_onto_its_shaded_name() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [application]
+                main     = "com.example.Main"
+                assembly = true
+                relocate = { "org.apache.lucene" = "com.example.shaded.lucene", "com.google.common" = "com.example.shaded.guava" }
+                """);
+        assertThat(parsed.applicationOpt().orElseThrow().relocate())
+                .containsExactly(
+                        Map.entry("org.apache.lucene", "com.example.shaded.lucene"),
+                        Map.entry("com.google.common", "com.example.shaded.guava"));
+        assertThat(JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"com.example.Main\"\n")
+                        .applicationOpt()
+                        .orElseThrow()
+                        .relocate())
+                .isEmpty();
+    }
+
+    @Test
+    void application_relocate_needs_a_package_on_both_sides() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT
+                        + "\n[application]\nmain = \"com.example.Main\"\nrelocate = { \"org.apache.lucene\" = 1 }\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application].relocate");
+        assertThatThrownBy(() -> JkBuildParser.parse(
+                        PROJECT + "\n[application]\nmain = \"com.example.Main\"\nrelocate = \"org.apache.lucene\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application].relocate");
     }
 
     @Test

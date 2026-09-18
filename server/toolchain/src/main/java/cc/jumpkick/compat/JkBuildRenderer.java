@@ -378,6 +378,9 @@ public final class JkBuildRenderer {
         if (app.main() != null)
             sb.append("main       = ").append(quote(app.main())).append('\n');
         if (app.assembly()) sb.append("assembly = true\n");
+        if (!app.relocate().isEmpty()) {
+            sb.append("relocate = ").append(inlineTable(app.relocate())).append('\n');
+        }
         if (app.minified()) sb.append("minified = true\n");
         if (app.nativeImage()) sb.append("native   = true\n");
         if (app.config() != null)

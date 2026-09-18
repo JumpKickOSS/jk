@@ -18,10 +18,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A reactor member built by {@code maven-shade-plugin} with {@code <relocations>} publishes classes
- * under the shaded package names; jk has no package relocation, so the workspace jar of that member
- * carries none of them. When another member's sources name a shaded package the compile cannot
- * succeed, and the shaded member is a Tier-3 row: the relocations, the members that import them,
- * and the remedy (build that module with Maven and depend on its artifact instead of the edge).
+ * under the shaded package names. jk relocates packages in an {@code [application]} assembly, but a
+ * workspace sibling compiles against the member's classes tree, which carries the classes under
+ * their own names; when another member's sources name a shaded package the compile cannot succeed,
+ * and the shaded member is a Tier-3 row: the relocations, the members that import them, and the
+ * remedy (build that module with Maven and depend on its artifact instead of the edge).
  */
 final class ShadedSiblings {
 
@@ -74,8 +75,9 @@ final class ShadedSiblings {
                 .map(PackagingPlugins.Relocation::label)
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("");
-        return "`maven-shade-plugin` relocates " + rules + "; jk has no package relocation, so no jar this workspace"
-                + " builds carries the shaded packages, and " + String.join(", ", named)
+        return "`maven-shade-plugin` relocates " + rules + "; jk relocates packages only in the fat jar of an"
+                + " `[application]`, and a workspace sibling compiles against this module's classes tree, which"
+                + " carries no shaded package, yet " + String.join(", ", named)
                 + (named.size() == 1 ? " imports" : " import") + " them. Keep building this module with Maven —"
                 + " `jk mvn -pl " + shaded.leaf().path() + " install` publishes " + gav
                 + " into `~/.m2/repository` — and"

@@ -58,7 +58,13 @@ class JkBuildRendererTest {
                         .jdkMajor(25)
                         .kotlin(VersionSelector.parse("2.3.21"))
                         .build())
-                .application(new JkBuild.Application("com.example.App", true))
+                .application(new JkBuild.Application(
+                        "com.example.App",
+                        true,
+                        false,
+                        false,
+                        null,
+                        Map.of("com.google.common", "com.ex.shaded.guava")))
                 .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null))
                 .build();
         String out = JkBuildRenderer.render(model);
@@ -66,7 +72,10 @@ class JkBuildRendererTest {
         assertThat(out).contains("[application]");
         assertThat(out).contains("main       = \"com.example.App\"");
         assertThat(out).contains("assembly = true");
+        assertThat(out).contains("relocate = { \"com.google.common\" = \"com.ex.shaded.guava\" }");
         assertThat(out).contains("[native]");
+        assertThat(JkBuildParser.parse(out).applicationOpt().orElseThrow().relocate())
+                .containsEntry("com.google.common", "com.ex.shaded.guava");
     }
 
     @Test

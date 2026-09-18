@@ -8,11 +8,14 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -29,28 +32,24 @@ import org.jspecify.annotations.Nullable;
 /**
  * Fat/uber (assembly) jar: project classes first (win on conflict), custom manifest, drop
  * signatures and {@code module-info.class}, concat {@code META-INF/services/*} and common Spring
- * multi-entry META-INF files, sorted fixed-timestamp entries for reproducibility.
+ * multi-entry META-INF files, packages moved under {@code [application] relocate}, sorted
+ * fixed-timestamp entries for reproducibility.
  *
  * <p>Enable with {@code [application] assembly = true} (or {@code jk assemble}). See
- * {@code docs/features/packaging.md}.
+ * {@code docs/user/packaging.md}.
  */
 public final class AssemblyPackager {
 
     public Path packageAssembly(AssemblyRequest request) throws IOException {
         Files.createDirectories(request.outputJar().getParent());
         Manifest manifest = buildManifest(request);
-
-        Set<String> written = new HashSet<>();
-        // Directory entries synthesized for SoftServiceLoader (Micronaut assembly).
-        Set<String> dirs = new HashSet<>();
-        // Multi-entry META-INF files merged across inputs; TreeMap → deterministic.
-        Map<String, ByteArrayOutputStream> merged = new TreeMap<>();
         DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
 
         try (OutputStream out = DeterministicZip.archiveStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
             zip.writeManifest(jos, manifest);
-            written.add("META-INF/MANIFEST.MF");
+            Emitter emitter = new Emitter(jos, zip, new Relocations(request.relocate()));
+            emitter.written.add("META-INF/MANIFEST.MF");
 
             // 1. Project classes + resources win.
             List<Path> files = collectFiles(request.classesDir());
@@ -59,16 +58,7 @@ public final class AssemblyPackager {
                 String name = normalize(request.classesDir(), file);
                 if (name.equals("META-INF/MANIFEST.MF")) continue;
                 if (BuildStamps.isStampFile(name)) continue; // freshness stamp, not jar content
-                if (isExcluded(name)) continue;
-                if (isMergeFile(name)) {
-                    accumulate(merged, name, Files.readAllBytes(file));
-                    continue;
-                }
-                if (written.add(name)) {
-                    zip.writeParentDirs(jos, name, dirs);
-                    // Streamed — a large bundled resource never has to fit in the heap.
-                    zip.writeEntryStreaming(jos, name, Files.newInputStream(file));
-                }
+                emitter.emit(name, () -> Files.newInputStream(file));
             }
 
             // 2. Dependency jars, in declared order (earlier wins).
@@ -79,39 +69,85 @@ public final class AssemblyPackager {
                     jf.stream().filter(e -> !e.isDirectory()).forEach(entries::add);
                     entries.sort(Comparator.comparing(JarEntry::getName));
                     for (JarEntry e : entries) {
-                        String name = e.getName();
-                        if (name.equals("META-INF/MANIFEST.MF") || isExcluded(name)) continue;
-                        if (isMergeFile(name)) {
-                            // Tiny multi-entry files — buffer for the cross-jar merge.
-                            try (InputStream in = jf.getInputStream(e)) {
-                                accumulate(merged, name, in.readAllBytes());
-                            }
-                            continue;
-                        }
-                        if (written.add(name)) {
-                            zip.writeParentDirs(jos, name, dirs);
-                            // Streamed entry-to-entry copy — never buffers a whole entry.
-                            zip.writeEntryStreaming(jos, name, jf.getInputStream(e));
-                        }
+                        if (e.getName().equals("META-INF/MANIFEST.MF")) continue;
+                        emitter.emit(e.getName(), () -> jf.getInputStream(e));
                     }
                 }
             }
 
             // 3. Merged multi-entry META-INF files (services, Spring handlers, …).
-            for (Map.Entry<String, ByteArrayOutputStream> e : merged.entrySet()) {
-                zip.writeParentDirs(jos, e.getKey(), dirs);
+            for (Map.Entry<String, ByteArrayOutputStream> e : emitter.merged.entrySet()) {
+                zip.writeParentDirs(jos, e.getKey(), emitter.dirs);
                 zip.writeEntry(jos, e.getKey(), e.getValue().toByteArray());
-                written.add(e.getKey());
+                emitter.written.add(e.getKey());
             }
 
             // 4. Generated entries (e.g. the CycloneDX SBOM); real content wins on collision.
             for (Map.Entry<String, byte[]> e : new TreeMap<>(request.extraEntries()).entrySet()) {
-                if (!written.add(e.getKey())) continue;
-                zip.writeParentDirs(jos, e.getKey(), dirs);
+                if (!emitter.written.add(e.getKey())) continue;
+                zip.writeParentDirs(jos, e.getKey(), emitter.dirs);
                 zip.writeEntry(jos, e.getKey(), e.getValue());
             }
         }
         return request.outputJar();
+    }
+
+    /** Opens one input entry's bytes; the caller closes the stream. */
+    @FunctionalInterface
+    private interface EntrySource {
+        InputStream open() throws IOException;
+    }
+
+    /**
+     * One entry at a time into the archive under the merge, exclusion and relocation rules: a
+     * merge file is buffered for the cross-jar concatenation, a class under a relocation rule is
+     * rewritten, everything else streams through, first writer of a name winning.
+     */
+    private static final class Emitter {
+        private final JarOutputStream jos;
+        private final DeterministicZip zip;
+        private final Relocations relocations;
+        final Set<String> written = new HashSet<>();
+        /** Directory entries synthesized for SoftServiceLoader (Micronaut assembly). */
+        final Set<String> dirs = new HashSet<>();
+        /** Multi-entry META-INF files merged across inputs; TreeMap → deterministic. */
+        final Map<String, ByteArrayOutputStream> merged = new TreeMap<>();
+
+        Emitter(JarOutputStream jos, DeterministicZip zip, Relocations relocations) {
+            this.jos = jos;
+            this.zip = zip;
+            this.relocations = relocations;
+        }
+
+        void emit(String originalName, EntrySource source) throws IOException {
+            if (isExcluded(originalName)) return;
+            String name = relocations.relocateEntry(originalName);
+            if (isMergeFile(originalName)) {
+                // Tiny multi-entry files — buffer for the cross-jar merge.
+                try (InputStream in = source.open()) {
+                    byte[] data = in.readAllBytes();
+                    if (originalName.startsWith("META-INF/services/")) {
+                        data = relocations
+                                .relocateServices(new String(data, StandardCharsets.UTF_8))
+                                .getBytes(StandardCharsets.UTF_8);
+                    }
+                    accumulate(merged, name, data);
+                }
+                return;
+            }
+            if (!written.add(name)) return;
+            zip.writeParentDirs(jos, name, dirs);
+            if (!relocations.isEmpty() && originalName.endsWith(".class")) {
+                try (InputStream in = source.open()) {
+                    zip.writeEntry(jos, name, relocations.relocateClass(in.readAllBytes()));
+                }
+                return;
+            }
+            // Streamed — a large bundled resource never has to fit in the heap.
+            try (InputStream in = source.open()) {
+                zip.writeEntryStreaming(jos, name, in);
+            }
+        }
     }
 
     private static void accumulate(Map<String, ByteArrayOutputStream> sink, String name, byte[] data)
@@ -177,7 +213,11 @@ public final class AssemblyPackager {
         return root.relativize(file).toString().replace(File.separatorChar, '/');
     }
 
-    /** Inputs for {@link #packageAssembly(AssemblyRequest)}. */
+    /**
+     * Inputs for {@link #packageAssembly(AssemblyRequest)}. {@code relocate} is the {@code
+     * [application] relocate} table — source package to shaded package, declaration order — applied
+     * by {@link Relocations}; empty bundles every class under its own name.
+     */
     public record AssemblyRequest(
             Path classesDir,
             List<Path> dependencyJars,
@@ -185,6 +225,7 @@ public final class AssemblyPackager {
             @Nullable String mainClass,
             Map<String, String> attributes,
             Map<String, byte[]> extraEntries,
+            Map<String, String> relocate,
             long timestampEpochSeconds) {
 
         public AssemblyRequest {
@@ -193,9 +234,30 @@ public final class AssemblyPackager {
             dependencyJars = dependencyJars == null ? List.of() : List.copyOf(dependencyJars);
             attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
             extraEntries = extraEntries == null ? Map.of() : Map.copyOf(extraEntries);
+            relocate = relocate == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(relocate));
         }
 
-        /** No generated (non-filesystem) entries. */
+        /** No package relocation. */
+        public AssemblyRequest(
+                Path classesDir,
+                List<Path> dependencyJars,
+                Path outputJar,
+                @Nullable String mainClass,
+                Map<String, String> attributes,
+                Map<String, byte[]> extraEntries,
+                long timestampEpochSeconds) {
+            this(
+                    classesDir,
+                    dependencyJars,
+                    outputJar,
+                    mainClass,
+                    attributes,
+                    extraEntries,
+                    Map.of(),
+                    timestampEpochSeconds);
+        }
+
+        /** No generated (non-filesystem) entries and no package relocation. */
         public AssemblyRequest(
                 Path classesDir,
                 List<Path> dependencyJars,
@@ -203,7 +265,15 @@ public final class AssemblyPackager {
                 @Nullable String mainClass,
                 Map<String, String> attributes,
                 long timestampEpochSeconds) {
-            this(classesDir, dependencyJars, outputJar, mainClass, attributes, Map.of(), timestampEpochSeconds);
+            this(
+                    classesDir,
+                    dependencyJars,
+                    outputJar,
+                    mainClass,
+                    attributes,
+                    Map.of(),
+                    Map.of(),
+                    timestampEpochSeconds);
         }
     }
 }

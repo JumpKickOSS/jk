@@ -339,6 +339,7 @@ class ForecastKeyOwnerTest {
                 "deps:" + ClasspathFingerprint.of(List.of()),
                 "main:t.Main",
                 "manifest:" + project.manifest(),
+                "relocate:" + PackagingKeys.relocate(project),
                 "packaging:fat");
         String expectedTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, layout.assemblyJar());
         String expectedKey = ActionKey.forArtifact(expectedTask, BuildIdentity.cacheKeyVersion(), expectedTokens);

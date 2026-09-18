@@ -269,6 +269,7 @@ public final class PlannerTails {
                                     PackagingKeys.mainClass(layout.moduleRoot(), project),
                                     assemblyAttrs,
                                     assemblySbom == null ? Map.of() : Map.of(SBOM_JAR_ENTRY, assemblySbom),
+                                    PackagingKeys.relocate(project),
                                     0L));
                     storePackaged(
                             cache,
