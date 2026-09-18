@@ -1,29 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
-import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Thread-safe per-launch accumulator of JUnit method results. After workers join, {@link
- * #publish} folds the entries into a process-wide store keyed by module path; the journal drains
- * that store into {@code jk-results.md}. Companion to {@link XmlTestReport} (JUnit XML under
- * {@code target/reports/test-results/}).
+ * #publish} folds the entries into the {@link RunResults} sink of the request that ran the launch,
+ * keyed by module path; the journal drains that sink into {@code jk-results.md} when the request's
+ * record is written. Companion to {@link XmlTestReport} (JUnit XML under {@code
+ * target/reports/test-results/}).
  *
- * <p>The store is bounded by what a report can use. A failure's message and stack are clipped at
- * {@link #MAX_MESSAGE_CHARS} and {@link #MAX_STACK_CHARS} — the report shows a few dozen lines and
- * the cause chain, which the clip keeps — so a suite whose every failure carries the same
- * forty-kilobyte trace costs kilobytes, not megabytes. A publish under a request whose workers were
- * already shut down is dropped: its report was written, and nothing will drain it. And every
- * journal write sweeps the store with {@link #retainUnder}, so a run no live build will ever take
- * does not stay for the engine's life.
+ * <p>A failure's message and stack are clipped at {@link #MAX_MESSAGE_CHARS} and {@link
+ * #MAX_STACK_CHARS} — the report shows a few dozen lines and the cause chain, which the clip keeps
+ * — so a suite whose every failure carries the same forty-kilobyte trace costs kilobytes, not
+ * megabytes. A publish with no request open is dropped: nothing would drain it.
  */
 public final class MarkdownTestReport {
 
@@ -66,8 +60,6 @@ public final class MarkdownTestReport {
             if (label == null) label = "";
         }
     }
-
-    private static final ConcurrentHashMap<String, ModuleRun> PUBLISHED = new ConcurrentHashMap<>();
 
     private final List<Entry> entries = new ArrayList<>();
 
@@ -138,7 +130,7 @@ public final class MarkdownTestReport {
     }
 
     /**
-     * Fold this launch's entries into the process-wide store under {@code scopeKey} (module path).
+     * Fold this launch's entries into the request's sink under {@code scopeKey} (module path).
      * No-op when nothing was recorded. Concurrent launches of the same key merge.
      */
     public synchronized void publish(String scopeKey, String label) {
@@ -146,85 +138,15 @@ public final class MarkdownTestReport {
     }
 
     /**
-     * Fold {@code entries} recorded elsewhere (a surefire report) into the store under {@code
-     * scopeKey}. Dropped when the ambient request's workers were already shut down: the journal
-     * that would have drained them is written, or never will be.
+     * Fold {@code entries} recorded elsewhere (a surefire report) into the request's sink under
+     * {@code scopeKey}. Dropped when no request is open on this thread.
      */
     public static void publish(String scopeKey, String label, List<Entry> entries) {
         if (entries.isEmpty()) return;
-        Long request = JobWorkers.currentRequestId();
-        if (request != null && JobWorkers.ended(request)) return;
+        RunResults sink = RunResults.ambient();
+        if (sink == null) return;
         String k = scopeKey == null || scopeKey.isBlank() ? "_" : scopeKey;
-        String lab = label == null ? "" : label;
-        ModuleRun add = new ModuleRun(k, lab, List.copyOf(entries));
-        PUBLISHED.merge(k, add, (a, b) -> {
-            List<Entry> merged =
-                    new ArrayList<>(a.entries().size() + b.entries().size());
-            merged.addAll(a.entries());
-            merged.addAll(b.entries());
-            String keep = !a.label().isBlank() ? a.label() : b.label();
-            return new ModuleRun(k, keep, merged);
-        });
-    }
-
-    /**
-     * Drain every published run whose scope is {@code projectDir} or a path under it. Used at
-     * journal-write so a concurrent build of a different checkout is not stolen.
-     */
-    public static List<ModuleRun> takeUnder(Path projectDir) {
-        if (projectDir == null) return List.of();
-        Path root;
-        try {
-            root = projectDir.toAbsolutePath().normalize();
-        } catch (RuntimeException e) {
-            return List.of();
-        }
-        List<ModuleRun> out = new ArrayList<>();
-        for (String key : List.copyOf(PUBLISHED.keySet())) {
-            Path p;
-            try {
-                p = Path.of(key).toAbsolutePath().normalize();
-            } catch (RuntimeException e) {
-                continue;
-            }
-            if (!p.equals(root) && !p.startsWith(root)) continue;
-            ModuleRun run = PUBLISHED.remove(key);
-            if (run != null && !run.entries().isEmpty()) out.add(run);
-        }
-        return out;
-    }
-
-    /**
-     * Drop every published run whose scope is under none of {@code roots} — the project directories
-     * of the builds still accumulating a record. Called at each journal write, after that build's
-     * own runs were taken, so a run no live build can drain is not kept for the engine's life.
-     */
-    public static void retainUnder(Collection<String> roots) {
-        List<Path> keep = new ArrayList<>();
-        for (String root : roots) {
-            try {
-                keep.add(Path.of(root).toAbsolutePath().normalize());
-            } catch (RuntimeException ignored) {
-                // A root that is not a path covers nothing.
-            }
-        }
-        for (String key : List.copyOf(PUBLISHED.keySet())) {
-            Path p;
-            try {
-                p = Path.of(key).toAbsolutePath().normalize();
-            } catch (RuntimeException e) {
-                PUBLISHED.remove(key);
-                continue;
-            }
-            boolean covered = false;
-            for (Path root : keep) {
-                if (p.equals(root) || p.startsWith(root)) {
-                    covered = true;
-                    break;
-                }
-            }
-            if (!covered) PUBLISHED.remove(key);
-        }
+        sink.publishTests(k, label == null ? "" : label, List.copyOf(entries));
     }
 
     /**

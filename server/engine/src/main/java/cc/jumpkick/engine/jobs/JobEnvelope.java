@@ -520,6 +520,8 @@ public final class JobEnvelope {
             // Every Session this request builds adopts this ledger, so fetches/cache traffic on
             // the shared pools all land in one place (see IoLedger).
             IoLedger.open(io);
+            // Test runs and coverage published anywhere under this request land on its record.
+            host.openResults(eventRequestId);
             // Run-scoped notices join this request's stream for the run's life; the finally
             // removes the sink, or a later run's notice would ride the wrong request.
             RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
@@ -550,6 +552,7 @@ public final class JobEnvelope {
             InputTrees.finishJob();
             RequestScope.release();
             IoLedger.close();
+            host.closeResults();
             // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
             // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
             // burn its full 15s join before this force-kill ran. Killing the process

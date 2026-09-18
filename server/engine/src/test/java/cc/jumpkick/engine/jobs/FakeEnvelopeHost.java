@@ -8,6 +8,7 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
 import java.util.ArrayList;
@@ -133,6 +134,16 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     @Override
     public BuildAccumulator accumulatorOf(long id) {
         return accumulator;
+    }
+
+    @Override
+    public void openResults(long id) {
+        RunResults.open(accumulator.results());
+    }
+
+    @Override
+    public void closeResults() {
+        RunResults.close();
     }
 
     @Override

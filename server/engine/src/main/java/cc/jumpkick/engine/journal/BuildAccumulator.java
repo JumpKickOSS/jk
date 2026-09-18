@@ -15,6 +15,7 @@ import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.CancelledShortfall;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -57,6 +58,12 @@ public final class BuildAccumulator {
      * session the request builds meters into it (see {@link cc.jumpkick.task.IoLedger}).
      */
     private final IoLedger io = new IoLedger();
+
+    /**
+     * The test runs and coverage this request's modules publish. Bound as the ambient sink on the
+     * runner thread for the request's life, drained once when the record is written.
+     */
+    private final RunResults results = new RunResults();
 
     // Plain lists under their own monitor (snapshot to iterate): CopyOnWriteArrayList copied the
     // whole backing array per append — O(n²) array churn for a build with many modules or
@@ -191,6 +198,10 @@ public final class BuildAccumulator {
 
     public @Nullable String journalId() {
         return journalId;
+    }
+
+    public RunResults results() {
+        return results;
     }
 
     public IoLedger io() {
