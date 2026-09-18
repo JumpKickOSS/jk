@@ -32,6 +32,9 @@ final class LintStep {
 
     static void run(TaskExec exec, LintTool tool) throws Exception {
         PluginConfig config = exec.config();
+        if (tool == LintTool.SPOTBUGS) {
+            config.stringOpt("spotbugs-version").ifPresent(v -> SpotBugsFloor.check(v, exec.javaHome()));
+        }
         List<Path> roots = existingRoots(exec.moduleDir(), LintPlugin.sourceRoots(tool, config));
         Path out = exec.outputDir(tool.out());
         Path report = out.resolve(tool.report());

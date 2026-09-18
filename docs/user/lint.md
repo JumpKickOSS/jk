@@ -28,7 +28,7 @@ detekt     = true                                               # detekt over th
 | `spotbugs` | Enable SpotBugs over the module's classes, against its compile classpath | `false` |
 | `spotbugs-exclude` | A SpotBugs filter file of findings to leave out | none |
 | `spotbugs-effort` | `min`, `less`, `default`, `more`, `max` | `"default"` |
-| `spotbugs-version` | The SpotBugs release | `"4.10.4"` |
+| `spotbugs-version` | The SpotBugs release. SpotBugs reads the class files of the build JDK it runs on, so a release older than that JDK is refused before anything is fetched, with the floor named: `4.2.2` on JDK 17, `4.8.0` on JDK 21, `4.9.4` on JDK 25 | `"4.10.4"` |
 | `detekt` | Enable detekt over the Kotlin sources | `false` |
 | `detekt-config` | A detekt configuration laid over the default rule set | none |
 | `detekt-version` | The detekt release | `"1.23.8"` |
