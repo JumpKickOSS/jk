@@ -28,6 +28,13 @@ options = [
   "-XepOpt:NullAway:KnownInitializers=cc.jumpkick.model.command.CliCommand.run",
 ]
 
+[test]
+# A test plugin drives javac's own Log through reflection to fail a compile without a diagnostic.
+jvm-args = [
+  "--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+  "--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED",
+]
+
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
 assertj-core = "3.27.7"

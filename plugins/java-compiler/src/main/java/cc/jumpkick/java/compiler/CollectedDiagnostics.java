@@ -27,6 +27,14 @@ final class CollectedDiagnostics implements DiagnosticListener<JavaFileObject> {
         collected.add(diagnostic);
     }
 
+    /** True when any collected diagnostic is an error. */
+    boolean hasErrors() {
+        for (Diagnostic<? extends JavaFileObject> d : collected) {
+            if (d.getKind() == Diagnostic.Kind.ERROR) return true;
+        }
+        return false;
+    }
+
     /** Hand every collected diagnostic to {@code sink}, the ones reported while it works included. */
     void drainTo(DiagnosticListener<JavaFileObject> sink) {
         for (int i = 0; i < collected.size(); i++) sink.report(collected.get(i));
