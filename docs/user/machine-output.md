@@ -76,7 +76,7 @@ module's compile classpath)`, else the library catalog's answer as `provided by:
 else the module whose group prefixes the package — and the hint names that coordinate for `jk add`.
 Each lock jar's package list is read once and kept under the store's `package-index/`. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
 test class together with the assertion frame above it — the middle is elided with a frame count —
-so the test's own `File.java:NN` is in the file however deep the framework's frames run. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
+so the test's own `File.java:NN` is in the file however deep the framework's frames run. When the cut drops the trace's `Caused by:` sections, the innermost one follows the fence as `root cause: <exception>: <message>`; and when any cause in the chain says a resource does not exist — Spring's `class path resource [schema.sql] cannot be opened`, a Spring Batch reader's `Input resource must exist … [sample-data.csv]`, `Cannot read SQL script from …`, a plain `FileNotFoundException` or `NoSuchFileException` — a `→` line names the file and where to put it (`src/test/resources/` or `src/main/resources/` for a classpath resource); a failed `ScriptStatementFailedException` names the statement number and its script. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
 launcher missing from the classpath, a JVM that could not reserve its heap — is that shape with
 code `test-launcher`: the exit (the signal's name beside it for `128 + signal`), the exception and
 engine the runner named or the JVM's own last words (else the fork's last lines, or that it printed

@@ -523,7 +523,9 @@ public final class JkResultsMarkdown {
         }
         String stack = some(d.stack());
         if (stack != null) {
-            fence(sb, JkResultsStack.clip(stack, d.className(), MAX_STACK_LINES));
+            String clipped = JkResultsStack.clip(stack, d.className(), MAX_STACK_LINES);
+            fence(sb, clipped);
+            if (isTest(d)) JkResultsCause.append(sb, stack, clipped);
         }
         JkResultsHints.Hint hint = JkResultsHints.forDiag(d);
         if (hint != null) sb.append("→ ").append(hint.text()).append('\n');
