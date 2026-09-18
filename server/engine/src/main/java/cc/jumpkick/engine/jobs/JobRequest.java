@@ -34,4 +34,8 @@ public record JobRequest(JobKind kind, String threadPrefix, JobBody body) {
     public static JobRequest maintenance(String verb, String threadPrefix, JobBody body) {
         return new JobRequest(JobKind.maintenance(verb), threadPrefix, body);
     }
+
+    public static JobRequest toolchain(String verb, String threadPrefix, JobBody body) {
+        return new JobRequest(JobKind.toolchain(verb), threadPrefix, body);
+    }
 }

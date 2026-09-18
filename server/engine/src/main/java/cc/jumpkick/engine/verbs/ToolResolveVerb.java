@@ -35,7 +35,7 @@ public final class ToolResolveVerb implements HostedVerb {
 
     @Override
     public JobKind jobKind() {
-        return JobKind.plan("tool");
+        return JobKind.toolchain("tool");
     }
 
     @Override
