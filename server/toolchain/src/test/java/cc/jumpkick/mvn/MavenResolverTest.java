@@ -27,6 +27,31 @@ class MavenResolverTest {
     }
 
     @Test
+    void without_a_wrapper_the_newest_known_3_9_is_provisioned_unless_the_enforcer_asks_for_more(@TempDir Path dir)
+            throws Exception {
+        assertThat(MavenResolver.DEFAULT_VERSION).startsWith("3.9.");
+        assertThat(new MavenResolver().resolve(dir).version()).isEqualTo(MavenResolver.DEFAULT_VERSION);
+        // A floor the default satisfies leaves the default in place.
+        assertThat(new MavenResolver()
+                        .resolve(EnforcerMavenVersionTest.pom(dir, "[3.9.11,)", ""))
+                        .version())
+                .isEqualTo(MavenResolver.DEFAULT_VERSION);
+        // A floor above it is provisioned as the floor itself.
+        ToolDistribution above = new MavenResolver().resolve(EnforcerMavenVersionTest.pom(dir, "3.9.99", ""));
+        assertThat(above.version()).isEqualTo("3.9.99");
+        assertThat(above.downloadUri().toString()).endsWith("/3.9.99/apache-maven-3.9.99-bin.zip");
+    }
+
+    @Test
+    void a_wrapper_wins_over_the_enforcer_floor(@TempDir Path dir) throws Exception {
+        Path project = EnforcerMavenVersionTest.pom(dir, "3.9.99", "");
+        wrapper(
+                project,
+                "distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.6/apache-maven-3.9.6-bin.zip\n");
+        assertThat(new MavenResolver().resolve(project).version()).isEqualTo("3.9.6");
+    }
+
+    @Test
     void a_wrapper_over_https_is_accepted_with_its_pin(@TempDir Path project) throws Exception {
         Path props = wrapper(
                 project,
