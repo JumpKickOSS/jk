@@ -15,6 +15,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -85,13 +86,7 @@ public final class BuildLogicGroovyHost {
             // Drained on a thread of its own so this one can watch the cancel probe between
             // polls; a blocking read would see the cancel only once the script chose to exit.
             ByteArrayOutputStream captured = new ByteArrayOutputStream();
-            Thread pump = SessionContext.startVirtual("jk-groovy-pump", () -> {
-                try {
-                    p.getInputStream().transferTo(captured);
-                } catch (IOException gone) {
-                    // The child is gone; what it printed so far is the log.
-                }
-            });
+            Thread pump = startPump(p, captured);
             while (!p.waitFor(CANCEL_POLL_MS, TimeUnit.MILLISECONDS)) {
                 if (cancelled.getAsBoolean()) {
                     p.destroyForcibly();
@@ -115,6 +110,22 @@ public final class BuildLogicGroovyHost {
         } finally {
             Files.deleteIfExists(wrapper);
         }
+    }
+
+    /**
+     * Drain the child's merged output into {@code captured} on a thread of its own. A pipe read is a
+     * native read that blocks the thread making it, so the reader is a daemon platform thread: on a
+     * virtual thread it would hold its carrier for as long as the script is silent, and under one
+     * carrier every other virtual thread of the engine waits behind it.
+     */
+    static Thread startPump(Process p, OutputStream captured) {
+        return SessionContext.startPlatform("jk-groovy-pump", () -> {
+            try {
+                p.getInputStream().transferTo(captured);
+            } catch (IOException gone) {
+                // The child is gone; what it printed so far is the log.
+            }
+        });
     }
 
     /**
