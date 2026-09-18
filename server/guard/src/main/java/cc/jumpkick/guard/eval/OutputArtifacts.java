@@ -14,9 +14,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Where a module's build output lives, for the output lane: the main jar, its sidecar POM, the
- * native binary and the coverage report the {@code coverage.*} measures read. Derived from the
- * manifest through {@link BuildLayout}, never guessed from a directory listing; a path that does not
- * exist is reported as such and never read.
+ * native binary, the coverage report the {@code coverage.*} measures read and the lint reports
+ * the {@code lint.*} measures count. Derived from the manifest through {@link BuildLayout}, never
+ * guessed from a directory listing; a path that does not exist is reported as such and never read.
  */
 public final class OutputArtifacts {
 
@@ -25,12 +25,32 @@ public final class OutputArtifacts {
 
     private OutputArtifacts() {}
 
+    /** The lint tools whose reports the {@code lint.*} measures read, as the lint table names them. */
+    public static final List<String> LINT_TOOLS = List.of("checkstyle", "pmd", "spotbugs", "detekt");
+
     /**
      * One module's artefact paths; every path is where the artefact would be, whether or not it exists.
      *
      * @param module the workspace-relative module path, {@code ""} at the root
+     * @param pluginDir the module's plugin scratch root, under which each lint step leaves its report
      */
-    public record Module(String module, Path dir, Path jar, Path pom, Path nativeBinary, Path coverage) {
+    public record Module(
+            String module, Path dir, Path jar, Path pom, Path nativeBinary, Path coverage, Path pluginDir) {
+
+        /** The XML report the {@code lint-<tool>} step writes: {@code plugin/lint-<tool>/lint/<tool>/<tool>.xml}. */
+        public Path lintReport(String tool) {
+            return pluginDir
+                    .resolve("lint-" + tool)
+                    .resolve("lint")
+                    .resolve(tool)
+                    .resolve(tool + ".xml");
+        }
+
+        public @Nullable Path existingLintReport(String tool) {
+            Path report = lintReport(tool);
+            return Files.isRegularFile(report) ? report : null;
+        }
+
         public @Nullable Path existingJar() {
             return Files.isRegularFile(jar) ? jar : null;
         }
@@ -87,7 +107,7 @@ public final class OutputArtifacts {
             Path coverage = coverageReport != null
                     ? root.resolve(coverageReport)
                     : layout.reportsDir().resolve(DEFAULT_COVERAGE);
-            out.add(new Module(rel, dir, jar, pom, layout.nativeBinary(), coverage));
+            out.add(new Module(rel, dir, jar, pom, layout.nativeBinary(), coverage, layout.pluginDir()));
         }
         return out;
     }

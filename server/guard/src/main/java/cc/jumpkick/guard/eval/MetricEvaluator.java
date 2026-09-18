@@ -63,6 +63,7 @@ final class MetricEvaluator implements BatchEvaluator {
                         if (run.failure != null) out.put(rule.id(), Evaluation.failed(run.failure));
                         else runs.add(run);
                     } else if (measure.startsWith("coverage.")
+                            || measure.startsWith("lint.")
                             || measure.equals("jar-size")
                             || measure.equals("native-size")) {
                         out.put(rule.id(), single(rule, () -> outputMeasure(rule, ctx, measure, bound)));
@@ -461,10 +462,11 @@ final class MetricEvaluator implements BatchEvaluator {
     // ---- output -------------------------------------------------------------------------------
 
     /**
-     * {@code jar-size} / {@code native-size} in bytes and {@code coverage.line} / {@code coverage.branch}
-     * in percent, one unit per module, read from what the build packaged and the coverage XML it
-     * left. A module with no artefact is skipped; no artefact anywhere is {@code not-evaluated},
-     * naming the path looked for, so a missing report can never read as a passing floor.
+     * {@code jar-size} / {@code native-size} in bytes, {@code coverage.line} / {@code coverage.branch}
+     * in percent and {@code lint.findings} / {@code lint.<tool>} as a count, one unit per module,
+     * read from what the build packaged and the coverage and lint XML it left. A module with no
+     * artefact is skipped; no artefact anywhere is {@code not-evaluated}, naming the path looked
+     * for, so a missing report can never read as a passing floor.
      */
     private Evaluation outputMeasure(Rule rule, EvalContext ctx, String measure, Bound bound) throws IOException {
         Double limit = bound.limitFor("");
@@ -502,6 +504,17 @@ final class MetricEvaluator implements BatchEvaluator {
                     what = "native-size = " + number(value) + " bytes";
                 }
                 default -> {
+                    if (measure.startsWith("lint.")) {
+                        LintCount count = lintFindings(m, measure.substring("lint.".length()));
+                        if (count.file == null) {
+                            lookedFor = count.lookedFor;
+                            continue;
+                        }
+                        file = count.file;
+                        value = count.findings;
+                        what = measure + " = " + number(value);
+                        break;
+                    }
                     file = m.existingCoverage();
                     if (file == null) {
                         lookedFor = m.coverage().toString();
@@ -528,10 +541,37 @@ final class MetricEvaluator implements BatchEvaluator {
             }
         }
         if (units == 0) {
-            return Evaluation.notEvaluated("no " + (measure.startsWith("coverage.") ? "coverage report" : "artefact")
-                    + " this build; looked for " + (lookedFor.isEmpty() ? "a module manifest" : lookedFor));
+            String what = measure.startsWith("coverage.")
+                    ? "coverage report"
+                    : measure.startsWith("lint.") ? "lint report" : "artefact";
+            return Evaluation.notEvaluated("no " + what + " this build; looked for "
+                    + (lookedFor.isEmpty() ? "a module manifest" : lookedFor));
         }
         return finish(rule, units, out, allowUsed);
+    }
+
+    /** One module's lint count: the file it was read from (the first report, for the sum), or what was looked for. */
+    private record LintCount(@Nullable Path file, double findings, String lookedFor) {}
+
+    /**
+     * {@code lint.findings} sums every tool's report the module has; {@code lint.<tool>} reads that
+     * tool's alone. A module with no report is skipped, naming the first report looked for.
+     */
+    private static LintCount lintFindings(OutputArtifacts.Module m, String which) throws IOException {
+        List<String> tools = which.equals("findings") ? OutputArtifacts.LINT_TOOLS : List.of(which);
+        Path first = null;
+        double total = 0;
+        for (String tool : tools) {
+            Path report = m.existingLintReport(tool);
+            if (report == null) continue;
+            Integer count = LintReport.findings(report);
+            if (count == null) {
+                throw new IOException(report + " is not a report of " + tool + "'s");
+            }
+            if (first == null) first = report;
+            total += count;
+        }
+        return new LintCount(first, total, m.lintReport(tools.getFirst()).toString());
     }
 
     // ---- shared -------------------------------------------------------------------------------

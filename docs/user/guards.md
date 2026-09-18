@@ -166,7 +166,7 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 | text | count |  | table | { exactly \| min \| max, per = file \| tree \| match } |
 | text | owner |  | string or list | files where a match is legal |
 | text | languages |  | string list | restrict to these source languages |
-| metric | measure | yes | string | lines, fqcn, matches:<rule>, comment-lines, methods, params, public-members, cyclomatic, coverage.line, coverage.branch, jar-size, native-size |
+| metric | measure | yes | string | lines, fqcn, matches:<rule>, comment-lines, methods, params, public-members, cyclomatic, coverage.line, coverage.branch, jar-size, native-size, lint.findings, lint.<tool> |
 | metric | cap |  | number or table | maximum, scalar or per-language table |
 | metric | min |  | number or table | minimum, scalar or per-language table |
 | metric | band |  | number | with baseline: how far a unit may move either side of its entry and still hold it (default 0) |
@@ -204,7 +204,14 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 A baselined `metric` with `min` and no `cap` is a floor: a unit is red when it falls more than
 `band` below its entry, and the entry rises when the unit climbs more than `band` above it. That is
 the shape of a coverage ratchet — `measure = "coverage.line"`, `min = 100`, `band = 0.5` — read from
-the `jacoco.xml` a `jk test --coverage` run leaves under each module's reports.
+the `jacoco.xml` a `jk test --coverage` run leaves under each module's reports. A baselined `metric`
+with `cap` is the mirror: `measure = "lint.findings"`, `cap = 0`, `baseline = true` counts the
+findings in the XML reports the [`[lint]`](lint.md) steps leave under each module's
+`target/…/plugin/lint-<tool>/` — Checkstyle's and detekt's `<error>` rows, PMD's `<violation>`s and
+`<error>`s, SpotBugs's `<BugInstance>`s — summed over the module's tools, and refuses a build whose
+count rises above its entry while the entry follows the count down. `lint.checkstyle`, `lint.pmd`,
+`lint.spotbugs` and `lint.detekt` count one tool's report alone. A module with no report is skipped;
+no report anywhere is `not-evaluated`, naming the file looked for.
 
 ## Reading a failure
 

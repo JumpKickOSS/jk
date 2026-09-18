@@ -206,6 +206,19 @@ public final class BuildLayout {
         return cached;
     }
 
+    /** Where the module's plugin steps and commands keep their scratch: {@code <target>/plugin/}. */
+    public Path pluginDir() {
+        return moduleTargetDir().resolve("plugin");
+    }
+
+    /**
+     * One plugin step's scratch root, {@code <target>/plugin/<step>/}: its declared output dirs
+     * resolve under it — a lint step's report at {@code lint/<tool>/<tool>.xml}.
+     */
+    public Path pluginStepScratch(String step) {
+        return pluginDir().resolve(step);
+    }
+
     /**
      * As {@link #moduleTargetDir} from the two roots alone — the layout decision needs no parsed
      * project, so callers on parse-free fast paths (preflight memo) share one rule.

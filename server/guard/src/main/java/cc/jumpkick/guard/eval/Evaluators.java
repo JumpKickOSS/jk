@@ -110,8 +110,12 @@ public final class Evaluators {
             }
             case METRIC -> {
                 String measure = String.valueOf(rule.table().getString("measure"));
-                if (measure.startsWith("coverage.") || measure.equals("jar-size") || measure.equals("native-size"))
+                if (measure.startsWith("coverage.")
+                        || measure.startsWith("lint.")
+                        || measure.equals("jar-size")
+                        || measure.equals("native-size")) {
                     yield Lane.OUTPUT;
+                }
                 if (measure.equals("methods")
                         || measure.equals("params")
                         || measure.equals("public-members")

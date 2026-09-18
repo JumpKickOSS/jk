@@ -78,6 +78,86 @@ class OutputMeasuresTest {
         assertThat(none.note()).contains("looked for " + m.jar());
     }
 
+    private static final String CHECKSTYLE_REPORT = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <checkstyle version="14.1.0">
+              <file name="/w/core/src/main/java/a/A.java">
+                <error line="3" column="1" severity="error" message="m" source="c.MagicNumberCheck"/>
+                <error line="4" column="1" severity="warning" message="m" source="c.NeedBracesCheck"/>
+                <error line="5" column="1" severity="ignore" message="m" source="c.FinalClassCheck"/>
+              </file>
+              <file name="/w/core/src/main/java/a/B.java">
+                <error line="9" column="1" severity="error" message="m" source="c.MagicNumberCheck"/>
+              </file>
+            </checkstyle>
+            """;
+
+    private static final String PMD_REPORT = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <pmd xmlns="http://pmd.sourceforge.net/report/2.0.0" version="7.27.0">
+              <file name="/w/core/src/main/java/a/A.java">
+                <violation beginline="3" endline="3" begincolumn="1" endcolumn="2" rule="UnusedLocalVariable" ruleset="Best Practices" priority="3">t</violation>
+                <violation beginline="7" endline="7" begincolumn="1" endcolumn="2" rule="EmptyCatchBlock" ruleset="Error Prone" priority="3">t</violation>
+              </file>
+              <error filename="/w/core/src/main/java/a/C.java" msg="PMDException: Error while parsing"/>
+            </pmd>
+            """;
+
+    /** The lint reports the build left are one finding count per module, whole or per tool, capped and ratcheted like a jar. */
+    @Test
+    void lint_findings_are_counted_from_the_reports_per_module_and_a_missing_report_is_not_evaluated(@TempDir Path root)
+            throws Exception {
+        OutputArtifacts.Module m = OutputEvaluatorTest.scaffold(root);
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.lint-cap]
+                kind     = "metric"
+                measure  = "lint.findings"
+                cap      = 4
+                why      = "lint findings only go down"
+
+                [guards.checkstyle-cap]
+                kind     = "metric"
+                measure  = "lint.checkstyle"
+                cap      = 3
+                why      = "checkstyle findings only go down"
+                """);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        EvalContext ctx = new EvalContext(
+                        Lane.OUTPUT,
+                        root,
+                        "",
+                        null,
+                        List.of(root.resolve("core")),
+                        () -> FactsIndex.EMPTY,
+                        () -> null,
+                        List::of)
+                .withRules(load.rules());
+        List<Rule> rules = LaneRun.rulesFor(Lane.OUTPUT, load.rules(), "");
+
+        Evaluation none = Objects.requireNonNull(LaneRun.evaluate(rules, ctx).get("lint-cap"));
+        assertThat(none.outcome()).isEqualTo(Outcome.NOT_EVALUATED);
+        assertThat(none.note())
+                .contains("no lint report this build")
+                .contains(m.lintReport("checkstyle").toString());
+
+        Files.createDirectories(
+                Objects.requireNonNull(m.lintReport("checkstyle").getParent()));
+        Files.writeString(m.lintReport("checkstyle"), CHECKSTYLE_REPORT);
+        Files.createDirectories(Objects.requireNonNull(m.lintReport("pmd").getParent()));
+        Files.writeString(m.lintReport("pmd"), PMD_REPORT);
+        Map<String, Evaluation> evaluated = LaneRun.evaluate(rules, ctx);
+        Evaluation all = Objects.requireNonNull(evaluated.get("lint-cap"));
+        assertThat(all.outcome()).isEqualTo(Outcome.VIOLATIONS);
+        assertThat(all.observations()).singleElement().satisfies(o -> {
+            assertThat(o.key()).isEqualTo("core");
+            assertThat(o.detail()).contains("lint.findings = 6 in core (cap 4)");
+        });
+        Evaluation checkstyle = Objects.requireNonNull(evaluated.get("checkstyle-cap"));
+        assertThat(checkstyle.outcome()).as(checkstyle.note()).isEqualTo(Outcome.CLEAN);
+        assertThat(checkstyle.population()).containsEntry("units", 1L);
+    }
+
     @Test
     void coverage_below_the_floor_fires_per_module_with_allow_and_a_missing_report_is_not_evaluated(@TempDir Path root)
             throws Exception {
