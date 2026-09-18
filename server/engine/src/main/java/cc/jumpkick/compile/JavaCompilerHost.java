@@ -11,7 +11,6 @@ import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.PluginSlots;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
@@ -505,7 +504,6 @@ public final class JavaCompilerHost {
          */
         private void converse(ForkedJavac.Request template, Path hostJavaHome, @Nullable Long heapBytes)
                 throws Exception {
-            Path javaExe = JdkFingerprint.java(hostJavaHome);
             String workerCp = ForkedJavac.workerClasspath(template);
             List<String> jvmFlags = ForkedJavac.workerJvmFlags(
                     PluginAot.javaCompilerFlags(
@@ -516,10 +514,11 @@ public final class JavaCompilerHost {
                                     ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)),
                     heapBytes,
                     template.jvmArgs());
-            List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
+            List<String> command = PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("--pull"));
             int exit = new PluginClient(ForkedJavac.PREFIX)
                     .passthrough(this::output)
-                    .converseNoSlot(command, template.env(), (json, convo) -> onLine(json, convo));
+                    .converseNoSlot(
+                            command, template.env().withJavaHome(hostJavaHome), (json, convo) -> onLine(json, convo));
             if (exit != 0) throw new IOException("zinc worker exited with status " + exit);
         }
 

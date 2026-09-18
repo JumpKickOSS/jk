@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -186,17 +188,6 @@ public final class JvmOptions {
     public static int hostFeature(Path javaHome) {
         Integer fromRelease = featureFromRelease(javaHome);
         return fromRelease != null ? fromRelease : Runtime.version().feature();
-    }
-
-    /** Feature major for a {@code java}/{@code javac} executable under {@code <home>/bin/}. */
-    public static int hostFeatureFromExe(Path javaOrJavac) {
-        if (javaOrJavac != null) {
-            Path parent = javaOrJavac.getParent();
-            if (parent != null && parent.getParent() != null) {
-                return hostFeature(parent.getParent());
-            }
-        }
-        return Runtime.version().feature();
     }
 
     private static void appendJep498AllowIfSupported(List<String> out, int hostFeature) {
@@ -424,14 +415,16 @@ public final class JvmOptions {
      * Assemble a worker JVM command line: {@code javaExe}, then the tuning flags ({@link
      * #batchFlags}), then {@code rest} (e.g. {@code -cp <jar> Main <spec>}). For forks not driven by
      * {@link cc.jumpkick.engine.plugin.PluginLoader} — the compiler/git plugins and the CLI's standalone
-     * plugin commands. Host feature is taken from {@code javaExe}'s JDK home when possible.
+     * plugin commands. The JDK is named by its HOME: the launcher comes from {@link
+     * JdkFingerprint#java} and the feature major from the home's own {@code release} file, so
+     * neither is recovered by walking up from an executable path.
      */
-    public static List<String> javaCommand(String javaExe, int concurrency, List<String> rest) {
-        int feature = javaExe != null
-                ? hostFeatureFromExe(Path.of(javaExe))
-                : Runtime.version().feature();
+    public static List<String> javaCommand(@Nullable Path javaHome, int concurrency, List<String> rest) {
+        int feature = javaHome != null ? hostFeature(javaHome) : Runtime.version().feature();
         List<String> cmd = new ArrayList<>();
-        cmd.add(javaExe);
+        cmd.add(javaHome != null
+                ? JdkFingerprint.java(javaHome).toString()
+                : JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
         cmd.addAll(batchFlags(concurrency, feature));
         cmd.addAll(rest);
         return cmd;

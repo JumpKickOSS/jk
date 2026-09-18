@@ -37,20 +37,30 @@ class WorkerEnvTest {
         Map<String, String> out = WorkerEnv.compose(ENGINE, Map.of(), false, Map.of(), false);
 
         assertThat(out)
-                .containsOnlyKeys(
-                        "PATH",
-                        "HOME",
-                        "JAVA_HOME",
-                        "TMPDIR",
-                        "LANG",
-                        "LC_ALL",
-                        "TERM",
-                        "JK_HOME",
-                        "JK_NONINTERACTIVE");
+                .containsOnlyKeys("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM", "JK_HOME", "JK_NONINTERACTIVE");
         assertThat(out).doesNotContainKeys("FAKE_SECRET", "GITHUB_TOKEN", "SSH_AUTH_SOCK");
         // Credentials and the daemon's toolchain pin live in the JK_ namespace too; a prefix rule
         // would have let every one of them through.
         assertThat(out).doesNotContainKeys("JK_REPO_NEXUS_TOKEN", "JK_GIT_CRED_PASS", "JK_JDK");
+        // JAVA_HOME is not inherited either, and for the same reason JK_JDK is not: the engine's
+        // copy describes the shell that started the daemon. The worker is told which JDK it runs
+        // under by the fork site that chose it.
+        assertThat(out).doesNotContainKey("JAVA_HOME");
+    }
+
+    @Test
+    void a_worker_is_told_the_jdk_it_runs_under_and_it_beats_the_daemons() {
+        Path home = Path.of("/jdks/temurin-25.0.4");
+        Map<String, String> out = WorkerEnv.compose(
+                ENGINE,
+                Map.of(),
+                /*inherit*/ true,
+                WorkerEnv.strict().withJavaHome(home).extras(),
+                false);
+
+        assertThat(out)
+                .as("even when the module inherited the engine's whole environment")
+                .containsEntry("JAVA_HOME", home.toAbsolutePath().toString());
     }
 
     /**

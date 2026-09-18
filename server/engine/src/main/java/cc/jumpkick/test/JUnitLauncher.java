@@ -357,7 +357,7 @@ public final class JUnitLauncher {
 
     /** List-only discovery with {@code extraExcludes} folded in — the serial-tag partition view. */
     private Discovery discoverWithExtraExcludes(
-            Path javaBinary, String classpath, Path testClassesDir, List<String> extraExcludes)
+            Path javaHome, String classpath, Path testClassesDir, List<String> extraExcludes)
             throws IOException, InterruptedException {
         List<String> saved = excludeTags;
         var widened = new ArrayList<>(saved);
@@ -368,7 +368,7 @@ public final class JUnitLauncher {
         try {
             // noop listener: the full discovery already reported totals; this view must not
             // grow the denominator a second time.
-            return discoverClasses(javaBinary, classpath, testClassesDir, TestProgressListener.noop());
+            return discoverClasses(javaHome, classpath, testClassesDir, TestProgressListener.noop());
         } finally {
             excludeTags = saved;
         }
@@ -525,7 +525,6 @@ public final class JUnitLauncher {
         classpathBase.addAll(WorkerLaunchClasspath.paths(runnerJar));
         String classpath = Classpaths.join(classpathBase);
         this.cliTempDirSupport = CliTempDirSupport.onClasspath(classpathBase);
-        Path javaBinary = javaBinary(javaHome);
 
         int resolvedWorkers = wanted;
         List<String> preDiscovered = null;
@@ -535,7 +534,7 @@ public final class JUnitLauncher {
             if (preDiscovered.size() <= 1) resolvedWorkers = 1;
         } else if (wanted == 0) {
             // Discover once so auto can size the pool; reuse the list when W>1.
-            Discovery discovery = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+            Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener);
             if (discovery.crashed()) return discovery.verdict(moduleLabel).withWorkers(1);
             preDiscovered = discovery.classes();
             resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
@@ -549,7 +548,7 @@ public final class JUnitLauncher {
         // it per-path recorded the concurrency for 2 modules out of 29, which is worse than not at
         // all — a forecast rescales the modules it has a count for and not the rest.
         if (resolvedWorkers <= 1) {
-            return runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir)
+            return runSingle(javaHome, classpath, testClassesDir, listener, testResultsDir)
                     .withWorkers(1);
         }
         // W>1 + Jupiter in-process parallel is a known double-parallelism footgun.
@@ -560,14 +559,14 @@ public final class JUnitLauncher {
             listener.onWarning("jupiter-parallel", JupiterParallelDetect.stackWarning(resolvedWorkers));
         }
         return runParallel(
-                        javaBinary, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered)
+                        javaHome, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered)
                 .withWorkers(resolvedWorkers);
     }
 
     // -------- single-worker ---------------------------------------------
 
     private TestSummary runSingle(
-            Path javaBinary,
+            Path javaHome,
             String classpath,
             Path testClassesDir,
             TestProgressListener listener,
@@ -585,7 +584,7 @@ public final class JUnitLauncher {
         TestSummary result;
         try {
             int exit = PluginLoader.run(
-                    javaBinary,
+                    javaHome,
                     classpath,
                     flags,
                     PROTOCOL_PREFIX,
@@ -611,7 +610,7 @@ public final class JUnitLauncher {
     // -------- parallel pull-queue ---------------------------------------
 
     private TestSummary runParallel(
-            Path javaBinary,
+            Path javaHome,
             String classpath,
             Path testClassesDir,
             int workers,
@@ -624,7 +623,7 @@ public final class JUnitLauncher {
         if (preDiscovered != null) {
             classes = preDiscovered;
         } else {
-            Discovery discovery = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+            Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener);
             if (discovery.crashed()) return discovery.verdict(moduleLabel);
             classes = discovery.classes();
         }
@@ -638,7 +637,7 @@ public final class JUnitLauncher {
         // never enter the picture.
         List<String> serialClasses = List.of();
         if (!serialTags.isEmpty()) {
-            Discovery view = discoverWithExtraExcludes(javaBinary, classpath, testClassesDir, serialTags);
+            Discovery view = discoverWithExtraExcludes(javaHome, classpath, testClassesDir, serialTags);
             if (view.crashed()) return view.verdict(moduleLabel);
             Set<String> parallelView = new HashSet<>(view.classes());
             List<String> par = new ArrayList<>();
@@ -652,7 +651,7 @@ public final class JUnitLauncher {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         MarkdownTestReport md = new MarkdownTestReport();
 
-        PullWorkerPool pool = new PullWorkerPool(this, javaBinary, classpath, testClassesDir, listener);
+        PullWorkerPool pool = new PullWorkerPool(this, javaHome, classpath, testClassesDir, listener);
         TestSummary summary =
                 classes.isEmpty() ? new TestSummary(0, 0, 0, 0, List.of()) : pool.run(workers, classes, xml, md, 0);
         // A runner-crash sentinel means the fork itself is broken — don't fork it again.
@@ -713,7 +712,7 @@ public final class JUnitLauncher {
      * suites.
      */
     private Discovery discoverClasses(
-            Path javaBinary, String classpath, Path testClassesDir, TestProgressListener listener)
+            Path javaHome, String classpath, Path testClassesDir, TestProgressListener listener)
             throws IOException, InterruptedException {
         var classes = new ArrayList<String>();
         var crash = new CaptureBuffer();
@@ -722,7 +721,7 @@ public final class JUnitLauncher {
         int exit;
         try {
             exit = PluginLoader.run(
-                    javaBinary,
+                    javaHome,
                     classpath,
                     flags,
                     PROTOCOL_PREFIX,
@@ -762,10 +761,6 @@ public final class JUnitLauncher {
         } catch (IllegalStateException e) {
             throw new IOException("jk test: " + e.getMessage(), e);
         }
-    }
-
-    private static Path javaBinary(Path javaHome) {
-        return JdkFingerprint.java(javaHome);
     }
 
     /**

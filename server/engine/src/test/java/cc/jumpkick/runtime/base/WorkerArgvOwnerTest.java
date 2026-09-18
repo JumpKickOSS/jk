@@ -10,6 +10,7 @@ import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import cc.jumpkick.jdk.JdkFingerprint;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -36,14 +37,18 @@ class WorkerArgvOwnerTest {
     /** The owner's contract, stated once. Every other case derives its expectation from it. */
     @Test
     void the_owner_pins_the_order(@TempDir Path tmp) {
-        Path javaExe = tmp.resolve("bin").resolve("java");
+        // The owner is named a JDK HOME, not a launcher: it heads the argv with that home's own
+        // java through JdkFingerprint, and the worker's JAVA_HOME is the same home. Both are
+        // Paths, so nothing but this case distinguishes a home from a launcher at the call.
+        Path javaHome = tmp.resolve("jdk-25");
+        String launcher = JdkFingerprint.java(javaHome).toString();
 
-        assertThat(PluginLoader.command(javaExe, CP, List.of("-Xmx1g"), List.of("@spec")))
-                .containsExactly(javaExe.toString(), "-Xmx1g", "-cp", CP, PluginLoader.WORKER_MAIN, "@spec");
+        assertThat(PluginLoader.command(javaHome, CP, List.of("-Xmx1g"), List.of("@spec")))
+                .containsExactly(launcher, "-Xmx1g", "-cp", CP, PluginLoader.WORKER_MAIN, "@spec");
         // The main-class arm exists for a third-party jar that declares its own entry point; it
         // substitutes exactly one element and moves nothing else.
-        assertThat(PluginLoader.command(javaExe, CP, List.of("-Xmx1g"), "vendor.Main", List.of("@spec")))
-                .containsExactly(javaExe.toString(), "-Xmx1g", "-cp", CP, "vendor.Main", "@spec");
+        assertThat(PluginLoader.command(javaHome, CP, List.of("-Xmx1g"), "vendor.Main", List.of("@spec")))
+                .containsExactly(launcher, "-Xmx1g", "-cp", CP, "vendor.Main", "@spec");
     }
 
     /**
@@ -129,7 +134,8 @@ class WorkerArgvOwnerTest {
     private static void assertOwnerTail(List<String> argv, String classpath, List<String> args) {
         int cp = argv.indexOf("-cp");
         assertThat(cp).describedAs("no -cp in %s", argv).isNotNegative();
-        List<String> owned = PluginLoader.command(Path.of("java"), classpath, List.of(), args);
+        // Any home: only the tail from -cp onwards is compared, never the launcher it heads with.
+        List<String> owned = PluginLoader.command(Path.of("any-jdk-home"), classpath, List.of(), args);
         assertThat(argv.subList(cp, argv.size())).containsExactlyElementsOf(owned.subList(1, owned.size()));
     }
 

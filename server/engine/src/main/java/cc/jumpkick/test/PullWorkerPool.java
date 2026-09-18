@@ -31,7 +31,7 @@ import org.jspecify.annotations.Nullable;
 final class PullWorkerPool {
 
     private final JUnitLauncher launcher;
-    private final Path javaBinary;
+    private final Path javaHome;
     private final String classpath;
     private final Path testClassesDir;
     private final TestProgressListener listener;
@@ -39,12 +39,12 @@ final class PullWorkerPool {
 
     PullWorkerPool(
             JUnitLauncher launcher,
-            Path javaBinary,
+            Path javaHome,
             String classpath,
             Path testClassesDir,
             TestProgressListener listener) {
         this.launcher = launcher;
-        this.javaBinary = javaBinary;
+        this.javaHome = javaHome;
         this.classpath = classpath;
         this.testClassesDir = testClassesDir;
         this.listener = listener;
@@ -218,7 +218,7 @@ final class PullWorkerPool {
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
             command.set(PluginLoader.command(javaBinary, classpath, flags, args));
             return PluginLoader.converse(
-                    javaBinary,
+                    javaHome,
                     classpath,
                     // N test JVMs run at once → divide the heap cap by N so they fit.
                     flags,

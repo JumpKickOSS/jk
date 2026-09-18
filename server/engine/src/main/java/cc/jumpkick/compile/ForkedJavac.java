@@ -10,7 +10,6 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
-import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -376,7 +375,6 @@ public final class ForkedJavac {
             // travels in the spec, not on the plugin's classpath), so its own jar is the whole
             // classpath.
             Path hostJavaHome = workerJavaHome(req);
-            Path javaExe = JdkFingerprint.java(hostJavaHome);
             // Thin worker + Maven runtime closure from its POM.
             String workerCp = workerClasspath(req);
             // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
@@ -389,7 +387,7 @@ public final class ForkedJavac {
                     heapBytes,
                     req.jvmArgs());
             List<String> command =
-                    PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
+                    PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
             int exit = new PluginClient(PREFIX)
                     .passthrough(transcript::record)
                     .on(PluginProtocol.DIAGNOSTIC, json -> {
@@ -417,7 +415,7 @@ public final class ForkedJavac {
                             compiledSources.add(Path.of(s));
                         }
                     })
-                    .run(command, req.env());
+                    .run(command, req.env().withJavaHome(hostJavaHome));
             boolean success = exit == 0 && "OK".equals(status[0]);
             return new Attempt(
                     new Result(success, diagnostics, generated, compiledSources, 0L), exit == 0 || status[0] != null);
@@ -523,10 +521,9 @@ public final class ForkedJavac {
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(trainSpec);
         List<String> jvmFlags = workerJvmFlags(List.of("-XX:AOTCacheOutput=" + aotOutput), null, module);
-        Path javaExe = JdkFingerprint.java(hostJavaHome);
         // Same classpath as the real fork: the classpath is part of the AOT key, and a
         // thin worker jar alone would CNFE on PluginMain, silently never training.
-        return PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
+        return PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
     }
 
     /**
