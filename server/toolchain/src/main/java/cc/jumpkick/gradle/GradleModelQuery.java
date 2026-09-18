@@ -9,7 +9,10 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.jdk.JdkInstallListener;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.resolver.StallWatch;
@@ -35,9 +38,10 @@ import org.jspecify.annotations.Nullable;
  * wrapper names (else jk's default) is provisioned the way {@code jk gradle} provisions it — a
  * verified download, or a healthy install already on the machine — and launched on a JDK it can
  * run on, with the init script {@code jk-import-model.init.gradle} that writes the evaluated model
- * as JSON. The engine's heap holds none of Gradle; the fork's lines are the import's progress, and
- * a fork whose output stands still for the resolve stall window is stopped and refused with what it
- * was doing, as a lock's resolve is.
+ * as JSON — a JDK provisioned first when none installed falls in the distribution's range. The
+ * engine's heap holds none of Gradle; the fork's lines are the import's progress, and a fork whose
+ * output stands still for the resolve stall window is stopped and refused with what it was doing,
+ * as a lock's resolve is.
  */
 public final class GradleModelQuery implements GradleBuildImport.ModelSource {
 
@@ -92,12 +96,42 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
             }
             Path runningHome = JavaHomes.runningJavaHome();
             GradleJvmCompatibility.Pick jdk = GradleJvmCompatibility.pick(
-                    dist.version(), runningHome, Runtime.version().feature(), () -> new JdkRegistry().listHits());
+                    dist.version(),
+                    runningHome,
+                    Runtime.version().feature(),
+                    () -> new JdkRegistry().listHits(),
+                    major -> installJdk(major, dist.version(), progress));
             return new Launch(
                     List.of(result.tool().binary().toString()),
                     jdk.javaHome(),
                     "Gradle " + dist.version() + " on JDK " + jdk.major());
         };
+    }
+
+    /**
+     * Provision JDK {@code major} for Gradle {@code gradleVersion} into the managed JDK root, as a
+     * manifest's {@code jdk} pin is provisioned; the download and extract are progress lines.
+     */
+    private static Path installJdk(int major, String gradleVersion, Consumer<String> progress)
+            throws IOException, InterruptedException {
+        progress.accept("Gradle " + gradleVersion + " runs on no installed JDK · provisioning JDK " + major);
+        InstalledJdk installed = JdkEnsure.install(String.valueOf(major), progress, new JdkInstallListener() {
+            @Override
+            public void onDownloadStart(String label, long totalBytes) {
+                progress.accept("downloading " + label + (totalBytes > 0 ? " (" + (totalBytes >> 20) + " MiB)" : ""));
+            }
+
+            @Override
+            public void onExtractStart(String label) {
+                progress.accept("installing " + label);
+            }
+
+            @Override
+            public void onInstalled(InstalledJdk jdk) {
+                progress.accept("JDK " + major + " installed at " + jdk.home());
+            }
+        });
+        return installed.home();
     }
 
     @Override
