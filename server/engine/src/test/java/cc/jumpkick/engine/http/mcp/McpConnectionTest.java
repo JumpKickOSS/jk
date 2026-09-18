@@ -15,6 +15,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -45,24 +46,22 @@ class McpConnectionTest {
         }
     };
 
-    private final McpHandler mcp = new McpHandler(
-            () -> new StatusSnapshot(
-                    "0.13.7",
-                    1L,
-                    System.currentTimeMillis() - 5_000,
-                    0,
-                    0,
-                    1L << 20,
-                    2L << 20,
-                    256L << 20,
-                    -1L,
-                    0,
-                    8,
-                    16L << 30),
-            jobs,
-            dir -> Map.of("coord", "com.example:demo"),
-            List::of,
-            "0.13.7");
+    private final Supplier<StatusSnapshot> status = () -> new StatusSnapshot(
+            "0.13.7",
+            1L,
+            System.currentTimeMillis() - 5_000,
+            0,
+            0,
+            1L << 20,
+            2L << 20,
+            256L << 20,
+            -1L,
+            0,
+            8,
+            16L << 30);
+
+    private final McpHandler mcp =
+            new McpHandler(status, jobs, dir -> Map.of("coord", "com.example:demo"), List::of, "0.13.7");
 
     @Test
     void the_session_is_stable_on_one_connection_and_differs_across_connections() {
@@ -188,11 +187,63 @@ class McpConnectionTest {
         assertThat(reply.body()).contains("-32602").contains("requires arguments.dir");
     }
 
+    @Test
+    void every_tool_and_resource_answers_for_the_calling_connection_s_own_bind() {
+        // Two finished runs in two checkouts: whichever a read answers for names the run it found.
+        List<String> history = List.of(
+                "{\"id\":\"run-a\",\"kind\":\"build\",\"dir\":\"/ws-a\",\"running\":false,\"success\":true,"
+                        + "\"startedAt\":10,\"finishedAt\":20}",
+                "{\"id\":\"run-b\",\"kind\":\"build\",\"dir\":\"/ws-b\",\"running\":false,\"success\":false,"
+                        + "\"startedAt\":1,\"finishedAt\":2}");
+        McpHandler two =
+                new McpHandler(status, jobs, dir -> Map.of("coord", "com.example:" + dir), () -> history, "0.13.7");
+        String a = initialize(two, "claude-code");
+        String b = initialize(two, "codex");
+        call(two, a, "jk_bind", "{\"dir\":\"/ws-a\"}");
+        call(two, b, "jk_bind", "{\"dir\":\"/ws-b\"}");
+
+        assertThat(object(call(two, a, "jk_status", "{}"), "structuredContent").get("boundDir"))
+                .isEqualTo("/ws-a");
+        assertThat(object(call(two, b, "jk_status", "{}"), "structuredContent").get("boundDir"))
+                .isEqualTo("/ws-b");
+        assertThat(text(call(two, a, "jk_results", "{}"))).contains("run-a").doesNotContain("run-b");
+        assertThat(text(call(two, b, "jk_results", "{}"))).contains("run-b").doesNotContain("run-a");
+        assertThat(resource(two, a, "jk://project")).contains("\"dir\":\"/ws-a\"");
+        assertThat(resource(two, b, "jk://project")).contains("\"dir\":\"/ws-b\"");
+
+        // An anonymous reader has no bind of its own, whatever the connections bound.
+        assertThat(resource(two, null, "jk://project")).contains("jk_bind first");
+        assertThat(object(call(two, null, "jk_status", "{}"), "structuredContent"))
+                .doesNotContainKey("boundDir");
+        McpHandler.Reply reply = two.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_bind\","
+                        + "\"arguments\":{\"dir\":\"/ws-c\"}}}",
+                null);
+        assertThat(reply.body()).contains("-32602").contains("needs a connection");
+        assertThat(resource(two, a, "jk://project")).contains("\"dir\":\"/ws-a\"");
+    }
+
+    /** {@code resources/read} of {@code uri} on a connection; the resource's text. */
+    private static String resource(McpHandler handler, @Nullable String sessionId, String uri) {
+        McpHandler.Reply reply = handler.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"resources/read\",\"params\":{\"uri\":\"" + uri + "\"}}",
+                sessionId);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(reply.body()));
+        assertThat(resp).as(reply.body()).containsKey("result");
+        return String.valueOf(
+                objects(object(resp, "result"), "contents").getFirst().get("text"));
+    }
+
     /** {@code initialize} with {@code clientInfo.name}; returns the minted session id. */
     private String initialize(@Nullable String client) {
+        return initialize(mcp, client);
+    }
+
+    private static String initialize(McpHandler handler, @Nullable String client) {
         String info = client == null ? "{}" : "{\"clientInfo\":{\"name\":\"" + client + "\",\"version\":\"1\"}}";
-        McpHandler.Reply reply =
-                mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":" + info + "}", null);
+        McpHandler.Reply reply = handler.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":" + info + "}", null);
         assertThat(reply.body()).contains("\"protocolVersion\"");
         return requireNonNull(reply.openedSessionId());
     }
@@ -203,9 +254,14 @@ class McpConnectionTest {
     }
 
     /** One {@code tools/call} on a connection; the whole {@code result} object. */
-    @SuppressWarnings("unchecked")
     private Map<String, Object> call(@Nullable String sessionId, String tool, String argumentsJson) {
-        McpHandler.Reply reply = mcp.handle(
+        return call(mcp, sessionId, tool, argumentsJson);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> call(
+            McpHandler handler, @Nullable String sessionId, String tool, String argumentsJson) {
+        McpHandler.Reply reply = handler.handle(
                 "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"" + tool + "\","
                         + "\"arguments\":" + argumentsJson + "}}",
                 sessionId);

@@ -21,7 +21,7 @@ public final class StatusTool implements McpTool {
 
     @Override
     public Map<String, Object> call(McpCall in) {
-        Map<String, Object> status = McpVitals.statusPayload(in.ctx());
+        Map<String, Object> status = McpVitals.statusPayload(in.ctx(), in.boundDir());
         return in.ok(status, McpVitals.statusSummary(status));
     }
 }

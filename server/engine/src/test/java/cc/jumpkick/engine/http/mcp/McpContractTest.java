@@ -324,13 +324,24 @@ class McpContractTest {
         assertThat(c).doesNotContainKey("heap"); // the apply_preset result shape never appears
     }
 
+    /** The one connection this test's calls ride on, minted by {@code initialize} on first use. */
+    private @Nullable String session;
+
     private Map<String, Object> call(String name, String argsJson) {
-        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\""
-                + name
-                + "\",\"arguments\":"
-                + argsJson
-                + "}}");
+        if (session == null) {
+            session = requireNonNull(
+                    mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
+                            .openedSessionId());
+        }
+        String body = mcp.handle(
+                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                                + "\"params\":{\"name\":\""
+                                + name
+                                + "\",\"arguments\":"
+                                + argsJson
+                                + "}}",
+                        session)
+                .body();
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         return object(result, "structuredContent");

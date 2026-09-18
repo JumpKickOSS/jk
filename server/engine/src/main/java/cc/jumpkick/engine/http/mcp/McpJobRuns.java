@@ -211,10 +211,10 @@ public final class McpJobRuns {
     /** A failed run answers with the diagnostics an agent would ask for next. */
     private static void attachDiagnostics(
             McpContext ctx, Map<String, Object> fields, @Nullable Object runId, String jobDir) {
-        // The job's own dir, not the bound dir — the run may live outside the session.
-        String dir = runId == null ? ctx.session().dir() : jobDir;
+        // The job's own dir — the one the call named or was bound to — so the run is found where
+        // it lives, whichever connection asks.
         String run = runId == null ? null : String.valueOf(runId);
-        McpDiagnostics.Page page = McpDiagnostics.page(ctx.history(), new McpDiagnostics.Query(run, dir));
+        McpDiagnostics.Page page = McpDiagnostics.page(ctx.history(), new McpDiagnostics.Query(run, jobDir));
         fields.put("diagnostics", page == null ? List.of() : page.rows());
     }
 

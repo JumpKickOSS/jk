@@ -14,6 +14,8 @@ import java.util.Map;
 /**
  * {@code jk_bind} — set the connection's default project dir and answer with its project card.
  * The explicit form; an unbound connection's first call that carries {@code dir} binds by itself.
+ * The bind is the connection's alone: two agents on one engine each keep their own, and a call
+ * that rides no connection has nothing to bind.
  */
 public final class BindTool implements McpTool {
 
@@ -35,10 +37,12 @@ public final class BindTool implements McpTool {
         } catch (RuntimeException e) {
             throw new McpError(-32602, "invalid dir: " + e.getMessage());
         }
-        // The connection's own bind wins for its later calls; the process-wide one is what an
-        // anonymous client and the jk:// resources fall back to.
-        if (in.connection() != null) in.connection().bind(abs);
-        in.ctx().session().bind(abs);
+        if (in.connection() == null) {
+            throw new McpError(
+                    -32602,
+                    "jk_bind needs a connection: send the Mcp-Session-Id that initialize returned, or pass dir on each call");
+        }
+        in.connection().bind(abs);
         Map<String, Object> card = McpProjectCards.card(abs, in.ctx().history());
         Map<String, Object> env = McpEnvelope.of("project", card, false, null, "jk_history for recent runs");
         return in.ok(env, "bound " + card.getOrDefault("coord", abs));

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code resources/*} surface: the same facts as the read tools, addressable by {@code jk://}
@@ -49,19 +50,25 @@ public final class McpResources {
         return Map.of("resources", rs);
     }
 
-    public static Map<String, Object> read(McpContext ctx, Map<String, Object> params) {
+    /**
+     * One {@code resources/read}; the project-scoped resources answer for the dir {@code
+     * connection} is bound to, and an anonymous or unbound reader is told to bind first.
+     */
+    public static Map<String, Object> read(
+            McpContext ctx, Map<String, Object> params, @Nullable McpConnection connection) {
         Object raw = params.get("uri");
         String uri = raw == null ? null : String.valueOf(raw);
         if (uri == null) throw new McpError(-32602, "resources/read requires uri");
+        String bound = connection == null ? null : connection.dir();
         if ("jk://manual".equals(uri)) return manualResource();
-        if ("jk://runs/latest/results".equals(uri)) return resultsResource(ctx);
-        if ("jk://runs/latest/details".equals(uri)) return detailsResource(ctx);
-        if (uri.equals(GUARDS) || uri.startsWith(GUARDS + "/")) return guardsResource(ctx, uri);
+        if ("jk://runs/latest/results".equals(uri)) return resultsResource(ctx, bound);
+        if ("jk://runs/latest/details".equals(uri)) return detailsResource(ctx, bound);
+        if (uri.equals(GUARDS) || uri.startsWith(GUARDS + "/")) return guardsResource(ctx, uri, bound);
         Map<String, Object> payload =
                 switch (uri) {
-                    case "jk://session" -> McpVitals.statusPayload(ctx);
+                    case "jk://session" -> McpVitals.statusPayload(ctx, bound);
                     case "jk://project" -> {
-                        String dir = ctx.session().dir();
+                        String dir = bound;
                         if (dir == null) yield Map.of("error", "jk_bind first");
                         yield McpProjectCards.card(dir, ctx.history());
                     }
@@ -87,8 +94,7 @@ public final class McpResources {
      * {@code jk guard explain} prints, so a client that browses and one that calls read one fact.
      * An unknown id is a parameter error naming the nearest ids, not an empty document.
      */
-    private static Map<String, Object> guardsResource(McpContext ctx, String uri) {
-        String dir = ctx.session().dir();
+    private static Map<String, Object> guardsResource(McpContext ctx, String uri, @Nullable String dir) {
         if (dir == null) return contents(uri, "application/json", MiniJson.write(Map.of("error", "jk_bind first")));
         Path root = Path.of(dir);
         String id = uri.equals(GUARDS) ? null : uri.substring(GUARDS.length() + 1);
@@ -120,9 +126,8 @@ public final class McpResources {
         return contents("jk://manual", "text/markdown", JkManual.markdown());
     }
 
-    private static Map<String, Object> resultsResource(McpContext ctx) {
-        Map<String, Object> rec =
-                McpDiagnostics.findNewest(ctx.history(), ctx.session().dir());
+    private static Map<String, Object> resultsResource(McpContext ctx, @Nullable String bound) {
+        Map<String, Object> rec = McpDiagnostics.findNewest(ctx.history(), bound);
         String id = rec == null ? null : McpHistoryViews.str(rec, "id");
         Path file = McpResults.locate(rec, id, ctx.detailsFile());
         if (file == null || !Files.isRegularFile(file)) {
@@ -140,9 +145,8 @@ public final class McpResources {
         }
     }
 
-    private static Map<String, Object> detailsResource(McpContext ctx) {
-        Map<String, Object> rec =
-                McpDiagnostics.findNewest(ctx.history(), ctx.session().dir());
+    private static Map<String, Object> detailsResource(McpContext ctx, @Nullable String bound) {
+        Map<String, Object> rec = McpDiagnostics.findNewest(ctx.history(), bound);
         Map<String, Object> fields = McpDetails.tail(rec, ctx.detailsFile(), List.of(), McpDetails.DEFAULT_TAIL, 0);
         return contents("jk://runs/latest/details", "application/json", MiniJson.write(fields));
     }
