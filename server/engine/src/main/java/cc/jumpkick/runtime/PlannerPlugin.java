@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -499,6 +500,9 @@ public final class PlannerPlugin {
                     PathUtil.deleteRecursively(scratch); // stale outputs never survive
                     Files.createDirectories(scratch);
                     ctx.label(step.name());
+                    // Whether the worker reported a finding of its own: a step that promised files,
+                    // wrote none and said why has said it once.
+                    AtomicBoolean reported = new AtomicBoolean();
                     Path spec = writeStepSpec(
                             step,
                             active,
@@ -516,13 +520,10 @@ public final class PlannerPlugin {
                                     repositories),
                             toolExtras);
                     try {
-                        PluginBuild.runWorker(
-                                active,
-                                in.cache(),
-                                spec,
-                                workerEnv(ctx, in),
-                                ctx::label,
-                                line -> forwardStepDiagnostic(ctx, step.name(), line));
+                        PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, line -> {
+                            reported.set(true);
+                            forwardStepDiagnostic(ctx, step.name(), line);
+                        });
                     } catch (IOException e) {
                         ctx.error(step.name(), Errors.text(e));
                         throw e;
@@ -535,7 +536,7 @@ public final class PlannerPlugin {
                         // A step that promises no files and wrote none: the run itself is the
                         // result, and the next build with the same inputs skips it.
                         actionCache.storeVerdict(taskId, actionKey, Map.of());
-                    } else {
+                    } else if (!reported.get()) {
                         ctx.warn(step.name(), "the step wrote no files; its output is not cached");
                     }
                     // A transform's output IS the classes dir from here on: re-point MAIN_CLASSES
