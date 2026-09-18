@@ -36,6 +36,10 @@ spotbugs       = { type = "bool", default = false, hint = "enable SpotBugs over 
 spotbugs-exclude = { type = "string", example = "config/spotbugs-exclude.xml", hint = "a module-relative SpotBugs filter file of findings to leave out" }
 spotbugs-effort = { type = "string", default = "default", hint = "the analysis effort: min, less, default, more or max" }
 spotbugs-threshold = { type = "string", default = "medium", hint = "the lowest confidence SpotBugs reports: high, medium (SpotBugs's and the Maven plugin's default) or low" }
+spotbugs-max-rank = { type = "int", example = "15", hint = "the scariest bug rank SpotBugs reports, 1 to 20; every rank when unset, as the Maven plugin's <maxRank>" }
+spotbugs-omit-visitors = { type = "string-list", default = [], example = "[\"ConstructorThrow\", \"FindReturnRef\"]", hint = "detectors SpotBugs leaves out, by class name, as the Maven plugin's <omitVisitors>" }
+spotbugs-visitors = { type = "string-list", default = [], example = "[\"FindNullDeref\"]", hint = "the only detectors SpotBugs runs, by class name, as the Maven plugin's <visitors>" }
+spotbugs-plugins = { type = "string-list", default = [], example = "[\"com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0\"]", hint = "coordinates of SpotBugs detector plugins (find-sec-bugs, fb-contrib) loaded beside SpotBugs's own, as the Maven plugin's <plugins>; each jar is fetched as written, without its dependencies" }
 spotbugs-version = { type = "string", default = "4.10.4", hint = "the SpotBugs release; a bare version is exact" }
 detekt         = { type = "bool", default = false, hint = "enable detekt over the Kotlin sources" }
 detekt-config  = { type = "string", example = "config/detekt.yml", hint = "a module-relative detekt configuration laid over the default rule set" }
@@ -137,6 +141,13 @@ for-step   = "lint-pmd"
 artifact   = "spotbugs"
 coordinate = "com.github.spotbugs:spotbugs:${config.spotbugs-version}"
 transitive = true
+for-step   = "lint-spotbugs"
+
+# A detector plugin is one self-contained jar SpotBugs loads by path; its POM's dependencies are
+# SpotBugs itself and stay off the list, so nothing here is transitive.
+[[contribute.step-dependency]]
+artifact   = "spotbugs-plugins"
+coordinate = "${config.spotbugs-plugins}"
 for-step   = "lint-spotbugs"
 
 [[contribute.step-dependency]]

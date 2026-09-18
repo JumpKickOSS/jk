@@ -209,6 +209,15 @@ final class LintStep {
                 config.stringOpt("spotbugs-exclude")
                         .ifPresent(exclude -> args.addAll(
                                 List.of("-exclude", module.resolve(exclude).toString())));
+                long maxRank = config.intValue("spotbugs-max-rank", 0);
+                if (maxRank > 0) args.addAll(List.of("-maxRank", Long.toString(maxRank)));
+                List<String> omit = config.stringList("spotbugs-omit-visitors");
+                if (!omit.isEmpty()) args.addAll(List.of("-omitVisitors", String.join(",", omit)));
+                List<String> visitors = config.stringList("spotbugs-visitors");
+                if (!visitors.isEmpty()) args.addAll(List.of("-visitors", String.join(",", visitors)));
+                // Detector plugins ride -pluginList as SpotBugs spells it: a path list, one jar each.
+                exec.extra(extra("spotbugs-plugins", run))
+                        .ifPresent(plugins -> args.addAll(List.of("-pluginList", pluginList(plugins))));
                 args.add(exec.classesDir().toString());
             }
             case DETEKT -> {
@@ -385,6 +394,15 @@ final class LintStep {
     }
 
     /** The fetched tool as a classpath: the jar itself, or every jar of a materialized closure dir. */
+    /** The detector jars under {@code plugins} as SpotBugs's {@code -pluginList} spells them: a path list. */
+    private static String pluginList(Path plugins) {
+        try {
+            return Classpaths.join(toolClasspath(plugins));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     static List<Path> toolClasspath(Path tool) throws IOException {
         if (!Files.isDirectory(tool)) return List.of(tool);
         List<Path> jars = new ArrayList<>();

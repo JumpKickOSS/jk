@@ -56,7 +56,10 @@ import org.jspecify.annotations.Nullable;
  * pmd-version}; a plugin still on PMD 6 is a row, since the step runs PMD 7. {@code
  * spotbugs-maven-plugin}: {@code spotbugs = true}, {@code <excludeFilterFile>} is {@code
  * spotbugs-exclude}, {@code <effort>} is {@code spotbugs-effort}, {@code <threshold>} is {@code
- * spotbugs-threshold}, {@code <plugins>} (fb-contrib, find-sec-bugs) are a row; {@code
+ * spotbugs-threshold}, {@code <omitVisitors>} / {@code <visitors>} are {@code
+ * spotbugs-omit-visitors} / {@code spotbugs-visitors}, {@code <maxRank>} is {@code
+ * spotbugs-max-rank}, {@code <plugins>} (fb-contrib, find-sec-bugs) are {@code spotbugs-plugins},
+ * each read from the {@code <configuration>} or the {@code spotbugs.<name>} property; {@code
  * spotbugs:check} fails on any bug at the confidence threshold, so its threshold is {@code
  * warning}, or {@code never} under {@code <failOnError>false</failOnError>}.
  *
@@ -117,7 +120,7 @@ final class LintPlugins {
         Plugin spotbugs = bound(em, SPOTBUGS, "spotbugs:check", report, inherited);
         if (spotbugs != null) {
             any = true;
-            failOn.put("spotbugs", spotbugs(spotbugs, baseDir, values, sources, report));
+            failOn.put("spotbugs", spotbugs(spotbugs, model, baseDir, values, sources, report));
         }
         if (!any) return null;
         if (sources.size() > 1) values.put("sources", List.copyOf(sources));
@@ -684,40 +687,51 @@ final class LintPlugins {
     /**
      * Maps the plugin and returns the threshold {@code spotbugs:check} applies: every bug at the
      * confidence threshold fails the build ({@code warning}), none under {@code
-     * <failOnError>false</failOnError>} ({@code never}).
+     * <failOnError>false</failOnError>} ({@code never}). Each parameter is read as the Maven
+     * plugin reads it: the {@code <configuration>} element, else the {@code spotbugs.<name>} user
+     * property the POM sets ({@code <spotbugs.omitVisitors>} in a parent is how jenkins turns
+     * detectors off). {@code <omitVisitors>} / {@code <visitors>} are {@code spotbugs-omit-visitors}
+     * / {@code spotbugs-visitors}, {@code <maxRank>} is {@code spotbugs-max-rank}, and the
+     * {@code <plugins>} (fb-contrib, find-sec-bugs) are {@code spotbugs-plugins}, so a suppression
+     * naming one of their patterns stays a suppression instead of a useless one.
      */
     private static String spotbugs(
             Plugin plugin,
+            Model model,
             @Nullable Path baseDir,
             Map<String, Object> values,
             Set<String> sources,
             ImportReport.Builder report) {
         values.put("spotbugs", true);
-        String failOn = "warning";
-        for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
-            if (!EnvValues.parseBool(PluginFacts.child(dom, "failOnError")).orElse(true)) failOn = "never";
-            String exclude = PluginFacts.child(dom, "excludeFilterFile");
-            if (exclude != null) values.put("spotbugs-exclude", SourceTreePlugins.moduleRelativeFile(exclude, baseDir));
-            String effort = PluginFacts.child(dom, "effort");
-            if (effort != null && !effort.equalsIgnoreCase("default")) {
-                values.put("spotbugs-effort", effort.toLowerCase(Locale.ROOT));
-            }
-            String threshold = PluginFacts.child(dom, "threshold");
-            if (threshold != null) {
-                switch (threshold.toLowerCase(Locale.ROOT)) {
-                    case "high" -> values.put("spotbugs-threshold", "high");
-                    case "low", "exp", "ignore" -> values.put("spotbugs-threshold", "low");
-                    default -> {
-                        /* Default / Medium: the step's own floor */
-                    }
+        SpotBugsParameters parameters = new SpotBugsParameters(plugin, model);
+        String failOn = EnvValues.parseBool(parameters.value("failOnError")).orElse(true) ? "warning" : "never";
+        String exclude = parameters.value("excludeFilterFile");
+        if (exclude != null) values.put("spotbugs-exclude", SourceTreePlugins.moduleRelativeFile(exclude, baseDir));
+        String effort = parameters.value("effort");
+        if (effort != null && !effort.equalsIgnoreCase("default")) {
+            values.put("spotbugs-effort", effort.toLowerCase(Locale.ROOT));
+        }
+        String threshold = parameters.value("threshold");
+        if (threshold != null) {
+            switch (threshold.toLowerCase(Locale.ROOT)) {
+                case "high" -> values.put("spotbugs-threshold", "high");
+                case "low", "exp", "ignore" -> values.put("spotbugs-threshold", "low");
+                default -> {
+                    /* Default / Medium: the step's own floor */
                 }
             }
-            if (EnvValues.parseBool(PluginFacts.child(dom, "includeTests")).orElse(false)) sources.add(TEST_ROOT);
-            if (dom.getChild("plugins") != null) {
-                report.warning("`" + SPOTBUGS + "` `<plugins>` (fb-contrib, find-sec-bugs) have no `[lint]` key; the"
-                        + " step runs SpotBugs's own detectors.");
-            }
         }
+        String maxRank = parameters.value("maxRank");
+        if (maxRank != null && maxRank.matches("\\d+") && Integer.parseInt(maxRank) < 20) {
+            values.put("spotbugs-max-rank", Long.valueOf(maxRank));
+        }
+        List<String> omit = parameters.list("omitVisitors");
+        if (!omit.isEmpty()) values.put("spotbugs-omit-visitors", omit);
+        List<String> visitors = parameters.list("visitors");
+        if (!visitors.isEmpty()) values.put("spotbugs-visitors", visitors);
+        if (EnvValues.parseBool(parameters.value("includeTests")).orElse(false)) sources.add(TEST_ROOT);
+        List<String> plugins = spotbugsPlugins(plugin, report);
+        if (!plugins.isEmpty()) values.put("spotbugs-plugins", plugins);
         String version = PluginFacts.usable(plugin.getVersion());
         if (version != null) {
             // The Maven plugin's version is SpotBugs's plus a plugin digit: 4.10.4.1 runs SpotBugs 4.10.4.
@@ -726,5 +740,62 @@ final class LintPlugins {
             if (!spotbugs.equals("4.10.4")) values.put("spotbugs-version", spotbugs);
         }
         return failOn;
+    }
+
+    /**
+     * The detector plugins every {@code <plugins><plugin>} of the configurations names, as {@code
+     * group:artifact:version}; one whose version is a property nothing values is a row.
+     */
+    private static List<String> spotbugsPlugins(Plugin plugin, ImportReport.Builder report) {
+        List<String> out = new ArrayList<>();
+        for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
+            Xpp3Dom plugins = dom.getChild("plugins");
+            if (plugins == null) continue;
+            for (Xpp3Dom entry : plugins.getChildren("plugin")) {
+                String group = PluginFacts.child(entry, "groupId");
+                String artifact = PluginFacts.child(entry, "artifactId");
+                String version = PluginFacts.child(entry, "version");
+                if (group == null || artifact == null || version == null) {
+                    report.warning("`" + SPOTBUGS + "` `<plugins>` names " + (group == null ? "?" : group) + ":"
+                            + (artifact == null ? "?" : artifact)
+                            + " without a version the import can read; the step runs SpotBugs's own detectors"
+                            + " without it. Add it to `[lint] spotbugs-plugins` as group:artifact:version.");
+                    continue;
+                }
+                String gav = group + ":" + artifact + ":" + version;
+                if (!out.contains(gav)) out.add(gav);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * One {@code spotbugs-maven-plugin} parameter as Maven values it: the first {@code
+     * <configuration>} (the plugin's, then each execution's) naming the element, else the {@code
+     * spotbugs.<name>} property of the effective model — every parameter of the plugin has that
+     * user property, and a parent POM's {@code <properties>} is where jenkins configures it.
+     */
+    private record SpotBugsParameters(Plugin plugin, Model model) {
+
+        @Nullable
+        String value(String name) {
+            for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
+                String v = PluginFacts.child(dom, name);
+                if (v != null) return v;
+            }
+            return PluginFacts.usable(model.getProperties().getProperty("spotbugs." + name));
+        }
+
+        /** A comma-separated parameter as its trimmed, non-blank entries. */
+        List<String> list(String name) {
+            String raw = value(name);
+            if (raw == null) return List.of();
+            List<String> out = new ArrayList<>();
+            for (String part : raw.split(",")) {
+                String v = part.trim();
+                if (!v.isEmpty() && !out.contains(v)) out.add(v);
+            }
+            return out;
+        }
     }
 }

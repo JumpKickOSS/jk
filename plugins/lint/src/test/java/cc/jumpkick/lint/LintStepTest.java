@@ -367,6 +367,36 @@ class LintStepTest {
                 .contains("-low");
     }
 
+    /** The detector keys are SpotBugs's own flags, and the plugin jars the engine fetched ride {@code -pluginList}. */
+    @Test
+    void spotbugs_detector_keys_and_plugin_jars_reach_the_command_line(@TempDir Path tmp) throws Exception {
+        Path report = tmp.resolve("report.xml");
+        Path plugins = Files.createDirectories(tmp.resolve("plugins"));
+        Path jar = Files.writeString(plugins.resolve("findsecbugs-plugin-1.14.0.jar"), "");
+        FakeBuildIo io = new FakeBuildIo(tmp.resolve("m"), "lint")
+                .config(Map.of(
+                        "spotbugs",
+                        true,
+                        "spotbugs-max-rank",
+                        15L,
+                        "spotbugs-omit-visitors",
+                        List.of("ConstructorThrow", "FindReturnRef"),
+                        "spotbugs-visitors",
+                        List.of("FindNullDeref")))
+                .extra("spotbugs-plugins", plugins);
+
+        List<String> args = LintStep.arguments(LintTool.SPOTBUGS, io, List.of(), report);
+
+        assertThat(args)
+                .containsSequence("-maxRank", "15")
+                .containsSequence("-omitVisitors", "ConstructorThrow,FindReturnRef")
+                .containsSequence("-visitors", "FindNullDeref")
+                .containsSequence("-pluginList", jar.toString());
+        FakeBuildIo bare = new FakeBuildIo(tmp.resolve("b"), "lint").config(Map.of("spotbugs", true));
+        assertThat(LintStep.arguments(LintTool.SPOTBUGS, bare, List.of(), report))
+                .doesNotContain("-maxRank", "-omitVisitors", "-visitors", "-pluginList");
+    }
+
     /** {@code exclude} globs reach Checkstyle as {@code -x} path patterns and detekt as {@code --excludes}. */
     @Test
     void exclude_globs_are_passed_the_way_each_tool_leaves_paths_out(@TempDir Path tmp) throws Exception {

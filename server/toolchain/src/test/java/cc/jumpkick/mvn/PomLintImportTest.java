@@ -263,13 +263,14 @@ class PomLintImportTest {
                 .containsEntry("spotbugs-exclude", "spotbugs-exclude.xml")
                 .containsEntry("spotbugs-effort", "max")
                 .containsEntry("spotbugs-version", "4.9.3")
+                .containsEntry("spotbugs-plugins", List.of("com.mebigfatguy.fb-contrib:fb-contrib:7.7.4"))
                 .containsEntry("sources", List.of("src/main/java", "src/test/java"));
         List<String> rows = messages(result);
         assertThat(rows)
                 .noneMatch(m -> m.contains("default ruleset"))
                 .noneMatch(m -> m.contains("`<excludeFromFailureFile>`"))
                 .noneMatch(m -> m.contains("has one threshold"))
-                .anyMatch(m -> m.contains("`<plugins>`") && m.contains("fb-contrib"))
+                .noneMatch(m -> m.contains("`<plugins>`"))
                 .anyMatch(m -> m.contains("`[lint]`") && m.contains("jk-results.md"))
                 .noneMatch(m -> m.contains("was not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
@@ -607,6 +608,63 @@ class PomLintImportTest {
                 .as("spotbugs:check fails on any bug at the confidence threshold")
                 .containsEntry("fail-on", "warning")
                 .doesNotContainKey("spotbugs-version");
+    }
+
+    /**
+     * The plugin reads each parameter from its {@code <configuration>} or from the {@code
+     * spotbugs.<name>} user property — jenkins's parent omits five detectors and sets the effort that
+     * way — and its {@code <plugins>} are detector jars the step loads, not a row.
+     */
+    @Test
+    void spotbugs_parameters_come_from_the_configuration_or_the_user_property_and_plugins_are_the_key(
+            @TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <properties>
+                    <spotbugs.effort>Max</spotbugs.effort>
+                    <spotbugs.threshold>Medium</spotbugs.threshold>
+                    <spotbugs.omitVisitors>ConstructorThrow,FindReturnRef, SharedVariableAtomicityDetector</spotbugs.omitVisitors>
+                  </properties>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                        <version>4.10.3.0</version>
+                        <configuration>
+                          <maxRank>15</maxRank>
+                          <visitors>FindNullDeref</visitors>
+                          <plugins>
+                            <plugin>
+                              <groupId>com.h3xstream.findsecbugs</groupId>
+                              <artifactId>findsecbugs-plugin</artifactId>
+                              <version>1.14.0</version>
+                            </plugin>
+                          </plugins>
+                        </configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.values())
+                .containsEntry("spotbugs-effort", "max")
+                .containsEntry("spotbugs-version", "4.10.3")
+                .containsEntry("spotbugs-max-rank", 15L)
+                .containsEntry(
+                        "spotbugs-omit-visitors",
+                        List.of("ConstructorThrow", "FindReturnRef", "SharedVariableAtomicityDetector"))
+                .containsEntry("spotbugs-visitors", List.of("FindNullDeref"))
+                .containsEntry("spotbugs-plugins", List.of("com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0"))
+                .as("Medium is the step's own floor")
+                .doesNotContainKey("spotbugs-threshold");
+        assertThat(messages(result)).noneMatch(m -> m.contains("own detectors"));
     }
 
     private static PluginConfig pmdOnly(Path dir, String configuration) throws Exception {
