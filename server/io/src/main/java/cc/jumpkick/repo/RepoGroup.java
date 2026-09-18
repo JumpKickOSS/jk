@@ -467,6 +467,13 @@ public final class RepoGroup {
         } finally {
             RepoLegs.settle(catalogs);
         }
+        // A catalog can end below a release its directory serves (Central's jfree:jfreechart lists
+        // up to 1.0.1 and serves 1.0.13). Maven never reads the catalog for an exact version, so a
+        // wanted version no catalog lists is probed by its POM before it is refused.
+        for (String v : wanted) {
+            if (union.contains(v) || (Versions.isSnapshot(v) && !snapshots)) continue;
+            if (servesUnlisted(Coordinate.of(coord.group(), coord.artifact(), v))) union.add(v);
+        }
         // Every candidate failed to answer: that is the failure, not an empty catalog, and an
         // empty answer must not be memoised over it.
         if (union.isEmpty() && firstFailure != null) throw firstFailure;
@@ -478,6 +485,15 @@ public final class RepoGroup {
             VERSIONS_CACHE.put(key, new VersionsEntry(immutable, Clock.SYSTEM.nanos() + VERSIONS_TTL_NANOS));
         }
         return immutable;
+    }
+
+    /** Whether some repository here serves {@code coord}'s POM although no catalog listed its version. */
+    private boolean servesUnlisted(Coordinate coord) throws InterruptedException {
+        try {
+            return tryFetchPom(coord).isPresent();
+        } catch (IOException e) {
+            return false; // unreachable or refusing: the catalogs' answer stands
+        }
     }
 
     /** True when every repository here is one whose answers the process memos may keep; see {@link RepoMisses#memoizes}. */

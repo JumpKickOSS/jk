@@ -98,8 +98,10 @@ jar that does not exist. `<exclusions>` are carried: each one is an entry in the
 Maven does. An exclusion written under `<dependencyManagement>` lands on the
 `[managed-dependencies]` row for its module, so it prunes every edge onto that module, the
 dependency POMs' included, as it does under Maven. A `<version>` that no repository the lock reads
-lists (`swing-layout 1.0.2`, which Central never published) is a Tier-3 row at import naming what the
-catalogs list instead, so the refusal arrives while the POM is still in front of you; a repository
+lists or serves (`swing-layout 1.0.2`, which Central never published) is a Tier-3 row at import naming
+what the catalogs list instead, so the refusal arrives while the POM is still in front of you — a
+release whose POM a repository serves while its `maven-metadata.xml` stops short of it (Central's
+`jfree:jfreechart 1.0.13`) is found by the POM, as Maven finds it; a repository
 that cannot be reached during that check leaves a Tier-2 note, not a claim; a pin whose POM a lock
 on this machine already fetched is not checked again. Read that report before trusting the
 generated `jk.toml`.
