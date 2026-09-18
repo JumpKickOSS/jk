@@ -226,7 +226,8 @@ class ImportCommandTest {
 
         String jkBuild = Files.readString(tempDir.resolve("jk.toml"));
         assertThat(jkBuild).contains("group    = \"com.example\"");
-        assertThat(jkBuild).contains("jdk      = \"25\"");
+        // Source compatibility is a language level the host JDK compiles to, not a JDK pin.
+        assertThat(jkBuild).contains("java     = 25").doesNotContain("jdk      =");
         assertThat(jkBuild).contains("[dependencies]");
         // The catalog short name (jackson2-databind) with the bare version, as jk add writes it.
         assertThat(jkBuild).contains("jackson2-databind = \"2.18.2\"");

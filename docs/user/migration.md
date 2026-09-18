@@ -497,7 +497,9 @@ refused with Gradle's reason. Importing one project's `build.gradle` from inside
 scans that file alone and points at the root's settings file. The scanner reads the declarative
 idioms of a single script: the `plugins { }` block (a Kotlin plugin version is `project.kotlin`;
 the ids an installed jk plugin claims map to its table), `group`/`version`/`description`,
-`java { }` toolchain lines, `application { mainClass }`, `jar { manifest { attributes } }`,
+`java { }` — source and target compatibility and `options.release` are the `java` level, a
+`toolchain { languageVersion }` or `jvmToolchain(N)` line the `jdk` pin, as the model import
+writes them — `application { mainClass }`, `jar { manifest { attributes } }`,
 `repositories { }`, and the `dependencies { }` block including on-disk
 `gradle/libs.versions.toml` accessors (`libs.guava`, `libs.bundles.testing`; unresolved refs are
 rows). The project is named from `rootProject.name` in the settings file beside the build file,
