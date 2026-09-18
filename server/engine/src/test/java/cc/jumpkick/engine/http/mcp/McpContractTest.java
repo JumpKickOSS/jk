@@ -191,7 +191,7 @@ class McpContractTest {
     void initialize_capabilities_match_the_implemented_method_set() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
+        Map<String, Object> resp = JsonFields.parseObject(body);
         Map<String, Object> result = object(resp, "result");
         Map<String, Object> caps = object(result, "capabilities");
         assertThat(caps).containsKeys("tools", "resources", "prompts", "logging");
@@ -252,7 +252,7 @@ class McpContractTest {
     void empty_batch_is_a_single_invalid_request_error_object() {
         String body = mcp.handleBody("[]");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
+        Map<String, Object> resp = JsonFields.parseObject(body);
         Map<String, Object> err = object(resp, "error");
         assertThat(err.get("code")).isEqualTo(-32600.0);
         assertThat(resp.get("id")).isNull();
@@ -342,7 +342,7 @@ class McpContractTest {
                                 + "}}",
                         session)
                 .body();
-        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
+        Map<String, Object> resp = JsonFields.parseObject(body);
         Map<String, Object> result = object(resp, "result");
         return object(result, "structuredContent");
     }

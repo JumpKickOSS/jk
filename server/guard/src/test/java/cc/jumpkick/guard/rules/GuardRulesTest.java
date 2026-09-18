@@ -171,7 +171,29 @@ class GuardRulesTest {
                 .singleElement()
                 .extracting(LoadError::message)
                 .asString()
-                .contains("over the 60-token budget", "x 83");
+                .contains("over the 60-token budget", "x 77");
+        // 77, not 83: `why` and `instead` are documentation the rule must carry, and the budget
+        // is looking for logic. 70 signatures are the logic here.
+    }
+
+    @Test
+    void a_well_explained_rule_is_not_an_oversized_one(@TempDir Path dir) throws IOException {
+        // The budget looks for a rule that has become a program. A rule must carry `why` and
+        // `instead`, and a text rule the `hit` and `miss` that prove it bites — counting those
+        // charged a rule for being well explained, and suggested moving it to a guard test, which
+        // would bury one regex in Java and drop the explanation. One pattern is not a program
+        // however much is written about it.
+        String prose = "words that explain at length exactly why this matters and what to do instead, "
+                + "repeated until it is far longer than any budget would allow a rule to be, and then "
+                + "carried on well past that point as a thorough explanation naturally does";
+        String rule = "[guards.x]\nkind = \"text\"\nfiles = [\"**/*.java\"]\n"
+                + "pattern = \"catch\"\nhit = \"" + prose + "\"\nmiss = \"" + prose + "\"\n"
+                + "instead = \"" + prose + "\"\nwhy = \"" + prose + "\"\n";
+
+        LoadResult r = load(dir, rule);
+
+        assertThat(r.hasErrors()).isFalse();
+        assertThat(r.warnings()).as("logic: a kind, a file glob and one pattern").isEmpty();
     }
 
     @Test

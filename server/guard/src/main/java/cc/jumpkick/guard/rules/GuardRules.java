@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -682,6 +683,18 @@ public final class GuardRules {
     }
 
     /** Whitespace-separated tokens of the rule's table in the source text, header included. */
+    /**
+     * The size of a rule's LOGIC, against {@link #TOKEN_BUDGET}.
+     *
+     * <p>What the budget is for is a rule that has become a program. What it counted was every
+     * word in the table — and a rule must carry a {@code why} and an {@code instead}, and a text
+     * rule the {@code hit} and {@code miss} that prove it bites. Those are prose, they are
+     * mandatory, and they are the part a reader most wants. Counting them put all eleven of this
+     * file's rules over the budget for being well explained, and the remedy the warning suggests,
+     * moving the rule to a guard test, would have buried one regex in Java and dropped its
+     * explanation on the way. Measured on logic alone not one of the eleven reaches the budget,
+     * so not one of them was what the budget is looking for.
+     */
     static int tokenCount(String text, String id) {
         String header = "[guards." + id + "]";
         int at = text.indexOf(header);
@@ -689,13 +702,29 @@ public final class GuardRules {
         int end = text.indexOf("\n[", at + header.length());
         String body = end < 0 ? text.substring(at) : text.substring(at, end);
         int tokens = 0;
+        String key = null;
         for (String line : body.split("\n")) {
             String s = line.strip();
             if (s.isEmpty() || s.startsWith("#")) continue;
+            // A sub-table header ends the previous key; a bare continuation line belongs to it.
+            if (s.startsWith("[")) key = null;
+            Matcher m = KEY.matcher(s);
+            if (m.find()) key = m.group(1);
+            if (key != null && PROSE.contains(key)) continue;
             tokens += s.split("\\s+").length;
         }
         return tokens;
     }
+
+    /** {@code key =} at the head of a line — where a value, and any continuation of it, begins. */
+    private static final Pattern KEY = Pattern.compile("^([A-Za-z_][\\w-]*)\\s*=");
+
+    /**
+     * The keys whose value explains a rule rather than deciding anything: the two every rule must
+     * carry, the examples a text rule must carry, and the fixture that proves it bites.
+     */
+    private static final Set<String> PROSE =
+            Set.of("why", "instead", "reason", "hit", "miss", "fixture", "explain");
 
     private static int lineOf(TomlParseResult doc, List<String> path) {
         TomlPosition p = doc.inputPositionOf(path);
