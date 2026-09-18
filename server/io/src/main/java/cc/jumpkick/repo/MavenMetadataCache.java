@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.util.AtomicWrites;
@@ -33,6 +34,10 @@ import java.util.concurrent.Callable;
  * <p>{@link #withForceRevalidate} / {@code -F} skip the TTL short-circuit (still conditional
  * GET when validators exist). Reserved for {@code jk update} and explicit force — not every
  * {@code jk lock}, so back-to-back locks do not hammer Central.
+ *
+ * <p>Every GET runs under the per-host {@link HostRateLimiter}, the same permits an artifact
+ * download takes, so a sweep asking many catalogs of one host at once is held to what the host
+ * tolerates.
  */
 public final class MavenMetadataCache {
 
@@ -78,11 +83,19 @@ public final class MavenMetadataCache {
     private final Http http;
     private final Path dir;
     private final Duration ttl;
+    private final HostRateLimiter limiter;
 
+    /** A cache whose GETs run under the process-wide per-host limiter. */
     public MavenMetadataCache(Http http, Path dir, Duration ttl) {
+        this(http, dir, ttl, HostRateLimiter.shared());
+    }
+
+    /** A cache whose GETs run under {@code limiter}'s per-host permits. */
+    public MavenMetadataCache(Http http, Path dir, Duration ttl, HostRateLimiter limiter) {
         this.http = Objects.requireNonNull(http, "http");
         this.dir = Objects.requireNonNull(dir, "dir");
         this.ttl = Objects.requireNonNull(ttl, "ttl");
+        this.limiter = Objects.requireNonNull(limiter, "limiter");
     }
 
     /**
@@ -143,7 +156,7 @@ public final class MavenMetadataCache {
             Files.deleteIfExists(meta);
         }
         try {
-            HttpResponse<byte[]> resp = http.get(uri, headers);
+            HttpResponse<byte[]> resp = get(uri, headers);
             int status = resp.statusCode();
             if (status == 304) {
                 if (hasBody(body)) {
@@ -153,7 +166,7 @@ public final class MavenMetadataCache {
                 // Not modified relative to a body this cache no longer holds: the validators are
                 // worthless, so they go and the bytes are asked for outright.
                 Files.deleteIfExists(meta);
-                resp = http.get(uri, new LinkedHashMap<>(auth));
+                resp = get(uri, new LinkedHashMap<>(auth));
                 status = resp.statusCode();
             }
             if (status == 200) {
@@ -179,6 +192,11 @@ public final class MavenMetadataCache {
             }
             throw networkError;
         }
+    }
+
+    /** One GET under the host's permit: a catalog read is bounded per host as an artifact download is. */
+    private HttpResponse<byte[]> get(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
+        return limiter.run(uri, () -> http.get(uri, headers));
     }
 
     /** A cached body worth validating: present and non-empty. */
