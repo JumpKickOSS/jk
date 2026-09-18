@@ -139,6 +139,16 @@ public final class SessionContext {
     }
 
     /**
+     * As {@link #startVirtual}, on a daemon platform thread: for a body that must run whatever the
+     * virtual-thread scheduler is busy with — a reader of a worker's pipe, whose carrier a saturated
+     * scheduler would otherwise hand to the work that saturates it.
+     */
+    public static Thread startPlatform(String name, Runnable body) {
+        Session session = current();
+        return Thread.ofPlatform().daemon().name(name).start(() -> runWhere(session, body));
+    }
+
+    /**
      * The process-static fallback itself, ignoring any {@link ScopedValue} binding on the calling
      * thread. Test support: {@link #current()} prefers the binding, so snapshotting it and writing
      * it back with {@link #install} publishes one thread's session to every other. Snapshot this

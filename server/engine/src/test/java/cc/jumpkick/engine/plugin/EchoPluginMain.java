@@ -20,6 +20,8 @@ import java.nio.charset.StandardCharsets;
  *       protocol line shares its physical line.
  *   <li>{@code env NAME…} — emit one {@code env} event carrying each named variable as this process
  *       sees it ({@code <unset>} when absent), then exit. What {@link WorkerEnv} let through.
+ *   <li>{@code burst N} — emit {@code N} numbered protocol events as fast as stdout takes them and
+ *       exit at once, the way a test fork writes its last results and dies.
  *   <li>(default) <b>pull</b> — emit a passthrough line and an initial {@code ready}, then loop on
  *       stdin: {@code RUN <x>} echoes a {@code ran} event for {@code x} followed by another {@code
  *       ready}; {@code DONE} or EOF exits. Drives {@link PluginProcess#converse}.
@@ -49,6 +51,11 @@ public final class EchoPluginMain {
                         .append('"');
             }
             out.println(json.append('}'));
+            return;
+        }
+        if (args.length > 1 && args[0].equals("burst")) {
+            int count = Integer.parseInt(args[1]);
+            for (int i = 0; i < count; i++) out.println("##T:{\"e\":\"n\",\"i\":" + i + "}");
             return;
         }
         if (args.length > 0 && args[0].equals("glued")) {

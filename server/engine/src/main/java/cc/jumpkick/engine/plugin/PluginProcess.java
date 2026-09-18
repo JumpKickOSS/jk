@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -235,12 +236,12 @@ public final class PluginProcess {
         // Every worker forks through here, so this is where it loses the engine's terminal.
         pb.command(WorkerSession.detached(pb.command()));
         Process process = JobWorkers.start(pb);
-        final AtomicLong lastLineAt = new AtomicLong(System.currentTimeMillis());
+        final AtomicLong lastLineAt = new AtomicLong(Clock.SYSTEM.millis());
         Thread watchdog = null;
         if (idleTimeoutMs > 0) {
             watchdog = SessionContext.startVirtual("jk-worker-watchdog", () -> {
                 while (process.isAlive() || hasLiveDescendant(process)) {
-                    long idle = System.currentTimeMillis() - lastLineAt.get();
+                    long idle = Clock.SYSTEM.millis() - lastLineAt.get();
                     if (idle >= idleTimeoutMs) {
                         forceStop(process);
                         return;
@@ -256,14 +257,18 @@ public final class PluginProcess {
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
         // engine. No idle timeout — a compiling worker is legitimately silent for long stretches.
         //
-        // The pump runs on its own virtual thread so this (job) thread can give up on the pipe:
-        // on Linux a root that exits leaving a reparented child holding the stdout write end
-        // produces neither EOF nor a visible descendant — descendants() of a dead process is
-        // empty, and closing the fd does not wake a blocked native pipe read. The job thread
-        // waits root-exit + a drain grace, then abandons the reader instead of hanging forever.
+        // The pump runs on a platform thread of its own, for two reasons. This (job) thread can
+        // give up on the pipe: on Linux a root that exits leaving a reparented child holding the
+        // stdout write end produces neither EOF nor a visible descendant — descendants() of a
+        // dead process is empty, and closing the fd does not wake a blocked native pipe read —
+        // so the job thread waits root-exit + a drain grace, then abandons the reader instead of
+        // hanging forever. And the pump keeps reading whatever the virtual-thread scheduler is
+        // busy with: a pump on a virtual thread waits for a carrier while a plan's work holds
+        // every one, the fork blocks on a full pipe or exits with its last events unread, and the
+        // job either never ends or gives the pipe up with those events still in it.
         //
         // Both threads start under the calling request's session: the handler the pump invokes
-        // runs on the pump, and a bare virtual thread would hand it the process-default session.
+        // runs on the pump, and a bare thread would hand it the process-default session.
         BufferedReader reader =
                 new BoundedLineReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         AtomicBoolean abandoned = new AtomicBoolean();
@@ -278,12 +283,16 @@ public final class PluginProcess {
             if (closeStdinImmediately) {
                 convo.closeInput();
             }
-            Thread pump = SessionContext.startVirtual("jk-worker-pump", () -> {
+            Thread pump = SessionContext.startPlatform("jk-worker-pump", () -> {
                 try {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (abandoned.get()) continue; // orphan chatter after the job moved on
-                        lastLineAt.set(System.currentTimeMillis());
+                    while (true) {
+                        // Once the job has given the pipe up, what the fork already wrote is still
+                        // delivered — those lines are in the pipe now — and only a read that would
+                        // wait on the orphan holding the write end is not made.
+                        if (abandoned.get() && !reader.ready()) break;
+                        String line = reader.readLine();
+                        if (line == null) break;
+                        lastLineAt.set(Clock.SYSTEM.millis());
                         // The protocol shares the child's stdout with everything else the child
                         // prints. Output that ends without a newline — a progress line, a
                         // library's banner — glues the next protocol line onto itself, and a
@@ -323,11 +332,16 @@ public final class PluginProcess {
                 if (!process.isAlive()) {
                     // Root is gone; let the pump drain buffered output and see EOF. If the grace
                     // elapses the write end is held by a reparented orphan we can neither
-                    // enumerate nor wake — abandon the pump (it parks until the orphan exits,
-                    // discarding whatever it reads) rather than wedging the job thread.
+                    // enumerate nor wake — abandon the pump rather than wedge the job thread:
+                    // the stragglers still visible are killed, the pump gets the same grace again
+                    // to deliver the lines the fork wrote before it died, and only then is the
+                    // parent's read end closed (best effort; a pump parked on the orphan's pipe
+                    // stays parked until the orphan exits, and reads nothing more for the job).
                     if (!pumpDone.await(ORPHAN_DRAIN_GRACE_MS, TimeUnit.MILLISECONDS)) {
                         abandoned.set(true);
-                        forceStop(process); // best effort: stragglers still visible + fd close
+                        JobWorkers.destroyTree(process);
+                        pumpDone.await(ORPHAN_DRAIN_GRACE_MS, TimeUnit.MILLISECONDS);
+                        forceStop(process);
                     }
                     break;
                 }
@@ -399,8 +413,9 @@ public final class PluginProcess {
 
     /**
      * After the root exits, how long the pump gets to drain buffered output before the job
-     * concludes an orphan is holding the pipe and abandons the reader. Only the orphan case pays
-     * it — a clean EOF releases the latch immediately.
+     * concludes an orphan is holding the pipe and abandons the reader — and, once abandoned, how
+     * long it gets to deliver the lines already in the pipe before the read end is closed. Only the
+     * orphan case pays either — a clean EOF releases the latch immediately.
      */
     private static final long ORPHAN_DRAIN_GRACE_MS = 5_000L;
 
