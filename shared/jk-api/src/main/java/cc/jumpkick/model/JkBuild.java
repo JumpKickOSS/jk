@@ -299,6 +299,29 @@ public record JkBuild(
                 library);
     }
 
+    /** This build with its {@code [repositories]} replaced. */
+    public JkBuild withRepositories(List<RepositorySpec> repositories) {
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                application,
+                nativeConfig,
+                pluginConfigs,
+                build,
+                format,
+                variants,
+                install,
+                publish,
+                image,
+                library);
+    }
+
     /** This build with its dependencies replaced — the variant dependency-overlay fold point. */
     public JkBuild withDependencies(Dependencies dependencies) {
         return new JkBuild(
