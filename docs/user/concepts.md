@@ -33,7 +33,7 @@ already have a modern JDK. Prefer **language level**, not extra runtime download
 
 | Field | Meaning | Prefer |
 |-------|---------|--------|
-| **`java = N`** | Language + bytecode (`--release N`) | **Yes** — default 25; 17 and 21 are fine (host JDK 25 cross-compiles) |
+| **`java = N`** | Language + bytecode (`--release N`) | **Yes** — default 25; 17 and 21 are fine (host JDK 25 cross-compiles). Below 17 the build warns once per module — keep it only while the module needs an API a later JDK removed |
 | **`jdk = …`** | Which JDK *install* to use / provision | **Rare** — only when you truly need that runtime (Graal, a vendor pin, a major newer than the host) |
 
 Do **not** write `jdk = 17` or `jdk = 21` just to emit older bytecode. That forces an obsolete

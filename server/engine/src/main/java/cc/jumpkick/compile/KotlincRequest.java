@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
-import cc.jumpkick.jdk.SupportedJdk;
+import cc.jumpkick.config.JavaRelease;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -64,9 +64,8 @@ public record KotlincRequest(
         extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
         plugins = plugins == null ? List.of() : List.copyOf(plugins);
         javaSourceRoots = javaSourceRoots == null ? List.of() : List.copyOf(javaSourceRoots);
-        if (jvmTarget < SupportedJdk.MIN_MAJOR) {
-            throw new IllegalArgumentException(
-                    "jvmTarget must be >= " + SupportedJdk.MIN_MAJOR + ", got: " + jvmTarget);
+        if (jvmTarget < JavaRelease.OLDEST) {
+            throw new IllegalArgumentException("jvmTarget must be >= " + JavaRelease.OLDEST + ", got: " + jvmTarget);
         }
         if (workerClasspath.isEmpty()) {
             throw new IllegalArgumentException("workerClasspath must include the worker jar + BTA closure");

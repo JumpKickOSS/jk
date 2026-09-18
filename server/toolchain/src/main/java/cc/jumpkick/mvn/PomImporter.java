@@ -602,8 +602,12 @@ public final class PomImporter {
         if (declared.isEmpty()) return 25;
         int release = declared.get().release();
         if (release >= PluginFacts.JAVA_FLOOR) return release;
-        report.warning(declared.get().origin() + " declared " + release + "; jk's floor is " + PluginFacts.JAVA_FLOOR
-                + "; bytecode level raised — written as `java = " + PluginFacts.JAVA_FLOOR + "`.");
+        report.warning(
+                declared.get().origin() + " declared " + release + "; jk's floor is " + PluginFacts.JAVA_FLOOR
+                        + "; bytecode level raised — written as `java = " + PluginFacts.JAVA_FLOOR
+                        + "`. A module whose sources or dependencies need an API a later JDK removed keeps `java = "
+                        + release
+                        + "` instead: the toolchain JDK cross-compiles for it, and a compile that misses such an API names it.");
         return PluginFacts.JAVA_FLOOR;
     }
 

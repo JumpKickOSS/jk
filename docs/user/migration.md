@@ -93,8 +93,11 @@ POM declares them (two BOMs that manage the same module resolve to the first one
 default, JDK, OS) are folded in. The fidelity report names what each parent contributed —
 "versions for X, Y managed by parent g:a:v" — and a parent no repository has is a Tier-3 row, not
 a failed import. The compiler level is written as `java = N`, never as a `jdk` pin: a level below
-17 is raised to jk's floor with a row saying so, and `jdk =` appears only when the POM pins a
-toolchain (`maven-toolchains-plugin` or `<jdkToolchain>`). Inactive profiles land by payload
+17 is raised to jk's floor with a row saying so — a module whose sources or a dependency's class
+hierarchy still need an API a later JDK removed (Keycloak's `jboss-adapter-core` extends a
+PicketBox class built on `java.security.acl.Group`) keeps the declared level written back by hand,
+and the compile that misses the API names it and the level to write — and `jdk =` appears only when
+the POM pins a toolchain (`maven-toolchains-plugin` or `<jdkToolchain>`). Inactive profiles land by payload
 (the table below). A `<classifier>` is carried: the entry is `{ group, name, version, classifier }`
 with the handle suffixed by the classifier, so a jar and its `natives-linux` twin are two entries,
 and a classifier a POM spells with `${os.detected.classifier}` or `${javafx.platform}` is written

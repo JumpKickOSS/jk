@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
-import cc.jumpkick.jdk.SupportedJdk;
+import cc.jumpkick.config.JavaRelease;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -39,8 +39,8 @@ public record CompileRequest(
         processorPath = List.copyOf(processorPath);
         if (compilerClasspath == null) compilerClasspath = List.of();
         compilerClasspath = List.copyOf(compilerClasspath);
-        if (release < SupportedJdk.MIN_MAJOR) {
-            throw new IllegalArgumentException("release must be >= " + SupportedJdk.MIN_MAJOR + ", got: " + release);
+        if (release < JavaRelease.OLDEST) {
+            throw new IllegalArgumentException("release must be >= " + JavaRelease.OLDEST + ", got: " + release);
         }
     }
 

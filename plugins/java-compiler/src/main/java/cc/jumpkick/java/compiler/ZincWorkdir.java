@@ -34,10 +34,12 @@ final class ZincWorkdir {
 
     private final Path analysisFile;
     private final Path aggregatingMarker;
+    private final Path analysisOffMarker;
 
     private ZincWorkdir(Path workdir) {
         this.analysisFile = workdir.resolve("zinc");
         this.aggregatingMarker = workdir.resolve("aggregating");
+        this.analysisOffMarker = workdir.resolve("analysis-off");
     }
 
     static ZincWorkdir of(Path workdir) {
@@ -76,6 +78,28 @@ final class ZincWorkdir {
     /** An aggregating previous run invalidates the analysis outright, so drop it. */
     void discardAnalysisIfAggregating() throws IOException {
         if (aggregating()) Files.deleteIfExists(analysisFile);
+    }
+
+    /**
+     * The type Zinc's Java analysis could not load with this worker's JDK the last time it ran here,
+     * or empty when the analysis runs. While set, every compile in this workdir is a full javac run
+     * with no analysis; {@code jk clean} takes the marker with the workdir.
+     */
+    Optional<String> analysisOff() {
+        try {
+            return Files.isRegularFile(analysisOffMarker)
+                    ? Optional.of(Files.readString(analysisOffMarker).strip())
+                    : Optional.empty();
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    /** Turn the analysis off for this workdir, naming the type it could not load, and drop what it wrote. */
+    void markAnalysisOff(String missingType) throws IOException {
+        Files.createDirectories(analysisOffMarker.getParent());
+        Files.writeString(analysisOffMarker, missingType + "\n");
+        tryDeleteAnalysis();
     }
 
     /**
