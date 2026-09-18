@@ -113,7 +113,8 @@ class JobEnvelopeQueueTest {
         Await.until(Duration.ofSeconds(5), () -> out.toString().contains("job-queued"));
         assertThat(env.queued()).isEqualTo(1);
         assertThat(out.toString()).contains("\"type\":\"job-queued\"").contains("\"ahead\":0");
-        assertThat(host.events).anyMatch(e -> e.startsWith("request-queued:"));
+        // The line lands on the stream's writer thread; the dashboard frame follows on this one.
+        Await.until(Duration.ofSeconds(5), () -> host.events.stream().anyMatch(e -> e.startsWith("request-queued:")));
         assertThat(secondRan).isFalse();
         assertThat(host.activePlans).as("a queued job holds no plan slot").isEqualTo(1);
 
@@ -259,6 +260,8 @@ class JobEnvelopeQueueTest {
 
         assertThat(secondResult).hasValue(-1L);
         assertThat(secondRan).isFalse();
+        // The terminal is queued before submit returns and lands on the stream's writer thread.
+        Await.until(Duration.ofSeconds(5), () -> out.toString().contains("\"type\":\"error\""));
         String error = firstLine(out, "error");
         assertThat(Jsonl.str(error, "code")).isEqualTo("queue-wait");
         assertThat(Jsonl.str(error, "message"))
