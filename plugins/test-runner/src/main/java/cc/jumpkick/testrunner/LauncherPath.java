@@ -86,11 +86,9 @@ final class LauncherPath {
         LauncherDiscoveryRequest request = b.build();
         Clock clock = Clock.SYSTEM;
         long planStart = clock.nanos();
-        Launcher launcher;
         TestPlan plan;
         try {
-            launcher = LauncherFactory.create();
-            plan = launcher.discover(request);
+            plan = listingLauncher().discover(request);
         } catch (RuntimeException e) {
             if (emptyRunWithoutEngine(e, scanClasspath, filter, adapter)) {
                 adapter.emitPlanFinished(0);
@@ -105,10 +103,43 @@ final class LauncherPath {
         emitDiscovery(plan, adapter);
         warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
         warnTagExcluded(() -> named(scanClasspath, filter, methods), includeTags, excludeTags, plan, adapter);
-        launcher.execute(request, adapter);
+        // Executed class by class on a launcher that fires the session and discovery listeners, as
+        // the pull workers execute: a framework readies the JVM for the class about to run, not for
+        // every class the root holds — Quarkus augments one application per test profile as the
+        // classes load, which over a root of hundreds of @QuarkusTest classes is more heap than a
+        // JVM has before the first test is named. A plan with a test under no class — an engine
+        // that runs features or scripts — is executed whole, as the one request it was listed from.
+        Launcher launcher = LauncherFactory.create();
+        if (everyTestUnderAClass(plan)) {
+            for (String className : discoveredClasses(plan)) {
+                LauncherDiscoveryRequestBuilder one =
+                        LauncherDiscoveryRequestBuilder.request().selectors(DiscoverySelectors.selectClass(className));
+                if (filter != null && !filter.isBlank()) {
+                    one.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
+                }
+                applyTagFilters(one, includeTags, excludeTags);
+                applyMethodFilter(one, methods);
+                launcher.execute(one.build(), adapter);
+            }
+        } else {
+            launcher.execute(request, adapter);
+        }
         long planMs = Math.max(0, (clock.nanos() - planStart) / 1_000_000);
         adapter.emitPlanFinished(planMs);
         return adapter.hasFailures() ? 1 : 0;
+    }
+
+    /** True when every test of {@code plan} sits under a class container, so selecting the classes selects the tests. */
+    private static boolean everyTestUnderAClass(TestPlan plan) {
+        for (TestIdentifier root : plan.getRoots()) if (!everyTestUnderAClass(plan, root)) return false;
+        return true;
+    }
+
+    private static boolean everyTestUnderAClass(TestPlan plan, TestIdentifier node) {
+        if (isClassContainer(node)) return true;
+        if (node.isTest()) return false;
+        for (TestIdentifier child : plan.getChildren(node)) if (!everyTestUnderAClass(plan, child)) return false;
+        return true;
     }
 
     /**
