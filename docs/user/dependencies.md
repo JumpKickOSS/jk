@@ -324,7 +324,10 @@ that served a coordinate's POM is the one whose answer counts — a GAV's POM an
 published together — so when that repository says there is no jar (a relocation stub, a BOM), another
 remote's failure during the same fan-out is warned about once and the coordinate is judged
 POM-only rather than failing the lock on a remote that never held it. When the holding repository
-itself fails, or no repository is known to hold the POM, the failure stands.
+itself fails, or no repository is known to hold the POM, the failure stands. A module Gradle
+published — its POM carries the `published-with-gradle-metadata` marker — is asked for its jar even
+when its `packaging` is `pom`, the way SpotBugs publishes: a jar the repository serves is pinned like
+any other row's, and a Gradle-published BOM stays a row without a file.
 
 ### Classifiers that follow the host
 
