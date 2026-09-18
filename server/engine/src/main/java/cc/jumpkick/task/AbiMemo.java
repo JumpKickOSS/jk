@@ -68,6 +68,20 @@ public final class AbiMemo {
         STORES.clear();
     }
 
+    /**
+     * Persist every loaded store, then drop it from memory, and return how many entries went. For
+     * the engine that has sat idle: the next build reloads the store from disk in one read.
+     */
+    public static int dropAll() {
+        int dropped = 0;
+        for (Store s : STORES.values()) {
+            s.flush();
+            dropped += s.entries.size();
+        }
+        STORES.clear();
+        return dropped;
+    }
+
     public static long lookups() {
         return LOOKUPS.get();
     }

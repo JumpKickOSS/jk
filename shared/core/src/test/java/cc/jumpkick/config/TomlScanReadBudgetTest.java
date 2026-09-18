@@ -131,4 +131,18 @@ class TomlScanReadBudgetTest {
         Files.setLastModifiedTime(file, FileTime.from(Instant.now().minus(1, ChronoUnit.HOURS)));
         return file;
     }
+
+    @Test
+    void dropping_the_memos_counts_what_went_and_the_next_scan_reads_again(@TempDir Path dir) throws IOException {
+        Path toml = aged(dir.resolve("config.toml"), "[engine]\njobs = 4\n");
+        TomlScan.scan(toml, "engine.jobs");
+        TomlScan.scan(toml, "engine.jobs");
+        assertThat(TomlScan.reads()).as("the memo served the second scan").isEqualTo(1);
+
+        assertThat(TomlScan.dropMemos()).isEqualTo(1);
+        assertThat(TomlScan.dropMemos()).as("nothing left to drop").isZero();
+
+        TomlScan.scan(toml, "engine.jobs");
+        assertThat(TomlScan.reads()).as("a dropped file is read again").isEqualTo(2);
+    }
 }

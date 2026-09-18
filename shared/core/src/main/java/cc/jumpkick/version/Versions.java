@@ -31,6 +31,13 @@ public final class Versions {
 
     private static final int PARSED_LIMIT = 16_384;
 
+    /** Drop every parsed version and return how many went; for the idle engine. */
+    public static int dropParsed() {
+        int dropped = PARSED.size();
+        PARSED.clear();
+        return dropped;
+    }
+
     private static MavenVersion parsed(String version) {
         MavenVersion known = PARSED.get(version);
         if (known != null) return known;

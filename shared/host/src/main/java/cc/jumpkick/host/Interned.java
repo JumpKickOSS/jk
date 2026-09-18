@@ -38,6 +38,16 @@ public final class Interned {
         return s == null ? null : of(s);
     }
 
+    /**
+     * Drop every entry and return how many went. A string still referenced from a live object stays
+     * alive on its own; the table only stops keeping the rest. For the idle engine.
+     */
+    public static int dropAll() {
+        int dropped = TABLE.size();
+        TABLE.clear();
+        return dropped;
+    }
+
     /** How many distinct strings the table holds right now. */
     static int size() {
         return TABLE.size();

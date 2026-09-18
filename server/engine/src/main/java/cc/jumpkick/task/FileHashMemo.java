@@ -173,6 +173,20 @@ public final class FileHashMemo {
         STORES.clear();
     }
 
+    /**
+     * Persist every loaded store, then drop it from memory, and return how many entries went. For
+     * the engine that has sat idle: the next build reloads the store from disk in one read.
+     */
+    public static int dropAll() {
+        int dropped = 0;
+        for (Store s : STORES.values()) {
+            s.flush();
+            dropped += s.entries.size();
+        }
+        STORES.clear();
+        return dropped;
+    }
+
     /** Test seam: total {@link #contentHash} calls since process start (or last {@link #resetStats}). */
     public static long contentHashInvocations() {
         return CONTENT_HASH_INVOCATIONS.get();

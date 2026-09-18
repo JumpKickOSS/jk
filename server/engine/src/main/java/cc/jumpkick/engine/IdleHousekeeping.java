@@ -80,14 +80,16 @@ public final class IdleHousekeeping {
     /**
      * The trim that runs once the engine has sat idle for {@link HeapTrim#SETTLE}: drop the
      * per-build memos again (the harvest thread and client disconnects allocate after the
-     * boundary), collect so the heap uncommits, and return the native heap. One log line says
-     * what came back.
+     * boundary), empty the process-wide memos a next build of the same workspace would have
+     * reused ({@link MemoTrim}), collect so the heap uncommits, and return the native heap. One
+     * log line says what came back and what was dropped.
      */
     private void settledTrim() {
         if (!idle()) return;
         dropHeapResidue();
+        String memos = MemoTrim.drop();
         System.gc();
-        log.accept("jk engine: idle trim: " + HeapTrim.trimNative());
+        log.accept("jk engine: idle trim: " + HeapTrim.trimNative() + "; " + memos);
     }
 
     public void maybeIdleGc() {
