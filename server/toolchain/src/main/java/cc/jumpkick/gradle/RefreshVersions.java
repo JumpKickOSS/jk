@@ -4,22 +4,23 @@ package cc.jumpkick.gradle;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The pins refreshVersions keeps in {@code versions.properties} at a build's root while its scripts
  * spell every version as {@code _}. {@code version.<group>..<artifact>=x} names one coordinate;
- * {@code version.<key>=x} names a family the plugin's rules gather under a short key — {@code
- * kotlinx.coroutines} for {@code org.jetbrains.kotlinx:kotlinx-coroutines-*}, {@code junit.jupiter}
- * for {@code org.junit.jupiter:junit-jupiter-*} — whose every segment is a word of the coordinate.
+ * {@code version.<key>=x} names a family under the short key the plugin's rules spell for it
+ * ({@link RefreshVersionsRules}) — {@code kotlinx.coroutines} for {@code
+ * org.jetbrains.kotlinx:kotlinx-coroutines-*}, {@code junit.jupiter} for {@code
+ * org.junit.jupiter:junit-jupiter-*}; {@code plugin.<id>=x} names a Gradle plugin applied without
+ * a version, the Kotlin plugins under {@code version.kotlin} and the Android ones under {@code
+ * plugin.android}. A value that names another key ({@code version.kotlin}) is followed.
  */
 final class RefreshVersions {
 
@@ -27,35 +28,47 @@ final class RefreshVersions {
     static final String FILE = "versions.properties";
 
     private static final String VERSION_PREFIX = "version.";
+    private static final String PLUGIN_PREFIX = "plugin.";
 
-    /** No file: every lookup is a miss. */
-    static final RefreshVersions NONE = new RefreshVersions(Map.of());
+    /** How many times a value naming another key is followed, as the plugin allows. */
+    private static final int REDIRECTS = 5;
 
     /**
-     * What the file says about one coordinate: its pin and the key that carried it, or the keys
-     * that each could have when two short keys fit equally, or nothing.
+     * A settings file's {@code extraArtifactVersionKeyRules}: a file beside the settings, or the
+     * rules inline in a raw string.
      */
-    record Lookup(@Nullable String version, List<String> keys) {
+    private static final Pattern EXTRA_RULES = Pattern.compile(
+            "extraArtifactVersionKeyRules\\s*\\(\\s*(?:file\\s*\\(\\s*[\"']([^\"'\\n]+)[\"']\\s*\\)|\"\"\"(.*?)\"\"\")",
+            Pattern.DOTALL);
+
+    /** No file: every lookup is a miss. */
+    static final RefreshVersions NONE = new RefreshVersions(Map.of(), RefreshVersionsRules.bundled());
+
+    /**
+     * What the file says about one coordinate or plugin: its pin, and the key the plugin writes it
+     * under — the key that was looked up, whether or not the file has it.
+     */
+    record Lookup(@Nullable String version, String key) {
         boolean found() {
             return version != null;
         }
-
-        boolean ambiguous() {
-            return version == null && keys.size() > 1;
-        }
     }
 
-    /** {@code version.} entries, the key without its prefix → the pin. */
+    /** Every {@code version.} and {@code plugin.} entry, by its full name. */
     private final Map<String, String> pins;
 
-    private RefreshVersions(Map<String, String> pins) {
+    private final RefreshVersionsRules rules;
+
+    private RefreshVersions(Map<String, String> pins, RefreshVersionsRules rules) {
         this.pins = pins;
+        this.rules = rules;
     }
 
     /**
      * The {@code versions.properties} of the build {@code projectDir} belongs to: the directory's
      * own, else the parent's when the directory is a subproject (no settings file of its own, one
-     * beside its parent); {@link #NONE} when neither has one.
+     * beside its parent); {@link #NONE} when neither has one. The settings file beside it may add
+     * rules of the build's own through {@code refreshVersions { extraArtifactVersionKeyRules(…) }}.
      */
     static RefreshVersions beside(Path projectDir) throws IOException {
         Path own = projectDir.resolve(FILE);
@@ -75,11 +88,32 @@ final class RefreshVersions {
         }
         Map<String, String> pins = new LinkedHashMap<>();
         for (String name : new TreeSet<>(props.stringPropertyNames())) {
-            if (!name.startsWith(VERSION_PREFIX)) continue;
+            if (!name.startsWith(VERSION_PREFIX) && !name.startsWith(PLUGIN_PREFIX)) continue;
             String value = props.getProperty(name).trim();
-            if (!value.isEmpty()) pins.put(name.substring(VERSION_PREFIX.length()), value);
+            if (!value.isEmpty()) pins.put(name, value);
         }
-        return new RefreshVersions(pins);
+        Path dir = file.toAbsolutePath().getParent();
+        return new RefreshVersions(pins, dir == null ? RefreshVersionsRules.bundled() : extraRules(dir));
+    }
+
+    /** The bundled rules plus those the settings file in {@code dir} adds, when it adds any. */
+    private static RefreshVersionsRules extraRules(Path dir) throws IOException {
+        RefreshVersionsRules rules = RefreshVersionsRules.bundled();
+        for (String settings : GradleImporter.SETTINGS_FILES) {
+            Path file = dir.resolve(settings);
+            if (!Files.isRegularFile(file)) continue;
+            Matcher m = EXTRA_RULES.matcher(Files.readString(file));
+            while (m.find()) {
+                String path = m.group(1);
+                String text = path != null ? readIfThere(dir.resolve(path)) : m.group(2);
+                if (text != null) rules = rules.plus(text);
+            }
+        }
+        return rules;
+    }
+
+    private static @Nullable String readIfThere(Path file) throws IOException {
+        return Files.isRegularFile(file) ? Files.readString(file) : null;
     }
 
     private static boolean hasSettings(Path dir) {
@@ -94,38 +128,40 @@ final class RefreshVersions {
     }
 
     /**
-     * The pin for {@code group:artifact}: the exact key ({@code group..artifact}) when the file has
-     * it, else the short key with the most segments among those whose every segment is a word of
-     * the coordinate — two fitting equally is an ambiguity naming both, none is a miss.
+     * The pin for {@code group:artifact}: the exact key ({@code version.group..artifact}) when the
+     * file has it, else the short key the rules spell for the coordinate — the lookup names the key
+     * it read either way, so a miss can say which entry the file lacks.
      */
     Lookup lookup(String group, String artifact) {
-        String exact = group + ".." + artifact;
-        String pinned = pins.get(exact);
-        if (pinned != null) return new Lookup(pinned, List.of(exact));
-        Set<String> words = words(group, artifact);
-        List<String> best = new ArrayList<>();
-        int bestSegments = 0;
-        for (Map.Entry<String, String> e : pins.entrySet()) {
-            String key = e.getKey();
-            if (key.contains("..")) continue;
-            String[] segments = key.toLowerCase(Locale.ROOT).split("\\.");
-            if (segments.length < bestSegments || !words.containsAll(List.of(segments))) continue;
-            if (segments.length > bestSegments) {
-                best.clear();
-                bestSegments = segments.length;
-            }
-            best.add(key);
-        }
-        if (best.size() == 1) return new Lookup(pins.get(best.getFirst()), best);
-        return new Lookup(null, best);
+        String exact = VERSION_PREFIX + group + ".." + artifact;
+        String pinned = resolve(exact);
+        if (pinned != null) return new Lookup(pinned, exact);
+        String key = rules.keyFor(group, artifact).map(k -> VERSION_PREFIX + k).orElse(exact);
+        return new Lookup(resolve(key), key);
     }
 
-    /** The coordinate's words: the group's dot-separated parts and the artifact's dash- and dot-separated parts. */
-    private static Set<String> words(String group, String artifact) {
-        Set<String> words = new TreeSet<>();
-        for (String part : (group + "." + artifact).toLowerCase(Locale.ROOT).split("[.\\-_]")) {
-            if (!part.isEmpty()) words.add(part);
+    /**
+     * The pin for a Gradle plugin applied without a version: {@code version.kotlin} for a Kotlin
+     * plugin, {@code plugin.android} for an Android one, {@code plugin.<id>} for the rest.
+     */
+    Lookup pluginVersion(String id) {
+        String key = id.startsWith("org.jetbrains.kotlin.") || id.equals("org.jetbrains.kotlin")
+                ? VERSION_PREFIX + "kotlin"
+                : id.startsWith("com.android") ? PLUGIN_PREFIX + "android" : PLUGIN_PREFIX + id;
+        return new Lookup(resolve(key), key);
+    }
+
+    /** The value of {@code key}, a value naming another key followed; null when the file has no such entry. */
+    private @Nullable String resolve(String key) {
+        String value = pins.get(key);
+        for (int hops = 0; value != null && hops < REDIRECTS; hops++) {
+            if (!isAlias(value)) return value;
+            value = pins.get(value);
         }
-        return words;
+        return value == null || isAlias(value) ? null : value;
+    }
+
+    private static boolean isAlias(String value) {
+        return value.startsWith(VERSION_PREFIX) || value.startsWith(PLUGIN_PREFIX);
     }
 }

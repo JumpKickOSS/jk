@@ -221,7 +221,8 @@ public final class GradleImporter {
         // its compiler version); ids claimed by an installed jk plugin's [[import.gradle-plugin]]
         // rules map to that plugin's table below; the rest are diagnostics only.
         String pluginsBody = pluginsBlock(stripped, properties, report);
-        VersionSelector kotlin = ImportedKotlin.floored(detectKotlinVersion(pluginsBody, report), report);
+        VersionSelector kotlin =
+                ImportedKotlin.floored(detectKotlinVersion(pluginsBody, refreshVersions, report), report);
         // git.properties from the git-properties plugin, build-info.properties from Boot's
         // `springBoot { buildInfo() }`: both are the [build-info] table.
         BuildBlock.BuildInfo buildInfo = BOOT_BUILD_INFO.matcher(stripped).find() ? BuildBlock.BuildInfo.DEFAULT : null;
@@ -237,10 +238,13 @@ public final class GradleImporter {
                 }
                 case GIT_PROPERTIES_PLUGIN -> buildInfo = BuildBlock.BuildInfo.DEFAULT;
                 case DOKKA_PLUGIN -> {
-                    // Dokka's version is the [dokka] pin; applied without one, jk's default Dokka runs.
+                    // Dokka's version is the [dokka] pin — inline, else refreshVersions' plugin.org.jetbrains.dokka;
+                    // applied without one, jk's default Dokka runs.
                     Matcher dokka = DOKKA_ID_VERSION.matcher(pluginsBody);
-                    if (dokka.find()) {
-                        String v = Objects.requireNonNull(firstNonNull(dokka.group(1), dokka.group(2)));
+                    String v = dokka.find()
+                            ? firstNonNull(dokka.group(1), dokka.group(2))
+                            : refreshVersions.pluginVersion(DOKKA_PLUGIN).version();
+                    if (v != null) {
                         dokkaTable = new BuildBlock.Dokka(VersionSelector.parse(v), BuildBlock.Dokka.Format.JAVADOC);
                     }
                 }
@@ -266,12 +270,14 @@ public final class GradleImporter {
         // Plugin-owned tables: each installed jk plugin's [[import.gradle-plugin]] rules map a
         // Gradle plugin id to its table (Boot: the Gradle plugin's version IS the Boot version ->
         // `version`, which auto-imports the BOM so versionless starters stay versionless).
-        // Applied-without-version (settings pluginManagement) can't be resolved from this file
-        // alone -- the rule's warning asks the user to fill it in.
+        // Applied without a version, a plugin's pin is refreshVersions' plugin.<id> entry when the
+        // build keeps one; a settings pluginManagement version can't be read from this file alone,
+        // and the rule's warning asks the user to fill it in.
         Map<String, @Nullable String> applied = pluginsApplied(pluginsBody);
         Map<String, String> pluginVersions = new LinkedHashMap<>();
         applied.forEach((id, v) -> {
-            if (v != null) pluginVersions.put(id, v);
+            String pin = v != null ? v : refreshVersions.pluginVersion(id).version();
+            if (pin != null) pluginVersions.put(id, pin);
         });
         List<PluginConfig> pluginConfigs = mapPluginTables(applied.keySet(), pluginVersions, importRules, report);
 
@@ -377,11 +383,13 @@ public final class GradleImporter {
     /**
      * Detect the Kotlin compiler version from the {@code plugins {}} block. Recognises {@code
      * kotlin("jvm") version "X"} and {@code id("org.jetbrains.kotlin.jvm") version "X"}; the declared
-     * version is the pin. When the Kotlin plugin is applied without an explicit version the selector
-     * is {@code latest}, which the first {@code jk lock} resolves. Returns {@code null} for a
-     * non-Kotlin (Java) project.
+     * version is the pin. When the Kotlin plugin is applied without an explicit version the pin is
+     * refreshVersions' {@code version.kotlin} when the build keeps one, else the selector is {@code
+     * latest}, which the first {@code jk lock} resolves. Returns {@code null} for a non-Kotlin
+     * (Java) project.
      */
-    private static @Nullable VersionSelector detectKotlinVersion(String pluginsBody, ImportReport.Builder report) {
+    private static @Nullable VersionSelector detectKotlinVersion(
+            String pluginsBody, RefreshVersions refreshVersions, ImportReport.Builder report) {
         Matcher m = KOTLIN_PLUGIN_VERSION.matcher(pluginsBody);
         if (m.find()) {
             return VersionSelector.parse(Objects.requireNonNull(firstNonNull(m.group(3), m.group(4))));
@@ -393,6 +401,9 @@ public final class GradleImporter {
         boolean kotlinApplied = PLUGIN_KOTLIN.matcher(pluginsBody).find()
                 || KOTLIN_ID.matcher(pluginsBody).find();
         if (kotlinApplied) {
+            String pinned =
+                    refreshVersions.pluginVersion("org.jetbrains.kotlin.jvm").version();
+            if (pinned != null) return VersionSelector.parse(pinned);
             report.warning("Kotlin plugin recognised without an explicit version; project.kotlin is"
                     + " `latest` — `jk lock` picks the current stable, then `jk update` moves it.");
             return VersionSelector.parse("latest");

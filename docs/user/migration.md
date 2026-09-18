@@ -537,11 +537,17 @@ entry or a script-level `val` / `def`, and `${libs.versions.x.get()}` reads the 
 holds for `id("…") version someVal` in the plugins block. A property nothing defines is a row
 naming it and the dependency is written without a version — a `$` never reaches the manifest.
 refreshVersions' `_` is written as the pin `versions.properties` beside the settings file holds:
-the exact `version.<group>..<artifact>` key, else the short key whose every segment is a word of
-the coordinate (`version.kotlinx.coroutines` for `org.jetbrains.kotlinx:kotlinx-coroutines-core`,
-`version.junit.jupiter` for `junit-jupiter-api`); a placeholder the file does not settle — no
-entry, or two short keys fitting equally — is a row naming the dependency, which is written
-version-less. Versions stay on deps and BOMs — they are not written into jk library
+the exact `version.<group>..<artifact>` key, else the short key the plugin's own rules spell for
+the coordinate — the rule files the plugin bundles, plus the `extraArtifactVersionKeyRules` the
+settings file adds — so `version.kotlinx.coroutines` answers
+`org.jetbrains.kotlinx:kotlinx-coroutines-core`, `version.junit.jupiter` answers
+`junit-jupiter-api` and `version.google.android.play-services-maps` answers
+`com.google.android.gms:play-services-maps`; a value naming another key (`version.kotlin`) is
+followed. A placeholder the file does not settle is a row naming the dependency and the key the
+file lacks, and the dependency is written version-less. A plugin the `plugins { }` block applies
+without a version takes the file's `plugin.<id>` entry — `version.kotlin` for a Kotlin plugin, so
+`kotlin("jvm")` alone is that pin rather than `latest`, and `plugin.org.jetbrains.dokka` the
+`[dokka]` pin. Versions stay on deps and BOMs — they are not written into jk library
 catalog layers. Keep `jk gradle` for modules that still need full Gradle.
 
 **Export** writes what the manifest says: `jk export maven` writes each dependency's `exclude`

@@ -300,14 +300,11 @@ final class GradleDependencies {
     /** The version refreshVersions writes in a script while the pin lives in {@code versions.properties}. */
     static final String REFRESH_VERSIONS_PLACEHOLDER = "_";
 
-    /** The row for a {@code _} version {@code versions.properties} does not settle; {@code pin} says why. */
+    /** The row for a {@code _} version {@code versions.properties} does not settle; {@code pin} names the key read. */
     static String placeholderRow(String module, RefreshVersions.Lookup pin) {
-        String why = pin.ambiguous()
-                ? "versions.properties has both `version." + String.join("` and `version.", pin.keys())
-                        + "` and either could be its key"
-                : "versions.properties beside the build has no entry for it";
         return "dependency `" + module + "` has the version `_` (refreshVersions keeps the pin in"
-                + " versions.properties) and " + why + "; written without a version — pin it in jk.toml.";
+                + " versions.properties) and versions.properties beside the build has no `" + pin.key()
+                + "` entry for it; written without a version — pin it in jk.toml.";
     }
 
     /** {@code y `a`} or {@code ies `a`, `b`}, finishing the word "propert". */
