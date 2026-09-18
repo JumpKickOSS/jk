@@ -168,7 +168,8 @@ public final class PomImporter {
                 .nativeConfig(packaging.nativeConfig())
                 .image(packaging.image())
                 .pluginConfig(packaging.springBoot())
-                .pluginConfig(packaging.quarkus());
+                .pluginConfig(packaging.quarkus())
+                .pluginConfig(LintPlugins.map(em.model(), report));
         for (PluginConfig table : generators.tables()) builder.pluginConfig(table);
         JkBuild jkBuild = builder.build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))

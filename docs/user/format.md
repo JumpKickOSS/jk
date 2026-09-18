@@ -225,10 +225,9 @@ JK_JVM_ARGS=-Djk.format.file-timeout-ms=0 jk format   # no bound at all
 - **Gradle Groovy DSL is not formatted.** `*.gradle` / `*.gradle.kts` stay out of `jk format`.
 - **A file the formatter cannot finish is dropped, not waited on**, and stays reported until you
   change it — see [the per-file timeout](#slow-files-and-the-per-file-timeout).
-- **Not a linter.** `jk format` rewrites style; it does not run Checkstyle, SpotBugs, or
-  detekt. Java analysis: install Checkstyle as a tool — [Tools](tools.md) and the
-  [checkstyle-recipe example](examples/checkstyle-recipe/). Kotlin analysis (detekt) is
-  not a first-party plugin yet.
+- **Not a linter.** `jk format` rewrites style; it does not run Checkstyle, PMD, SpotBugs or
+  detekt — those are the [`[lint]` table](lint.md), cached steps after compile whose findings
+  land in `jk-results.md` ([lint-checkstyle example](examples/lint-checkstyle/)).
 - Palantir/Google **skip unnamed/simple compilation units** they cannot format.
 - **optimize-imports cannot shorten a name that is not in the type index** — dependency
   jars, and collisions; see [what it can shorten](#what-optimize-imports-can-shorten).
@@ -237,6 +236,6 @@ JK_JVM_ARGS=-Djk.format.file-timeout-ms=0 jk format   # no bound at all
 
 ## Related
 
-- [Quality / lint recipes](tools.md)
+- [Lint](lint.md) — Checkstyle, PMD, SpotBugs, detekt as cached steps
 - [Config](config.md) (global CLI chrome; format flags are command-local)
 - [Commands](commands.md)

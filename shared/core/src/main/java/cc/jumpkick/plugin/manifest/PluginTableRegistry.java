@@ -64,6 +64,7 @@ public final class PluginTableRegistry {
             "avro.jk-plugin.toml",
             "jaxb.jk-plugin.toml",
             "jooq.jk-plugin.toml",
+            "lint.jk-plugin.toml",
             "minified.jk-plugin.toml",
             "micronaut.jk-plugin.toml");
 

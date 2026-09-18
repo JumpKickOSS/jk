@@ -101,6 +101,7 @@ class SelfHostingTomlTest {
                         "plugins/avro",
                         "plugins/jaxb",
                         "plugins/jooq",
+                        "plugins/lint",
                         "plugins/android",
                         "plugins/micronaut");
     }

@@ -1,8 +1,10 @@
 version = 1
-generated-by = "jk 0.13.6"
+generated-by = "jk 0.13.7"
+generated-by-build = "c302bcd67744"
+generated-by-build-time = "2026-09-18T01:27:52Z"
 resolution-algorithm = "pubgrub-v1"
-jk-min = "0.12.0"
-manifests-sha256 = "b231ef9b9f4082f5ec4535fc33b25865b75e91ca2a39f35df3083acf4b0db6a4"
+jk-min = "0.10"
+manifests-sha256 = "18eb2318c79e190eea5d50e17662bc6744871f9a63ede891576cbc9f9a4aa9fb"
 project-id = "c9ec0cc7a40a4f1b45352db1b77133b3"
 
 [jdk]
@@ -116,9 +118,13 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b"
 scopes   = ["test"]
 
+[[plugin]]
+coordinate = "cc.jumpkick:jk-lint"
+version    = "0.13.7"
+
 [[module]]
 path    = "."
 group   = "com.example"
-name    = "checkstyle-recipe"
+name    = "lint-checkstyle"
 version = "0.0.1"
 java    = 25

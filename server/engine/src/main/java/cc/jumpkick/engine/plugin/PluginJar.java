@@ -52,6 +52,7 @@ public enum PluginJar {
     AVRO("jk-avro", "jk.avro.plugin.jar"),
     JAXB("jk-jaxb", "jk.jaxb.plugin.jar"),
     JOOQ("jk-jooq", "jk.jooq.plugin.jar"),
+    LINT("jk-lint", "jk.lint.plugin.jar"),
     MINIFIED("jk-minified", "jk.minified.plugin.jar");
 
     private final String artifactId;

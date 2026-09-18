@@ -4,7 +4,7 @@ generated-by-build = "dda0e8917a5b"
 generated-by-build-time = "2026-09-17T21:58:40Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "f1a8138d36f3b6da551c45c6cb64d574ebbc31638b42599e14702059c0b046f6"
+manifests-sha256 = "d5a3067fa5825e5a251c1c634d9296e7d858917a4d53c30e5e999ff7be232065"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -257,7 +257,7 @@ name     = "com.google.code.findbugs:jsr305:jar:"
 version  = "3.0.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "com.google.code.gson:gson:jar:"
@@ -393,7 +393,7 @@ name     = "com.google.guava:listenablefuture:jar:"
 version  = "9999.0-empty-to-avoid-conflict-with-guava"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99"
-scopes   = ["main", "provided", "processor"]
+scopes   = ["main", "provided", "test", "processor"]
 
 [[artifact]]
 name     = "com.google.http-client:google-http-client-apache-v2:jar:"
@@ -465,7 +465,7 @@ name     = "com.google.j2objc:j2objc-annotations:jar:"
 version  = "3.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:84d3a150518485f8140ea99b8a985656749629f6433c92b80c75b36aba3b099b"
-scopes   = ["main", "provided", "processor"]
+scopes   = ["main", "provided", "test", "processor"]
 
 [[artifact]]
 name     = "com.google.oauth-client:google-oauth-client-java6:jar:"
@@ -550,6 +550,24 @@ checksum = "sha256:c2ba80841541272bc815bcadab910d2d716aa563eca15762450ab4c889440
 scopes   = ["main"]
 
 [[artifact]]
+name     = "com.puppycrawl.tools:checkstyle:jar:"
+version  = "14.1.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e8bfa553c63d4c0ddcc56a217ebda99cebc75d27ddacc2b3d4b1a2027dae39b8"
+scopes   = ["test"]
+deps = [
+  "com.google.guava:guava:jar:@33.7.1-jre <- 33.7.1-jre",
+  "commons-beanutils:commons-beanutils:jar:@1.11.0 <- 1.11.0",
+  "commons-logging:commons-logging:jar:@1.4.0 <- 1.4.0",
+  "info.picocli:picocli:jar:@4.7.7 <- 4.7.7",
+  "net.sf.saxon:Saxon-HE:jar:@12.9 <- 12.9",
+  "org.antlr:antlr4-runtime:jar:@4.11.1 <- 4.13.2",
+  "org.reflections:reflections:jar:@0.10.2 <- 0.10.2",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.18",
+  "org.slf4j:slf4j-simple:jar:@2.0.18 <- 2.0.18",
+]
+
+[[artifact]]
 name     = "com.sun.istack:istack-commons-runtime:jar:"
 version  = "4.1.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -617,6 +635,20 @@ deps = [
 ]
 
 [[artifact]]
+name     = "commons-beanutils:commons-beanutils:jar:"
+version  = "1.11.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9e44ba68ec9a3f21286fa2a8bbb003b735c0f69101bb43144b79f4f8aaa74709"
+scopes   = ["test"]
+deps = [
+  "commons-collections:commons-collections:jar:@3.2.2 <- 3.2.2",
+  "commons-logging:commons-logging:jar:@1.4.0 <- 1.3.5",
+]
+excluded-by = [
+  "commons-logging:commons-logging <- com.puppycrawl.tools:checkstyle@14.1.0",
+]
+
+[[artifact]]
 name     = "commons-cli:commons-cli:jar:"
 version  = "1.11.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -640,6 +672,13 @@ checksum = "sha256:78a5d732fbd715e2d10bd7150d2f8030bae57267f8aacc5c88f642cb6c2e5
 scopes   = ["main", "provided", "test"]
 
 [[artifact]]
+name     = "commons-collections:commons-collections:jar:"
+version  = "3.2.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:eeeae917917144a68a741d4c0dff66aa5c5c5fd85593ff217bced3fc8ca783b8"
+scopes   = ["test"]
+
+[[artifact]]
 name     = "commons-io:commons-io:jar:"
 version  = "2.22.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -651,7 +690,7 @@ name     = "commons-logging:commons-logging:jar:"
 version  = "1.4.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d175dbd751dd782a63bde28c7a039520e971f25e84b79c19b8435edc3603e0dc"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "dev.sigstore:sigstore-java:jar:"
@@ -675,6 +714,13 @@ deps = [
   "org.bouncycastle:bcpkix-jdk18on:jar:@1.85 <- 1.83",
   "org.bouncycastle:bcutil-jdk18on:jar:@1.85 <- 1.83",
 ]
+
+[[artifact]]
+name     = "info.picocli:picocli:jar:"
+version  = "4.7.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:f86e30fffd10d2b13b8caa8d4b237a7ee61f2ffccf5b1941de718b765d235bf8"
+scopes   = ["test"]
 
 [[artifact]]
 name     = "io.get-coursier:interface:jar:"
@@ -1406,6 +1452,17 @@ deps = [
   "net.jqwik:jqwik-time:jar:@1.10.1 <- 1.10.1",
   "net.jqwik:jqwik-web:jar:@1.10.1 <- 1.10.1",
   "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+]
+
+[[artifact]]
+name     = "net.sf.saxon:Saxon-HE:jar:"
+version  = "12.9"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:8f3a9216a537367132293eacbba9df062eace8f8b16a184af59e2e4839d4cd41"
+scopes   = ["test"]
+deps = [
+  "org.xmlresolver:xmlresolver:jar:@5.3.3 <- 5.3.3",
+  "org.xmlresolver:xmlresolver:jar:data@5.3.3 <- 5.3.3",
 ]
 
 [[artifact]]
@@ -2404,6 +2461,13 @@ checksum = "sha256:fe1c3723e27907789732ac9f3d639ba6055d459529cfcfbd96156e73911ee
 scopes   = ["provided"]
 
 [[artifact]]
+name     = "org.javassist:javassist:jar:"
+version  = "3.28.0-GA"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:57d0a9e9286f82f4eaa851125186997f811befce0e2060ff0a15a77f5a9dd9a7"
+scopes   = ["test"]
+
+[[artifact]]
 name     = "org.jboss.logging:commons-logging-jboss-logging:jar:"
 version  = "2.0.0.Final"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -2778,6 +2842,18 @@ checksum = "sha256:1dee0481072d19c929b623e155e14d2f6085dc011529a0a0dbefc84cf571d
 scopes   = ["test"]
 
 [[artifact]]
+name     = "org.reflections:reflections:jar:"
+version  = "0.10.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:938a2d08fe54050d7610b944d8ddc3a09355710d9e6be0aac838dbc04e9a2825"
+scopes   = ["test"]
+deps = [
+  "com.google.code.findbugs:jsr305:jar:@3.0.2 <- 3.0.2",
+  "org.javassist:javassist:jar:@3.28.0-GA <- 3.28.0-GA",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.32",
+]
+
+[[artifact]]
 name     = "org.scala-lang.modules:scala-asm:jar:"
 version  = "9.10.1-scala-1"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -3138,6 +3214,16 @@ deps = [
 ]
 
 [[artifact]]
+name     = "org.slf4j:slf4j-simple:jar:"
+version  = "2.0.18"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:8268bd018a5709b07209e0d8ca6221a37584ba1bc12ba985b8335a82c648bdd0"
+scopes   = ["test"]
+deps = [
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.18",
+]
+
+[[artifact]]
 name     = "org.tomlj:tomlj:jar:"
 version  = "1.1.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -3154,6 +3240,20 @@ version  = "1.12"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3e158a87bd73d8afb4b6e8239c013b7d049c48563f45860ce99cd2e448cf4a6b"
 scopes   = ["main"]
+
+[[artifact]]
+name     = "org.xmlresolver:xmlresolver:jar:"
+version  = "5.3.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1fe4d5b92f708dcdb82dbce12919e0171e6b5ca62c6dca6220483625098feb5f"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.xmlresolver:xmlresolver:jar:data"
+version  = "5.3.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b0c487ad2f3e558be8d829c916d2458d10aca6a5bafa7a4d0524b70845e48a5c"
+scopes   = ["test"]
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-guards-junit"
@@ -3303,6 +3403,14 @@ name    = "jk-kotlin-compiler"
 version = "0.13.7"
 java    = 25
 description = "JumpKick's Kotlin compiler plugin"
+
+[[module]]
+path    = "plugins/lint"
+group   = "cc.jumpkick"
+name    = "jk-lint"
+version = "0.13.7"
+java    = 25
+description = "JumpKick's lint plugin: [lint] runs Checkstyle, PMD, SpotBugs and detekt as cached steps whose findings are the step's diagnostics"
 
 [[module]]
 path    = "plugins/localizer"

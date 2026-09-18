@@ -1,0 +1,58 @@
+# The built-in lint plugin's declarative manifest. Owns [lint]: each tool the table enables —
+# Checkstyle, PMD, SpotBugs, detekt — is one cached step after compile, forking the tool over the
+# module's sources (SpotBugs over its classes) and reading the tool's report back as the step's
+# diagnostics: file, line, the rule id and the message, so a finding lands in jk-results.md and
+# the MCP diagnostics like a compiler's. `jk explain` shows the steps as `lint-<tool>`.
+
+[plugin]
+id        = "lint"
+table     = "lint"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-lint"
+protocol-prefix = "##JKLINT:"
+
+[schema]
+sources        = { type = "string-list", default = ["src/main/java"], hint = "the module-relative Java source roots the Java tools read; add src/test/java to lint the tests too" }
+kotlin-sources = { type = "string-list", default = ["src/main/kotlin"], hint = "the module-relative Kotlin source roots detekt reads" }
+fail-on        = { type = "string", default = "error", hint = "the finding severity that fails the step: error (the default), warning, or never — findings render as diagnostics either way" }
+checkstyle     = { type = "string", example = "config/checkstyle.xml", hint = "enable Checkstyle with this module-relative configuration file" }
+checkstyle-version = { type = "string", default = "14.1.0", hint = "the Checkstyle release; a bare version is exact" }
+pmd            = { type = "string-list", default = [], example = "[\"category/java/bestpractices.xml\", \"config/pmd.xml\"]", hint = "enable PMD with these rulesets: a built-in category or a module-relative ruleset file" }
+pmd-version    = { type = "string", default = "7.27.0", hint = "the PMD release; a bare version is exact" }
+spotbugs       = { type = "bool", default = false, hint = "enable SpotBugs over the compiled classes" }
+spotbugs-exclude = { type = "string", example = "config/spotbugs-exclude.xml", hint = "a module-relative SpotBugs filter file of findings to leave out" }
+spotbugs-effort = { type = "string", default = "default", hint = "the analysis effort: min, less, default, more or max" }
+spotbugs-version = { type = "string", default = "4.10.4", hint = "the SpotBugs release; a bare version is exact" }
+detekt         = { type = "bool", default = false, hint = "enable detekt over the Kotlin sources" }
+detekt-config  = { type = "string", example = "config/detekt.yml", hint = "a module-relative detekt configuration laid over the default rule set" }
+detekt-version = { type = "string", default = "1.23.8", hint = "the detekt release; a bare version is exact" }
+
+# One tool per step, each with its runtime closure and read only by the step that forks it; a
+# table that leaves a tool off registers no step for it, so its tool is never fetched.
+[[contribute.step-dependency]]
+artifact   = "checkstyle"
+coordinate = "com.puppycrawl.tools:checkstyle:${config.checkstyle-version}"
+transitive = true
+for-step   = "lint-checkstyle"
+
+[[contribute.step-dependency]]
+artifact   = "pmd"
+coordinate = "net.sourceforge.pmd:pmd-cli:${config.pmd-version}"
+with       = ["net.sourceforge.pmd:pmd-java:${config.pmd-version}"]
+transitive = true
+for-step   = "lint-pmd"
+
+[[contribute.step-dependency]]
+artifact   = "spotbugs"
+coordinate = "com.github.spotbugs:spotbugs:${config.spotbugs-version}"
+transitive = true
+for-step   = "lint-spotbugs"
+
+[[contribute.step-dependency]]
+artifact   = "detekt"
+coordinate = "io.gitlab.arturbosch.detekt:detekt-cli:${config.detekt-version}"
+transitive = true
+for-step   = "lint-detekt"

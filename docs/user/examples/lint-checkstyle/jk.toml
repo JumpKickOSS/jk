@@ -1,0 +1,20 @@
+group = "com.example"
+name = "lint-checkstyle"
+version = "0.0.1"
+java = 25
+
+[application]
+main = "demo.Sample"
+
+# Checkstyle as a cached step after compile: the rule set is the file beside this manifest, a
+# finding is a diagnostic in jk-results.md with its rule id, and an error-severity finding fails
+# the build (`fail-on`). `jk explain` shows the step as `lint-checkstyle`.
+[lint]
+checkstyle = "checkstyle.xml"
+
+# Compile-time only (@NullMarked): on javac's path, in no jar.
+[provided-dependencies]
+jspecify = "1.0.1"
+
+[test-dependencies]
+junit-jupiter = "6.1.3"
