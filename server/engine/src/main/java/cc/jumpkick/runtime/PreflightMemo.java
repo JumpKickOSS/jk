@@ -225,74 +225,11 @@ public final class PreflightMemo {
         try {
             List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
             if (lines.isEmpty() || !lines.getFirst().startsWith("schema=" + SCHEMA)) return Optional.empty();
-            String wantVersion = BuildIdentity.cacheKeyVersion();
-            String wantProducer = BuildIdentity.buildId();
-            String wantSkip = skipTests ? "1" : "0";
-            String wantMode = fingerprintMode();
-            String wantProfile = profileHeader(profile);
-            String wantSelection = selectionHeader();
-            String gotVersion = null;
-            String gotProducer = null;
-            String gotSkip = null;
-            String gotMode = null;
-            String gotProfile = null;
-            String gotSelection = null;
-            Map<String, MemoRow> rows = new LinkedHashMap<>();
-            for (String line : lines) {
-                if (line.isBlank() || line.startsWith("#")) continue;
-                if (line.startsWith("schema=")) continue;
-                if (line.startsWith("cacheKeyVersion=")) {
-                    gotVersion = line.substring("cacheKeyVersion=".length());
-                    continue;
-                }
-                if (line.startsWith("producer=")) {
-                    gotProducer = line.substring("producer=".length());
-                    continue;
-                }
-                if (line.startsWith("skipTests=")) {
-                    gotSkip = line.substring("skipTests=".length());
-                    continue;
-                }
-                if (line.startsWith("fpMode=")) {
-                    gotMode = line.substring("fpMode=".length());
-                    continue;
-                }
-                if (line.startsWith("profile=")) {
-                    gotProfile = line.substring("profile=".length());
-                    continue;
-                }
-                if (line.startsWith("selection=")) {
-                    gotSelection = line.substring("selection=".length());
-                    continue;
-                }
-                String[] parts = line.split("\t", 3);
-                if (parts.length != 3) return Optional.empty();
-                rows.put(parts[0], new MemoRow(parts[1], "1".equals(parts[2])));
-            }
-            // Packaging / plugin / guard action keys name the producing engine; a memo certified
-            // under another engine must not skip the walk that would re-key those steps.
-            if (gotProducer == null) gotProducer = "";
-            if (!wantVersion.equals(gotVersion) || !wantProducer.equals(gotProducer) || !wantSkip.equals(gotSkip)) {
-                return miss(
-                        "header",
-                        "wantVersion",
-                        wantVersion,
-                        "gotVersion",
-                        gotVersion,
-                        "wantProducer",
-                        wantProducer,
-                        "gotProducer",
-                        gotProducer,
-                        "wantSkip",
-                        wantSkip,
-                        "gotSkip",
-                        gotSkip);
-            }
-            if (gotMode != null && !wantMode.equals(gotMode)) return miss("fpMode", "want", wantMode, "got", gotMode);
-            if (!wantProfile.equals(gotProfile)) return miss("profile", "want", wantProfile, "got", gotProfile);
-            if (!wantSelection.equals(gotSelection)) {
-                return miss("selection", "want", wantSelection, "got", gotSelection);
-            }
+            Optional<MemoFile> parsed = MemoFile.parse(lines);
+            if (parsed.isEmpty()) return Optional.empty();
+            MemoFile memo = parsed.get();
+            if (headerMisses(memo, skipTests, profile)) return Optional.empty();
+            Map<String, MemoRow> rows = memo.rows();
 
             Path root = entryDir.toAbsolutePath().normalize();
             List<BuildGraph.BuildUnit> units = graph.topoOrder();
@@ -1003,6 +940,94 @@ public final class PreflightMemo {
             Perf.note("preflight-memo miss", all);
         }
         return Optional.empty();
+    }
+
+    /** A dirty memo as read from disk: its header fields and one row per module. */
+    private record MemoFile(Map<String, String> header, Map<String, MemoRow> rows) {
+
+        private static final List<String> HEADER_KEYS =
+                List.of("cacheKeyVersion", "producer", "skipTests", "fpMode", "profile", "selection");
+
+        /** Empty when a row is malformed; the caller has already checked the schema line. */
+        static Optional<MemoFile> parse(List<String> lines) {
+            Map<String, String> header = new LinkedHashMap<>();
+            Map<String, MemoRow> rows = new LinkedHashMap<>();
+            for (String line : lines) {
+                if (line.isBlank() || line.startsWith("#") || line.startsWith("schema=")) continue;
+                String key = headerKey(line);
+                if (key != null) {
+                    header.put(key, line.substring(key.length() + 1));
+                    continue;
+                }
+                String[] parts = line.split("\t", 3);
+                if (parts.length != 3) return Optional.empty();
+                rows.put(parts[0], new MemoRow(parts[1], "1".equals(parts[2])));
+            }
+            return Optional.of(new MemoFile(header, rows));
+        }
+
+        private static @Nullable String headerKey(String line) {
+            for (String key : HEADER_KEYS) {
+                if (line.startsWith(key + "=")) return key;
+            }
+            return null;
+        }
+
+        @Nullable
+        String got(String key) {
+            return header.get(key);
+        }
+    }
+
+    /**
+     * True when the memo's header says it was certified for another build than this one — another
+     * cache-key version, producing engine, skip-tests setting, fingerprint mode, profile or module
+     * selection — and notes the miss. Packaging, plugin and guard action keys name the producing
+     * engine, so a memo certified under another engine must not skip the walk that re-keys them.
+     */
+    private static boolean headerMisses(MemoFile memo, boolean skipTests, @Nullable String profile) {
+        String wantVersion = BuildIdentity.cacheKeyVersion();
+        String wantProducer = BuildIdentity.buildId();
+        String wantSkip = skipTests ? "1" : "0";
+        String gotVersion = memo.got("cacheKeyVersion");
+        String gotProducer = memo.header().getOrDefault("producer", "");
+        String gotSkip = memo.got("skipTests");
+        if (!wantVersion.equals(gotVersion) || !wantProducer.equals(gotProducer) || !wantSkip.equals(gotSkip)) {
+            miss(
+                    "header",
+                    "wantVersion",
+                    wantVersion,
+                    "gotVersion",
+                    gotVersion,
+                    "wantProducer",
+                    wantProducer,
+                    "gotProducer",
+                    gotProducer,
+                    "wantSkip",
+                    wantSkip,
+                    "gotSkip",
+                    gotSkip);
+            return true;
+        }
+        String wantMode = fingerprintMode();
+        String gotMode = memo.got("fpMode");
+        if (gotMode != null && !wantMode.equals(gotMode)) {
+            miss("fpMode", "want", wantMode, "got", gotMode);
+            return true;
+        }
+        String wantProfile = profileHeader(profile);
+        String gotProfile = memo.got("profile");
+        if (!wantProfile.equals(gotProfile)) {
+            miss("profile", "want", wantProfile, "got", gotProfile);
+            return true;
+        }
+        String wantSelection = selectionHeader();
+        String gotSelection = memo.got("selection");
+        if (!wantSelection.equals(gotSelection)) {
+            miss("selection", "want", wantSelection, "got", gotSelection);
+            return true;
+        }
+        return false;
     }
 
     private record MemoRow(String fp, boolean dirty) {}
