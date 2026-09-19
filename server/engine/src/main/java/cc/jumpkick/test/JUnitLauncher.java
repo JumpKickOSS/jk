@@ -10,7 +10,6 @@ import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Classpaths;
-import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.repo.PomRuntimeClasspath;
@@ -584,19 +583,11 @@ public final class JUnitLauncher {
         TestSummary result;
         try {
             int exit = PluginLoader.run(
-                    javaHome,
-                    classpath,
-                    flags,
-                    PROTOCOL_PREFIX,
-                    args,
-                    testEnv,
-                    workDir(),
-                    aggregator::accept,
-                    line -> {
+                    javaHome, classpath, flags, PROTOCOL_PREFIX, args, testEnv, workDir(), aggregator::accept, line -> {
                         crash.add(line);
                         aggregator.userOutput(line);
                     });
-            result = aggregator.toResult(exit, crash.text(), PluginLoader.command(javaBinary, classpath, flags, args));
+            result = aggregator.toResult(exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
         } catch (PluginProcess.HandlerFailure e) {
             // The parent's own decoder ended the fork: the pool's handler row, not an IOException.
             listener.onUserOutput(WorkerFailureRow.SINGLE_WORKER, Objects.requireNonNull(e.getMessage()));
@@ -735,7 +726,7 @@ public final class JUnitLauncher {
             return Discovery.handlerFailed(List.copyOf(classes), crash.text(), e.handler());
         }
         return new Discovery(
-                List.copyOf(classes), exit, crash.text(), PluginLoader.command(javaBinary, classpath, flags, args));
+                List.copyOf(classes), exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
     }
 
     // -------- shared helpers --------------------------------------------
