@@ -95,11 +95,18 @@ public final class WorkerLaunchClasspath {
         }
     }
 
-    /** Prefer the shelf memo's sha when size still matches; otherwise hash the bytes. */
-    private static String shaOf(Path jar) throws IOException {
+    /**
+     * The shelf memo's sha when the memo still describes this file — its recorded size and mtime
+     * are the jar's, the pair the memo is keyed on — otherwise the bytes are hashed. A memo that
+     * outlived a same-length replacement must not pin the previous jar's blob under a worker.
+     */
+    static String shaOf(Path jar) throws IOException {
         long size = Files.size(jar);
+        long mtime = Files.getLastModifiedTime(jar).toMillis();
         Path memo = jar.resolveSibling(ArtifactMemo.jkFileName(jar.getFileName().toString()));
-        var pinned = ArtifactMemo.read(memo).filter(m -> m.size() == size).map(ArtifactMemo::sha256);
+        var pinned = ArtifactMemo.read(memo)
+                .filter(m -> m.size() == size && m.mtimeMillis() == mtime)
+                .map(ArtifactMemo::sha256);
         if (pinned.isPresent()) return pinned.get();
         return Hashing.sha256Hex(jar);
     }
