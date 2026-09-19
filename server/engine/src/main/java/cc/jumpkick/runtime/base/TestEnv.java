@@ -9,6 +9,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -96,7 +97,7 @@ public final class TestEnv {
      */
     private static void warmStore(Path sandboxHome) {
         try {
-            int seeded = TestStoreSeed.seed(JkDirs.store(), sandboxHome.resolve("store"));
+            int seeded = TestStoreSeed.seed(JkDirs.store(), sandboxHome.resolve("store"), M2Dirs.localRepository());
             if (seeded > 0) Log.debug("TestEnv: seeded " + seeded + " JUnit Platform files into " + sandboxHome);
         } catch (IOException | RuntimeException e) {
             Log.debug("TestEnv: the sandbox store keeps whatever it had; fixtures fetch the rest", e);
