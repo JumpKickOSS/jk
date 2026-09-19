@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Which languages a module compiles — one shared answer for the engine's lane wiring and the
@@ -106,30 +107,33 @@ public record Languages(boolean java, boolean kotlin, boolean groovy, boolean sc
     }
 
     /**
-     * Whether {@code file} sits under a module resource directory. Traditional:
-     * {@code src/<slot>/resources}. Compact: {@code resources/} or {@code <suite>/resources/}.
-     * A package segment named {@code resources} under {@code java}/{@code kotlin}/… is not one.
+     * Whether {@code file} sits under a module resource directory, judged only from the
+     * directories between it and {@code walkRoot}. Traditional: {@code src/<slot>/resources}.
+     * Compact: {@code resources/} or {@code <suite>/resources/} directly under a module dir or
+     * {@code src/}. A walk rooted at a language source dir ({@code src/main/kotlin}) holds
+     * packages, not suites, so a package segment named {@code resources} there is a source.
      */
     static boolean underResourceTree(Path walkRoot, Path file) {
-        Path absFile = file.toAbsolutePath().normalize();
         Path absRoot = walkRoot.toAbsolutePath().normalize();
-        // .../src/<slot>/resources/... — independent of the walk root.
-        for (Path dir = absFile.getParent(); dir != null; dir = dir.getParent()) {
-            Path name = dir.getFileName();
-            if (name == null || !"resources".equals(name.toString())) continue;
+        Path absFile = file.toAbsolutePath().normalize();
+        if (!absFile.startsWith(absRoot)) return false;
+        boolean languageRoot = LANGUAGE_DIRS.contains(nameOf(absRoot));
+        for (Path dir = absFile.getParent(); dir != null && !dir.equals(absRoot); dir = dir.getParent()) {
+            if (!"resources".equals(nameOf(dir))) continue;
             Path parent = dir.getParent();
             if (parent == null) continue;
             Path grand = parent.getParent();
-            if (grand != null) {
-                Path grandName = grand.getFileName();
-                if (grandName != null && "src".equals(grandName.toString())) return true;
-            }
+            if (grand != null && "src".equals(nameOf(grand))) return true;
+            if (!languageRoot && (parent.equals(absRoot) || (grand != null && grand.equals(absRoot)))) return true;
         }
-        if (!absFile.startsWith(absRoot)) return false;
-        Path rel = absRoot.relativize(absFile);
-        int n = rel.getNameCount();
-        // Walk root is the module (or src/): resources/..., <suite>/resources/..., main/resources/...
-        if (n >= 1 && "resources".equals(rel.getName(0).toString())) return true;
-        return n >= 2 && "resources".equals(rel.getName(1).toString());
+        return false;
+    }
+
+    /** Directory names that hold one language's packages under {@code src/<slot>/}. */
+    private static final Set<String> LANGUAGE_DIRS = Set.of("java", "kotlin", "groovy", "scala");
+
+    private static String nameOf(Path dir) {
+        Path name = dir.getFileName();
+        return name == null ? "" : name.toString();
     }
 }
