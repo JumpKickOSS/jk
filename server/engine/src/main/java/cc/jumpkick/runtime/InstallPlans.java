@@ -188,8 +188,10 @@ public final class InstallPlans {
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
                     Session session = SessionContext.current();
+                    // The effective manifest the first pass planned from: parse() resolves the
+                    // workspace inherits, and the session's assembly override applies as it did there.
                     JkBuild project = VariantApply.apply(
-                                    WorkspaceResolve.applyWorkspace(projectDir, JkBuildParser.parse(jkBuildPath)),
+                                    BuildPlanner.applyAssemblyOverride(JkBuildParser.parse(jkBuildPath), session),
                                     projectDir,
                                     Variants.Selection.parse(session.variant()),
                                     session.clientEnv())
@@ -330,7 +332,6 @@ public final class InstallPlans {
     /** Cache-install the thin jar of {@code moduleDir} after a workspace package. */
     public static void installThinJar(Path moduleDir, Path cache, Path m2Dir) throws IOException {
         JkBuild proj = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir));
-        proj = WorkspaceResolve.applyWorkspace(moduleDir, proj);
         cacheInstallArtifact(proj, BuildLayout.of(moduleDir, proj), cache, m2Dir);
     }
 
