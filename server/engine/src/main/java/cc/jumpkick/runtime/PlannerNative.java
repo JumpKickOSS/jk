@@ -154,7 +154,8 @@ public final class PlannerNative {
      */
     private static Path preflightNativeImageHome(
             TaskContext ctx, @Nullable Path graalHome, Path dir, @Nullable Path jdksDir) throws Exception {
-        GraalSearch search = searchNativeImageHome(graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
+        GraalSearch search = searchNativeImageHome(
+                graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
         // The request's environment, not this process's. The engine is a daemon: System.getenv
         // here answers from whichever shell started it, possibly days ago, and a $GRAALVM_HOME or
         // a $PATH that the user's shell never had must not decide what a build links with — nor
@@ -679,8 +680,7 @@ public final class PlannerNative {
         List<NativeImageDriver.Candidate> checked = new ArrayList<>();
         var buildEnv = BuildEnv.forModule(projectDir);
         if (graalHome != null) {
-            checked.add(new NativeImageDriver.Candidate(
-                    "the GraalVM the client resolved for this module", graalHome));
+            checked.add(new NativeImageDriver.Candidate("the GraalVM the client resolved for this module", graalHome));
             if (NativeImageDriver.resolve(graalHome, buildEnv).isPresent()) {
                 return new GraalSearch(graalHome, checked);
             }
@@ -689,10 +689,8 @@ public final class PlannerNative {
         // process's environment — the engine is a daemon.
         Path fromRequest = SessionContext.current().graalHome();
         if (fromRequest != null) {
-            checked.add(new NativeImageDriver.Candidate(
-                    "$GRAALVM_HOME as the request carried it", fromRequest));
-            if (NativeImageDriver.resolve(fromRequest, buildEnv)
-                    .isPresent()) {
+            checked.add(new NativeImageDriver.Candidate("$GRAALVM_HOME as the request carried it", fromRequest));
+            if (NativeImageDriver.resolve(fromRequest, buildEnv).isPresent()) {
                 return new GraalSearch(fromRequest, checked);
             }
         }
@@ -708,8 +706,8 @@ public final class PlannerNative {
             return new GraalSearch(installed.get(), checked);
         }
         Path fallback = projectJdkOrRunningJvm(projectDir, jdksDir);
-        checked.add(new NativeImageDriver.Candidate(
-                "the JDK this project builds with, for want of a GraalVM", fallback));
+        checked.add(
+                new NativeImageDriver.Candidate("the JDK this project builds with, for want of a GraalVM", fallback));
         return new GraalSearch(fallback, checked);
     }
 

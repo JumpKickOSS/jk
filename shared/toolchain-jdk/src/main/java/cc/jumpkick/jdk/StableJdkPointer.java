@@ -221,7 +221,8 @@ public final class StableJdkPointer {
         } catch (IOException bookkeeping) {
             // The tree moved and the row did not. `jk jdk repair` reconciles the two, and the
             // install itself is intact either way — this must not undo a move that succeeded.
-            Log.warn("moved " + oldId + " to " + aside.getFileName() + " but could not rename its inventory row",
+            Log.warn(
+                    "moved " + oldId + " to " + aside.getFileName() + " but could not rename its inventory row",
                     bookkeeping);
         }
     }

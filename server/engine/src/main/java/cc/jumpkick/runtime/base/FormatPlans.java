@@ -11,7 +11,6 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
-import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;

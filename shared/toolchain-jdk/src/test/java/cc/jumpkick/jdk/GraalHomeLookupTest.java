@@ -26,8 +26,7 @@ class GraalHomeLookupTest {
         makeGraalvmInstall(graal25, "25.0.4");
         Path project = Files.createDirectories(tmp.resolve("app"));
 
-        assertThat(GraalHomeLookup.installed(project, jdks, null, "graalvm-25"))
-                .contains(graal25);
+        assertThat(GraalHomeLookup.installed(project, jdks, null, "graalvm-25")).contains(graal25);
         assertThat(GraalHomeLookup.installed(project, jdks, "graalvm-21", "graalvm-25"))
                 .as("the first non-blank spec decides by itself; a 25 does not satisfy a named 21")
                 .isEmpty();
@@ -41,8 +40,7 @@ class GraalHomeLookupTest {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         makeJdkInstall(jdks.resolve("temurin-25"), "25.0.1");
         Path project = Files.createDirectories(tmp.resolve("app"));
-        assertThat(GraalHomeLookup.installed(project, jdks, "temurin-25"))
-                .isEmpty();
+        assertThat(GraalHomeLookup.installed(project, jdks, "temurin-25")).isEmpty();
         assertThat(GraalHomeLookup.installed(project, jdks)).isEmpty();
     }
 
@@ -85,8 +83,7 @@ class GraalHomeLookupTest {
     }
 
     @Test
-    void a_flavour_with_a_release_floor_takes_the_lowest_graal_that_can_build_it(@TempDir Path tmp)
-            throws IOException {
+    void a_flavour_with_a_release_floor_takes_the_lowest_graal_that_can_build_it(@TempDir Path tmp) throws IOException {
         // What a module linking a native image and pinning no `graal` resolves with: the bare
         // flavour, which matches any major. Its `java` says which majors can actually build it.
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));

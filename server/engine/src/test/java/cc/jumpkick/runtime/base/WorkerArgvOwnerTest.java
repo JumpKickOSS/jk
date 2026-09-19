@@ -5,12 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import cc.jumpkick.jdk.JdkFingerprint;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;

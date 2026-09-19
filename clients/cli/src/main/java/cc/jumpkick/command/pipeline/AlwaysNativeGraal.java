@@ -98,7 +98,9 @@ final class AlwaysNativeGraal {
         if (rootInfo == null || modules.isEmpty()) return modules;
         Map<Path, Integer> byDir = new LinkedHashMap<>();
         for (var listed : rootInfo.moduleToolchains().entrySet()) {
-            byDir.put(Path.of(listed.getKey()).toAbsolutePath().normalize(), listed.getValue().javaRelease());
+            byDir.put(
+                    Path.of(listed.getKey()).toAbsolutePath().normalize(),
+                    listed.getValue().javaRelease());
         }
         if (!rootInfo.workspaceRootDir().isBlank()) {
             byDir.putIfAbsent(

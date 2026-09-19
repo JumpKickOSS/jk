@@ -6,7 +6,6 @@ import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
-import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
 import java.nio.file.Path;
