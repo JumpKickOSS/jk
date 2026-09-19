@@ -8,6 +8,7 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -193,6 +194,8 @@ public final class AtomicWrites {
      *
      * <p>On Windows only, a denied replace is retried for up to ~140&nbsp;ms: another handle on the
      * target makes the rename fail until it closes. A POSIX denial throws on the first attempt.
+     * Do not rename the target aside to dodge a lock — that leaves a name gap concurrent readers
+     * observe as {@code NoSuchFileException}, which breaks the atomicity this class promises.
      */
     public static void moveInto(Path tmp, Path target) throws IOException {
         for (int attempt = 1; ; attempt++) {
@@ -203,12 +206,25 @@ public final class AtomicWrites {
                     Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
                 }
                 return;
-            } catch (AccessDeniedException e) {
-                // A POSIX EACCES is permanent; only Windows' transient sharing denial is worth waiting out.
-                if (!Os.isWindows() || attempt == MOVE_ATTEMPTS) throw e;
+            } catch (IOException e) {
+                // POSIX EACCES is permanent. On Windows, ERROR_ACCESS_DENIED is AccessDeniedException
+                // and ERROR_SHARING_VIOLATION is a bare FileSystemException (OpenJDK's default
+                // branch) — either can mean another handle still has the target open.
+                if (!Os.isWindows() || !isTransientWindowsLock(e)) throw e;
+                if (attempt == MOVE_ATTEMPTS) throw e;
                 backOff.accept(attempt);
             }
         }
+    }
+
+    /**
+     * Windows denials that clear when a handle closes. {@link AccessDeniedException} is
+     * {@code ERROR_ACCESS_DENIED}; a bare {@link FileSystemException} is
+     * {@code ERROR_SHARING_VIOLATION}. Typed subclasses ({@link java.nio.file.NoSuchFileException},
+     * …) are permanent and must not retry.
+     */
+    static boolean isTransientWindowsLock(IOException e) {
+        return e instanceof AccessDeniedException || e.getClass() == FileSystemException.class;
     }
 
     /**

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -11,11 +12,13 @@ import java.util.concurrent.TimeUnit;
  * <ul>
  *   <li>{@code silent} — sleep for a minute writing nothing, the way a resident host sits between
  *       scripts. Stands in for the host.
- *   <li>{@code probe <java> <classpath>} — start a {@code silent} child, attach a {@link KtsSession}
- *       to it, then start one virtual thread and report whether it ran: {@code vthread-ran} or
- *       {@code vthread-starved}. Run under one carrier with compensation denied ({@code
+ *   <li>{@code probe <java>} — start a {@code silent} child, attach a {@link KtsSession} to it,
+ *       then start one virtual thread and report whether it ran: {@code vthread-ran} or {@code
+ *       vthread-starved}. Run under one carrier with compensation denied ({@code
  *       -XX:ActiveProcessorCount=1 -Djdk.virtualThreadScheduler.maxPoolSize=1}), a reader that
- *       holds a carrier while it waits on the pipe is the only carrier there is.
+ *       holds a carrier while it waits on the pipe is the only carrier there is. The classpath
+ *       rides the {@code CLASSPATH} environment (inherited by the silent child) so Windows
+ *       CreateProcess is not asked to carry it on the command line.
  * </ul>
  */
 public final class KtsReaderCarrierProbe {
@@ -27,9 +30,15 @@ public final class KtsReaderCarrierProbe {
             Thread.sleep(60_000);
             return;
         }
-        Process host = new ProcessBuilder(args[1], "-cp", args[2], KtsReaderCarrierProbe.class.getName(), "silent")
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
+        ProcessBuilder pb = new ProcessBuilder(args[1], KtsReaderCarrierProbe.class.getName(), "silent")
+                .redirectError(ProcessBuilder.Redirect.DISCARD);
+        // Inherit CLASSPATH from this probe JVM — set by KtsSessionCarrierTest, not -cp.
+        String cp = System.getenv("CLASSPATH");
+        if (cp != null && !cp.isBlank()) {
+            Map<String, String> env = pb.environment();
+            env.put("CLASSPATH", cp);
+        }
+        Process host = pb.start();
         try {
             KtsSession.attachForTests(host);
             // The reader is running by now if it ever will: its first read parks on the pipe.

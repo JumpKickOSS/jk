@@ -2,9 +2,13 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -19,6 +23,11 @@ import org.jspecify.annotations.Nullable;
  * its POM ({@code repos/jk-local} / {@code jumpkick} / {@code central} / {@code google}). A workspace {@code target/}
  * worker also gets plugin-sdk and host from {@code target/shared/} (the codec a shipped worker jar
  * vendors).
+ *
+ * <p>{@code repos/jk-local} jars are pinned into the artifact CAS before the fork sees them: a
+ * concurrent {@code cache-install} replaces the shelf path in place, and on Windows that rename
+ * is refused while a worker still has the shelf file mapped. A content-addressed copy is never
+ * overwritten, so the shelf can move under the workers.
  */
 public final class WorkerLaunchClasspath {
 
@@ -31,7 +40,7 @@ public final class WorkerLaunchClasspath {
         // the launch from the consumer's lock (PluginSdkFloor).
         if (Cas.isBlobPath(workerJar)) return List.of(workerJar);
         Path worker = workerJar.toAbsolutePath().normalize();
-        List<Path> resolved = PomRuntimeClasspath.resolve(worker);
+        List<Path> resolved = pinJkLocal(PomRuntimeClasspath.resolve(worker));
         List<Path> codec = workspaceCodec(worker);
         if (codec.isEmpty()) return resolved;
         // Codec dirs FIRST so a just-compiled classes/main wins over the copy the worker jar vendors
@@ -45,6 +54,54 @@ public final class WorkerLaunchClasspath {
 
     public static String resolve(Path workerJar) {
         return Classpaths.join(paths(workerJar));
+    }
+
+    /**
+     * Copy each {@code repos/jk-local} jar into the artifact CAS (idempotent by sha). POM
+     * resolution still reads the shelf; only the paths handed to the forked JVM change.
+     */
+    static List<Path> pinJkLocal(List<Path> resolved) {
+        Cas cas = JkStores.storeCas();
+        List<Path> out = new ArrayList<>(resolved.size());
+        for (Path p : resolved) {
+            out.add(isJkLocalJar(p) ? pinOne(cas, p) : p);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * True when {@code path} sits under the live artifact store's {@code repos/jk-local} — the
+     * shelf {@code cache-install} overwrites. Test fixtures and alternate store roots are left
+     * alone.
+     */
+    static boolean isJkLocalJar(Path path) {
+        if (path == null) return false;
+        Path shelf = JkStores.store()
+                .resolve("repos")
+                .resolve(RepoArtifactResolver.JK_LOCAL)
+                .toAbsolutePath()
+                .normalize();
+        return path.toAbsolutePath().normalize().startsWith(shelf);
+    }
+
+    private static Path pinOne(Cas cas, Path jar) {
+        try {
+            String hex = shaOf(jar);
+            return cas.putFile(jar, hex);
+        } catch (IOException e) {
+            // Launch with the shelf path: cache-install may still race, but a pin failure must not
+            // refuse every worker on a full disk.
+            return jar;
+        }
+    }
+
+    /** Prefer the shelf memo's sha when size still matches; otherwise hash the bytes. */
+    private static String shaOf(Path jar) throws IOException {
+        long size = Files.size(jar);
+        Path memo = jar.resolveSibling(ArtifactMemo.jkFileName(jar.getFileName().toString()));
+        var pinned = ArtifactMemo.read(memo).filter(m -> m.size() == size).map(ArtifactMemo::sha256);
+        if (pinned.isPresent()) return pinned.get();
+        return Hashing.sha256Hex(jar);
     }
 
     /**

@@ -7,6 +7,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.DirKeys;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,9 +88,31 @@ public final class McpHistoryViews {
      * and {@code jk_project} answer differently for the same argument.
      */
     public static String dirKey(String dir) {
-        return isAbsoluteDirKey(dir)
-                ? normalizeDir(Path.of(dir.strip()).normalize().toString())
-                : normalizeDir(PathUtil.resolveUserPath(dir).toString());
+        String stripped = dir.strip();
+        // POSIX-style absolute journal keys must not go through Path.of on Windows — that turns
+        // /ws into \ws (and toAbsolutePath would mint C:\ws).
+        if (stripped.startsWith("/") && !stripped.startsWith("//")) {
+            return normalizeDir(collapsePosixAbsolute(stripped));
+        }
+        if (isAbsoluteDirKey(stripped)) {
+            return normalizeDir(Path.of(stripped).normalize().toString());
+        }
+        return normalizeDir(PathUtil.resolveUserPath(stripped).toString());
+    }
+
+    /** Collapse {@code .} / {@code ..} in a {@code /…} key without asking the host Path API. */
+    private static String collapsePosixAbsolute(String path) {
+        ArrayDeque<String> stack = new ArrayDeque<>();
+        for (String part : path.split("/")) {
+            if (part.isEmpty() || ".".equals(part)) continue;
+            if ("..".equals(part)) {
+                if (!stack.isEmpty()) stack.removeLast();
+                continue;
+            }
+            stack.addLast(part);
+        }
+        if (stack.isEmpty()) return "/";
+        return "/" + String.join("/", stack);
     }
 
     /** True for journal-style absolute keys: leading {@code /} or {@code C:\…} / {@code C:/…}. */
