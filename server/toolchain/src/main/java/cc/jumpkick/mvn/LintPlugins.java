@@ -454,10 +454,13 @@ final class LintPlugins {
             ClasspathResources classpath,
             ImportReport.Builder report) {
         String resolved = launcherPath(location, baseDir, reactorRoot);
-        if (resolved.startsWith("http://") || resolved.startsWith("https://") || !resolved.contains("${")) {
-            boolean file = baseDir != null
+        boolean url = resolved.startsWith("http://") || resolved.startsWith("https://");
+        if (url || !resolved.contains("${")) {
+            // Do not Path.resolve a URL: Windows rejects ':' outside a drive letter.
+            boolean file = !url
+                    && baseDir != null
                     && Files.isRegularFile(baseDir.resolve(SourceTreePlugins.moduleRelativeFile(resolved, baseDir)));
-            if (!resolved.startsWith("http") && !file && classpath.any()) classpath.confirm(resolved, what);
+            if (!url && !file && classpath.any()) classpath.confirm(resolved, what);
             values.put(key, resolved);
             return;
         }

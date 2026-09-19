@@ -9,7 +9,10 @@ import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
@@ -224,6 +227,25 @@ class AtomicWritesTest {
             else System.setProperty("os.name", realOs);
             Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwxr-xr-x"));
         }
+    }
+
+    /**
+     * OpenJDK maps {@code ERROR_SHARING_VIOLATION} to a bare {@link FileSystemException}, not
+     * {@link AccessDeniedException}. Both must count as a transient Windows lock; typed subclasses
+     * and plain {@link IOException} must not.
+     */
+    @Test
+    void windows_treats_access_denied_and_a_bare_sharing_violation_as_transient() {
+        assertThat(AtomicWrites.isTransientWindowsLock(new AccessDeniedException("a")))
+                .isTrue();
+        assertThat(AtomicWrites.isTransientWindowsLock(new FileSystemException("a", "b", "in use")))
+                .isTrue();
+        assertThat(AtomicWrites.isTransientWindowsLock(new NoSuchFileException("a")))
+                .isFalse();
+        assertThat(AtomicWrites.isTransientWindowsLock(new FileAlreadyExistsException("a")))
+                .isFalse();
+        assertThat(AtomicWrites.isTransientWindowsLock(new IOException("disk full")))
+                .isFalse();
     }
 
     @Test

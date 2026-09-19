@@ -6,6 +6,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.SourcesMode;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -157,17 +158,34 @@ final class SourceTreePlugins {
     /**
      * A source directory as the manifest wants it: module-relative. {@code ${project.basedir}/x} and
      * {@code ${basedir}/x} lose their prefix; an absolute path under the POM's directory is
-     * relativized to it.
+     * relativized to it. Maven may already interpolate {@code ${basedir}} before the importer sees
+     * the value — including globs such as {@code …/db/*.sql}, which Windows rejects in
+     * {@link Path#of}, so those are stripped by string prefix instead.
      */
     static String moduleRelative(String dir, @Nullable Path baseDir) {
         String d = dir.replace('\\', '/');
+        if (d.startsWith("http://") || d.startsWith("https://")) return d;
         for (String prefix : new String[] {"${project.basedir}/", "${basedir}/", "${project.basedir}", "${basedir}"}) {
             if (d.startsWith(prefix)) return stripLeadingSlashes(d.substring(prefix.length()));
         }
         if (baseDir != null) {
-            Path path = Path.of(d);
-            if (path.isAbsolute() && path.startsWith(baseDir.toAbsolutePath())) {
-                return baseDir.toAbsolutePath().relativize(path).toString().replace('\\', '/');
+            String base = baseDir.toAbsolutePath().normalize().toString().replace('\\', '/');
+            if (!base.endsWith("/")) base = base + "/";
+            try {
+                Path path = Path.of(d);
+                if (path.isAbsolute()
+                        && path.startsWith(baseDir.toAbsolutePath().normalize())) {
+                    return baseDir.toAbsolutePath()
+                            .normalize()
+                            .relativize(path.normalize())
+                            .toString()
+                            .replace('\\', '/');
+                }
+            } catch (InvalidPathException ignored) {
+                // Interpolated basedir + glob (*.sql): strip the absolute prefix by string.
+                if (d.length() >= base.length() && d.regionMatches(true, 0, base, 0, base.length())) {
+                    return stripLeadingSlashes(d.substring(base.length()));
+                }
             }
         }
         return d;
@@ -181,15 +199,24 @@ final class SourceTreePlugins {
      */
     static String moduleRelativeFile(String file, @Nullable Path baseDir) {
         String relative = moduleRelative(file, baseDir);
-        if (baseDir == null || Path.of(relative).isAbsolute() || Files.exists(baseDir.resolve(relative))) {
+        if (baseDir == null || relative.startsWith("http://") || relative.startsWith("https://")) {
+            return relative;
+        }
+        Path relativePath;
+        try {
+            relativePath = Path.of(relative);
+        } catch (InvalidPathException e) {
+            return relative;
+        }
+        if (relativePath.isAbsolute() || Files.exists(baseDir.resolve(relativePath))) {
             return relative;
         }
         Path module = baseDir.toAbsolutePath().normalize();
         for (Path dir = module.getParent();
                 dir != null && Files.isRegularFile(dir.resolve("pom.xml"));
                 dir = dir.getParent()) {
-            if (Files.exists(dir.resolve(relative))) {
-                return module.relativize(dir.resolve(relative)).toString().replace('\\', '/');
+            if (Files.exists(dir.resolve(relativePath))) {
+                return module.relativize(dir.resolve(relativePath)).toString().replace('\\', '/');
             }
         }
         return relative;

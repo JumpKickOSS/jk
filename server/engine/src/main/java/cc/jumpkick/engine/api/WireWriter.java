@@ -296,6 +296,15 @@ public final class WireWriter {
         private void endDrainer() {
             drainer = null;
             writingSinceNanos = 0;
+            // Close the socket here, not only via interrupt of a blocked write: on Windows a pipe
+            // sink can stay open after Thread.interrupt until the channel is closed explicitly.
+            if (dead != null) {
+                try {
+                    writer.close();
+                } catch (IOException ignored) {
+                    // stream already dead
+                }
+            }
             notifyAll();
         }
 

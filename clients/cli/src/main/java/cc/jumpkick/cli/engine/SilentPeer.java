@@ -2,7 +2,9 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.time.Clock;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -55,10 +57,22 @@ public final class SilentPeer {
                 Duration age = info.startInstant()
                         .map(start -> Duration.between(start, clock.instant()))
                         .orElse(Duration.ofDays(1));
-                int workers = (int) h.children().count();
+                // Only JVM children count: Windows attaches conhost.exe under java.exe, which is
+                // not a worker and must not protect a silent idle holder from displacement.
+                int workers = (int) h.children().filter(Life::isJvm).count();
                 Duration cpu = info.totalCpuDuration().orElse(Duration.ZERO);
                 return new Life(pid, age, workers, cpu);
             });
+        }
+
+        private static boolean isJvm(ProcessHandle child) {
+            return child.info()
+                    .command()
+                    .map(cmd -> {
+                        String name = Path.of(cmd).getFileName().toString().toLowerCase(Locale.ROOT);
+                        return name.equals("java") || name.equals("java.exe");
+                    })
+                    .orElse(false);
         }
 
         public boolean youngerThan(Duration startup) {

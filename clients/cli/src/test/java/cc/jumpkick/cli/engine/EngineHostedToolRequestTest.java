@@ -12,18 +12,20 @@ class EngineHostedToolRequestTest {
 
     @Test
     void a_tool_install_request_carries_the_accept_unverified_consent() {
+        // Path.of("/…") is host-shaped (`\store\tools` on Windows); the wire carries that form.
+        Path toolsRoot = Path.of("/store/tools");
         ProvisionRequest accepted =
-                ProvisionRequest.decode(EngineHosted.toolRequest("maven", "3.6.3", Path.of("/store/tools"), true, true)
+                ProvisionRequest.decode(EngineHosted.toolRequest("maven", "3.6.3", toolsRoot, true, true)
                         .encode());
         assertThat(accepted.tool()).isEqualTo("maven");
         assertThat(accepted.version()).isEqualTo("3.6.3");
-        assertThat(accepted.toolsRoot()).isEqualTo("/store/tools");
+        assertThat(accepted.toolsRoot()).isEqualTo(toolsRoot.toString());
         assertThat(accepted.noDiscover()).isTrue();
         assertThat(accepted.acceptUnverified()).isTrue();
         assertThat(accepted.gradle()).isFalse();
 
-        ProvisionRequest plain = ProvisionRequest.decode(
-                EngineHosted.toolRequest("kotlin", "latest", Path.of("/store/tools"), false, false)
+        ProvisionRequest plain =
+                ProvisionRequest.decode(EngineHosted.toolRequest("kotlin", "latest", toolsRoot, false, false)
                         .encode());
         assertThat(plain.acceptUnverified()).isFalse();
     }

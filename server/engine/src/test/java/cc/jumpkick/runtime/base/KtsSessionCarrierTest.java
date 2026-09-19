@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
@@ -23,23 +25,25 @@ class KtsSessionCarrierTest {
      * Under one carrier with no spare to lend, a virtual thread started beside a reader on a silent
      * host still runs. {@link KtsReaderCarrierProbe} attaches a session to a child that writes
      * nothing and reports whether the thread it started after that ran within five seconds.
+     *
+     * <p>The classpath rides the {@code CLASSPATH} environment variable rather than {@code -cp}, so
+     * Windows CreateProcess is not asked to carry it on the command line (error 206).
      */
     @Test
     void a_virtual_thread_runs_beside_the_reader_of_a_silent_host_under_one_carrier() throws Exception {
-        String java = System.getProperty("java.home") + "/bin/java";
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String classpath = System.getProperty("java.class.path");
-        Process probe = new ProcessBuilder(
+        ProcessBuilder pb = new ProcessBuilder(
                         java,
                         "-XX:ActiveProcessorCount=1",
                         "-Djdk.virtualThreadScheduler.maxPoolSize=1",
-                        "-cp",
-                        classpath,
                         KtsReaderCarrierProbe.class.getName(),
                         "probe",
-                        java,
-                        classpath)
-                .redirectErrorStream(true)
-                .start();
+                        java)
+                .redirectErrorStream(true);
+        Map<String, String> env = pb.environment();
+        env.put("CLASSPATH", classpath);
+        Process probe = pb.start();
         String said = read(probe);
         assertThat(probe.waitFor(30, TimeUnit.SECONDS)).as("the probe exited").isTrue();
         assertThat(said.strip()).as("the probe's verdict").endsWith("vthread-ran");

@@ -48,9 +48,10 @@ class MvnResultsRefusalTest {
         assertThat(host.discarded).isTrue();
         assertThat(host.modules).isEmpty();
         assertThat(host.sent).hasSize(1);
+        // JSON escapes Windows `\`, so match the pom leaf + reason rather than Path.toString().
         assertThat(host.sent.getFirst())
                 .contains("mvn-results-result")
-                .contains(dir.resolve("pom.xml") + " has no <version> and no <parent><version>");
+                .contains("pom.xml has no <version> and no <parent><version>");
     }
 
     @Test
