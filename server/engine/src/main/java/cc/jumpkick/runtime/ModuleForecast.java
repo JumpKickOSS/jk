@@ -190,6 +190,7 @@ final class ModuleForecast {
         testDepDirty = dep.testDepDirty();
         depHint = TaskForecaster.depHint(dep.compileDeps(), hints);
         steps = new ArrayList<>();
+        if (target == WorkspaceTarget.RESHELVE) return reshelveOnly();
         if (!Files.isRegularFile(lockFile)) {
             steps.add(new TaskForecast.Task(
                     TaskNames.COMPILE_MAIN, TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
@@ -1025,6 +1026,19 @@ final class ModuleForecast {
             steps.add(
                     ForecastPackagingTails.cacheInstall(project, BuildLayout.of(dir, project), cache, m2Dir, jarDirty));
         }
+    }
+
+    /**
+     * Install handoff: only {@code cache-install}, always RUN so packager memos are stamped under
+     * the live engine even when shelf bytes already match.
+     */
+    private TaskForecast.Module reshelveOnly() {
+        if (!terminalDirs.contains(dir)) {
+            return new TaskForecast.Module(u.dir(), u.coord(), List.of(), 0, 0, false, false);
+        }
+        steps.add(new TaskForecast.Task(
+                TaskNames.CACHE_INSTALL, TaskForecast.Status.RUN, "re-shelve under live engine", null));
+        return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, true, false);
     }
 
     private void emit(Prepared prepared) throws Exception {

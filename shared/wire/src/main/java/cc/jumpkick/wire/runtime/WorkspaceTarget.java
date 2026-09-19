@@ -20,7 +20,12 @@ public enum WorkspaceTarget {
      * {@code jk install}: package (+ declared tails) then {@code cache-install} the thin jar.
      * Fat/minified and native PATH placement stay client-side.
      */
-    INSTALL;
+    INSTALL,
+    /**
+     * Install's engine-handoff pass: {@code cache-install} (+ packager memo stamp) against jars
+     * already on disk. No compile, test, or package — the first install pass left those outputs.
+     */
+    RESHELVE;
 
     public boolean testOnly() {
         return this == TEST;

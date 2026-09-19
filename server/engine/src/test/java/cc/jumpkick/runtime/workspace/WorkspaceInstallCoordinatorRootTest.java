@@ -68,6 +68,26 @@ class WorkspaceInstallCoordinatorRootTest {
                 .containsExactly(lib);
     }
 
+    @Test
+    void reshelve_member_plan_is_parse_and_cache_install_only() throws Exception {
+        Path lib = member("lib");
+        Path root = coordinatorRoot("lib");
+        var libUnit = unit(lib, "ex:lib");
+
+        BuildPlan plan = WorkspacePreparePhase.assemblePlan(libUnit, reshelveRequest(), Set.of(root, lib), false);
+        assertThat(stepNames(plan)).containsExactlyInAnyOrder(TaskNames.PARSE_BUILD, TaskNames.CACHE_INSTALL);
+    }
+
+    @Test
+    void reshelve_terminals_skip_the_coordinator_root() throws Exception {
+        Path lib = member("lib");
+        Path root = coordinatorRoot("lib");
+
+        Set<Path> terminals = WorkspacePreflightPhase.terminalTargetDirs(
+                List.of(unit(root, "ex:ws"), unit(lib, "ex:lib")), reshelveRequest());
+        assertThat(terminals).containsExactly(lib);
+    }
+
     private BuildPlan assertThatInstallPlanBuilds(BuildGraph.BuildUnit u, Set<Path> moduleDirs) {
         assertThatCode(() -> WorkspacePreparePhase.assemblePlan(u, installRequest(), moduleDirs, false))
                 .doesNotThrowAnyException();
@@ -77,6 +97,11 @@ class WorkspaceInstallCoordinatorRootTest {
     private WorkspaceRequest installRequest() {
         return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
                 .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null));
+    }
+
+    private WorkspaceRequest reshelveRequest() {
+        return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, false)
+                .withSpec(WorkspaceSpec.reshelve(Set.of(), null));
     }
 
     private static Set<String> stepNames(BuildPlan plan) {

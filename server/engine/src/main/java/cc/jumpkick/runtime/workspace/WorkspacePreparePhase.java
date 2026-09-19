@@ -301,6 +301,13 @@ final class WorkspacePreparePhase {
             return CompilePlans.compileBuildPlan(dir, request.cache(), request.profile(), request.verbose(), decorate);
         }
         boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
+        if (target == WorkspaceTarget.RESHELVE) {
+            if (CompileSupport.coordinatorOnly(unit.manifest(), dir)) {
+                return BuildPlan.builder("reshelve-skip").build();
+            }
+            Path m2 = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
+            return InstallPlans.reshelveBuildPlan(dir, request.cache(), m2);
+        }
         if (target == WorkspaceTarget.INSTALL) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
             BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, false, siblings);

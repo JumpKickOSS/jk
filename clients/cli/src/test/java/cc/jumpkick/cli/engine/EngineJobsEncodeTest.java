@@ -122,6 +122,17 @@ class EngineJobsEncodeTest {
     }
 
     @Test
+    void the_m2_root_rides_the_reshelve_request() {
+        Path m2 = Path.of("/tmp/ws/m2");
+        WorkspaceRequest req = request().withSpec(WorkspaceSpec.reshelve(Set.of(), m2));
+
+        BuildRequest back = BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(req, Session.defaults()));
+
+        assertThat(back.workspaceTarget()).isEqualTo("reshelve");
+        assertThat(back.m2Dir()).isEqualTo(m2.toString());
+    }
+
+    @Test
     void a_default_selection_is_omitted_so_older_engines_see_an_unchanged_body() {
         String json = EngineJobs.encodeWorkspaceRequest(request(), Session.defaults());
 
