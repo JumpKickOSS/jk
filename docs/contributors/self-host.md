@@ -324,9 +324,13 @@ jar's root `jk-plugin.toml` names its own module's `[plugin] table`.
 
 The first **build** under a freshly installed engine still re-runs every plugin step, guard lane,
 build-logic run and packaging step once: their action keys carry the installed engine's identity,
-so an artifact the previous engine produced is never restored under the new one. Compile steps
-keep their keys and stay cached, so that one-time re-run is packaging and verdicts, not a full
-rebuild — and it is a later `jk build`, not the install's re-shelving pass.
+so an artifact the previous engine produced is never restored under the new one. The preflight
+dirty memo stores that producer id beside `cacheKeyVersion`, so a memo certified under the
+displaced engine cannot make `jk build` report fully cached while packaging keys miss. Compile
+steps keep their keys and stay cached, so that one-time re-run is packaging and verdicts, not a
+full rebuild — and it is a later `jk build`, not the install's re-shelving pass. A later
+`jk install` whose forecast finds only `cache-install` left (packaging already keyed under the
+live engine) uses the same thin parse + cache-install plan as re-shelving.
 
 ## Ship layout
 
