@@ -141,4 +141,35 @@ class LanguagesTest {
                 .containsExactly("src holds .kt sources this module does not compile: jk.toml declares java and not"
                         + " kotlin — add kotlin = \"<version>\" to compile them");
     }
+
+    @Test
+    void a_checkout_under_a_resources_shaped_path_still_infers_its_languages(@TempDir Path tmp) throws Exception {
+        // The module lives at .../src/work/resources/app — a shape the traditional rule must not
+        // read from above the walk root.
+        Path module = tmp.resolve("src/work/resources/app");
+        Files.createDirectories(module.resolve("src/main/kotlin"));
+        Files.writeString(module.resolve("src/main/kotlin/App.kt"), "fun main() {}");
+        Project project = Project.builder("com.example", "hello", "1.0.0").build();
+        assertThat(Languages.resolve(project, module).kotlin()).isTrue();
+        assertThat(Languages.anySourceUnder(module.resolve("src"), ".kt")).isTrue();
+    }
+
+    @Test
+    void a_package_named_resources_under_a_language_root_is_a_source(@TempDir Path tmp) throws Exception {
+        Path kotlin = tmp.resolve("src/main/kotlin");
+        Files.createDirectories(kotlin.resolve("com/resources"));
+        Files.writeString(kotlin.resolve("com/resources/Lib.kt"), "package com.resources; class Lib");
+        assertThat(Languages.anySourceUnder(kotlin, ".kt")).isTrue();
+        assertThat(Languages.anySourceUnder(tmp.resolve("src"), ".kt")).isTrue();
+        Files.createDirectories(tmp.resolve("src/main/resources"));
+        Files.writeString(tmp.resolve("src/main/resources/Tpl.kt"), "fun unused() {}");
+        assertThat(Languages.anySourceUnder(tmp.resolve("src/main/resources"), ".kt"))
+                .as("a walk rooted inside the resource tree sees files, not sources")
+                .isTrue();
+        Project project =
+                Project.builder("com.example", "hello", "1.0.0").java(25).build();
+        assertThat(Languages.undeclaredWithSources(project, tmp))
+                .containsExactly("src/main/kotlin holds Kotlin sources this module does not compile: jk.toml declares"
+                        + " java and not kotlin — add kotlin = \"<version>\" to compile them");
+    }
 }
