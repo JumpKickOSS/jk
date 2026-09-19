@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.time.Clock;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Optional;
@@ -57,22 +56,27 @@ public final class SilentPeer {
                 Duration age = info.startInstant()
                         .map(start -> Duration.between(start, clock.instant()))
                         .orElse(Duration.ofDays(1));
-                // Only JVM children count: Windows attaches conhost.exe under java.exe, which is
-                // not a worker and must not protect a silent idle holder from displacement.
-                int workers = (int) h.children().filter(Life::isJvm).count();
+                int workers = (int) h.children()
+                        .filter(child -> countsAsWorker(child.info().command()))
+                        .count();
                 Duration cpu = info.totalCpuDuration().orElse(Duration.ZERO);
                 return new Life(pid, age, workers, cpu);
             });
         }
 
-        private static boolean isJvm(ProcessHandle child) {
-            return child.info()
-                    .command()
-                    .map(cmd -> {
-                        String name = Path.of(cmd).getFileName().toString().toLowerCase(Locale.ROOT);
-                        return name.equals("java") || name.equals("java.exe");
-                    })
-                    .orElse(false);
+        /**
+         * Every child is a worker except Windows' console host, which conhost.exe attaches under a
+         * java.exe and must not protect a silent idle holder. A child whose command the OS will
+         * not report still counts: a native-image link or an import shell is life, and an
+         * unreadable command is no proof it is not.
+         */
+        static boolean countsAsWorker(Optional<String> command) {
+            return command.map(cmd -> !"conhost.exe".equals(fileName(cmd))).orElse(true);
+        }
+
+        private static String fileName(String command) {
+            int cut = Math.max(command.lastIndexOf('/'), command.lastIndexOf('\\'));
+            return command.substring(cut + 1).toLowerCase(Locale.ROOT);
         }
 
         public boolean youngerThan(Duration startup) {
