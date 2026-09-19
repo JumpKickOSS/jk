@@ -9,7 +9,6 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JavaHomes;
-import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;

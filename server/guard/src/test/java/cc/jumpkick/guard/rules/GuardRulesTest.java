@@ -193,7 +193,9 @@ class GuardRulesTest {
         LoadResult r = load(dir, rule);
 
         assertThat(r.hasErrors()).isFalse();
-        assertThat(r.warnings()).as("logic: a kind, a file glob and one pattern").isEmpty();
+        assertThat(r.warnings())
+                .as("logic: a kind, a file glob and one pattern")
+                .isEmpty();
     }
 
     @Test

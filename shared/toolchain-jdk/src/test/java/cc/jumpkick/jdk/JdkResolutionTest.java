@@ -164,9 +164,7 @@ class JdkResolutionTest {
         // Nothing in the registry meets the floor, but JAVA_HOME is a 26 — which satisfies a
         // suggestion of 25.0.4 completely. Downloading here would be answering a question the
         // lock never asked; only a required-* pin insists on a particular install.
-        var req = req(tmp).lockJdk("temurin", "25.0.4")
-                .javaHome(ambient)
-                .build();
+        var req = req(tmp).lockJdk("temurin", "25.0.4").javaHome(ambient).build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.wouldInstall()).isFalse();
@@ -180,9 +178,7 @@ class JdkResolutionTest {
         Path ambient = makeJdk(Files.createDirectories(tmp.resolve("ambient")), "temurin-21.0.5");
         // A floor JAVA_HOME can sidestep is not a floor. What jk falls to next depends on the host
         // running these tests, so the property under test is only that this 21 is refused.
-        var req = req(tmp).lockJdk("temurin", "25.0.4")
-                .javaHome(ambient)
-                .build();
+        var req = req(tmp).lockJdk("temurin", "25.0.4").javaHome(ambient).build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isNotEqualTo(JdkResolution.Tier.JAVA_HOME);
@@ -306,14 +302,7 @@ class JdkResolutionTest {
         JdkResolution.Request build() {
             Function<String, @Nullable String> lookup = env::get;
             return new JdkResolution.Request(
-                    projectDir,
-                    switchSpec,
-                    envSpec,
-                    lockJdk,
-                    projectJdkSpec,
-                    projectJavaRelease,
-                    javaHome,
-                    lookup);
+                    projectDir, switchSpec, envSpec, lockJdk, projectJdkSpec, projectJavaRelease, javaHome, lookup);
         }
     }
 }

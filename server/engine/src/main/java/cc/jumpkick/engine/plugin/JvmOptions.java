@@ -5,6 +5,8 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PreferIpv4;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -13,8 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
-import cc.jumpkick.jdk.JavaHomes;
-import cc.jumpkick.jdk.JdkFingerprint;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -420,11 +420,13 @@ public final class JvmOptions {
      * neither is recovered by walking up from an executable path.
      */
     public static List<String> javaCommand(@Nullable Path javaHome, int concurrency, List<String> rest) {
-        int feature = javaHome != null ? hostFeature(javaHome) : Runtime.version().feature();
+        int feature =
+                javaHome != null ? hostFeature(javaHome) : Runtime.version().feature();
         List<String> cmd = new ArrayList<>();
-        cmd.add(javaHome != null
-                ? JdkFingerprint.java(javaHome).toString()
-                : JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
+        cmd.add(
+                javaHome != null
+                        ? JdkFingerprint.java(javaHome).toString()
+                        : JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
         cmd.addAll(batchFlags(concurrency, feature));
         cmd.addAll(rest);
         return cmd;
