@@ -104,4 +104,41 @@ class LanguagesTest {
         assertThat(Languages.resolve(project, tmp).scala()).isTrue();
         assertThat(project.languageName()).isEqualTo("scala");
     }
+
+    @Test
+    void kotlin_or_groovy_under_src_main_resources_are_not_undeclared_sources(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src/main/java"));
+        Files.writeString(tmp.resolve("src/main/java/App.java"), "class App {}");
+        Files.createDirectories(tmp.resolve("src/main/resources/templates"));
+        Files.writeString(tmp.resolve("src/main/resources/templates/Hello.kt"), "fun unused() {}");
+        Files.writeString(tmp.resolve("src/main/resources/templates/Util.groovy"), "class Util {}");
+        Project project =
+                Project.builder("com.example", "hello", "1.0.0").java(25).build();
+        assertThat(Languages.undeclaredWithSources(project, tmp)).isEmpty();
+        assertThat(Languages.resolve(project, tmp).kotlin()).isFalse();
+        assertThat(Languages.resolve(project, tmp).groovy()).isFalse();
+    }
+
+    @Test
+    void kotlin_under_compact_resources_is_not_a_source(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src"));
+        Files.writeString(tmp.resolve("src/App.java"), "class App {}");
+        Files.createDirectories(tmp.resolve("resources"));
+        Files.writeString(tmp.resolve("resources/Snippet.kt"), "fun unused() {}");
+        Project project =
+                Project.builder("com.example", "hello", "1.0.0").java(25).build();
+        assertThat(Languages.anySourceUnder(tmp, ".kt")).isFalse();
+        assertThat(Languages.undeclaredWithSources(project, tmp)).isEmpty();
+    }
+
+    @Test
+    void package_named_resources_under_java_still_counts_as_sources(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src/main/java/com/resources"));
+        Files.writeString(tmp.resolve("src/main/java/com/resources/Lib.kt"), "package com.resources; class Lib");
+        Project project =
+                Project.builder("com.example", "hello", "1.0.0").java(25).build();
+        assertThat(Languages.undeclaredWithSources(project, tmp))
+                .containsExactly("src holds .kt sources this module does not compile: jk.toml declares java and not"
+                        + " kotlin — add kotlin = \"<version>\" to compile them");
+    }
 }
