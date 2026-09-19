@@ -63,8 +63,9 @@ is re-fetched; `--force` re-fetches too.
 
 The first build after `jk install` of a new engine runs every plugin step, guard lane,
 build-logic run and packaging step once more: their keys carry the identity of the engine that
-produced them, so nothing an older engine produced is restored under the new one. Compile steps
-keep their keys and stay cached.
+produced them, so nothing an older engine produced is restored under the new one. The preflight
+dirty memo names that engine too, so a clean memo from the previous engine does not skip the
+walk. Compile steps keep their keys and stay cached.
 
 ## Annotation processors
 

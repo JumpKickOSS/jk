@@ -487,7 +487,7 @@ public final class InstallCommand {
                 alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal(), info.javaRelease()));
             }
             Optional<Map<Path, Path>> resolved = AlwaysNativeGraal.homes(
-                    alwaysNative, new GraalResolver(null, false, BuildPlanConsole.modeFor(global))::resolve);
+                    alwaysNative, new GraalResolver(jdksDir, global.yes, BuildPlanConsole.modeFor(global))::resolve);
             if (resolved.isEmpty()) return 1;
             graalByDir = resolved.get();
         }
