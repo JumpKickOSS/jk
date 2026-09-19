@@ -9,7 +9,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -92,12 +91,21 @@ public final class TestEnv {
 
     /**
      * The sandbox store learns the JUnit Platform from this engine's store ({@link TestStoreSeed}),
-     * so the suite's fixtures lock their injected test roots without Central. Warmth only: a seed
-     * that fails leaves the fixtures to fetch what they need.
+     * so the suite's fixtures lock their injected test roots without Central. Completes missing
+     * POMs from the workspace's shared test-m2 first (where prior fetches leave them), then from
+     * {@code ~/.m2}. Warmth only: a seed that fails leaves the fixtures to fetch what they need.
      */
-    private static void warmStore(Path sandboxHome) {
+    private static void warmStore(Path sandboxHome, Path sandboxM2) {
         try {
-            int seeded = TestStoreSeed.seed(JkDirs.store(), sandboxHome.resolve("store"), M2Dirs.localRepository());
+            Path host = JkDirs.store();
+            Path store = sandboxHome.resolve("store");
+            int seeded = TestStoreSeed.seed(host, store, sandboxM2);
+            Path user = Path.of(System.getProperty("user.home"), ".m2", "repository")
+                    .toAbsolutePath()
+                    .normalize();
+            if (!user.equals(sandboxM2.toAbsolutePath().normalize())) {
+                seeded += TestStoreSeed.seed(host, store, user);
+            }
             if (seeded > 0) Log.debug("TestEnv: seeded " + seeded + " JUnit Platform files into " + sandboxHome);
         } catch (IOException | RuntimeException e) {
             Log.debug("TestEnv: the sandbox store keeps whatever it had; fixtures fetch the rest", e);
@@ -170,13 +178,14 @@ public final class TestEnv {
         // in use — so anything the build stages into it before the suite launches survives the
         // reaper another module's preparation may run meanwhile.
         Path sandboxHome = TestHomes.prepare(moduleDir);
-        warmStore(sandboxHome);
+        Path m2 = sandboxM2(moduleDir);
+        warmStore(sandboxHome, m2);
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_STATE_DIR, sandboxHome.resolve("state").toString());
         out.put(JK_STORE_DIR, sandboxHome.resolve("store").toString());
         out.put(JK_CACHE_DIR, sandboxHome.resolve("cache").toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
-        out.put(JK_M2_LOCAL, sandboxM2(moduleDir).toString());
+        out.put(JK_M2_LOCAL, m2.toString());
         // Created at launch, not here: this method answers what the environment is, and the
         // directory has to exist before a worker starts. JUnitLauncher makes it.
         String testTmp = target.resolve("tmp").toAbsolutePath().toString();
