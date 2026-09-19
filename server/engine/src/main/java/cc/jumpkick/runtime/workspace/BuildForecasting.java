@@ -191,7 +191,7 @@ public final class BuildForecasting {
             @Nullable Path m2Dir) {
         WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
         // The dirty memo's clean claim covers package outputs only (it checks the module target
-        // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE/INSTALL must always run the
+        // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE/INSTALL/RESHELVE must always run the
         // target-aware forecast walk — a memo hit here would skip a missing binary, a
         // never-skippable image push, or a cache-install into repos/jk-local. The memo is also
         // keyed without target, so a PACKAGE store must never be consumed by a terminal-target

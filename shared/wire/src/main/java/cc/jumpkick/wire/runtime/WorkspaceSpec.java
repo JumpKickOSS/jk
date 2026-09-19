@@ -74,6 +74,15 @@ public record WorkspaceSpec(
                 WorkspaceTarget.INSTALL, selected, graalByDir, null, List.of(), null, null, null, null, null, m2Dir);
     }
 
+    /**
+     * Install's second pass after the engine jar changes: shelf {@code cache-install} / packager
+     * stamp only. {@code m2Dir} is the same client-resolved root {@link #install} uses.
+     */
+    public static WorkspaceSpec reshelve(Set<Path> selected, @Nullable Path m2Dir) {
+        return new WorkspaceSpec(
+                WorkspaceTarget.RESHELVE, selected, Map.of(), null, List.of(), null, null, null, null, null, m2Dir);
+    }
+
     /** This spec with the client-resolved GraalVM home per always-native module. */
     public WorkspaceSpec withGraalByDir(Map<Path, Path> homes) {
         return new WorkspaceSpec(
