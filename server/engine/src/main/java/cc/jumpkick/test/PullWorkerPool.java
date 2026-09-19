@@ -216,7 +216,7 @@ final class PullWorkerPool {
             Path tmp = TestTmpDir.forWorker(launcher.testTmpDir(), workerId, totalWorkers);
             WorkerEnv env = totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
-            command.set(PluginLoader.command(javaBinary, classpath, flags, args));
+            command.set(PluginLoader.command(javaHome, classpath, flags, args));
             return PluginLoader.converse(
                     javaHome,
                     classpath,
