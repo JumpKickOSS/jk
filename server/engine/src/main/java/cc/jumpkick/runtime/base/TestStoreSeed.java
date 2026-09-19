@@ -32,9 +32,10 @@ import org.jspecify.annotations.Nullable;
  * {@code repos/central}, and each artifact gets a version list naming exactly the versions whose
  * POM came along, written under the key the metadata cache reads for the Central URL. A jar the
  * host stored without its POM — Maven-local adoption records the jar and not the POM — is
- * completed from that local repository when the file is there, and the rest of those trees there
- * (POMs and jars the host never stored) is copied for exact fetches a solve still makes. A body
- * the sandbox already holds is left alone — an index the store fetched itself outranks a
+ * completed from {@link M2Dirs#localRepository()} (the gate's shared test-m2 under
+ * {@code JK_M2_LOCAL}) and from {@code ~/.m2} when the file is there, and the rest of those trees
+ * there (POMs and jars the host never stored) is copied for exact fetches a solve still makes. A
+ * body the sandbox already holds is left alone — an index the store fetched itself outranks a
  * synthesised one — and nothing here is fetched, so the seed is a warmth, never a network cost.
  *
  * <p>Only those trees, on purpose. The rest of what a fixture may need — worker POM graphs, the
@@ -60,13 +61,38 @@ public final class TestStoreSeed {
     }
 
     /**
-     * Complete {@code store}'s JUnit trees from the Maven local repository that holds the POMs:
-     * {@code ~/.m2/repository} when it has {@code org/junit}, else {@link M2Dirs#localRepository()}.
+     * Complete {@code store}'s JUnit trees from every Maven local repository that may hold the POMs:
+     * {@link M2Dirs#localRepository()} first ({@code JK_M2_LOCAL} / the gate's shared test-m2), then
+     * {@code ~/.m2/repository}. A jar-only {@code ~/.m2} from Maven-local adoption is not enough on
+     * its own; the sandbox test-m2 usually has the POMs a prior fetch left there.
      */
     public static int complete(Path store) throws IOException {
-        Path user = Path.of(System.getProperty("user.home"), ".m2", "repository");
-        Path m2 = Files.isDirectory(user.resolve("org").resolve("junit")) ? user : M2Dirs.localRepository();
-        return seed(store, store, m2);
+        return seedFromLocalRepos(store, store);
+    }
+
+    /**
+     * Seed {@code sandboxStore} from {@code hostStore}, completing missing JUnit POMs from each
+     * candidate local repository ({@link M2Dirs#localRepository()}, then {@code ~/.m2/repository}).
+     */
+    public static int seedFromLocalRepos(Path hostStore, Path sandboxStore) throws IOException {
+        int materialised = 0;
+        for (Path m2 : localRepos()) {
+            materialised += seed(hostStore, sandboxStore, m2);
+        }
+        return materialised;
+    }
+
+    /**
+     * Local-repository roots that may hold JUnit POMs. {@link M2Dirs#localRepository()} first so a
+     * test JVM's {@code JK_M2_LOCAL} wins over a jar-only {@code ~/.m2}.
+     */
+    static List<Path> localRepos() {
+        Path local = M2Dirs.localRepository().toAbsolutePath().normalize();
+        Path user = Path.of(System.getProperty("user.home"), ".m2", "repository")
+                .toAbsolutePath()
+                .normalize();
+        if (local.equals(user)) return List.of(local);
+        return List.of(local, user);
     }
 
     /**
