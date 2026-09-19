@@ -177,7 +177,8 @@ class OutputMeasuresTest {
         m = OutputArtifacts.of(root, List.of(root.resolve("core")), null).get(0);
         assertThat(m.checkstyleRuns()).containsExactly("nohttp");
         Path nohttp = m.lintReport("checkstyle", "nohttp");
-        assertThat(nohttp.toString()).endsWith("lint-checkstyle-nohttp/lint/checkstyle-nohttp/checkstyle.xml");
+        assertThat(nohttp.endsWith(Path.of("lint-checkstyle-nohttp", "lint", "checkstyle-nohttp", "checkstyle.xml")))
+                .isTrue();
         Files.createDirectories(
                 Objects.requireNonNull(m.lintReport("checkstyle").getParent()));
         Files.writeString(m.lintReport("checkstyle"), CHECKSTYLE_REPORT);

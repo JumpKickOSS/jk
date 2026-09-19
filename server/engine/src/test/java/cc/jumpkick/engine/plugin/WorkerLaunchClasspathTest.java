@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.EffectivePomBuilder;
@@ -98,6 +99,35 @@ class WorkerLaunchClasspathTest {
             if (prevHost == null) System.clearProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
             else System.setProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY, prevHost);
         }
+    }
+
+    @Test
+    void jk_local_shelf_jars_are_recognised_and_foreign_trees_are_not(@TempDir Path tmp) throws Exception {
+        Path shelfJar = JkStores.store()
+                .resolve("repos")
+                .resolve(RepoArtifactResolver.JK_LOCAL)
+                .resolve("cc/jumpkick/example/1.0/example-1.0.jar");
+        assertThat(WorkerLaunchClasspath.isJkLocalJar(shelfJar)).isTrue();
+        assertThat(WorkerLaunchClasspath.isJkLocalJar(tmp.resolve("repos/jk-local/x.jar")))
+                .isFalse();
+        assertThat(WorkerLaunchClasspath.isJkLocalJar(tmp.resolve("target/plugins/w.jar")))
+                .isFalse();
+    }
+
+    @Test
+    void pin_jk_local_copies_shelf_jars_into_the_cas_and_leaves_others(@TempDir Path tmp) throws Exception {
+        Path other = tmp.resolve("other.jar");
+        Files.writeString(other, "other");
+        // A path that looks like jk-local but is not under the live store must stay put.
+        Path fakeShelf = tmp.resolve("repos/jk-local/cc/jumpkick/x/1/x-1.jar");
+        Files.createDirectories(fakeShelf.getParent());
+        Files.writeString(fakeShelf, "fake");
+
+        List<Path> pinned = WorkerLaunchClasspath.pinJkLocal(List.of(other, fakeShelf));
+        assertThat(pinned)
+                .containsExactly(
+                        other.toAbsolutePath().normalize(),
+                        fakeShelf.toAbsolutePath().normalize());
     }
 
     private static Path put(Path store, String rel, String bytes) throws Exception {

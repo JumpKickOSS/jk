@@ -18,15 +18,17 @@ public final class McpProjectCards {
 
     public static Map<String, Object> card(String dir, List<String> historyRaw) {
         Map<String, Object> m = new LinkedHashMap<>();
+        // Answer with the journal/bind key the caller sent — never the host-resolved path.
+        // On Windows PathUtil.resolveUserPath("/ws") becomes C:\ws; that must not rewrite the key.
+        String key = McpHistoryViews.normalizeDir(dir);
+        m.put("dir", key);
         Path root;
         try {
             root = PathUtil.resolveUserPath(dir);
         } catch (RuntimeException e) {
-            m.put("dir", dir);
             return m;
         }
         ProjectCard card = ProjectCard.of(root);
-        m.put("dir", card.dir());
         if (card.coord() != null) m.put("coord", card.coord());
         if (card.description() != null) m.put("description", card.description());
         if (card.version() != null) m.put("version", card.version());
@@ -35,7 +37,7 @@ public final class McpProjectCards {
         if (card.coord() != null) m.put("members", members(card));
         if (card.projectId() != null) m.put("projectId", card.projectId());
         m.put("lockStale", card.lockStale());
-        Map<String, Object> last = lastRun(card.dir(), historyRaw);
+        Map<String, Object> last = lastRun(key, historyRaw);
         if (last != null) m.put("lastRun", last);
         return m;
     }

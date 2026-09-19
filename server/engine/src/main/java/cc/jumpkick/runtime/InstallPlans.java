@@ -184,7 +184,10 @@ public final class InstallPlans {
                     try {
                         cacheInstallArtifact(project, layout, cache, m2Dir);
                     } catch (IOException e) {
-                        ctx.error(TaskNames.CACHE_INSTALL, Errors.text(e));
+                        // Class name first: Windows FileSystemException messages are often just
+                        // "a -> b" with no reason, which hides whether it was access-denied or a
+                        // sharing violation.
+                        ctx.error(TaskNames.CACHE_INSTALL, e.getClass().getSimpleName() + ": " + Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.put(PRIMARY, coord);

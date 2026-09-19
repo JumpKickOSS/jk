@@ -130,7 +130,7 @@ class JobEnvelopeTest {
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         env.submit(
-                "{\"type\":\"mvn-results-request\",\"dir\":\"" + dir + "\"}",
+                "{\"type\":\"mvn-results-request\",\"dir\":" + Jsonl.quote(dir.toString()) + "}",
                 JobRequest.plan("mvn", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         assertThat(host.lastBuildNumber).isPositive();
@@ -177,7 +177,7 @@ class JobEnvelopeTest {
                 }),
                 new JobTransport.FireAndForget());
         assertThat(ran.await(30, TimeUnit.SECONDS)).isTrue();
-        Await.until(Duration.ofSeconds(30), () -> host.finished > 0);
+        Await.until(Duration.ofSeconds(30), () -> host.finished.get() > 0);
         Path details = host.journal()
                 .detailsFile(host.coordOf(dir.toString()), dir.toString(), host.lastBuildNumber)
                 .orElseThrow();

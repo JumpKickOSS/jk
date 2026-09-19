@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.testing.Await;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
@@ -159,9 +160,7 @@ class WireWriterTest {
                 .as("the stream is dead for every later line")
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("stopped reading");
-        assertThat(pipe.sink().isOpen())
-                .as("dropping the client closed its socket")
-                .isFalse();
+        Await.until(Duration.ofSeconds(5), () -> !pipe.sink().isOpen());
     }
 
     /** A line whose client has not read it within the stream's idle bound fails inside that bound. */
@@ -182,7 +181,7 @@ class WireWriterTest {
                 .hasMessageContaining("stopped reading");
         long waitedMs = (System.nanoTime() - started) / 1_000_000;
         assertThat(waitedMs).as("bounded by the idle bound, not by the client").isLessThan(5_000);
-        assertThat(pipe.sink().isOpen()).isFalse();
+        Await.until(Duration.ofSeconds(5), () -> !pipe.sink().isOpen());
     }
 
     /**
@@ -207,7 +206,7 @@ class WireWriterTest {
                 .hasMessageContaining("stopped reading");
         long waitedMs = (System.nanoTime() - started) / 1_000_000;
         assertThat(waitedMs).as("bounded by the bound set after binding").isLessThan(5_000);
-        assertThat(pipe.sink().isOpen()).isFalse();
+        Await.until(Duration.ofSeconds(5), () -> !pipe.sink().isOpen());
     }
 
     /** Releasing a stream lands what it still holds first, so a job-finish handed over last is read. */

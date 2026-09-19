@@ -16,6 +16,7 @@ import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.CancelledShortfall;
 import cc.jumpkick.test.RunResults;
+import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -425,7 +426,7 @@ public final class BuildAccumulator {
      */
     public void noteTaskStart(String dir, String step, String phase, long nowMillis) {
         if (step == null || step.isBlank()) return;
-        String d = dir == null ? "" : dir;
+        String d = dirKey(dir);
         Map<String, BuildRecord.Task> m =
                 stepsByDir.computeIfAbsent(d, k -> Collections.synchronizedMap(new LinkedHashMap<>()));
         synchronized (m) {
@@ -573,15 +574,22 @@ public final class BuildAccumulator {
     /** One finished step, stored under its module dir ("" for a single-plan build). */
     public void addTask(String dir, String step, String phase, String status, long millis, long waitMillis) {
         anyFact = true;
-        String d = dir == null ? "" : dir;
+        String d = dirKey(dir);
         stepsByDir
                 .computeIfAbsent(d, k -> Collections.synchronizedMap(new LinkedHashMap<>()))
                 .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis));
         stepStartedAt.remove(stepKey(d, step));
         forkTails.remove(stepKey(d, step));
         if (timeline != null) {
-            timeline.complete(timelineModule(dir), step, status == null ? "" : status, millis);
+            timeline.complete(timelineModule(d), step, status == null ? "" : status, millis);
         }
+    }
+
+    /** Forward-slash dir key so {@code Path} strings and journal paths share one bucket on Windows. */
+    private static String dirKey(@Nullable String dir) {
+        if (dir == null || dir.isEmpty()) return "";
+        String key = DirKeys.slashes(dir);
+        return key == null ? "" : key;
     }
 
     private static boolean isTerminalTaskStatus(String status) {
@@ -604,7 +612,7 @@ public final class BuildAccumulator {
         List<HttpLive.Module> moduleList = new ArrayList<>();
         Set<String> covered = new HashSet<>();
         for (ModuleOutcome o : moduleSnapshot()) {
-            String mdir = o.dir() == null ? "" : o.dir().toString();
+            String mdir = o.dir() == null ? "" : dirKey(o.dir().toString());
             covered.add(mdir);
             moduleList.add(new HttpLive.Module(
                     mdir,
@@ -893,7 +901,7 @@ public final class BuildAccumulator {
         List<BuildRecord.Module> moduleList = new ArrayList<>();
         Set<String> covered = new HashSet<>();
         for (ModuleOutcome o : moduleSnapshot()) {
-            String mdir = o.dir() == null ? "" : o.dir().toString();
+            String mdir = o.dir() == null ? "" : dirKey(o.dir().toString());
             covered.add(mdir);
             moduleList.add(
                     new BuildRecord.Module(o.coord(), mdir, o.success(), o.exitCode(), o.millis(), stepsFor(mdir)));

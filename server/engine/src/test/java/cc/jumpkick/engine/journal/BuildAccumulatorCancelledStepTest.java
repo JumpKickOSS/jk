@@ -96,6 +96,8 @@ class BuildAccumulatorCancelledStepTest {
 
     @Test
     void a_workspace_module_caught_mid_flight_gets_a_module_row_for_its_cancelled_step() {
+        // ModuleOutcome stores a Path; step keys are strings. BuildAccumulator normalizes both to
+        // forward slashes, so Windows Path.of("/…") (`\ws\lib`) still joins the `/ws/lib` bucket.
         BuildAccumulator a = new BuildAccumulator("test", "/ws", "g:ws", "cli");
         a.addModule(new ModuleOutcome("g:lib", Path.of("/ws/lib"), true, 0, 300, true, false, null));
         a.addTask("/ws/lib", "run-tests", "test", "SUCCESS", 300, 0);
