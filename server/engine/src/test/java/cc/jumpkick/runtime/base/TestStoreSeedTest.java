@@ -137,6 +137,47 @@ class TestStoreSeedTest {
         assertThat(Files.readString(metadata(store, LAUNCHER))).contains("<latest>6.1.3</latest>");
     }
 
+    /**
+     * The gate's shared test-m2 ({@code JK_M2_LOCAL}) holds POMs a jar-only {@code ~/.m2} lacks.
+     * {@link TestStoreSeed#complete} must read that tree first, or fixture locks dial Central.
+     */
+    @Test
+    void complete_takes_junit_poms_from_jk_m2_local_when_user_m2_has_only_jars(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        artifact(store, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
+
+        Path home = tmp.resolve("home");
+        Path userJunit = home.resolve(".m2/repository/org/junit");
+        Files.createDirectories(userJunit);
+        Path userJar = home.resolve(".m2/repository")
+                .resolve(LAUNCHER)
+                .resolve("6.1.3")
+                .resolve("junit-platform-launcher-6.1.3.jar");
+        Files.createDirectories(userJar.getParent());
+        Files.writeString(userJar, "jar");
+
+        Path local = tmp.resolve("test-m2");
+        Path pom = local.resolve(LAUNCHER).resolve("6.1.3").resolve("junit-platform-launcher-6.1.3.pom");
+        Files.createDirectories(pom.getParent());
+        Files.writeString(pom, "<project/>");
+
+        String prevHome = System.getProperty("user.home");
+        String prevM2 = System.getProperty("jk.m2.local");
+        try {
+            System.setProperty("user.home", home.toString());
+            System.setProperty("jk.m2.local", local.toString());
+            assertThat(TestStoreSeed.complete(store)).isGreaterThan(0);
+            assertThat(store.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
+                    .isRegularFile();
+            assertThat(Files.readString(metadata(store, LAUNCHER))).contains("<latest>6.1.3</latest>");
+        } finally {
+            if (prevHome != null) System.setProperty("user.home", prevHome);
+            else System.clearProperty("user.home");
+            if (prevM2 != null) System.setProperty("jk.m2.local", prevM2);
+            else System.clearProperty("jk.m2.local");
+        }
+    }
+
     /** A second seed finds nothing to link, and an index the sandbox fetched itself is kept. */
     @Test
     void a_second_seed_finds_nothing_to_do_and_a_real_index_already_there_is_kept(@TempDir Path tmp) throws Exception {
