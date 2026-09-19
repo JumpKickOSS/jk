@@ -14,6 +14,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.IoLedger;
@@ -41,6 +42,22 @@ class PreflightMemoTest {
     @AfterEach
     void tidy() {
         SessionContext.reset();
+        BuildIdentity.overrideBuildIdForTests(null);
+    }
+
+    @Test
+    void producer_change_misses_memo_even_when_inputs_match(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        BuildIdentity.overrideBuildIdForTests("engine-aaaa");
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
+
+        BuildIdentity.overrideBuildIdForTests("engine-bbbb");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false))
+                .as("a memo certified under another engine must not skip packaging re-key")
+                .isEmpty();
     }
 
     @Test

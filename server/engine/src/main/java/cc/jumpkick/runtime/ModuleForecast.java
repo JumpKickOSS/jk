@@ -972,26 +972,22 @@ final class ModuleForecast {
             if (jarDirty || compileDirty) {
                 steps.add(new TaskForecast.Task(
                         TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, "rebuild · compile changed", null));
-            } else if (binaryPresent) {
-                steps.add(new TaskForecast.Task(TaskNames.NATIVE_IMAGE, TaskForecast.Status.CACHED, "", null));
             } else if (nativeRestores(layout)) {
-                // After jk clean the binary is gone but the step's key still hits: the executable
-                // comes back from the cache in seconds, and the restore gate below schedules the
-                // module for it. The key is replayed from the step's last record — see
-                // PackagingKeys.nativeActionCached for what is recomputed and what is trusted.
-                nativeBinaryToRestore = true;
+                // Same producer-keyed action record the live step restores from — an on-disk
+                // binary alone is not enough (a previous engine's binary must not hide a miss).
+                if (!binaryPresent) nativeBinaryToRestore = true;
                 steps.add(new TaskForecast.Task(
                         TaskNames.NATIVE_IMAGE,
                         TaskForecast.Status.CACHED,
-                        "binary missing · restores from cache",
+                        binaryPresent ? "" : "binary missing · restores from cache",
                         null));
             } else {
-                // A missing binary whose key the replay cannot vouch for is priced as work: the
-                // step itself still restores when its key hits; only the forecast is pessimistic.
                 steps.add(new TaskForecast.Task(
                         TaskNames.NATIVE_IMAGE,
                         TaskForecast.Status.RUN,
-                        "native-image · binary missing (restores when its key still hits)",
+                        binaryPresent
+                                ? "native-image · action cache miss"
+                                : "native-image · binary missing (restores when its key still hits)",
                         null));
             }
         }

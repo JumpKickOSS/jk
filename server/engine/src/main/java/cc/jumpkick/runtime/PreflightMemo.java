@@ -226,11 +226,13 @@ public final class PreflightMemo {
             List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
             if (lines.isEmpty() || !lines.getFirst().startsWith("schema=" + SCHEMA)) return Optional.empty();
             String wantVersion = BuildIdentity.cacheKeyVersion();
+            String wantProducer = BuildIdentity.buildId();
             String wantSkip = skipTests ? "1" : "0";
             String wantMode = fingerprintMode();
             String wantProfile = profileHeader(profile);
             String wantSelection = selectionHeader();
             String gotVersion = null;
+            String gotProducer = null;
             String gotSkip = null;
             String gotMode = null;
             String gotProfile = null;
@@ -241,6 +243,10 @@ public final class PreflightMemo {
                 if (line.startsWith("schema=")) continue;
                 if (line.startsWith("cacheKeyVersion=")) {
                     gotVersion = line.substring("cacheKeyVersion=".length());
+                    continue;
+                }
+                if (line.startsWith("producer=")) {
+                    gotProducer = line.substring("producer=".length());
                     continue;
                 }
                 if (line.startsWith("skipTests=")) {
@@ -263,13 +269,20 @@ public final class PreflightMemo {
                 if (parts.length != 3) return Optional.empty();
                 rows.put(parts[0], new MemoRow(parts[1], "1".equals(parts[2])));
             }
-            if (!wantVersion.equals(gotVersion) || !wantSkip.equals(gotSkip)) {
+            // Packaging / plugin / guard action keys name the producing engine; a memo certified
+            // under another engine must not skip the walk that would re-key those steps.
+            if (gotProducer == null) gotProducer = "";
+            if (!wantVersion.equals(gotVersion) || !wantProducer.equals(gotProducer) || !wantSkip.equals(gotSkip)) {
                 return miss(
                         "header",
                         "wantVersion",
                         wantVersion,
                         "gotVersion",
                         gotVersion,
+                        "wantProducer",
+                        wantProducer,
+                        "gotProducer",
+                        gotProducer,
                         "wantSkip",
                         wantSkip,
                         "gotSkip",
@@ -411,6 +424,7 @@ public final class PreflightMemo {
             sb.append("cacheKeyVersion=")
                     .append(BuildIdentity.cacheKeyVersion())
                     .append('\n');
+            sb.append("producer=").append(BuildIdentity.buildId()).append('\n');
             sb.append("skipTests=").append(skipTests ? "1" : "0").append('\n');
             sb.append("fpMode=").append(fingerprintMode()).append('\n');
             sb.append("profile=").append(profileHeader(profile)).append('\n');

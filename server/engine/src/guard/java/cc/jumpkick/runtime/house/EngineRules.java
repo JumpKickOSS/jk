@@ -62,7 +62,11 @@ final class EngineRules {
             "PlannerTails.java|key",
                     new Object[] {"package-sources", false, "explain does not forecast the sources jar at all"},
             "PlannerNative.java|nKey",
-                    new Object[] {"native-image", true, "the forecast probes the task pointer, not a token bag"},
+                    new Object[] {
+                        "native-image",
+                        true,
+                        "forecast replays PackagingKeys.nativeActionCached from the last record, not the live token bag"
+                    },
             "PlannerPlugin.java|actionKey",
                     new Object[] {"plugin-<step>", false, "plugin steps are not forecast (no step, no key)"},
             "ImageWrite.java|imgKey",

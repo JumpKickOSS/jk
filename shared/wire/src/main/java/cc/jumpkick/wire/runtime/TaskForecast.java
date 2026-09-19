@@ -138,6 +138,26 @@ public final class TaskForecast {
         }
 
         /**
+         * True when {@code jk install} schedules this module only to shelf jars already on disk:
+         * every build step is cached and the sole material miss is {@code cache-install}. The
+         * install prepare path then uses a parse + cache-install plan instead of re-entering
+         * packaging tails.
+         */
+        public boolean shelfOnly() {
+            if (reason != null) return false;
+            boolean sawCacheInstall = false;
+            for (Task s : steps) {
+                if (s.cached() || isBookkeepingStep(s.name())) continue;
+                if (TaskNames.CACHE_INSTALL.equals(s.name())) {
+                    sawCacheInstall = true;
+                    continue;
+                }
+                return false;
+            }
+            return sawCacheInstall;
+        }
+
+        /**
          * Steps whose cache miss means real wall work for ETA / dirty-set (not stamp-check
          * bookkeeping). Anything not on the bookkeeping denylist is material (plugin source-gen,
          * native-image, run-tests, compile-*, package-*, …).
