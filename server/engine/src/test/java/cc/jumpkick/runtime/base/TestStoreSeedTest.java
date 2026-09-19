@@ -96,6 +96,47 @@ class TestStoreSeedTest {
                 .doesNotContain("6.1.4");
     }
 
+    /**
+     * Maven-local adoption leaves the jar in the host store and the POM in {@code ~/.m2}. Completing
+     * the POM from that tree is what lets {@code latest} resolve without Central.
+     */
+    @Test
+    void a_jar_the_host_stored_without_a_pom_is_completed_from_m2(@TempDir Path tmp) throws Exception {
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
+        Path m2 = tmp.resolve("m2");
+        Path pom = m2.resolve(LAUNCHER).resolve("6.1.3").resolve("junit-platform-launcher-6.1.3.pom");
+        Files.createDirectories(pom.getParent());
+        Files.writeString(pom, "<project/>");
+        Path bom = m2.resolve("org/junit/junit-bom/6.1.3/junit-bom-6.1.3.pom");
+        Files.createDirectories(bom.getParent());
+        Files.writeString(bom, "<project/>");
+        Path sandbox = tmp.resolve("sandbox");
+
+        TestStoreSeed.seed(host, sandbox, m2);
+
+        assertThat(sandbox.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
+                .isRegularFile();
+        assertThat(sandbox.resolve("repos/central/org/junit/junit-bom/6.1.3/junit-bom-6.1.3.pom"))
+                .isRegularFile();
+        assertThat(Files.readString(metadata(sandbox, LAUNCHER))).contains("<latest>6.1.3</latest>");
+    }
+
+    @Test
+    void a_same_store_seed_completes_missing_poms_from_m2(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        artifact(store, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
+        Path m2 = tmp.resolve("m2");
+        Path pom = m2.resolve(LAUNCHER).resolve("6.1.3").resolve("junit-platform-launcher-6.1.3.pom");
+        Files.createDirectories(pom.getParent());
+        Files.writeString(pom, "<project/>");
+
+        assertThat(TestStoreSeed.seed(store, store, m2)).isGreaterThan(0);
+        assertThat(store.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
+                .isRegularFile();
+        assertThat(Files.readString(metadata(store, LAUNCHER))).contains("<latest>6.1.3</latest>");
+    }
+
     /** A second seed finds nothing to link, and an index the sandbox fetched itself is kept. */
     @Test
     void a_second_seed_finds_nothing_to_do_and_a_real_index_already_there_is_kept(@TempDir Path tmp) throws Exception {

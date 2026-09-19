@@ -14,6 +14,9 @@ public record EngineOwner(long pid, long startedAtMillis) {
     /** Start-instant slack between the sidecar and the OS: both read the same clock. */
     private static final long START_SLACK_MS = 5_000;
 
+    /** OS process ids are 32-bit; {@link ProcessHandle#of} on a wider value can still report alive. */
+    private static final long PID_MAX = 0xFFFF_FFFFL;
+
     public static EngineOwner current() {
         ProcessHandle self = ProcessHandle.current();
         return new EngineOwner(
@@ -39,8 +42,9 @@ public record EngineOwner(long pid, long startedAtMillis) {
 
     /** {@code true} while a process with this pid runs and started when the sidecar says it did. */
     public boolean alive() {
+        if (pid <= 0 || pid > PID_MAX) return false;
         Optional<ProcessHandle> handle = ProcessHandle.of(pid);
-        if (handle.isEmpty() || !handle.get().isAlive()) return false;
+        if (handle.isEmpty() || !handle.get().isAlive() || handle.get().pid() != pid) return false;
         if (startedAtMillis <= 0) return true;
         Optional<Instant> started = handle.get().info().startInstant();
         return started.isEmpty() || Math.abs(started.get().toEpochMilli() - startedAtMillis) <= START_SLACK_MS;

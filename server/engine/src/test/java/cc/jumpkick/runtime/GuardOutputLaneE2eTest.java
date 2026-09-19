@@ -11,6 +11,8 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.base.TestStoreSeed;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -90,6 +92,7 @@ class GuardOutputLaneE2eTest {
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
+        TestStoreSeed.complete(JkDirs.store());
         var build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);

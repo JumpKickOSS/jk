@@ -2,6 +2,7 @@
 # Manual edits can break the build and are not advised.
 # This file is expected to be part of source control.
 # To regenerate this file, run: ./gradlew :toolchain:dependencies --write-locks
+com.fasterxml.woodstox:woodstox-core:7.2.1=runtimeClasspath,testRuntimeClasspath
 com.github.ben-manes.caffeine:caffeine:3.0.5=annotationProcessor,testAnnotationProcessor
 com.github.kevinstern:software-and-algorithms:1.0=annotationProcessor,testAnnotationProcessor
 com.google.auto.service:auto-service-annotations:1.0.1=annotationProcessor,testAnnotationProcessor
@@ -20,14 +21,26 @@ com.google.protobuf:protobuf-java:4.33.2=annotationProcessor,testAnnotationProce
 com.uber.nullaway:nullaway:0.14.1=annotationProcessor,testAnnotationProcessor
 io.github.eisop:dataflow-errorprone:3.41.0-eisop1=annotationProcessor,testAnnotationProcessor
 io.github.java-diff-utils:java-diff-utils:4.12=annotationProcessor,testAnnotationProcessor
-javax.inject:javax.inject:1=annotationProcessor,testAnnotationProcessor
+javax.inject:javax.inject:1=annotationProcessor,compileClasspath,runtimeClasspath,testAnnotationProcessor,testCompileClasspath,testRuntimeClasspath
 net.bytebuddy:byte-buddy:1.18.3=testCompileClasspath,testRuntimeClasspath
 org.antlr:antlr4-runtime:4.11.1=runtimeClasspath,testRuntimeClasspath
+org.apache.maven:maven-api-annotations:4.0.0-rc-6=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.apache.maven:maven-api-xml:4.0.0-rc-6=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.apache.maven:maven-artifact:3.9.16=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.apache.maven:maven-builder-support:3.9.16=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.apache.maven:maven-model-builder:3.9.16=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.apache.maven:maven-model:3.9.16=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.apache.maven:maven-xml:4.0.0-rc-6=runtimeClasspath,testRuntimeClasspath
 org.apiguardian:apiguardian-api:1.1.2=testCompileClasspath
 org.assertj:assertj-core:3.27.7=testCompileClasspath,testRuntimeClasspath
 org.checkerframework:checker-qual:3.21.2=runtimeClasspath,testRuntimeClasspath
 org.checkerframework:checker-qual:4.2.2=annotationProcessor,testAnnotationProcessor
 org.checkerframework:dataflow-nullaway:4.2.2=annotationProcessor,testAnnotationProcessor
+org.codehaus.plexus:plexus-interpolation:1.29=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.codehaus.plexus:plexus-utils:3.6.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.codehaus.plexus:plexus-xml:4.2.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.codehaus.woodstox:stax2-api:4.3.0=runtimeClasspath,testRuntimeClasspath
+org.eclipse.sisu:org.eclipse.sisu.inject:1.0.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.jacoco:org.jacoco.agent:0.8.14=jacocoAgent,jacocoAnt
 org.jacoco:org.jacoco.ant:0.8.14=jacocoAnt
 org.jacoco:org.jacoco.core:0.8.14=jacocoAnt
@@ -45,6 +58,7 @@ org.opentest4j:opentest4j:1.3.0=testCompileClasspath,testRuntimeClasspath
 org.ow2.asm:asm-commons:9.9=jacocoAnt
 org.ow2.asm:asm-tree:9.9=jacocoAnt
 org.ow2.asm:asm:9.9=jacocoAnt
+org.ow2.asm:asm:9.9.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.pcollections:pcollections:4.0.1=annotationProcessor,testAnnotationProcessor
 org.projectlombok:lombok:1.18.48=annotationProcessor,compileClasspath,testAnnotationProcessor,testCompileClasspath
 org.tomlj:tomlj:1.1.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
