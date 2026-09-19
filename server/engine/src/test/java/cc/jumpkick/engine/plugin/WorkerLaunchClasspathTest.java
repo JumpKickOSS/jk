@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.PomRuntimeClasspath;
@@ -15,6 +16,7 @@ import cc.jumpkick.repo.RepoGroup;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -128,6 +130,32 @@ class WorkerLaunchClasspathTest {
                 .containsExactly(
                         other.toAbsolutePath().normalize(),
                         fakeShelf.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void a_shelf_memo_is_trusted_only_while_it_describes_the_jar_on_disk(@TempDir Path tmp) throws Exception {
+        Path jar = tmp.resolve("x-1.jar");
+        Files.writeString(jar, "first");
+        String real = Hashing.sha256Hex(jar);
+        Path memoFile = jar.resolveSibling(ArtifactMemo.jkFileName("x-1.jar"));
+
+        // A memo carries a 64-hex sha; this one is deliberately not the file's, to show it is trusted.
+        String recorded = "f".repeat(64);
+        ArtifactMemo.ofBlob(jar, "cc.jumpkick:x:1", recorded).write(memoFile);
+        assertThat(WorkerLaunchClasspath.shaOf(jar))
+                .as("size and mtime match: no re-hash")
+                .isEqualTo(recorded);
+
+        // Same length, other bytes, other mtime: the memo describes the previous jar.
+        Files.writeString(jar, "later");
+        Files.setLastModifiedTime(
+                jar, FileTime.fromMillis(Files.getLastModifiedTime(jar).toMillis() + 5_000));
+        assertThat(WorkerLaunchClasspath.shaOf(jar))
+                .isEqualTo(Hashing.sha256Hex(jar))
+                .isNotEqualTo(real);
+
+        Files.deleteIfExists(memoFile);
+        assertThat(WorkerLaunchClasspath.shaOf(jar)).as("no memo: hash").isEqualTo(Hashing.sha256Hex(jar));
     }
 
     private static Path put(Path store, String rel, String bytes) throws Exception {
