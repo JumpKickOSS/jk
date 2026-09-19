@@ -3,7 +3,6 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
-import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;

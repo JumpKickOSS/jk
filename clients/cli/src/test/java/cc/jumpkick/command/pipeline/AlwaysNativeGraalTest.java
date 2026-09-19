@@ -45,8 +45,8 @@ class AlwaysNativeGraalTest {
     void a_lone_module_is_its_own_member(@TempDir Path dir) throws IOException {
         write(dir.resolve("jk.toml"), "[project]\nname = \"cli\"\n\n[native]\nenabled = \"always\"\n");
         assertThat(AlwaysNativeGraal.fromManifests(dir))
-                .containsExactly(
-                        new AlwaysNativeGraal.Module(dir.toAbsolutePath().normalize(), AlwaysNativeGraal.DEFAULT_SPEC, 0));
+                .containsExactly(new AlwaysNativeGraal.Module(
+                        dir.toAbsolutePath().normalize(), AlwaysNativeGraal.DEFAULT_SPEC, 0));
         write(dir.resolve("jk.toml"), "[project]\nname = \"cli\"\n");
         assertThat(AlwaysNativeGraal.fromManifests(dir)).isEmpty();
     }
@@ -110,7 +110,8 @@ class AlwaysNativeGraalTest {
 
         // Declared none: nothing to clear, and the resolution is left as it was.
         write(dir.resolve("jk.toml"), "[project]\nname = \"cli\"\n\n[native]\nenabled = \"always\"\n");
-        assertThat(requireNonNull(AlwaysNativeGraal.fromManifest(dir.toAbsolutePath().normalize()))
+        assertThat(requireNonNull(AlwaysNativeGraal.fromManifest(
+                                dir.toAbsolutePath().normalize()))
                         .javaRelease())
                 .isZero();
     }
@@ -138,8 +139,7 @@ class AlwaysNativeGraalTest {
         Path app = root.resolve("app");
         Path tool = root.resolve("tool");
         var modules = List.of(
-                new AlwaysNativeGraal.Module(app, "graalvm", 0),
-                new AlwaysNativeGraal.Module(tool, "graalvm", 17));
+                new AlwaysNativeGraal.Module(app, "graalvm", 0), new AlwaysNativeGraal.Module(tool, "graalvm", 17));
 
         assertThat(AlwaysNativeGraal.withReleases(modules, Map.of(app, 25)))
                 .containsExactly(

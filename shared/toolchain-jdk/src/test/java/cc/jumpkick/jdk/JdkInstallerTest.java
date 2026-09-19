@@ -302,7 +302,8 @@ class JdkInstallerTest {
 
         // GraalLauncher probes lib/svm/bin and every spelling on every host, so this is the
         // launcher a Windows GraalVM keeps and a POSIX run recognises it too.
-        Path svm = Files.createDirectories(graalHome.resolve("lib").resolve("svm").resolve("bin"));
+        Path svm =
+                Files.createDirectories(graalHome.resolve("lib").resolve("svm").resolve("bin"));
         Files.writeString(svm.resolve(GraalLauncher.EXE), "fake");
 
         assertThat(installer.alreadyInstalled(graal)).isNotNull();
@@ -334,8 +335,7 @@ class JdkInstallerTest {
         byte[] archive = buildTarGz("jdk-21.0.5+11", discoverableJdkFiles());
         served.put("/jdk.tar.gz", archive);
         Path jdksRoot = tempDir.resolve("jdks");
-        JdkCatalog.Entry entry =
-                entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
+        JdkCatalog.Entry entry = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
         // The shape that wedged the reporting host: ~/.jdks/graalvm-25, empty. A POSIX rename
         // replaces it; Windows refuses, so without the unlink the install could never land.
         Path target = Files.createDirectories(jdksRoot.resolve("temurin-21.0.5"));

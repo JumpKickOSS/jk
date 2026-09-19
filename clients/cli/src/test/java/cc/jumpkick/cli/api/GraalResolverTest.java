@@ -37,8 +37,8 @@ class GraalResolverTest {
                 project.resolve("jk-lock.toml"),
                 "[graal]\nsuggested-vendor = \"graalvm\"\nsuggested-version = \"25.0.4\"\n");
 
-        Optional<Path> home = new GraalResolver(jdks, false, BuildPlanConsole.Mode.QUIET)
-                .resolve(project, "graalvm", 0);
+        Optional<Path> home =
+                new GraalResolver(jdks, false, BuildPlanConsole.Mode.QUIET).resolve(project, "graalvm", 0);
 
         assertThat(home).contains(pinned);
     }

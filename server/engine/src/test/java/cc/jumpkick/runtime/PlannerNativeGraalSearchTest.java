@@ -34,10 +34,12 @@ class PlannerNativeGraalSearchTest {
                 .extracting(NativeImageDriver.Candidate::home)
                 .as("the home the client resolved is recorded before it is tested")
                 .startsWith(graalHome);
-        assertThat(search.home()).as("and the search still answers a home to fail against").isNotNull();
+        assertThat(search.home())
+                .as("and the search still answers a home to fail against")
+                .isNotNull();
 
-        String message = requireNonNull(
-                NativeImageDriver.notFoundError(search.checked()).getMessage());
+        String message =
+                requireNonNull(NativeImageDriver.notFoundError(search.checked()).getMessage());
         assertThat(message)
                 .as("so the failure names the home that is actually wrong")
                 .contains(graalHome.toString());

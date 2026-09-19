@@ -401,10 +401,8 @@ public final class GuardRules {
         List<OverBudget> worst = overBudget.stream()
                 .sorted(Comparator.comparingInt(OverBudget::tokens).reversed())
                 .toList();
-        String named = worst.stream()
-                .limit(3)
-                .map(r -> r.id() + " " + r.tokens())
-                .collect(Collectors.joining(", "));
+        String named =
+                worst.stream().limit(3).map(r -> r.id() + " " + r.tokens()).collect(Collectors.joining(", "));
         String more = worst.size() > 3 ? ", +" + (worst.size() - 3) + " more" : "";
         // Positioned at the worst offender, so the one line the build prints still points
         // somewhere a reader can open.
@@ -723,8 +721,7 @@ public final class GuardRules {
      * The keys whose value explains a rule rather than deciding anything: the two every rule must
      * carry, the examples a text rule must carry, and the fixture that proves it bites.
      */
-    private static final Set<String> PROSE =
-            Set.of("why", "instead", "reason", "hit", "miss", "fixture", "explain");
+    private static final Set<String> PROSE = Set.of("why", "instead", "reason", "hit", "miss", "fixture", "explain");
 
     private static int lineOf(TomlParseResult doc, List<String> path) {
         TomlPosition p = doc.inputPositionOf(path);

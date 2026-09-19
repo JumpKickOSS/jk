@@ -4,8 +4,8 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.EnvConfig;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -156,7 +156,9 @@ public final class WorkerEnv {
      * {@link #extras()}, so it also beats anything inherited.
      */
     public WorkerEnv withJavaHome(@Nullable Path javaHome) {
-        return javaHome == null ? this : with(Map.of("JAVA_HOME", javaHome.toAbsolutePath().toString()));
+        return javaHome == null
+                ? this
+                : with(Map.of("JAVA_HOME", javaHome.toAbsolutePath().toString()));
     }
 
     /** Entries the fork supplies unless {@link #extras()} already carries them. */
