@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import java.io.File
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
 import java.nio.channels.OverlappingFileLockException
@@ -26,6 +29,61 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "jk"
+
+// ---------------------------------------------------------------------------
+// Stale Kotlin compiler-daemon registry.
+//
+// kotlin-daemon writes `~/.local/share/kotlin/daemon/*.PORT.run` and the next
+// compile walks those files over RMI on 127.0.0.1. Under WSL2 mirrored
+// networking a closed loopback port hangs instead of refusing (same failure
+// class as G107 / docs/contributors/test-suite-tiers.md), so a leftover .run
+// from a killed daemon stalls every Gradle invocation that rebuilds buildSrc —
+// including `./gradlew clean`. Drop entries whose port is not listening before
+// buildSrc compiles. Settings runs before that compile.
+// ---------------------------------------------------------------------------
+run {
+    val dir = File(System.getProperty("user.home"), ".local/share/kotlin/daemon")
+    if (dir.isDirectory) {
+        val listening = listeningTcpPorts()
+        val portInName = Regex("""\.(\d+)\.run$""")
+        dir.listFiles()?.forEach { f ->
+            val port = portInName.find(f.name)?.groupValues?.get(1)?.toIntOrNull() ?: return@forEach
+            val live =
+                if (listening != null) port in listening
+                else isLocalTcpReachable(port, timeoutMs = 200)
+            if (!live) f.delete()
+        }
+    }
+}
+
+/** Ports in LISTEN state from `/proc/net/tcp{,6}`, or null when `/proc` is unavailable. */
+fun listeningTcpPorts(): Set<Int>? {
+    val procTcp = File("/proc/net/tcp")
+    if (!procTcp.isFile) return null
+    val ports = mutableSetOf<Int>()
+    for (proc in listOf(procTcp, File("/proc/net/tcp6"))) {
+        if (!proc.isFile) continue
+        proc.useLines { lines ->
+            lines.drop(1).forEach { line ->
+                val cols = line.trim().split(Regex("\\s+"))
+                if (cols.size < 4 || cols[3] != "0A") return@forEach
+                cols[1].substringAfter(':', "").toIntOrNull(16)?.let { ports.add(it) }
+            }
+        }
+    }
+    return ports
+}
+
+/** Bounded connect used only when `/proc` is missing (macOS / Windows native). */
+fun isLocalTcpReachable(port: Int, timeoutMs: Int): Boolean =
+    try {
+        Socket().use { s ->
+            s.connect(InetSocketAddress("127.0.0.1", port), timeoutMs)
+            true
+        }
+    } catch (_: Exception) {
+        false
+    }
 
 // ---------------------------------------------------------------------------
 // Cross-daemon build serialization.
