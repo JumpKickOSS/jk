@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.git.GitFetcher;
@@ -25,7 +26,9 @@ import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.PluginModule;
+import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.M2CompatWriter;
@@ -39,6 +42,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
@@ -166,35 +170,83 @@ public final class InstallPlans {
                 .stage(BuildStage.PUBLISH)
                 .requires(requires.toArray(new String[0]))
                 .ticks(1)
+                .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir))
+                .build();
+        builder.addTask(cacheInstall).terminal(TaskNames.CACHE_INSTALL);
+    }
+
+    /**
+     * Re-shelve only: parse the module and {@code cache-install} jars already on disk. Used after
+     * an install materializes a new engine so shelf packager memos name that engine without
+     * re-packaging or re-testing.
+     */
+    public static BuildPlan reshelveBuildPlan(Path projectDir, Path cache, Path m2Dir) {
+        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
+        Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
+                .stage(BuildStage.RESOLVE)
+                .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(BuildPlanner.PROJECT);
-                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
-                    var p = project.project();
-                    Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-                    if (alreadyInstalled(project, layout, cache, m2Dir)) {
-                        ctx.label("already in local repo");
-                        ctx.cached();
-                        stampShelfPackager(coord, BuildIdentity.codeSha256());
-                        ctx.put(PRIMARY, coord);
-                        ctx.progress(1);
-                        return;
+                    ctx.label("parse jk.toml");
+                    Session session = SessionContext.current();
+                    JkBuild project = VariantApply.apply(
+                                    WorkspaceResolve.applyWorkspace(projectDir, JkBuildParser.parse(jkBuildPath)),
+                                    projectDir,
+                                    Variants.Selection.parse(session.variant()),
+                                    session.clientEnv())
+                            .build();
+                    BuildLayout layout = BuildLayout.of(projectDir, project);
+                    Path jar = layout.mainJar();
+                    if (!Files.isRegularFile(jar)) {
+                        ctx.error(
+                                "missing-jar",
+                                "jar not found at " + jar + " — the install's first pass must leave it on disk");
+                        throw new RuntimeException("missing jar for re-shelve");
                     }
-                    ctx.label(
-                            "install " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " to cache");
-                    try {
-                        cacheInstallArtifact(project, layout, cache, m2Dir);
-                    } catch (IOException e) {
-                        // Class name first: Windows FileSystemException messages are often just
-                        // "a -> b" with no reason, which hides whether it was access-denied or a
-                        // sharing violation.
-                        ctx.error(TaskNames.CACHE_INSTALL, e.getClass().getSimpleName() + ": " + Errors.text(e));
-                        throw new RuntimeException(e);
-                    }
-                    ctx.put(PRIMARY, coord);
+                    ctx.put(BuildPlanner.PROJECT, project);
+                    ctx.put(BuildPlanner.LAYOUT, layout);
                     ctx.progress(1);
                 })
                 .build();
-        builder.addTask(cacheInstall).terminal(TaskNames.CACHE_INSTALL);
+        Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
+                .stage(BuildStage.PUBLISH)
+                .requires(TaskNames.PARSE_BUILD)
+                .ticks(1)
+                .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir))
+                .build();
+        return BuildPlan.builder("reshelve")
+                .stateKeys(BuildPlanner.PROJECT, BuildPlanner.LAYOUT, PRIMARY)
+                .addTask(parseBuild)
+                .addTask(cacheInstall)
+                .terminal(TaskNames.CACHE_INSTALL)
+                .build();
+    }
+
+    /** Shared {@code cache-install} body: stamp when the shelf already matches, else write. */
+    private static void executeCacheInstall(TaskContext ctx, Path cache, Path m2Dir) {
+        JkBuild project = ctx.require(BuildPlanner.PROJECT);
+        BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
+        var p = project.project();
+        Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+        if (alreadyInstalled(project, layout, cache, m2Dir)) {
+            ctx.label("already in local repo");
+            ctx.cached();
+            stampShelfPackager(coord, BuildIdentity.codeSha256());
+            ctx.put(PRIMARY, coord);
+            ctx.progress(1);
+            return;
+        }
+        ctx.label("install " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " to cache");
+        try {
+            cacheInstallArtifact(project, layout, cache, m2Dir);
+        } catch (IOException e) {
+            // Class name first: Windows FileSystemException messages are often just
+            // "a -> b" with no reason, which hides whether it was access-denied or a
+            // sharing violation.
+            ctx.error(TaskNames.CACHE_INSTALL, e.getClass().getSimpleName() + ": " + Errors.text(e));
+            throw new RuntimeException(e);
+        }
+        ctx.put(PRIMARY, coord);
+        ctx.progress(1);
     }
 
     /**

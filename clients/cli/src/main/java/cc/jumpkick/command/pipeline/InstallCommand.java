@@ -57,6 +57,7 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -445,8 +446,8 @@ public final class InstallCommand {
     /**
      * Set once a pass has replaced the engine: the pass that follows re-shelves under the new
      * engine and is the last. A pass is run by the engine the home names when it starts; when it
-     * materializes another engine, that engine runs one more pass, which re-packages and re-shelves
-     * every artifact the displaced engine produced.
+     * materializes another engine, that engine runs one more {@link WorkspaceTarget#RESHELVE} pass
+     * — shelf stamp / copy only, against jars the first pass already left on disk.
      */
     private boolean reshelving;
 
@@ -475,37 +476,44 @@ public final class InstallCommand {
         // engine round-trip — three sweeps over a 30-module workspace is ~90 requests for nothing.
         Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
         for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
-        List<AlwaysNativeGraal.Module> alwaysNative = new ArrayList<>();
-        for (Path mod : moduleDirs) {
-            var info = Objects.requireNonNull(infoByDir.get(mod), () -> "no project info for " + mod);
-            if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
-            alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal(), info.javaRelease()));
-        }
-        Optional<Map<Path, Path>> resolved = AlwaysNativeGraal.homes(
-                alwaysNative, new GraalResolver(null, false, BuildPlanConsole.modeFor(global))::resolve);
-        if (resolved.isEmpty()) return 1;
-        Map<Path, Path> graalByDir = resolved.get();
         List<String> tokens = cwdScope.scoped() ? List.of(cwdScope.modulesSpec()) : List.of();
         Set<Path> selected = cwdScope.scoped() ? Set.of(cwdScope.workingDir()) : Set.of();
+        Map<Path, Path> graalByDir = Map.of();
+        if (!reshelving) {
+            List<AlwaysNativeGraal.Module> alwaysNative = new ArrayList<>();
+            for (Path mod : moduleDirs) {
+                var info = Objects.requireNonNull(infoByDir.get(mod), () -> "no project info for " + mod);
+                if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
+                alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal(), info.javaRelease()));
+            }
+            Optional<Map<Path, Path>> resolved = AlwaysNativeGraal.homes(
+                    alwaysNative, new GraalResolver(null, false, BuildPlanConsole.modeFor(global))::resolve);
+            if (resolved.isEmpty()) return 1;
+            graalByDir = resolved.get();
+        }
         // A workspace request carries its own client env, as jk build's does: the engine is a
         // daemon, so a member's [test] env name set in this shell rides the request or not at all.
         VariantSelection.installEnv(wsRoot);
         Session session = SessionContext.current();
+        // Re-shelve skips tests and lock freshen: jars are already on disk from the first pass.
         WorkspaceRequest req = new WorkspaceRequest(
                         wsRoot,
                         cacheDir,
                         jdksDir,
                         0,
                         null,
-                        buildOpts.skipTests,
+                        reshelving || buildOpts.skipTests,
                         global.verbose,
                         0,
                         selected.isEmpty() ? null : selected,
                         true,
-                        true)
+                        !reshelving)
                 .withVariant(session.variant(), session.clientEnv())
                 .withModules(tokens)
-                .withSpec(WorkspaceSpec.install(selected, graalByDir, m2Dir()));
+                .withSpec(
+                        reshelving
+                                ? WorkspaceSpec.reshelve(selected, m2Dir())
+                                : WorkspaceSpec.install(selected, graalByDir, m2Dir()));
         // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
         // axis they choose on: a live region for a terminal, the append-only block for
         // --output json / --verbose. A hand-rolled listener here is what made a failed workspace
@@ -532,8 +540,8 @@ public final class InstallCommand {
             if (!json) {
                 CommandWedge.printOk(
                         "Install",
-                        "the engine changed under this install — re-shelving the workers it packaged"
-                                + " with the freshly built engine");
+                        "the engine changed under this install — re-shelving under the freshly built"
+                                + " engine (jars already built; restamping the shelf)");
             }
             // The pointer names another jar now; the next request probes again and takes the
             // resident engine over, so the second pass runs on the engine this tree built. That

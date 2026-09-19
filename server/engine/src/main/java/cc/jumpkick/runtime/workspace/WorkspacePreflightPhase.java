@@ -274,7 +274,7 @@ public final class WorkspacePreflightPhase {
     public static Set<Path> terminalTargetDirs(List<BuildGraph.BuildUnit> units, WorkspaceRequest request) {
         WorkspaceTarget target = request.target();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
-        if (target == WorkspaceTarget.INSTALL) {
+        if (target == WorkspaceTarget.INSTALL || target == WorkspaceTarget.RESHELVE) {
             Set<Path> all = new LinkedHashSet<>();
             for (BuildGraph.BuildUnit unit : units) {
                 if (!CompileSupport.coordinatorOnly(unit.manifest(), unit.dir())) all.add(unit.dir());

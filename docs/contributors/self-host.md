@@ -310,22 +310,23 @@ jar or PATH client holding other bytes than the build output is reinstalled.
 The pass is run by the engine the home names when it starts, and every artifact-shaped action key
 names the engine that packaged the artifact. So when the pass materializes another engine than the
 one that ran it, `jk install` runs one more pass under that engine (announced as *re-shelving*):
-the jars the displaced engine packaged are packaged afresh and the ones that changed are re-shelved,
-and one command leaves the shelf packaged by the tree's own engine. An engine serves only clients
-of its own version, so a client of another version than the tree's (the released client a
-contributor bootstraps from, the previous release the hosted CI installs with) stops after the
-first pass, succeeds, and says which client runs the second — the PATH client the pass installed:
-run `<home>/bin/jk install --skip-tests` once more, which is what the CI takeover step does. A
-client older than this second pass stops silently after the first. The passes are bounded at two,
-so when the re-shelving pass itself ends on yet another engine, `jk install` says so and asks for
-that one more run.
+a `RESHELVE` plan that only `cache-install`s jars already on disk and restamps shelf packager
+memos — it does not re-compile, re-test, or re-package. One command leaves the shelf packaged by
+the tree's own engine. An engine serves only clients of its own version, so a client of another
+version than the tree's (the released client a contributor bootstraps from, the previous release
+the hosted CI installs with) stops after the first pass, succeeds, and says which client runs the
+second — the PATH client the pass installed: run `<home>/bin/jk install --skip-tests` once more,
+which is what the CI takeover step does. A client older than this second pass stops silently after
+the first. The passes are bounded at two, so when the re-shelving pass itself ends on yet another
+engine, `jk install` says so and asks for that one more run.
 `scripts/check-shelf-descriptors.sh "$JK_HOME"` then proves the shelf: every first-party worker
 jar's root `jk-plugin.toml` names its own module's `[plugin] table`.
 
-The first build under a freshly installed engine re-runs every plugin step, guard lane,
+The first **build** under a freshly installed engine still re-runs every plugin step, guard lane,
 build-logic run and packaging step once: their action keys carry the installed engine's identity,
 so an artifact the previous engine produced is never restored under the new one. Compile steps
-keep their keys and stay cached, so the one-time re-run is packaging and verdicts, not a rebuild.
+keep their keys and stay cached, so that one-time re-run is packaging and verdicts, not a full
+rebuild — and it is a later `jk build`, not the install's re-shelving pass.
 
 ## Ship layout
 

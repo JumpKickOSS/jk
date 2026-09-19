@@ -34,8 +34,8 @@ public record BuildRequest(
         @Nullable String workspaceTarget,
         Map<String, String> graalHomes,
         /**
-         * Install only: the client-resolved local Maven repo root ({@code --m2-dir}). Rides the
-         * wire for the same reason {@code graalHomes} does — the daemon does not inherit the
+         * Install / reshelve: the client-resolved local Maven repo root ({@code --m2-dir}). Rides
+         * the wire for the same reason {@code graalHomes} does — the daemon does not inherit the
          * caller's environment, so a spec rebuilt without this falls back to the <em>engine's</em>
          * {@code ~/.m2} and a redirected install writes the real one.
          */
