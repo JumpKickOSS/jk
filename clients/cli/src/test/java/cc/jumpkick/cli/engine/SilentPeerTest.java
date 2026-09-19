@@ -7,6 +7,7 @@ import cc.jumpkick.cli.engine.SilentPeer.Grace;
 import cc.jumpkick.cli.engine.SilentPeer.Life;
 import cc.jumpkick.cli.engine.SilentPeer.Verdict;
 import java.time.Duration;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -74,5 +75,21 @@ class SilentPeerTest {
                         + " `jk engine stop --now` stops it regardless");
         assertThat(life(Duration.ofSeconds(45), 1, Duration.ZERO).describe()).isEqualTo("up 45s, 1 worker process");
         assertThat(SilentPeer.human(Duration.ofSeconds(7_500))).isEqualTo("2h 05m");
+    }
+
+    @Test
+    void every_child_but_the_windows_console_host_is_a_worker() {
+        assertThat(Life.countsAsWorker(Optional.of("C:\\Windows\\system32\\conhost.exe")))
+                .isFalse();
+        assertThat(Life.countsAsWorker(Optional.of("/usr/lib/jvm/bin/java"))).isTrue();
+        assertThat(Life.countsAsWorker(Optional.of("C:\\jdks\\graalvm-25\\bin\\native-image.exe")))
+                .as("a native link in flight is life")
+                .isTrue();
+        assertThat(Life.countsAsWorker(Optional.of("/bin/sh")))
+                .as("an import's mvn/gradlew shell")
+                .isTrue();
+        assertThat(Life.countsAsWorker(Optional.empty()))
+                .as("a command the OS hides is no proof of idleness")
+                .isTrue();
     }
 }
