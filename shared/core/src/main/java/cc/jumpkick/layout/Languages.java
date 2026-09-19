@@ -14,9 +14,10 @@ import java.util.List;
  * scala = "<ver>"} Scala (any combination). When <em>none</em> is declared, infer from the
  * tree — a {@code src/main/java} dir or any {@code .java} under {@code src/} enables Java (at
  * the jdk release); likewise {@code src/main/kotlin}/{@code .kt}, {@code
- * src/main/groovy}/{@code .groovy}, and {@code src/main/scala}/{@code .scala}. A project with
- * nothing to go on defaults to Java (a bare {@code jdk = N} project). A declaration that leaves
- * out a language whose sources exist is what {@link #undeclaredWithSources} names.
+ * src/main/groovy}/{@code .groovy}, and {@code src/main/scala}/{@code .scala}. Files under
+ * resource trees ({@code src/<slot>/resources}, compact {@code resources/}) are ignored. A
+ * project with nothing to go on defaults to Java (a bare {@code jdk = N} project). A declaration
+ * that leaves out a language whose sources exist is what {@link #undeclaredWithSources} names.
  */
 public record Languages(boolean java, boolean kotlin, boolean groovy, boolean scala) {
 
@@ -90,9 +91,45 @@ public record Languages(boolean java, boolean kotlin, boolean groovy, boolean sc
                 + String.join(", ", declaredKeys) + " and not " + key + " — add " + addition + " to compile them");
     }
 
-    /** True if any regular file ending in {@code ext} exists anywhere under {@code root}. */
+    /**
+     * True if any regular file ending in {@code ext} exists under {@code root} outside a resource
+     * tree. Resource dirs ({@code src/<slot>/resources}, compact {@code resources/}, suite
+     * {@code <name>/resources}) hold assets — including {@code .kt}/{@code .groovy} templates —
+     * not compile sources.
+     */
     public static boolean anySourceUnder(Path root, String ext) {
         if (!Files.isDirectory(root)) return false;
-        return InputTrees.of(root).anyExtension(ext);
+        for (Path file : InputTrees.of(root).withExtension(ext)) {
+            if (!underResourceTree(root, file)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Whether {@code file} sits under a module resource directory. Traditional:
+     * {@code src/<slot>/resources}. Compact: {@code resources/} or {@code <suite>/resources/}.
+     * A package segment named {@code resources} under {@code java}/{@code kotlin}/… is not one.
+     */
+    static boolean underResourceTree(Path walkRoot, Path file) {
+        Path absFile = file.toAbsolutePath().normalize();
+        Path absRoot = walkRoot.toAbsolutePath().normalize();
+        // .../src/<slot>/resources/... — independent of the walk root.
+        for (Path dir = absFile.getParent(); dir != null; dir = dir.getParent()) {
+            Path name = dir.getFileName();
+            if (name == null || !"resources".equals(name.toString())) continue;
+            Path parent = dir.getParent();
+            if (parent == null) continue;
+            Path grand = parent.getParent();
+            if (grand != null) {
+                Path grandName = grand.getFileName();
+                if (grandName != null && "src".equals(grandName.toString())) return true;
+            }
+        }
+        if (!absFile.startsWith(absRoot)) return false;
+        Path rel = absRoot.relativize(absFile);
+        int n = rel.getNameCount();
+        // Walk root is the module (or src/): resources/..., <suite>/resources/..., main/resources/...
+        if (n >= 1 && "resources".equals(rel.getName(0).toString())) return true;
+        return n >= 2 && "resources".equals(rel.getName(1).toString());
     }
 }
