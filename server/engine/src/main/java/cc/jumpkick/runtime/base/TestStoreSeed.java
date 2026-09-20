@@ -5,6 +5,8 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Linking;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.repo.EmptyArchive;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -116,10 +118,11 @@ public final class TestStoreSeed {
         Map<Path, TreeSet<String>> hostVersions = new LinkedHashMap<>();
         for (String tree : TREES) {
             PathUtil.forEachRegularFile(hostCentral.resolve(tree), (file, attrs) -> {
+                if (EmptyArchive.is(file)) return;
                 if (!same) {
                     Path target =
                             sandboxCentral.resolve(hostCentral.relativize(file).toString());
-                    if (!Files.exists(target)) {
+                    if (seedable(target)) {
                         Linking.linkOrCopy(file, target);
                         materialised[0]++;
                     }
@@ -196,13 +199,27 @@ public final class TestStoreSeed {
             PathUtil.forEachRegularFile(m2Tree, (file, attrs) -> {
                 String name = file.getFileName().toString();
                 if (!name.endsWith(".pom") && !name.endsWith(".jar")) return;
-                if (!centralServed(file)) return;
+                if (!centralServed(file) || EmptyArchive.is(file)) return;
                 Path target = sandboxCentral.resolve(m2.relativize(file).toString());
-                if (Files.exists(target)) return;
+                if (!seedable(target)) return;
                 Linking.linkOrCopy(file, target);
                 materialised[0]++;
             });
         }
+    }
+
+    /**
+     * A slot the seed may fill: empty, or holding a hollow stand-in an earlier seed linked before
+     * the host had the real bytes. The stand-in and its memo go, so the real file takes the slot.
+     */
+    private static boolean seedable(Path target) throws IOException {
+        if (Files.exists(target) && !EmptyArchive.is(target)) return false;
+        Files.deleteIfExists(target);
+        // A memo describes the blob that was here; the one the seed links is another blob.
+        String name = target.getFileName().toString();
+        Files.deleteIfExists(target.resolveSibling(ArtifactMemo.jkFileName(name)));
+        Files.deleteIfExists(target.resolveSibling(ArtifactMemo.jkFileName(name).replace(".jk", ".m2.jk")));
+        return true;
     }
 
     /**
