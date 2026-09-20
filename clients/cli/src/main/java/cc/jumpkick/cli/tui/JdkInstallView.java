@@ -7,6 +7,8 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInstallListener;
+import cc.jumpkick.jdk.JdkInstaller;
+import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
@@ -15,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * The terminal's view of a JDK or GraalVM being provisioned — the one rendering for {@code jk jdk
  * install}, the build's pre-flight of a pinned toolchain, a native build's GraalVM, and the JDK
  * that hosts the build engine. Turns {@link JdkInstallListener} events into the animated {@link
- * JdkDownloadBar} (download, then the installing spinner) and the settled chip line:
+ * ProgressRow} (download bar, then the installing spinner) and the settled chip line:
  *
  * <pre>
  *   ✓ JDK ▶ Temurin 21 has been installed to ~/.jdks/temurin-21.0.12
@@ -26,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * its own "already installed" line.
  *
  * <p>Output modes follow the stream, not the caller: a terminal animates the bar; plain mode (no
- * ANSI) gets phase lines from {@link JdkDownloadBar}; a machine-consumed stdout ({@code --output
+ * ANSI) gets phase lines from {@link ProgressRow}; a machine-consumed stdout ({@code --output
  * json}) keeps the human lines on stderr so the JSONL stream stays parseable, while the plan
  * listener carries the structured {@code label} events.
  *
@@ -37,7 +39,7 @@ public final class JdkInstallView implements JdkInstallListener, AutoCloseable {
 
     private volatile String label;
     private @Nullable String header;
-    private @Nullable JdkDownloadBar bar;
+    private @Nullable ProgressRow bar;
 
     /** @param label the human JDK label ({@code "Temurin 21"}); events carrying a name refine it */
     public JdkInstallView(@Nullable String label) {
@@ -63,12 +65,12 @@ public final class JdkInstallView implements JdkInstallListener, AutoCloseable {
             header = null;
             line(Objects.requireNonNull(Theme.colorize(why, Theme.active().normalGray())));
         }
-        bar = JdkDownloadBar.show(CliOutput.stdout(), label);
+        bar = downloadRow(CliOutput.stdout(), "JDK", label, totalBytes);
     }
 
     @Override
     public void onDownloadProgress(long readBytes, long totalBytes) {
-        JdkDownloadBar b = bar;
+        ProgressRow b = bar;
         if (b != null) b.update(readBytes, totalBytes);
     }
 
@@ -76,7 +78,11 @@ public final class JdkInstallView implements JdkInstallListener, AutoCloseable {
     public void onExtractStart(String displayName) {
         if (displayName != null && !displayName.isBlank()) label = displayName;
         finishBar();
-        bar = JdkDownloadBar.showInstalling(CliOutput.stdout(), label);
+        bar = ProgressRow.of(CliOutput.stdout(), "JDK")
+                .status("Installing " + label)
+                .cancelSubject("JDK install")
+                .onCancel(JdkInstaller::reapInFlight)
+                .open();
     }
 
     @Override
@@ -94,7 +100,7 @@ public final class JdkInstallView implements JdkInstallListener, AutoCloseable {
     public void warn(String message) {
         String text = Objects.requireNonNull(
                 Theme.colorize(Glyphs.BANG + " " + message, Theme.active().warning()));
-        JdkDownloadBar b = bar;
+        ProgressRow b = bar;
         if (b != null && !CliOutput.scriptMode() && b.printAbove(text)) return;
         line(text);
     }
@@ -105,11 +111,27 @@ public final class JdkInstallView implements JdkInstallListener, AutoCloseable {
     }
 
     private void finishBar() {
-        JdkDownloadBar b = bar;
+        ProgressRow b = bar;
         if (b != null) {
             b.finish();
             bar = null;
         }
+    }
+
+    /**
+     * The download row every fetch jk makes on the user's behalf paints — a JDK, the engine jar,
+     * the Maven spy — so they all look like one thing. Ctrl-C reaps the installer's in-flight
+     * scratch; a known {@code total} puts the bar on the row at once instead of after the first
+     * progress callback.
+     */
+    public static ProgressRow downloadRow(PrintStream out, String chip, String label, long total) {
+        ProgressRow row = ProgressRow.of(out, chip)
+                .status("Downloading " + label)
+                .cancelSubject(chip + " download")
+                .onCancel(JdkInstaller::reapInFlight)
+                .open();
+        if (total > 0) row.update(0, total);
+        return row;
     }
 
     /**
