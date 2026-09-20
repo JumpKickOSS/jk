@@ -199,7 +199,8 @@ public final class McpReads {
         try {
             Path cache = JkDirs.cache();
             Session session = Session.defaults().withWorkingDir(root).withCacheDir(cache);
-            OutdatedReport r = SessionContext.where(session, () -> OutdatedPlans.compute(root, cache, null));
+            OutdatedReport r = SessionContext.where(
+                    session, () -> OutdatedPlans.compute(root, cache, null, OutdatedPlans.Progress.NONE));
             return r.toStructured();
         } catch (Exception e) {
             Map<String, Object> m = new LinkedHashMap<>();
