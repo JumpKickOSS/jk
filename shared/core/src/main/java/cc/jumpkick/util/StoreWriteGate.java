@@ -33,6 +33,14 @@ public final class StoreWriteGate {
         return wiped;
     }
 
+    /**
+     * Forget a wipe: the flag is engine-lifetime state, and a test JVM that wiped a store in one
+     * class would otherwise keep every later class's background writer switched off.
+     */
+    public static void resetForTests() {
+        wiped = false;
+    }
+
     /** A held side of the gate; release with try-with-resources. */
     @FunctionalInterface
     public interface Held extends AutoCloseable {
