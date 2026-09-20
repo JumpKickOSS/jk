@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * End-to-end tests for Groovy support in jk new / build / test wave 3). Mirrors
  * {@link KotlinCompilationTest}: the scaffolded sample sources are built for real (the Groovy
- * closure resolves from Maven Central via {@link SharedTestCache}), the freshness-stamp tests keep
+ * closure resolves from Maven Central via {@link TestCaches}), the freshness-stamp tests keep
  * an isolated per-test cache.
  */
 @Tag("integration")
@@ -28,7 +29,12 @@ class GroovyCompilationTest {
         // Traditional layout: packaged Calc.groovy under src/main/groovy.
         assertThat(tempDir.resolve("src/main/groovy/com/example/Calc.groovy")).exists();
 
-        int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "build",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
         Path jar = tempDir.resolve("target/lib/widget-0.1.0.jar");
@@ -92,14 +98,24 @@ class GroovyCompilationTest {
         run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
 
         // The scaffolded CalcTest passes.
-        assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg()))
+        assertThat(run(
+                        "test",
+                        "-C",
+                        tempDir.toString(),
+                        "--cache-dir",
+                        TestCaches.dir("shared-cache").toString()))
                 .isEqualTo(0);
 
         // Break the assertion: a nonzero exit proves the Groovy test actually executed.
         Path test = tempDir.resolve("src/test/groovy/com/example/CalcTest.groovy");
         assertThat(test).exists();
         Files.writeString(test, Files.readString(test).replace("assertEquals(10,", "assertEquals(11,"));
-        assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg()))
+        assertThat(run(
+                        "test",
+                        "-C",
+                        tempDir.toString(),
+                        "--cache-dir",
+                        TestCaches.dir("shared-cache").toString()))
                 .isNotEqualTo(0);
     }
 
@@ -134,7 +150,12 @@ class GroovyCompilationTest {
                 }
                 """);
 
-        int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "build",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
         try (JarFile jf =
@@ -200,7 +221,12 @@ class GroovyCompilationTest {
                 }
                 """);
 
-        int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "build",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
         // The boot-jar packager replaces the main artifact ([application] → target/, no lib/).

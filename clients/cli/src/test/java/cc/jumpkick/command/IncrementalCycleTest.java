@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -102,7 +103,12 @@ class IncrementalCycleTest {
     }
 
     private static void build(Path dir) {
-        assertThat(run("build", "-C", dir.toString(), "--cache-dir", SharedTestCache.arg()))
+        assertThat(run(
+                        "build",
+                        "-C",
+                        dir.toString(),
+                        "--cache-dir",
+                        TestCaches.dir("shared-cache").toString()))
                 .isEqualTo(0);
     }
 

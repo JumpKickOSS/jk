@@ -6,8 +6,8 @@ import static cc.jumpkick.cli.testing.MockMavenServer.mavenPath;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
-import cc.jumpkick.command.SharedTestCache;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -366,7 +366,15 @@ class ToolRunCommandTest {
                 }
                 """);
 
-        int exit = run("tool", "run", "--cache-dir", SharedTestCache.arg(), tempDir.toString(), "--", "a", "b");
+        int exit = run(
+                "tool",
+                "run",
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString(),
+                tempDir.toString(),
+                "--",
+                "a",
+                "b");
         assertThat(exit).isEqualTo(2);
     }
 
