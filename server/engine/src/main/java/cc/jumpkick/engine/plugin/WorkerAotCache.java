@@ -6,6 +6,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AtomicWrites;
@@ -24,15 +25,17 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * JEP 514 startup caches for the short-lived {@code java … PluginMain} compiler workers
- * (java-compiler, kotlinc). One cache per (host JDK, GC, worker classpath, extra JVM flags) under
- * {@code <state>/aot/<tool>-<jk-version>-<16hex>.aot}: mapped when present, otherwise one background
- * trainer per key per engine process records it. A cache the trainer could not produce is not
- * retried until the next engine start. {@code JK_WORKER_AOT=off} (or {@code -Djk.worker.aot=off})
- * turns mapping and training off; HotSpot 25+ only.
+ * JEP 514 startup caches for the short-lived {@code java … PluginMain} workers (java-compiler,
+ * kotlinc, formatter). One file per tool at rest, recorded only for the JDK jk itself runs on:
+ * {@code <state>/aot/<tool>-<jk-version>-<jdk tag>-<key>.aot}, mapped when present, otherwise one
+ * background recording per key per engine process. A worker forked on any other JDK runs without a
+ * cache. When a cache lands, the tool's other caches go; when the engine starts, every cache for
+ * another jk version or another JDK goes ({@link #sweepForeign}). {@code JK_WORKER_AOT=off} (or
+ * {@code -Djk.worker.aot=off}) turns mapping and recording off; HotSpot 25+ only.
  */
 public final class WorkerAotCache {
 
@@ -46,8 +49,12 @@ public final class WorkerAotCache {
     /** Ceiling for one training run (fork, synthetic compile, assembly); typical is a few seconds. */
     static volatile long trainingTimeoutMillis = TimeUnit.SECONDS.toMillis(120);
 
-    /** A sibling cache of the same tool untouched this long is a dead key; the disk comes back. */
-    private static final long UNUSED_TTL_MILLIS = 30L * 24 * 60 * 60 * 1_000;
+    /** A trainer's temp sibling older than this belongs to a dead engine. */
+    private static final long TMP_TTL_MILLIS = 24L * 60 * 60 * 1_000;
+
+    /** {@code <tool>-<jk-version>-<8 hex jdk tag>-<16 hex key>.aot}; the tool may carry hyphens. */
+    private static final Pattern NAME = Pattern.compile(
+            "(?<tool>.+)-(?<version>[^-]+(?:-SNAPSHOT)?)-(?<jdk>[0-9a-f]{8})-(?<key>[0-9a-f]{16})\\.aot");
 
     /** Keys with a trainer running in this process. */
     private static final Set<Path> TRAINING = ConcurrentHashMap.newKeySet();
@@ -71,16 +78,17 @@ public final class WorkerAotCache {
     }
 
     /**
-     * The JVM flags that map {@code tool}'s cache, or an empty list when there is none yet, the host
-     * cannot record one, or the switch is off. A miss on an eligible host starts the trainer in the
-     * background; the build that missed runs cold and the next one maps. Never throws.
+     * The JVM flags that map {@code tool}'s cache, or an empty list when the worker runs on a JDK
+     * other than jk's own, the switch is off, the host cannot record a cache, or there is none yet.
+     * A miss starts the trainer in the background; the build that missed runs cold and the next one
+     * maps. Never throws.
      */
     public static List<String> flags(
             String tool, @Nullable Path javaHome, String workerClasspath, List<String> jvmFlags, Trainer trainer) {
         if (!enabled() || javaHome == null) return List.of();
         try {
-            Host host = host(javaHome);
-            if (host == null || !host.eligible()) return List.of();
+            Host host = engineHost();
+            if (host == null || !host.eligible() || !host.home().equals(normalize(javaHome))) return List.of();
             Path cache = cacheFile(tool, host, workerClasspath, jvmFlags);
             if (usable(cache)) {
                 touch(cache);
@@ -97,25 +105,56 @@ public final class WorkerAotCache {
         return List.of();
     }
 
-    /** The cache file for one key; the name carries the tool and the jk version. */
+    /**
+     * Delete every cache this engine can never map: another jk version's, another JDK's, and
+     * trainer temp files a dead engine left behind. Runs once at engine start; best-effort.
+     */
+    public static void sweepForeign() {
+        Host host = engineHost();
+        if (host == null) return;
+        sweepForeign(dir(), host);
+    }
+
+    static void sweepForeign(Path dir, Host host) {
+        String tag = jdkTag(host);
+        long now = Clock.SYSTEM.millis();
+        try {
+            PathUtil.forEachRegularFile(dir, d -> true, (p, attrs) -> {
+                String name = p.getFileName().toString();
+                if (name.endsWith(".aot")) {
+                    var m = NAME.matcher(name);
+                    boolean ours = m.matches()
+                            && m.group("version").equals(JkVersion.VERSION)
+                            && m.group("jdk").equals(tag);
+                    if (!ours) deleteQuietly(p);
+                } else if (name.contains(".aot.tmp-")
+                        && now - attrs.lastModifiedTime().toMillis() > TMP_TTL_MILLIS) {
+                    deleteQuietly(p);
+                }
+            });
+        } catch (IOException ignored) {
+            // opportunistic: a leftover cache costs disk, not correctness
+        }
+    }
+
+    /** The cache file for one key under jk's own JDK. */
     static Path cacheFile(String tool, Host host, String workerClasspath, List<String> jvmFlags) {
-        String gc = effectiveGc(JvmOptions.batchFlags(1));
         StringBuilder key = new StringBuilder()
-                .append(host.home())
-                .append('|')
-                .append(host.vendor().name())
-                .append('|')
-                .append(host.version())
-                .append('|')
-                .append(gc)
+                .append(effectiveGc(JvmOptions.batchFlags(1)))
                 .append('|')
                 .append(workerClasspath);
         for (String flag : jvmFlags) key.append('\n').append(flag);
         String hash = Hashing.sha256Hex(key.toString()).substring(0, 16);
-        return dir().resolve(tool + "-" + JkVersion.VERSION + "-" + hash + ".aot");
+        return dir().resolve(tool + "-" + JkVersion.VERSION + "-" + jdkTag(host) + "-" + hash + ".aot");
     }
 
-    /** What the JDK's {@code release} file says it is. */
+    /** Eight hex characters naming the JDK a cache was recorded under. */
+    static String jdkTag(Host host) {
+        return Hashing.sha256Hex(host.home() + "|" + host.vendor().name() + "|" + host.version())
+                .substring(0, 8);
+    }
+
+    /** What a JDK's {@code release} file says it is. */
     record Host(Path home, JdkVendor vendor, String version) {
         /** HotSpot 25+ records mappable caches; Graal hosts and older JDKs do not. */
         boolean eligible() {
@@ -126,6 +165,11 @@ public final class WorkerAotCache {
                 return false;
             }
         }
+    }
+
+    /** The JDK this engine runs on, or null when its {@code release} file cannot be read. */
+    static @Nullable Host engineHost() {
+        return host(JavaHomes.runningJavaHome());
     }
 
     static @Nullable Host host(Path javaHome) {
@@ -139,7 +183,11 @@ public final class WorkerAotCache {
         }
         String version = props.getProperty("JAVA_VERSION", "").trim().replace("\"", "");
         if (version.isEmpty()) return null;
-        return new Host(javaHome.toAbsolutePath().normalize(), JdkVendor.fromProperties(props), version);
+        return new Host(normalize(javaHome), JdkVendor.fromProperties(props), version);
+    }
+
+    private static Path normalize(Path home) {
+        return home.toAbsolutePath().normalize();
     }
 
     /** The collector named in {@code flags} ({@code parallelgc}, {@code serialgc}, …), or {@code default}. */
@@ -222,22 +270,17 @@ public final class WorkerAotCache {
         }
     }
 
-    /**
-     * When a cache lands, drop the same tool's other caches nobody mapped for {@link
-     * #UNUSED_TTL_MILLIS}: a JDK or toolchain bump mints a new key and the old one goes cold.
-     */
-    private static void sweepSiblings(Path landed) {
-        String name = landed.getFileName().toString();
-        int keyStart = name.length() - 20; // "-<16 hex>.aot"
-        if (keyStart <= 0) return;
-        String tool = name.substring(0, keyStart);
-        long now = Clock.SYSTEM.millis();
+    /** One file per tool: when a cache lands, the tool's other caches go, whatever their age. */
+    static void sweepSiblings(Path landed) {
+        var m = NAME.matcher(landed.getFileName().toString());
+        if (!m.matches()) return;
+        String tool = m.group("tool");
+        Path dir = Objects.requireNonNull(landed.getParent(), "cache dir");
         try {
-            Path dir = Objects.requireNonNull(landed.getParent(), "cache dir");
             PathUtil.forEachRegularFile(dir, d -> true, (p, attrs) -> {
-                String n = p.getFileName().toString();
-                if (p.equals(landed) || !n.startsWith(tool + "-") || !n.endsWith(".aot")) return;
-                if (now - attrs.lastModifiedTime().toMillis() > UNUSED_TTL_MILLIS) deleteQuietly(p);
+                if (p.equals(landed)) return;
+                var other = NAME.matcher(p.getFileName().toString());
+                if (other.matches() && other.group("tool").equals(tool)) deleteQuietly(p);
             });
         } catch (IOException ignored) {
             // opportunistic: a leftover cache costs disk, not correctness
@@ -277,7 +320,7 @@ public final class WorkerAotCache {
         try {
             Files.setLastModifiedTime(p, FileTime.fromMillis(Clock.SYSTEM.millis()));
         } catch (IOException ignored) {
-            // best-effort; retention only reads it
+            // best-effort; only a reader of the directory listing sees it
         }
     }
 

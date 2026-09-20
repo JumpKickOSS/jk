@@ -18,7 +18,7 @@ register.
 
 | Battery | Owns | Tier | Why that tier |
 |---|---|---|---|
-| java-compiler | `javac` / Zinc incremental compile, annotation processors; its worker maps a JEP 514 startup cache | core | every build |
+| java-compiler | `javac` / Zinc incremental compile, annotation processors; its worker maps a JEP 514 startup cache (so do the kotlinc and formatter workers) | core | every build |
 | kotlin-compiler | `[kotlin]`, K2, KSP, `[[kotlin-plugins]]` | core | every Kotlin build |
 | groovy-compiler | `[groovy]`, joint compilation | core | Grails and Spock paths |
 | test-runner | JUnit Platform suites (Jupiter; JUnit 4 via Vintage; TestNG via testng-engine), tags, profiles (tag filters, test-JVM args), `-ea` test JVMs, coverage (`--coverage` / `[test] coverage`: JaCoCo XML + HTML per module, Coverage block in `jk-results.md`), launcher failures as failed steps | core | every `jk test` |
