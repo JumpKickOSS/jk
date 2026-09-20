@@ -1767,7 +1767,7 @@ Direct JLine imports (must be gone after 5a for `org.jline.utils`, after 5b for 
 `LibraryUpdateCommand`, `OutdatedCommand`, `WebCommand`, `TreeCommand` (FQCN `stripAnsi`).
 
 Theme return-type cascade (no `org.jline` import, still break when getters return `Style`):
-`ExplainCommand` (`crossedOut`), `AuthLoginCommand`, `EngineAotCommand`, `JdkRender`,
+`ExplainCommand` (`crossedOut`), `AuthLoginCommand`, `JdkRender`,
 `NewWizard`, `WhyCommand`, plus any `Theme.colorize` / `.bold()` / `.italic()` site
 `rg 'Theme\.active\(\)|AttributedStyle' clients/cli` finds.
 

@@ -622,7 +622,7 @@ public final class JkBuildParser {
         return root == null ? GuardsConfig.ABSENT : ManifestGuards.parse(root);
     }
 
-    /** {@code [train]} — AOT training config. {@link TrainConfig#EMPTY} when the table is absent. */
+    /** {@code [train]} — the dynamic-surface training config. {@link TrainConfig#EMPTY} when the table is absent. */
     public static TrainConfig trainConfig(Path file) {
         TomlParseResult root = documentIfPresent(file);
         return root == null ? TrainConfig.EMPTY : ManifestTrain.parse(root, String.valueOf(file));

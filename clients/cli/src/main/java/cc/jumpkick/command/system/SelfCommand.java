@@ -307,7 +307,6 @@ public final class SelfCommand extends GroupCommand {
             EngineInstall install = EngineInstall.current();
             EngineInstall.Materialized m =
                     install.materializeFromFiles(JkVersion.VERSION, JkStores.storeCas(), engineJar);
-            EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), JkVersion.VERSION);
             install.gc();
             try {
                 UserConfigEditor.setNerdFont(JkDirs.userConfigFile(), NerdFontMode.AUTO);

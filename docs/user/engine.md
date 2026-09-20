@@ -161,9 +161,7 @@ and `auto-warmup` do not follow CI.
 | `queue-wait-ms` | `JK_ENGINE_QUEUE_WAIT_MS` | 3600000 | engine start | How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound. |
 <!-- engine-config:end -->
 
-Short-lived CI engines should set `JK_AOT_TRAIN=off` (skip train-on-miss; still use
-existing `.aot` caches). Worker AOT is HotSpot 25+ only. Warmup details:
-[contributor warmup](../contributors/install-optimize.md). Heap vs VFS:
+Warmup details: [contributor warmup](../contributors/install-optimize.md). Heap vs VFS:
 [per-job VFS](../contributors/vfs.md).
 
 ### Out of memory

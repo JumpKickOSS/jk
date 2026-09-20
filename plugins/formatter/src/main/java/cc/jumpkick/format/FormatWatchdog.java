@@ -43,8 +43,8 @@ final class FormatWatchdog implements AutoCloseable {
      * Kill threshold, and deliberately more generous than measurement alone would ask for.
      *
      * <p>What the measurements say is the <em>shape</em> of the risk, not the number. The slowest
-     * single file across a 3,000-file Java and Kotlin tree is ~120&nbsp;ms, ~160&nbsp;ms with no
-     * worker AOT cache (a fresh host, cold JIT), and ~150&nbsp;ms with the engine pinned to two
+     * single file across a 3,000-file Java and Kotlin tree is ~120&nbsp;ms, ~160&nbsp;ms on a
+     * fresh host (cold JIT), and ~150&nbsp;ms with the engine pinned to two
      * cores — because {@code CodeFormatter.concurrency} sizes the pool to the visible cores, so a
      * small host lengthens the <em>run</em> rather than its files. Only eight-to-one
      * oversubscription, which the run never chooses for itself, reaches ~785&nbsp;ms.

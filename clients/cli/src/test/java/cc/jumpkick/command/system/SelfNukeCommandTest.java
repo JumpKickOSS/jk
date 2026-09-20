@@ -187,7 +187,7 @@ class SelfNukeCommandTest {
     @Test
     void a_dry_run_touches_nothing_and_never_starts_an_engine() throws Exception {
         // The store preview walks the tree engine-side, so a dry run skips it outright — the
-        // daemon it would spawn writes logs, an AOT index and a JDK registry into the state dir it
+        // daemon it would spawn writes logs and a JDK registry into the state dir it
         // is pretending to delete. The cache preview is a purely local walk, so the dry run keeps
         // it, and even a failing preview must not turn the dry run red or write anything.
         Path config = JkDirs.current().userConfigFilePath();
@@ -457,7 +457,7 @@ class SelfNukeCommandTest {
     }
 
     /**
-     * The STATE rows delete the sockets and AOT cache an engine holds open, so a stopped fleet is
+     * The STATE rows delete the sockets an engine holds open, so a stopped fleet is
      * a precondition of that delete, not a courtesy performed once at the top. {@code jk storage
      * nuke} does its wipe engine-side: the {@code wipe-store} request calls {@code ensureRunning}
      * and the engine it boots outlives the call. That engine was still there when the STATE rows

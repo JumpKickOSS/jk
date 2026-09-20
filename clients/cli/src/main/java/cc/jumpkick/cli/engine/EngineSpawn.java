@@ -507,7 +507,7 @@ public final class EngineSpawn {
         command.add(JdkFingerprint.java(javaHome).toString());
         // The OOM heap dump lands in the engine directory beside the log, one file per exit
         // (HotSpot names a dump into a directory java_pid<pid>.hprof).
-        command.addAll(EngineJvmFlags.AOT_SENSITIVE);
+        command.addAll(EngineJvmFlags.BASE);
         command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDumpDir(paths)));
         // Metaspace/stack mirror what workers already get from JvmOptions.
         command.add("-XX:MaxMetaspaceSize=256m");
@@ -707,8 +707,7 @@ public final class EngineSpawn {
     /**
      * Which of this JVM's {@code jk.*} system properties travel into the engine JVM as {@code -D}:
      * plugin-jar location overrides (e.g. {@code -Djk.test.runner.jar=…} from a test JVM —
-     * PluginJar.locate reads System.getProperty there), the AOT switches so nested engines honor
-     * {@code JK_AOT_TRAIN} / {@code jk.aot.train}, the {@code jk.env.*} layout overlays (JkDirs
+     * PluginJar.locate reads System.getProperty there), the {@code jk.env.*} layout overlays (JkDirs
      * test seam) so a spawned engine resolves the same store/state the client did, and the owner
      * pid a sandbox names so its engine dies with it.
      *
@@ -718,11 +717,7 @@ public final class EngineSpawn {
     static boolean forwarded(String key) {
         if (!key.startsWith("jk.")) return false;
         if (key.equals("jk.plugin.class")) return false;
-        return key.endsWith(".jar")
-                || key.equals("jk.aot.train")
-                || key.equals("jk.worker.aot")
-                || key.startsWith("jk.env.")
-                || key.equals(OWNER_PID_PROPERTY);
+        return key.endsWith(".jar") || key.startsWith("jk.env.") || key.equals(OWNER_PID_PROPERTY);
     }
 
     /** Mirror of the engine's {@code OwnerWatchdog.PROPERTY}; the CLI cannot see engine classes. */

@@ -81,7 +81,7 @@ class EngineOutOfMemoryExitTest {
     private static List<String> engineCommand(Path home, Path dumpDir) {
         List<String> cmd = new ArrayList<>();
         cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
-        cmd.addAll(EngineJvmFlags.AOT_SENSITIVE);
+        cmd.addAll(EngineJvmFlags.BASE);
         cmd.add(EngineJvmFlags.heapDumpPath(dumpDir));
         cmd.add("-Xmx32m");
         cmd.add("-Djk.env.JK_HOME=" + home);

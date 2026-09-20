@@ -398,7 +398,7 @@ stops the private engine, swaps the binary, the engine jar and the shelf, and st
 | Under `$JK_HOME` (private) | Shared with `~/.jk` |
 |---|---|
 | `bin/jk` — the binary `jk build` linked | the managed JDK root, `~/.jdks` (`JK_JDKS_DIR`): the private engine and its compilers run on JDKs the default home already installed |
-| `lib/jk-engine/` — the engine jar from `target/dist/lib/`, and the AOT cache it trains under `state/` | `~/.m2`, read for third-party jars when `[m2] integration` is on |
+| `lib/jk-engine/` — the engine jar from `target/dist/lib/` | `~/.m2`, read for third-party jars when `[m2] integration` is on |
 | `store/repos/jk-local/` — every module jar from `target/dist/repos/`: the workers the engine launches, the rule packs, the libraries | nothing else: `JK_STORE_DIR=$HOME/.jk/store` shares the artifact store on purpose when a cold store is the wrong cost |
 | `store/` (artifacts, templates, the library catalog), `cache/` (action cache), `state/` (the engine's socket, log and build history), `config.toml`, `creds/` | |
 
@@ -410,19 +410,6 @@ script wrapping `java -cp … EngineMain` is neither. Use the private install.
 
 `JK_HOME=… jk engine status` answers for the private engine; the `jk` on your PATH knows nothing
 about it, and `jk engine stop` without `JK_HOME` stops the default home's engine, not this one.
-
-## AOT during self-host / CI
-
-Live engines train AOT on miss by default. Nested engines under `jk test` and short-lived CI
-builds should not — use:
-
-```bash
-export JK_AOT_TRAIN=off   # train-on-miss off; still *use* existing caches
-# full worker AOT off (map + train): JK_WORKER_AOT=off
-```
-
-Test forks set `-Djk.aot.train=off` automatically. For host engines in CI, export
-`JK_AOT_TRAIN=off` before the job starts (or restart the engine after exporting).
 
 ## Wall-clock series
 

@@ -13,7 +13,6 @@ import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
-import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.jsonl.Jsonl;
@@ -30,7 +29,6 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -719,16 +717,8 @@ public final class EngineServer implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        // A trainer is this engine's child and must not outlive it or keep store jars open.
-        List<Long> orphans = PluginAot.quiesceTrainers(TRAINER_SHUTDOWN_MILLIS);
-        if (!orphans.isEmpty()) {
-            log.accept("jk engine: stopped " + orphans.size() + " AOT trainer(s) on shutdown (pid " + orphans + ")");
-        }
         election.retire();
     }
-
-    /** Grace for a trainer to die with its engine; short — the engine is already on its way out. */
-    private static final long TRAINER_SHUTDOWN_MILLIS = 5_000;
 
     private static void closeQuietly(SocketChannel ch) {
         try {

@@ -66,7 +66,7 @@ public final class EngineProcessControl {
 
     /**
      * Force an immediate shutdown: the engine exits now via its clean-exit path (abandoning in-flight
-     * job connections but still assembling the AOT cache). {@code true} if acknowledged or nothing was
+     * job connections). {@code true} if acknowledged or nothing was
      * running; {@code false} if reachable but unresponsive (caller may {@link #hardKill} as fallback).
      *
      * <p>When a pid file is present for {@code socket}, waits for that process to actually die

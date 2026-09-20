@@ -70,7 +70,7 @@ public final class JkManual {
             ## Machine output and CI
 
             `--output json` (or `JK_OUTPUT=json`) streams one event per line and ends with
-            `workspace-finish` on every outcome. Headless runs: `JK_AOT_TRAIN=off JK_NO_ANSI=1`.
+            `workspace-finish` on every outcome. Headless runs: `JK_NO_ANSI=1`.
 
             ## Guards
 

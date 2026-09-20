@@ -10,8 +10,8 @@ package cc.jumpkick.host;
  * connection-refuses while the same URL works inside the distro. Setting
  * {@code java.net.preferIPv4Stack=true} forces AF_INET sockets.
  *
- * <p>Pass {@link #JVM_FLAG} on every jk-spawned JVM line that serves a listener (engine, workers,
- * AOT trainer). Never {@code System.setProperty} it at runtime: the JDK reads the property from
+ * <p>Pass {@link #JVM_FLAG} on every jk-spawned JVM line that serves a listener (engine,
+ * workers). Never {@code System.setProperty} it at runtime: the JDK reads the property from
  * several places at different times, and a late set leaves networking incoherent — on Windows
  * JDK 25, {@code InetAddress.getLoopbackAddress()} then answers {@code ::1} while listeners bind
  * {@code 127.0.0.1}, so a client refuses connections to its own healthy engine. A JVM launched by
@@ -23,7 +23,7 @@ public final class PreferIpv4 {
     /** System property name HotSpot reads for IPv4-only sockets. */
     public static final String PROPERTY = "java.net.preferIPv4Stack";
 
-    /** Spawn-line form; must match dump-time and runtime flags when an AOT cache is involved. */
+    /** Spawn-line form. */
     public static final String JVM_FLAG = "-D" + PROPERTY + "=true";
 
     private PreferIpv4() {}

@@ -131,8 +131,8 @@ public final class LockCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
 
-        // Optimize/start the engine before the Lock plan console so a one-time AOT training shows the
-        // "Engine — optimizing…" wedge first, then the Lock TUI takes over (never interleaved).
+        // Start the engine before the Lock plan console so a first start renders on its own, then
+        // the Lock TUI takes over (never interleaved).
         EnginePrewarm.ensure();
         // The lock's run record carries a details.jsonl like a build's: the transcript binds to the
         // engine job when its job-start arrives and mirrors the plan events the handlers see.

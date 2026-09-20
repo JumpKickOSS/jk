@@ -33,7 +33,7 @@ public final class EngineMain {
     public static void main(String[] args) {
         installLogging(JkEngineConfig.resolve());
         // IPv4-only sockets (WSL localhost forwarding) ride the spawn line as
-        // EngineJvmFlags.AOT_SENSITIVE — never a runtime setProperty, which leaves the JDK's
+        // EngineJvmFlags.BASE — never a runtime setProperty, which leaves the JDK's
         // loopback selection incoherent (PreferIpv4). A JK_ENGINE_EXE wrapper passes it itself.
         // --inflate-xz: one-shot, no daemon. The native CLI shells this out so tukaani
         // stays out of the Graal image. In and out are filesystem paths (a native
