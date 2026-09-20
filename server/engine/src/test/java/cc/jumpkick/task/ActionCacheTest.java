@@ -80,6 +80,24 @@ class ActionCacheTest {
     }
 
     @Test
+    void an_input_value_with_spaces_and_percents_reads_back_whole(@TempDir Path tempDir) throws IOException {
+        // A packaging step stores its token bag as one input value, and an args token carries
+        // spaces; the record line is split at its first space, so the value has to be encoded.
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs);
+        Files.writeString(outputs.resolve("bin"), "b");
+        String bag = "cp:abc;args:-H:+Unlock -H:Dirs=/m/a,/m/b 100%;main:t.Main";
+        cache.store("native-image", "spaced", Map.of("inputs", bag), outputs);
+
+        var record = cache.lookup("spaced").orElseThrow();
+        assertThat(record.inputs()).containsExactly(Map.entry("inputs", bag));
+        assertThat(ActionCache.encodeValue("abc123")).isEqualTo("abc123");
+        assertThat(ActionCache.decodeValue(ActionCache.encodeValue("a b%c"))).isEqualTo("a b%c");
+    }
+
+    @Test
     void store_excludes_jk_scratch_dirs(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));

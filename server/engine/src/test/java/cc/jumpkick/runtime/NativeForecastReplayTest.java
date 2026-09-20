@@ -52,9 +52,15 @@ class NativeForecastReplayTest {
         Path graal = Files.createDirectories(tmp.resolve("graal"));
         Files.writeString(graal.resolve("release"), "JAVA_VERSION=\"25\"\n");
 
-        // The step's own key, as the build derives and stores it.
+        // The step's own key, as the build derives and stores it: the metadata-repository prefix
+        // the step prepends rides in the args token, spaces and all, and has to read back whole.
+        List<String> liveArgs = List.of(
+                "-H:+UnlockExperimentalVMOptions",
+                "-H:ConfigurationFileDirectories=/m/a,/m/b",
+                "-H:-UnlockExperimentalVMOptions",
+                "-O2");
         PlannerNative.ImageKey key =
-                PlannerNative.imageKey(graal, List.of(jar), List.of("-O2"), "t.Main", false, out, null, null);
+                PlannerNative.imageKey(graal, List.of(jar), liveArgs, "t.Main", false, out, null, null);
         Session session = Session.defaults().withCacheDir(cache);
         SessionContext.where(session, () -> {
             PlannerSupport.storePackagedForTest(cache, key.task(), key.key(), key.tokens(), target, List.of(out), true);
