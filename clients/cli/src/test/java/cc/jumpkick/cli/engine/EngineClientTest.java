@@ -127,7 +127,7 @@ class EngineClientTest {
     void ping_handshake_and_status_round_trip_against_a_real_engine() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         startEngine(p, "7.7.7");
-        // Endpoint is written before acceptLoop (AOT plan / HTTP / warmup still run first).
+        // Endpoint is written before acceptLoop (HTTP / warmup still run first).
         // Wait for a real pong — cold CI can take longer than the 2s connect timeout between
         // writeEndpoint and the accept loop, so "endpoint exists" alone races.
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));

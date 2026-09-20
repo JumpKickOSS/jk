@@ -82,7 +82,6 @@ class McpContractTest {
                     2L << 20,
                     256L << 20,
                     -1L,
-                    0,
                     8,
                     16L << 30),
             jobs,
@@ -284,7 +283,7 @@ class McpContractTest {
     void runs_latest_skips_corrupt_and_running_records() {
         String runningStub = "{\"id\":\"live\",\"kind\":\"build\",\"dir\":\"/ws\",\"running\":true}";
         McpHandler withNoise = new McpHandler(
-                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 8, 16L << 30),
                 jobs,
                 dir -> Map.of(),
                 () -> List.of("{not json", runningStub, FAIL_A),

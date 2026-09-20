@@ -122,7 +122,6 @@ class EngineFleetTest {
                 + " cc.jumpkick.engine.EngineMain";
         assertThat(EngineFleet.isResidentEngine(production)).isTrue();
         assertThat(EngineFleet.isResidentEngine(testHome)).isTrue();
-        assertThat(EngineFleet.isResidentEngine(production + " --aot-training")).isFalse();
         assertThat(EngineFleet.isResidentEngine("/usr/bin/java -jar some-app.jar"))
                 .isFalse();
         assertThat(EngineFleet.isResidentEngine("")).isFalse();
@@ -136,7 +135,7 @@ class EngineFleetTest {
         Path state = Path.of("/tmp/test-jk-home/state");
         String local = "java -cp /tmp/test-jk-home/lib/jk-engine/jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain";
         String production = "java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar"
-                + " -Djk.aot.train.output=/home/u/.jk/state/aot/engine.aot"
+                + " -Xmx512m"
                 + " cc.jumpkick.engine.EngineMain";
         assertThat(EngineFleet.belongsToThisHome(local, home, state)).isTrue();
         assertThat(EngineFleet.belongsToThisHome(production, home, state)).isFalse();

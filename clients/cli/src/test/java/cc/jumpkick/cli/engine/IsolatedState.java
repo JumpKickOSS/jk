@@ -15,10 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * the task's parallel forks <em>and</em> by every previous run — no task cleans it. So {@code
  * state/aot}, {@code state/builds} and {@code state/engine} are ambient input: a class that plants
  * a fixture there is asserting against whatever the last run and the sibling forks left behind.
- * That is not hypothetical — {@code EngineAotCommandTest} planted {@code
- * engine-<version>-deadbeefdeadbeef.aot} in the shared {@code state/aot} while a concurrent fork
- * running {@code EngineAotCacheTest} swept every {@code engine-<version>-<16hex>} key that was not
- * its own, and the assertion lost the race.
+ * That is not hypothetical: two classes once planted and swept the same {@code state/aot} keys
+ * from concurrent forks, and the assertion lost the race.
  *
  * <p>Annotate any class that reads or writes {@link cc.jumpkick.util.JkDirs#state()} — the
  * {@code :cli} guard {@code checkTestRootsDeclared} requires it. Classes that only need a throwaway

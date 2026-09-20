@@ -48,7 +48,6 @@ abstract class HttpEngineServerHarness {
             2_000,
             3_000,
             -1,
-            -1,
             8,
             16_000_000_000L,
             8_000_000_000L,

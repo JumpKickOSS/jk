@@ -58,7 +58,6 @@ class EngineProtocolTest {
         v.put("heapCommittedBytes", 42_000_000L);
         v.put("heapMaxBytes", 268_435_456L);
         v.put("rssBytes", -1L);
-        v.put("aotTrainingPid", -1L);
         v.put("cores", 8);
         v.put("totalMemoryBytes", 16_000_000_000L);
         v.put("availableMemoryBytes", 8_000_000_000L);
@@ -84,7 +83,6 @@ class EngineProtocolTest {
         assertThat(Jsonl.longValue(json, "heapCommittedBytes", -99)).isEqualTo(42_000_000);
         assertThat(Jsonl.longValue(json, "heapMaxBytes", -99)).isEqualTo(268_435_456);
         assertThat(Jsonl.longValue(json, "rssBytes", -99)).isEqualTo(-1); // -1 = unobservable
-        assertThat(Jsonl.longValue(json, "aotTrainingPid", -99)).isEqualTo(-1); // -1 = no trainer running
         // The six that a positional parameter list left behind.
         assertThat(Jsonl.intValue(json, "cores", -1)).isEqualTo(8);
         assertThat(Jsonl.longValue(json, "totalMemoryBytes", -1)).isEqualTo(16_000_000_000L);

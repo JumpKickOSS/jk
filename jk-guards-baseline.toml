@@ -52,10 +52,6 @@ at     = "cc.jumpkick.cli.engine.EngineFleet#addGenerationPids(Ljava/nio/file/Pa
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.EngineSpawn#aotCachePath(Lcc/jumpkick/wire/EnginePaths$Paths;Ljava/nio/file/Path;Lcc/jumpkick/cli/engine/EngineSpawn$EngineJdk;Ljava/lang/String;Ljava/lang/String;)Ljava/nio/file/Path; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
-reason = "same walk: aotCachePath gained the heap-key parameter, which re-keyed the site's descriptor"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
 at     = "cc.jumpkick.cli.watch.SourceWatch#registerTree(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -229,10 +225,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "plugins/test-runner"
 at     = "cc.jumpkick.testrunner.LauncherPath#countClassFiles(Ljava/nio/file/Path;)J -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.EngineMain#cleanStaleTrainerTmps(Ljava/nio/file/Path;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/nio/file/DirectoryStream$Filter;)Ljava/nio/file/DirectoryStream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
@@ -1091,10 +1083,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "plugins/test-runner"
 at     = "cc.jumpkick.testrunner.LauncherPath$Adapter#executionStarted(Lorg/junit/platform/launcher/TestIdentifier;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.EngineMain#runAotTraining()I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"

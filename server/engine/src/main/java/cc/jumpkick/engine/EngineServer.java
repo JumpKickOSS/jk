@@ -40,7 +40,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
-import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -97,12 +96,6 @@ public final class EngineServer implements AutoCloseable {
 
     /** The size-capped log this process writes through; {@code null} when it kept the inherited stderr. */
     private volatile @Nullable EngineLogSink logSink;
-
-    /**
-     * Sidecar AOT trainer spawner/process. Spawned only after winning election; reaped on exit.
-     * Clients never talk to it.
-     */
-    private final AotTrainer aot;
 
     private final IdleHousekeeping idle;
     private final EngineVitals vitals;
@@ -274,7 +267,6 @@ public final class EngineServer implements AutoCloseable {
         // Process-scoped generation id for the dashboard hard-refresh contract.
         String bid = this.buildId.isEmpty() ? "" : "+" + this.buildId;
         this.engineEpoch = version + bid + "@" + this.startedAtMillis;
-        this.aot = new AotTrainer(this.log);
         this.election = new EngineElection(paths, this.version, this.buildId, this.pid, this.log);
         this.drain = newDrainReporter();
         this.watchdog = newDisplacementWatchdog();
@@ -324,10 +316,7 @@ public final class EngineServer implements AutoCloseable {
                 this::liveEventStreams,
                 () -> shuttingDown,
                 this::yieldListeners,
-                () -> {
-                    aot.stopQuietly();
-                    close();
-                },
+                this::close,
                 this.log);
     }
 
@@ -425,7 +414,6 @@ public final class EngineServer implements AutoCloseable {
                 activeConnections,
                 activeBuildPlans,
                 this::httpServer,
-                aot::pid,
                 idleDropped::get,
                 () -> EngineLogSink.sizeOf(paths.log()),
                 this::logRolledAtMillis,
@@ -477,8 +465,7 @@ public final class EngineServer implements AutoCloseable {
         // build's file walks hold every carrier of the virtual-thread scheduler.
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofPlatform().daemon().name("jk-engine-conn-", 0).factory());
-        EngineStartup.Started started =
-                new EngineStartup(version, pid, election, aot, http, journal, idle, log).run(won);
+        EngineStartup.Started started = new EngineStartup(version, pid, election, http, journal, idle, log).run(won);
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
         watchdog.start();
@@ -591,15 +578,6 @@ public final class EngineServer implements AutoCloseable {
         return vitals.liveConnectionCount();
     }
 
-    /**
-     * Install the sidecar AOT-trainer factory; must be called before {@link #run}. The factory
-     * is invoked once, only if this engine wins its election and starts serving; it may return
-     * {@code null} (nothing to train after all — e.g. the cache appeared meanwhile).
-     */
-    public void aotTrainerSpawner(Supplier<Process> spawner) {
-        aot.spawner(spawner);
-    }
-
     /** Caller-facing graceful stop — same effect as receiving a {@link EngineProtocol#SHUTDOWN} message. */
     @Override
     public void close() {
@@ -617,12 +595,6 @@ public final class EngineServer implements AutoCloseable {
      */
     void handleShutdown(String line, BufferedWriter writer) throws IOException {
         boolean force = Jsonl.bool(line, "force", false);
-        // Takeover already repointed the endpoint before sending shutdown — kill the
-        // engine AOT sidecar so it cannot re-publish engine-<old-v>-*.
-        // Voluntary `jk engine stop` still names us; leave train to finish then.
-        if (!election.endpointNamesThisEngine()) {
-            aot.stopQuietly();
-        }
         int n;
         boolean willDrain;
         synchronized (lifecycleLock) {
@@ -666,7 +638,6 @@ public final class EngineServer implements AutoCloseable {
      * running. {@code exitNow} also marks the process as shutting down (idle, or force).
      */
     private void yieldListeners(boolean exitNow) {
-        aot.stopQuietly();
         if (!exitNow) {
             enterDrain();
             return;

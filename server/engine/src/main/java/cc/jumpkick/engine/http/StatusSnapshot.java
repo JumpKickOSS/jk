@@ -10,7 +10,6 @@ import java.util.Map;
  * The engine vitals {@code GET /api/status} reports — supplied per request by {@code EngineServer}
  * (the same numbers its socket {@code status-ack} carries), so the dashboard and {@code jk engine
  * status} can never drift apart. Memory fields are best-effort; {@code -1} = unobservable.
- * {@code aotTrainingPid} is the sidecar AOT trainer's pid while one runs, {@code -1} otherwise.
  * {@code cores} is the JVM's available processor count; {@code totalMemoryBytes} /
  * {@code availableMemoryBytes} are host total RAM and available headroom from
  * {@link cc.jumpkick.engine.plugin.MemoryProbe} (Linux {@code MemAvailable}, macOS reclaimable
@@ -39,7 +38,6 @@ public record StatusSnapshot(
         long heapCommittedBytes,
         long heapMaxBytes,
         long rssBytes,
-        long aotTrainingPid,
         int cores,
         long totalMemoryBytes,
         long availableMemoryBytes,
@@ -94,7 +92,6 @@ public record StatusSnapshot(
             long heapCommittedBytes,
             long heapMaxBytes,
             long rssBytes,
-            long aotTrainingPid,
             int cores,
             long totalMemoryBytes,
             long availableMemoryBytes,
@@ -118,7 +115,6 @@ public record StatusSnapshot(
                 heapCommittedBytes,
                 heapMaxBytes,
                 rssBytes,
-                aotTrainingPid,
                 cores,
                 totalMemoryBytes,
                 availableMemoryBytes,
@@ -146,7 +142,6 @@ public record StatusSnapshot(
             long heapCommittedBytes,
             long heapMaxBytes,
             long rssBytes,
-            long aotTrainingPid,
             int cores,
             long totalMemoryBytes) {
         this(
@@ -159,7 +154,6 @@ public record StatusSnapshot(
                 heapCommittedBytes,
                 heapMaxBytes,
                 rssBytes,
-                aotTrainingPid,
                 cores,
                 totalMemoryBytes,
                 /* availableMemoryBytes */ -1L,
@@ -212,7 +206,6 @@ public record StatusSnapshot(
         m.put("heapCommittedBytes", heapCommittedBytes);
         m.put("heapMaxBytes", heapMaxBytes);
         m.put("rssBytes", rssBytes);
-        m.put("aotTrainingPid", aotTrainingPid);
         m.put("cores", cores);
         m.put("totalMemoryBytes", totalMemoryBytes);
         m.put("availableMemoryBytes", availableMemoryBytes);
