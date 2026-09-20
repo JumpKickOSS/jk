@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildLogicScripts;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.StepWalls;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.runtime.TaskForecast;
@@ -137,7 +138,7 @@ public final class BuildLogicEffort {
         if (task.isEmpty()) return 0;
         long own = metrics == null
                 ? 0
-                : EffortWeights.stepOkAvgMillisOwn(metrics, BuildMetrics.slashKey(dir.toString()), task);
+                : StepWalls.stepOkAvgMillisOwn(metrics, BuildMetrics.slashKey(dir.toString()), task);
         if (own > 0) return own;
         long cold = 0;
         for (BuildLogicScripts.ScriptTask s : scripts) cold += BuildLogicReading.millis(s.file(), s.kind());

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.FetchTimings;
 import cc.jumpkick.config.BuildEnv;
@@ -210,9 +209,6 @@ public final class EffortWeights {
         };
     }
 
-    /** Minimum successful runs before a metrics average outranks a static constant (bar weights). */
-    static final int MIN_METRICS_SAMPLES = 3;
-
     /**
      * Forecast/plan step names → {@link BuildMetrics} / plan step names. Explain uses
      * {@code compile-main}; the live plan and metrics store {@code compile-java}.
@@ -223,121 +219,6 @@ public final class EffortWeights {
             case TaskNames.COMPILE_MAIN -> TaskNames.COMPILE_JAVA;
             default -> step;
         };
-    }
-
-    /**
-     * Success-only average wall for one module step (ms), from this module's own history; 0 when it
-     * never ran the step here. Count ≥ 1 is enough — ETA composes dirty steps from measured pieces,
-     * not whole-build priors. Every caller picks its own fallback, so there is deliberately no
-     * combiner that tries own-then-host for them.
-     */
-    public static long stepOkAvgMillisOwn(@Nullable BuildMetrics metrics, String dir, String step) {
-        String key = metricsStepName(step);
-        if (key.isEmpty()) return 0;
-        long fromAgg = stepWallFromAggregates(dir == null ? "" : dir, key);
-        if (fromAgg > 0) return fromAgg;
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        var own = metrics.step(dir == null ? "" : dir, key);
-        if (own.isPresent() && own.get().ok().count() >= 1 && own.get().ok().avgMillis() > 0) {
-            return own.get().ok().avgMillis();
-        }
-        return 0;
-    }
-
-    /** Host tier: the cross-module average wall for {@code step}, when this module has no history. */
-    static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
-        String key = metricsStepName(step);
-        if (key.isEmpty()) return 0;
-        long fromAgg = stepWallFromAggregates("", key);
-        if (fromAgg > 0) return fromAgg;
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        var host = metrics.step("", key);
-        if (host.isPresent() && host.get().ok().count() >= 1 && host.get().ok().avgMillis() > 0) {
-            return host.get().ok().avgMillis();
-        }
-        return 0;
-    }
-
-    /**
-     * One step's wall from the harvested ledger: the trimmed mean once the row has two samples,
-     * the single sample when it has one.
-     *
-     * <p>The mean, not the last sample, on purpose. The last sample of a step is whichever build
-     * ran it most recently, and on a full rebuild that is the most contended measurement the ledger
-     * holds: the dogfood engine's test compile reads a 6.8 s mean beside a 28 s last, taken while 24
-     * modules compiled at once. A critical-path schedule adds such walls serially along the spine.
-     * A structural speed-up that leaves the mean stale is what {@code ScheduleBias} absorbs.
-     *
-     * <p>Heavy steps carry a credibility floor ({@link #heavyWallFloorMs}): a native-image or
-     * write-image wall under it is a cache-restore blip and prices nothing.
-     */
-    static long stepWallFromAggregates(String dir, String step) {
-        try {
-            var agg = BuildMetrics.aggregatesForSession();
-            String task = metricsStepName(step);
-            if (task.isEmpty()) return 0;
-            String key;
-            if (dir == null || dir.isBlank()) {
-                key = "task." + task + ".wall-ms";
-            } else {
-                key = "module." + AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
-            }
-            Double meanRow = agg.meanMap().get(key);
-            Double lastRow = agg.lastMap().get(key);
-            double mean = meanRow == null ? 0 : meanRow;
-            double last = lastRow == null ? 0 : lastRow;
-            long floor = heavyWallFloorMs(task);
-            boolean meanCredible = mean > 0 && mean >= floor;
-            boolean lastCredible = last > 0 && last >= floor;
-            if (meanCredible && agg.count(key) >= 2) return Math.round(mean);
-            if (lastCredible) return Math.round(last);
-            if (meanCredible) return Math.round(mean);
-            return 0;
-        } catch (RuntimeException e) {
-            return 0;
-        }
-    }
-
-    /**
-     * Metrics-learned flat weight for fixed-cost steps: module avg → host avg → {@code
-     * staticWeight}. Success-only samples.
-     */
-    static int learnedFixedWeight(String dir, String step, int staticWeight) {
-        return learnedFixedWeight(BuildMetrics.load(BuildMetrics.defaultFile()), dir, step, staticWeight);
-    }
-
-    static int learnedFixedWeight(BuildMetrics metrics, String dir, String step, int staticWeight) {
-        // Heavy IO steps (native-image, OCI) are rare and long — one successful wall is enough
-        // to beat the cold floor; waiting for 3 samples left the bar on a 15s token for months.
-        int minSamples = heavyFixedStep(step) ? 1 : MIN_METRICS_SAMPLES;
-        long floorMs = heavyFixedStep(step) ? heavyWallFloorMs(step) : 0;
-        var own = metrics.step(dir, metricsStepName(step));
-        if (own.isPresent() && own.get().ok().count() >= minSamples) {
-            long avg = own.get().ok().avgMillis();
-            // Ignore poisoned cache-restore samples (e.g. native-image "32ms" success).
-            if (avg >= floorMs) return flatWeight(avg);
-        }
-        var host = metrics.step("", metricsStepName(step));
-        if (host.isPresent() && host.get().ok().count() >= minSamples) {
-            long avg = host.get().ok().avgMillis();
-            if (avg >= floorMs) return flatWeight(avg);
-        }
-        return staticWeight;
-    }
-
-    /** Reject absurdly short measured walls for heavy steps (action-cache restore noise). */
-    private static long heavyWallFloorMs(String step) {
-        String s = metricsStepName(step);
-        if (TaskNames.NATIVE_IMAGE.equals(s)) return 5_000L;
-        if (TaskNames.WRITE_IMAGE.equals(s)) return 3_000L;
-        return 0L;
-    }
-
-    private static boolean heavyFixedStep(String step) {
-        String s = metricsStepName(step);
-        return TaskNames.NATIVE_IMAGE.equals(s)
-                || TaskNames.WRITE_IMAGE.equals(s)
-                || TaskNames.PACKAGE_ASSEMBLY.equals(s);
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */
@@ -374,7 +255,7 @@ public final class EffortWeights {
             Collection<String> projectDirs) {
         String key = metricsStepName(step);
         // Prefer this module's own measured whole-step wall (even a single success).
-        long ownMs = stepOkAvgMillisOwn(metrics, dir, key);
+        long ownMs = StepWalls.stepOkAvgMillisOwn(metrics, dir, key);
         if (ownMs > 0) return flatWeight(ownMs);
         // Cold module with a known planned method count: the count-scaled host prior beats the
         // host suite-wall average, which prices a 2000-method suite like the host's ~average
@@ -385,7 +266,7 @@ public final class EffortWeights {
                 return Math.max(1, (int) Math.round(floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
             }
         }
-        long hostMs = stepOkAvgMillisHost(metrics, key);
+        long hostMs = StepWalls.stepOkAvgMillisHost(metrics, key);
         if (hostMs > 0) return flatWeight(hostMs);
 
         double rate;
@@ -402,7 +283,7 @@ public final class EffortWeights {
                     // No rate anywhere (cold ledger, e.g. right after `jk clean`) — fall back to the
                     // surviving metrics history before conceding to the Step-1 static (which already
                     // embeds Calibration priors when produced by coldStaticWeight).
-                    return learnedFixedWeight(metrics, dir, key, staticWeight);
+                    return StepWalls.learnedFixedWeight(metrics, dir, key, staticWeight);
                 }
                 rate = host.getAsDouble();
             }
@@ -521,7 +402,7 @@ public final class EffortWeights {
                             "workers",
                             wWorkers,
                             "ownMs",
-                            stepOkAvgMillisOwn(metrics, mod, TaskNames.RUN_TESTS),
+                            StepWalls.stepOkAvgMillisOwn(metrics, mod, TaskNames.RUN_TESTS),
                             "wall1",
                             metrics.stepWall1Millis(mod, TaskNames.RUN_TESTS),
                             "rate",
@@ -539,7 +420,7 @@ public final class EffortWeights {
             } else {
                 // Prefer this module's own measured whole-task wall; count-scaled/host/static tiers
                 // (via learned) only when the module is cold here.
-                long ownMs = stepOkAvgMillisOwn(metrics, mod, step);
+                long ownMs = StepWalls.stepOkAvgMillisOwn(metrics, mod, step);
                 if (ownMs > 0) {
                     w = flatWeight(ownMs);
                 } else {
@@ -549,12 +430,12 @@ public final class EffortWeights {
                     if (staticW <= 0) {
                         // A step the cold table does not know — a plugin task the module has not
                         // run here yet: the host's wall for it, else one token.
-                        long hostMs = stepOkAvgMillisHost(metrics, step);
+                        long hostMs = StepWalls.stepOkAvgMillisHost(metrics, step);
                         w = hostMs > 0 ? flatWeight(hostMs) : TOKEN;
                     } else if (timings != null) {
                         w = learned(timings, metrics, mod, step, count, staticW, projectDirs);
                     } else {
-                        long hostMs = stepOkAvgMillisHost(metrics, step);
+                        long hostMs = StepWalls.stepOkAvgMillisHost(metrics, step);
                         w = hostMs > 0 ? flatWeight(hostMs) : staticW;
                     }
                 }
@@ -795,7 +676,7 @@ public final class EffortWeights {
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
             int staticPkg = coldWorkWeight(TaskNames.PACKAGE_JAR, 1);
-            pkg = jarFresh ? SKIP : learnedFixedWeight(metrics, mod, TaskNames.PACKAGE_JAR, staticPkg);
+            pkg = jarFresh ? SKIP : StepWalls.learnedFixedWeight(metrics, mod, TaskNames.PACKAGE_JAR, staticPkg);
         } catch (Exception e) {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
@@ -925,11 +806,11 @@ public final class EffortWeights {
      */
     public static int assemblyWeight(Path dir) {
         if (jarWillChange(dir)) {
-            return learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
+            return StepWalls.learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
         }
         return artifactFresh(dir, BuildLayout::assemblyJar)
                 ? SKIP
-                : learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
+                : StepWalls.learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
     }
 
     /**
@@ -960,7 +841,7 @@ public final class EffortWeights {
      */
     public static int ociWeight(Path dir) {
         if (ociWillChange(dir)) {
-            return learnedFixedWeight(dir.toString(), TaskNames.WRITE_IMAGE, OCI_RUN);
+            return StepWalls.learnedFixedWeight(dir.toString(), TaskNames.WRITE_IMAGE, OCI_RUN);
         }
         return OCI_SKIP;
     }

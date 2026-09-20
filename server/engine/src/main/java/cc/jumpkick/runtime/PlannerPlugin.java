@@ -407,7 +407,7 @@ public final class PlannerPlugin {
                 // A plugin command forks its process and can dominate a build (d8 dex, AOT), yet its
                 // static reservation is a token 1 unit — price it from the running metrics once this
                 // machine has seen it run (own-project average, else host average).
-                .weight(() -> EffortWeights.learnedFixedWeight(in.dir().toString(), "plugin-" + step.name(), 1))
+                .weight(() -> StepWalls.learnedFixedWeight(in.dir().toString(), "plugin-" + step.name(), 1))
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
