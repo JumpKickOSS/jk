@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Fixture test for release-version.sh: the request must be well-formed and equal the source's version.
+# Fixture test for release-version.sh: the request must be well-formed and equal the source's
+# version; no request at all (a dry run) answers with the source's version.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,7 +20,7 @@ refuses() {
 }
 
 accepts "$declared"
-refuses "" "empty request"
+accepts ""
 refuses "v$declared" "a v prefix is the tag's, not the version's"
 refuses "$declared.9999" "a version the source does not declare"
 refuses '0.1.0; rm -rf /' "shell text in a dispatch input"

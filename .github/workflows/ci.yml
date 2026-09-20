@@ -56,6 +56,9 @@ jobs:
       - name: Release-flatten fixtures
         run: bash scripts/test-flatten-release.sh
 
+      - name: GitHub Release attach fixtures
+        run: bash scripts/test-publish-github-release.sh
+
       - name: Example lock-drift fixtures
         run: bash scripts/test-examples-lock-drift.sh
 
