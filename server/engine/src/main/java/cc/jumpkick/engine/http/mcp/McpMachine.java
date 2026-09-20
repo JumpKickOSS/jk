@@ -139,8 +139,8 @@ public final class McpMachine {
         Map<String, Object> heap = configSet("engine.max-heap-mb", "512");
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("heap", heap);
-        m.put("env", List.of("JK_AOT_TRAIN=off"));
-        m.put("note", "Set JK_AOT_TRAIN=off in the CI environment. Heap written to config.toml.");
+        m.put("env", List.of());
+        m.put("note", "Heap written to config.toml.");
         return m;
     }
 

@@ -42,7 +42,7 @@ public final class PluginLoader {
      * {@link SessionContext} and its fail-closed default ({@code offline = true} when unstated)
      * is indistinguishable from a stated refusal. {@code PluginLaunch.javaCommand} calls this at
      * the generic plugin fork; the compiler and formatter spec writers ({@code
-     * ForkedJavac.writeSpec}, {@code KotlincSpec}, {@code GroovycSpec}, the AOT trainer specs)
+     * ForkedJavac.writeSpec}, {@code KotlincSpec}, {@code GroovycSpec})
      * call it themselves because their forks go through {@link #command} directly. Seal a spec in
      * exactly one place — the producer or the fork, never both.
      */

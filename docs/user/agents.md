@@ -122,7 +122,6 @@ of files an agent must not edit by hand, for harnesses that read one. The hooks 
 ## Config for CI / headless agents
 
 ```bash
-export JK_AOT_TRAIN=off     # skip train-on-miss on short-lived engines
 export JK_OUTPUT=json       # if you consume stdout
 # optional: JK_CLI_DETAILS=off  to skip writing details.jsonl
 ```

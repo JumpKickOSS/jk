@@ -718,8 +718,6 @@ public final class PlannerSupport {
         env.put("CI", "false");
         // Clear NO_COLOR so TUI ANSI assertions are deterministic.
         env.put("NO_COLOR", "");
-        // Nested engines + workers: train-on-miss is pure overhead under the suite.
-        env.put("JK_AOT_TRAIN", "off");
         return env;
     }
 

@@ -3,9 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JdkCompilerAccess;
@@ -361,24 +359,7 @@ public final class FormatPlans {
         try {
             Path hostJava = JavaHomes.runningJavaHome();
             String workerCp = WorkerLaunchClasspath.resolve(workerJar);
-            List<String> extra = new ArrayList<>(PluginAot.formatterFlags(
-                    hostJava,
-                    workerCp,
-                    (aotOut, scratch) -> trainerCommand(
-                            hostJava,
-                            workerCp,
-                            aotOut,
-                            scratch,
-                            o.javaStyle(),
-                            o.kotlinStyle(),
-                            javaJars,
-                            removeUnusedJars,
-                            kotlinJars,
-                            scalaJars,
-                            !groovyFiles.isEmpty(),
-                            o.optimizeImports(),
-                            o.importOrder(),
-                            o.removeUnusedImports())));
+            List<String> extra = new ArrayList<>();
             if (!javaFiles.isEmpty()) extra.addAll(JAVAC_EXPORTS);
             // The run's only fork, so it gets the machine rather than the build-shaped
             // 1/jobs share the process-wide plan hands every worker.
@@ -489,142 +470,6 @@ public final class FormatPlans {
         Files.write(spec, w.lines(), StandardCharsets.UTF_8);
         return spec;
     }
-
-    // The trainer's stamp store is the scratch dir, deleted with it. A fixed key keeps the training
-    // spec the same shape as a real one so the stamp path lands in the AOT cache.
-    private static final String TRAIN_CONFIG_KEY = "format-aot-train";
-
-    /**
-     * Background AOT trainer: same {@code java -cp worker PluginMain spec} shape as a real format,
-     * recording with {@code -XX:AOTCacheOutput} while formatting a synthetic Hello.java (and
-     * Hello.kt / Hello.groovy / Hello.scala when those languages are on this run).
-     */
-    static List<String> trainerCommand(
-            Path hostJavaHome,
-            String workerCp,
-            Path aotOutput,
-            Path scratch,
-            @Nullable String javaStyle,
-            @Nullable String kotlinStyle,
-            List<Path> javaJars,
-            List<Path> removeUnusedJars,
-            List<Path> kotlinJars,
-            List<Path> scalaJars,
-            boolean trainGroovy,
-            boolean optimizeImports,
-            boolean importOrder,
-            boolean removeUnusedImports)
-            throws IOException {
-        List<Path> javaFiles = List.of();
-        if (javaJars != null && !javaJars.isEmpty()) {
-            Path hello = scratch.resolve("Hello.java");
-            Files.writeString(hello, TRAIN_JAVA);
-            javaFiles = List.of(hello);
-        }
-        List<Path> kotlinFiles = List.of();
-        if (kotlinJars != null && !kotlinJars.isEmpty()) {
-            Path helloKt = scratch.resolve("Hello.kt");
-            Files.writeString(helloKt, TRAIN_KOTLIN);
-            kotlinFiles = List.of(helloKt);
-        }
-        List<Path> groovyFiles = List.of();
-        if (trainGroovy) {
-            Path helloGroovy = scratch.resolve("Hello.groovy");
-            Files.writeString(helloGroovy, TRAIN_GROOVY);
-            groovyFiles = List.of(helloGroovy);
-        }
-        List<Path> scalaFiles = List.of();
-        if (scalaJars != null && !scalaJars.isEmpty()) {
-            Path helloScala = scratch.resolve("Hello.scala");
-            Files.writeString(helloScala, TRAIN_SCALA);
-            scalaFiles = List.of(helloScala);
-        }
-        if (javaFiles.isEmpty() && kotlinFiles.isEmpty() && groovyFiles.isEmpty() && scalaFiles.isEmpty()) {
-            // Nothing to exercise — still emit a no-op spec so the worker starts and the
-            // PluginMain + Spotless classes land in the cache.
-            Path hello = scratch.resolve("Hello.java");
-            Files.writeString(hello, TRAIN_JAVA);
-            javaFiles = List.of(hello);
-        }
-        List<Path> indexFiles = new ArrayList<>(javaFiles);
-        indexFiles.addAll(kotlinFiles);
-        indexFiles.addAll(groovyFiles);
-        indexFiles.addAll(scalaFiles);
-        Path spec = writeSpec(
-                false,
-                javaStyle,
-                kotlinStyle,
-                javaFiles,
-                javaJars == null ? List.of() : javaJars,
-                removeUnusedJars == null ? List.of() : removeUnusedJars,
-                kotlinFiles,
-                kotlinJars == null ? List.of() : kotlinJars,
-                groovyFiles,
-                scalaFiles,
-                scalaJars == null ? List.of() : scalaJars,
-                optimizeImports,
-                importOrder,
-                removeUnusedImports,
-                indexFiles,
-                scratch,
-                TRAIN_CONFIG_KEY,
-                scratch.resolve("train.spec"));
-        // This fork goes through PluginLoader.command, not PluginLaunch — seal at the producer.
-        PluginLoader.sealNetworkPolicy(spec);
-        List<String> jvmFlags = new ArrayList<>();
-        jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
-        jvmFlags.addAll(JvmOptions.batchFlags(1));
-        if (!javaFiles.isEmpty()) jvmFlags.addAll(JAVAC_EXPORTS);
-        return PluginLoader.command(
-                hostJavaHome, workerCp, jvmFlags, List.of(spec.toAbsolutePath().toString()));
-    }
-
-    private static final String TRAIN_JAVA = """
-            package demo;
-
-            import java.util.ArrayList;
-            import java.util.List;
-
-            public class Hello {
-              public static void main(String[] args) {
-                java.util.Map<String, Integer> values = new java.util.HashMap<>();
-                values.put("a", 1);
-                List<String> names = new ArrayList<>();
-                names.add("jk-formatter aot train");
-                System.out.println(values + names.toString());
-              }
-            }
-            """;
-
-    private static final String TRAIN_KOTLIN = """
-            package demo
-
-            data class Point(val x: Int, val y: Int)
-
-            fun main() {
-                val points = (1..4).map { Point(it, it * 2) }
-                println(points.joinToString { "${it.x},${it.y}" })
-            }
-            """;
-
-    private static final String TRAIN_GROOVY = """
-            package demo
-
-            class Hello {
-                static void main(String[] args) {
-                    println 'jk-formatter aot train'
-                }
-            }
-            """;
-
-    private static final String TRAIN_SCALA = """
-            package demo
-
-            object Hello {
-              def main(args: Array[String]): Unit =
-                println("jk-formatter aot train")
-            }
-            """;
 
     private static List<String> absPaths(List<Path> paths) {
         return paths.stream().map(p -> p.toAbsolutePath().toString()).toList();

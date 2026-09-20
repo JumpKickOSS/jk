@@ -15,8 +15,6 @@ Caching only speeds the runner up.
     restore-keys: |
       jk-${{ runner.os }}-
 - run: jk test
-  env:
-    JK_AOT_TRAIN: "off"
 ```
 
 | Path | What it holds | Safe to restore? |
@@ -60,7 +58,6 @@ this way, with a guard that refuses a version spelled in a workflow
 ## Typical job
 
 ```bash
-export JK_AOT_TRAIN=off
 # PR / push: the cheap share-the-commit bar (unit + integration if it exists).
 jk test -j0 -w0
 jk test --suite integration -j0 -w0   # skip if the tree has no integration suite
