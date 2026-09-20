@@ -12,7 +12,7 @@ plugins {
 }
 
 group = "cc.jumpkick"
-version = "0.13.7"
+version = "0.13.8"
 
 repositories {
     mavenCentral()
