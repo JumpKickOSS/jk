@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  *   <li>Reload user {@code config.toml} when its mtime changes (best-effort; heap size is not
  *       re-applied to the running JVM).
  *   <li>If wall-clock ≥ 12 h since the last maintenance stamp, run store-feed refresh + templates
- *       freshen + enqueue cache prune / host warmup (AOT/cal). Heap {@code System.gc()} is
+ *       freshen + enqueue cache prune / host calibration. Heap {@code System.gc()} is
  *       performed only at the end of that workset by the engine (never mid-chore).
  * </ul>
  *
@@ -51,7 +51,7 @@ public final class EngineMaintenance implements AutoCloseable {
 
     /**
      * @param onMaintenanceDue after feeds/templates; typically enqueue the cache prune + schedule host
-     *     warmup (AOT/cal). Must not throw.
+     *     calibration. Must not throw.
      */
     public EngineMaintenance(Consumer<String> log, StoreFeedRefresh feeds, Runnable onMaintenanceDue) {
         this(log, feeds, onMaintenanceDue, JkDirs.state().resolve("engine-maintenance.stamp"), JkDirs.userConfigFile());

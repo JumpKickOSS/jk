@@ -96,7 +96,7 @@ class WorkerArgvOwnerTest {
         Path scratch = Files.createDirectories(tmp.resolve("scratch"));
 
         List<String> argv =
-                ForkedJavac.trainerCommandForOptimize(tmp.resolve("jdk"), CP, tmp.resolve("worker.aot"), scratch);
+                ForkedJavac.trainerCommand(tmp.resolve("jdk"), CP, tmp.resolve("worker.aot"), scratch, 25, List.of());
 
         assertOwnerTail(argv, CP, List.of("@" + scratch.resolve("train.spec").toAbsolutePath()));
     }

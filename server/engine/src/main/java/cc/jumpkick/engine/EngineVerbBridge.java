@@ -194,11 +194,6 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public boolean scheduleHostWarmup(boolean force) {
-        return idle.scheduleHostWarmup(force);
-    }
-
-    @Override
     public BuildJournal journal() {
         return journal;
     }

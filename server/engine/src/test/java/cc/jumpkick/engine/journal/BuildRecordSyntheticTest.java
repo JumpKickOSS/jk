@@ -9,9 +9,6 @@ class BuildRecordSyntheticTest {
 
     @Test
     void syntheticTriggers() {
-        assertThat(BuildRecord.running(1, "build", "/tmp/x", "g:a", null, 1L, "1", "optimize")
-                        .synthetic())
-                .isTrue();
         assertThat(BuildRecord.running(1, "build", "/tmp/x", "g:a", null, 1L, "1", "calibrate")
                         .synthetic())
                 .isTrue();
