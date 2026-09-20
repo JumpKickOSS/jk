@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +33,12 @@ class KotlinCompilationTest {
                 fun greet(): String = "hi from kotlin"
                 """);
 
-        int exit = run("compile", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "compile",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
     }
 
@@ -47,7 +53,12 @@ class KotlinCompilationTest {
                 fun greet(): String = "hi"
                 """);
 
-        int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "build",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
         Path jar = tempDir.resolve("target/lib/widget-0.1.0.jar");
@@ -125,7 +136,12 @@ class KotlinCompilationTest {
         Files.createDirectories(src.getParent());
         Files.writeString(src, "fun broken( = oops");
 
-        int exit = run("compile", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "compile",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(1);
     }
 
@@ -149,7 +165,12 @@ class KotlinCompilationTest {
                 fun greet(): String = Hub.banner()
                 """);
 
-        int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "build",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
         try (JarFile jf =
@@ -181,7 +202,12 @@ class KotlinCompilationTest {
                 }
                 """);
 
-        int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "build",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
         try (JarFile jf =
@@ -213,7 +239,12 @@ class KotlinCompilationTest {
                 }
                 """);
 
-        int exit = run("compile", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "compile",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
     }
 }

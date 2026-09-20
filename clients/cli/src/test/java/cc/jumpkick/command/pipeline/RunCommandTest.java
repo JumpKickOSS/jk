@@ -5,7 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.command.SharedTestCache;
+import cc.jumpkick.testing.TestCaches;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -49,13 +49,27 @@ class RunCommandTest {
                 """);
 
         // No jar yet — `jk run` should auto-build then exec.
-        int exit = run("run", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
+        int exit = run(
+                "run",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(tempDir.resolve("target/widget-0.1.0.jar")).exists();
 
         // App args ride the `.` target (the first positional is always the target since
         // the 2026-07-09 inversion made `jk run` the universal runner).
-        int withArgs = run("run", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg(), ".", "a", "b", "c");
+        int withArgs = run(
+                "run",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString(),
+                ".",
+                "a",
+                "b",
+                "c");
         assertThat(withArgs).isEqualTo(3);
     }
 
@@ -119,7 +133,14 @@ class RunCommandTest {
                 }
                 """);
 
-        int exit = run("run", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg(), ".", "a");
+        int exit = run(
+                "run",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString(),
+                ".",
+                "a");
         assertThat(exit).isEqualTo(1); // scanned main ran and saw one arg
     }
 
@@ -194,7 +215,12 @@ class RunCommandTest {
         System.setOut(combined);
         System.setErr(combined);
         try {
-            assertExit.accept(run("run", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg()));
+            assertExit.accept(run(
+                    "run",
+                    "-C",
+                    tempDir.toString(),
+                    "--cache-dir",
+                    TestCaches.dir("shared-cache").toString()));
         } finally {
             System.setOut(prevOut);
             System.setErr(prevErr);

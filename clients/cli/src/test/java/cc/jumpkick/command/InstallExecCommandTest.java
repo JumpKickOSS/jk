@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -395,7 +396,7 @@ class InstallExecCommandTest {
                 "--m2-dir",
                 tempDir.resolve("m2").toString(),
                 "--cache-dir",
-                SharedTestCache.arg(),
+                TestCaches.dir("shared-cache").toString(),
                 "--state-dir",
                 tempDir.toString(),
                 "--bin-dir",

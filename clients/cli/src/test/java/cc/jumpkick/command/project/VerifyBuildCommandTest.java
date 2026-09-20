@@ -5,7 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.command.ScaffoldTestSupport;
-import cc.jumpkick.command.SharedTestCache;
+import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -72,9 +72,19 @@ class VerifyBuildCommandTest {
                 fun greet(): String = "hi"
                 """);
 
-        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg()))
+        assertThat(run(
+                        "build",
+                        "-C",
+                        tempDir.toString(),
+                        "--cache-dir",
+                        TestCaches.dir("shared-cache").toString()))
                 .isEqualTo(0);
-        assertThat(run("verify", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg()))
+        assertThat(run(
+                        "verify",
+                        "-C",
+                        tempDir.toString(),
+                        "--cache-dir",
+                        TestCaches.dir("shared-cache").toString()))
                 .isEqualTo(0);
     }
 
