@@ -95,7 +95,7 @@ class EngineSignalMaskTest {
     private static List<String> engineCommand(Path home) {
         List<String> cmd = new ArrayList<>();
         cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
-        cmd.addAll(EngineJvmFlags.AOT_SENSITIVE);
+        cmd.addAll(EngineJvmFlags.BASE);
         cmd.add(EngineJvmFlags.heapDumpPath(home.resolve("dumps")));
         cmd.add("-Xmx64m");
         cmd.add("-Djk.env.JK_HOME=" + home);

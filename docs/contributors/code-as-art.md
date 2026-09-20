@@ -91,7 +91,7 @@ resident host (election, accept, hosted ops). Reality:
 
 | What | Where it hides today |
 |---|---|
-| Process host | election, UDS/TCP, drain, AOT sidecar |
+| Process host | election, UDS/TCP, drain |
 | Job envelope | `handleAsyncBuildPlanRequest` (~320 lines) **and** HTTP twins that reimplement it |
 | Progress DB | **14** request-id `ConcurrentHashMap`s |
 | Verbs | ~20 `run*` JSONL decoders over `BuildService` / `runtime.*Plans` |
@@ -839,7 +839,7 @@ The shell scripts have their lint in the same place: the `shellcheck` guard test
   invisible to its regex. `G7` had the same shape twice over: its pattern
   saw `"true"`/`"1"` only in receiver position, and even widened it could
   not see the FALSE half of the truth set, where five more hand-rolled
-  readers (`AotSettings`, `CentralMirror`, `HostWarmup`, `ChromeTimeline`,
+  readers (`CentralMirror`, `HostWarmup`, `ChromeTimeline`,
   `CliSessionTranscript`) were sitting. Check a new pattern against every
   shape the bypass takes before believing its number.
 - **If the thing you are counting has an opposite, count the opposite
@@ -886,7 +886,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G21 | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist | guard test `one-json-codec` |
 | G22 | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist | guard test `ide-client-wiring` |
 | G23 | a `@Tag` no tier runs, a tag no tier owns, or a tier table in `jk.toml` that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions | engine validation `tiers` |
-| G24 | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist | `aot-marker` (vocabulary) |
+| G24 | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` | ban | retired: jk's own JVMs no longer map or train JEP 514 caches, so there is no refusal marker to own; the user-facing `--aot-cache` and `[image] aot-cache` trainers read a JVM's `-Xlog:aot` through `AotCacheFiles.refusal` and write no marker |
 | G25 | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist | guard test `plugin-family` |
 | G26 | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express yet) | `plugin-fork-owner` (forbid) |
 | G27 | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist | guard test `cli-stdio-handoff-owner` |
@@ -1002,7 +1002,6 @@ by id, kind and why. This block is a `generated` guard's rendering
 <!-- guard-rules:start -->
 | id | kind | why |
 |---|---|---|
-| aot-marker | vocabulary | the AOT refusal marker is one suffix, spelled once |
 | archive-instant-owner | forbid | an archive stamped through the default timezone is a function of the build host's TZ |
 | archive-stream-owner | text | an archive written over an unbuffered sink pays one system call per 512 bytes |
 | blind-tree-walks | forbid | re-resolving each path to ask again is the dominant cost of walking a large tree |
@@ -1307,7 +1306,7 @@ consumer. Redaction on every path.
 workspace/test → lock family → hosted plans → cache maint → sync reads.
 `serveConnection` is the four-arm `VerbShape` switch.
 
-**Phase 6 — Residue.** `IdleHousekeeping`, `AotTrainer`, `EngineVitals`
+**Phase 6 — Residue.** `IdleHousekeeping`, `EngineVitals`
 leave if `EngineServer` is still over 1,200. `EngineMaintenance`
 already exists — finish moving, do not invent a parallel chore type.
 

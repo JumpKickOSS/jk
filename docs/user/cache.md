@@ -48,7 +48,7 @@ One target per root, no aliases:
 | `--all` | Every target below (default when none named) | |
 | `--cache` | `~/.jk/cache` — same as `jk cache nuke` | |
 | `--store` | `~/.jk/store`, whole-tree: `repos/`, `tools/`, `templates/`, `completions/`, `android-sdk/` | |
-| `--state` | `~/.jk/state` — engine sockets, AOT, builds, scratch tmp | |
+| `--state` | `~/.jk/state` — engine sockets, builds, scratch tmp | |
 | `--config` | `~/.jk/config.toml` and the per-app `~/.jk/config/` tree | |
 
 Always kept, whichever targets you name: `~/.jk/bin` (PATH launchers), `~/.jk/lib` (the live

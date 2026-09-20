@@ -42,7 +42,6 @@ MODULES="${MODULES:-shared/*,server/io,server/resolver,server/toolchain,server/e
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 WARM="${WARM:-1}"
 OUT_DIR="${OUT_DIR:-$ROOT/target/measure-parallel-tests}"
-export JK_AOT_TRAIN="${JK_AOT_TRAIN:-off}"
 
 mkdir -p "$OUT_DIR"
 SUMMARY="$OUT_DIR/summary.txt"
@@ -88,7 +87,6 @@ log "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 log "jk: $($JK --version 2>/dev/null || echo unknown)"
 log "host: $(uname -s) $(uname -m) cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo '?')"
 log "modules: $MODULES"
-log "JK_AOT_TRAIN=$JK_AOT_TRAIN"
 log "logs: $OUT_DIR"
 log ""
 

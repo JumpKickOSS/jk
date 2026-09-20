@@ -169,8 +169,8 @@ public final class ProjectBuilds {
      * once (a displaced engine drains in-flight work while its successor already serves). With a
      * JVM-only lock both could read {@code 7},
      * both write {@code 8}, and the second {@code runs/8} write would delete the first's completed
-     * run tree. Threads first, then a file lock — the same nesting {@code AotManifest.withLock}
-     * uses, since a second {@code FileChannel.lock()} in one JVM throws.
+     * run tree. Threads first, then a file lock, since a second {@code FileChannel.lock()} in one
+     * JVM throws.
      */
     public static long allocateRunNumber(Path projectHome) throws IOException {
         Files.createDirectories(projectHome);

@@ -49,7 +49,7 @@ public final class JavaIncrementalCompiler implements Plugin {
 
     /**
      * Job-scoped loop: emit {@code ready}, read {@code COMPILE}/{@code PLAN} {@code <spec>} or
-     * {@code DONE} from stdin. Stays up across modules so Zinc and AOT are paid once per job.
+     * {@code DONE} from stdin. Stays up across modules so Zinc's startup is paid once per job.
      */
     static int pull(ProtocolWriter out) throws Exception {
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));

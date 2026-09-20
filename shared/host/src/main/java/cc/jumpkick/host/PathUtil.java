@@ -633,7 +633,7 @@ public final class PathUtil {
         }
         // The other Windows denial is a sharing violation: some process still has the file open.
         // A handle usually goes moments after its owner is told to exit, and callers stop what
-        // they know about before deleting (engines, then AOT trainers) — so a short retry turns
+        // they know about before deleting (the engines) — so a short retry turns
         // "the process cannot access the file" into a completed wipe rather than a failed one.
         // Bounded tightly: a file nobody is releasing must still fail fast, per file.
         for (int attempt = 0; ; attempt++) {

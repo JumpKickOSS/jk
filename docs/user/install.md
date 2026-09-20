@@ -106,7 +106,7 @@ to decode: if you want to know where a file is, it is under `~/.jk`.
   config/       per-app config, <bin>/config.toml
   creds/        forge tokens (creds/forge) and per-repo credentials (creds/repo)
   lib/          live engine jar, the Maven spy jar (`jk mvn`), installed app jars
-  state/        engine socket, AOT caches, build history, JDK inventory, scratch
+  state/        engine socket, build history, JDK inventory, scratch
   store/        artifact store: repos/, tools/, templates/, completions/, jdks.json
 ```
 
@@ -147,8 +147,6 @@ Five names, and `JK_HOME` is the only one most people need.
 | `JK_STATE_DIR` | State root only (engine sockets, build history, JDK inventory). |
 | `JK_JDKS_DIR` | Managed JDK **write** root. Set it with `JK_HOME` for hermetic JDK isolation. |
 | `JK_JDK_PROBES` | Comma-separated names of the JDK probes jk may consult (`java-home`, `jk`, `intellij`, `gradle`, `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew`, `system`). Unset is all of them; the test tiers run with `java-home,jk`. |
-| `JK_AOT_TRAIN=off` | Skip AOT train-on-miss (still **use** existing `.aot` caches). CI / short-lived builds usually set this |
-| `JK_WORKER_AOT=off` | Plugin workers: no AOT map and no train |
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
 | `JK_M2_INTEGRATION` | `false` skips the Maven local repo for third-party jars (same as `[m2] integration = false`) |
 | `JK_M2_INSTALL` | `false` keeps `jk install` under `JK_STORE_DIR/repos/jk-local` instead of the Maven local repo (same as `[m2] install = false`) |

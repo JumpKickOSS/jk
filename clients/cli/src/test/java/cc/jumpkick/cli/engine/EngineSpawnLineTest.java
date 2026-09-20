@@ -27,7 +27,7 @@ class EngineSpawnLineTest {
 
         List<String> cmd = EngineSpawn.jarCommand(paths, jarTarget(), new JkEngineConfig(64));
 
-        assertThat(cmd).containsAll(EngineJvmFlags.AOT_SENSITIVE);
+        assertThat(cmd).containsAll(EngineJvmFlags.BASE);
         assertThat(cmd).contains("-XX:+ExitOnOutOfMemoryError", "-XX:+HeapDumpOnOutOfMemoryError");
         assertThat(cmd)
                 .as("a directory, so every exit writes its own java_pid<pid>.hprof")
@@ -42,7 +42,7 @@ class EngineSpawnLineTest {
     void the_jar_line_carries_no_aot_flag(@TempDir Path state) {
         EnginePaths.Paths paths = EnginePaths.resolve(state);
         assertThat(EngineSpawn.jarCommand(paths, jarTarget(), new JkEngineConfig(0)))
-                .noneMatch(a -> a.startsWith("-XX:AOT") || a.startsWith("-Djk.aot.train.output="))
+                .noneMatch(a -> a.startsWith("-XX:AOT") || a.startsWith("-Djk.aot."))
                 .noneMatch(a -> a.startsWith("-Xmx"));
     }
 }
