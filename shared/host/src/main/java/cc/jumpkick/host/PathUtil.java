@@ -6,6 +6,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -17,12 +18,18 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.DosFileAttributeView;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
@@ -508,8 +515,9 @@ public final class PathUtil {
      * paths, not string prefixes.
      */
     public static void deleteRecursively(@Nullable Path root) {
+        if (root == null) return;
         try {
-            deleteTree(root, null, true);
+            new Wipe(null, true, false).run(List.of(root), DeleteParallelism.pool());
         } catch (IOException quietNeverThrows) {
             throw new AssertionError(quietNeverThrows);
         }
@@ -529,74 +537,173 @@ public final class PathUtil {
      * link's own, and a report that added the target's size would claim space that is still in use.
      */
     public static void deleteRecursivelyOrThrow(Path root, Removed tally) throws IOException {
-        deleteTree(root, tally, false);
+        deleteTrees(List.of(root), tally);
     }
 
     /**
-     * Children first, then the directory. {@code quiet} decides whether a failure is swallowed or
-     * handed to the caller; a vanished entry is success either way, because the roots this deletes
-     * are engine sockets, pid files and worker scratch that another process may be tearing down at
-     * the same time, and losing a race to it is not a failure of ours.
+     * Remove every one of {@code roots}, at once. Distinct roots fan out across {@link
+     * DeleteParallelism#pool()}, and inside a tree each directory is a task — its files unlinked,
+     * its subdirectories forked, then the directory itself — so post-order holds and a subtree that
+     * fails does not stop its siblings. The tally grows as files go, so a caller may read it live.
      *
-     * <p>A failure does not stop the walk. One undeletable file must not strand its deletable
-     * siblings — {@code jk clean}'s report is the tally, and the tally has to match what actually
-     * came off disk. The caller gets the first failure with any later ones attached as suppressed;
-     * finishing the walk is also what makes the tally independent of traversal order.
+     * <p>A failure does not stop the walk: one undeletable file must not strand its deletable
+     * siblings, and the tally has to match what actually came off disk. The caller gets the first
+     * failure with any later ones attached as suppressed; a vanished entry is success, because
+     * another process may be tearing the same tree down at the same time.
      */
-    private static void deleteTree(@Nullable Path root, @Nullable Removed tally, boolean quiet) throws IOException {
-        if (root == null) return;
-        BasicFileAttributes rootAttrs;
+    public static void deleteTrees(Collection<Path> roots, Removed tally) throws IOException {
+        new Wipe(tally, false, false).run(roots, DeleteParallelism.pool());
+    }
+
+    /**
+     * What {@link #deleteTrees} would tally for {@code roots}: regular files and their bytes,
+     * walked the same way (links as leaves, never followed) so a delete that follows reaches
+     * exactly this count.
+     */
+    public static Removed measureTrees(Collection<Path> roots) throws IOException {
+        var tally = new Removed();
+        new Wipe(tally, false, true).run(roots, DeleteParallelism.pool());
+        return tally;
+    }
+
+    /** {@link #deleteTrees} on a pool of exactly {@code width}; the bench and the tests. */
+    static void deleteTrees(Collection<Path> roots, Removed tally, int width) throws IOException {
+        ForkJoinPool pool = DeleteParallelism.pool(width);
         try {
-            // NOFOLLOW: Files.exists() would follow, so a DANGLING link answered "absent" and this
-            // method returned without removing it — the one case where it failed to honour its own
-            // "remove the link" rule.
-            rootAttrs = Files.readAttributes(root, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        } catch (NoSuchFileException absent) {
-            return;
-        } catch (IOException e) {
-            if (quiet) return;
-            throw e;
+            new Wipe(tally, false, false).run(roots, pool);
+        } finally {
+            pool.shutdown();
         }
-        // A link (or any non-directory) is one delete, whatever it points at.
-        if (!rootAttrs.isDirectory()) {
-            IOException e = deleteOne(root, rootAttrs, tally);
-            if (e != null && !quiet && !(e instanceof NoSuchFileException)) throw e;
-            return;
+    }
+
+    /**
+     * One removal (or measurement) of a set of roots. {@code quiet} decides whether a failure is
+     * swallowed or handed to the caller; {@code dry} walks and tallies without unlinking.
+     */
+    private static final class Wipe {
+        private final @Nullable Removed tally;
+        private final boolean quiet;
+        private final boolean dry;
+        private final ConcurrentLinkedQueue<IOException> failures = new ConcurrentLinkedQueue<>();
+
+        Wipe(@Nullable Removed tally, boolean quiet, boolean dry) {
+            this.tally = tally;
+            this.quiet = quiet;
+            this.dry = dry;
         }
-        // No FileVisitOption.FOLLOW_LINKS, so a link to a directory arrives at visitFile and is
-        // removed as a leaf. Do not add it.
-        // Collected, not thrown, so the walk finishes: see the note on the tally above.
-        IOException[] failure = {null};
-        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                record(deleteOne(file, attrs, tally));
-                return FileVisitResult.CONTINUE;
+
+        void run(Collection<Path> roots, ForkJoinPool pool) throws IOException {
+            List<RootTask> tasks = new ArrayList<>();
+            for (Path root : roots) {
+                if (root != null) tasks.add(new RootTask(root));
+            }
+            if (tasks.isEmpty()) return;
+            if (tasks.size() == 1) {
+                pool.invoke(tasks.get(0));
+            } else {
+                pool.invoke(new RecursiveAction() {
+                    @Override
+                    protected void compute() {
+                        invokeAll(tasks);
+                    }
+                });
+            }
+            IOException first = null;
+            for (IOException e : failures) {
+                if (first == null) first = e;
+                else if (first != e) first.addSuppressed(e);
+            }
+            if (first != null) throw first;
+        }
+
+        /** The root: absent is a no-op, a non-directory (a link above all) is one delete. */
+        private final class RootTask extends RecursiveAction {
+            private final Path root;
+
+            RootTask(Path root) {
+                this.root = root;
             }
 
             @Override
-            public FileVisitResult visitFileFailed(Path file, IOException e) {
+            protected void compute() {
+                BasicFileAttributes attrs;
+                try {
+                    // NOFOLLOW: Files.exists() would follow, so a DANGLING link answered "absent"
+                    // and the root was left standing — the one case that broke "remove the link".
+                    attrs = Files.readAttributes(root, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                } catch (NoSuchFileException absent) {
+                    return;
+                } catch (IOException e) {
+                    record(e);
+                    return;
+                }
+                if (attrs.isDirectory()) {
+                    directory(root);
+                } else {
+                    record(leaf(root, attrs));
+                }
+            }
+        }
+
+        /** One directory: subdirectories forked, files unlinked here, then the directory itself. */
+        private final class DirTask extends RecursiveAction {
+            private final Path dir;
+
+            DirTask(Path dir) {
+                this.dir = dir;
+            }
+
+            @Override
+            protected void compute() {
+                directory(dir);
+            }
+        }
+
+        private void directory(Path dir) {
+            List<DirTask> subdirs = new ArrayList<>();
+            try (DirectoryStream<Path> children = Files.newDirectoryStream(dir)) {
+                for (Path child : children) {
+                    BasicFileAttributes attrs;
+                    try {
+                        attrs = Files.readAttributes(child, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                    } catch (IOException e) {
+                        // Unreadable, or gone under us: try the delete anyway, as a leaf.
+                        record(e);
+                        record(leaf(child, null));
+                        continue;
+                    }
+                    // A link to a directory is a leaf: unlinked, never entered. Do not follow.
+                    if (attrs.isDirectory()) {
+                        subdirs.add(new DirTask(child));
+                    } else {
+                        record(leaf(child, attrs));
+                    }
+                }
+            } catch (NoSuchFileException gone) {
+                return;
+            } catch (IOException e) {
+                // A failure to iterate is not a failure to delete: an unreadable directory may
+                // well be removable, so still fall through to the delete below.
                 record(e);
-                return FileVisitResult.CONTINUE;
             }
+            if (!subdirs.isEmpty()) ForkJoinTask.invokeAll(subdirs);
+            if (!dry) record(deleteOne(dir, null, null));
+        }
 
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException e) {
-                // `e` is a failure to iterate the directory, not to delete it, so still try the
-                // delete afterwards: an unreadable directory may well be removable.
-                record(e);
-                record(deleteOne(dir, null, tally));
-                return FileVisitResult.CONTINUE;
+        /** A file or link: tallied when regular, unlinked unless dry. */
+        private @Nullable IOException leaf(Path p, @Nullable BasicFileAttributes attrs) {
+            if (dry) {
+                if (tally != null && attrs != null && attrs.isRegularFile()) tally.add(attrs.size());
+                return null;
             }
+            return deleteOne(p, attrs, tally);
+        }
 
-            private void record(@Nullable IOException e) {
-                // A vanished entry is not a failure — another process finished the job for us.
-                if (e == null || quiet || e instanceof NoSuchFileException) return;
-                if (failure[0] == null) failure[0] = e;
-                else if (failure[0] != e) failure[0].addSuppressed(e);
-            }
-        });
-        if (failure[0] != null) throw failure[0];
+        private void record(@Nullable IOException e) {
+            // A vanished entry is not a failure — another process finished the job for us.
+            if (e == null || quiet || e instanceof NoSuchFileException) return;
+            failures.add(e);
+        }
     }
 
     /**
@@ -664,22 +771,26 @@ public final class PathUtil {
 
     private static final long SHARING_VIOLATION_BACKOFF_MILLIS = 60;
 
-    /** Running tally for {@link #deleteRecursivelyOrThrow(Path, Removed)}. Directories count as 0 files. */
+    /**
+     * Running tally for {@link #deleteTrees}: regular files and their bytes; directories and links
+     * count as nothing. Written from every unlinking thread and readable live by another — the
+     * progress row reads it while the delete runs.
+     */
     public static final class Removed {
-        private long files;
-        private long bytes;
+        private final LongAdder files = new LongAdder();
+        private final LongAdder bytes = new LongAdder();
 
         public long files() {
-            return files;
+            return files.sum();
         }
 
         public long bytes() {
-            return bytes;
+            return bytes.sum();
         }
 
         void add(long size) {
-            files++;
-            bytes += size;
+            files.increment();
+            bytes.add(size);
         }
     }
 }
