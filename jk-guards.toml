@@ -787,10 +787,6 @@ in     = "server/engine/src/main/java/cc/jumpkick/runtime/BuildLogicSupport.java
 reason = "deleteContents keeps the directory and removes only what is under it"
 
 [[guards.one-recursive-delete.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/runtime/CachePlans.java"
-reason = "tallies bytes per tag and honours --dry-run, so it cannot delegate the walk"
-
-[[guards.one-recursive-delete.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/task/ActionCache.java"
 reason = "pruneUnowned deletes only files absent from the owned set, plus emptied dirs"
 

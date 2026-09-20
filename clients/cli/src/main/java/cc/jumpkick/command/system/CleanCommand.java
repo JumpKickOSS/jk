@@ -80,6 +80,7 @@ public final class CleanCommand implements CliCommand {
                 .status("Counting…")
                 .cancelSubject("clean")
                 .open();
+        IOException stuck = null;
         try {
             long total = PathUtil.measureTrees(roots).files();
             if (total > 0) {
@@ -87,19 +88,27 @@ public final class CleanCommand implements CliCommand {
                 row.follow(tally::files, total);
                 PathUtil.deleteTrees(roots, tally);
             }
+        } catch (IOException e) {
+            // The walk finished; what it could remove is gone. The settle below says so, and names
+            // the file that would not go — on Windows, one another process still has open.
+            stuck = e;
         } finally {
             row.finish();
         }
 
         long elapsedMs = System.currentTimeMillis() - startMs;
         long files = tally.files();
+        String stats = String.format(
+                "%,d file%s, %s total", files, files == 1 ? "" : "s", CacheCommand.fmtBytes(tally.bytes()));
 
+        if (stuck != null) {
+            CommandWedge.printFail("Clean", stuckMessage(stuck, workspaceRoot, files, stats));
+            return 1;
+        }
         if (files == 0) {
             CommandWedge.printOk("Clean", "Nothing to remove");
         } else {
             String removed = Theme.colorize("Removed", Theme.active().focused());
-            String stats = String.format(
-                    "%,d file%s, %s total", files, files == 1 ? "" : "s", CacheCommand.fmtBytes(tally.bytes()));
             String inTime = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
             CommandWedge.printOk("Clean", removed + " " + stats + " " + inTime);
         }
@@ -111,6 +120,28 @@ public final class CleanCommand implements CliCommand {
             if (cleared != 0) return cleared;
         }
         return 0;
+    }
+
+    /**
+     * The failure settle: what did go, then the first file that would not and how many more. A
+     * file that cannot be unlinked on Windows is one some process still has open — a build, the
+     * resident engine's worker, an IDE — so the line says where to look.
+     */
+    static String stuckMessage(IOException stuck, Path workspaceRoot, long files, String stats) {
+        String path = stuck.getMessage() == null ? "a file" : stuck.getMessage();
+        try {
+            Path p = Path.of(path);
+            if (p.isAbsolute() && p.startsWith(workspaceRoot)) {
+                path = workspaceRoot.relativize(p).toString().replace('\\', '/');
+            }
+        } catch (RuntimeException notAPath) {
+            // the message was not a path; show it as it came
+        }
+        int more = stuck.getSuppressed().length;
+        String others = more == 0 ? "" : " and " + more + " more";
+        String removed = files == 0 ? "Nothing removed" : "Removed " + stats + ", but";
+        return removed + " " + path + others + " could not be removed: another process has it open"
+                + " (a build, the engine, or an IDE)";
     }
 
     /** Build-intermediate subdirs removed by {@code --keep-artifacts} (final jars stay). */
