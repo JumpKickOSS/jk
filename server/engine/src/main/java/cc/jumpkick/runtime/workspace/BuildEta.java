@@ -13,6 +13,7 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.PlannerTails;
+import cc.jumpkick.runtime.StepWalls;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.Perf;
@@ -349,7 +350,7 @@ public final class BuildEta {
             // resolve-deps runs on every scheduled module and the forecast lists it as bookkeeping,
             // so it is priced from its own recorded wall: a Spring Boot module resolves for a
             // second, jk's own modules for a tenth of that. Dependents wait on it too.
-            long resolveMs = EffortWeights.stepOkAvgMillisOwn(
+            long resolveMs = StepWalls.stepOkAvgMillisOwn(
                     metrics, BuildMetrics.slashKey(mdir.toString()), TaskNames.RESOLVE_DEPS);
             if (resolveMs > 0) priced = priced.plusGated(EffortWeights.flatWeight(resolveMs));
             // This module's own `.jk/` scripts, for the anchors this build will actually reach.

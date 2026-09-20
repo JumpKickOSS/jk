@@ -57,7 +57,7 @@ class StepWallLadderTest {
         BuildMetrics.clearSessionAggregatesMemo();
         return SessionContext.where(
                 Session.defaults().withWorkingDir(moduleDir),
-                () -> EffortWeights.stepOkAvgMillisOwn(null, moduleDir.toString(), "compile-test"));
+                () -> StepWalls.stepOkAvgMillisOwn(null, moduleDir.toString(), "compile-test"));
     }
 
     @Test
@@ -82,7 +82,7 @@ class StepWallLadderTest {
         BuildMetrics.clearSessionAggregatesMemo();
         long wall = SessionContext.where(
                 Session.defaults().withWorkingDir(module),
-                () -> EffortWeights.stepOkAvgMillisOwn(null, module.toString(), "compile-test"));
+                () -> StepWalls.stepOkAvgMillisOwn(null, module.toString(), "compile-test"));
         assertThat(wall).isEqualTo(900L);
     }
 }
