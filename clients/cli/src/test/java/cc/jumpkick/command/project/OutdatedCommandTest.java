@@ -352,6 +352,21 @@ class OutdatedCommandTest {
     }
 
     @Test
+    void the_old_exclude_flag_is_unrecognized(@TempDir Path tempDir) {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream prior = System.err;
+        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        int exit;
+        try {
+            exit = run("outdated", "-C", tempDir.toString(), "--exclude-up-to-date");
+        } finally {
+            System.setErr(prior);
+        }
+        assertThat(exit).isEqualTo(64);
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("unrecognized option");
+    }
+
+    @Test
     void without_jk_toml_fails_with_config_exit(@TempDir Path tempDir) {
         int exit = run(
                 "outdated",
