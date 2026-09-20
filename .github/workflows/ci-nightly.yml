@@ -398,17 +398,16 @@ jobs:
       - name: A sample relock may move first-party plugin checksums and nothing else; an npm lock may not move
         run: scripts/examples-lock-drift.sh
 
-  # Product smoke on the OS the PR gate does not run. Bootstraps the hosted macOS client, hands the
-  # home to the checkout's own jk, and drives a fresh project end to end. Windows joins this matrix
-  # when jumpkick.build serves a Windows client at the pin; until then there is no jk to smoke there
-  # (docs/contributors/releases.md, "Platforms without a hosted client"). Network is required (first
-  # lock/build of a fresh project).
+  # Product smoke on the OSes the PR gate does not run. Bootstraps the hosted client the way a user
+  # installs it (the JVM client on macOS, jk.exe on Windows), hands the home to the checkout's own
+  # jk, and drives a fresh project end to end. Network is required (first lock/build of a fresh
+  # project).
   os-smoke:
     name: Product smoke (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest]
+        os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
@@ -423,12 +422,22 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
           curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Bootstrap jk from the hosted release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:JK_VERSION = (Get-Content .jk/ci-bootstrap-version -Raw).Trim()
+          Invoke-RestMethod https://jumpkick.build/install.ps1 | Invoke-Expression
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:JK_HOME 'bin')
 
       - name: The checkout's own jk takes over
         shell: bash

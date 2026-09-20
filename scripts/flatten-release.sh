@@ -11,13 +11,21 @@
 # SHA256SUMS and .sig are dropped; the combined manifest is signed by the caller.
 #
 # Refused, each by name: a missing canonical jar, a jar whose sha differs from the canonical one,
-# two trees carrying one file name, and a tree missing any of the five clients or the Windows
-# zip. A partial matrix is not a release.
+# two trees carrying one file name, and a tree missing any required client or, when Windows is
+# among them, the Windows zip. A partial matrix is not a release.
+#
+# JK_RELEASE_PLATFORMS names the required clients, space-separated (`<os>-<arch>`); the release
+# workflow sets it to the rows of its build matrix. Unset, every platform jk has a client for.
 set -euo pipefail
 
 STAGING="${1:?usage: flatten-release.sh <staging> <out> <version>}"
 OUT="${2:?usage: flatten-release.sh <staging> <out> <version>}"
 VER="${3:?usage: flatten-release.sh <staging> <out> <version>}"
+read -r -a PLATFORMS <<<"${JK_RELEASE_PLATFORMS:-linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64}"
+if [[ ${#PLATFORMS[@]} -eq 0 || ! " ${PLATFORMS[*]} " == *" linux-x86_64 "* ]]; then
+  echo "flatten-release: JK_RELEASE_PLATFORMS must name linux-x86_64 (the platform-neutral jars come from it); got '${JK_RELEASE_PLATFORMS:-}'" >&2
+  exit 1
+fi
 ENGINE="jk-engine-${VER}.jar"
 CLIENT_JAR="jk-${VER}.jar"
 SPY_JAR="jk-maven-spy-${VER}.jar"
@@ -75,13 +83,16 @@ while IFS= read -r -d '' f; do
 done < <(find "$STAGING" -type f -print0)
 
 missing=0
-for client in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
+for client in "${PLATFORMS[@]}"; do
   if [[ ! -f "$OUT/jk-${client}-${VER}.xz" ]]; then
     echo "missing client jk-${client}-${VER}.xz — the ${client} build did not finish" >&2
     missing=$((missing + 1))
   fi
+  if [[ "$client" == windows-* && ! -f "$OUT/jk-${client}-${VER}.zip" ]]; then
+    echo "missing jk-${client}-${VER}.zip" >&2
+    missing=$((missing + 1))
+  fi
 done
-[[ -f "$OUT/jk-windows-x86_64-${VER}.zip" ]] || { echo "missing jk-windows-x86_64-${VER}.zip" >&2; missing=$((missing + 1)); }
 if [[ "$missing" -gt 0 ]]; then
   echo "$missing artifact(s) missing: a partial matrix is not a release; re-run the failed builds and this job" >&2
   exit 1

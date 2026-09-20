@@ -237,9 +237,24 @@ binary, writing, or executing downloaded bytes. Local file installs remain an ex
 development path. `scripts/test-wrapper-bootstrap.sh` drives the POSIX wrapper through that whole
 path, network-free, against a fixture release signed with a throwaway key.
 
-## CI release (tag-triggered)
+## CI release (run by publishing a GitHub Release)
 
 Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
+
+A release is cut by publishing one on GitHub, nothing else: push the tag, publish a release for
+it, and the workflow does the rest. Nothing reaches the bucket, the pointer, the installers or
+the release page from a developer machine.
+
+```bash
+git tag v0.13.8 && git push origin v0.13.8
+gh release create v0.13.8 --title "jk 0.13.8" --notes "building"   # the body is replaced by CI
+gh run watch                                                         # ~30 min across the matrix
+```
+
+The release exists empty while the matrix builds; the workflow attaches the tree as its last step,
+after the bucket and the installers are live. A `workflow_dispatch` of the same workflow is the
+dry run: it builds every platform, flattens and signs the tree and stops with it as a workflow
+artifact, publishing nothing.
 
 The workflow's token is read-only except where a job names the scope it writes, and every action
 it uses is pinned to a commit SHA with the tag in a trailing comment — a floating tag in the job
@@ -248,48 +263,51 @@ that holds the signing key would be a signed release someone else cut. The
 under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow-lint job, and
 `.github/dependabot.yml` moves the pins weekly.
 
-1. Push tag `v0.13.6` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
+1. Publish a GitHub Release for tag `v0.13.8`. The version must equal `JkVersion` without the
+   `v`; `scripts/release-version.sh` refuses any other tag before anything is built.
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
-   so the matrix has a row for every platform jumpkick.build serves a client for at that pin
-   ([below](#platforms-without-a-hosted-client)). The linux-x86_64 lane also runs `jk install`,
-   so the first-party plugins it stages for `repo/` are the commit's own.
+   installed as a user installs it: the native client on linux-x86_64 and windows-x86_64, the
+   JVM client on macos-aarch64 ([below](#platforms-without-a-hosted-client)). The linux-x86_64
+   lane also runs `jk install`, so the first-party plugins it stages for `repo/` are the commit's
+   own.
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
    the client archive(s), the engine jar, the JVM client jar and the Maven spy jar — +
-   `SHA256SUMS` + `.sig`.
+   `SHA256SUMS`.
 4. The publish job first writes the release notes (`scripts/release-notes.sh <version>`: the
    version's entry under [Highlights](#highlights), then the commits since the previous tag) and
    refuses a version with no entry before anything is downloaded.
-5. It flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial matrix
-   or a platform-neutral jar whose bytes differ between platforms), re-signs the combined
-   `SHA256SUMS`, takes the CycloneDX SBOM the
-   linux-x86_64 build wrote of the engine (`jk publish --sbom --dry-run` in `server/engine`,
-   which leaves `target/server/engine/sbom/jk-engine-<version>.cdx.json` at the workspace root —
-   the document the engine jar embeds
-   under `META-INF/sbom/`, derived from `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` —
-   beside the tree, so the signed `SHA256SUMS` the installers verify is untouched — and drafts the
-   GitHub Release for the tag with the tree, the SBOM and the notes
-   (`scripts/publish-github-release.sh draft`; the tag must exist, the script never cuts one).
-6. **`gsutil rsync`** to GCS when secrets are set, then the pointer
-   (`scripts/sign-latest-pointer.sh`): `LATEST.sig` first, then `LATEST`, then `VERSION`, all
-   with no-cache headers. A client reading between the two copies gets a signature refusal and
-   retries; it never gets an unverified version.
-7. `actions/attest-build-provenance` stores one build-provenance attestation per client, the
-   engine jar and the SBOM (`gh attestation verify <file> --repo <owner>/<repo>` checks one), and
-   on a tag push the draft is published and marked latest (`publish-github-release.sh publish`).
-   A `workflow_dispatch` run leaves the draft in place: that is the dry run.
-8. Bump `.jk/ci-bootstrap-version` to the new release and add a matrix row for every platform
-   it shipped a client for ([self-host](self-host.md#the-bootstrap-pin)).
-9. By hand, never from the workflow: the plugin SDK to Maven Central
-   ([below](#maven-central)).
+5. It flattens the matrix's trees into one (`scripts/flatten-release.sh`; `JK_RELEASE_PLATFORMS`
+   names the matrix rows, and a tree short of one, or a platform-neutral jar whose bytes differ
+   between platforms, is refused), re-signs the combined `SHA256SUMS`, and takes the CycloneDX
+   SBOM the linux-x86_64 build wrote of the engine (`jk publish --sbom --dry-run` in
+   `server/engine`, which leaves `target/server/engine/sbom/jk-engine-<version>.cdx.json` at the
+   workspace root — the document the engine jar embeds under `META-INF/sbom/`, derived from
+   `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` — beside the tree, so the signed
+   `SHA256SUMS` the installers verify is untouched. A dispatch ends here.
+6. **`gsutil rsync`** to GCS, then the pointer (`scripts/sign-latest-pointer.sh`): `LATEST.sig`
+   first, then `LATEST`, then `VERSION`, all with no-cache headers. A client reading between the
+   two copies gets a signature refusal and retries; it never gets an unverified version.
+7. `firebase deploy --only hosting` puts `hosting/public` — the installers with this release's
+   floor and public key — on jumpkick.build, after the pointer they will read.
+8. `actions/attest-build-provenance` stores one build-provenance attestation per client, the
+   engine jar and the SBOM (`gh attestation verify <file> --repo <owner>/<repo>` checks one).
+9. Last, `scripts/publish-github-release.sh` attaches the tree, the SBOM and the notes to the
+   release that started the run and marks it latest. The release page announces nothing before the
+   installers can fetch it. A re-run replaces the assets, as the rsync replaced the tree.
+10. Bump `.jk/ci-bootstrap-version` to the new release
+    ([self-host](self-host.md#the-bootstrap-pin)). When the release shipped a first native client
+    for a platform, that platform's row joins the matrix and `JK_RELEASE_PLATFORMS`.
+11. By hand, never from the workflow: the plugin SDK to Maven Central
+    ([below](#maven-central)).
 
 ### Platforms without a hosted client
 
-jumpkick.build serves one native client, **linux-x86_64**, beside the engine jar and the JVM
-client. Linux aarch64, macOS (both architectures) and Windows x86_64 have no hosted native
-client, so no CI job can bootstrap jk on them: their release rows and the Windows product smoke
-are absent until a first client exists, and `scripts/flatten-release.sh` refuses to publish a
-tree short of the five clients, so releases stay manual until then.
+jumpkick.build serves two native clients, **linux-x86_64** and **windows-x86_64**, beside the
+engine jar and the JVM client. Linux aarch64 and macOS (both architectures) have no hosted
+native client. The installers put the JVM client on such a host, which is how the macos-aarch64
+release row bootstraps and then builds that platform's native client; linux-aarch64 and
+macos-x86_64 have no runner in the matrix, so no release ships a client for them.
 
 A contributor on one of those hosts builds the first jk with the Gradle bootstrap —
 `./gradlew dist installLocal` then `./install.sh build/dist/jk`, which
@@ -317,8 +335,8 @@ same version as the hosted engine: a JVM client pairs only with its own version'
 writes the native client for the host under `target/dist`, `DIST_DIR=target/dist
 scripts/assemble-release-dir.sh` assembles it, and it is signed and uploaded beside the other
 platforms' artifacts. Once
-`releases/<version>/SHA256SUMS` lists the platform, its row joins `release.yml` (and, for
-Windows and macOS x86_64, the nightly `os-smoke` matrix) with the pin bump.
+`releases/<version>/SHA256SUMS` lists the platform, its row joins `release.yml` and
+`JK_RELEASE_PLATFORMS` (and, for macOS x86_64, the nightly `os-smoke` matrix) with the pin bump.
 
 ### Required secrets
 
@@ -326,17 +344,18 @@ Windows and macOS x86_64, the nightly `os-smoke` matrix) with the pin bump.
 |--------|------|
 | `JK_RELEASE_RSA_SIGNING_KEY` | Base64 PKCS#8 DER RSA-3072 private key (signing) |
 | `JK_RELEASE_GCS_BUCKET` | GCS bucket name only (no `gs://`), e.g. `jumpkick` |
-| `JK_RELEASE_GCS_SA_JSON` | Service account JSON with object create/overwrite on that bucket |
+| `JK_RELEASE_GCS_SA_JSON` | Key of a service account holding `roles/storage.objectAdmin` on that bucket and `roles/firebasehosting.admin` on the Firebase project that serves jumpkick.build (`jk-release-uploader@jkbuild`) |
 | `GITHUB_TOKEN` (automatic) | Read-only in every job but `publish`, which holds `contents: write` for the GitHub Release and `id-token`/`attestations: write` for the provenance attestations |
 
-Until GCS secrets exist, the workflow still **builds and signs** artifacts as GitHub Actions
-workflow artifacts for a staged dry-run.
+Replacing one: `gh secret set <NAME> --repo JumpKickOSS/jk < file`, as an account with admin on
+the repository. Nothing prints the value.
 
 ### Manual upload (ops)
 
-Releases are published by hand today; the workflow is not dispatched. Order matters: the
-version tree, then the pointer (signature before pointer), then the website — a freshly
-deployed `install.sh` carries the new floor and refuses the old pointer until step 2 is done.
+The workflow is the publisher; this is the same sequence by hand, for a release cut on a machine
+when CI cannot run. Order matters: the version tree, then the pointer (signature before
+pointer), then the website — a freshly deployed `install.sh` carries the new floor and refuses
+the old pointer until step 2 is done.
 
 Before any of it, the tree is built and installed in the order the CI lane keeps: the
 **previous** release's client and engine — the ones the home names before the bump — run
@@ -371,12 +390,13 @@ cat LATEST                                                                      
 # 4. Deploy hosting/public (install.sh / install.ps1 with the matching floor).
 
 # 5. The GitHub Release, from the same tree: the highlights entry must exist (step 4 of the CI
-#    flow refuses without it), the tag must be pushed, GH_TOKEN must be able to write releases.
+#    flow refuses without it); a release for the tag must exist as a draft, since publishing one
+#    starts the workflow (`gh release create v0.13.6 --draft`); GH_TOKEN must be able to write
+#    releases. Publish the draft last.
 scripts/release-notes.sh 0.13.6 > RELEASE_NOTES.md
 (cd server/engine && jk publish --sbom --dry-run)   # prints the path it wrote, under the root's target/
 cp target/server/engine/sbom/jk-engine-0.13.6.cdx.json jk-0.13.6.cdx.json
-scripts/publish-github-release.sh draft 0.13.6 RELEASE_NOTES.md target/release/0.13.6/* jk-0.13.6.cdx.json
-scripts/publish-github-release.sh publish 0.13.6
+scripts/publish-github-release.sh 0.13.6 RELEASE_NOTES.md target/release/0.13.6/* jk-0.13.6.cdx.json
 ```
 
 `release-public.pem` is the SPKI in `ReleaseVerifier.BUILT_IN_KEY` wrapped in

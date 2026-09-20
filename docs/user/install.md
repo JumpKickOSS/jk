@@ -16,10 +16,10 @@ The installer puts **`jk`** and **`jkx`** on your PATH. JumpKick requires **JDK 
 run and will install one if needed. After that, prefer `java = N` in `jk.toml` for
 language level — [Concepts](concepts.md).
 
-Native clients are hosted for Linux and macOS on x86_64 and aarch64, and for Windows on
-x86_64. Every other host — macOS on Intel, Windows on ARM, Linux on ARM or a Raspberry Pi,
-Solaris, FreeBSD, anything else a JDK 25 runs on — gets the [JVM client](#the-jvm-client) from
-the same installers.
+Native clients are hosted for Linux and Windows on x86_64 and for macOS on Apple silicon.
+Every other host — macOS on Intel, Windows on ARM, Linux on ARM or a Raspberry Pi, Solaris,
+FreeBSD, anything else a JDK 25 runs on — gets the [JVM client](#the-jvm-client) from the same
+installers.
 
 Remote installs authenticate the exact `SHA256SUMS` bytes with the built-in RSA-3072 key,
 require one exact checksum entry, and hash the archive before replacing or executing anything.
@@ -41,9 +41,8 @@ with a note — ask an admin. Windows on ARM64 installs the `windows-x86_64` bui
 under x64 emulation; no `windows-aarch64` release exists. `JK_CLIENT=jvm` installs the [JVM
 client](#the-jvm-client) on an ARM64 JDK instead.
 
-Local dogfood from this repository needs a jk to build it, and no Windows client is hosted yet;
-[releases](../contributors/releases.md#platforms-without-a-hosted-client) says how the first one is
-produced. With one installed, `jk build --skip-tests` writes `target\dist\jk.exe` and
+Local dogfood from this repository needs a jk to build it; the hosted `jk.exe` the installer
+puts in place is one. With it installed, `jk build --skip-tests` writes `target\dist\jk.exe` and
 `.\install.cmd target\dist\jk.exe` installs it (Smart App Control blocks an unsigned `jk.exe`;
 released natives are signed).
 
