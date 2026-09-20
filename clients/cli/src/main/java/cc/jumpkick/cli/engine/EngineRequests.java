@@ -400,6 +400,15 @@ public final class EngineRequests {
     public record OutdatedRequest(
             Path entryDir, Path cache, @Nullable URI repoUrl, boolean offline, boolean force) {}
 
+    /** The beats of an outdated read: {@code checked} of {@code total} rows done, {@code coordinate} in flight. */
+    @FunctionalInterface
+    public interface OutdatedHandler {
+        void onChecking(int checked, int total, String coordinate);
+
+        /** Discard the beats: JSON output and tests. */
+        OutdatedHandler NONE = (checked, total, coordinate) -> {};
+    }
+
     // ---- hosted worker commands -------------------------------------------------------------------
 
     /** Everything an engine-hosted {@code jk audit} needs — mirrors {@code AuditCommand}'s local fields. */

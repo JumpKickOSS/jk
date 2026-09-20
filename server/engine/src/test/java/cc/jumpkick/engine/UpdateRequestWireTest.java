@@ -119,7 +119,7 @@ class UpdateRequestWireTest extends EngineServerHarness {
             assertThat(locked(project, "com.acme:other")).isEqualTo("1.0.0");
 
             // jk outdated: an exact pin's Compatible is the pin itself; Latest is the newest stable.
-            OutdatedReport outdated = OutdatedPlans.compute(project, cache, http.base());
+            OutdatedReport outdated = OutdatedPlans.compute(project, cache, http.base(), OutdatedPlans.Progress.NONE);
             assertThat(outdated.rows())
                     .filteredOn(r -> r.coordinate().equals("com.acme:jackson"))
                     .extracting(r -> r.current(), r -> r.compatible(), r -> r.latest())

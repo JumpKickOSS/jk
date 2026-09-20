@@ -56,4 +56,8 @@ public final class ProtoReads {
     public static String explainDone(int maxReadyWidth, int moduleCount) {
         return new ExplainDoneEvent(maxReadyWidth, moduleCount).encode();
     }
+
+    public static String outdatedProgress(int checked, int total, String coordinate) {
+        return new OutdatedProgressEvent(checked, total, coordinate).encode();
+    }
 }
