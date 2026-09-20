@@ -15,24 +15,18 @@ class DeleteParallelismTest {
     }
 
     @Test
-    void windows_takes_its_small_fixed_width_whatever_the_cpu_count() {
-        assertThat(DeleteParallelism.width(env(Map.of()), true, 2)).isEqualTo(DeleteParallelism.WINDOWS);
-        assertThat(DeleteParallelism.width(env(Map.of()), true, 64)).isEqualTo(DeleteParallelism.WINDOWS);
-    }
-
-    @Test
-    void posix_scales_with_the_processors_up_to_the_cap() {
-        assertThat(DeleteParallelism.width(env(Map.of()), false, 4)).isEqualTo(4 * DeleteParallelism.POSIX_PER_CPU);
-        assertThat(DeleteParallelism.width(env(Map.of()), false, 1000)).isEqualTo(DeleteParallelism.POSIX_CAP);
-        assertThat(DeleteParallelism.width(env(Map.of()), false, 0)).isEqualTo(1);
+    void each_os_takes_its_measured_width() {
+        assertThat(DeleteParallelism.width(env(Map.of()), true)).isEqualTo(DeleteParallelism.WINDOWS);
+        assertThat(DeleteParallelism.width(env(Map.of()), false)).isEqualTo(DeleteParallelism.POSIX);
+        assertThat(DeleteParallelism.WINDOWS).isLessThan(DeleteParallelism.POSIX);
     }
 
     @Test
     void the_override_wins_on_every_os_and_is_capped() {
         var one = env(Map.of(DeleteParallelism.ENV, "1"));
-        assertThat(DeleteParallelism.width(one, true, 8)).isEqualTo(1);
-        assertThat(DeleteParallelism.width(one, false, 8)).isEqualTo(1);
-        assertThat(DeleteParallelism.width(env(Map.of(DeleteParallelism.ENV, "99999")), false, 8))
+        assertThat(DeleteParallelism.width(one, true)).isEqualTo(1);
+        assertThat(DeleteParallelism.width(one, false)).isEqualTo(1);
+        assertThat(DeleteParallelism.width(env(Map.of(DeleteParallelism.ENV, "99999")), false))
                 .isEqualTo(DeleteParallelism.MAX);
     }
 
@@ -53,11 +47,11 @@ class DeleteParallelismTest {
 
     @Test
     void a_blank_zero_or_unparsable_override_falls_back_to_the_default() {
-        assertThat(DeleteParallelism.width(env(Map.of(DeleteParallelism.ENV, "")), true, 8))
+        assertThat(DeleteParallelism.width(env(Map.of(DeleteParallelism.ENV, "")), true))
                 .isEqualTo(DeleteParallelism.WINDOWS);
-        assertThat(DeleteParallelism.width(env(Map.of(DeleteParallelism.ENV, "0")), true, 8))
+        assertThat(DeleteParallelism.width(env(Map.of(DeleteParallelism.ENV, "0")), true))
                 .isEqualTo(DeleteParallelism.WINDOWS);
-        assertThat(DeleteParallelism.width(env(Map.of(DeleteParallelism.ENV, "many")), true, 8))
+        assertThat(DeleteParallelism.width(env(Map.of(DeleteParallelism.ENV, "many")), true))
                 .isEqualTo(DeleteParallelism.WINDOWS);
     }
 }

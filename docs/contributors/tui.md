@@ -205,6 +205,7 @@ Rendered rows go out through `CliOutput`, so the envelope opens on the first one
 | `jk selective prepare` | already wedge-settled |
 | `jk jdk ensure` / `graal` | settles via `JdkRender.available` under the envelope |
 | `jk storage clean` | plan console (`Storage` chip); settles with the reclaim summary (`Finished cleaning store. …`), like `jk cache clean` |
+| `jk clean` | live `Clean` row: a spinner while the roots are counted, then a bar over the pre-counted file total with the root being removed after it; settles with the `Removed … took …` summary (or `Nothing to remove`) in the row's place |
 | `jk install` (plugin module) | `✓ Install` plus local-repo publish of PluginMain workers |
 
 ### Documented exceptions (deliberately plain)
