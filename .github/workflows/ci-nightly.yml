@@ -409,13 +409,16 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # The home sits outside the checkout: the guard lanes of `jk build` read the whole workspace,
-    # and on Windows a read of the engine's byte-range-locked files under the home fails.
     env:
-      JK_HOME: ${{ runner.temp }}/jk-home
       JK_AOT_TRAIN: 'off'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # The home sits outside the checkout: the guard lanes of `jk build` read the whole workspace,
+      # and on Windows a read of the engine's byte-range-locked files under the home fails.
+      - name: Home outside the checkout
+        shell: bash
+        run: echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
 
       - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
