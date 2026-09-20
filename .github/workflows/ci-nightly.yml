@@ -454,9 +454,10 @@ jobs:
 
       # On Windows, setup-graalvm exports the Visual Studio environment and puts cl.exe on PATH;
       # the hosted bootstrap's engine keeps PATH and drops INCLUDE and LIB, a state native-image
-      # neither compiles in nor sets up itself. The first jk command seeds the engine, so it runs
-      # with those gone and native-image locates Visual Studio 2022 on its own. Retire this once
-      # the pin's engine inherits INCLUDE, LIB and LIBPATH.
+      # neither compiles in nor sets up itself. The installer started an engine under that
+      # environment, so it is stopped and respawned with those gone, and native-image locates
+      # Visual Studio 2022 on its own. Retire this once the pin's engine inherits INCLUDE, LIB
+      # and LIBPATH.
       - name: The checkout's own jk takes over
         shell: bash
         run: |
@@ -465,6 +466,7 @@ jobs:
             unset INCLUDE LIB LIBPATH EXTERNAL_INCLUDE
             PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'Microsoft Visual Studio\|Windows Kits' | paste -sd:)"
             export PATH
+            jk engine stop --now --no-ansi
           fi
           jk build --skip-tests --no-ansi
           jk install --skip-tests --no-ansi
