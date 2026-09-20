@@ -190,17 +190,17 @@ public final class WireStream {
      * <p>EOF means the same thing from an engine that died or was killed — the tree is not going
      * to change either way, so it is a normal exit from this wait, not a failure.
      *
-     * <p>Half-closing our write side first is what keeps this from being a standoff: the engine's
-     * connection thread is parked reading this socket for EOF, and the
-     * terminal is our last word on it. The half-close hands it the EOF it needs to move on to the
-     * finish tail, while our read side stays open for the line we are waiting for.
+     * <p>Half-closing our write side first says the terminal was our last word: the engine reads
+     * this socket for EOF on a watcher thread of its own, and an EOF after the body's terminal is
+     * the end of the request rather than a disconnect that cancels it. Our read side stays open for
+     * the line we are waiting for.
      */
     private static void awaitJobFinish(BufferedReader reader, @Nullable SocketChannel ch) {
         if (ch != null) {
             try {
                 ch.shutdownOutput();
             } catch (IOException | UnsupportedOperationException ignored) {
-                // Not half-closable (or already gone) — the engine still wakes on its own.
+                // Not half-closable (or already gone) — the engine ends the request when the job does.
             }
         }
         try {
