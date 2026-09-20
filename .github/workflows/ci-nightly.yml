@@ -421,9 +421,12 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The pin serves no macOS native client, so that row asks the installer for the JVM client.
       - name: Bootstrap jk from the hosted release
         if: runner.os != 'Windows'
         shell: bash
+        env:
+          JK_CLIENT: ${{ runner.os == 'macOS' && 'jvm' || 'native' }}
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
