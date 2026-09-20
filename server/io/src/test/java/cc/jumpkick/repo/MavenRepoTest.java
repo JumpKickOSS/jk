@@ -91,32 +91,29 @@ class MavenRepoTest {
     }
 
     @Test
-    void stale_mirror_copy_against_a_changed_pin_is_evicted_and_refetched(@TempDir Path tempDir) throws Exception {
-        // : an internal repo republished the same GAV and the lock was re-pinned. The warm
-        // store copy (old bytes) must not dead-end sync — pass the pin so it is evicted and re-fetched.
+    void a_stale_store_copy_of_a_republished_artifact_is_replaced_with_or_without_the_pin(@TempDir Path tempDir)
+            throws Exception {
         Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
         String relPath = MavenLayout.artifactPath(coord);
-
-        // Seed a stale store copy with old bytes.
         byte[] oldBytes = "old-widget-bytes".getBytes(StandardCharsets.UTF_8);
-        Path stale = tempDir.resolve("stale.jar");
-        Files.write(stale, oldBytes);
-        RepoArtifactStore.forRepository(tempDir, "test", base).materialize(relPath, stale, Hashing.sha256Hex(oldBytes));
-
-        // The repo now serves new bytes.
+        Path stale = Files.write(tempDir.resolve("stale.jar"), oldBytes);
+        RepoArtifactStore store = RepoArtifactStore.forRepository(tempDir, "test", base);
+        store.materialize(relPath, stale, Hashing.sha256Hex(oldBytes));
+        // The repository republished the coordinate.
         byte[] newBytes = "new-widget-bytes".getBytes(StandardCharsets.UTF_8);
         serveArtifact("/" + relPath, newBytes);
         String newSha = Hashing.sha256Hex(newBytes);
-
         // m2 off so only the store mirror is in play.
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false);
 
-        // Without the pin: the stale mirror copy is served (the old dead-end behavior).
-        assertThat(repo.fetchArtifact(coord).sha256()).isEqualTo(Hashing.sha256Hex(oldBytes));
+        // Without a pin, a fresh lock: the repository's own checksum disowns the stale copy.
+        assertThat(repo.fetchArtifact(coord).sha256()).isEqualTo(newSha);
+        assertThat(repo.checksumNotes()).singleElement().asString().contains("discarded");
 
-        // With the pin: stale copy evicted, new bytes fetched.
-        MavenRepo.Fetched f = repo.fetchArtifact(coord, newSha, () -> false);
-        assertThat(f.sha256()).isEqualTo(newSha);
+        // With a pin, a build after the lock moved: the digest alone evicts the stale copy.
+        store.materialize(relPath, stale, Hashing.sha256Hex(oldBytes));
+        assertThat(repo.fetchArtifact(coord, newSha, () -> false).sha256()).isEqualTo(newSha);
+        assertThat(Files.readAllBytes(store.locate(relPath).orElseThrow())).isEqualTo(newBytes);
     }
 
     @Test
@@ -341,7 +338,7 @@ class MavenRepoTest {
         MavenRepo.Fetched f = repo.fetchPom(Coordinate.of("org.example", "bom", "1.0"));
         assertThat(f.sha256()).isEqualTo(Hashing.sha256Hex(pom));
         assertThat(repo.unverifiedAllowed()).isZero();
-        assertThat(repo.weakChecksumNotes())
+        assertThat(repo.checksumNotes())
                 .singleElement()
                 .asString()
                 .contains("org.example:bom:1.0 from central")
@@ -360,7 +357,7 @@ class MavenRepoTest {
         assertThatThrownBy(() -> repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0")))
                 .isInstanceOf(MavenRepo.ChecksumMismatchException.class)
                 .hasMessageContaining("expected md5");
-        assertThat(repo.weakChecksumNotes()).isEmpty();
+        assertThat(repo.checksumNotes()).isEmpty();
     }
 
     @Test
@@ -378,7 +375,7 @@ class MavenRepoTest {
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
         repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
         assertThat(repo.verifiedUpstream()).isEqualTo(1);
-        assertThat(repo.weakChecksumNotes())
+        assertThat(repo.checksumNotes())
                 .as("the stronger sidecar spoke; md5 was never asked")
                 .isEmpty();
     }

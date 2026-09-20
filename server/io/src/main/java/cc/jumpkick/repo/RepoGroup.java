@@ -260,7 +260,7 @@ public final class RepoGroup {
      * What this run's downloads were checked against, summed over the repositories asked: the
      * artifacts whose bytes matched a published checksum, the ones pinned without one under
      * {@code allow-unverified}, and the names of the plaintext {@code http://} repositories. A warm
-     * re-lock downloads nothing, so both counts are then zero.
+     * re-lock downloads nothing but confirms each store copy it pins, so those count too.
      */
     public TrustSummary trust() {
         int verified = 0;
@@ -290,12 +290,12 @@ public final class RepoGroup {
     }
 
     /**
-     * One sentence per artifact this run verified against an {@code .md5} sidecar alone, over the
-     * repositories asked; see {@link MavenRepo#weakChecksumNotes()}.
+     * One sentence per artifact whose checksum deserved a line this run, over the repositories
+     * asked; see {@link MavenRepo#checksumNotes()}.
      */
-    public List<String> weakChecksumNotes() {
+    public List<String> checksumNotes() {
         List<String> out = new ArrayList<>();
-        for (MavenRepo repo : repos) out.addAll(repo.weakChecksumNotes());
+        for (MavenRepo repo : repos) out.addAll(repo.checksumNotes());
         out.sort(null);
         return List.copyOf(out);
     }
@@ -380,7 +380,7 @@ public final class RepoGroup {
         if (hit != null) return Optional.of(hit);
         Optional<RepoFetched> found = tryFetch(
                 coord,
-                MavenRepo::tryLocalArtifact,
+                (repo, c) -> repo.tryLocalArtifact(c, null, abort),
                 (repo, c) -> repo.fetchArtifact(c, abort),
                 abort,
                 pomHolder(coord),
@@ -432,7 +432,7 @@ public final class RepoGroup {
         }
         Optional<RepoFetched> found = tryFetch(
                 coord,
-                (repo, c) -> repo.tryLocalArtifact(c).filter(f -> expectedSha256Hex.equalsIgnoreCase(f.sha256())),
+                (repo, c) -> repo.tryLocalArtifact(c, expectedSha256Hex, NO_ABORT),
                 (repo, c) -> repo.fetchArtifact(c, expectedSha256Hex, NO_ABORT),
                 NO_ABORT,
                 pomHolder(coord),
@@ -811,7 +811,7 @@ public final class RepoGroup {
     }
 
     private interface LocalProbe {
-        Optional<MavenRepo.Fetched> probe(MavenRepo repo, Coordinate coord);
+        Optional<MavenRepo.Fetched> probe(MavenRepo repo, Coordinate coord) throws IOException, InterruptedException;
     }
     /** The failure and the root cause it wraps, because "failed after 6 attempts" alone names no fault. */
     static String describe(Throwable failure) {

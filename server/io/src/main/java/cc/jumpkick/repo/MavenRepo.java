@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
@@ -28,7 +29,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * One Maven-style repository: fetch into {@code repos/<name>/} (Maven layout + {@code .jk} memo).
  * When {@code m2integration} is on, the Maven local repository is a source of vouched bytes and a
- * courtesy copy ({@link M2Adoption}); the store is what jk reads. Offline serves from the named
+ * courtesy copy ({@link M2Adoption}); the store is what jk reads. A store copy about to be pinned
+ * by a lock is confirmed against the checksum the repository publishes, the way an adopted copy
+ * is; one the repository disowns is evicted and downloaded again. Offline serves from the named
  * repo store ({@link ArtifactNotFoundException} on miss).
  */
 public final class MavenRepo {
@@ -397,14 +400,22 @@ public final class MavenRepo {
         return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT, abort, expectedSha256);
     }
 
-    /** Local-only artifact probe (no HTTP): {@link RepoGroup} asks every repo's store before any remote. */
-    public Optional<Fetched> tryLocalArtifact(Coordinate coord) {
+    /**
+     * The store's copy of {@code coord}'s artifact when it may answer for it, before any remote is
+     * asked ({@link RepoGroup} probes every repository's store first). Under a pin, a copy whose
+     * digest is the pin; a copy with another digest is evicted. Without one — a lock about to be
+     * written — a copy the repository's published checksum confirms ({@link #confirmed}), which
+     * costs the sidecar reads and never the artifact. Empty on a miss, under {@code --force}, and
+     * once a disowned copy is evicted.
+     */
+    public Optional<Fetched> tryLocalArtifact(Coordinate coord, @Nullable String expectedSha256, BooleanSupplier abort)
+            throws IOException, InterruptedException {
         boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
-        return tryLocalMirror(coord, MavenLayout.artifactPath(coord));
+        return mirrored(coord, MavenLayout.artifactPath(coord), Leg.ARTIFACT, expectedSha256, abort);
     }
 
-    /** Local-only POM probe (no HTTP). See {@link #tryLocalArtifact}. */
+    /** The store's copy of {@code coord}'s POM, no HTTP: a POM is not pinned, so nothing confirms it. */
     public Optional<Fetched> tryLocalPom(Coordinate coord) {
         boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
@@ -476,14 +487,8 @@ public final class MavenRepo {
         // --force always revalidates from the network (checksums re-checked).
         boolean force = SessionContext.current().config().forceOr(false);
         if (mirror && !force) {
-            Optional<Fetched> local = tryLocalMirror(coord, relativePath);
-            if (local.isPresent()) {
-                if (expectedSha256 == null || local.get().sha256().equalsIgnoreCase(expectedSha256)) {
-                    return local.get();
-                }
-                // Stale mirror copy against a changed pin: drop it and re-fetch from the network.
-                repoStore.evict(relativePath);
-            }
+            Optional<Fetched> local = mirrored(coord, relativePath, leg, expectedSha256, abort);
+            if (local.isPresent()) return local.get();
         }
         URI uri = fetchBase.resolve(relativePath);
         refuseIfUnreachable();
@@ -581,6 +586,60 @@ public final class MavenRepo {
     }
 
     /**
+     * The store's copy of {@code relativePath} when it may answer for {@code coord}: under a pin,
+     * one whose digest is the pin (another digest is evicted, and the network leg replaces it);
+     * without one, an artifact the repository's published checksum confirms ({@link #confirmed}).
+     * A POM or metadata file is served as stored.
+     */
+    private Optional<Fetched> mirrored(
+            Coordinate coord, String relativePath, Leg leg, @Nullable String expectedSha256, BooleanSupplier abort)
+            throws IOException, InterruptedException {
+        Optional<Fetched> local = tryLocalMirror(coord, relativePath);
+        if (local.isEmpty()) return local;
+        if (expectedSha256 != null) {
+            if (local.get().sha256().equalsIgnoreCase(expectedSha256)) return local;
+            // Stale mirror copy against a changed pin: drop it and re-fetch from the network.
+            repoStore.evict(relativePath);
+            return Optional.empty();
+        }
+        if (leg != Leg.ARTIFACT) return local;
+        return confirmed(coord, relativePath, local.get(), abort);
+    }
+
+    /**
+     * {@code local} once the checksum this repository publishes agrees with it, the same sidecar
+     * reads a download gets, so a store that holds the wrong bytes for a coordinate — a killed
+     * write, a jar copied in by hand, an artifact upstream republished — is not what a fresh lock
+     * pins. A disowned copy is evicted and the fetch goes on to the network with a note; a copy the
+     * repository publishes no checksum for follows the download's {@code allow-unverified} rule, so
+     * a refused one falls through to the download that refuses it by name. Offline, under an abort
+     * (the lock has already failed and pins nothing) or with the repository unreachable the store
+     * answers as it stands.
+     */
+    private Optional<Fetched> confirmed(Coordinate coord, String relativePath, Fetched local, BooleanSupplier abort)
+            throws IOException, InterruptedException {
+        if (SessionContext.current().config().offlineOr(false) || abort.getAsBoolean() || unreachable.get() != null) {
+            return Optional.of(local);
+        }
+        URI uri = CENTRAL_MIRROR.routeForDownload(fetchBase.resolve(relativePath));
+        try {
+            if (download.confirmStored(coord, uri, relativePath, local.cachePath(), local.sha256(), Leg.ARTIFACT)) {
+                return Optional.of(local);
+            }
+            repoStore.evict(relativePath);
+            return Optional.empty();
+        } catch (MissingChecksumException refused) {
+            return Optional.empty();
+        } catch (IOException transport) {
+            // Nothing answered for the sidecar: the store answers, as it does offline. A dead
+            // address is remembered so the rest of the job stops dialing it.
+            Log.debug("confirmed: " + coord + " from " + name + " served from the store unconfirmed", transport);
+            unreachableOr(transport);
+            return Optional.of(local);
+        }
+    }
+
+    /**
      * If this repository's store already has a fully materialised artifact ({@code .jk} + bytes),
      * return it without network I/O.
      */
@@ -616,11 +675,11 @@ public final class MavenRepo {
     }
 
     /**
-     * One sentence per artifact this run verified against an {@code .md5} sidecar alone, sorted:
-     * the lock output carries each so the weaker digest is on record.
+     * One sentence per artifact whose checksum deserved a line this run, sorted: verified against an
+     * {@code .md5} sidecar alone, or a store copy this repository disowned and the lock replaced.
      */
-    public List<String> weakChecksumNotes() {
-        return download.weakChecksumNotes();
+    public List<String> checksumNotes() {
+        return download.checksumNotes();
     }
 
     /**
