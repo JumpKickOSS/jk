@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Classpaths;
@@ -377,7 +378,16 @@ public final class ForkedJavac {
             Path hostJavaHome = workerJavaHome(req);
             // Thin worker + Maven runtime closure from its POM.
             String workerCp = workerClasspath(req);
-            List<String> jvmFlags = workerJvmFlags(heapBytes, req.jvmArgs());
+            // The startup cache for this *java* process (ToolProvider host) — not bare `javac`.
+            List<String> jvmFlags = workerJvmFlags(
+                    WorkerAotCache.flags(
+                            "java-compiler",
+                            hostJavaHome,
+                            workerCp,
+                            novelJvmArgs(req),
+                            (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)),
+                    heapBytes,
+                    req.jvmArgs());
             List<String> command =
                     PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
             int exit = new PluginClient(PREFIX)
@@ -454,14 +464,84 @@ public final class ForkedJavac {
     }
 
     /**
-     * The worker JVM's flags, for the compile fork and the pull-mode host alike: the {@code
-     * jdk.compiler} access javac plugins need, the batch flags, the worker's {@link WorkerHeap} as
-     * {@code -Xmx} after them so it wins over the plan's share ({@code null} leaves the plan's heap
-     * in force), then the module's own {@link Request#jvmArgs() -J flags} last, so what the module
-     * wrote wins over jk's tuning; one jk already passes is not passed twice.
+     * The module's {@code -J} flags jk does not already pass the worker — the ones that make its
+     * JVM differ from every other module's, and so the ones that key its AOT cache and start the
+     * trainer that records it.
      */
-    static List<String> workerJvmFlags(@Nullable Long heapBytes, List<String> module) {
-        List<String> flags = new ArrayList<>();
+    static List<String> novelJvmArgs(Request req) {
+        List<String> own = new ArrayList<>();
+        List<String> batch = JvmOptions.batchFlags(1);
+        for (String flag : req.jvmArgs()) {
+            if (JdkCompilerAccess.JVM_FLAGS.contains(flag) || batch.contains(flag) || own.contains(flag)) continue;
+            own.add(flag);
+        }
+        return own;
+    }
+
+    /**
+     * Background AOT trainer: same {@code java -cp worker PluginMain @spec} shape as a real
+     * compile, started with the module's own JVM flags, recording with {@code -XX:AOTCacheOutput}
+     * while compiling a synthetic Hello.java.
+     */
+    static List<String> trainerCommand(Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch)
+            throws IOException {
+        return trainerCommand(
+                hostJavaHome, workerCp, aotOutput, scratch, req.release() > 0 ? req.release() : 25, novelJvmArgs(req));
+    }
+
+    /** The trainer argv for a flag set the caller names; the compile path derives it from its request. */
+    public static List<String> trainerCommand(
+            Path hostJavaHome, String workerCp, Path aotOutput, Path scratch, int release, List<String> module)
+            throws IOException {
+        Path src = scratch.resolve("Hello.java");
+        Files.writeString(src, """
+                package demo;
+                public class Hello {
+                  public static void main(String[] args) {
+                    System.out.println("jk-java-compiler aot train");
+                  }
+                }
+                """);
+        Path classes = scratch.resolve("out");
+        Files.createDirectories(classes);
+        SpecWriter sw = new SpecWriter()
+                .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                .configInt("release", release)
+                .layout(Map.of(
+                        "classesDir",
+                        classes,
+                        "sourceOutput",
+                        scratch.resolve("gen"),
+                        "workdir",
+                        scratch.resolve("zinc-work")))
+                .source(src);
+        Path trainSpec = scratch.resolve("train.spec");
+        Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(trainSpec);
+        List<String> jvmFlags = workerJvmFlags(List.of("-XX:AOTCacheOutput=" + aotOutput), null, module);
+        // Same classpath as the real fork: the classpath is part of the AOT key, and a
+        // thin worker jar alone would CNFE on PluginMain, silently never training.
+        return PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
+    }
+
+    /**
+     * The worker JVM's flags, for the compile fork, the pull-mode host and the AOT trainer alike:
+     * {@code aot} (the cache to use or record), the {@code jdk.compiler} access javac plugins need,
+     * and the batch-sized heap. One body: a trainer that ran with a different module graph than
+     * the compile would record a cache the compile cannot use.
+     */
+    static List<String> workerJvmFlags(List<String> aot) {
+        return workerJvmFlags(aot, null, List.of());
+    }
+
+    /**
+     * {@link #workerJvmFlags(List)} with the worker's {@link WorkerHeap} as {@code -Xmx}, after the
+     * batch flags so it wins over the plan's share ({@code null} leaves the plan's heap in force),
+     * then the module's own {@link Request#jvmArgs() -J flags} last, so what the module wrote wins
+     * over jk's tuning; one jk already passes is not passed twice.
+     */
+    static List<String> workerJvmFlags(List<String> aot, @Nullable Long heapBytes, List<String> module) {
+        List<String> flags = new ArrayList<>(aot);
         flags.addAll(JdkCompilerAccess.JVM_FLAGS);
         flags.addAll(JvmOptions.batchFlags(1));
         if (heapBytes != null) flags.add("-Xmx" + WorkerHeap.mib(heapBytes) + "m");

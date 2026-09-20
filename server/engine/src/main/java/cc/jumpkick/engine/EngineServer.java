@@ -13,6 +13,7 @@ import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.jsonl.Jsonl;
@@ -29,6 +30,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -716,6 +718,12 @@ public final class EngineServer implements AutoCloseable {
             if (connectionExecutor != null) connectionExecutor.awaitTermination(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+        // A trainer is this engine's child and must not outlive it or keep store jars open.
+        List<Long> trainers = WorkerAotCache.stopTrainers();
+        if (!trainers.isEmpty()) {
+            log.accept("jk engine: stopped " + trainers.size() + " startup-cache trainer(s) on shutdown (pid "
+                    + trainers + ")");
         }
         election.retire();
     }
