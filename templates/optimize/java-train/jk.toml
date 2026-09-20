@@ -1,7 +1,0 @@
-name = "java-train"
-group = "cc.jumpkick.optimize"
-version = "0.0.1"
-java = "25"
-
-[test-dependencies]
-junit-jupiter = "6.1.3"

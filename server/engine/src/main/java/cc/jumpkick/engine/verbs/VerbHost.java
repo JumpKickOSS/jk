@@ -169,10 +169,6 @@ public interface VerbHost {
         return System.currentTimeMillis();
     }
 
-    default boolean scheduleHostWarmup(boolean force) {
-        return false;
-    }
-
     default BuildJournal journal() {
         throw new UnsupportedOperationException("journal");
     }

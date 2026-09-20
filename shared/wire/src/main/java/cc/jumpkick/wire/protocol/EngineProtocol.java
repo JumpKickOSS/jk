@@ -55,12 +55,6 @@ public final class EngineProtocol {
      */
     public static final String CALIBRATE_REQUEST = "calibrate-request";
 
-    /** Client → server: pre-train worker AOT caches ({@code jk optimize}). */
-    public static final String OPTIMIZE_REQUEST = "optimize-request";
-
-    /** Server → client: optimize finished. */
-    public static final String OPTIMIZE_ACK = "optimize-ack";
-
     /** Server → client: calibration finished ({@code ok}, component timings, summary text). */
     public static final String CALIBRATE_ACK = "calibrate-ack";
 

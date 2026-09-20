@@ -122,13 +122,13 @@ class BuildJournalTest {
                 withTrigger(record(1_700_000_002_000L, true, "g:a"), "calibrate"),
                 new BuildJournal.Snapshot(null, null, null));
         j.append(
-                withTrigger(record(1_700_000_003_000L, true, "g:a"), "optimize"),
+                withTrigger(record(1_700_000_003_000L, true, "g:a"), "synthetic"),
                 new BuildJournal.Snapshot(null, null, null));
 
         assertThat(j.list()).hasSize(1);
         List<String> raw = j.rawRecords(9);
         assertThat(raw).hasSize(1);
-        assertThat(raw.getFirst()).doesNotContain("calibrate").doesNotContain("optimize");
+        assertThat(raw.getFirst()).doesNotContain("calibrate").doesNotContain("synthetic");
         assertThat(BuildJournal.scanString(raw.getFirst(), "trigger")).isEqualTo("cli");
     }
 

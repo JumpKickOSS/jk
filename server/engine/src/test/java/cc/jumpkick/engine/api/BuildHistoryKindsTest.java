@@ -38,7 +38,6 @@ class BuildHistoryKindsTest {
             "script",
             "tool",
             "cache",
-            "optimize",
             "calibrate",
             null,
             "",

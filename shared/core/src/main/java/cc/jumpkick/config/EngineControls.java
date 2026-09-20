@@ -56,7 +56,7 @@ public final class EngineControls {
                     "JK_AUTO_WARMUP",
                     "true",
                     "each idle cycle",
-                    "Idle AOT train and host calibration. false skips the whole pass."),
+                    "Idle host calibration. false skips it."),
             control(
                     "log-max-mb",
                     "JK_ENGINE_LOG_MAX_MB",
