@@ -30,7 +30,6 @@ import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
-import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginModule;
@@ -857,8 +856,11 @@ public final class ExecPlans {
         if (!Files.isRegularFile(mainJar)) {
             return ExecPlan.error("aot-cache", "jar not found at " + mainJar + " — build before --aot-cache");
         }
-        int major = Project.majorOf(project.project().jdk());
-        String tier = major >= 25 ? "aot" : "cds";
+        // The tier follows the JDK the app will actually run under, not a `jdk` pin the manifest
+        // may not carry: `java = 25` with no pin resolves to the host JDK 25 and trains a JEP 514
+        // cache; anything older gets an AppCDS archive.
+        Path javaHome = projectJavaHome(dir);
+        String tier = JavaHomes.featureVersion(javaHome) >= 25 ? "aot" : "cds";
 
         List<String> libNames = new ArrayList<>();
         List<String> libPaths = new ArrayList<>();
@@ -883,7 +885,6 @@ public final class ExecPlans {
         if (!executableJar) {
             mainClass = project.mainClass() != null ? project.mainClass() : MainClassScanner.scanUnique(mainJar);
         }
-        Path javaHome = projectJavaHome(dir);
         return new ExecPlan(
                 null,
                 "",
