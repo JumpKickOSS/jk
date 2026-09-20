@@ -417,7 +417,7 @@ final class ModuleForecast {
                 // The key hit against the dependency's current output: nothing of this module's
                 // own moved, and its package and tests are dirty only for the sibling's jar bytes.
                 depOnlyDirty = compileDepDirty && pred.outcome() == JavaCompile.Outcome.CACHE_HIT && !force;
-                ownHint = ownApiHint(prepared, pred);
+                ownHint = ForecastSteps.ownApiHint(force, compileDepDirty, depHint, dir, prepared, pred);
             }
         }
     }
@@ -451,45 +451,6 @@ final class ModuleForecast {
             // answer, never a false hit.
             Log.debug("projectOwnOutputs: consumers key on the tree as it is", e);
         }
-    }
-
-    /**
-     * What this module's edit looks like to its consumers, before it compiles: its own Java sources
-     * classified against the declaration baseline its last compile left ({@link SourceApiIndex}),
-     * folded with what its own dirty dependencies look like — a constant copied from a dependency
-     * whose API moved moves this module's API too. Unknown whenever the answer needs a compile:
-     * a forced rebuild, an option or release change, a source the baseline does not describe.
-     */
-    private SourceApiIndex.Hint ownApiHint(Prepared prepared, JavaCompile.Prediction pred) {
-        if (force) return SourceApiIndex.Hint.UNKNOWN;
-        if (pred.outcome() == JavaCompile.Outcome.CACHE_HIT) {
-            return compileDepDirty
-                    ? new SourceApiIndex.Hint(depHint.kind(), List.of())
-                    : new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of());
-        }
-        String reason = pred.reason();
-        if (reason.contains("options changed") || reason.contains("release changed")) {
-            return SourceApiIndex.Hint.UNKNOWN;
-        }
-        SourceApiIndex.Hint own;
-        try {
-            // A processor may shape public output from a private member; without one, private
-            // members are invisible to every consumer and their edits are body-only.
-            own = SourceApiIndex.classify(
-                    dir,
-                    SourceApiIndex.load(SourceApiIndex.path(prepared.layout().buildDir())),
-                    prepared.mainSrc(),
-                    !prepared.processorCp().isEmpty());
-        } catch (IOException e) {
-            Log.debug("ownApiHint: no baseline", e);
-            return SourceApiIndex.Hint.UNKNOWN;
-        }
-        if (own.kind() == SourceApiIndex.Kind.UNKNOWN) return own;
-        if (compileDepDirty && depHint.kind() == SourceApiIndex.Kind.UNKNOWN) return SourceApiIndex.Hint.UNKNOWN;
-        if (compileDepDirty && depHint.kind() == SourceApiIndex.Kind.API_CHANGED) {
-            return new SourceApiIndex.Hint(SourceApiIndex.Kind.API_CHANGED, own.files());
-        }
-        return own;
     }
 
     private void compileKotlin(Prepared prepared) throws Exception {

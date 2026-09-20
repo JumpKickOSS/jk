@@ -3,9 +3,11 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.TaskForecaster.DepHint;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -240,5 +242,52 @@ final class ForecastSteps {
         }
         if (n > show) b.append(", +").append(n - show);
         return b.toString();
+    }
+
+    /**
+     * What this module's edit looks like to its consumers, before it compiles: its own Java sources
+     * classified against the declaration baseline its last compile left ({@link SourceApiIndex}),
+     * folded with what its own dirty dependencies look like — a constant copied from a dependency
+     * whose API moved moves this module's API too. Unknown whenever the answer needs a compile:
+     * a forced rebuild, an option or release change, a source the baseline does not describe.
+     * {@code force} and {@code compileDepDirty} are the module's forecast flags; {@code depHint} what
+     * its dirty dependencies look like.
+     */
+    static SourceApiIndex.Hint ownApiHint(
+            boolean force,
+            boolean compileDepDirty,
+            DepHint depHint,
+            Path dir,
+            ModuleForecast.Prepared prepared,
+            JavaCompile.Prediction pred) {
+        if (force) return SourceApiIndex.Hint.UNKNOWN;
+        if (pred.outcome() == JavaCompile.Outcome.CACHE_HIT) {
+            return compileDepDirty
+                    ? new SourceApiIndex.Hint(depHint.kind(), List.of())
+                    : new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of());
+        }
+        String reason = pred.reason();
+        if (reason.contains("options changed") || reason.contains("release changed")) {
+            return SourceApiIndex.Hint.UNKNOWN;
+        }
+        SourceApiIndex.Hint own;
+        try {
+            // A processor may shape public output from a private member; without one, private
+            // members are invisible to every consumer and their edits are body-only.
+            own = SourceApiIndex.classify(
+                    dir,
+                    SourceApiIndex.load(SourceApiIndex.path(prepared.layout().buildDir())),
+                    prepared.mainSrc(),
+                    !prepared.processorCp().isEmpty());
+        } catch (IOException e) {
+            Log.debug("ownApiHint: no baseline", e);
+            return SourceApiIndex.Hint.UNKNOWN;
+        }
+        if (own.kind() == SourceApiIndex.Kind.UNKNOWN) return own;
+        if (compileDepDirty && depHint.kind() == SourceApiIndex.Kind.UNKNOWN) return SourceApiIndex.Hint.UNKNOWN;
+        if (compileDepDirty && depHint.kind() == SourceApiIndex.Kind.API_CHANGED) {
+            return new SourceApiIndex.Hint(SourceApiIndex.Kind.API_CHANGED, own.files());
+        }
+        return own;
     }
 }
