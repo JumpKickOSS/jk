@@ -179,6 +179,24 @@ class FactsIndexingTest {
     }
 
     @Test
+    void a_half_written_class_file_is_an_io_failure_naming_it(@TempDir Path dir) throws IOException {
+        Path classes = classes(dir);
+        Path idx = FactsIndexing.indexPath(dir.resolve("target"), "main");
+        // A compile that has created the file and not yet written it: what a lane that reads
+        // another module's classes sees mid-build.
+        Files.write(classes.resolve("cc/jumpkick/guard/extract/fixture/Late.class"), new byte[0]);
+
+        assertThatThrownBy(() -> FactsIndexing.ensure(classes, idx))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("Late.class")
+                .hasMessageContaining("0 bytes")
+                .hasMessageContaining("still writing it");
+        assertThat(Files.exists(idx))
+                .as("nothing is written for a tree that did not read")
+                .isFalse();
+    }
+
+    @Test
     void a_missing_class_file_reads_as_vanished_on_either_platform() {
         Path classes = Path.of("classes");
         var missing = new NoSuchFileException("Sample.class");
