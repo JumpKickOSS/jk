@@ -539,8 +539,12 @@ public final class EffortWeights {
                     int defaultCount = 1;
                     int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, defaultCount));
                     int staticW = coldStaticWeight(step, count, wWorkers);
-                    if (staticW <= 0) continue; // unknown tiny task with no history
-                    if (timings != null) {
+                    if (staticW <= 0) {
+                        // A step the cold table does not know — a plugin task the module has not
+                        // run here yet: the host's wall for it, else one token.
+                        long hostMs = stepOkAvgMillisHost(metrics, step);
+                        w = hostMs > 0 ? flatWeight(hostMs) : TOKEN;
+                    } else if (timings != null) {
                         w = learned(timings, metrics, mod, step, count, staticW, projectDirs);
                     } else {
                         long hostMs = stepOkAvgMillisHost(metrics, step);
@@ -1116,6 +1120,16 @@ public final class EffortWeights {
          */
         public ModuleCost withWeight(int newWeight) {
             return new ModuleCost(dir, prereqs, Math.max(0, newWeight), testWeight, tailWeight, gateWeight);
+        }
+
+        /**
+         * The module with {@code w} more units of prefix work that its dependents also wait on:
+         * the total grows and so does the gate, when the gate is known.
+         */
+        public ModuleCost plusGated(int w) {
+            int add = Math.max(0, w);
+            int gate = gateWeight < 0 ? gateWeight : gateWeight + add;
+            return new ModuleCost(dir, prereqs, weight + add, testWeight, tailWeight, gate);
         }
 
         /** The scheduler's DTO, carrying all four numbers. The only sanctioned conversion. */

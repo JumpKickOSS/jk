@@ -270,6 +270,43 @@ class EffortWeightsStepEtaTest {
                 .containsEntry("parse-build", 1);
     }
 
+    /**
+     * A plugin task the cold table does not know still prices: from the module's own wall, else
+     * the host's, else one token. Dropping it was how a build spending two thirds of its wall in
+     * Spring AOT was forecast at a quarter of it.
+     */
+    @Test
+    void a_plugin_step_prices_from_its_own_wall_then_host_then_token(@TempDir Path dir) throws Exception {
+        Path metricsFile = dir.resolve("metrics.json");
+        String app = "/ws/app";
+        String other = "/ws/other";
+        BuildMetrics.record(
+                metricsFile,
+                outcome("build", app, true, 6_000, List.of(sample(app, "plugin-spring-aot", 4_800))),
+                1_000L);
+        BuildMetrics.record(
+                metricsFile,
+                outcome("build", other, true, 3_000, List.of(sample(other, "plugin-spring-aot", 2_400))),
+                2_000L);
+        BuildMetrics metrics = BuildMetrics.load(metricsFile);
+
+        var own = EffortWeights.costFromRunningSteps(
+                Path.of(app), Set.of(), List.of("plugin-spring-aot"), metrics, null, List.of(), Map.of());
+        assertThat(own.weight()).isEqualTo(EffortWeights.flatWeight(4_800));
+
+        // A module that never ran the step here: the host row (the mean over both modules).
+        var host = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/fresh"), Set.of(), List.of("plugin-spring-aot"), metrics, null, List.of(), Map.of());
+        assertThat(host.weight())
+                .isEqualTo(EffortWeights.flatWeight(
+                        metrics.step("", "plugin-spring-aot").orElseThrow().ok().avgMillis()));
+
+        // Nothing recorded anywhere: a token, not a dropped step.
+        var cold = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/fresh"), Set.of(), List.of("plugin-d8"), metrics, null, List.of(), Map.of());
+        assertThat(cold.weight()).isEqualTo(EffortWeights.TOKEN);
+    }
+
     private static BuildMetrics.Outcome outcome(
             String kind, String dir, boolean ok, long millis, List<BuildMetrics.StepSample> steps) {
         return new BuildMetrics.Outcome(kind, dir, "g:a", ok, false, millis, steps);
