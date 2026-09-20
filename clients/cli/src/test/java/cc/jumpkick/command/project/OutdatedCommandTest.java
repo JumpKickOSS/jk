@@ -5,9 +5,11 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.command.DefaultTestDepsFixture;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.terminal.Width;
 import cc.jumpkick.testing.SysProps;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,6 +17,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -157,8 +160,45 @@ class OutdatedCommandTest {
         assertThat(json).contains("\"module\":\"com.acme:app\"").contains("\"dependency\":\"com.foo.outdated:leaf\"");
         assertThat(json).contains("\"module\":\"com.acme:lib\"").contains("\"dependency\":\"com.foo.outdated:core\"");
 
-        // The Module column shows in the human table for a workspace.
-        assertThat(table(tempDir, tempDir.resolve("cache"))).contains("Module");
+        // Each module is a full-width group header above its rows, not a column of its own.
+        List<String> lines =
+                TestAnsi.strip(table(tempDir, tempDir.resolve("cache"))).lines().toList();
+        assertThat(lines).noneMatch(l -> l.contains("Module"));
+        String appHeader = lines.stream()
+                .filter(l -> l.contains("com.acme:app"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(appHeader).doesNotContain("c.f.o:leaf").doesNotContain("│ 1.0");
+        String leafRow =
+                lines.stream().filter(l -> l.contains("c.f.o:leaf")).findFirst().orElseThrow();
+        assertThat(lines.indexOf(leafRow)).isGreaterThan(lines.indexOf(appHeader));
+        // Five content-sized columns: the table itself stays well under a 100-column terminal.
+        int widest = lines.stream()
+                .filter(l -> !l.isEmpty() && "│├╰|+".indexOf(l.charAt(0)) >= 0)
+                .mapToInt(Width::columns)
+                .max()
+                .orElse(0);
+        assertThat(widest).isBetween(30, 99);
+    }
+
+    @Test
+    void long_cells_are_clipped_so_one_dependency_cannot_widen_the_table(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata(
+                "com.foo.outdated",
+                "a-very-long-artifact-name-nobody-shortens",
+                "7.7.1.202607240634-r",
+                "7.8.0.202609011348-r");
+        Path cache = tempDir.resolve("cache");
+        writeProject(
+                tempDir,
+                "leaf = { group = \"com.foo.outdated\", name = \"a-very-long-artifact-name-nobody-shortens\", version = \"^7.7\" }");
+        // No lock: Current is empty and Compatible/Latest come straight from the index.
+        String out = TestAnsi.strip(table(tempDir, cache));
+        assertThat(out).contains("c.f.o:a-very-long-artifact-na…").doesNotContain("nobody-shortens");
+        assertThat(out).contains("7.8.0.2026090…").doesNotContain("7.8.0.202609011348-r");
+        assertThat(json(tempDir, cache))
+                .contains("com.foo.outdated:a-very-long-artifact-name-nobody-shortens")
+                .contains("7.8.0.202609011348-r");
     }
 
     @Test
@@ -172,8 +212,12 @@ class OutdatedCommandTest {
 
         String out = table(tempDir, cache);
         assertThat(out).contains("Dependency", "Compatible", "Latest");
-        assertThat(out).contains("com.foo.outdated:leaf");
-        assertThat(out).contains("2.0");
+        // The table shows the group as initials; JSON keeps the full coordinate.
+        assertThat(out).contains("c.f.o:leaf").doesNotContain("com.foo.outdated:leaf");
+        assertThat(json(tempDir, cache)).contains("\"dependency\":\"com.foo.outdated:leaf\"");
+        // Locked at 1.1, the selector admits 1.1 and 2.0 is beyond it: Compatible repeats
+        // Current as "=", Latest names the version.
+        assertThat(TestAnsi.strip(out)).containsPattern("c\\.f\\.o:leaf\\s+│ 1\\.1\\s+│ =\\s+│ 2\\.0\\s+│");
         // : footer points at graph inspection + intentional update
         assertThat(out).contains("jk why").contains("jk tree").contains("jk update");
     }
