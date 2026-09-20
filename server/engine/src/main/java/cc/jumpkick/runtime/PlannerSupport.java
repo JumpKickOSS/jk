@@ -718,6 +718,8 @@ public final class PlannerSupport {
         env.put("CI", "false");
         // Clear NO_COLOR so TUI ANSI assertions are deterministic.
         env.put("NO_COLOR", "");
+        // Nested engines and workers under the suite must not record startup caches.
+        env.put("JK_WORKER_AOT", "off");
         return env;
     }
 

@@ -52,6 +52,15 @@ blocked. Within a maintenance workset, **`System.gc()` is always last** — afte
 journal/metrics retention, metrics harvest, feeds/templates and calibration — so the heap is not
 shrunk mid-chore.
 
+## Worker startup caches
+
+The java-compiler and kotlinc workers (`java … PluginMain`) map a JEP 514 cache under
+`~/.jk/state/aot/<tool>-<jk-version>-<key>.aot`, keyed on the host JDK, the worker GC flag, the
+worker classpath and the module's own JVM flags (`WorkerAotCache`). Nothing pre-trains: the first
+compile that misses forks one background trainer (a synthetic `Hello.java` / `Hello.kt`) and the
+next compile maps the result. A recording that fails is not retried until the next engine start.
+`JK_WORKER_AOT=off` turns mapping and recording off; suite JVMs and CI set it.
+
 ## Install
 
 ```text

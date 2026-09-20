@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
@@ -73,7 +74,15 @@ public final class KotlincSnapshots {
         String classpath = Classpaths.join(request.workerClasspath());
         Path spec = writeSpec(request, entries);
         try {
-            List<String> jvmFlags = new ArrayList<>();
+            // The same worker classpath maps the same cache the compile fork uses; a miss records
+            // one in the background with the compile's own trainer.
+            List<String> jvmFlags = new ArrayList<>(WorkerAotCache.flags(
+                    "kotlinc",
+                    hostJavaHome,
+                    classpath,
+                    List.of(),
+                    (aotOutput, scratch) ->
+                            KotlincSpec.trainerCommand(request, classpath, hostJavaHome, aotOutput, scratch)));
             jvmFlags.add("--enable-native-access=ALL-UNNAMED");
             List<String> assembled =
                     PluginLoader.command(hostJavaHome, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));

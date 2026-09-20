@@ -212,6 +212,8 @@ public final class JUnitLauncher {
             // discovery with an EOFException. The temp root is already the worker's own.
             flags.add("-Djqwik.database=" + tmpDir.resolve(".jqwik-database"));
         }
+        // Suite JVMs: the nested engines and compiler workers under a suite must not record caches.
+        flags.add("-Djk.worker.aot=off");
         // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
         // EngineTestExtension.
         if (!testEnv.extras().isEmpty()) {

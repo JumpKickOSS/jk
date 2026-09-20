@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -90,6 +91,21 @@ class WorkerArgvOwnerTest {
      * the worker main class, then the args, then nothing. Derived from
      * {@link PluginLoader#command} so a change there is a change here.
      */
+    /**
+     * The compiler family forks through {@code PluginLoader.command} directly rather than through
+     * {@code PluginLaunch} (it needs the AOT flags and the spec is an {@code @file}). Same owner,
+     * so the same tail.
+     */
+    @Test
+    void the_java_compiler_aot_trainer_uses_the_owner(@TempDir Path tmp) throws Exception {
+        Path scratch = Files.createDirectories(tmp.resolve("scratch"));
+
+        List<String> argv =
+                ForkedJavac.trainerCommand(tmp.resolve("jdk"), CP, tmp.resolve("worker.aot"), scratch, 25, List.of());
+
+        assertOwnerTail(argv, CP, List.of("@" + scratch.resolve("train.spec").toAbsolutePath()));
+    }
+
     private static void assertOwnerTail(List<String> argv, String classpath, List<String> args) {
         int cp = argv.indexOf("-cp");
         assertThat(cp).describedAs("no -cp in %s", argv).isNotNegative();
