@@ -11,21 +11,25 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.OutdatedBar;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.GitVersion;
+import cc.jumpkick.model.GroupInitials;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.OutdatedReport;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,18 +38,18 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk outdated} — read-only report of declared deps with newer versions than {@code jk-lock.toml}
- * pins (Current / Compatible / Latest; optional Tip). Engine-hosted; writes nothing. At a workspace
- * root, cascades over every module.
+ * {@code jk outdated} — read-only report of declared deps an update would move (Current / Compatible /
+ * Latest; optional Tip). Engine-hosted; writes nothing. At a workspace root, cascades over every
+ * module. Rows already at their newest are hidden unless {@code --all}.
  *
- * <p>Exit 0 on success whether or not any row is outdated (inspect JSON or the table for drift).
- * Does not re-resolve or rewrite the lock — use {@code jk update} after review. Machine output:
- * {@code --output json} emits a JSON array of row objects (see guide).
+ * <p>Exit 0 on success whether or not any row can move (a non-empty JSON array is drift). Does not
+ * re-resolve or rewrite the lock — use {@code jk update} after review. Machine output: {@code
+ * --output json} emits a JSON array of row objects (see guide).
  */
 public final class OutdatedCommand implements CliCommand {
 
     private boolean showTip;
-    private boolean excludeUpToDate;
+    private boolean all;
     private @Nullable URI repoUrl;
     private @Nullable Path cacheDir;
     private @Nullable GlobalOptions global;
@@ -57,14 +61,14 @@ public final class OutdatedCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Report dependencies with newer versions available";
+        return "Report dependencies an update would move";
     }
 
     @Override
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Show Tip column (prerelease / git HEAD)", "--show-tip"),
-                Opt.flag("Hide deps already on newest compatible", "--exclude-up-to-date"),
+                Opt.flag("Every dependency, up to date included", "--all"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
                 CommonOpts.cacheDir());
@@ -73,7 +77,7 @@ public final class OutdatedCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         this.showTip = in.isSet("show-tip");
-        this.excludeUpToDate = in.isSet("exclude-up-to-date");
+        this.all = in.isSet("all");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
@@ -89,20 +93,26 @@ public final class OutdatedCommand implements CliCommand {
         // whose freshen cannot resolve (e.g. --repo-url world) still reports.
         EnsureFreshLock.ensureBestEffort(dir, cache, global, "Outdated", repoUrl);
 
+        // The bar takes the row before the request goes out and gives it back before the table
+        // prints, so the report lands where the chip was. JSON stdout carries the array alone.
         OutdatedReport report;
-        report = EngineClient.runOutdated(
-                EnginePaths.current(),
-                new EngineRequests.OutdatedRequest(dir, cache, repoUrl, global.offline, global.force));
+        EngineRequests.OutdatedRequest request =
+                new EngineRequests.OutdatedRequest(dir, cache, repoUrl, global.offline, global.force);
+        if (global.outputIsJson()) {
+            report = EngineClient.runOutdated(EnginePaths.current(), request, EngineRequests.OutdatedHandler.NONE);
+        } else {
+            try (OutdatedBar bar = OutdatedBar.show(CliOutput.stdout())) {
+                report = EngineClient.runOutdated(EnginePaths.current(), request, bar::update);
+            }
+        }
 
         if (report.error() != null) {
             CommandWedge.printFail("Outdated", report.error());
             return Exit.CONFIG;
         }
 
-        List<OutdatedReport.Row> rows = report.rows();
-        if (excludeUpToDate) {
-            rows = rows.stream().filter(r -> !upToDate(r)).toList();
-        }
+        int checked = report.rows().size();
+        List<OutdatedReport.Row> rows = all ? report.rows() : report.movable();
         if (global.outputIsJson()) {
             CliOutput.outRaw(toJson(rows));
             return Exit.SUCCESS;
@@ -112,7 +122,11 @@ public final class OutdatedCommand implements CliCommand {
                     + " unreachable remotes may look up-to-date.");
         }
         if (rows.isEmpty()) {
-            CliOutput.out(excludeUpToDate ? "(no outdated dependencies)" : "(no dependencies to check)");
+            CliOutput.out(
+                    checked == 0
+                            ? "(no dependencies to check)"
+                            : "(all " + checked + (checked == 1 ? " dependency" : " dependencies") + " up to date)");
+            printReportFile(dir);
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
@@ -122,7 +136,23 @@ public final class OutdatedCommand implements CliCommand {
         // Footer: lockfile-respecting workflow + graph inspection.
         CliOutput.out("Next: review with `jk why <coord>` / `jk tree`; `jk update [name…]` moves the declared"
                 + " pins to Compatible and relocks, `jk update --major` to Latest.");
+        printReportFile(dir);
         return Exit.SUCCESS;
+    }
+
+    /** Written by the engine on every successful run; mirrors the engine's file name. */
+    static final String REPORT_FILE = "jk-outdated-dependencies.md";
+
+    /** The engine wrote the whole report under the owning root's {@code target/}; say where. */
+    private static void printReportFile(Path dir) {
+        Path root = dir;
+        try {
+            root = WorkspaceLocator.owningRoot(dir).orElse(dir);
+        } catch (IOException e) {
+            Log.debug("printReportFile: workspace root lookup failed", e);
+        }
+        Path file = root.resolve(BuildLayout.TARGET).resolve(REPORT_FILE);
+        if (Files.exists(file)) CliOutput.out("Report: " + PathDisplay.styled(file, dir));
     }
 
     @Override
@@ -130,25 +160,8 @@ public final class OutdatedCommand implements CliCommand {
         return "outdated";
     }
 
-    // Version comparison (normalizes git tag names like "v1.2.3")
-
-    /** True when {@code a} is a strictly-higher version than {@code b} (both version-like). */
     private static boolean ahead(@Nullable String a, @Nullable String b) {
-        String na = norm(a);
-        String nb = norm(b);
-        return na != null && nb != null && Versions.compare(na, nb) > 0;
-    }
-
-    /** Normalize a cell to a comparable Maven version, or null when it isn't one ("", "tip", tag text). */
-    private static @Nullable String norm(@Nullable String v) {
-        if (v == null || v.isEmpty() || v.equals("tip")) return null;
-        String n = GitVersion.fromTag(v); // "v1.2.3" -> "1.2.3"; leaves Maven versions unchanged
-        return (n.isEmpty() || !Character.isDigit(n.charAt(0))) ? null : n;
-    }
-
-    private static boolean upToDate(OutdatedReport.Row r) {
-        if (norm(r.current()) == null) return false; // unlocked / unknown current — keep it visible
-        return !ahead(r.compatible(), r.current()) && !ahead(r.latest(), r.current());
+        return OutdatedReport.ahead(a, b);
     }
 
     // JSON
@@ -171,13 +184,22 @@ public final class OutdatedCommand implements CliCommand {
     }
 
     // Rendering — box-drawn table mirroring JdkListCommand's style.
-    // Columns are dynamic: [Module?] Dependency Current Compatible Latest [Tip?] Scope.
+    // Columns: Dependency Current Compatible Latest [Tip?] Scope. In a workspace each module is a
+    // full-width group header above its rows rather than a column of its own.
 
     private static final String NONE = "—";
 
+    /** A version cell that repeats the one to its left. */
+    static final String SAME = "=";
+
+    /** Widest Dependency cell; a longer catalog name or coordinate ends in an ellipsis. */
+    static final int DEPENDENCY_COLUMNS = 30;
+
+    /** Widest version cell; timestamped qualifiers like {@code 7.7.1.202607240634-r} are cut here. */
+    static final int VERSION_COLUMNS = 14;
+
     static List<String> renderTable(List<OutdatedReport.Row> rows, boolean workspace, boolean showTip, String title) {
         List<String> headers = new ArrayList<>();
-        if (workspace) headers.add("Module");
         headers.add("Dependency");
         headers.add("Current");
         headers.add("Compatible");
@@ -186,61 +208,45 @@ public final class OutdatedCommand implements CliCommand {
         headers.add("Scope");
         int n = headers.size();
 
-        List<String[]> cellRows = new ArrayList<>();
-        List<Style[]> styleRows = new ArrayList<>();
-        List<Boolean> dividerBefore = new ArrayList<>();
-        String prevModule = null;
-        boolean first = true;
-        for (OutdatedReport.Row r : rows) {
-            boolean newGroup = workspace && !r.moduleLabel().equals(prevModule);
-            dividerBefore.add(!first && newGroup);
-            String[] cells = new String[n];
-            @Nullable Style[] styles = new Style[n];
-            int c = 0;
-            if (workspace) {
-                cells[c] = newGroup ? r.moduleLabel() : "";
-                styles[c] = Theme.active().brightYellow();
-                c++;
-            }
-            boolean hasShort = !r.display().isEmpty();
-            cells[c] = hasShort ? r.display() : r.coordinate();
-            styles[c] =
-                    hasShort ? Theme.active().path().italic() : Theme.active().path();
-            c++;
-            cells[c] = disp(r.current());
-            styles[c] = null;
-            c++;
-            cells[c] = disp(r.compatible());
-            styles[c] = ahead(r.compatible(), r.current()) ? Theme.active().brightYellow() : null;
-            c++;
-            cells[c] = disp(r.latest());
-            styles[c] = ahead(r.latest(), r.compatible()) ? Theme.active().brightCyan() : null;
-            c++;
-            if (showTip) {
-                cells[c] = disp(r.tip());
-                styles[c] = Theme.active().darkGray();
-                c++;
-            }
-            cells[c] = r.scope();
-            styles[c] = Theme.active().darkGray();
-            cellRows.add(cells);
-            styleRows.add(styles);
-            prevModule = r.moduleLabel();
-            first = false;
-        }
-
         Table table = new Table(title).columns(headers.toArray(String[]::new));
-        for (int i = 0; i < cellRows.size(); i++) {
-            if (dividerBefore.get(i)) table.row(Table.Row.separator());
-            String[] cells = cellRows.get(i);
-            @Nullable Style[] styles = styleRows.get(i);
-            RichText[] rich = new RichText[n];
-            for (int c = 0; c < n; c++) {
-                rich[c] = styledCell(cells[c], styles[c]);
+        String prevModule = null;
+        for (OutdatedReport.Row r : rows) {
+            if (workspace && !r.moduleLabel().equals(prevModule)) {
+                table.row(Table.Row.span(
+                        Table.Cell.of(styledCell(r.moduleLabel(), Theme.active().brightYellow()))
+                                .span(n)));
+                prevModule = r.moduleLabel();
             }
+            RichText[] rich = new RichText[n];
+            int c = 0;
+            boolean hasShort = !r.display().isEmpty();
+            rich[c++] = styledCell(
+                    clip(hasShort ? r.display() : GroupInitials.module(r.coordinate()), DEPENDENCY_COLUMNS),
+                    hasShort ? Theme.active().path().italic() : Theme.active().path());
+            rich[c++] = styledCell(version(r.current(), null), null);
+            rich[c++] = styledCell(
+                    version(r.compatible(), r.current()),
+                    ahead(r.compatible(), r.current()) ? Theme.active().brightYellow() : null);
+            rich[c++] = styledCell(
+                    version(r.latest(), r.compatible()),
+                    ahead(r.latest(), r.compatible()) ? Theme.active().brightCyan() : null);
+            if (showTip)
+                rich[c++] = styledCell(version(r.tip(), null), Theme.active().darkGray());
+            rich[c] = styledCell(r.scope(), Theme.active().darkGray());
             table.row(rich);
         }
         return table.render(RenderContext.current());
+    }
+
+    /** The version cell: {@value #SAME} when it repeats {@code left}, the dash when empty, else clipped. */
+    private static String version(@Nullable String v, @Nullable String left) {
+        if (v == null || v.isEmpty()) return NONE;
+        if (v.equals(left)) return SAME;
+        return clip(v, VERSION_COLUMNS);
+    }
+
+    private static String clip(String text, int columns) {
+        return RenderContext.truncateVisible(text, columns);
     }
 
     private static RichText styledCell(String text, @Nullable Style style) {

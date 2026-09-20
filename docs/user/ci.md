@@ -77,8 +77,8 @@ Nightly:
 jk test --all -j0 -w0          # every suite; still keep bench out of a red gate
 ```
 
-Format gate: `jk format --check`. Outdated deps: parse `jk outdated --output json`
-(exit code is always 0 on success). Archive `target/jk-results.md` and
+Format gate: `jk format --check`. Outdated deps: `jk outdated --output json` is a non-empty
+array exactly when a dependency can move (exit code is always 0 on success). Archive `target/jk-results.md` and
 `target/jk-profile.json` as artifacts.
 
 Vulnerabilities: `jk audit --severity HIGH --output json | tee target/jk-audit.jsonl` under
