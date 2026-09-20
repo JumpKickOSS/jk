@@ -31,11 +31,11 @@ public final class ReleaseVerifier {
      * {@code JK_RELEASE_RSA_SIGNING_KEY}.
      */
     public static final String BUILT_IN_KEY =
-            "MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAztiftv1t1l9vI1xebPHGe/MAapolNPiYE/elvRFT2OL3SyawfN19L+qxiyHGsJUF52+zGhVLU2s5RR+b5bj9Cjey2wDs+AAL4nR0FSzo8seXNoahOMZfv+gJY386YenXGAxbElwuw3LqTIlfQvPwiX+9m/RBltKk7WOQI9z35/a17P1i7sj8hC/QHtRCnhsX73wGFKP9jng1Ftk+v/U5gvzSOcGawYyQJ0iP/p2nyiBIrxTLSJDx4u+gHVdk1PUmW8p5h31GsDqBUzkTX0GUut2gVolaPpW/9rP/QyNv9vtxtnby6T1xVSAkP5rL+rIedr52mSwiUDOTl9WxJzGZdIREvSMn6H37pAFATbokYETCEQQ33MelCWFMjfQYBxSU0dVrigmiQOYIhYOR9IcuFM22w5Lkq2jick7u/TKZGy9Nq0F2/jxNF28CQj7S5nkpoQTrHIfg86/upXMtU3QK/Zfes37TGptB3wuPjXm3b09iiquOqrClJ6TN9Yz1tbu7AgMBAAE=";
+            "MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEArqF4qTQyhVx8JWBv4+MTZbpwqu7G2luUCqcxIsViJ+0OsLGRe5LpnlL26coWX8QYlF/1nx7ZA42tQWXLFtWAwbNeIEpFRYqEM5ikpHoWkXq1rlgCjR35QSkvn22dndFBwbZ1tQUhbuvIDq6qnymKwsbOXBbbTqWDCRRflo/XtQ1K0kQMlDJ49/iz1v0e0druyhC2XtxXNfEq04UOfO+scwKt2dIry7K2F4Rxx9NTEhX1RqC55YcUy/amK2r6bor0tsZcfkvjeQoIDP/EceNahJtJOWo4mY3MO3LGfIDcI8f1drPbHjV7hfiFZHzf91nqi+VSWRLd3IMGEY7NHy+4pXE7RYLPT5QjAznM+eZIb88NldXIjMiCJRujT9QbhN54yseUKwmZ1i+5EjFWIXg9tb41+RP7A2XQsikl0XS/dtuZC6rMNCe2YBvOhyGcSR51niEdY503RXsJW4aTQNma5JkdkraEuMVN5SC/8R17hNHWx6RS/H/3e32HXe3ycC9fAgMBAAE=";
 
     /** Unsigned RSA modulus bytes used by the PowerShell bootstrap verifier. */
     public static final String BUILT_IN_RSA_MODULUS =
-            "ztiftv1t1l9vI1xebPHGe/MAapolNPiYE/elvRFT2OL3SyawfN19L+qxiyHGsJUF52+zGhVLU2s5RR+b5bj9Cjey2wDs+AAL4nR0FSzo8seXNoahOMZfv+gJY386YenXGAxbElwuw3LqTIlfQvPwiX+9m/RBltKk7WOQI9z35/a17P1i7sj8hC/QHtRCnhsX73wGFKP9jng1Ftk+v/U5gvzSOcGawYyQJ0iP/p2nyiBIrxTLSJDx4u+gHVdk1PUmW8p5h31GsDqBUzkTX0GUut2gVolaPpW/9rP/QyNv9vtxtnby6T1xVSAkP5rL+rIedr52mSwiUDOTl9WxJzGZdIREvSMn6H37pAFATbokYETCEQQ33MelCWFMjfQYBxSU0dVrigmiQOYIhYOR9IcuFM22w5Lkq2jick7u/TKZGy9Nq0F2/jxNF28CQj7S5nkpoQTrHIfg86/upXMtU3QK/Zfes37TGptB3wuPjXm3b09iiquOqrClJ6TN9Yz1tbu7";
+            "rqF4qTQyhVx8JWBv4+MTZbpwqu7G2luUCqcxIsViJ+0OsLGRe5LpnlL26coWX8QYlF/1nx7ZA42tQWXLFtWAwbNeIEpFRYqEM5ikpHoWkXq1rlgCjR35QSkvn22dndFBwbZ1tQUhbuvIDq6qnymKwsbOXBbbTqWDCRRflo/XtQ1K0kQMlDJ49/iz1v0e0druyhC2XtxXNfEq04UOfO+scwKt2dIry7K2F4Rxx9NTEhX1RqC55YcUy/amK2r6bor0tsZcfkvjeQoIDP/EceNahJtJOWo4mY3MO3LGfIDcI8f1drPbHjV7hfiFZHzf91nqi+VSWRLd3IMGEY7NHy+4pXE7RYLPT5QjAznM+eZIb88NldXIjMiCJRujT9QbhN54yseUKwmZ1i+5EjFWIXg9tb41+RP7A2XQsikl0XS/dtuZC6rMNCe2YBvOhyGcSR51niEdY503RXsJW4aTQNma5JkdkraEuMVN5SC/8R17hNHWx6RS/H/3e32HXe3ycC9f";
 
     /** Unsigned RSA public exponent bytes used by the PowerShell bootstrap verifier. */
     public static final String BUILT_IN_RSA_EXPONENT = "AQAB";
