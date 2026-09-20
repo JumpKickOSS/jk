@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.StepWalls;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -47,7 +47,7 @@ class BuildMetricsTest {
         BuildMetrics.clearMemo();
         BuildMetrics m = BuildMetrics.load(file(dir));
         assertThat(m.invocation("build", "/p")).isPresent();
-        assertThat(EffortWeights.stepOkAvgMillisOwn(m, "/p", "compile-java")).isZero();
+        assertThat(StepWalls.stepOkAvgMillisOwn(m, "/p", "compile-java")).isZero();
     }
 
     @Test

@@ -278,24 +278,24 @@ class EffortWeightsTest {
         // (3) Empty store → the static constant, bit-for-bit.
         BuildMetrics.clearMemo();
         BuildMetrics empty = BuildMetrics.load(dir.resolve("empty.json"));
-        assertThat(EffortWeights.learnedFixedWeight(empty, "/m/a", "package-jar", EffortWeights.PACKAGE_JAR))
+        assertThat(StepWalls.learnedFixedWeight(empty, "/m/a", "package-jar", EffortWeights.PACKAGE_JAR))
                 .isEqualTo(EffortWeights.PACKAGE_JAR);
 
         // (2) Another project's history feeds the host tier: 1500 ms avg → 10 units.
         BuildMetrics host = metricsWith(dir.resolve("host.json"), "/m/other", "package-jar", 3, 1500);
-        assertThat(EffortWeights.learnedFixedWeight(host, "/m/a", "package-jar", EffortWeights.PACKAGE_JAR))
+        assertThat(StepWalls.learnedFixedWeight(host, "/m/a", "package-jar", EffortWeights.PACKAGE_JAR))
                 .isEqualTo(10);
 
         // (1) The module's own history wins over the host tier: 300 ms avg → 2 units.
         BuildMetrics own = metricsWith(dir.resolve("own.json"), "/m/a", "package-jar", 3, 300);
-        assertThat(EffortWeights.learnedFixedWeight(own, "/m/a", "package-jar", EffortWeights.PACKAGE_JAR))
+        assertThat(StepWalls.learnedFixedWeight(own, "/m/a", "package-jar", EffortWeights.PACKAGE_JAR))
                 .isEqualTo(2);
     }
 
     @Test
     void learned_fixed_weight_needs_enough_samples_before_it_outranks_the_static(@TempDir Path dir) {
         BuildMetrics thin = metricsWith(dir.resolve("thin.json"), "/m/a", "package-jar", 2, 6000);
-        assertThat(EffortWeights.learnedFixedWeight(thin, "/m/a", "package-jar", EffortWeights.PACKAGE_JAR))
+        assertThat(StepWalls.learnedFixedWeight(thin, "/m/a", "package-jar", EffortWeights.PACKAGE_JAR))
                 .isEqualTo(EffortWeights.PACKAGE_JAR); // 2 < MIN_METRICS_SAMPLES — not trusted yet
     }
 
@@ -375,7 +375,7 @@ class EffortWeightsTest {
                 """.formatted(key, key, key));
             long wall = SessionContext.where(
                     Session.defaults().withWorkingDir(moduleDir),
-                    () -> EffortWeights.stepOkAvgMillisOwn(null, moduleDir.toString(), "native-image"));
+                    () -> StepWalls.stepOkAvgMillisOwn(null, moduleDir.toString(), "native-image"));
             assertThat(wall).isEqualTo(60_000L);
         } finally {
             if (prev == null) System.clearProperty("jk.env.JK_STATE_DIR");

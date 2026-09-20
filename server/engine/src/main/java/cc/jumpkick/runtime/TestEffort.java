@@ -138,7 +138,7 @@ public final class TestEffort {
         if (methods <= 0) {
             // Unknown size: host whole-task wall is better than inventing a method count.
             if (metrics != null) {
-                long host = EffortWeights.stepOkAvgMillisHost(metrics, TaskNames.RUN_TESTS);
+                long host = StepWalls.stepOkAvgMillisHost(metrics, TaskNames.RUN_TESTS);
                 if (host > 0) return host;
             }
             return Math.max(startup, Calibration.STATIC_SUITE_STARTUP_MS);
