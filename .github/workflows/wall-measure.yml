@@ -41,7 +41,6 @@ jobs:
     timeout-minutes: 90
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
-      JK_WORKER_AOT: 'off'
       OUT_DIR: ${{ github.workspace }}/target/dogfood-wall
       # One timed run per row. A hosted runner is too noisy for a median to mean anything, and
       # the rebuild row builds a native image.
