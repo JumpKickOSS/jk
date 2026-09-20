@@ -56,22 +56,23 @@ class MavenSpyJarTest {
 
     @Test
     void arguments_prepend_the_spy_and_the_events_file() {
+        // The paths are rendered as the host spells them (`\lib\…` on Windows), so the
+        // expectation is built from the same Path, not from a POSIX literal.
         Path jar = Path.of("/lib/jk-maven-spy-1.jar");
         Path events = Path.of("/tmp/e.jsonl");
         assertThat(MavenSpyJar.arguments(jar, events, List.of("-q", "test")))
-                .containsExactly(
-                        "-Djk.mvn.events=/tmp/e.jsonl", "-Dmaven.ext.class.path=/lib/jk-maven-spy-1.jar", "-q", "test");
+                .containsExactly("-Djk.mvn.events=" + events, "-Dmaven.ext.class.path=" + jar, "-q", "test");
     }
 
     @Test
     void a_users_extension_path_keeps_its_entries_and_gains_the_spy() {
         Path jar = Path.of("/lib/spy.jar");
-        List<String> out = MavenSpyJar.arguments(
-                jar, Path.of("/tmp/e.jsonl"), List.of("-Dmaven.ext.class.path=/x/a.jar", "verify"));
+        Path events = Path.of("/tmp/e.jsonl");
+        List<String> out = MavenSpyJar.arguments(jar, events, List.of("-Dmaven.ext.class.path=/x/a.jar", "verify"));
         assertThat(out)
                 .containsExactly(
-                        "-Djk.mvn.events=/tmp/e.jsonl",
-                        "-Dmaven.ext.class.path=/x/a.jar" + Classpaths.SEPARATOR + "/lib/spy.jar",
+                        "-Djk.mvn.events=" + events,
+                        "-Dmaven.ext.class.path=/x/a.jar" + Classpaths.SEPARATOR + jar,
                         "verify");
     }
 

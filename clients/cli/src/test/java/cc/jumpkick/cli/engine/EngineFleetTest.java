@@ -3,6 +3,7 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Os;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -44,7 +45,7 @@ class EngineFleetTest {
     void a_live_process_is_not_reported_as_exited() throws Exception {
         // The case that matters: waitForExit must not return true for something still running, or a stop
         // would report success over a surviving engine.
-        Process sleeper = new ProcessBuilder("sleep", "30").start();
+        Process sleeper = sleeper().start();
         try {
             assertThat(sleeper.isAlive()).isTrue();
 
@@ -59,7 +60,7 @@ class EngineFleetTest {
     void exit_is_noticed_while_waiting_rather_than_only_at_the_deadline() throws Exception {
         // Polls for the exit, so a quick shutdown returns quickly. If this waited out the full grace, every
         // `stop` would feel broken even when it worked.
-        Process sleeper = new ProcessBuilder("sleep", "30").start();
+        Process sleeper = sleeper().start();
         long startNanos = System.nanoTime();
         Thread killer = new Thread(() -> {
             try {
@@ -177,6 +178,8 @@ class EngineFleetTest {
         Path jar = retired.engineHome().resolve("lib/jk-engine/jk-engine-test.jar");
         Process oldEngine = SleepMain.spawn(30_000, jar.toString(), "cc.jumpkick.engine.EngineMain");
         try {
+            // The Windows command-line snapshot predates this child; the test knows the table moved.
+            WindowsCommandLines.resetForTests();
             var member = new EngineFleet.Member(null, null, null, oldEngine.pid(), false);
 
             var results = EngineFleet.retireOldDefaultLayoutEngines(List.of(member), tmp.resolve("current"), retired);
@@ -199,6 +202,7 @@ class EngineFleetTest {
         Path jar = explicitHome.resolve("lib/jk-engine/jk-engine-test.jar");
         Process currentEngine = SleepMain.spawn(30_000, jar.toString(), "cc.jumpkick.engine.EngineMain");
         try {
+            WindowsCommandLines.resetForTests();
             var member = new EngineFleet.Member(null, null, null, currentEngine.pid(), false);
 
             assertThat(EngineFleet.retireOldDefaultLayoutEngines(List.of(member), explicitHome, retired))
@@ -222,7 +226,7 @@ class EngineFleetTest {
         // this tree, or an editor with EngineMain.java open all say yes to it. They are not
         // engines, and `stop --all` hard-kills whatever the fleet claims — this is the guard
         // between the fleet and the user's own terminal.
-        Process shell = new ProcessBuilder("sh", "-c", "sleep 30; :", "cc.jumpkick.engine.EngineMain").start();
+        Process shell = sleeperMentioning("cc.jumpkick.engine.EngineMain").start();
         try {
             WindowsCommandLines.resetForTests();
             ProcessHandle handle = ProcessHandle.of(shell.pid()).orElseThrow();
@@ -276,5 +280,25 @@ class EngineFleetTest {
             dummy.destroyForcibly();
             dummy.waitFor();
         }
+    }
+
+    /** A process that lives thirty seconds, started with what the host has: sleep, or cmd's ping. */
+    private static ProcessBuilder sleeper() {
+        return Os.isWindows()
+                ? new ProcessBuilder(cmdExe(), "/c", "ping -n 31 127.0.0.1 > nul")
+                : new ProcessBuilder("sleep", "30");
+    }
+
+    /** As {@link #sleeper()}, with {@code word} on its command line and nothing else about it. */
+    private static ProcessBuilder sleeperMentioning(String word) {
+        return Os.isWindows()
+                ? new ProcessBuilder(cmdExe(), "/c", "ping -n 31 127.0.0.1 > nul & rem " + word)
+                : new ProcessBuilder("sh", "-c", "sleep 30; :", word);
+    }
+
+    private static String cmdExe() {
+        String root = System.getenv("SystemRoot");
+        return Path.of(root == null ? "C:\\Windows" : root, "System32", "cmd.exe")
+                .toString();
     }
 }

@@ -48,8 +48,7 @@ class JdkUpdateCommandTest {
                 "--feed-url",
                 maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
-                .exists();
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("release")).exists();
         assertThat(jdks.resolve("temurin-25.0.2")).doesNotExist();
     }
 
@@ -74,10 +73,10 @@ class JdkUpdateCommandTest {
                         maven.base().resolve("/feed/jdks.json").toString()));
 
         assertThat(exit).isEqualTo(0);
-        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("release"))
                 .as("the update still happens")
                 .exists();
-        assertThat(jdks.resolve("temurin-25.0.2").resolve("bin").resolve("java"))
+        assertThat(jdks.resolve("temurin-25.0.2").resolve("release"))
                 .as("declining keeps the old install")
                 .exists();
         assertThat(jdks.resolve("temurin-25").toRealPath())
@@ -105,10 +104,10 @@ class JdkUpdateCommandTest {
                 maven.base().resolve("/feed/jdks.json").toString());
 
         assertThat(exit).isEqualTo(0);
-        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("release"))
                 .as("the update still happens")
                 .exists();
-        assertThat(jdks.resolve("temurin-25.0.2").resolve("bin").resolve("java"))
+        assertThat(jdks.resolve("temurin-25.0.2").resolve("release"))
                 .as("their JDK is left where it was")
                 .exists();
     }
@@ -133,10 +132,8 @@ class JdkUpdateCommandTest {
                 "--feed-url",
                 maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
-                .exists();
-        assertThat(jdks.resolve("corretto-25.0.3").resolve("bin").resolve("java"))
-                .exists();
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("release")).exists();
+        assertThat(jdks.resolve("corretto-25.0.3").resolve("release")).exists();
         assertThat(jdks.resolve("temurin-25.0.2")).doesNotExist();
         assertThat(jdks.resolve("corretto-25.0.1")).doesNotExist();
     }
@@ -161,8 +158,7 @@ class JdkUpdateCommandTest {
                 "--feed-url",
                 maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
-                .exists();
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("release")).exists();
         assertThat(jdks.resolve("temurin-25.0.2")).doesNotExist();
         // Corretto untouched. Fixture install, so the launcher carries the platform's name —
         // unlike the extracted rows above, whose name comes from the stub archive.
@@ -191,8 +187,7 @@ class JdkUpdateCommandTest {
                 "--feed-url",
                 maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
-                .exists();
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("release")).exists();
         assertThat(jdks.resolve("temurin-26.0.1")).doesNotExist();
     }
 
@@ -264,8 +259,7 @@ class JdkUpdateCommandTest {
                 "--feed-url",
                 maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
-                .exists();
+        assertThat(jdks.resolve("temurin-25.0.3").resolve("release")).exists();
     }
 
     // --- fixtures -----------------------------------------------------------

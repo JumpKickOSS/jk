@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,7 +30,7 @@ class CoverageResultsE2eTest {
 
         assertThat(run("test", "--coverage", "-C", ws.toString(), "--cache-dir", cache))
                 .isEqualTo(0);
-        String first = Files.readString(ws.resolve("target/jk-results.md"));
+        String first = MarkdownReports.strip(Files.readString(ws.resolve("target/jk-results.md")));
         System.out.println("=== first run ===\n" + first);
         assertThat(first)
                 .contains("## Coverage")
@@ -66,7 +67,7 @@ class CoverageResultsE2eTest {
                 """);
         assertThat(run("test", "--coverage", "-C", ws.toString(), "--cache-dir", cache))
                 .isEqualTo(0);
-        String second = Files.readString(ws.resolve("target/jk-results.md"));
+        String second = MarkdownReports.strip(Files.readString(ws.resolve("target/jk-results.md")));
         System.out.println("=== second run ===\n" + second);
         assertThat(second)
                 .contains("| Module | Lines | Δ | Branches | Δ |")
@@ -83,7 +84,7 @@ class CoverageResultsE2eTest {
         assertThat(run("lock", "-C", ws.toString(), "--cache-dir", cache)).isEqualTo(0);
 
         assertThat(run("test", "-C", ws.toString(), "--cache-dir", cache)).isEqualTo(0);
-        String md = Files.readString(ws.resolve("target/jk-results.md"));
+        String md = MarkdownReports.strip(Files.readString(ws.resolve("target/jk-results.md")));
         assertThat(md)
                 .as("only lib declares [test] coverage = true")
                 .contains("## Coverage")

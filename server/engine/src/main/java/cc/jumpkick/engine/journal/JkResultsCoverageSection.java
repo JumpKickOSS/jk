@@ -131,11 +131,12 @@ public final class JkResultsCoverageSection {
         return relative(r.dir(), CoverageRollup.pageFor(r).toString());
     }
 
+    /** {@code path} relative to {@code root} with forward slashes on every host; the markdown is read anywhere. */
     static String relative(String root, String path) {
         try {
             Path base = Path.of(root).toAbsolutePath().normalize();
             Path p = Path.of(path).toAbsolutePath().normalize();
-            return p.startsWith(base) ? base.relativize(p).toString() : path;
+            return p.startsWith(base) ? base.relativize(p).toString().replace('\\', '/') : path;
         } catch (RuntimeException e) {
             return path;
         }

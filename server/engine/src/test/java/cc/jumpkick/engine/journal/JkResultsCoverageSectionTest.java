@@ -54,9 +54,9 @@ class JkResultsCoverageSectionTest {
                 WS.resolve("target/" + name + "/reports/coverage/index.html").toString());
     }
 
-    /** The pointer is relative to the record's root, in this platform's spelling. */
+    /** The pointer is forward-slash on every host: the markdown is read on machines other than this one. */
     private static String pointer(String relative) {
-        return "- Coverage HTML: `" + Path.of(relative) + "`";
+        return "- Coverage HTML: `" + relative + "`";
     }
 
     private static String render(BuildRecord r, @Nullable BuildRecord previous) {
