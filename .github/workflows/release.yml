@@ -94,13 +94,16 @@ jobs:
       # release .jk/ci-bootstrap-version pins, installed as a user would. JK_VERSION in this job's
       # environment is the release being cut, so the bootstrap version rides the installer's own
       # environment and nothing else.
+      # The pin serves no macOS native client, so that row asks the installer for the JVM client.
       - name: Bootstrap jk from the hosted release
         if: runner.os != 'Windows'
         shell: bash
+        env:
+          JK_CLIENT: ${{ runner.os == 'macOS' && 'jvm' || 'native' }}
         run: |
           set -euo pipefail
           bootstrap="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          echo "bootstrapping jk $bootstrap from https://jumpkick.build"
+          echo "bootstrapping jk $bootstrap ($JK_CLIENT client) from https://jumpkick.build"
           curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$bootstrap" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
 
