@@ -5,6 +5,7 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
@@ -33,8 +34,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Kotlin and Groovy are not the same compile and this does not pretend they are. The whole of
  * the difference is the one exhaustive {@code switch} in {@link #plan}: kotlinc gets the project
- * JDK as {@code -jdk-home}; groovyc does not, and reports located diagnostics where the Kotlin
- * Build Tools logger reports bare text. Adding a third JVM language
+ * JDK as {@code -jdk-home} and a startup-cached worker; groovyc gets neither, and reports located
+ * diagnostics where the Kotlin Build Tools logger reports bare text. Adding a third JVM language
  * adds an arm there and a spec writer beside {@link KotlincSpec}/{@link GroovycSpec} — not a
  * fourth driver.
  */
@@ -124,11 +125,20 @@ public final class WorkerCompileDriver {
         return switch (job) {
             case Job.Kotlin(KotlincRequest request, WorkerEnv env) -> {
                 String classpath = Classpaths.join(request.workerClasspath());
+                // The Kotlin compiler IS this classpath, so a startup cache tames its multi-second
+                // JIT warmup. Mapped when one exists for (host JDK, GC, classpath); else a background
+                // trainer compiles a synthetic hello.kt so the NEXT Kotlin build maps it.
                 yield new Fork(
                         KOTLIN_PREFIX,
                         KotlincSpec.write(request),
                         classpath,
-                        List.of(),
+                        WorkerAotCache.flags(
+                                "kotlinc",
+                                hostJavaHome,
+                                classpath,
+                                List.of(),
+                                (aotOutput, scratch) -> KotlincSpec.trainerCommand(
+                                        request, classpath, hostJavaHome, aotOutput, scratch)),
                         // The BTA logger surfaces text only — no file/line/col.
                         json -> WorkerDiagnostics.text(Jsonl.str(json, "sev"), Jsonl.str(json, "msg")));
             }

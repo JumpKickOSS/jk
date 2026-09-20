@@ -6,6 +6,7 @@ import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
@@ -521,10 +522,13 @@ public final class CacheInventoryOps {
             // turns the delete into a sharing violation, and a write landing after the delete
             // recreates the store the nuke just reported gone.
             try (var held = StoreWriteGate.wipe()) {
-                // Delete more than once: a worker can still hold a jar it just opened, and Windows
-                // fails the delete on it. The second pass finds the handle released.
+                // A startup-cache trainer holds store jars open and outlives the request that
+                // started it, so stop those first; then delete more than once, because a trainer
+                // that forked between the stop and the delete is what the second pass catches.
+                List<Long> killed = new ArrayList<>();
                 IOException last = null;
                 for (int attempt = 0; attempt < WIPE_ATTEMPTS; attempt++) {
+                    killed.addAll(WorkerAotCache.stopTrainers());
                     try {
                         PathUtil.deleteRecursivelyOrThrow(storeRoot);
                         last = null;
@@ -533,7 +537,7 @@ public final class CacheInventoryOps {
                         last = stillHeld;
                     }
                 }
-                if (last != null) throw new IOException(stillHeldMessage(last), last);
+                if (last != null) throw new IOException(stillHeldMessage(last, killed), last);
             }
         }
         return CacheInventoryAck.wipe(stats.files(), stats.bytes());
@@ -548,10 +552,14 @@ public final class CacheInventoryOps {
      * keeps promising not to make them do — so say that jk's own processes were stopped first,
      * and thereby that the holder is something else.
      */
-    private static String stillHeldMessage(IOException cause) {
+    private static String stillHeldMessage(IOException cause, List<Long> killedTrainers) {
         String base = cause.getMessage() == null ? cause.toString() : cause.getMessage();
-        return base + " — the engines were stopped and no jk worker was running, so the holder"
-                + " is a process outside jk (an editor, an antivirus scan, or a shell in that directory)";
+        if (killedTrainers.isEmpty()) {
+            return base + " — the engines were stopped and no jk trainer was running, so the holder"
+                    + " is a process outside jk (an editor, an antivirus scan, or a shell in that directory)";
+        }
+        return base + " — stopped " + killedTrainers.size() + " jk startup-cache trainer(s) (pid " + killedTrainers
+                + ") first, so the holder is a process outside jk";
     }
 
     private static String pack(String name, long files, long bytes) {

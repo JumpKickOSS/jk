@@ -1061,6 +1061,10 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineMaintenance.java"
 reason = "engine-lifetime scheduler whose ticks read config files, never a session"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WorkerAotCache.java"
+reason = "a startup-cache trainer belongs to the cache, not to the request that missed it; a cancel must not kill it"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/IdleHousekeeping.java"
 reason = "idle-time warmup and class preload run while no build is live"
 

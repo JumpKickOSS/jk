@@ -93,6 +93,7 @@ public final class WorkerEnv {
             // worker tuning
             "JK_COMPILE_PHASES",
             "JK_FILE_OPS",
+            "JK_WORKER_AOT",
             "JK_ANDROID_FEED_URL");
 
     /** Test seam: the environment {@link #environment()} filters instead of this process's. */

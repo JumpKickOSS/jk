@@ -707,9 +707,10 @@ public final class EngineSpawn {
     /**
      * Which of this JVM's {@code jk.*} system properties travel into the engine JVM as {@code -D}:
      * plugin-jar location overrides (e.g. {@code -Djk.test.runner.jar=…} from a test JVM —
-     * PluginJar.locate reads System.getProperty there), the {@code jk.env.*} layout overlays (JkDirs
-     * test seam) so a spawned engine resolves the same store/state the client did, and the owner
-     * pid a sandbox names so its engine dies with it.
+     * PluginJar.locate reads System.getProperty there), the worker startup-cache switch so nested
+     * engines honour {@code jk.worker.aot}, the {@code jk.env.*} layout overlays (JkDirs test seam)
+     * so a spawned engine resolves the same store/state the client did, and the owner pid a sandbox
+     * names so its engine dies with it.
      *
      * <p>Never {@code jk.plugin.class}: that is a client/test-runner host signal that would load
      * workspace/test plugin overlays inside the engine.
@@ -717,7 +718,10 @@ public final class EngineSpawn {
     static boolean forwarded(String key) {
         if (!key.startsWith("jk.")) return false;
         if (key.equals("jk.plugin.class")) return false;
-        return key.endsWith(".jar") || key.startsWith("jk.env.") || key.equals(OWNER_PID_PROPERTY);
+        return key.endsWith(".jar")
+                || key.equals("jk.worker.aot")
+                || key.startsWith("jk.env.")
+                || key.equals(OWNER_PID_PROPERTY);
     }
 
     /** Mirror of the engine's {@code OwnerWatchdog.PROPERTY}; the CLI cannot see engine classes. */
