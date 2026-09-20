@@ -235,7 +235,16 @@ public final class PluginProcess {
             throws IOException, InterruptedException {
         // Every worker forks through here, so this is where it loses the engine's terminal.
         pb.command(WorkerSession.detached(pb.command()));
-        Process process = JobWorkers.start(pb);
+        // Windows caps the command line; a long one launches through an argfile instead.
+        WorkerArgfile argfile = WorkerArgfile.shorten(pb.command());
+        pb.command(argfile.command());
+        Process process;
+        try {
+            process = JobWorkers.start(pb);
+        } catch (IOException e) {
+            argfile.delete();
+            throw e;
+        }
         final AtomicLong lastLineAt = new AtomicLong(Clock.SYSTEM.millis());
         Thread watchdog = idleTimeoutMs > 0 ? startWatchdog(process, lastLineAt, idleTimeoutMs) : null;
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
@@ -365,6 +374,7 @@ public final class PluginProcess {
                 }
             } finally {
                 JobWorkers.unregister(process);
+                argfile.delete();
             }
         }
         return process.waitFor();
