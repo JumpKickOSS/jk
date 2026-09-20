@@ -29,7 +29,7 @@ API: `cc.jumpkick.cli.tui.JkWedge` (`CommandWedge` is the print helpers).
 
 | Work shape | Chrome |
 |------------|--------|
-| Bounded known progress | JkWedge + Progress. Painted live by `LiveLine` (`JdkDownloadBar`) or by `JkManagerView` (the plan header) — one geometry, two regions |
+| Bounded known progress | JkWedge + Progress. Painted live by `LiveLine` (`ProgressRow`) or by `JkManagerView` (the plan header) — one geometry, two regions |
 | Indeterminate / short | Spinner-only wedge (`CommandWedge.analyzing` / `Spinner.showWedge`), also a `LiveLine` row |
 | Settled | Static icon — `CommandWedge.ok` / `fail` / `chip` (never leave a spinner running) |
 
@@ -123,7 +123,7 @@ Every **human** command prints:
 
 `CliOutput` owns the rule. The first `out` / `err` / `stdout()` / `stderr()` write of a leaf command inserts the leading blank. Dispatch calls `CliOutput.beginCommand(scriptMode)` before `run` and `CliOutput.closeEnvelope()` after — including on exception, after the error line, which goes through `CliOutput.err`. The trailing blank lands on whichever stream wrote last, so a command that ends on a stderr failure gets its gap there and a redirected stdout stays clean. Settles do **not** close. Plugin-declared commands (dispatched over the wire, not via `CliCommand`) share the same envelope.
 
-`JkManager`, `LiveLine` (for `Spinner` and `JdkDownloadBar`), and wizards (`markEnvelopeStarted` after their own leading blank) share the same flag, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blanks.
+`JkManager`, `LiveLine` (for `Spinner` and `ProgressRow`), and wizards (`markEnvelopeStarted` after their own leading blank) share the same flag, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blanks.
 
 Commands do **not** have to remember `envelopeStart` / `printOk` for the blank to appear. `CliOutput.out(JkWedge.chipLine(…))` is enough.
 
@@ -298,7 +298,7 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
 | Wizard parts | `Wizard` (ANSI key loop), `CookedWizard` (plain line prompts), `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
 | Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, 30s heartbeat, `built`/`done`, `jk: ` prefix). Bar width is a parameter: `Progress.DEFAULT_SEGMENTS` 40, `NARROW_SEGMENTS` 32 where the caller does not control the trailing text |
-| Live one-row region | `cli/tui/LiveLine.java` — the only one-row live loop: animator, cursor, OSC taskbar (re-told every frame), in-place repaint, Ctrl-C settle, `LiveRegion` registration. Takes an already-clipped row per frame (`JkWedge.renderLiveLine`), so it never decides how anything looks. Splits silent (`--no-progress`, script mode) from plain (`--no-ansi`: no moving row; the animator calls the owner's heartbeat hook instead) from animating. Owners: `Spinner`, `JdkDownloadBar` |
+| Live one-row region | `cli/tui/LiveLine.java` — the only one-row live loop: animator, cursor, OSC taskbar (re-told every frame), in-place repaint, Ctrl-C settle, `LiveRegion` registration. Takes an already-clipped row per frame (`JkWedge.renderLiveLine`), so it never decides how anything looks. Splits silent (`--no-progress`, script mode) from plain (`--no-ansi`: no moving row; the animator calls the owner's heartbeat hook instead) from animating. Owners: `Spinner`, `ProgressRow` |
 | Tables | `cli/tui/Table.java`. Append snaps child rails to parent edges |
 | Trees | `cli/tui/Tree.java` — optional title/root, {@code Gap} / {@code BodyFit}, pills, hanging rich text |
 | Glyphs | `cli/tui/Glyphs.java` |

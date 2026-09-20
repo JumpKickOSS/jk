@@ -11,7 +11,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 /**
  * Proves {@link CliOutputGlobal} is live the only way a boundary can be asserted: across two tests
  * in one class. The first leaves script mode on; the second must not inherit it — otherwise
- * Spinner / JdkDownloadBar stay silent for every later class in the same worker.
+ * Spinner / ProgressRow stay silent for every later class in the same worker.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class CliOutputBoundaryTest {
