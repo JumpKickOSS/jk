@@ -97,7 +97,7 @@ The whole registry:
 | **`jk_why`** | Why a dependency is on the graph: the matches with their paths, plus an `exclusions` array of the edges the manifest or a POM pruned |
 | **`jk_explain`** | Forecast next build |
 | **`jk_affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |
-| **`jk_outdated`** | Declared deps an update would move (read-only; Current / Compatible / Latest); `all=true` lists every row, `checked` counts them |
+| **`jk_outdated`** | Declared deps an update would move (read-only; Current / Compatible / Latest); `all=true` lists every row, `checked` counts them, `file` is the `target/jk-outdated-dependencies.md` it wrote |
 | **`jk_update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes and relocks. Same renderer as `jk add` |
 | **`jk_deps`** | Preview/apply surgical dependency add/remove (`apply` defaults **false**) |
 | **`jk_workspace`** | Preview/apply workspace member add/remove |
@@ -142,7 +142,7 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 | `fix-failing-build` | `jk_results` → edit → `jk_run kind=build wait=true` |
 | `recover-disk` | `jk_disk usage` then clean/nuke with confirm |
 | `setup-ci` | `jk_config apply_preset=ci` |
-| `upgrade-deps` | `jk_outdated` then `jk_run kind=lock` |
+| `upgrade-deps` | `jk_outdated`, read its `file`, then `jk_update` (preview), then `jk_update apply=true` |
 | `stall-or-cancel` | `jk_status` then `jk_job cancel` |
 
 ## Live progress

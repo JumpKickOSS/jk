@@ -88,6 +88,11 @@ jk outdated --output json
 jk outdated --offline
 ```
 
+Every row is a live repository read, so a workspace takes seconds: the terminal shows an
+Outdated wedge with a progress bar counting dependencies checked while the engine fetches, and
+the table takes the bar's place when the report lands. `--output json`, a pipe and
+`--no-progress` paint nothing until the report.
+
 | Column | Meaning |
 |--------|---------|
 | **Current** | Version pinned in `jk-lock.toml` (empty if unlocked) |
@@ -104,6 +109,12 @@ short name shows its group as initials (`o.a.m:maven-core` for `org.apache.maven
 and in a workspace each module is a header row above its dependencies. Long names and
 timestamped versions are clipped with `…`. JSON keeps full coordinates and versions.
 
+Every successful run, from the CLI or from MCP, also writes `target/jk-outdated-dependencies.md`
+under the workspace root (the project root when standalone) with the whole picture, whatever
+the terminal filter was: a header line (date, modules, rows checked, rows that can move), a
+**Can move** table with full coordinates, and an **Up to date** list. The CLI prints a `Report:`
+line naming the file; read it instead of running the command again.
+
 Exit code is always `0` on a successful report. There is no `--fail-if-outdated` — lockfile
 changes stay intentional. For CI “fail if drift”, `--output json` is a non-empty array exactly
 when something can move.
@@ -115,7 +126,7 @@ JSON is an **array** of row objects (`module`, `dependency`, `display`, `scope`,
 `compatible`, `latest`, `tip`), filtered the same way as the table (`--all` for every row).
 `module` is empty for a single-project root. `display` is the catalog short name when known.
 MCP [`jk_outdated`](mcp.md#tools) takes the same `all` and reports `checked`, the number of rows
-examined, beside `rows`.
+examined, and `file`, the path of the markdown report, beside `rows`.
 
 ## Toolchain pins
 

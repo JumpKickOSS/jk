@@ -9,15 +9,18 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.List;
 import java.util.Map;
 
-/** {@code jk_outdated} — declared dependencies an update would move; {@code all} lists every row. */
+/**
+ * {@code jk_outdated} — declared dependencies an update would move; {@code all} lists every row.
+ * Writes {@code target/jk-outdated-dependencies.md} and returns its path as {@code file}.
+ */
 public final class OutdatedTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
                 "jk_outdated",
-                "Declared deps an update would move (current / compatible / latest); all=true lists every"
-                        + " row checked. Read-only.",
+                "Declared deps an update would move (current / compatible / latest), read-only; all=true lists"
+                        + " every row checked, and file is the target/jk-outdated-dependencies.md it wrote",
                 McpSchemas.object(
                         Map.of("dir", McpSchemas.string(), "all", McpSchemas.bool("Every row, up to date included"))));
     }
