@@ -47,18 +47,7 @@ class McpConnectionTest {
     };
 
     private final Supplier<StatusSnapshot> status = () -> new StatusSnapshot(
-            "0.13.7",
-            1L,
-            System.currentTimeMillis() - 5_000,
-            0,
-            0,
-            1L << 20,
-            2L << 20,
-            256L << 20,
-            -1L,
-            0,
-            8,
-            16L << 30);
+            "0.13.7", 1L, System.currentTimeMillis() - 5_000, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 8, 16L << 30);
 
     private final McpHandler mcp =
             new McpHandler(status, jobs, dir -> Map.of("coord", "com.example:demo"), List::of, "0.13.7");

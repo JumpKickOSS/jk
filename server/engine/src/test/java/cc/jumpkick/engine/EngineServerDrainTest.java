@@ -7,7 +7,6 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
-import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
@@ -34,9 +33,7 @@ class EngineServerDrainTest {
 
     @AfterEach
     void cleanup() {
-        // handleShutdown/yieldListeners suppress AOT training process-wide; the running-server
-        // test also plans the shared worker heap. Reset both statics for the rest of the JVM.
-        AotSettings.clearTrainingSuppressionForTests();
+        // The running-server test plans the shared worker heap; reset the static for the rest of the JVM.
         JvmOptions.resetSharedPlanForTests();
     }
 

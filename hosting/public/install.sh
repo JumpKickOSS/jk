@@ -657,9 +657,8 @@ main() {
   # Pre-pay the engine's cold-start costs now so the first real build doesn't:
   # `jk engine start` installs the JDK that hosts the engine when none
   # qualifies, and on a download install triggers the client's own engine-jar
-  # fetch (which writes under <home>/lib/jk-engine/). The engine serves immediately
-  # and manages its own AOT training sidecar off to the side
-  # (docs/architecture.md), so ONE start is the whole warm-up. Best-effort by
+  # fetch (which writes under <home>/lib/jk-engine/). The engine serves immediately,
+  # so ONE start is the whole warm-up. Best-effort by
   # design: a failed warm-up never fails the install. Skipped only for a local
   # dist install that carried no engine jar.
   if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then

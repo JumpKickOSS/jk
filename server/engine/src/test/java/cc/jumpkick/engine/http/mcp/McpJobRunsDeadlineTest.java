@@ -45,7 +45,7 @@ class McpJobRunsDeadlineTest {
 
     private McpContext context() {
         return new McpContext(
-                () -> new StatusSnapshot("0", 1L, 0L, 0, 0, 1L, 1L, 1L, -1L, 0, 1, 1L),
+                () -> new StatusSnapshot("0", 1L, 0L, 0, 0, 1L, 1L, 1L, -1L, 1, 1L),
                 new EngineHttpJobs() {
                     @Override
                     public long trigger(JobSpec spec) {

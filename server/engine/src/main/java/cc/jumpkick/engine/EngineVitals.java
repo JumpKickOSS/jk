@@ -27,7 +27,6 @@ public final class EngineVitals {
     private final AtomicInteger activeConnections;
     private final AtomicInteger activeBuildPlans;
     private final Supplier<HttpEngineServer> httpServer;
-    private final LongSupplier aotTrainingPid;
     private final LongSupplier idleDropped;
     private final LongSupplier logBytes;
     private final LongSupplier logRolledAtMillis;
@@ -51,7 +50,6 @@ public final class EngineVitals {
                 heapCommitted,
                 rt.maxMemory(),
                 MemoryProbe.ownRssBytes(),
-                aotTrainingPid.getAsLong(),
                 rt.availableProcessors(),
                 host.totalBytes(),
                 host.availableBytes(),

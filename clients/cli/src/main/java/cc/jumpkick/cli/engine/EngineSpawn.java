@@ -8,10 +8,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.discovery.ProbeSupport;
-import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.EngineJvmFlags;
-import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -21,10 +18,6 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.util.AotManifest;
-import cc.jumpkick.util.AotSettings;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -43,16 +36,12 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Spawn, takeover, and AOT-cache selection for the resident engine. Mode, artifact, and
- * {@code awaitStartup} stay together so a torn AOT cache cannot be mapped without the self-heal
- * retry. Over the 800-line house cap by the AOT key/manifest comments.
+ * Spawn and takeover for the resident engine: which artifact, which host JDK, the JVM line, and
+ * the wait until it serves.
  */
 public final class EngineSpawn {
 
-    /**
-     * Ceiling for a normal (mapped-cache or no-cache) spawn to come up. A mapped-cache start is
-     * sub-second; the pathological case is a <em>cold</em> boot (AOT ignored/disabled).
-     */
+    /** Ceiling for a spawn to come up; a cold boot on a loaded host is the pathological case. */
     private static final Duration COLD_START_CEILING = Duration.ofSeconds(30);
 
     /**
@@ -101,8 +90,6 @@ public final class EngineSpawn {
                         "the build engine is shutting down — wait for it to stop, or run `jk engine stop --force`");
             }
             if (serves(hs, clientVersion, pointerSha(clientVersion))) {
-                // Already primary — do not wipe AOT (would thrash the live train). Wipe only on
-                // materialize / new endpoint claim.
                 return hs;
             }
             // Version skew (incl. same -SNAPSHOT with different content identity) → TAKEOVER, not
@@ -274,44 +261,34 @@ public final class EngineSpawn {
     }
 
     /**
-     * Bring up a fresh engine with AOT self-heal: TRAIN/USE/NONE, drop a bad cache and retry once,
-     * and wait out slow cold starts rather than reporting "could not start".
+     * Bring up a fresh engine: retry once on an early exit, and wait out slow cold starts rather
+     * than reporting "could not start".
      */
     private static EngineProbe.Handshake startWithSelfHeal(EnginePaths.Paths paths, String clientVersion)
             throws IOException {
         return startOnce(paths, clientVersion, resolveEngineTarget(paths, clientVersion));
     }
 
-    /**
-     * Spawn and wait until serving; re-picks AOT mode per attempt and retries once on early exit.
-     */
+    /** Spawn and wait until serving; retries once on early exit. */
     private static EngineProbe.Handshake startOnce(EnginePaths.Paths paths, String clientVersion, EngineTarget target)
             throws IOException {
         // The log about to be rotated is the previous engine's; if it ends in an OutOfMemoryError
         // exit, say so once, here, before the fresh start truncates the evidence.
         EngineHeapDump.reportExit(paths);
         for (int attempt = 0; attempt < 2; attempt++) {
-            AotMode mode = chooseAotMode(target);
             StartResult r = awaitStartup(
                     paths,
                     clientVersion,
                     COLD_START_CEILING,
-                    spawn(paths, target, mode).process());
+                    spawn(paths, target).process());
             switch (r.outcome()) {
                 case UP -> {
-                    if (mode == AotMode.USE && scanLogForAotError(paths.log())) {
-                        dropAotCache(
-                                paths, target, "AOT cache was ignored by the engine JVM; skipping it for this key");
-                    }
-                    // EngineServer wipes state/aot after claiming the endpoint. Do not
-                    // wipe again here — the sidecar may already be training into a fresh file.
                     return Objects.requireNonNull(r.handshake(), "UP without a handshake");
                 }
                 case TIMED_OUT -> throw notStarted(paths); // alive but never served → genuine hang
                 case CHILD_EXITED -> {
                     if (attempt == 0) {
-                        if (mode == AotMode.USE) dropCacheAfterEarlyExit(paths, target);
-                        else logReason(paths, "engine exited before serving; retrying after backoff");
+                        logReason(paths, "engine exited before serving; retrying after backoff");
                         sleepQuietly(1_500);
                         continue;
                     }
@@ -322,50 +299,15 @@ public final class EngineSpawn {
         throw notStarted(paths); // unreachable
     }
 
-    /**
-     * The engine JVM died before it served while mapping an AOT cache: the cache is the suspect (a
-     * JDK 25 JVM segfaults in {@code AOTLinkedClassBulkLoader} on a cache recorded under another
-     * heap), so it is dropped and its key refused for the TTL, and the retry starts plain instead of
-     * dying the same way and reporting "could not start".
-     */
-    static void dropCacheAfterEarlyExit(EnginePaths.Paths paths, EngineTarget target) {
-        dropAotCache(
-                paths,
-                target,
-                "engine exited before serving while mapping its AOT cache; dropped the cache for this key, retrying without it");
-    }
-
-    /** Delete the cache, refuse its key for the marker's TTL, and say why in the engine log. */
-    private static void dropAotCache(EnginePaths.Paths paths, EngineTarget target, String reason) {
-        deleteQuietly(target.aotCache());
-        writeNoAotMarker(target.aotCache());
-        logReason(paths, reason);
-    }
-
     private static IOException notStarted(EnginePaths.Paths paths) {
         return new IOException("could not start the build engine — see " + paths.log() + " for details");
-    }
-
-    /** How a spawn should treat the AOT cache. */
-    enum AotMode {
-        TRAIN,
-        USE,
-        NONE
     }
 
     /** What {@link #spawn} launched: the child (same pid — it setsid()s, never forks). */
     private record Spawned(Process process) {}
 
-    /**
-     * The resolved engine to spawn: which artifact, the host JDK (JAR only), whether that JDK is a
-     * HotSpot/C2 JVM (AOT is only stable there), and the AOT cache path. A refusal marker is not
-     * carried here: it expires, so it is read when the mode is chosen and nowhere else.
-     */
-    record EngineTarget(
-            EngineArtifact engine,
-            @Nullable Path javaHome,
-            boolean hotspot,
-            @Nullable Path aotCache) {}
+    /** The resolved engine to spawn: which artifact, and the host JDK (JAR only). */
+    record EngineTarget(EngineArtifact engine, @Nullable Path javaHome) {}
 
     /** A host JDK for the engine: home, vendor, and version (from its {@code release} file). */
     record EngineJdk(Path home, JdkVendor vendor, String version) {}
@@ -392,39 +334,16 @@ public final class EngineSpawn {
                 + " — materialize it (`./install.sh target/dist/jk` or `jk self materialize …`),"
                 + " download a release (`jk self update`), or set JK_ENGINE_EXE"));
         if (engine.kind() != EngineArtifact.Kind.JAR) {
-            return new EngineTarget(engine, null, false, null);
+            return new EngineTarget(engine, null);
         }
-        EngineJdk jdk = resolveEngineJdk();
-        Path aot = aotCachePath(paths, Path.of(engine.path()), jdk);
-        return new EngineTarget(engine, jdk.home(), isHotSpot(jdk.vendor()), aot);
+        return new EngineTarget(engine, resolveEngineJdk().home());
     }
 
     /**
-     * AOT mode for a target: only a JAR engine on a HotSpot JDK whose key is not under a live
-     * refusal ({@link AotCacheFiles#blocked} — a refusal is a back-off, expired past its TTL on the
-     * schedule the worker trainer also uses, not believed forever). Train-on-miss is skipped when
-     * {@link cc.jumpkick.util.AotSettings#trainingEnabled} is false ({@code JK_AOT_TRAIN=off}) —
-     * still maps an existing cache. USE requires a <em>non-empty</em> cache ({@link
-     * AotCacheFiles#usable}): a zero-byte leftover from a crashed trainer would otherwise map
-     * "forever" while never accelerating anything — it is deleted here so the key can retrain.
-     */
-    static AotMode chooseAotMode(EngineTarget t) {
-        if (t.engine().kind() != EngineArtifact.Kind.JAR) return AotMode.NONE;
-        if (!t.hotspot()) return AotMode.NONE; // GraalVM host: its Graal JIT breaks the cache — skip cleanly
-        if (AotCacheFiles.blocked(t.aotCache())) return AotMode.NONE;
-        if (AotCacheFiles.usable(t.aotCache())) return AotMode.USE;
-        AotCacheFiles.deleteIfEmpty(t.aotCache()); // torn/zero-byte leftover: treat as missing so it retrains
-        if (!AotSettings.trainingEnabled()) return AotMode.NONE;
-        return AotMode.TRAIN;
-    }
-
-    /**
-     * The JDK that hosts the engine JVM, pinned by vendor+major so the AOT cache is stable. Honours
-     * {@code [toolchain].jdk} (or {@code JK_ENGINE_JDK}); defaults to the LTS Temurin at the engine's
-     * floor release. Prefers an already-installed match (no network), else installs exactly the pin.
-     * A HotSpot JDK is what {@code docs/architecture.md} wants (HotSpot's JIT + SHA-256 intrinsics) and is
-     * required for a mappable AOT cache; a Graal pin is honoured but disables AOT (see {@link
-     * #chooseAotMode}).
+     * The JDK that hosts the engine JVM, pinned by vendor+major. Honours {@code [toolchain].jdk}
+     * (or {@code JK_ENGINE_JDK}); defaults to the LTS Temurin at the engine's floor release. Prefers
+     * an already-installed match (no network), else installs exactly the pin. A HotSpot JDK is what
+     * {@code docs/architecture.md} wants (HotSpot's JIT + SHA-256 intrinsics).
      */
     /**
      * {@code java} of the JDK that hosts the engine (installs the pin if none matches). Used by
@@ -539,11 +458,6 @@ public final class EngineSpawn {
         }
     }
 
-    /** HotSpot/C2 JVMs (everything except GraalVM) produce a stable, mappable AOT cache. */
-    private static boolean isHotSpot(JdkVendor vendor) {
-        return vendor != JdkVendor.ORACLE_GRAALVM && vendor != JdkVendor.GRAALVM_CE;
-    }
-
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
      * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar under {@code
@@ -583,167 +497,21 @@ public final class EngineSpawn {
     }
 
     /**
-     * The engine's AOT cache path, keyed to the engine jar (name:size:mtime), the host JDK identity
-     * (version + vendor) <em>and</em> the engine heap it will run under. A mismatched cache is
-     * silently ignored by {@code AOTMode=auto} and never retrained, so folding the JDK into the key
-     * means a jar upgrade, a JDK build bump (Temurin 25.0.3→25.0.4), or a vendor swap all yield a
-     * fresh key that trains cleanly. The heap is in the key because a cache recorded under one
-     * {@code -Xmx} is not merely ignored under another: JDK 25 segfaults mapping it, and the client
-     * cannot tell that crash from an engine that failed to start. Stale {@code .aot}/{@code .noaot}
-     * files from previous keys are deleted best-effort here.
-     */
-    static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk) {
-        return aotCachePath(paths, engineJar, jdk, JkVersion.VERSION, heapKey(JkEngineConfig.resolve()));
-    }
-
-    /** The heap dimension of the AOT key: the cap the spawner will pass, or "uncapped". */
-    static String heapKey(JkEngineConfig config) {
-        return config.heapCapped() ? "heap=" + config.maxHeapMb() + "m" : "heap=uncapped";
-    }
-
-    /** As above, version-scoped under {@code state/engine/<v>/} so engines never share AOT state. */
-    static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk, String version, String heapKey) {
-        StringBuilder signature = new StringBuilder();
-        try {
-            signature
-                    .append(engineJar.getFileName())
-                    .append(':')
-                    .append(Files.size(engineJar))
-                    .append(':')
-                    .append(Files.getLastModifiedTime(engineJar).toMillis());
-        } catch (IOException e) {
-            // Key on the PATH too: two different unreadable jars must not share one AOT key.
-            signature.append("unreadable-jar:").append(engineJar.toAbsolutePath());
-        }
-        signature
-                .append(':')
-                .append(
-                        jdk == null
-                                ? "no-jdk"
-                                : jdk.version() + "|" + jdk.vendor().name())
-                .append(':')
-                .append(heapKey);
-        String hash = Hashing.sha256Hex(signature.toString()).substring(0, 16);
-        // ONE home for every AOT cache — engine and workers alike live in ~/.jk/state/aot/ so a
-        // user (or `jk engine aot`) finds them all side by side. The engine's file
-        // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
-        // version-scoped: a new primary reaps other versions' engine AOT. The sweep below stays
-        // within one version so side-by-side keys for the same version never thrash each other.
-        // Worker caches (kotlinc-/java-compiler-) have no version dimension.
-        Path aotDir = JkDirs.state().resolve("aot");
-        try {
-            Files.createDirectories(aotDir);
-        } catch (IOException ignored) {
-            // Falls through — a failed mkdir surfaces on the training write, with a real error.
-        }
-        String stem = "engine-" + version + "-" + hash;
-        Path cache = aotDir.resolve(stem + ".aot");
-        // Sweep THIS version's other keys — the cache, the JEP 514 .aot.config recording
-        // intermediate, and any refusal marker. The "<16-hex>." shape check keeps a version
-        // whose name extends ours ("0.10.0" vs "0.10.1") out of the blast radius.
-        String versionPrefix = "engine-" + version + "-";
-        List<String> swept = new ArrayList<>();
-        try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
-            for (Path p : entries) {
-                String name = p.getFileName().toString();
-                if (name.startsWith(versionPrefix)
-                        && !name.startsWith(stem)
-                        && name.substring(versionPrefix.length()).matches("[0-9a-f]{16}\\..*")) {
-                    // Map sidecar names back to the primary .aot file key for aot.toml.
-                    if (AotCacheFiles.isMarker(name)) swept.add(AotCacheFiles.cacheOf(name));
-                    else if (name.endsWith(AotCacheFiles.CACHE)) swept.add(name);
-                    Files.deleteIfExists(p);
-                }
-            }
-        } catch (IOException ignored) {
-            // Cleanup is opportunistic; a leftover cache costs disk, not correctness.
-        }
-        if (!swept.isEmpty()) {
-            AotManifest.remove(aotDir, swept);
-            AotManifest.reconcile(aotDir);
-        }
-        recordEngineAotManifest(cache, engineJar, jdk, version, hash);
-        // Drop leftover per-version cache under engine-state so it is not confused with the
-        // current content-addressed AOT key.
-        PathUtil.deleteRecursively(paths.dir().resolve(version));
-        return cache;
-    }
-
-    /**
-     * Best-effort {@code aot.toml} row for the engine cache key (even before the file exists, so a
-     * pending train is still documented). {@code ready} means size &gt; 0 and {@code noaot} means a
-     * refusal is still live — the same two predicates {@link #chooseAotMode} decides by, so the
-     * manifest and the engine never disagree about one file.
-     */
-    static void recordEngineAotManifest(Path cache, Path engineJar, EngineJdk jdk, String version, String hash) {
-        if (cache == null) return;
-        Path aotDir = cache.getParent();
-        if (aotDir == null) return;
-        try {
-            String name = cache.getFileName().toString();
-            boolean ready = Files.isRegularFile(cache) && Files.size(cache) > 0;
-            boolean noaot = AotCacheFiles.blocked(cache);
-            String status = ready ? "ready" : (noaot ? "noaot" : "pending");
-            var b = AotManifest.Entry.builder(name)
-                    .tool("engine")
-                    .key(hash)
-                    .jkVersion(version)
-                    .status(status)
-                    .jvmFlags(EngineJvmFlags.AOT_SENSITIVE);
-            if (ready) {
-                b.sizeBytes(Files.size(cache)).lastUsed(AotManifest.nowIso());
-            }
-            if (jdk != null) {
-                b.jdkHome(jdk.home().toString())
-                        .jdkVendor(jdk.vendor().name())
-                        .jdkVersion(jdk.version())
-                        .gc("serial");
-            }
-            if (engineJar != null) {
-                b.engineJar(engineJar.getFileName().toString());
-                try {
-                    b.engineJarSize(Files.size(engineJar))
-                            .engineJarMtimeMs(
-                                    Files.getLastModifiedTime(engineJar).toMillis());
-                } catch (IOException ignored) {
-                    // identity without size/mtime still documents the name
-                }
-            }
-            AotManifest.upsert(aotDir, b.build());
-        } catch (Exception ignored) {
-            // never fail engine start for a human index
-        }
-    }
-
-    /**
      * The installed engine's spawn line: a plain JVM app on the jk-managed JDK, one fat jar on the
      * classpath, tuned by ordinary JVM flags. Sizing the heap happens here because only the spawner
      * can (a process cannot shrink its own {@code -Xmx}); {@code max-heap-mb} stays authoritative.
      */
-    static List<String> jarCommand(EnginePaths.Paths paths, EngineTarget target, AotMode mode, JkEngineConfig config) {
+    static List<String> jarCommand(EnginePaths.Paths paths, EngineTarget target, JkEngineConfig config) {
         List<String> command = new ArrayList<>();
         Path javaHome = Objects.requireNonNull(target.javaHome(), "a jar engine runs on a host JDK");
         command.add(JdkFingerprint.java(javaHome).toString());
-        // The shared serving/trainer flag list — one list with EngineMain.aotTrainerCommand,
-        // because JEP 514 refuses to map an AOT cache whose dump-time and runtime property sets
-        // differ. The OOM heap dump lands in the engine directory beside the log, one file per
-        // exit (HotSpot names a dump into a directory java_pid<pid>.hprof).
+        // The OOM heap dump lands in the engine directory beside the log, one file per exit
+        // (HotSpot names a dump into a directory java_pid<pid>.hprof).
         command.addAll(EngineJvmFlags.AOT_SENSITIVE);
         command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDumpDir(paths)));
         // Metaspace/stack mirror what workers already get from JvmOptions.
         command.add("-XX:MaxMetaspaceSize=256m");
         command.add("-Xss512k");
-        // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata and AOT-compiled code.
-        // USE maps an existing cache. TRAIN boots cold and spawns a sidecar trainer
-        // (`EngineMain --aot-training`, isolated temp state, throwaway socket). NONE
-        // omits the cache (non-HotSpot host JDK, or a key that already proved unmappable).
-        switch (mode) {
-            case TRAIN -> command.add("-Djk.aot.train.output=" + target.aotCache());
-            case USE -> command.add("-XX:AOTCache=" + target.aotCache());
-            case NONE -> {
-                /* no AOT flag — a guaranteed cold-but-correct boot */
-            }
-        }
         if (config.heapCapped()) {
             command.add("-Xms" + config.minHeapMb() + "m");
             command.add("-Xmx" + config.maxHeapMb() + "m");
@@ -777,7 +545,7 @@ public final class EngineSpawn {
     }
 
     /** Spawn a fresh engine, detached — mirrors {@link CachePruneScheduler}'s spawn-and-forget pattern. */
-    private static Spawned spawn(EnginePaths.Paths paths, EngineTarget target, AotMode mode) throws IOException {
+    private static Spawned spawn(EnginePaths.Paths paths, EngineTarget target) throws IOException {
         EngineArtifact engine = target.engine();
         JkEngineConfig config = JkEngineConfig.resolve();
         OwnerOnlyFiles.directory(paths.dir());
@@ -788,7 +556,7 @@ public final class EngineSpawn {
         // every other build it is hosting.
         List<String> command =
                 switch (engine.kind()) {
-                    case JAR -> jarCommand(paths, target, mode, config);
+                    case JAR -> jarCommand(paths, target, config);
                     case EXE -> exeCommand(paths, engine, config);
                 };
         ProcessBuilder pb = new ProcessBuilder(command);
@@ -894,43 +662,6 @@ public final class EngineSpawn {
             EnginePaths.Paths paths, String clientVersion, Optional<String> pointer) {
         return EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion)
                 .filter(hs -> !hs.draining() && serves(hs, clientVersion, pointer));
-    }
-
-    /**
-     * Did the JVM ignore the AOT cache on this start? {@code AOTMode=auto} logs and boots cold on a
-     * mismatch instead of failing, so ask {@link AotCacheFiles#refused} about the fresh per-start
-     * log and the caller can drop the cache and retrain next time. Bounded: AOT diagnostics land at
-     * boot, so only the head of the log can hold them.
-     */
-    static boolean scanLogForAotError(Path log) {
-        if (log == null) return false;
-        try {
-            if (!Files.exists(log)) return false;
-            String head = Files.readString(log);
-            if (head.length() > 8192) head = head.substring(0, 8192);
-            return AotCacheFiles.refused(head);
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private static void deleteQuietly(@Nullable Path p) {
-        if (p == null) return;
-        try {
-            Files.deleteIfExists(p);
-        } catch (IOException ignored) {
-            // best-effort
-        }
-    }
-
-    /** Remember that AOT can't apply for this cache's key, so later starts skip straight to NONE. */
-    private static void writeNoAotMarker(@Nullable Path aotCache) {
-        if (aotCache == null) return;
-        try {
-            Files.writeString(AotCacheFiles.marker(aotCache), "");
-        } catch (IOException ignored) {
-            // best-effort — worst case we retry AOT more often, never a failure
-        }
     }
 
     /** Append a diagnostic to the engine log only — never the user's terminal. */

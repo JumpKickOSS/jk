@@ -21,7 +21,7 @@ import java.util.Optional;
 
 /**
  * {@code jk engine stop} — graceful drain by default: the engine refuses new jobs and exits cleanly
- * once in-flight jobs finish (its AOT cache still assembles). On a TTY with jobs running it blocks
+ * once in-flight jobs finish. On a TTY with jobs running it blocks
  * with a live "Draining N job(s)…" region; press Ctrl-X (or pass {@code --force}) to stop now.
  * Stopping an engine that isn't running is reported, not an error (exit 0 either way).
  */
@@ -40,7 +40,7 @@ public final class EngineStopCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Stop now (abandon jobs; still finish AOT)", "--now"),
+                Opt.flag("Stop now (abandon jobs)", "--now"),
                 Opt.flag("Stop every engine (not only this dir's)", "--all"),
                 Opt.value("<pid>", "Stop the engine with this pid (see `jk engine status`).", "--pid"));
     }

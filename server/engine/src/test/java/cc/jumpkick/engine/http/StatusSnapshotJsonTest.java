@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
  *
  * <ul>
  *   <li>{@code McpVitals.statusPayload} — the MCP {@code status} envelope, 10 of the record's 18
- *       components. Omits {@code aotTrainingPid}, {@code totalMemoryBytes},
+ *       components. Omits {@code totalMemoryBytes},
  *       {@code availableMemoryBytes}, {@code systemCpuLoad}, {@code systemLoadAverage},
  *       {@code engineEpoch}, {@code peakActiveRequests}, {@code peakActiveBuildPlans} — so an agent
  *       reading {@code jk_status} cannot see host memory headroom, host load, or the epoch that
@@ -56,7 +56,6 @@ class StatusSnapshotJsonTest {
             2_000L,
             3_000L,
             4_000L,
-            77L,
             8,
             16_000_000_000L,
             8_000_000_000L,
@@ -135,7 +134,6 @@ class StatusSnapshotJsonTest {
                 .contains("\"logBytes\":7000")
                 .contains("\"logRolledAt\":8000")
                 .contains("\"rssBytes\":4000")
-                .contains("\"aotTrainingPid\":77")
                 .contains("\"cores\":8")
                 .contains("\"availableMemoryBytes\":8000000000")
                 .contains("\"systemCpuLoad\":0.18")

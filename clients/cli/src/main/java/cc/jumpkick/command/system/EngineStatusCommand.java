@@ -115,11 +115,6 @@ public final class EngineStatusCommand implements CliCommand {
             detail("Signals", describeIgnoredSignals(s.ignoredSignals()));
         }
         heapDumpRow(paths);
-        // Transient by design: the sidecar trainer lives ~15s after a fresh install/upgrade, then
-        // this line disappears — steady state stays four/five detail rows (+ memory bar).
-        if (s.aotTrainingPid() > 0) {
-            detail("AOT", "training in progress (pid " + pidStyled(s.aotTrainingPid()) + ")");
-        }
         String memory = formatMemory(s);
         if (memory != null) {
             detail("Memory", memory);
@@ -269,7 +264,6 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("heapCommittedBytes", s.heapCommittedBytes())
                 .number("heapMaxBytes", s.heapMaxBytes())
                 .number("rssBytes", s.rssBytes())
-                .number("aotTrainingPid", s.aotTrainingPid())
                 .number("cores", s.cores())
                 .number("totalMemoryBytes", s.totalMemoryBytes())
                 .number("availableMemoryBytes", s.availableMemoryBytes())

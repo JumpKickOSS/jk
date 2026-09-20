@@ -300,7 +300,7 @@ class McpToolRegistryTest {
             }
         };
         return new McpContext(
-                () -> new StatusSnapshot("0", 1L, 0L, 0, 0, 1L, 1L, 1L, -1L, 0, 1, 1L),
+                () -> new StatusSnapshot("0", 1L, 0L, 0, 0, 1L, 1L, 1L, -1L, 1, 1L),
                 jobs,
                 dir -> Map.of(),
                 List::of,

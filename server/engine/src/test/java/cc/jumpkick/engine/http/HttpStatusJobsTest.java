@@ -29,7 +29,6 @@ class HttpStatusJobsTest extends HttpEngineServerHarness {
                 SNAPSHOT.heapCommittedBytes(),
                 SNAPSHOT.heapMaxBytes(),
                 SNAPSHOT.rssBytes(),
-                SNAPSHOT.aotTrainingPid(),
                 SNAPSHOT.cores(),
                 SNAPSHOT.totalMemoryBytes(),
                 SNAPSHOT.availableMemoryBytes(),

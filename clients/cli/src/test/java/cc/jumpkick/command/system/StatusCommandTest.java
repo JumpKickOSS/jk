@@ -69,7 +69,6 @@ class StatusCommandTest {
                 0L,
                 0L,
                 0L,
-                0L,
                 null,
                 null,
                 null,
