@@ -104,7 +104,9 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ## Task pricing ladder
 
-1. Module measured task wall  
+1. Module measured task wall — the ledger's trimmed mean; the single sample when the row has one.
+   Never the last sample over a mean: on a rebuild the last sample is the most contended wall the
+   ledger holds.  
 2. Host task wall  
 3. Residual per-unit rates × count  
 4. Host continuous learned rates / calibration × host scale  

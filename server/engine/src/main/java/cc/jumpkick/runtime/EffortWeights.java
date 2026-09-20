@@ -234,8 +234,7 @@ public final class EffortWeights {
     public static long stepOkAvgMillisOwn(@Nullable BuildMetrics metrics, String dir, String step) {
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
-        // Prefer last successful wall (more recent than trimmed mean) when credible.
-        long fromAgg = stepWallFromAggregates(dir == null ? "" : dir, key, true);
+        long fromAgg = stepWallFromAggregates(dir == null ? "" : dir, key);
         if (fromAgg > 0) return fromAgg;
         if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         var own = metrics.step(dir == null ? "" : dir, key);
@@ -249,7 +248,7 @@ public final class EffortWeights {
     static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
-        long fromAgg = stepWallFromAggregates("", key, true);
+        long fromAgg = stepWallFromAggregates("", key);
         if (fromAgg > 0) return fromAgg;
         if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         var host = metrics.step("", key);
@@ -260,11 +259,19 @@ public final class EffortWeights {
     }
 
     /**
-     * Read last/mean step wall from harvested metrics. Prefer <strong>last</strong> when it is not
-     * a restore blip relative to the mean (heavy steps). Recency beats multi-sample mean for ETA
-     * after the suite has been getting faster.
+     * One step's wall from the harvested ledger: the trimmed mean once the row has two samples,
+     * the single sample when it has one.
+     *
+     * <p>The mean, not the last sample, on purpose. The last sample of a step is whichever build
+     * ran it most recently, and on a full rebuild that is the most contended measurement the ledger
+     * holds: the dogfood engine's test compile reads a 6.8 s mean beside a 28 s last, taken while 24
+     * modules compiled at once. A critical-path schedule adds such walls serially along the spine.
+     * A structural speed-up that leaves the mean stale is what {@code ScheduleBias} absorbs.
+     *
+     * <p>Heavy steps carry a credibility floor ({@link #heavyWallFloorMs}): a native-image or
+     * write-image wall under it is a cache-restore blip and prices nothing.
      */
-    static long stepWallFromAggregates(String dir, String step, boolean preferLast) {
+    static long stepWallFromAggregates(String dir, String step) {
         try {
             var agg = BuildMetrics.aggregatesForSession();
             String task = metricsStepName(step);
@@ -275,25 +282,16 @@ public final class EffortWeights {
             } else {
                 key = "module." + AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
             }
-            Double mean = agg.meanMap().get(key);
-            Double last = agg.lastMap().get(key);
+            Double meanRow = agg.meanMap().get(key);
+            Double lastRow = agg.lastMap().get(key);
+            double mean = meanRow == null ? 0 : meanRow;
+            double last = lastRow == null ? 0 : lastRow;
             long floor = heavyWallFloorMs(task);
-            if (preferLast && last != null && last > 0 && last >= floor) {
-                // Reject last if it is a tiny fraction of mean (cache-restore / mostly-warmed
-                // noise). The old `|| last >= 5_000` escape made this rejection dead for heavy
-                // steps (their floor is already 5s), so one 6s over-floor outlier replaced a
-                // stable 60s native mean and under-reserved the slice ~10×.
-                if (mean == null || mean <= 0 || last >= mean * 0.25) {
-                    return Math.round(last);
-                }
-            }
-            if (mean != null && mean > 0 && mean >= floor) return Math.round(mean);
-            if (last != null && last > 0 && last >= floor) return Math.round(last);
-            // Non-heavy steps: no floor
-            if (floor == 0) {
-                if (preferLast && last != null && last > 0) return Math.round(last);
-                if (mean != null && mean > 0) return Math.round(mean);
-            }
+            boolean meanCredible = mean > 0 && mean >= floor;
+            boolean lastCredible = last > 0 && last >= floor;
+            if (meanCredible && agg.count(key) >= 2) return Math.round(mean);
+            if (lastCredible) return Math.round(last);
+            if (meanCredible) return Math.round(mean);
             return 0;
         } catch (RuntimeException e) {
             return 0;
