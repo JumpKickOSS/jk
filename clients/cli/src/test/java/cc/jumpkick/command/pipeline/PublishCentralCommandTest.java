@@ -9,6 +9,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.publish.testkit.GpgTestFixture;
 import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.util.MarkdownReports;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -135,7 +136,7 @@ class PublishCentralCommandTest {
                 .contains("deployment dep-1234")
                 .contains("VALIDATED");
 
-        String results = Files.readString(dir.resolve("target/jk-results.md"));
+        String results = MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md")));
         assertThat(results)
                 .contains("## Publish")
                 .contains("- destination: Central Portal (user-managed)")
@@ -166,7 +167,7 @@ class PublishCentralCommandTest {
         assertThat(exit).isEqualTo(0);
         assertThat(requests.get(0)).contains("publishingType=AUTOMATIC");
         assertThat(polls.get()).isEqualTo(4);
-        assertThat(Files.readString(dir.resolve("target/jk-results.md")))
+        assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
                 .contains("- destination: Central Portal (automatic)")
                 .contains("- deployment: `dep-1234` · **PUBLISHED**");
     }
@@ -198,7 +199,7 @@ class PublishCentralCommandTest {
                 .contains("dep-1234")
                 .contains("Missing signature for file: widget-1.0.0.pom")
                 .contains("Javadocs must be provided but not found in entries");
-        String results = Files.readString(dir.resolve("target/jk-results.md"));
+        String results = MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md")));
         assertThat(results)
                 .startsWith("# jk results — FAIL")
                 .contains("- deployment: `dep-1234` · **FAILED**")
@@ -236,7 +237,7 @@ class PublishCentralCommandTest {
                 .contains("wrote target/publish/central-bundle.zip")
                 .contains("    " + STEM + ".jar")
                 .contains("    " + STEM + "-sources.jar.asc");
-        assertThat(Files.readString(dir.resolve("target/jk-results.md")))
+        assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
                 .contains("- destination: Central Portal (user-managed) (dry run)")
                 .contains("- bundle (16 entries):");
     }
@@ -278,14 +279,14 @@ class PublishCentralCommandTest {
             "pass"
         };
         assertThat(run(args)).isEqualTo(1);
-        assertThat(Files.readString(dir.resolve("target/jk-results.md")))
+        assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
                 .contains("widget-1.0.0-sources.jar")
                 .contains("widget-1.0.0-javadoc.jar");
 
         writeZip(dir.resolve("target/lib/widget-1.0.0-sources.jar"));
         writeZip(dir.resolve("target/lib/widget-1.0.0-javadoc.jar"));
         assertThat(run(args)).isEqualTo(1);
-        assertThat(Files.readString(dir.resolve("target/jk-results.md")))
+        assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
                 .contains("Maven Central requires POM metadata this manifest lacks: url, licenses, developers, scm");
         assertThat(requests).isEmpty();
     }
