@@ -140,6 +140,27 @@ stage "$WORK/staging"
 cp "$WORK/staging/release-$VER-linux-x86_64/jk-linux-x86_64-$VER.xz" "$WORK/staging/release-$VER-linux-aarch64/"
 assert_refused "$WORK/staging" "two platform trees carry jk-linux-x86_64-$VER.xz"
 
+# ---- the platform list the workflow passes ---------------------------------------------------
+# The rows the release matrix builds are the clients the flatten requires: a tree holding exactly
+# them is accepted, one short of a named row is refused, and the Windows zip is only demanded
+# when Windows is in the list.
+stage "$WORK/staging"
+rm -rf "$WORK/staging/release-$VER-linux-aarch64" "$WORK/staging/release-$VER-macos-x86_64"
+rm -rf "$WORK/out-subset"
+JK_RELEASE_PLATFORMS="linux-x86_64 macos-aarch64 windows-x86_64" run_flatten "$WORK/staging" "$WORK/out-subset" \
+  || { cat "$WORK/last.log" >&2; echo "test-flatten-release: the matrix's own platform list was refused" >&2; exit 1; }
+[[ "$(wc -l <"$WORK/out-subset/SHA256SUMS" | tr -d '[:space:]')" == "7" ]] || {
+  cat "$WORK/out-subset/SHA256SUMS" >&2
+  echo "test-flatten-release: three platforms flatten to seven artifacts" >&2
+  exit 1
+}
+rm -rf "$WORK/staging/release-$VER-windows-x86_64"
+JK_RELEASE_PLATFORMS="linux-x86_64 macos-aarch64 windows-x86_64" assert_refused "$WORK/staging" "missing client jk-windows-x86_64-$VER.xz"
+rm -rf "$WORK/out-subset"
+JK_RELEASE_PLATFORMS="linux-x86_64 macos-aarch64" run_flatten "$WORK/staging" "$WORK/out-subset" \
+  || { cat "$WORK/last.log" >&2; echo "test-flatten-release: a list without Windows still demanded the Windows zip" >&2; exit 1; }
+JK_RELEASE_PLATFORMS="macos-aarch64" assert_refused "$WORK/staging" "JK_RELEASE_PLATFORMS must name linux-x86_64"
+
 # ---- no staging directory at all -----------------------------------------------------------
 assert_refused "$WORK/nowhere" "staging directory not found"
 

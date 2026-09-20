@@ -72,13 +72,20 @@ if ! command -v xz >/dev/null 2>&1; then
 fi
 xz -ck9 "$src" >"$OUT/${name}.xz"
 
-# Windows wrapper / install.ps1 have no system xz — also ship a single-entry zip.
+# Windows wrapper / install.ps1 have no system xz — also ship a single-entry zip. Git Bash ships
+# no zip either, so PowerShell's Compress-Archive writes it there.
 if [[ "$os" == "windows" ]]; then
-  if ! command -v zip >/dev/null 2>&1; then
-    echo "assemble-release-dir: zip is required on Windows (jk.bat / install.ps1)" >&2
+  if command -v zip >/dev/null 2>&1; then
+    (cd "$DIST" && zip -q "$OUT/${name}.zip" "$(basename "$src")")
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    src_win="$(cygpath -w "$src")"
+    zip_win="$(cygpath -w "$OUT/${name}.zip")"
+    powershell.exe -NoProfile -NonInteractive -Command \
+      "\$ErrorActionPreference = 'Stop'; Compress-Archive -LiteralPath '$src_win' -DestinationPath '$zip_win' -Force"
+  else
+    echo "assemble-release-dir: zip or powershell.exe is required on Windows (jk.bat / install.ps1)" >&2
     exit 2
   fi
-  (cd "$DIST" && zip -q "$OUT/${name}.zip" "$(basename "$src")")
 fi
 
 engine=""
