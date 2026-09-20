@@ -70,19 +70,6 @@ public final class ProtoLifecycle {
         return new CalibrateRequestFrame(force, engineColdStartMs, allowNetwork).encode();
     }
 
-    /** Idle-optimize request: train worker AOT caches (java-compiler; language workers on-demand). */
-    public static String optimizeRequest(boolean force) {
-        return new OptimizeRequestFrame(force).encode();
-    }
-
-    /**
-     * Optimize result. {@code summary} is multi-line human text; {@code trained}/{@code skipped}
-     * are comma-separated tool tags for machine consumers.
-     */
-    public static String optimizeAck(boolean ok, String trained, String skipped, String summary) {
-        return new OptimizeAckFrame(ok, trained, skipped, summary).encode();
-    }
-
     /**
      * calibration result. Component ms fields are 0 when not measured; {@code summary} is
      * human-readable multi-line text for the CLI.

@@ -666,7 +666,7 @@ main() {
     # Local dogfood reinstalls keep the same version string while replacing the
     # engine jar. A still-running engine would keep serving the old jar until stop.
     run_jk engine stop --force >/dev/null 2>&1 || true
-    # Engine self-heals missing worker AOT + host calibration on idle (and every 12h).
+    # The engine calibrates the host on idle (and every 12h).
     # A successful start GCs parked jk.old / engine *.jar.old when the drain is done.
     # The start is what installs the engine's JDK on a machine that has none, and the
     # client renders that download as the `jk jdk install` progress bar — so it runs on

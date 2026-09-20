@@ -31,17 +31,13 @@ class ProtoLifecycleFrozenBytesTest {
     }
 
     @Test
-    void calibrate_and_optimize_lines_omit_the_cold_start_when_unknown() {
+    void calibrate_lines_omit_the_cold_start_when_unknown() {
         assertThat(ProtoLifecycle.calibrateRequest(true, 0))
                 .isEqualTo(
                         "{\"type\":\"calibrate-request\",\"force\":true,\"allowNetwork\":true,\"trigger\":\"calibrate\"}");
         assertThat(ProtoLifecycle.calibrateRequest(false, 850, false))
                 .isEqualTo(
                         "{\"type\":\"calibrate-request\",\"force\":false,\"allowNetwork\":false,\"engineColdStartMs\":850,\"trigger\":\"calibrate\"}");
-        assertThat(ProtoLifecycle.optimizeRequest(true)).isEqualTo("{\"type\":\"optimize-request\",\"force\":true}");
-        assertThat(ProtoLifecycle.optimizeAck(true, "java-compiler", "", "trained 1"))
-                .isEqualTo(
-                        "{\"type\":\"optimize-ack\",\"ok\":true,\"trained\":\"java-compiler\",\"skipped\":\"\",\"summary\":\"trained 1\"}");
         assertThat(ProtoLifecycle.calibrateAck(
                         true, 150.0, 320, 1200, 45, 30, 400, 900, 60, 700, 850, true, true, false, "ok"))
                 .isEqualTo(

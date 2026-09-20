@@ -112,8 +112,8 @@ public final class StoreFeedRefresh implements AutoCloseable {
     }
 
     /**
-     * One pass over store feeds only (no afterTick). Used by {@link HostWarmup} before AOT/cal so
-     * catalogs are warm without enqueueing GC twice.
+     * One pass over store feeds only (no afterTick). Used before host calibration so catalogs are
+     * warm without enqueueing GC twice.
      */
     public void refreshFeedsQuietly() {
         if (closed.get()) return;

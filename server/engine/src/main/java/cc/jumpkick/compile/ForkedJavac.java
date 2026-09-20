@@ -484,17 +484,12 @@ public final class ForkedJavac {
      */
     static List<String> trainerCommand(Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch)
             throws IOException {
-        return trainerCommandForOptimize(
+        return trainerCommand(
                 hostJavaHome, workerCp, aotOutput, scratch, req.release() > 0 ? req.release() : 25, novelJvmArgs(req));
     }
 
-    /** Public entry for install {@code jk optimize} / {@link WorkerAotBootstrap}: the flag-less key. */
-    public static List<String> trainerCommandForOptimize(
-            Path hostJavaHome, String workerCp, Path aotOutput, Path scratch) throws IOException {
-        return trainerCommandForOptimize(hostJavaHome, workerCp, aotOutput, scratch, 25, List.of());
-    }
-
-    private static List<String> trainerCommandForOptimize(
+    /** The trainer argv for a flag set the caller names; the compile path derives it from its request. */
+    public static List<String> trainerCommand(
             Path hostJavaHome, String workerCp, Path aotOutput, Path scratch, int release, List<String> module)
             throws IOException {
         Path src = scratch.resolve("Hello.java");

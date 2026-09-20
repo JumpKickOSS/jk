@@ -382,7 +382,7 @@ public record BuildRecord(
     public static boolean isSyntheticTrigger(@Nullable String trigger) {
         if (trigger == null || trigger.isBlank()) return false;
         String t = trigger.trim().toLowerCase(Locale.ROOT);
-        return "optimize".equals(t) || "calibrate".equals(t) || "synthetic".equals(t);
+        return "calibrate".equals(t) || "synthetic".equals(t);
     }
 
     /** In-flight stub at admission, with no session and no engine {@code requestId}. */

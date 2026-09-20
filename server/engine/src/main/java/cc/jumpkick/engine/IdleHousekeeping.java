@@ -58,7 +58,7 @@ public final class IdleHousekeeping {
     private final Runnable onDrainIdle;
 
     private final AtomicReference<@Nullable Path> pendingPruneCache = new AtomicReference<>();
-    private final AtomicReference<@Nullable Boolean> pendingWarmupForce = new AtomicReference<>();
+    private final AtomicBoolean pendingWarmup = new AtomicBoolean();
     private final AtomicBoolean warmupRunning = new AtomicBoolean();
     private final AtomicBoolean running = new AtomicBoolean();
 
@@ -118,8 +118,8 @@ public final class IdleHousekeeping {
             }
             if (activeBuildPlans.get() != 0) return;
 
-            if (pendingWarmupForce.get() != null || HostWarmup.needsWork()) {
-                pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+            if (pendingWarmup.get() || HostWarmup.needsWork()) {
+                pendingWarmup.set(true);
                 kickPendingWarmup(true);
                 return;
             }
@@ -152,17 +152,18 @@ public final class IdleHousekeeping {
             pendingPruneCache.compareAndSet(null, JkDirs.cache());
         }
         if (activeBuildPlans.get() == 0) {
-            pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+            pendingWarmup.set(true);
             run();
         } else {
-            scheduleHostWarmup(false);
+            scheduleHostWarmup();
         }
     }
 
-    public boolean scheduleHostWarmup(boolean force) {
+    /** Queue the idle calibration pass when the host needs one; runs now if no build is live. */
+    public boolean scheduleHostWarmup() {
         if (shuttingDown.getAsBoolean() || draining.getAsBoolean()) return false;
-        if (!force && !HostWarmup.needsWork()) return false;
-        pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+        if (!HostWarmup.needsWork()) return false;
+        pendingWarmup.set(true);
         if (activeBuildPlans.get() == 0) kickPendingWarmup(true);
         return true;
     }
@@ -187,10 +188,9 @@ public final class IdleHousekeeping {
     private void kickPendingWarmup(boolean trailGc) {
         if (shuttingDown.getAsBoolean() || draining.getAsBoolean()) return;
         if (activeBuildPlans.get() != 0) return;
-        Boolean force = pendingWarmupForce.getAndSet(null);
-        if (force == null) return;
+        if (!pendingWarmup.getAndSet(false)) return;
         if (!warmupRunning.compareAndSet(false, true)) {
-            pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+            pendingWarmup.set(true);
             return;
         }
         // Idle-time host warmup runs only while no build is live; reads no session.
@@ -198,7 +198,7 @@ public final class IdleHousekeeping {
                 () -> {
                     try {
                         if (activeBuildPlans.get() != 0) {
-                            pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+                            pendingWarmup.set(true);
                             return;
                         }
                         drainPendingPrune();
@@ -207,18 +207,18 @@ public final class IdleHousekeeping {
                         } catch (RuntimeException e) {
                             Log.debug("kickPendingWarmup: RuntimeException ignored", e);
                         }
-                        HostWarmup.runIdle(force, log);
+                        HostWarmup.runIdle(log);
                     } catch (RuntimeException e) {
                         log.accept("jk engine: idle host warmup failed: " + e.getMessage());
                     } finally {
-                        boolean more = pendingWarmupForce.get() != null;
+                        boolean more = pendingWarmup.get();
                         if (trailGc && !more && activeBuildPlans.get() == 0) {
                             dropHeapResidue();
                             System.gc();
                             HeapTrim.trimNative();
                         }
                         warmupRunning.set(false);
-                        if (pendingWarmupForce.get() != null && activeBuildPlans.get() == 0) {
+                        if (pendingWarmup.get() && activeBuildPlans.get() == 0) {
                             kickPendingWarmup(trailGc);
                         }
                     }

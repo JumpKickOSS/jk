@@ -157,12 +157,12 @@ final class EngineStartup {
     }
 
     /**
-     * First-start self-heal: feeds → templates → AOT/cal on the idle worker (does not block accept),
-     * then touch resolve/PubGrub classes so the first real lock does not pay classload on the critical
-     * path.
+     * First-start self-heal: feeds → templates → host calibration on the idle worker (does not block
+     * accept), then touch resolve/PubGrub classes so the first real lock does not pay classload on
+     * the critical path.
      */
     private void scheduleWarmups() {
-        idle.scheduleHostWarmup(false);
+        idle.scheduleHostWarmup();
         idle.scheduleResolveClassWarmup();
     }
 }
