@@ -4,11 +4,13 @@ package cc.jumpkick.host;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
 import java.util.Random;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -22,19 +24,36 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Two arms. The synthetic arm plants about as many files and directories as this repo's own
  * {@code target/} holds after a build (twenty thousand files in a few thousand directories, most
  * the size of a class file, a few the size of a jar). The real arm, when {@code JK_BENCH_TREE}
- * names a directory, copies that tree for each run and times only the delete of the copy. {@code
- * JK_BENCH_WIDTHS} (default {@code 1,2,4,8,16,32,64}), {@code JK_BENCH_RUNS} (default 3; the best
- * counts) and {@code JK_BENCH_FILES} (default 20000) shape the run. The test JVM inherits the
- * engine's environment, so set these before the engine starts.
+ * names a directory, copies that tree for each run and times only the delete of the copy.
+ *
+ * <p>Knobs come from {@code ~/.jk-delete-bench.properties} when that file exists — a forked test
+ * JVM gets an allow-listed environment, so a variable set in the shell would never arrive:
+ * {@code widths} (default {@code 1,2,4,8,16,32,64}), {@code runs} (default 3; the best counts),
+ * {@code files} (default 20000) and {@code tree} (the real arm's source; absent skips that arm).
  */
 @Tag("bench")
 class DeleteTreeBenchTest {
 
     private static final int[] DEFAULT_WIDTHS = {1, 2, 4, 8, 16, 32, 64};
 
+    private static final Properties KNOBS = knobs();
+
+    private static Properties knobs() {
+        var props = new Properties();
+        Path file = Path.of(System.getProperty("user.home"), ".jk-delete-bench.properties");
+        if (Files.isRegularFile(file)) {
+            try (var in = Files.newInputStream(file)) {
+                props.load(in);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+        return props;
+    }
+
     @Test
     void synthetic_target_tree(@TempDir Path dir) throws Exception {
-        int files = envInt("JK_BENCH_FILES", 20_000);
+        int files = knobInt("files", 20_000);
         Path first = plant(dir.resolve("warm"), files, new Random(7));
         Shape shape = Shape.of(first);
         PathUtil.deleteTrees(List.of(first), new PathUtil.Removed(), 1);
@@ -51,9 +70,9 @@ class DeleteTreeBenchTest {
 
     @Test
     void real_tree_when_named(@TempDir Path dir) throws Exception {
-        String named = System.getenv("JK_BENCH_TREE");
+        String named = KNOBS.getProperty("tree");
         if (named == null || named.isBlank() || !Files.isDirectory(Path.of(named))) {
-            System.out.println("delete-bench real: JK_BENCH_TREE not set to a directory; skipped");
+            System.out.println("delete-bench real: no `tree` directory in ~/.jk-delete-bench.properties; skipped");
             return;
         }
         Path source = Path.of(named);
@@ -121,20 +140,20 @@ class DeleteTreeBenchTest {
     }
 
     private static int[] widths() {
-        String env = System.getenv("JK_BENCH_WIDTHS");
-        if (env == null || env.isBlank()) return DEFAULT_WIDTHS;
-        String[] parts = env.split(",");
+        String knob = KNOBS.getProperty("widths");
+        if (knob == null || knob.isBlank()) return DEFAULT_WIDTHS;
+        String[] parts = knob.split(",");
         int[] out = new int[parts.length];
         for (int i = 0; i < parts.length; i++) out[i] = Integer.parseInt(parts[i].trim());
         return out;
     }
 
     private static int runs() {
-        return envInt("JK_BENCH_RUNS", 3);
+        return knobInt("runs", 3);
     }
 
-    private static int envInt(String name, int dflt) {
-        String v = System.getenv(name);
+    private static int knobInt(String name, int dflt) {
+        String v = KNOBS.getProperty(name);
         if (v == null || v.isBlank()) return dflt;
         return Integer.parseInt(v.trim());
     }
