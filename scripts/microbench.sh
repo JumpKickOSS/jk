@@ -87,11 +87,6 @@ else
   echo "| incr-body | skipped (no .java) |"
 fi
 
-# AOT-off control
-export JK_WORKER_AOT=off
-run_median "aot-off noop (JK_WORKER_AOT=off)" "$JK_BIN" build --skip-tests
-unset JK_WORKER_AOT
-
 echo
 echo "Note: wall times include engine handshake; use warm engine (status above)."
 echo "Timeline: out/jk-profile.json after builds."

@@ -596,7 +596,6 @@ multi-worker `-w` **or** Jupiter parallel with **`-w1`**. When both are active, 
 jk test                         # default: parallel modules, auto -w
 jk test -w1                     # one JVM per module
 jk test --serial-tests          # one module at a time
-export JK_AOT_TRAIN=off         # CI / short-lived engines
 jk test -j0 -w0
 ```
 
