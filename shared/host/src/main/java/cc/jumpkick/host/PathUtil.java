@@ -597,9 +597,7 @@ public final class PathUtil {
 
         void run(Collection<Path> roots, ForkJoinPool pool) throws IOException {
             List<RootTask> tasks = new ArrayList<>();
-            for (Path root : roots) {
-                if (root != null) tasks.add(new RootTask(root));
-            }
+            for (Path root : distinctTops(roots)) tasks.add(new RootTask(root));
             if (tasks.isEmpty()) return;
             if (tasks.size() == 1) {
                 pool.invoke(tasks.get(0));
@@ -617,6 +615,31 @@ public final class PathUtil {
                 else if (first != e) first.addSuppressed(e);
             }
             if (first != null) throw first;
+        }
+
+        /**
+         * {@code roots} without any root that lies under another one. A member's target sits under
+         * the workspace's ({@code <workspace>/target/<rel>/}), and a walk that entered both counted
+         * the nested tree twice against a delete that removed it once.
+         */
+        private static List<Path> distinctTops(Collection<Path> roots) {
+            List<Path> sorted = new ArrayList<>();
+            for (Path root : roots) {
+                if (root != null) sorted.add(root.toAbsolutePath().normalize());
+            }
+            sorted.sort(null);
+            List<Path> tops = new ArrayList<>();
+            for (Path root : sorted) {
+                boolean nested = false;
+                for (Path top : tops) {
+                    if (root.startsWith(top)) {
+                        nested = true;
+                        break;
+                    }
+                }
+                if (!nested) tops.add(root);
+            }
+            return tops;
         }
 
         /** The root: absent is a no-op, a non-directory (a link above all) is one delete. */
