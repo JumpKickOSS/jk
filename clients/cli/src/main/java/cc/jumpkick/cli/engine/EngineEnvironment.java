@@ -75,7 +75,12 @@ final class EngineEnvironment {
             "ProgramFiles",
             "ProgramFiles(x86)",
             "NUMBER_OF_PROCESSORS",
-            "PROCESSOR_ARCHITECTURE");
+            "PROCESSOR_ARCHITECTURE",
+            // The Visual Studio developer prompt's compiler variables: native-image compiles C
+            // with MSVC and, for a Visual Studio it cannot locate itself, reads these.
+            "INCLUDE",
+            "LIB",
+            "LIBPATH");
 
     private static final Set<String> MACHINE_UPPER =
             MACHINE.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
