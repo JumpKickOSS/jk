@@ -19,6 +19,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -240,7 +241,9 @@ final class ModuleForecast {
     }
 
     private Prepared prepare() throws Exception {
-        Lockfile lock = LockfileReader.read(lockFile);
+        // The lock as this member reads it, the view the build compiles against: a partition row
+        // the member does not hold must not put its jar on this module's processor path.
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
         boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
         BuildLayout layout = BuildLayout.of(dir, project);
         int release = project.project().javaRelease();
@@ -388,6 +391,7 @@ final class ModuleForecast {
                     stampFresh = false;
                 }
             }
+            ForecastSteps.noteCompileMain(out, req, mainSrc.size(), release, stampFresh, compileDepDirty);
             if (stampFresh) {
                 // The stamp names the compile that produced this tree; that record is what the
                 // tree is held against below and what a wiped tree would be reconstructed from.
