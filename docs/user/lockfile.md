@@ -82,7 +82,8 @@ with a preview: [`jk_update`](mcp.md#tools).
 ## `jk outdated`
 
 ```bash
-jk outdated                 # rows an update would move
+jk outdated                 # one row per coordinate an update would move
+jk outdated --by-module     # one row per module and dependency instead
 jk outdated --all           # every declared dependency, up to date included
 jk outdated --output json
 jk outdated --offline
@@ -104,15 +105,22 @@ A row prints when Compatible or Latest is strictly ahead of Current, or when Cur
 (unlocked). Rows already at their newest are counted, not printed: `(all 284 dependencies up to
 date)` is the whole report when nothing can move. `--all` prints every row checked.
 
-In the table a cell that repeats the one to its left prints `=`, a coordinate with no catalog
+In a workspace the table has one row per coordinate: a **Modules** column counts the modules
+that declare it, and when they sit on different pins the Current cell lists each version with
+its module count, lowest first (`1.1.1 ×11 · 1.2.0 ×1`), so drift inside the workspace reads at a
+glance. A coordinate moves when any module behind it can. `--by-module` prints one row per module
+and dependency instead, each module a header row above its dependencies.
+
+In either table a cell that repeats the one to its left prints `=`, a coordinate with no catalog
 short name shows its group as initials (`o.a.m:maven-core` for `org.apache.maven:maven-core`),
-and in a workspace each module is a header row above its dependencies. Long names and
-timestamped versions are clipped with `…`. JSON keeps full coordinates and versions.
+and long names and timestamped versions are clipped with `…`. JSON is always per module and
+keeps full coordinates and versions.
 
 Every successful run, from the CLI or from MCP, also writes `target/jk-outdated-dependencies.md`
 under the workspace root (the project root when standalone) with the whole picture, whatever
 the terminal filter was: a header line (date, modules, rows checked, rows that can move), a
-**Can move** table with full coordinates, and an **Up to date** list. The CLI prints a `Report:`
+**Can move** table with one row per coordinate and full coordinates, in a workspace a **By
+module** table with the rows behind it, and an **Up to date** list. The CLI prints a `Report:`
 line naming the file; read it instead of running the command again.
 
 Exit code is always `0` on a successful report. There is no `--fail-if-outdated` — lockfile
