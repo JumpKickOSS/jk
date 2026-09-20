@@ -173,8 +173,8 @@ public final class EngineFleet {
 
     /**
      * Resident engine JVMs this user owns that no on-disk pointer named. Match is the engine
-     * main class or {@code /lib/jk-engine/} on the command line. Sidecar AOT trainers and other
-     * users' processes are excluded. {@code allHomes} includes other {@code JK_HOME}s (status);
+     * main class or {@code /lib/jk-engine/} on the command line. Other users' processes are
+     * excluded. {@code allHomes} includes other {@code JK_HOME}s (status);
      * {@code false} keeps stop scoped to this home.
      *
      * <p>A process whose command line cannot be read is never claimed here: this pass has no
@@ -204,7 +204,7 @@ public final class EngineFleet {
     }
 
     /**
-     * True when {@code commandLine} names this home or state dir (jar path, AOT path, or the home
+     * True when {@code commandLine} names this home or state dir (jar path, or the home
      * inferred from the jar). A test JVM under {@code target/test-jk-home} must not match the
      * developer's {@code ~/.jk} engine.
      */
@@ -282,10 +282,9 @@ public final class EngineFleet {
         return out;
     }
 
-    /** True when {@code commandLine} is a resident engine JVM. Trainers pass {@code --aot-training}. */
+    /** True when {@code commandLine} is a resident engine JVM. */
     static boolean isResidentEngine(String commandLine) {
         if (commandLine == null || commandLine.isBlank()) return false;
-        if (commandLine.contains("--aot-training")) return false;
         return commandLine.contains("cc.jumpkick.engine.EngineMain") || commandLine.contains("/lib/jk-engine/");
     }
 

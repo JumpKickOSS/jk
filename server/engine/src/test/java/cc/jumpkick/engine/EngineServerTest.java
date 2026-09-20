@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.base.BuildMetrics;
-import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -66,48 +65,6 @@ class EngineServerTest extends EngineServerHarness {
             assertThat(rss == -1 || rss > 0).isTrue(); // -1 only where the OS exposes no RSS
         }
         server.close();
-    }
-
-    @Test
-    void status_ack_tracks_the_sidecar_aot_trainer_while_it_lives() throws Exception {
-        EnginePaths.Paths p = paths(shortTempDir());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "9.9.9-test", null);
-        // A stand-in trainer: any real child process the server can track and reap. The server
-        // must invoke this factory only after winning its election and starting to serve.
-        Process[] trainer = new Process[1];
-        server.aotTrainerSpawner(() -> {
-            try {
-                trainer[0] = Sleepers.sleeper(30)
-                        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                        .redirectError(ProcessBuilder.Redirect.DISCARD)
-                        .start();
-                return trainer[0];
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        runInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
-        waitUntil(Duration.ofSeconds(5), () -> trainer[0] != null && trainer[0].isAlive());
-
-        try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.send(ProtoLifecycle.hello("9.9.9-test"));
-            String status = c.send(ProtoLifecycle.statusRequest());
-            assertThat(Jsonl.longValue(status, "aotTrainingPid", -99)).isEqualTo(trainer[0].pid());
-
-            // Trainer exits (self-terminates in real life) → the pid leaves the status snapshot.
-            trainer[0].destroy();
-            waitUntil(Duration.ofSeconds(5), () -> {
-                try {
-                    return Jsonl.longValue(c.send(ProtoLifecycle.statusRequest()), "aotTrainingPid", -99) == -1;
-                } catch (IOException e) {
-                    return false;
-                }
-            });
-        } finally {
-            if (trainer[0] != null) trainer[0].destroyForcibly();
-            server.close();
-        }
     }
 
     @Test

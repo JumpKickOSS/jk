@@ -42,7 +42,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * CLI-side counterpart to the engine's {@code EngineServer}: ensures a live version-matched engine
- * and exposes the hosted verbs. Probes live in {@link EngineProbe}, spawn/takeover/AOT in {@link
+ * and exposes the hosted verbs. Probes live in {@link EngineProbe}, spawn/takeover in {@link
  * EngineSpawn}, request records in {@link EngineRequests}, fat hosted bodies in {@link
  * EngineHosted}. This type stays the one command-facing facade for verbs so adding {@code jk quux}
  * does not scatter imports across six collaborators.

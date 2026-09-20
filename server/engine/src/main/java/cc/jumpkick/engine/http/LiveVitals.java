@@ -237,7 +237,6 @@ public final class LiveVitals implements AutoCloseable {
             long rssMib,
             int cores,
             long pid,
-            long aotTrainingPid,
             String engineEpoch,
             List<Map<String, Object>> jobs) {
 
@@ -256,7 +255,6 @@ public final class LiveVitals implements AutoCloseable {
                     mib(s.rssBytes()),
                     s.cores(),
                     s.pid(),
-                    s.aotTrainingPid(),
                     s.engineEpoch() == null ? "" : s.engineEpoch(),
                     s.jobs());
         }

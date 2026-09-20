@@ -8,20 +8,18 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.util.function.Consumer;
 
 /**
  * The one-time start sequence after the election is won, as an ordered list of named steps in
  * {@link #run}. The order is load-bearing and each step says why: the predecessor is told to yield
- * before the AOT sweep, HTTP binds only after the predecessor's {@code bye}, and this engine's own
- * trainer starts after the sweep so it never sweeps its own output.
+ * first, and HTTP binds only after the predecessor's {@code bye}.
  *
  * <p>Process-global statics this reaches, by name rather than by pretending they are injected:
  * {@link JkEngineConfig#resolve} and {@link JvmOptions#planAndApply} size the shared worker heap
- * plan once per process; {@link JkDirs#state} and {@link EngineInstall} locate the AOT directory and
- * the install's displaced files; {@link BuildJournal} is the one the engine was composed with.
+ * plan once per process; {@link EngineInstall} locates the install's displaced files;
+ * {@link BuildJournal} is the one the engine was composed with.
  */
 final class EngineStartup {
 
@@ -31,7 +29,6 @@ final class EngineStartup {
     private final String version;
     private final long pid;
     private final EngineElection election;
-    private final AotTrainer aot;
     private final EngineHttpFront http;
     private final BuildJournal journal;
     private final IdleHousekeeping idle;
@@ -41,7 +38,6 @@ final class EngineStartup {
             String version,
             long pid,
             EngineElection election,
-            AotTrainer aot,
             EngineHttpFront http,
             BuildJournal journal,
             IdleHousekeeping idle,
@@ -49,7 +45,6 @@ final class EngineStartup {
         this.version = version;
         this.pid = pid;
         this.election = election;
-        this.aot = aot;
         this.http = http;
         this.journal = journal;
         this.idle = idle;
@@ -61,9 +56,7 @@ final class EngineStartup {
         sizeSharedWorkerMemory();
         log.accept("jk engine: listening on " + won.active().socket() + " (pid " + pid + ")");
         yieldPredecessor(won);
-        retireOtherVersionsAot();
         collectDisplacedInstallFiles();
-        startOwnTrainer();
         bindHttp();
         abandonStaleJournalRows();
         Started started = startChores();
@@ -90,19 +83,6 @@ final class EngineStartup {
         election.askPredecessorToYield(won.displaced());
     }
 
-    /** Drop other product versions' AOT (engine + workers); keep ours (named {@code *-<version>-*}). */
-    private void retireOtherVersionsAot() {
-        try {
-            int wiped = EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), version);
-            if (wiped > 0) {
-                log.accept("jk engine: retired " + wiped + " AOT cache(s) from other versions");
-            }
-        } catch (RuntimeException e) {
-            // best-effort
-            Log.debug("retireOtherVersionsAot: best-effort", e);
-        }
-    }
-
     private void collectDisplacedInstallFiles() {
         try {
             var gc = EngineInstall.current().gc();
@@ -113,11 +93,6 @@ final class EngineStartup {
             // a predecessor may still have the previous jar mapped — retry on the next cycle
             Log.debug("collectDisplacedInstallFiles: a predecessor may still have the previous jar mapped", e);
         }
-    }
-
-    /** Our own trainer starts after the sweep, so it never sweeps its own output. */
-    private void startOwnTrainer() {
-        aot.startIfConfigured();
     }
 
     /**
@@ -146,7 +121,7 @@ final class EngineStartup {
     /**
      * Store feeds are revalidated by HostWarmup / EngineMaintenance (not a 12 h process sleep). The
      * 1-minute loop reloads config.toml on mtime and runs the wall-clock 12 h maintenance (feeds,
-     * templates, cache prune, AOT/cal); laptop suspend-safe, since due work runs on the next minute
+     * templates, cache prune, calibration); laptop suspend-safe, since due work runs on the next minute
      * tick after resume.
      */
     private Started startChores() {

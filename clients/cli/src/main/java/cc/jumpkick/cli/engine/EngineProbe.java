@@ -30,7 +30,7 @@ public final class EngineProbe {
 
     /**
      * {@code jk engine status} snapshot. Memory fields use {@code -1} when unknown; http fields
-     * report embedded server URL/error; {@code aotTrainingPid} is visibility-only.
+     * report embedded server URL/error.
      */
     public record Status(
             String version,
@@ -43,7 +43,6 @@ public final class EngineProbe {
             long heapCommittedBytes,
             long heapMaxBytes,
             long rssBytes,
-            long aotTrainingPid,
             @Nullable String httpUrl,
             @Nullable String httpError,
             /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null. */
@@ -201,7 +200,6 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "heapCommittedBytes", -1),
                     Jsonl.longValue(ack, "heapMaxBytes", -1),
                     Jsonl.longValue(ack, "rssBytes", -1),
-                    Jsonl.longValue(ack, "aotTrainingPid", -1),
                     httpUrl,
                     Jsonl.str(ack, "httpError"),
                     mcpUrl,

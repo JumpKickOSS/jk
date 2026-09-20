@@ -45,7 +45,6 @@ class McpJobCancelTest {
                         2L << 20,
                         256L << 20,
                         -1L,
-                        0,
                         8,
                         16L << 30),
                 jobs,

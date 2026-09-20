@@ -1075,10 +1075,6 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/IdleHousekeeping.java"
 reason = "idle-time warmup and class preload run while no build is live"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineMain.java"
-reason = "the AOT trainer's serving loop and halt timer; no request exists in a trainer process"
-
-[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/DrainReporter.java"
 reason = "engine-lifetime drain report to the successor"
 

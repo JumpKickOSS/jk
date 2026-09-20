@@ -59,7 +59,6 @@ class McpHandlerTest {
                     2L << 20,
                     256L << 20,
                     -1L,
-                    /* aotTrainingPid */ 0,
                     /* cores */ 8,
                     16L << 30),
             jobs,
@@ -120,7 +119,6 @@ class McpHandlerTest {
         // Same facts as GET /api/status: the host and epoch vitals ride too.
         assertThat(structured)
                 .containsKeys(
-                        "aotTrainingPid",
                         "totalMemoryBytes",
                         "availableMemoryBytes",
                         "systemCpuLoad",
@@ -175,7 +173,7 @@ class McpHandlerTest {
                 JobRow.live(739, "test", "/home/me/app", 1_700_000_000_000L, 1, 1_700_000_500_000L),
                 JobRow.queued(741, "format", "/home/me/tool", 1_700_000_600_000L, 0));
         StatusSnapshot base =
-                new StatusSnapshot("0.12.0", 1L, 0L, 0, 1, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30);
+                new StatusSnapshot("0.12.0", 1L, 0L, 0, 1, 1L << 20, 2L << 20, 256L << 20, -1L, 8, 16L << 30);
         StatusSnapshot withJobs = new StatusSnapshot(
                 base.version(),
                 base.pid(),
@@ -186,7 +184,6 @@ class McpHandlerTest {
                 base.heapCommittedBytes(),
                 base.heapMaxBytes(),
                 base.rssBytes(),
-                base.aotTrainingPid(),
                 base.cores(),
                 base.totalMemoryBytes(),
                 base.availableMemoryBytes(),
@@ -254,7 +251,7 @@ class McpHandlerTest {
                 List.of(),
                 List.of());
         McpHandler waiting = new McpHandler(
-                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 8, 16L << 30),
                 jobs,
                 dir -> Map.of(),
                 List::of,
@@ -291,7 +288,6 @@ class McpHandlerTest {
                         2L << 20,
                         256L << 20,
                         -1L,
-                        0,
                         8,
                         16L << 30),
                 jobs,
@@ -423,7 +419,6 @@ class McpHandlerTest {
                         2L << 20,
                         256L << 20,
                         -1L,
-                        0,
                         8,
                         16L << 30),
                 jobs,
@@ -480,7 +475,6 @@ class McpHandlerTest {
                         2L << 20,
                         256L << 20,
                         -1L,
-                        0,
                         8,
                         16L << 30),
                 jobs,
@@ -536,7 +530,6 @@ class McpHandlerTest {
                         2L << 20,
                         256L << 20,
                         -1L,
-                        0,
                         8,
                         16L << 30),
                 jobs,
