@@ -327,42 +327,21 @@ public final class Table implements Widget {
         }
         List<Row> data = rows;
         boolean hasBody = hasVisibleBody(data);
+        boolean firstIsSpan = firstVisibleIsFullSpan(data, widths.length);
+        boolean railsOpen = true;
         if (effectiveShowColumns(isAppended) && hasBody) {
-            out.add(divider(ctx, "├", "┼", "┤", widths));
+            // A group header as the first body row collapses the rails right under the headers.
+            out.add(firstIsSpan ? divider(ctx, "├", "┴", "┤", widths) : divider(ctx, "├", "┼", "┤", widths));
+            railsOpen = !firstIsSpan;
         } else if (!effectiveShowColumns(isAppended) && effectiveShowTitle(isAppended) && hasBody) {
-            out.add(divider(ctx, "├", "┬", "┤", widths));
+            out.add(firstIsSpan ? flatDivider(ctx, innerWidth(widths)) : divider(ctx, "├", "┬", "┤", widths));
+            railsOpen = !firstIsSpan;
         }
-        int dataIndex = 0;
-        int dataCount = countData(data);
-        for (int i = 0; i < data.size(); i++) {
-            Row row = data.get(i);
-            if (row.kind() == RowKind.SEPARATOR) {
-                out.add(divider(ctx, "├", "┼", "┤", widths));
-                continue;
-            }
-            if (row.kind() == RowKind.SPAN) {
-                if (isFullSpan(row, widths.length)) {
-                    out.add(divider(ctx, "├", "┴", "┤", widths));
-                }
-                out.add(spanRow(ctx, row, widths, plain));
-            } else {
-                out.add(dataRow(ctx, row, cols, widths, plain));
-            }
-            if (row.kind() == RowKind.DATA) {
-                dataIndex++;
-                if (rowSeparators && dataIndex < dataCount) {
-                    out.add(divider(ctx, "├", "┼", "┤", widths));
-                }
-            }
-        }
+        paintBody(ctx, data, cols, widths, plain, railsOpen, rowSeparators, out);
 
         boolean last = appended.isEmpty();
         if (last) {
-            if (lastVisibleIsFullSpan(data, widths.length)) {
-                out.add(flatClose(ctx, innerWidth(widths)));
-            } else {
-                out.add(divider(ctx, "╰", "┴", "╯", widths));
-            }
+            out.add(closeLine(ctx, data, widths));
             return out;
         }
 
@@ -382,29 +361,59 @@ public final class Table implements Widget {
                     out.add(divider(ctx, "├", "┼", "┤", cw));
                 }
             }
-            for (Row row : child.rows) {
-                if (row.kind() == RowKind.SEPARATOR) {
-                    out.add(divider(ctx, "├", "┼", "┤", cw));
-                } else if (row.kind() == RowKind.SPAN) {
-                    // Same treatment as the parent loop: collapse the column rails before a
-                    // full-span row instead of colliding into it without junctions.
-                    if (isFullSpan(row, cw.length)) {
-                        out.add(divider(ctx, "├", "┴", "┤", cw));
-                    }
-                    out.add(spanRow(ctx, row, cw, plain));
-                } else {
-                    out.add(dataRow(ctx, row, child.columnsView(), cw, plain));
-                }
-            }
+            paintBody(ctx, child.rows, child.columnsView(), cw, plain, true, false, out);
             if (childLast) {
-                if (lastVisibleIsFullSpan(child.rows, cw.length)) {
-                    out.add(flatClose(ctx, innerWidth(cw)));
-                } else {
-                    out.add(divider(ctx, "╰", "┴", "╯", cw));
-                }
+                out.add(closeLine(ctx, child.rows, cw));
             }
         }
         return out;
+    }
+
+    /**
+     * Body rows in order. Rails are open while data rows paint; a full-span row (a group header
+     * or a footer) collapses them above itself and the next data row opens them again, so a span
+     * can sit between data rows as well as at the end.
+     */
+    private static void paintBody(
+            RenderContext ctx,
+            List<Row> data,
+            List<Column> cols,
+            int[] widths,
+            boolean plain,
+            boolean railsOpen,
+            boolean rowSeparators,
+            List<String> out) {
+        int dataIndex = 0;
+        int dataCount = countData(data);
+        for (Row row : data) {
+            if (row.kind() == RowKind.SEPARATOR) {
+                if (railsOpen) out.add(divider(ctx, "├", "┼", "┤", widths));
+                continue;
+            }
+            if (row.kind() == RowKind.SPAN) {
+                if (railsOpen && isFullSpan(row, widths.length)) {
+                    out.add(divider(ctx, "├", "┴", "┤", widths));
+                    railsOpen = false;
+                }
+                out.add(spanRow(ctx, row, widths, plain));
+                continue;
+            }
+            if (!railsOpen) {
+                out.add(divider(ctx, "├", "┬", "┤", widths));
+                railsOpen = true;
+            }
+            out.add(dataRow(ctx, row, cols, widths, plain));
+            dataIndex++;
+            if (rowSeparators && dataIndex < dataCount) {
+                out.add(divider(ctx, "├", "┼", "┤", widths));
+            }
+        }
+    }
+
+    private static String closeLine(RenderContext ctx, List<Row> data, int[] widths) {
+        return lastVisibleIsFullSpan(data, widths.length)
+                ? flatClose(ctx, innerWidth(widths))
+                : divider(ctx, "╰", "┴", "╯", widths);
     }
 
     private List<Column> columnsView() {
@@ -547,6 +556,21 @@ public final class Table implements Widget {
 
     private static boolean isFullSpan(Row row, int cols) {
         return row.cells().size() == 1 && row.cells().getFirst().colSpan() >= cols;
+    }
+
+    private static boolean firstVisibleIsFullSpan(List<Row> rows, int cols) {
+        for (Row r : rows) {
+            if (r.kind() == RowKind.SEPARATOR) continue;
+            return r.kind() == RowKind.SPAN && isFullSpan(r, cols);
+        }
+        return false;
+    }
+
+    /** Divider with no rails, for the boundary above a full-span row when no columns are open. */
+    private static String flatDivider(RenderContext ctx, int inner) {
+        boolean ansi = ctx.ansi();
+        String s = (ansi ? "├" : "+") + (ansi ? "─" : "-").repeat(inner) + (ansi ? "┤" : "+");
+        return ansi ? Theme.paint(s, ctx.theme().darkGray()) : s;
     }
 
     private static boolean lastVisibleIsFullSpan(List<Row> rows, int cols) {
