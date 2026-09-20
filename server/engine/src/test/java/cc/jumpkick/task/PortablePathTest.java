@@ -28,8 +28,10 @@ class PortablePathTest {
 
     @Test
     void a_file_under_no_manifest_of_its_own_is_keyed_by_the_nearest_root_above(@TempDir Path tmp) throws Exception {
-        // The temp dir sits under this module's own build tree, so the nearest jk.toml above it is
-        // the engine's: the key is relative to that root, never absolute, never machine-named.
+        // The nearest jk.toml above the file is the root the key is relative to — never absolute,
+        // never machine-named. The test plants that root itself: where a @TempDir lives is not
+        // the test's business.
+        Files.writeString(tmp.resolve(ManifestPaths.MANIFEST), "[project]\nname='outer'\n");
         Path dir = Files.createDirectories(tmp.resolve("store/blobs"));
         Path file = Files.writeString(dir.resolve("abc.jar"), "");
         String key = PortablePath.of(file);
@@ -43,6 +45,7 @@ class PortablePathTest {
         // asked about before its jk.toml existed. A process-lifetime memo kept keying the file
         // against the outer root for the rest of the engine's life — a key no fresh engine
         // reproduces, so a spurious miss on the next restart and a hit only this engine could see.
+        Files.writeString(tmp.resolve(ManifestPaths.MANIFEST), "[project]\nname='outer'\n");
         Path module = Files.createDirectories(tmp.resolve("ws/new-module"));
         Path src = Files.createDirectories(module.resolve("src"));
         Path file = Files.writeString(src.resolve("B.java"), "");
