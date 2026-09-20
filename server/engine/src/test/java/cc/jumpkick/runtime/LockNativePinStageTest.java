@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
@@ -97,7 +98,8 @@ class LockNativePinStageTest {
         lock(project, repo, tmp);
         RepoGroup.clearProcessVersionsCache();
 
-        OutdatedReport report = OutdatedPlans.compute(project, tmp.resolve("cache"), repo.toUri());
+        OutdatedReport report =
+                OutdatedPlans.compute(project, tmp.resolve("cache"), repo.toUri(), false, OutdatedPlans.Progress.NONE);
 
         assertThat(report.error()).isNull();
         assertThat(report.rows())
@@ -112,6 +114,31 @@ class LockNativePinStageTest {
                 });
     }
 
+    /**
+     * The report beats once per row before that row's repository read, the total known from the
+     * first beat: one declared dependency plus the native pin, so a client's bar is determinate
+     * before any network.
+     */
+    @Test
+    void outdated_beats_once_per_row_with_the_total_known_up_front(@TempDir Path tmp) throws Exception {
+        Path repo = repo(tmp);
+        Path project = project(tmp, "metadata-repository = \"^1.0.0\"\n");
+        lock(project, repo, tmp);
+        RepoGroup.clearProcessVersionsCache();
+        List<String> beats = new ArrayList<>();
+
+        OutdatedReport report = OutdatedPlans.compute(
+                project,
+                tmp.resolve("cache"),
+                repo.toUri(),
+                false,
+                (checked, total, coordinate) -> beats.add(checked + "/" + total + " " + coordinate));
+
+        assertThat(report.rows()).hasSize(2);
+        assertThat(beats)
+                .containsExactly("0/2 com.acme:util", "1/2 org.graalvm.buildtools:graalvm-reachability-metadata");
+    }
+
     /** A project with no {@code [native]} table contributes no row. */
     @Test
     void outdated_says_nothing_when_no_module_declares_native(@TempDir Path tmp) throws Exception {
@@ -119,7 +146,8 @@ class LockNativePinStageTest {
         Path project = project(tmp, null);
         lock(project, repo, tmp);
 
-        assertThat(OutdatedPlans.compute(project, tmp.resolve("cache"), repo.toUri())
+        assertThat(OutdatedPlans.compute(
+                                project, tmp.resolve("cache"), repo.toUri(), false, OutdatedPlans.Progress.NONE)
                         .rows())
                 .noneMatch(r -> r.coordinate().contains("graalvm-reachability-metadata"));
     }

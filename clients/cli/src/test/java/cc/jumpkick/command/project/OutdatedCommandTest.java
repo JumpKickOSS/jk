@@ -5,9 +5,11 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.command.DefaultTestDepsFixture;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.terminal.Width;
 import cc.jumpkick.testing.SysProps;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,6 +17,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -69,7 +72,7 @@ class OutdatedCommandTest {
     }
 
     @Test
-    void exclude_up_to_date_hides_current_but_keeps_behind(@TempDir Path tempDir) throws Exception {
+    void default_hides_up_to_date_rows_and_all_restores_them(@TempDir Path tempDir) throws Exception {
         // upToDate: only 1.0 exists. behind: 1.0 pinned but 2.0 exists.
         maven.registerMetadata("com.foo.outdated", "upToDate", "1.0");
         maven.registerPom("com.foo.outdated", "upToDate", "1.0", pom("com.foo.outdated", "upToDate", "1.0"));
@@ -85,12 +88,40 @@ class OutdatedCommandTest {
                         + "        behind = { group = \"com.foo.outdated\", name = \"behind\", version = \"=1.0\" }");
         lockOrExplain(tempDir, cache);
 
-        String all = json(tempDir, cache);
-        assertThat(all).contains("com.foo.outdated:upToDate").contains("com.foo.outdated:behind");
-
-        String filtered = jsonArgs(tempDir, cache, "--exclude-up-to-date");
+        String filtered = json(tempDir, cache);
         assertThat(filtered).contains("com.foo.outdated:behind");
         assertThat(filtered).doesNotContain("com.foo.outdated:upToDate");
+
+        String all = jsonArgs(tempDir, cache, "--all");
+        assertThat(all).contains("com.foo.outdated:upToDate").contains("com.foo.outdated:behind");
+
+        String table = table(tempDir, cache);
+        assertThat(table).contains("behind").doesNotContain("upToDate");
+    }
+
+    @Test
+    void every_row_up_to_date_says_how_many_were_checked(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0");
+        maven.registerPom("com.foo.outdated", "leaf", "1.0", pom("com.foo.outdated", "leaf", "1.0"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"=1.0\" }");
+        lockOrExplain(tempDir, cache);
+
+        assertThat(table(tempDir, cache)).contains("(all 1 dependency up to date)");
+        assertThat(json(tempDir, cache).trim()).isEqualTo("[]");
+        assertThat(table(tempDir, cache, "--all")).contains("c.f.o:leaf").contains("1.0");
+    }
+
+    @Test
+    void an_unlocked_row_stays_visible_by_default(@TempDir Path tempDir) throws Exception {
+        // Metadata only: the best-effort lock cannot resolve a POM, so Current is empty.
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0");
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"=1.0\" }");
+
+        String json = json(tempDir, cache);
+        assertThat(json).contains("\"dependency\":\"com.foo.outdated:leaf\"").contains("\"current\":\"\"");
     }
 
     @Test
@@ -157,8 +188,45 @@ class OutdatedCommandTest {
         assertThat(json).contains("\"module\":\"com.acme:app\"").contains("\"dependency\":\"com.foo.outdated:leaf\"");
         assertThat(json).contains("\"module\":\"com.acme:lib\"").contains("\"dependency\":\"com.foo.outdated:core\"");
 
-        // The Module column shows in the human table for a workspace.
-        assertThat(table(tempDir, tempDir.resolve("cache"))).contains("Module");
+        // Each module is a full-width group header above its rows, not a column of its own.
+        List<String> lines =
+                TestAnsi.strip(table(tempDir, tempDir.resolve("cache"))).lines().toList();
+        assertThat(lines).noneMatch(l -> l.contains("Module"));
+        String appHeader = lines.stream()
+                .filter(l -> l.contains("com.acme:app"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(appHeader).doesNotContain("c.f.o:leaf").doesNotContain("│ 1.0");
+        String leafRow =
+                lines.stream().filter(l -> l.contains("c.f.o:leaf")).findFirst().orElseThrow();
+        assertThat(lines.indexOf(leafRow)).isGreaterThan(lines.indexOf(appHeader));
+        // Five content-sized columns: the table itself stays well under a 100-column terminal.
+        int widest = lines.stream()
+                .filter(l -> !l.isEmpty() && "│├╰|+".indexOf(l.charAt(0)) >= 0)
+                .mapToInt(Width::columns)
+                .max()
+                .orElse(0);
+        assertThat(widest).isBetween(30, 99);
+    }
+
+    @Test
+    void long_cells_are_clipped_so_one_dependency_cannot_widen_the_table(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata(
+                "com.foo.outdated",
+                "a-very-long-artifact-name-nobody-shortens",
+                "7.7.1.202607240634-r",
+                "7.8.0.202609011348-r");
+        Path cache = tempDir.resolve("cache");
+        writeProject(
+                tempDir,
+                "leaf = { group = \"com.foo.outdated\", name = \"a-very-long-artifact-name-nobody-shortens\", version = \"^7.7\" }");
+        // No lock: Current is empty and Compatible/Latest come straight from the index.
+        String out = TestAnsi.strip(table(tempDir, cache));
+        assertThat(out).contains("c.f.o:a-very-long-artifact-na…").doesNotContain("nobody-shortens");
+        assertThat(out).contains("7.8.0.2026090…").doesNotContain("7.8.0.202609011348-r");
+        assertThat(json(tempDir, cache))
+                .contains("com.foo.outdated:a-very-long-artifact-name-nobody-shortens")
+                .contains("7.8.0.202609011348-r");
     }
 
     @Test
@@ -172,11 +240,43 @@ class OutdatedCommandTest {
 
         String out = table(tempDir, cache);
         assertThat(out).contains("Dependency", "Compatible", "Latest");
-        assertThat(out).contains("com.foo.outdated:leaf");
-        assertThat(out).contains("2.0");
+        // The table shows the group as initials; JSON keeps the full coordinate.
+        assertThat(out).contains("c.f.o:leaf").doesNotContain("com.foo.outdated:leaf");
+        assertThat(json(tempDir, cache)).contains("\"dependency\":\"com.foo.outdated:leaf\"");
+        // Locked at 1.1, the selector admits 1.1 and 2.0 is beyond it: Compatible repeats
+        // Current as "=", Latest names the version.
+        assertThat(TestAnsi.strip(out)).containsPattern("c\\.f\\.o:leaf\\s+│ 1\\.1\\s+│ =\\s+│ 2\\.0\\s+│");
         // : footer points at graph inspection + intentional update
         assertThat(out).contains("jk why").contains("jk tree").contains("jk update");
     }
+
+    /**
+     * The live row is taken before the request and given back before the table: on this ANSI
+     * stdout the cursor is hidden and shown again ahead of the table title, and nothing of the
+     * row survives after it. Under {@code --no-progress} the row is never taken.
+     */
+    @Test
+    void the_progress_row_precedes_the_table_and_no_progress_paints_none(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        maven.registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
+        lockOrExplain(tempDir, cache);
+
+        String live = table(tempDir, cache);
+        int title = live.indexOf("Dependency versions");
+        assertThat(title).isPositive();
+        assertThat(live.substring(0, title)).contains(HIDE_CURSOR).contains(SHOW_CURSOR);
+        assertThat(live.substring(title)).doesNotContain(HIDE_CURSOR).doesNotContain("Checking");
+
+        String quiet = table(tempDir, cache, "--no-progress");
+        assertThat(quiet).contains("c.f.o:leaf");
+        assertThat(quiet).doesNotContain(HIDE_CURSOR).doesNotContain("Checking");
+    }
+
+    private static final String HIDE_CURSOR = "\u001b[?25l";
+    private static final String SHOW_CURSOR = "\u001b[?25h";
 
     @Test
     void a_version_published_after_the_lock_shows_as_latest(@TempDir Path tempDir) throws Exception {
@@ -186,7 +286,7 @@ class OutdatedCommandTest {
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
         lockOrExplain(tempDir, cache);
-        assertThat(json(tempDir, cache)).contains("\"latest\":\"1.1\"");
+        assertThat(jsonArgs(tempDir, cache, "--all")).contains("\"latest\":\"1.1\"");
 
         // Published after the lock: the catalog on disk is within its TTL and the engine holds the
         // list it read, and the report still has to say what the repository publishes now.
@@ -222,6 +322,48 @@ class OutdatedCommandTest {
                 .contains("\"scope\":")
                 .contains("\"module\":")
                 .contains("\"display\":");
+    }
+
+    @Test
+    void every_run_writes_the_results_file_and_the_table_names_it(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        maven.registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
+        lockOrExplain(tempDir, cache);
+        Path file = tempDir.resolve("target").resolve("jk-outdated-dependencies.md");
+
+        String out = table(tempDir, cache);
+        assertThat(out).contains("Report:").contains("target/jk-outdated-dependencies.md");
+        assertThat(file).exists();
+        String md = Files.readString(file);
+        assertThat(md)
+                .contains("# jk outdated dependencies")
+                .contains("## Can move")
+                .contains("## Up to date");
+        assertThat(md).contains("| `com.foo.outdated:leaf` | 1.1 | 1.1 | 2.0 | main |");
+
+        // JSON is still one array and nothing else; the file is written all the same.
+        Files.delete(file);
+        String json = json(tempDir, cache).trim();
+        assertThat(json).startsWith("[").endsWith("]").doesNotContain("Report:");
+        assertThat(file).exists();
+    }
+
+    @Test
+    void the_old_exclude_flag_is_unrecognized(@TempDir Path tempDir) {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream prior = System.err;
+        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        int exit;
+        try {
+            exit = run("outdated", "-C", tempDir.toString(), "--exclude-up-to-date");
+        } finally {
+            System.setErr(prior);
+        }
+        assertThat(exit).isEqualTo(64);
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("unrecognized option");
     }
 
     @Test

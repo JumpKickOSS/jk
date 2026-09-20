@@ -10,8 +10,11 @@ import cc.jumpkick.runtime.workspace.OutdatedPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.OutdatedRequest;
+import cc.jumpkick.wire.protocol.ProtoReads;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -55,7 +58,13 @@ public final class OutdatedVerb implements HostedVerb {
                 String repoUrl = req.repoUrl();
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 report = SessionContext.where(
-                        session, () -> OutdatedPlans.compute(dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
+                        session,
+                        () -> OutdatedPlans.compute(
+                                dir,
+                                cache,
+                                repoUrl == null ? null : URI.create(repoUrl),
+                                req.offline(),
+                                beatsTo(writer)));
             } catch (Exception e) {
                 report = OutdatedReport.error(Errors.text(e));
             }
@@ -65,5 +74,20 @@ public final class OutdatedVerb implements HostedVerb {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
         return JobOutcome.declined();
+    }
+
+    /**
+     * Each beat is written with {@link VerbHost#send}, not {@code sendQuiet}: a client that hung up
+     * (Ctrl-C) fails the write, and the failure stops the remaining fetches instead of letting a
+     * read nobody is waiting for run to the end.
+     */
+    private OutdatedPlans.Progress beatsTo(@Nullable BufferedWriter writer) {
+        return (checked, total, coordinate) -> {
+            try {
+                host.send(writer, ProtoReads.outdatedProgress(checked, total, coordinate));
+            } catch (IOException e) {
+                throw new UncheckedIOException("client left before the outdated report finished", e);
+            }
+        };
     }
 }

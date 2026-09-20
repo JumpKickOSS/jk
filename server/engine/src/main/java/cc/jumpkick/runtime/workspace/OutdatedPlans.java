@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
@@ -37,6 +38,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -58,13 +60,29 @@ public final class OutdatedPlans {
     private OutdatedPlans() {}
 
     /**
+     * Where the report's beats go: {@code checked} of {@code total} rows are done and {@code
+     * coordinate} is about to be fetched. Called once before the first fetch with {@code checked =
+     * 0}. A sink may throw to stop the report (the wire client hung up).
+     */
+    @FunctionalInterface
+    public interface Progress {
+        void checking(int checked, int total, String coordinate);
+
+        /** Discard every beat: MCP and tests, where nobody watches. */
+        Progress NONE = (checked, total, coordinate) -> {};
+    }
+
+    /**
      * Produce the report for the project (or workspace) rooted at {@code dir}. Every catalog is
      * read fresh — past the metadata TTL, the process version-list memo and the not-found memo —
      * because the question is what the repositories publish now, not what the last lock saw.
      */
-    public static OutdatedReport compute(Path dir, Path cache, @Nullable URI repoUrl) {
+    public static OutdatedReport compute(
+            Path dir, Path cache, @Nullable URI repoUrl, boolean offline, Progress progress) {
         try {
-            return MavenMetadataCache.withForceRevalidate(() -> fresh(dir, cache, repoUrl));
+            OutdatedReport report = MavenMetadataCache.withForceRevalidate(() -> fresh(dir, repoUrl, progress));
+            if (report.error() == null) writeReport(dir, report, offline);
+            return report;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return OutdatedReport.error(Errors.text(e));
@@ -73,7 +91,36 @@ public final class OutdatedPlans {
         }
     }
 
-    private static OutdatedReport fresh(Path dir, Path cache, @Nullable URI repoUrl) {
+    /** The file for the report on {@code dir}: under the owning workspace root's {@code target/}. */
+    public static Path reportFile(Path dir) {
+        Path root = dir;
+        try {
+            root = WorkspaceLocator.owningRoot(dir).orElse(dir);
+        } catch (IOException e) {
+            Log.debug("reportFile: workspace root lookup failed", e);
+        }
+        return JkOutdatedMarkdown.latestPath(root);
+    }
+
+    /** Best effort: a report nobody can write down is still a report. */
+    private static void writeReport(Path dir, OutdatedReport report, boolean offline) {
+        try {
+            JkOutdatedMarkdown.write(reportFile(dir), report, offline, LocalDate.now());
+        } catch (IOException | RuntimeException e) {
+            Log.debug("writeReport: " + JkOutdatedMarkdown.FILE_NAME, e);
+        }
+    }
+
+    /** One direct dependency waiting for its version picture, with everything its row needs. */
+    private record Pending(
+            Dependency dep,
+            String moduleLabel,
+            String display,
+            String scope,
+            @Nullable String locked,
+            RepoGroup repos) {}
+
+    private static OutdatedReport fresh(Path dir, @Nullable URI repoUrl, Progress progress) {
         LinkedHashMap<Path, JkBuild> scopes = new LinkedHashMap<>();
         try {
             JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
@@ -91,10 +138,9 @@ public final class OutdatedPlans {
 
         boolean workspace = scopes.size() > 1;
         Map<String, String> shortNames = reverseCatalog(dir);
-        GitFetcher git = new GitFetcher(JkStores.resolve("git"));
-        Map<String, GitFetcher.RemoteRefs> gitRefsCache = new HashMap<>();
 
-        List<OutdatedReport.Row> rows = new ArrayList<>();
+        // Every row is listed before any repository is read, so the first beat carries the total.
+        List<Pending> pending = new ArrayList<>();
         for (Map.Entry<Path, JkBuild> scope : scopes.entrySet()) {
             Path moduleDir = scope.getKey();
             JkBuild build = scope.getValue();
@@ -112,35 +158,46 @@ public final class OutdatedPlans {
                     }
                     if (!seen.add(dep.module())) continue; // one row per coordinate — first scope wins
                     String display = shortNames.getOrDefault(dep.module(), "");
-                    rows.add(
-                            dep.isGit()
-                                    ? gitRow(dep, moduleLabel, display, scopeName, git, gitRefsCache)
-                                    : mavenRow(dep, moduleLabel, display, scopeName, locked.get(dep.module()), repos));
+                    pending.add(new Pending(dep, moduleLabel, display, scopeName, locked.get(dep.module()), repos));
                 }
             }
         }
-        nativeMetadataRow(dir, cache, repoUrl, scopes.values().iterator().next())
-                .ifPresent(rows::add);
+        Optional<VersionSelector> nativeDeclared = nativeSelector(dir);
+        int total = pending.size() + (nativeDeclared.isPresent() ? 1 : 0);
+
+        GitFetcher git = new GitFetcher(JkStores.resolve("git"));
+        Map<String, GitFetcher.RemoteRefs> gitRefsCache = new HashMap<>();
+        List<OutdatedReport.Row> rows = new ArrayList<>();
+        for (Pending p : pending) {
+            progress.checking(rows.size(), total, p.dep().module());
+            rows.add(
+                    p.dep().isGit()
+                            ? gitRow(p.dep(), p.moduleLabel(), p.display(), p.scope(), git, gitRefsCache)
+                            : mavenRow(p.dep(), p.moduleLabel(), p.display(), p.scope(), p.locked(), p.repos()));
+        }
+        if (nativeDeclared.isPresent()) {
+            progress.checking(
+                    rows.size(), total, ReachabilityMetadata.coordinate("any").module());
+            rows.add(nativeMetadataRow(dir, repoUrl, scopes.values().iterator().next(), nativeDeclared.get()));
+        }
         return OutdatedReport.of(workspace, rows);
     }
 
-    /**
-     * The {@code [native] metadata-repository} pin, when the project declares one.
-     *
-     * <p>It is not a dependency, but it is a floating selector this lock pinned, and a pin nobody
-     * can see is a pin nobody bumps: for as long as the release was a constant in the engine there
-     * was no way to learn that a newer repository existed short of reading jk's source.
-     */
-    private static Optional<OutdatedReport.Row> nativeMetadataRow(
-            Path dir, Path cache, @Nullable URI repoUrl, JkBuild build) {
-        Optional<VersionSelector> declared;
+    /** The {@code [native] metadata-repository} selector, when the project declares one. */
+    private static Optional<VersionSelector> nativeSelector(Path dir) {
         try {
-            declared = LockNativePin.selector(dir);
+            return LockNativePin.selector(dir);
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
-        if (declared.isEmpty()) return Optional.empty();
+    }
 
+    /**
+     * The {@code [native] metadata-repository} pin's row. It is not a dependency, but it is a
+     * floating selector the lock pinned, and a pin nobody can see is a pin nobody bumps.
+     */
+    private static OutdatedReport.Row nativeMetadataRow(
+            Path dir, @Nullable URI repoUrl, JkBuild build, VersionSelector declared) {
         Lockfile.NativeMetadata pin = null;
         try {
             Path lockFile = LockPaths.lockFile(dir);
@@ -160,7 +217,7 @@ public final class OutdatedPlans {
             Thread.currentThread().interrupt();
             available = List.of();
         }
-        VersionSet set = VersionSelectors.toVersionSet(declared.get());
+        VersionSet set = VersionSelectors.toVersionSet(declared);
         String compatible = available.stream()
                 .filter(set::contains)
                 .filter(Versions::isStable)
@@ -170,7 +227,7 @@ public final class OutdatedPlans {
                 .filter(Versions::isStable)
                 .max(Versions::compare)
                 .orElse("");
-        return Optional.of(new OutdatedReport.Row(
+        return new OutdatedReport.Row(
                 "",
                 ReachabilityMetadata.coordinate("any").module(),
                 "reachability metadata",
@@ -178,7 +235,7 @@ public final class OutdatedPlans {
                 pin == null ? "" : pin.version(),
                 compatible,
                 latest,
-                ""));
+                "");
     }
 
     // ---- Maven --------------------------------------------------------------
