@@ -339,6 +339,12 @@ public final class BuildEta {
             int testW = TestWorkers.resolve(share, classGuess, share);
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
+            // resolve-deps runs on every scheduled module and the forecast lists it as bookkeeping,
+            // so it is priced from its own recorded wall: a Spring Boot module resolves for a
+            // second, jk's own modules for a tenth of that. Dependents wait on it too.
+            long resolveMs = EffortWeights.stepOkAvgMillisOwn(
+                    metrics, BuildMetrics.slashKey(mdir.toString()), TaskNames.RESOLVE_DEPS);
+            if (resolveMs > 0) priced = priced.plusGated(EffortWeights.flatWeight(resolveMs));
             // This module's own `.jk/` scripts, for the anchors this build will actually reach.
             // They are prefix work — before-compile/after-compile/before-package all land ahead of
             // the suite-vs-tail split — so they go on `weight` and not on either branch.
