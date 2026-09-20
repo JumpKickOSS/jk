@@ -53,9 +53,12 @@ class ReportStructuredTest {
     @SuppressWarnings("unchecked")
     void outdated_report_rows_round_trip_to_maps() {
         OutdatedReport r = OutdatedReport.of(
-                true, List.of(new OutdatedReport.Row("app", "g:a", "g:a", "main", "1.0", "1.1", "2.0", "major bump")));
-        Map<String, Object> m = r.toStructured();
-        assertThat(m).containsEntry("workspace", true);
+                true,
+                List.of(
+                        new OutdatedReport.Row("app", "g:a", "g:a", "main", "1.0", "1.1", "2.0", "major bump"),
+                        new OutdatedReport.Row("app", "g:b", "", "main", "3.0", "3.0", "3.0", "")));
+        Map<String, Object> m = r.toStructured(false);
+        assertThat(m).containsEntry("workspace", true).containsEntry("checked", 2);
         List<Map<String, Object>> rows = (List<Map<String, Object>>) requireNonNull(m.get("rows"));
         assertThat(rows).singleElement().satisfies(row -> {
             assertThat(row).containsEntry("coordinate", "g:a");
@@ -63,7 +66,28 @@ class ReportStructuredTest {
             assertThat(row).containsEntry("latest", "2.0");
             assertThat(row).containsEntry("tip", "major bump");
         });
-        assertThat(OutdatedReport.error("down").toStructured()).containsEntry("error", "down");
+        List<Map<String, Object>> every =
+                (List<Map<String, Object>>) requireNonNull(r.toStructured(true).get("rows"));
+        assertThat(every).hasSize(2);
+        assertThat(OutdatedReport.error("down").toStructured(false)).containsEntry("error", "down");
+    }
+
+    @Test
+    void outdated_row_moves_when_a_column_is_ahead_or_current_is_unknown() {
+        assertThat(new OutdatedReport.Row("", "g:a", "", "main", "1.0", "1.0", "1.0", "").canMove())
+                .isFalse();
+        assertThat(new OutdatedReport.Row("", "g:a", "", "main", "1.0", "1.1", "1.1", "").canMove())
+                .isTrue();
+        assertThat(new OutdatedReport.Row("", "g:a", "", "main", "1.0", "1.0", "2.0", "").canMove())
+                .isTrue();
+        assertThat(new OutdatedReport.Row("", "g:a", "", "main", "", "1.0", "1.0", "").canMove())
+                .isTrue();
+        assertThat(new OutdatedReport.Row("", "g:a", "", "main", "v1.0", "v1.0", "v1.2", "").canMove())
+                .isTrue();
+        assertThat(new OutdatedReport.Row("", "g:a", "", "main", "1.0", "", "1.0", "").canMove())
+                .isFalse();
+        assertThat(OutdatedReport.ahead("2.0", "1.0")).isTrue();
+        assertThat(OutdatedReport.ahead("1.0", "tip")).isFalse();
     }
 
     @Test

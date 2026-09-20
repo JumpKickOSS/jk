@@ -125,7 +125,7 @@ Do **not** habitually set `jdk = 17` / `jdk = 21` — that forces obsolete runti
 Prefer `java = N` for language level.
 
 ```bash
-jk outdated     # Current / Compatible / Latest, read-only
+jk outdated     # rows an update would move, read-only; --all for every row
 jk update       # bump the pins in jk.toml (same major; --major to cross), relock
 jk build        # still fully reproducible from that lock
 ```
@@ -185,7 +185,7 @@ JumpKick writes every resolved version **and checksum** to `jk-lock.toml` and tr
 ```bash
 jk lock          # resolve → write jk-lock.toml (commit this)
 jk build         # uses the lock; does not re-resolve
-jk outdated      # read-only: which deps have newer versions than the lock
+jk outdated      # read-only: which deps can move; writes target/jk-outdated-dependencies.md
 jk update        # bump declared pins to the newest stable on the same major, relock
 jk sync --offline-prepare   # download everything for offline/CI
 ```

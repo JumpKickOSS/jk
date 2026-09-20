@@ -17,6 +17,7 @@ import cc.jumpkick.wire.protocol.LockModuleEvent;
 import cc.jumpkick.wire.protocol.LockPackageEvent;
 import cc.jumpkick.wire.protocol.LockPhaseEvent;
 import cc.jumpkick.wire.protocol.LockRequest;
+import cc.jumpkick.wire.protocol.OutdatedProgressEvent;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.OutdatedRequest;
 import cc.jumpkick.wire.protocol.PlanFinishLockEvent;
@@ -67,23 +68,40 @@ final class EngineResolveAdapter {
     }
 
     /**
-     * Run {@code jk outdated} against the engine: one synchronous request, one {@code outdated-ack}
-     * carrying the {@link cc.jumpkick.wire.protocol.OutdatedReport} back. Read-only — no cascade,
-     * no plan stream.
+     * Run {@code jk outdated} against the engine: an inline read whose {@code outdated-progress}
+     * beats drive {@code handler} until the {@code outdated-ack} carries the {@link OutdatedReport}
+     * back. Read-only — no job, no cascade.
      */
-    static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
-        return EngineReads.request(
-                paths,
-                EngineJobs.envelope(new OutdatedRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.repoUrl() != null ? req.repoUrl().toString() : null,
-                                req.offline(),
-                                req.force())
-                        .encode()),
-                EngineProtocol.OUTDATED_ACK,
-                "outdated request",
-                OutdatedReport::decode);
+    static OutdatedReport runOutdated(
+            EnginePaths.Paths paths, EngineRequests.OutdatedRequest req, EngineRequests.OutdatedHandler handler)
+            throws IOException {
+        String requestLine = EngineJobs.envelope(new OutdatedRequest(
+                        req.entryDir().toString(),
+                        req.cache().toString(),
+                        req.repoUrl() != null ? req.repoUrl().toString() : null,
+                        req.offline(),
+                        req.force())
+                .encode());
+        return EngineWire.stream(
+                paths, requestLine, (reader, ch) -> WireStream.pumpRead(reader, outdatedDecoder(handler)));
+    }
+
+    /** The outdated read's lines: beats to {@code handler}, the ack is terminal, an error line throws. */
+    static WireStream.Decoder<OutdatedReport> outdatedDecoder(EngineRequests.OutdatedHandler handler) {
+        return (type, line) -> {
+            switch (type) {
+                case EngineProtocol.OUTDATED_PROGRESS -> {
+                    OutdatedProgressEvent e = OutdatedProgressEvent.decode(line);
+                    handler.onChecking(e.checked(), e.total(), e.coordinate());
+                }
+                case EngineProtocol.OUTDATED_ACK -> {
+                    return OutdatedReport.decode(line);
+                }
+                case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
+                default -> {}
+            }
+            return null;
+        };
     }
 
     /** Run {@code jk lock}'s cascade against the engine, driving {@code handler}. */

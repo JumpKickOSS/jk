@@ -181,6 +181,12 @@ class McpToolRegistryTest {
         assertThat(String.valueOf(objects(result, "content").getFirst().get("text")))
                 .startsWith("outdated");
 
+        Map<String, Object> card = objects(tools.listing(McpTools.Surface.ALL), "tools").stream()
+                .filter(t -> "jk_outdated".equals(t.get("name")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(object(object(card, "inputSchema"), "properties")).containsKeys("dir", "all");
+
         assertThatThrownBy(() -> tools.call(
                         context(),
                         Map.of("name", "jk_tools", "arguments", Map.of("action", "call", "name", "jk_nope"))))
