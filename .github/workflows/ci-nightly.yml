@@ -440,11 +440,9 @@ jobs:
           curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
 
-      # native-image compiles C on Windows with MSVC and needs the Visual Studio environment the
-      # developer prompt sets; the engine inherits it from the first jk invocation.
-      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
-        if: runner.os == 'Windows'
-
+      # No developer-prompt step: native-image sets up Visual Studio 2022 itself when cl.exe is not
+      # already on PATH, and a prompt that puts it there hands the engine a PATH without the INCLUDE
+      # the hosted bootstrap's engine does not pass through.
       - name: Bootstrap jk from the hosted release (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
