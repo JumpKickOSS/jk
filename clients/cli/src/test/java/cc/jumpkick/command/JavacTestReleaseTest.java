@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.testing.TestCaches;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -64,8 +65,12 @@ class JavacTestReleaseTest {
     /** {@code jk test} on the fixture, both streams kept: a wedge lands on stdout, a refusal on stderr. */
     private static Run test(Path dir) {
         int[] exit = new int[1];
-        Capture.Streams streams =
-                Capture.both(() -> exit[0] = run("test", "-C", dir.toString(), "--cache-dir", SharedTestCache.arg()));
+        Capture.Streams streams = Capture.both(() -> exit[0] = run(
+                "test",
+                "-C",
+                dir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString()));
         return new Run(exit[0], "stdout:\n" + streams.out() + "\nstderr:\n" + streams.err());
     }
 
@@ -113,7 +118,12 @@ class JavacTestReleaseTest {
                     }
                 }
                 """);
-        assertThat(run("lock", "-C", dir.toString(), "--cache-dir", SharedTestCache.arg()))
+        assertThat(run(
+                        "lock",
+                        "-C",
+                        dir.toString(),
+                        "--cache-dir",
+                        TestCaches.dir("shared-cache").toString()))
                 .as("the fixture's lock resolves JUnit")
                 .isEqualTo(0);
     }

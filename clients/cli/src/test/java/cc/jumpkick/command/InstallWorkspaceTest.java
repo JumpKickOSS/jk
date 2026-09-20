@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -74,7 +75,7 @@ class InstallWorkspaceTest {
         // [test] env name reaches the test JVM only on the request's client env — the engine is a
         // daemon — and install's request used to carry none. The jk.env seam stands in for the
         // shell: JK_REPO_* names ride ClientEnvForward, and the member declares the same name.
-        Path cache = Path.of(SharedTestCache.arg());
+        Path cache = Path.of(TestCaches.dir("shared-cache").toString());
         workspace(tmp, "public final class Lib { }");
         Files.writeString(tmp.resolve("lib/jk.toml"), """
                 name = "lib"

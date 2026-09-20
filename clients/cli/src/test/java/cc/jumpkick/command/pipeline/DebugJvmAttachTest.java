@@ -4,7 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.command.SharedTestCache;
+import cc.jumpkick.testing.TestCaches;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -54,8 +54,13 @@ class DebugJvmAttachTest {
         AtomicInteger exit = new AtomicInteger(Integer.MIN_VALUE);
         Thread jk = Thread.ofPlatform()
                 .name("jk-test-debug")
-                .start(() -> exit.set(
-                        run("test", "-C", dir.toString(), "--cache-dir", SharedTestCache.arg(), "--debug-jvm=0")));
+                .start(() -> exit.set(run(
+                        "test",
+                        "-C",
+                        dir.toString(),
+                        "--cache-dir",
+                        TestCaches.dir("shared-cache").toString(),
+                        "--debug-jvm=0")));
         try {
             Matcher announced = awaitAnnouncement(err, jk);
             String host = announced.group(1);
