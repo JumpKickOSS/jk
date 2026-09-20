@@ -194,13 +194,14 @@ public final class McpReads {
         return m;
     }
 
-    public static Map<String, Object> outdated(String dir) {
+    /** Outdated rows for {@code dir}: the movable subset by default, every row with {@code all}. */
+    public static Map<String, Object> outdated(String dir, boolean all) {
         Path root = PathUtil.resolveUserPath(dir);
         try {
             Path cache = JkDirs.cache();
             Session session = Session.defaults().withWorkingDir(root).withCacheDir(cache);
             OutdatedReport r = SessionContext.where(session, () -> OutdatedPlans.compute(root, cache, null));
-            return r.toStructured();
+            return r.toStructured(all);
         } catch (Exception e) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("error", Errors.text(e));

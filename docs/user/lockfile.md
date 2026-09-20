@@ -82,8 +82,8 @@ with a preview: [`jk_update`](mcp.md#tools).
 ## `jk outdated`
 
 ```bash
-jk outdated
-jk outdated --exclude-up-to-date
+jk outdated                 # rows an update would move
+jk outdated --all           # every declared dependency, up to date included
 jk outdated --output json
 jk outdated --offline
 ```
@@ -95,15 +95,22 @@ jk outdated --offline
 | **Latest** | Newest stable in the repo; what `jk update` (same major) or `jk update --major` would write |
 | **Tip** | With `--show-tip`: prerelease / git frontier ahead of Latest |
 
+A row prints when Compatible or Latest is strictly ahead of Current, or when Current is unknown
+(unlocked). Rows already at their newest are counted, not printed: `(all 284 dependencies up to
+date)` is the whole report when nothing can move. `--all` prints every row checked.
+
 Exit code is always `0` on a successful report. There is no `--fail-if-outdated` — lockfile
-changes stay intentional. For CI “fail if drift”, parse `--output json`.
+changes stay intentional. For CI “fail if drift”, `--output json` is a non-empty array exactly
+when something can move.
 
 `--offline` uses only local cache / repo mirrors. Unreachable remotes look empty on
 Compatible/Latest — the CLI prints a note so that is not mistaken for “everything is current.”
 
 JSON is an **array** of row objects (`module`, `dependency`, `display`, `scope`, `current`,
-`compatible`, `latest`, `tip`). `module` is empty for a single-project root. `display` is
-the catalog short name when known.
+`compatible`, `latest`, `tip`), filtered the same way as the table (`--all` for every row).
+`module` is empty for a single-project root. `display` is the catalog short name when known.
+MCP [`jk_outdated`](mcp.md#tools) takes the same `all` and reports `checked`, the number of rows
+examined, beside `rows`.
 
 ## Toolchain pins
 

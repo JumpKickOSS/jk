@@ -16,14 +16,12 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import java.net.URI;
@@ -34,18 +32,18 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk outdated} — read-only report of declared deps with newer versions than {@code jk-lock.toml}
- * pins (Current / Compatible / Latest; optional Tip). Engine-hosted; writes nothing. At a workspace
- * root, cascades over every module.
+ * {@code jk outdated} — read-only report of declared deps an update would move (Current / Compatible /
+ * Latest; optional Tip). Engine-hosted; writes nothing. At a workspace root, cascades over every
+ * module. Rows already at their newest are hidden unless {@code --all}.
  *
- * <p>Exit 0 on success whether or not any row is outdated (inspect JSON or the table for drift).
- * Does not re-resolve or rewrite the lock — use {@code jk update} after review. Machine output:
- * {@code --output json} emits a JSON array of row objects (see guide).
+ * <p>Exit 0 on success whether or not any row can move (a non-empty JSON array is drift). Does not
+ * re-resolve or rewrite the lock — use {@code jk update} after review. Machine output: {@code
+ * --output json} emits a JSON array of row objects (see guide).
  */
 public final class OutdatedCommand implements CliCommand {
 
     private boolean showTip;
-    private boolean excludeUpToDate;
+    private boolean all;
     private @Nullable URI repoUrl;
     private @Nullable Path cacheDir;
     private @Nullable GlobalOptions global;
@@ -57,14 +55,14 @@ public final class OutdatedCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Report dependencies with newer versions available";
+        return "Report dependencies an update would move";
     }
 
     @Override
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Show Tip column (prerelease / git HEAD)", "--show-tip"),
-                Opt.flag("Hide deps already on newest compatible", "--exclude-up-to-date"),
+                Opt.flag("Every dependency, up to date included", "--all"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
                 CommonOpts.cacheDir());
@@ -73,7 +71,7 @@ public final class OutdatedCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         this.showTip = in.isSet("show-tip");
-        this.excludeUpToDate = in.isSet("exclude-up-to-date");
+        this.all = in.isSet("all");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
@@ -99,10 +97,8 @@ public final class OutdatedCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        List<OutdatedReport.Row> rows = report.rows();
-        if (excludeUpToDate) {
-            rows = rows.stream().filter(r -> !upToDate(r)).toList();
-        }
+        int checked = report.rows().size();
+        List<OutdatedReport.Row> rows = all ? report.rows() : report.movable();
         if (global.outputIsJson()) {
             CliOutput.outRaw(toJson(rows));
             return Exit.SUCCESS;
@@ -112,7 +108,10 @@ public final class OutdatedCommand implements CliCommand {
                     + " unreachable remotes may look up-to-date.");
         }
         if (rows.isEmpty()) {
-            CliOutput.out(excludeUpToDate ? "(no outdated dependencies)" : "(no dependencies to check)");
+            CliOutput.out(
+                    checked == 0
+                            ? "(no dependencies to check)"
+                            : "(all " + checked + (checked == 1 ? " dependency" : " dependencies") + " up to date)");
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
@@ -130,25 +129,8 @@ public final class OutdatedCommand implements CliCommand {
         return "outdated";
     }
 
-    // Version comparison (normalizes git tag names like "v1.2.3")
-
-    /** True when {@code a} is a strictly-higher version than {@code b} (both version-like). */
     private static boolean ahead(@Nullable String a, @Nullable String b) {
-        String na = norm(a);
-        String nb = norm(b);
-        return na != null && nb != null && Versions.compare(na, nb) > 0;
-    }
-
-    /** Normalize a cell to a comparable Maven version, or null when it isn't one ("", "tip", tag text). */
-    private static @Nullable String norm(@Nullable String v) {
-        if (v == null || v.isEmpty() || v.equals("tip")) return null;
-        String n = GitVersion.fromTag(v); // "v1.2.3" -> "1.2.3"; leaves Maven versions unchanged
-        return (n.isEmpty() || !Character.isDigit(n.charAt(0))) ? null : n;
-    }
-
-    private static boolean upToDate(OutdatedReport.Row r) {
-        if (norm(r.current()) == null) return false; // unlocked / unknown current — keep it visible
-        return !ahead(r.compatible(), r.current()) && !ahead(r.latest(), r.current());
+        return OutdatedReport.ahead(a, b);
     }
 
     // JSON
