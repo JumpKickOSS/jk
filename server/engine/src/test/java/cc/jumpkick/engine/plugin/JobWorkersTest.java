@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.testing.Sleepers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -18,7 +19,7 @@ class JobWorkersTest {
     void destroy_kills_registered_alive_process() throws Exception {
         long req = 42L;
         JobWorkers.open(req);
-        Process p = new ProcessBuilder("sleep", "60").start();
+        Process p = Sleepers.sleeper(60).start();
         try {
             JobWorkers.register(p);
             assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
@@ -40,7 +41,7 @@ class JobWorkersTest {
     void start_registers_when_a_request_scope_is_open() throws Exception {
         long req = 55L;
         JobWorkers.open(req);
-        Process p = JobWorkers.start(new ProcessBuilder("sleep", "30"));
+        Process p = JobWorkers.start(Sleepers.sleeper(30));
         try {
             assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
             assertThat(p.isAlive()).isTrue();
@@ -53,7 +54,7 @@ class JobWorkersTest {
 
     @Test
     void register_without_scope_is_noop() throws Exception {
-        Process p = new ProcessBuilder("sleep", "1").start();
+        Process p = Sleepers.sleeper(1).start();
         try {
             JobWorkers.register(p); // no open() — ignored
             assertThat(JobWorkers.destroyForRequest(999L)).isEqualTo(0);
@@ -66,7 +67,7 @@ class JobWorkersTest {
     void unregister_removes_from_tracking() throws Exception {
         long req = 7L;
         JobWorkers.open(req);
-        Process p = new ProcessBuilder("sleep", "30").start();
+        Process p = Sleepers.sleeper(30).start();
         try {
             JobWorkers.register(p);
             JobWorkers.unregister(p);
@@ -87,7 +88,7 @@ class JobWorkersTest {
         // leak) nor escape the kill.
         long req = 97L;
         JobWorkers.open(req);
-        Process p = new ProcessBuilder("sleep", "60").start();
+        Process p = Sleepers.sleeper(60).start();
         try {
             assertThat(JobWorkers.shutdownForRequest(req, 0L)).isEqualTo(0); // nothing yet
             JobWorkers.register(p); // late registration from a draining thread
@@ -96,7 +97,7 @@ class JobWorkersTest {
             assertThat(p.isAlive()).isFalse();
             // A fresh scope open for the same id clears the tombstone: registration works again.
             JobWorkers.open(req);
-            Process q = new ProcessBuilder("sleep", "60").start();
+            Process q = Sleepers.sleeper(60).start();
             try {
                 JobWorkers.register(q);
                 assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
@@ -118,7 +119,7 @@ class JobWorkersTest {
         List<Process> kids = new ArrayList<>();
         try {
             for (int i = 0; i < 3; i++) {
-                Process p = new ProcessBuilder("sleep", "60").start();
+                Process p = Sleepers.sleeper(60).start();
                 kids.add(p);
                 JobWorkers.register(p);
             }
@@ -138,7 +139,7 @@ class JobWorkersTest {
         long req = 99L;
         JobWorkers.open(req);
         // Ignore SIGTERM-friendly process: sleep still exits on destroy() on macOS/Linux.
-        Process p = new ProcessBuilder("sleep", "120").start();
+        Process p = Sleepers.sleeper(120).start();
         try {
             JobWorkers.register(p);
             long t0 = System.nanoTime();

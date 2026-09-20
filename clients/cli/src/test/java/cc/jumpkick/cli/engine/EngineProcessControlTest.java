@@ -3,8 +3,8 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.host.Os;
 import cc.jumpkick.testing.ShortTempDirs;
+import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
@@ -125,9 +125,6 @@ class EngineProcessControlTest {
 
     /** A live process whose command line is visibly not java or jk. */
     private static Process notAJvm() throws IOException {
-        if (Os.isWindows()) {
-            return new ProcessBuilder("cmd", "/c", "ping", "-n", "40", "127.0.0.1").start();
-        }
-        return new ProcessBuilder("sleep", "30").start();
+        return Sleepers.sleeper(30).start();
     }
 }

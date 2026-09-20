@@ -16,6 +16,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.Await;
+import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.transcript.SessionStartLine;
@@ -434,7 +435,7 @@ class JobEnvelopeTest {
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     try {
-                        worker.set(JobWorkers.start(new ProcessBuilder("sleep", "60")));
+                        worker.set(JobWorkers.start(Sleepers.sleeper(60)));
                         release.await(10, TimeUnit.SECONDS);
                     } catch (IOException e) {
                         throw new UncheckedIOException(e);
