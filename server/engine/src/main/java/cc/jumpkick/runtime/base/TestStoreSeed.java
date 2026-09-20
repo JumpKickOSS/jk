@@ -223,13 +223,29 @@ public final class TestStoreSeed {
         return Files.isRegularFile(list) ? Optional.of(Files.readAllBytes(list)) : Optional.empty();
     }
 
-    /** The metadata body for {@code artifactDir} under the sandbox, unless one is already there. */
+    /**
+     * The comment a synthesised version list carries, so a later seed can tell it from an index
+     * the store fetched itself: the store's own fetch is left alone; a synthesised list is
+     * rewritten whenever the host's versions differ from what it names, so a warm slot can lock a
+     * version the host store gained after the slot was first seeded.
+     */
+    static final String SEED_MARK = "<!-- synthesised by the jk test-store seed; the store's own fetch replaces it -->";
+
+    /**
+     * The metadata body for {@code artifactDir} under the sandbox: written when absent, rewritten
+     * when it is a synthesised list that no longer names the host's versions, left alone when the
+     * store fetched it itself. True when a body was written.
+     */
     private static boolean writeVersionList(Path sandbox, Path artifactDir, TreeSet<String> versions)
             throws IOException {
         Path body = sandbox.resolve("metadata").resolve(metadataKey(artifactDir));
-        if (Files.exists(body)) return false;
+        String xml = versionList(artifactDir, versions);
+        if (Files.exists(body)) {
+            String current = Files.readString(body);
+            if (!current.contains(SEED_MARK) || current.equals(xml)) return false;
+        }
         Files.createDirectories(body.getParent());
-        Files.writeString(body, versionList(artifactDir, versions));
+        Files.writeString(body, xml);
         return true;
     }
 
@@ -245,7 +261,9 @@ public final class TestStoreSeed {
         String artifactId = segments.remove(segments.size() - 1);
         String groupId = String.join(".", segments);
         String newest = versions.last();
-        StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<metadata>\n");
+        StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+                .append(SEED_MARK)
+                .append("\n<metadata>\n");
         xml.append("  <groupId>").append(groupId).append("</groupId>\n");
         xml.append("  <artifactId>").append(artifactId).append("</artifactId>\n");
         xml.append("  <versioning>\n");
