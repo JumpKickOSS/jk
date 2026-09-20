@@ -208,6 +208,34 @@ class OutdatedCommandTest {
         assertThat(out).contains("jk why").contains("jk tree").contains("jk update");
     }
 
+    /**
+     * The live row is taken before the request and given back before the table: on this ANSI
+     * stdout the cursor is hidden and shown again ahead of the table title, and nothing of the
+     * row survives after it. Under {@code --no-progress} the row is never taken.
+     */
+    @Test
+    void the_progress_row_precedes_the_table_and_no_progress_paints_none(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        maven.registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
+        lockOrExplain(tempDir, cache);
+
+        String live = table(tempDir, cache);
+        int title = live.indexOf("Dependency versions");
+        assertThat(title).isPositive();
+        assertThat(live.substring(0, title)).contains(HIDE_CURSOR).contains(SHOW_CURSOR);
+        assertThat(live.substring(title)).doesNotContain(HIDE_CURSOR).doesNotContain("Checking");
+
+        String quiet = table(tempDir, cache, "--no-progress");
+        assertThat(quiet).contains("com.foo.outdated:leaf");
+        assertThat(quiet).doesNotContain(HIDE_CURSOR).doesNotContain("Checking");
+    }
+
+    private static final String HIDE_CURSOR = "\u001b[?25l";
+    private static final String SHOW_CURSOR = "\u001b[?25h";
+
     @Test
     void a_version_published_after_the_lock_shows_as_latest(@TempDir Path tempDir) throws Exception {
         maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1");
