@@ -4,7 +4,6 @@ package cc.jumpkick.engine.jobs;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
-import cc.jumpkick.testing.Await;
 import java.io.BufferedReader;
 import java.io.PipedReader;
 import java.io.PipedWriter;
@@ -17,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
-/** The read-park gate and the three join budgets, driven without an engine. */
+/** The EOF watch and the three join budgets, driven without an engine. */
 class ConnectionWatchTest {
 
     @Test
@@ -31,7 +30,6 @@ class ConnectionWatchTest {
                 disconnects::incrementAndGet);
         assertThat(disconnects).hasValue(1);
         assertThat(Thread.currentThread().isInterrupted()).isFalse();
-        assertThat(watch.parkedOnRead()).isFalse();
     }
 
     /**
@@ -48,42 +46,36 @@ class ConnectionWatchTest {
                 () -> true,
                 disconnects::incrementAndGet);
         assertThat(disconnects).as("a finished body has nothing left to cancel").hasValue(0);
-        assertThat(watch.parkedOnRead()).isFalse();
     }
 
+    /**
+     * The client never writes mid-job, so the EOF read can only be ended by the client — and on
+     * Windows not even a half-close from this side wakes it. The connection thread therefore
+     * never sits in that read: the job's own latch releases it, and a client that sends nothing
+     * cancels nothing.
+     */
     @Test
-    void the_wake_reaches_the_connection_thread_only_while_it_is_parked_on_the_read() throws Exception {
+    void the_job_ending_releases_the_connection_thread_while_the_client_stays_silent() throws Exception {
         ConnectionWatch watch = new ConnectionWatch(System::currentTimeMillis, s -> {});
         PipedReader never = new PipedReader(new PipedWriter());
         CountDownLatch done = new CountDownLatch(1);
-        CountDownLatch hold = new CountDownLatch(1);
         AtomicInteger disconnects = new AtomicInteger();
+        CountDownLatch returned = new CountDownLatch(1);
         Thread connection = Thread.ofPlatform().start(() -> {
             watch.watchForEof(new BufferedReader(never), done, () -> false, disconnects::incrementAndGet);
-            try {
-                hold.await(30, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            returned.countDown();
         });
         try {
-            Await.until(Duration.ofSeconds(10), watch::parkedOnRead);
-            assertThat(watch.parkedOnRead()).isTrue();
-
-            // No channel to half-close: the blunt wake is the only way off the read.
-            watch.wakeIfParked(null, connection);
-            Await.until(Duration.ofSeconds(10), () -> !watch.parkedOnRead());
-            assertThat(watch.parkedOnRead()).isFalse();
+            assertThat(returned.await(1, TimeUnit.SECONDS))
+                    .as("a silent client must not hold the connection thread")
+                    .isFalse();
+            done.countDown();
+            assertThat(returned.await(10, TimeUnit.SECONDS)).isTrue();
             assertThat(disconnects)
-                    .as("a wake with the job still running is a disconnect")
-                    .hasValue(1);
-
-            // Off the read: a second wake must not interrupt a thread about to do teardown I/O.
-            watch.wakeIfParked(null, connection);
-            assertThat(connection.isAlive()).isTrue();
+                    .as("the job ended; the client did not go away")
+                    .hasValue(0);
             assertThat(connection.isInterrupted()).isFalse();
         } finally {
-            hold.countDown();
             connection.join(10_000);
         }
     }

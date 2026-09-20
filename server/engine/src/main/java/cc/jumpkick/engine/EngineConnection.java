@@ -250,13 +250,13 @@ final class EngineConnection {
                 // and its unread lines are held to the stream-idle bound rather than a reply's.
                 reader.idleTimeout(0);
                 WireWriter.idleBound(writer, streamIdleMillis);
-                ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
+                ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer));
                 yield true;
             }
             case VerbShape.CacheMaint() -> {
                 reader.idleTimeout(0);
                 WireWriter.idleBound(writer, streamIdleMillis);
-                ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
+                ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer));
                 yield true;
             }
             case VerbShape.SyncRead() -> {

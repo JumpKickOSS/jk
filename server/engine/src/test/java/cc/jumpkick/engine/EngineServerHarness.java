@@ -14,6 +14,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.UncheckedIOException;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -25,10 +26,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -112,6 +117,36 @@ abstract class EngineServerHarness {
         /** Read the next event line off the stream ({@code null} on EOF). */
         String readLine() throws IOException {
             return reader.readLine();
+        }
+
+        /**
+         * Read the next event line, failing the test after {@code bound} instead of hanging: a frame
+         * that never arrives is the engine's bug to name, not a silent test. The socket is closed
+         * on timeout so the read thread ends.
+         */
+        @Nullable
+        String readLine(Duration bound) throws IOException {
+            CompletableFuture<@Nullable String> next = CompletableFuture.supplyAsync(
+                    () -> {
+                        try {
+                            return reader.readLine();
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    },
+                    Executors.newVirtualThreadPerTaskExecutor());
+            try {
+                return next.get(bound.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                channel.close();
+                throw new AssertionError("no line from the engine within " + bound.toSeconds() + " s", e);
+            } catch (ExecutionException e) {
+                if (e.getCause() instanceof UncheckedIOException io) throw io.getCause();
+                throw new IOException(e.getCause());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted while reading", e);
+            }
         }
 
         @Override
