@@ -95,6 +95,11 @@ jk outdated --offline
 | **Latest** | Newest stable in the repo; what `jk update` (same major) or `jk update --major` would write |
 | **Tip** | With `--show-tip`: prerelease / git frontier ahead of Latest |
 
+In the table a cell that repeats the one to its left prints `=`, a coordinate with no catalog
+short name shows its group as initials (`o.a.m:maven-core` for `org.apache.maven:maven-core`),
+and in a workspace each module is a header row above its dependencies. Long names and
+timestamped versions are clipped with `…`. JSON keeps full coordinates and versions.
+
 Exit code is always `0` on a successful report. There is no `--fail-if-outdated` — lockfile
 changes stay intentional. For CI “fail if drift”, parse `--output json`.
 
