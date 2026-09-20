@@ -17,6 +17,7 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.GroupInitials;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -162,13 +163,22 @@ public final class OutdatedCommand implements CliCommand {
     }
 
     // Rendering — box-drawn table mirroring JdkListCommand's style.
-    // Columns are dynamic: [Module?] Dependency Current Compatible Latest [Tip?] Scope.
+    // Columns: Dependency Current Compatible Latest [Tip?] Scope. In a workspace each module is a
+    // full-width group header above its rows rather than a column of its own.
 
     private static final String NONE = "—";
 
+    /** A version cell that repeats the one to its left. */
+    static final String SAME = "=";
+
+    /** Widest Dependency cell; a longer catalog name or coordinate ends in an ellipsis. */
+    static final int DEPENDENCY_COLUMNS = 30;
+
+    /** Widest version cell; timestamped qualifiers like {@code 7.7.1.202607240634-r} are cut here. */
+    static final int VERSION_COLUMNS = 14;
+
     static List<String> renderTable(List<OutdatedReport.Row> rows, boolean workspace, boolean showTip, String title) {
         List<String> headers = new ArrayList<>();
-        if (workspace) headers.add("Module");
         headers.add("Dependency");
         headers.add("Current");
         headers.add("Compatible");
@@ -177,61 +187,45 @@ public final class OutdatedCommand implements CliCommand {
         headers.add("Scope");
         int n = headers.size();
 
-        List<String[]> cellRows = new ArrayList<>();
-        List<Style[]> styleRows = new ArrayList<>();
-        List<Boolean> dividerBefore = new ArrayList<>();
-        String prevModule = null;
-        boolean first = true;
-        for (OutdatedReport.Row r : rows) {
-            boolean newGroup = workspace && !r.moduleLabel().equals(prevModule);
-            dividerBefore.add(!first && newGroup);
-            String[] cells = new String[n];
-            @Nullable Style[] styles = new Style[n];
-            int c = 0;
-            if (workspace) {
-                cells[c] = newGroup ? r.moduleLabel() : "";
-                styles[c] = Theme.active().brightYellow();
-                c++;
-            }
-            boolean hasShort = !r.display().isEmpty();
-            cells[c] = hasShort ? r.display() : r.coordinate();
-            styles[c] =
-                    hasShort ? Theme.active().path().italic() : Theme.active().path();
-            c++;
-            cells[c] = disp(r.current());
-            styles[c] = null;
-            c++;
-            cells[c] = disp(r.compatible());
-            styles[c] = ahead(r.compatible(), r.current()) ? Theme.active().brightYellow() : null;
-            c++;
-            cells[c] = disp(r.latest());
-            styles[c] = ahead(r.latest(), r.compatible()) ? Theme.active().brightCyan() : null;
-            c++;
-            if (showTip) {
-                cells[c] = disp(r.tip());
-                styles[c] = Theme.active().darkGray();
-                c++;
-            }
-            cells[c] = r.scope();
-            styles[c] = Theme.active().darkGray();
-            cellRows.add(cells);
-            styleRows.add(styles);
-            prevModule = r.moduleLabel();
-            first = false;
-        }
-
         Table table = new Table(title).columns(headers.toArray(String[]::new));
-        for (int i = 0; i < cellRows.size(); i++) {
-            if (dividerBefore.get(i)) table.row(Table.Row.separator());
-            String[] cells = cellRows.get(i);
-            @Nullable Style[] styles = styleRows.get(i);
-            RichText[] rich = new RichText[n];
-            for (int c = 0; c < n; c++) {
-                rich[c] = styledCell(cells[c], styles[c]);
+        String prevModule = null;
+        for (OutdatedReport.Row r : rows) {
+            if (workspace && !r.moduleLabel().equals(prevModule)) {
+                table.row(Table.Row.span(
+                        Table.Cell.of(styledCell(r.moduleLabel(), Theme.active().brightYellow()))
+                                .span(n)));
+                prevModule = r.moduleLabel();
             }
+            RichText[] rich = new RichText[n];
+            int c = 0;
+            boolean hasShort = !r.display().isEmpty();
+            rich[c++] = styledCell(
+                    clip(hasShort ? r.display() : GroupInitials.module(r.coordinate()), DEPENDENCY_COLUMNS),
+                    hasShort ? Theme.active().path().italic() : Theme.active().path());
+            rich[c++] = styledCell(version(r.current(), null), null);
+            rich[c++] = styledCell(
+                    version(r.compatible(), r.current()),
+                    ahead(r.compatible(), r.current()) ? Theme.active().brightYellow() : null);
+            rich[c++] = styledCell(
+                    version(r.latest(), r.compatible()),
+                    ahead(r.latest(), r.compatible()) ? Theme.active().brightCyan() : null);
+            if (showTip)
+                rich[c++] = styledCell(version(r.tip(), null), Theme.active().darkGray());
+            rich[c] = styledCell(r.scope(), Theme.active().darkGray());
             table.row(rich);
         }
         return table.render(RenderContext.current());
+    }
+
+    /** The version cell: {@value #SAME} when it repeats {@code left}, the dash when empty, else clipped. */
+    private static String version(@Nullable String v, @Nullable String left) {
+        if (v == null || v.isEmpty()) return NONE;
+        if (v.equals(left)) return SAME;
+        return clip(v, VERSION_COLUMNS);
+    }
+
+    private static String clip(String text, int columns) {
+        return RenderContext.truncateVisible(text, columns);
     }
 
     private static RichText styledCell(String text, @Nullable Style style) {
