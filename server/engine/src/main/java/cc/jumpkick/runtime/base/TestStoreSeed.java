@@ -34,9 +34,12 @@ import org.jspecify.annotations.Nullable;
  * host stored without its POM — Maven-local adoption records the jar and not the POM — is
  * completed from {@link M2Dirs#localRepository()} (the gate's shared test-m2 under
  * {@code JK_M2_LOCAL}) and from {@code ~/.m2} when the file is there, and the rest of those trees
- * there (POMs and jars the host never stored) is copied for exact fetches a solve still makes. A
- * body the sandbox already holds is left alone — an index the store fetched itself outranks a
- * synthesised one — and nothing here is fetched, so the seed is a warmth, never a network cost.
+ * there (POMs and jars the host never stored) is copied for exact fetches a solve still makes.
+ * Only a file whose {@code _remote.repositories} says Central served it: a local repository holds
+ * whatever any repository answered under a coordinate — a test's stub server, an {@code mvn
+ * install} — and under {@code repos/central} those bytes would be pinned as Central's. A body the
+ * sandbox already holds is left alone — an index the store fetched itself outranks a synthesised
+ * one — and nothing here is fetched, so the seed is a warmth, never a network cost.
  *
  * <p>Only those trees, on purpose. The rest of what a fixture may need — worker POM graphs, the
  * compilers — is exact-pinned and fetched once into the warm sandbox; a whole-store link would make
@@ -169,7 +172,7 @@ public final class TestStoreSeed {
                 if (havePom != null && havePom.contains(version)) continue;
                 String pomName = artifactId + "-" + version + ".pom";
                 Path source = m2.resolve(artifactRel).resolve(version).resolve(pomName);
-                if (!Files.isRegularFile(source)) continue;
+                if (!Files.isRegularFile(source) || !centralServed(source)) continue;
                 Path target =
                         sandboxCentral.resolve(artifactRel).resolve(version).resolve(pomName);
                 Linking.linkOrCopy(source, target);
@@ -182,9 +185,9 @@ public final class TestStoreSeed {
     }
 
     /**
-     * POMs and jars under the JUnit trees in {@code m2} that the host never stored: exact pins a
-     * solve still makes (a BOM import, a transitive the selected launcher names) without advertising
-     * those versions as {@code latest}.
+     * POMs and jars under the JUnit trees in {@code m2} that the host never stored, when Central
+     * served them: exact pins a solve still makes (a BOM import, a transitive the selected launcher
+     * names) without advertising those versions as {@code latest}.
      */
     private static void copyM2Trees(Path m2, Path sandboxCentral, int[] materialised) throws IOException {
         for (String tree : TREES) {
@@ -193,12 +196,33 @@ public final class TestStoreSeed {
             PathUtil.forEachRegularFile(m2Tree, (file, attrs) -> {
                 String name = file.getFileName().toString();
                 if (!name.endsWith(".pom") && !name.endsWith(".jar")) return;
+                if (!centralServed(file)) return;
                 Path target = sandboxCentral.resolve(m2.relativize(file).toString());
                 if (Files.exists(target)) return;
                 Linking.linkOrCopy(file, target);
                 materialised[0]++;
             });
         }
+    }
+
+    /**
+     * True when the {@code _remote.repositories} beside {@code file} carries the line {@code <file
+     * name>>central=}, the way Maven Resolver and jk's write-through both record which repository
+     * answered. No file, no line, or another repository's id: not Central's bytes.
+     */
+    static boolean centralServed(Path file) {
+        Path dir = file.getParent();
+        Path name = file.getFileName();
+        if (dir == null || name == null) return false;
+        Path hint = dir.resolve("_remote.repositories");
+        if (!Files.isRegularFile(hint)) return false;
+        String wanted = name + ">" + RepositorySpec.CENTRAL + "=";
+        try {
+            for (String line : Files.readAllLines(hint)) if (line.strip().equals(wanted)) return true;
+        } catch (IOException e) {
+            return false;
+        }
+        return false;
     }
 
     /**

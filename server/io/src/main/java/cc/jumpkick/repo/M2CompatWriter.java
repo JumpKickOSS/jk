@@ -9,6 +9,8 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Writes Maven-compatible artifacts and sidecars into {@code ~/.m2/repository}. SHA-1 and MD5 are
@@ -71,21 +73,26 @@ public final class M2CompatWriter {
     }
 
     /**
-     * Write (or overwrite) the {@code _remote.repositories} file in {@code versionDir} to record
-     * that {@code filename} was fetched from {@code repoName}. Format follows Maven Resolver's
-     * convention: one {@code <filename>><repo-id>=} line per artifact. Best-effort; I/O errors are
-     * swallowed. jk never reads this file — it is a courtesy hint for Maven and tools that inspect
-     * {@code ~/.m2}.
+     * Record in {@code versionDir}'s {@code _remote.repositories} that {@code filename} came from
+     * {@code repoName}: Maven Resolver's format, one {@code <filename>><repo-id>=} line per file,
+     * the other files' lines kept. Best-effort; I/O errors are swallowed. jk's own store keeps its
+     * provenance in {@code repos/<name>/}; this file is for Maven, and for the test-store seed,
+     * which takes a local-repository body for Central only when this file says Central served it.
      */
     public static void writeRemoteRepositories(Path versionDir, String repoName, String filename) {
         try {
             Path target = versionDir.resolve("_remote.repositories");
-            // Build a minimal well-formed _remote.repositories entry.
-            // The format tolerates multiple calls (e.g. JAR then POM); we rewrite the file each
-            // time, which is fine because jk tracks provenance in repos/<name>/ sidecars instead.
-            String content = "#NOTE: This is a jk-written provenance hint for Maven tooling.\n" + filename + ">"
-                    + repoName + "=\n";
-            AtomicWrites.replace(target, content);
+            List<String> lines = new ArrayList<>();
+            lines.add("#NOTE: This is a jk-written provenance hint for Maven tooling.");
+            if (Files.isRegularFile(target)) {
+                for (String line : Files.readAllLines(target)) {
+                    String entry = line.strip();
+                    if (entry.isEmpty() || entry.startsWith("#") || entry.startsWith(filename + ">")) continue;
+                    lines.add(entry);
+                }
+            }
+            lines.add(filename + ">" + repoName + "=");
+            AtomicWrites.replace(target, String.join("\n", lines) + "\n");
         } catch (IOException ignored) {
         }
     }

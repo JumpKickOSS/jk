@@ -8,6 +8,8 @@ import cc.jumpkick.model.RepositorySpec;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -105,12 +107,8 @@ class TestStoreSeedTest {
         Path host = tmp.resolve("host");
         artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
         Path m2 = tmp.resolve("m2");
-        Path pom = m2.resolve(LAUNCHER).resolve("6.1.3").resolve("junit-platform-launcher-6.1.3.pom");
-        Files.createDirectories(pom.getParent());
-        Files.writeString(pom, "<project/>");
-        Path bom = m2.resolve("org/junit/junit-bom/6.1.3/junit-bom-6.1.3.pom");
-        Files.createDirectories(bom.getParent());
-        Files.writeString(bom, "<project/>");
+        m2File(m2, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
+        m2File(m2, "org/junit/junit-bom", "6.1.3", ".pom", RepositorySpec.CENTRAL);
         Path sandbox = tmp.resolve("sandbox");
 
         TestStoreSeed.seed(host, sandbox, m2);
@@ -127,9 +125,7 @@ class TestStoreSeedTest {
         Path store = tmp.resolve("store");
         artifact(store, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
         Path m2 = tmp.resolve("m2");
-        Path pom = m2.resolve(LAUNCHER).resolve("6.1.3").resolve("junit-platform-launcher-6.1.3.pom");
-        Files.createDirectories(pom.getParent());
-        Files.writeString(pom, "<project/>");
+        m2File(m2, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
 
         assertThat(TestStoreSeed.seed(store, store, m2)).isGreaterThan(0);
         assertThat(store.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
@@ -157,9 +153,7 @@ class TestStoreSeedTest {
         Files.writeString(userJar, "jar");
 
         Path local = tmp.resolve("test-m2");
-        Path pom = local.resolve(LAUNCHER).resolve("6.1.3").resolve("junit-platform-launcher-6.1.3.pom");
-        Files.createDirectories(pom.getParent());
-        Files.writeString(pom, "<project/>");
+        m2File(local, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
 
         String prevHome = System.getProperty("user.home");
         String prevM2 = System.getProperty("jk.m2.local");
@@ -176,6 +170,42 @@ class TestStoreSeedTest {
             if (prevM2 != null) System.setProperty("jk.m2.local", prevM2);
             else System.clearProperty("jk.m2.local");
         }
+    }
+
+    /**
+     * A local repository holds what any repository answered under a coordinate: a lock test's stub
+     * server publishes an empty jar as {@code org.junit.support:testng-engine} and jk's write-through
+     * records it under Central's path with the stub's id. Seeded as Central's, those bytes would be
+     * pinned in every sandbox and the forked runner would find no engine in the jar. Only a file
+     * whose hint names Central is Central's; a body nobody vouches for is not either.
+     */
+    @Test
+    void a_body_another_repository_served_or_nobody_vouches_for_is_not_seeded_as_centrals(@TempDir Path tmp)
+            throws Exception {
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
+        artifact(host, RepositorySpec.CENTRAL, "org/junit/support/testng-engine", "1.1.0", ".jar");
+        Path m2 = tmp.resolve("m2");
+        m2File(m2, "org/junit/support/testng-engine", "1.1.0", ".jar", "local");
+        m2File(m2, "org/junit/support/testng-engine", "1.1.0", ".pom", "local");
+        m2File(m2, "org/junit/jupiter/junit-jupiter", "6.1.3", ".pom", null);
+        m2File(m2, "org/junit/vintage/junit-vintage-engine", "6.1.3", ".jar", RepositorySpec.CENTRAL);
+        Path sandbox = tmp.resolve("sandbox");
+
+        TestStoreSeed.seed(host, sandbox, m2);
+
+        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        assertThat(central.resolve("org/junit/support/testng-engine/1.1.0/testng-engine-1.1.0.pom"))
+                .as("a POM another repository served does not complete the host's jar")
+                .doesNotExist();
+        assertThat(metadata(sandbox, "org/junit/support/testng-engine"))
+                .as("so the version is not advertised either")
+                .doesNotExist();
+        assertThat(central.resolve("org/junit/jupiter/junit-jupiter/6.1.3/junit-jupiter-6.1.3.pom"))
+                .as("no hint, no provenance")
+                .doesNotExist();
+        assertThat(central.resolve("org/junit/vintage/junit-vintage-engine/6.1.3/junit-vintage-engine-6.1.3.jar"))
+                .isRegularFile();
     }
 
     /** A second seed finds nothing to link, and an index the sandbox fetched itself is kept. */
@@ -242,6 +272,25 @@ class TestStoreSeedTest {
 
     private static Path metadata(Path store, String artifactDir) {
         return store.resolve("metadata").resolve(TestStoreSeed.metadataKey(Path.of(artifactDir)));
+    }
+
+    /**
+     * A file in a Maven local repository, with the {@code _remote.repositories} line naming the
+     * repository that served it when {@code servedBy} is given.
+     */
+    private static Path m2File(Path m2, String artifactDir, String version, String ext, @Nullable String servedBy)
+            throws Exception {
+        Path dir = Files.createDirectories(m2.resolve(artifactDir).resolve(version));
+        String name = Path.of(artifactDir).getFileName() + "-" + version + ext;
+        Path file = Files.writeString(dir.resolve(name), ext);
+        if (servedBy != null) {
+            Files.writeString(
+                    dir.resolve("_remote.repositories"),
+                    name + ">" + servedBy + "=\n",
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND);
+        }
+        return file;
     }
 
     private static void artifact(Path store, String origin, String artifactDir, String version, String... extensions)
