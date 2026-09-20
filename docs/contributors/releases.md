@@ -8,10 +8,10 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.13.7`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.13.7`** | Next public release cut from that line |
-| Prior | **`0.13.6`** — previous tagged release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.13.7`, `0.14.0`, … |
+| **`0.13.8`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.13.8`** | Next public release cut from that line |
+| Prior | **`0.13.7`** — previous tagged release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.13.8`, `0.14.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -25,6 +25,24 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.13.8
+
+- **Windows holds.** `jk install` finishes on Windows: atomic file replaces leave no gap for
+  concurrent readers, the install's engine-handoff pass re-shelves without rebuilding, and an
+  install after `jk clean` restores outputs instead of shelving a jar that is not on disk. A
+  cancelled job no longer hangs the engine's connection thread in a socket read Windows never
+  wakes, and a worker whose command line would pass the 32 K cap launches through an `@argfile`.
+- **A missing jar is named.** A lock row that pins no checksum fails a compile classpath by name
+  on every lock, and every compiler fork refuses a classpath naming a jar that is not on disk —
+  the failure says which jar and what to run, not the first class the compiler could not find.
+- **Language inference ignores resource trees** (`.kt` / `.groovy` templates under
+  `src/main/resources`) and reads package directories named `resources` under a language root as
+  sources.
+- **A silent engine's life is judged by every child it runs**, not only JVMs: a native-image link
+  or an import shell keeps a busy engine from being displaced.
+- **Reports read everywhere.** `jk-results.md` pointers are forward-slash on every host; the
+  coverage HTML pointer no longer carries the Windows separator.
 
 ### 0.13.7
 
