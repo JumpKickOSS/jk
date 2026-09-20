@@ -493,6 +493,8 @@ public final class EffortWeights {
         int testWeight = 0;
         int tailWeight = 0;
         int gateWeight = 0;
+        int suiteWall1 = 0;
+        int suiteClasses = 0;
         String mod = dir == null ? "" : BuildMetrics.slashKey(dir.toString());
         int wWorkers = Math.max(1, testWorkers);
         for (String raw : runningSteps) {
@@ -527,6 +529,11 @@ public final class EffortWeights {
                 }
                 // classesToRun unknown at plan time → empty; TestEffort falls through to walls-own/method path
                 w = TestEffort.weight(mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);
+                // The suite's shape for the schedule, which prices it again at dispatch: the
+                // single-runner cost and how many classes can share it.
+                long wall1 = metrics.stepWall1Millis(mod, TaskNames.RUN_TESTS);
+                if (wall1 > 0) suiteWall1 = flatWeight(wall1);
+                suiteClasses = walls.size();
             } else if (TaskNames.NATIVE_IMAGE.equals(step)) {
                 w = NativeEffort.weight(dir);
             } else {
@@ -560,7 +567,12 @@ public final class EffortWeights {
             if (TaskNames.PACKAGING_TAILS.contains(step)) tailWeight = Math.max(tailWeight, w);
             if (gatesDependents(step)) gateWeight += w;
         }
-        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight);
+        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight, suiteWall1, suiteClasses);
+    }
+
+    /** How many test classes the ledger knows for {@code moduleDir}; {@code 0} for a cold module. */
+    public static int knownClassCount(String moduleDir) {
+        return loadClassWalls(moduleDir).size();
     }
 
     /**
@@ -1100,15 +1112,28 @@ public final class EffortWeights {
      * {@code tailWeight} the packaging tail ({@link TaskNames#PACKAGING_TAILS}) that runs beside it;
      * {@code WorkSchedule} prices the module as {@code prefix + max(test, tail)}.
      */
-    public record ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight, int gateWeight) {
-        /** No known tail and no known gate — prices exactly as it did before either was modelled. */
+    public record ModuleCost(
+            Path dir,
+            Set<Path> prereqs,
+            int weight,
+            int testWeight,
+            int tailWeight,
+            int gateWeight,
+            int suiteWall1,
+            int suiteClasses) {
+        /** No known tail, gate or suite shape — prices exactly as it did before any was modelled. */
         public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight) {
-            this(dir, prereqs, weight, testWeight, 0, ModuleWorkCost.UNKNOWN_GATE);
+            this(dir, prereqs, weight, testWeight, 0, ModuleWorkCost.UNKNOWN_GATE, 0, 0);
         }
 
-        /** A known tail, no known gate: dependents wait on the whole prefix. */
+        /** A known tail, no known gate or suite shape: dependents wait on the whole prefix. */
         public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight) {
-            this(dir, prereqs, weight, testWeight, tailWeight, ModuleWorkCost.UNKNOWN_GATE);
+            this(dir, prereqs, weight, testWeight, tailWeight, ModuleWorkCost.UNKNOWN_GATE, 0, 0);
+        }
+
+        /** A known tail and gate, no known suite shape. */
+        public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight, int gateWeight) {
+            this(dir, prereqs, weight, testWeight, tailWeight, gateWeight, 0, 0);
         }
 
         /**
@@ -1119,7 +1144,8 @@ public final class EffortWeights {
          * quietly larger estimate, so the copy is a method rather than a habit.
          */
         public ModuleCost withWeight(int newWeight) {
-            return new ModuleCost(dir, prereqs, Math.max(0, newWeight), testWeight, tailWeight, gateWeight);
+            return new ModuleCost(
+                    dir, prereqs, Math.max(0, newWeight), testWeight, tailWeight, gateWeight, suiteWall1, suiteClasses);
         }
 
         /**
@@ -1129,12 +1155,13 @@ public final class EffortWeights {
         public ModuleCost plusGated(int w) {
             int add = Math.max(0, w);
             int gate = gateWeight < 0 ? gateWeight : gateWeight + add;
-            return new ModuleCost(dir, prereqs, weight + add, testWeight, tailWeight, gate);
+            return new ModuleCost(dir, prereqs, weight + add, testWeight, tailWeight, gate, suiteWall1, suiteClasses);
         }
 
-        /** The scheduler's DTO, carrying all four numbers. The only sanctioned conversion. */
+        /** The scheduler's DTO, carrying every number. The only sanctioned conversion. */
         public ModuleWorkCost toWorkCost() {
-            return new ModuleWorkCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight);
+            return new ModuleWorkCost(
+                    dir, prereqs, weight, testWeight, tailWeight, gateWeight, suiteWall1, suiteClasses);
         }
     }
 
@@ -1273,7 +1300,9 @@ public final class EffortWeights {
                     scaleToMs(m.weight(), r),
                     scaleToMs(m.testWeight(), r),
                     scaleToMs(m.tailWeight(), r),
-                    m.gateWeight() < 0 ? m.gateWeight() : scaleToMs(m.gateWeight(), r)));
+                    m.gateWeight() < 0 ? m.gateWeight() : scaleToMs(m.gateWeight(), r),
+                    scaleToMs(m.suiteWall1(), r),
+                    m.suiteClasses()));
         }
         return scheduleMillis(inMs, concurrency, serial, parallelTests, 1L);
     }

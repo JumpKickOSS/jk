@@ -114,7 +114,10 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ### Test task (`run-tests`)
 
-1. **This module’s** whole `run-tests` task wall (preferred)  
+1. **This module’s** suite cost normalized to one runner (`wall1-ms`, `TestSuiteScaling`), re-sharded
+   for the runners the suite will get. The journal normalizes with `min(runners, classes)`, and the
+   schedule prices the suite when the module reaches it, at `jobs / modules in flight` capped by the
+   class count — the executor's own late-share rule — so the two sides agree on what a runner is.  
 2. Class walls when complete selection has walls  
 3. Methods × hierarchical method-ms + suite-startup (cold module with known count)  
 4. Host suite wall only when method count is unknown  

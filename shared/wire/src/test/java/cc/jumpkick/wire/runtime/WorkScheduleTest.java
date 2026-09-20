@@ -91,6 +91,37 @@ class WorkScheduleTest {
                 .isEqualTo(ModuleWorkCost.UNKNOWN_GATE);
     }
 
+    /**
+     * The suite is priced when the module reaches it, at the share the executor hands out then:
+     * the jobs budget over the modules in flight, capped by the suite's classes. A suite reached
+     * with two modules in flight on 24 jobs runs on 12 runners; the same suite alone on the
+     * machine gets every runner it has classes for.
+     */
+    @Test
+    void a_suite_is_priced_at_dispatch_with_the_share_the_machine_has_then() {
+        Path a = Path.of("/a");
+        Path b = Path.of("/b");
+        // a: prefix 10, a 40-class suite costing 1000 on one runner. b: 10 of prefix and a long
+        // 200 tail, no suite — it keeps a slot busy while a's suite dispatches.
+        ModuleWorkCost suite = new ModuleWorkCost(a, Set.of(), 10 + 1000, 1000, 0, 10, 1000, 40);
+        ModuleWorkCost busy = new ModuleWorkCost(b, Set.of(), 210, 0, 200, 10);
+        long together = WorkSchedule.schedule(List.of(suite, busy), 24, false, true);
+        long twelve = TestSuiteScaling.forRunners(1000, 12);
+        assertThat(together).isEqualTo(Math.max(10 + twelve, 210));
+
+        long alone = WorkSchedule.schedule(List.of(suite), 24, false, true);
+        assertThat(alone).isEqualTo(10 + TestSuiteScaling.forRunners(1000, 24));
+
+        // Two classes cannot use 24 runners.
+        ModuleWorkCost small = new ModuleWorkCost(a, Set.of(), 10 + 1000, 1000, 0, 10, 1000, 2);
+        assertThat(WorkSchedule.schedule(List.of(small), 24, false, true))
+                .isEqualTo(10 + TestSuiteScaling.forRunners(1000, 2));
+
+        // No single-runner cost known: the plan-time test weight stands.
+        ModuleWorkCost flat = new ModuleWorkCost(a, Set.of(), 10 + 300, 300, 0, 10);
+        assertThat(WorkSchedule.schedule(List.of(flat), 24, false, true)).isEqualTo(310);
+    }
+
     @Test
     void artifact_wake_does_not_free_the_slot() {
         // conc=1: even though a's artifact lands early, b cannot start until a's slot frees.

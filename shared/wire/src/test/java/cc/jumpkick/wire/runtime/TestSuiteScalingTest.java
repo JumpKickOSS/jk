@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.runtime;
+package cc.jumpkick.wire.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.data.Percentage.withPercentage;
 
-import cc.jumpkick.runtime.base.TestSuiteScaling;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -71,5 +70,18 @@ class TestSuiteScalingTest {
         assertThat(TestSuiteScaling.normalize(1_000, -1)).isEqualTo(1_000);
         assertThat(TestSuiteScaling.forRunners(0, 8)).isZero();
         assertThat(TestSuiteScaling.forRunners(1_000, 0)).isEqualTo(1_000);
+    }
+
+    /** A suite cannot shard past its classes: a two-class suite on 24 runners used two. */
+    @Test
+    void runners_are_capped_by_the_class_count() {
+        assertThat(TestSuiteScaling.effectiveRunners(24, 2)).isEqualTo(2);
+        assertThat(TestSuiteScaling.effectiveRunners(4, 40)).isEqualTo(4);
+        assertThat(TestSuiteScaling.effectiveRunners(0, 40))
+                .as("unrecorded share")
+                .isEqualTo(1);
+        assertThat(TestSuiteScaling.effectiveRunners(24, 0))
+                .as("unknown class count")
+                .isEqualTo(24);
     }
 }

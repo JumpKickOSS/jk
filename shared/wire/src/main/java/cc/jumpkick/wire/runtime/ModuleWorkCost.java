@@ -22,9 +22,22 @@ import org.jspecify.annotations.Nullable;
  * classes tree and admits its dependents. Test compile, packaging and guards sit after that point
  * and gate nothing downstream. {@link #UNKNOWN_GATE} means the caller did not split the prefix, and
  * the schedule then gates on the whole prefix.
+ *
+ * <p>{@link #suiteWall1()} is the suite's single-runner cost ({@link TestSuiteScaling}) and
+ * {@link #suiteClasses()} its class count, both {@code 0} when unknown. With them the schedule
+ * prices the suite when the module reaches it, at the share the executor hands out then — the jobs
+ * budget over the modules in flight, capped by the classes — and {@link #testWeight()} is only the
+ * plan-time guess the bar uses. Without them the suite costs {@link #testWeight()}.
  */
 public record ModuleWorkCost(
-        Path dir, @Nullable Set<Path> prereqs, int weight, int testWeight, int tailWeight, int gateWeight) {
+        Path dir,
+        @Nullable Set<Path> prereqs,
+        int weight,
+        int testWeight,
+        int tailWeight,
+        int gateWeight,
+        int suiteWall1,
+        int suiteClasses) {
 
     /** {@link #gateWeight()} when the compile prefix was not priced apart from the rest. */
     public static final int UNKNOWN_GATE = -1;
@@ -36,16 +49,24 @@ public record ModuleWorkCost(
         testWeight = Math.max(0, testWeight);
         tailWeight = Math.max(0, tailWeight);
         gateWeight = gateWeight < 0 ? UNKNOWN_GATE : gateWeight;
+        suiteWall1 = Math.max(0, suiteWall1);
+        suiteClasses = Math.max(0, suiteClasses);
     }
 
-    /** A cost with no known packaging tail and no known gate. */
+    /** A cost with no known packaging tail, gate or suite shape. */
     public ModuleWorkCost(Path dir, @Nullable Set<Path> prereqs, int weight, int testWeight) {
-        this(dir, prereqs, weight, testWeight, 0, UNKNOWN_GATE);
+        this(dir, prereqs, weight, testWeight, 0, UNKNOWN_GATE, 0, 0);
     }
 
-    /** A cost with a known tail and no known gate: dependents wait on the whole prefix. */
+    /** A cost with a known tail and no known gate or suite shape. */
     public ModuleWorkCost(Path dir, @Nullable Set<Path> prereqs, int weight, int testWeight, int tailWeight) {
-        this(dir, prereqs, weight, testWeight, tailWeight, UNKNOWN_GATE);
+        this(dir, prereqs, weight, testWeight, tailWeight, UNKNOWN_GATE, 0, 0);
+    }
+
+    /** A cost with a known tail and gate, and no known suite shape. */
+    public ModuleWorkCost(
+            Path dir, @Nullable Set<Path> prereqs, int weight, int testWeight, int tailWeight, int gateWeight) {
+        this(dir, prereqs, weight, testWeight, tailWeight, gateWeight, 0, 0);
     }
 
     /** The compile prefix both branches share: everything that is neither suite nor tail. */
@@ -62,6 +83,16 @@ public record ModuleWorkCost(
         return gateWeight == UNKNOWN_GATE ? prefix : Math.min(gateWeight, prefix);
     }
 
+    /**
+     * The suite's cost on {@code runners}: the single-runner cost re-sharded when it is known,
+     * else the plan-time {@link #testWeight()}.
+     */
+    public int suiteAt(int runners) {
+        if (suiteWall1 <= 0) return testWeight;
+        long w = TestSuiteScaling.forRunners(suiteWall1, TestSuiteScaling.effectiveRunners(runners, suiteClasses));
+        return (int) Math.min(Integer.MAX_VALUE, w);
+    }
+
     /** Residual cost after {@code fracDone} of the module's work has finished (0..1). */
     public ModuleWorkCost residual(double fracDone) {
         double left = 1.0 - clamp01(fracDone);
@@ -71,7 +102,9 @@ public record ModuleWorkCost(
                 scale(weight, left),
                 scale(testWeight, left),
                 scale(tailWeight, left),
-                gateWeight == UNKNOWN_GATE ? UNKNOWN_GATE : scale(gateWeight, left));
+                gateWeight == UNKNOWN_GATE ? UNKNOWN_GATE : scale(gateWeight, left),
+                scale(suiteWall1, left),
+                suiteClasses);
     }
 
     private static int scale(int w, double left) {
