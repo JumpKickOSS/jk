@@ -11,6 +11,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.OutdatedBar;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
@@ -89,10 +90,18 @@ public final class OutdatedCommand implements CliCommand {
         // whose freshen cannot resolve (e.g. --repo-url world) still reports.
         EnsureFreshLock.ensureBestEffort(dir, cache, global, "Outdated", repoUrl);
 
+        // The bar takes the row before the request goes out and gives it back before the table
+        // prints, so the report lands where the chip was. JSON stdout carries the array alone.
         OutdatedReport report;
-        report = EngineClient.runOutdated(
-                EnginePaths.current(),
-                new EngineRequests.OutdatedRequest(dir, cache, repoUrl, global.offline, global.force));
+        EngineRequests.OutdatedRequest request =
+                new EngineRequests.OutdatedRequest(dir, cache, repoUrl, global.offline, global.force);
+        if (global.outputIsJson()) {
+            report = EngineClient.runOutdated(EnginePaths.current(), request, EngineRequests.OutdatedHandler.NONE);
+        } else {
+            try (OutdatedBar bar = OutdatedBar.show(CliOutput.stdout())) {
+                report = EngineClient.runOutdated(EnginePaths.current(), request, bar::update);
+            }
+        }
 
         if (report.error() != null) {
             CommandWedge.printFail("Outdated", report.error());
