@@ -55,8 +55,11 @@ final class DownloadLeg {
     /** Artifact downloads this run pinned without a published checksum because the repository allows it. */
     private final AtomicInteger unverifiedAllowed = new AtomicInteger();
 
-    /** One sentence per artifact this run could verify against an {@code .md5} sidecar alone. */
-    private final Set<String> weakChecksumNotes = ConcurrentHashMap.newKeySet();
+    /**
+     * One sentence per artifact whose checksum deserved a line this run: verified against an {@code
+     * .md5} sidecar alone, or a store copy the repository disowned.
+     */
+    private final Set<String> checksumNotes = ConcurrentHashMap.newKeySet();
 
     DownloadLeg(
             String name,
@@ -164,7 +167,7 @@ final class DownloadLeg {
      * Check the download against the lock pin when there is one — first, so bytes the lock rejects
      * are discarded before anything places them — then against the checksum this repository
      * publishes beside it: {@code .sha256}, else {@code .sha1}, else {@code .md5}; a mismatch fails
-     * closed, and an {@code .md5}-only match is accepted with a note ({@link #weakChecksumNotes}).
+     * closed, and an {@code .md5}-only match is accepted with a note ({@link #checksumNotes}).
      * With no sidecar at all the bytes are accepted only when the pin vouches for them, when the
      * repository is on local disk, or under {@code allow-unverified = true}; otherwise the fetch is
      * refused, because a pin taken from unverified bytes would protect every later build with a
@@ -185,27 +188,76 @@ final class DownloadLeg {
         }
         Optional<ChecksumSidecars.Published> published = sidecars.strongest();
         if (published.isPresent()) {
-            ChecksumSidecars.Algorithm algorithm = published.get().algorithm();
-            String expected = published.get().hex();
-            String actual = algorithm == ChecksumSidecars.Algorithm.SHA256
-                    ? actualSha256
-                    : Hashing.fileHex(algorithm.jca, stored.path());
-            if (!expected.equalsIgnoreCase(actual)) {
+            Optional<String> differing = differing(published.get(), stored.path(), actualSha256);
+            if (differing.isPresent()) {
                 throw new MavenRepo.ChecksumMismatchException("upstream checksum mismatch for " + coord + " from "
-                        + name + " (" + relativePath + "): expected " + algorithm.label + " " + expected + " but got "
-                        + actual);
+                        + name + " (" + relativePath + "): expected "
+                        + published.get().algorithm().label + " "
+                        + published.get().hex() + " but got " + differing.get());
             }
-            if (algorithm == ChecksumSidecars.Algorithm.MD5) {
-                weakChecksumNotes.add(coord + " from " + name + " is verified against its .md5 sidecar alone: the"
-                        + " repository publishes no .sha256 or .sha1 for it, and md5 is the weakest digest a"
-                        + " repository publishes; the lock pins its bytes by sha256 from here on");
-            }
-            if (leg == MavenRepo.Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
+            accept(coord, published.get().algorithm(), leg);
             return;
         }
         // Post-lock: the pin is the authority, and it was taken when the sidecar was checked; it
         // matched above, so a sidecar-less repository needs no further vouching.
         if (expectedSha256 != null) return;
+        unpublished(coord, relativePath, leg);
+    }
+
+    /**
+     * Confirm a copy the store already holds against the checksum this repository publishes at
+     * {@code uri}, the check a download of it gets, before a lock pins it. True when the copy may
+     * stand: its bytes match, or the repository publishes no checksum and the rule that lets a
+     * download through — a repository on local disk, or {@code allow-unverified} — lets it through.
+     * False, with a note, when the repository disowns the bytes. A sidecar-less copy the rule
+     * refuses is refused with the {@link MavenRepo.MissingChecksumException} a download gets.
+     */
+    boolean confirmStored(Coordinate coord, URI uri, String relativePath, Path path, String sha256, MavenRepo.Leg leg)
+            throws IOException, InterruptedException {
+        ChecksumSidecars sidecars = ChecksumSidecars.start(transport, credential, uri);
+        Optional<ChecksumSidecars.Published> published = sidecars.strongest();
+        if (published.isEmpty()) {
+            unpublished(coord, relativePath, leg);
+            return true;
+        }
+        Optional<String> differing = differing(published.get(), path, sha256);
+        if (differing.isPresent()) {
+            checksumNotes.add(coord + " from " + name + ": the store's copy (" + relativePath + ") is not what the"
+                    + " repository publishes, " + published.get().algorithm().label + " "
+                    + published.get().hex()
+                    + " published against " + differing.get() + " stored; the copy was discarded and the artifact"
+                    + " downloaded again");
+            return false;
+        }
+        accept(coord, published.get().algorithm(), leg);
+        return true;
+    }
+
+    /** {@code path}'s digest under the published algorithm when it is not the published one; empty on a match. */
+    private static Optional<String> differing(ChecksumSidecars.Published published, Path path, String actualSha256)
+            throws IOException {
+        ChecksumSidecars.Algorithm algorithm = published.algorithm();
+        String actual =
+                algorithm == ChecksumSidecars.Algorithm.SHA256 ? actualSha256 : Hashing.fileHex(algorithm.jca, path);
+        return published.hex().equalsIgnoreCase(actual) ? Optional.empty() : Optional.of(actual);
+    }
+
+    /** Bytes a published checksum matched: counted, and noted when only an {@code .md5} vouched. */
+    private void accept(Coordinate coord, ChecksumSidecars.Algorithm algorithm, MavenRepo.Leg leg) {
+        if (algorithm == ChecksumSidecars.Algorithm.MD5) {
+            checksumNotes.add(coord + " from " + name + " is verified against its .md5 sidecar alone: the"
+                    + " repository publishes no .sha256 or .sha1 for it, and md5 is the weakest digest a"
+                    + " repository publishes; the lock pins its bytes by sha256 from here on");
+        }
+        if (leg == MavenRepo.Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
+    }
+
+    /**
+     * Bytes no published checksum vouches for, with no pin to vouch either: accepted from a
+     * repository on local disk or under {@code allow-unverified}, refused otherwise.
+     */
+    private void unpublished(Coordinate coord, String relativePath, MavenRepo.Leg leg)
+            throws MavenRepo.MissingChecksumException {
         if ("file".equalsIgnoreCase(baseUrl.getScheme())) return;
         if (!allowUnverified) {
             throw new MavenRepo.MissingChecksumException("no upstream checksum for " + coord + " from " + name + " ("
@@ -231,9 +283,9 @@ final class DownloadLeg {
         return unverifiedAllowed.get();
     }
 
-    /** One sentence per artifact this run verified against an {@code .md5} sidecar alone, sorted. */
-    List<String> weakChecksumNotes() {
-        List<String> out = new ArrayList<>(weakChecksumNotes);
+    /** The {@link #checksumNotes} lines, sorted. */
+    List<String> checksumNotes() {
+        List<String> out = new ArrayList<>(checksumNotes);
         out.sort(null);
         return List.copyOf(out);
     }

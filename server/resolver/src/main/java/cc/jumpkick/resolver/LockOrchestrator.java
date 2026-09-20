@@ -283,7 +283,7 @@ public final class LockOrchestrator {
                 observer,
                 pomBuilder,
                 constraints);
-        for (String line : repos.weakChecksumNotes()) observer.onNote(line);
+        for (String line : repos.checksumNotes()) observer.onNote(line);
         for (String line : repos.mirrorNotes()) observer.onNote(line);
         // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
         JupiterLine.checkAligned(union.solved().test());
