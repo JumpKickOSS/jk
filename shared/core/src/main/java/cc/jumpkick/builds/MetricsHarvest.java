@@ -138,24 +138,40 @@ public final class MetricsHarvest {
     /** Harvest under an explicit builds root (tests). */
     public void runOnce(Path buildsRoot) throws IOException {
         long now = System.currentTimeMillis();
-        Map<String, List<Double>> hostSamples = new LinkedHashMap<>();
+        Map<String, Agg> hostSamples = new LinkedHashMap<>();
         // Reap every home; harvest only preferred homes per checkout path (stale re-keyed ids).
+        // Every home's runs, not only the harvested ones, decide contention: a sibling checkout's
+        // build shares the machine whatever ledger it writes to.
+        Map<Path, long[]> windows = new LinkedHashMap<>();
         for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) {
             reapProject(home, now);
+            for (Path run : ProjectBuilds.listRuns(home)) {
+                long[] window = RunContention.window(run);
+                if (window != null) windows.put(run, window);
+            }
         }
+        Map<Path, Integer> overlaps = RunContention.overlaps(windows);
+        for (var e : overlaps.entrySet()) RunContention.writeSidecar(e.getKey(), e.getValue());
         for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
             Map<String, Agg> project = new LinkedHashMap<>();
-            Map<String, Double> last = new LinkedHashMap<>();
-            Map<String, Long> counts = new LinkedHashMap<>();
             Map<String, Agg> classWalls = new LinkedHashMap<>();
             for (Path run : ProjectBuilds.listRuns(home)) {
                 Path metrics = run.resolve(ProjectBuilds.METRICS);
                 if (!Files.isRegularFile(metrics)) continue;
-                parseRunMetrics(metrics, hostSamples, project, last, counts, classWalls);
+                boolean contended = overlaps.getOrDefault(run, 0) > 0;
+                parseRunMetrics(metrics, hostSamples, project, classWalls, contended);
+            }
+            Map<String, Double> last = new LinkedHashMap<>();
+            Map<String, Long> counts = new LinkedHashMap<>();
+            for (var e : project.entrySet()) {
+                last.put(e.getKey(), e.getValue().last());
+                counts.put(e.getKey(), e.getValue().count());
             }
             writeProjectMetrics(home.resolve(ProjectBuilds.PROJECT_METRICS), project, last, counts, classWalls);
         }
-        writeHostMetrics(ProjectBuilds.hostMetricsFile(buildsRoot), hostSamples);
+        Map<String, List<Double>> host = new LinkedHashMap<>();
+        for (var e : hostSamples.entrySet()) host.put(e.getKey(), e.getValue().used());
+        writeHostMetrics(ProjectBuilds.hostMetricsFile(buildsRoot), host);
     }
 
     private void reapProject(Path home, long now) {
@@ -179,13 +195,13 @@ public final class MetricsHarvest {
         }
     }
 
+    /** One run's rows into the aggregates; {@code contended} when another run overlapped this one. */
     private static void parseRunMetrics(
             Path metricsFile,
-            Map<String, List<Double>> hostSamples,
+            Map<String, Agg> hostSamples,
             Map<String, Agg> project,
-            Map<String, Double> last,
-            Map<String, Long> counts,
-            Map<String, Agg> classWalls) {
+            Map<String, Agg> classWalls,
+            boolean contended) {
         try {
             String text = Files.readString(metricsFile, StandardCharsets.UTF_8);
             MetricsFile.scan(
@@ -195,21 +211,16 @@ public final class MetricsHarvest {
                         // Drop cache-restore blips for heavy steps (native-image "32ms" SUCCESS) so
                         // they never enter [mean]/[last]/[count] and poison ETA.
                         if (isImplausibleHeavyWall(key, v)) return;
-                        project.computeIfAbsent(key, k -> new Agg()).add(v);
-                        // Newest-first listing → first write wins as last-success.
-                        last.putIfAbsent(key, v);
-                        counts.merge(key, 1L, Long::sum);
+                        project.computeIfAbsent(key, k -> new Agg()).add(v, contended);
                         if (isHostKey(key)) {
-                            hostSamples
-                                    .computeIfAbsent(key, k -> new ArrayList<>())
-                                    .add(v);
+                            hostSamples.computeIfAbsent(key, k -> new Agg()).add(v, contended);
                         }
                     },
                     (dir, fqcn, ms) -> {
                         if (ms > 0)
                             classWalls
                                     .computeIfAbsent(classKey(dir, fqcn), k -> new Agg())
-                                    .add(ms);
+                                    .add(ms, contended);
                     });
         } catch (Exception e) {
             Log.debug("parseRunMetrics: Exception ignored", e);
@@ -304,8 +315,7 @@ public final class MetricsHarvest {
     /** The class tables close the file: every row after a package's header is one of its classes. */
     private static void appendClassWallTables(StringBuilder sb, Map<String, Agg> classWalls) {
         Map<String, Long> sampled = new LinkedHashMap<>();
-        for (var e : classWalls.entrySet())
-            sampled.put(e.getKey(), (long) e.getValue().vals.size());
+        for (var e : classWalls.entrySet()) sampled.put(e.getKey(), e.getValue().count());
         Map<String, Map<String, String>> byModule = new LinkedHashMap<>();
         for (String key : keptClassRows(sampled)) {
             int at = key.indexOf(CLASS_KEY_SEPARATOR);
@@ -462,15 +472,34 @@ public final class MetricsHarvest {
         return String.format(Locale.ROOT, "%.3f", v);
     }
 
+    /**
+     * One row's samples, newest first, split by whether the run that produced each ran alone. A
+     * row prices from its uncontended samples while it has any; a row that was only ever measured
+     * under contention keeps those, since a contended wall still beats the host tier.
+     */
     private static final class Agg {
-        final List<Double> vals = new ArrayList<>();
+        final List<Double> clean = new ArrayList<>();
+        final List<Double> contended = new ArrayList<>();
 
-        void add(double v) {
-            vals.add(v);
+        void add(double v, boolean contendedRun) {
+            (contendedRun ? contended : clean).add(v);
+        }
+
+        List<Double> used() {
+            return clean.isEmpty() ? contended : clean;
+        }
+
+        long count() {
+            return used().size();
+        }
+
+        /** The newest used sample: runs are listed newest first, so the first added wins. */
+        double last() {
+            return used().get(0);
         }
 
         double trimmedMean() {
-            return MetricsHarvest.trimmedMean(vals);
+            return MetricsHarvest.trimmedMean(used());
         }
     }
 }
