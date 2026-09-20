@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.FetchTimings;
 import cc.jumpkick.config.BuildEnv;
@@ -21,6 +20,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
@@ -209,9 +209,6 @@ public final class EffortWeights {
         };
     }
 
-    /** Minimum successful runs before a metrics average outranks a static constant (bar weights). */
-    static final int MIN_METRICS_SAMPLES = 3;
-
     /**
      * Forecast/plan step names → {@link BuildMetrics} / plan step names. Explain uses
      * {@code compile-main}; the live plan and metrics store {@code compile-java}.
@@ -222,123 +219,6 @@ public final class EffortWeights {
             case TaskNames.COMPILE_MAIN -> TaskNames.COMPILE_JAVA;
             default -> step;
         };
-    }
-
-    /**
-     * Success-only average wall for one module step (ms), from this module's own history; 0 when it
-     * never ran the step here. Count ≥ 1 is enough — ETA composes dirty steps from measured pieces,
-     * not whole-build priors. Every caller picks its own fallback, so there is deliberately no
-     * combiner that tries own-then-host for them.
-     */
-    public static long stepOkAvgMillisOwn(@Nullable BuildMetrics metrics, String dir, String step) {
-        String key = metricsStepName(step);
-        if (key.isEmpty()) return 0;
-        // Prefer last successful wall (more recent than trimmed mean) when credible.
-        long fromAgg = stepWallFromAggregates(dir == null ? "" : dir, key, true);
-        if (fromAgg > 0) return fromAgg;
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        var own = metrics.step(dir == null ? "" : dir, key);
-        if (own.isPresent() && own.get().ok().count() >= 1 && own.get().ok().avgMillis() > 0) {
-            return own.get().ok().avgMillis();
-        }
-        return 0;
-    }
-
-    /** Host tier: the cross-module average wall for {@code step}, when this module has no history. */
-    static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
-        String key = metricsStepName(step);
-        if (key.isEmpty()) return 0;
-        long fromAgg = stepWallFromAggregates("", key, true);
-        if (fromAgg > 0) return fromAgg;
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        var host = metrics.step("", key);
-        if (host.isPresent() && host.get().ok().count() >= 1 && host.get().ok().avgMillis() > 0) {
-            return host.get().ok().avgMillis();
-        }
-        return 0;
-    }
-
-    /**
-     * Read last/mean step wall from harvested metrics. Prefer <strong>last</strong> when it is not
-     * a restore blip relative to the mean (heavy steps). Recency beats multi-sample mean for ETA
-     * after the suite has been getting faster.
-     */
-    static long stepWallFromAggregates(String dir, String step, boolean preferLast) {
-        try {
-            var agg = BuildMetrics.aggregatesForSession();
-            String task = metricsStepName(step);
-            if (task.isEmpty()) return 0;
-            String key;
-            if (dir == null || dir.isBlank()) {
-                key = "task." + task + ".wall-ms";
-            } else {
-                key = "module." + AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
-            }
-            Double mean = agg.meanMap().get(key);
-            Double last = agg.lastMap().get(key);
-            long floor = heavyWallFloorMs(task);
-            if (preferLast && last != null && last > 0 && last >= floor) {
-                // Reject last if it is a tiny fraction of mean (cache-restore / mostly-warmed
-                // noise). The old `|| last >= 5_000` escape made this rejection dead for heavy
-                // steps (their floor is already 5s), so one 6s over-floor outlier replaced a
-                // stable 60s native mean and under-reserved the slice ~10×.
-                if (mean == null || mean <= 0 || last >= mean * 0.25) {
-                    return Math.round(last);
-                }
-            }
-            if (mean != null && mean > 0 && mean >= floor) return Math.round(mean);
-            if (last != null && last > 0 && last >= floor) return Math.round(last);
-            // Non-heavy steps: no floor
-            if (floor == 0) {
-                if (preferLast && last != null && last > 0) return Math.round(last);
-                if (mean != null && mean > 0) return Math.round(mean);
-            }
-            return 0;
-        } catch (RuntimeException e) {
-            return 0;
-        }
-    }
-
-    /**
-     * Metrics-learned flat weight for fixed-cost steps: module avg → host avg → {@code
-     * staticWeight}. Success-only samples.
-     */
-    static int learnedFixedWeight(String dir, String step, int staticWeight) {
-        return learnedFixedWeight(BuildMetrics.load(BuildMetrics.defaultFile()), dir, step, staticWeight);
-    }
-
-    static int learnedFixedWeight(BuildMetrics metrics, String dir, String step, int staticWeight) {
-        // Heavy IO steps (native-image, OCI) are rare and long — one successful wall is enough
-        // to beat the cold floor; waiting for 3 samples left the bar on a 15s token for months.
-        int minSamples = heavyFixedStep(step) ? 1 : MIN_METRICS_SAMPLES;
-        long floorMs = heavyFixedStep(step) ? heavyWallFloorMs(step) : 0;
-        var own = metrics.step(dir, metricsStepName(step));
-        if (own.isPresent() && own.get().ok().count() >= minSamples) {
-            long avg = own.get().ok().avgMillis();
-            // Ignore poisoned cache-restore samples (e.g. native-image "32ms" success).
-            if (avg >= floorMs) return flatWeight(avg);
-        }
-        var host = metrics.step("", metricsStepName(step));
-        if (host.isPresent() && host.get().ok().count() >= minSamples) {
-            long avg = host.get().ok().avgMillis();
-            if (avg >= floorMs) return flatWeight(avg);
-        }
-        return staticWeight;
-    }
-
-    /** Reject absurdly short measured walls for heavy steps (action-cache restore noise). */
-    private static long heavyWallFloorMs(String step) {
-        String s = metricsStepName(step);
-        if (TaskNames.NATIVE_IMAGE.equals(s)) return 5_000L;
-        if (TaskNames.WRITE_IMAGE.equals(s)) return 3_000L;
-        return 0L;
-    }
-
-    private static boolean heavyFixedStep(String step) {
-        String s = metricsStepName(step);
-        return TaskNames.NATIVE_IMAGE.equals(s)
-                || TaskNames.WRITE_IMAGE.equals(s)
-                || TaskNames.PACKAGE_ASSEMBLY.equals(s);
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */
@@ -375,7 +255,7 @@ public final class EffortWeights {
             Collection<String> projectDirs) {
         String key = metricsStepName(step);
         // Prefer this module's own measured whole-step wall (even a single success).
-        long ownMs = stepOkAvgMillisOwn(metrics, dir, key);
+        long ownMs = StepWalls.stepOkAvgMillisOwn(metrics, dir, key);
         if (ownMs > 0) return flatWeight(ownMs);
         // Cold module with a known planned method count: the count-scaled host prior beats the
         // host suite-wall average, which prices a 2000-method suite like the host's ~average
@@ -386,7 +266,7 @@ public final class EffortWeights {
                 return Math.max(1, (int) Math.round(floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
             }
         }
-        long hostMs = stepOkAvgMillisHost(metrics, key);
+        long hostMs = StepWalls.stepOkAvgMillisHost(metrics, key);
         if (hostMs > 0) return flatWeight(hostMs);
 
         double rate;
@@ -403,7 +283,7 @@ public final class EffortWeights {
                     // No rate anywhere (cold ledger, e.g. right after `jk clean`) — fall back to the
                     // surviving metrics history before conceding to the Step-1 static (which already
                     // embeds Calibration priors when produced by coldStaticWeight).
-                    return learnedFixedWeight(metrics, dir, key, staticWeight);
+                    return StepWalls.learnedFixedWeight(metrics, dir, key, staticWeight);
                 }
                 rate = host.getAsDouble();
             }
@@ -493,6 +373,9 @@ public final class EffortWeights {
         int weight = 0;
         int testWeight = 0;
         int tailWeight = 0;
+        int gateWeight = 0;
+        int suiteWall1 = 0;
+        int suiteClasses = 0;
         String mod = dir == null ? "" : BuildMetrics.slashKey(dir.toString());
         int wWorkers = Math.max(1, testWorkers);
         for (String raw : runningSteps) {
@@ -519,7 +402,7 @@ public final class EffortWeights {
                             "workers",
                             wWorkers,
                             "ownMs",
-                            stepOkAvgMillisOwn(metrics, mod, TaskNames.RUN_TESTS),
+                            StepWalls.stepOkAvgMillisOwn(metrics, mod, TaskNames.RUN_TESTS),
                             "wall1",
                             metrics.stepWall1Millis(mod, TaskNames.RUN_TESTS),
                             "rate",
@@ -527,23 +410,32 @@ public final class EffortWeights {
                 }
                 // classesToRun unknown at plan time → empty; TestEffort falls through to walls-own/method path
                 w = TestEffort.weight(mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);
+                // The suite's shape for the schedule, which prices it again at dispatch: the
+                // single-runner cost and how many classes can share it.
+                long wall1 = metrics.stepWall1Millis(mod, TaskNames.RUN_TESTS);
+                if (wall1 > 0) suiteWall1 = flatWeight(wall1);
+                suiteClasses = walls.size();
             } else if (TaskNames.NATIVE_IMAGE.equals(step)) {
                 w = NativeEffort.weight(dir);
             } else {
                 // Prefer this module's own measured whole-task wall; count-scaled/host/static tiers
                 // (via learned) only when the module is cold here.
-                long ownMs = stepOkAvgMillisOwn(metrics, mod, step);
+                long ownMs = StepWalls.stepOkAvgMillisOwn(metrics, mod, step);
                 if (ownMs > 0) {
                     w = flatWeight(ownMs);
                 } else {
                     int defaultCount = 1;
                     int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, defaultCount));
                     int staticW = coldStaticWeight(step, count, wWorkers);
-                    if (staticW <= 0) continue; // unknown tiny task with no history
-                    if (timings != null) {
+                    if (staticW <= 0) {
+                        // A step the cold table does not know — a plugin task the module has not
+                        // run here yet: the host's wall for it, else one token.
+                        long hostMs = StepWalls.stepOkAvgMillisHost(metrics, step);
+                        w = hostMs > 0 ? flatWeight(hostMs) : TOKEN;
+                    } else if (timings != null) {
                         w = learned(timings, metrics, mod, step, count, staticW, projectDirs);
                     } else {
-                        long hostMs = stepOkAvgMillisHost(metrics, step);
+                        long hostMs = StepWalls.stepOkAvgMillisHost(metrics, step);
                         w = hostMs > 0 ? flatWeight(hostMs) : staticW;
                     }
                 }
@@ -554,8 +446,14 @@ public final class EffortWeights {
             // the branch's length is its longest tail, not their sum (cli: native-image 37 +
             // assembly 3 + sources 2 priced 42 against a true 37).
             if (TaskNames.PACKAGING_TAILS.contains(step)) tailWeight = Math.max(tailWeight, w);
+            if (gatesDependents(step)) gateWeight += w;
         }
-        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
+        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight, suiteWall1, suiteClasses);
+    }
+
+    /** How many test classes the ledger knows for {@code moduleDir}; {@code 0} for a cold module. */
+    public static int knownClassCount(String moduleDir) {
+        return loadClassWalls(moduleDir).size();
     }
 
     /**
@@ -778,7 +676,7 @@ public final class EffortWeights {
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
             int staticPkg = coldWorkWeight(TaskNames.PACKAGE_JAR, 1);
-            pkg = jarFresh ? SKIP : learnedFixedWeight(metrics, mod, TaskNames.PACKAGE_JAR, staticPkg);
+            pkg = jarFresh ? SKIP : StepWalls.learnedFixedWeight(metrics, mod, TaskNames.PACKAGE_JAR, staticPkg);
         } catch (Exception e) {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
@@ -908,11 +806,11 @@ public final class EffortWeights {
      */
     public static int assemblyWeight(Path dir) {
         if (jarWillChange(dir)) {
-            return learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
+            return StepWalls.learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
         }
         return artifactFresh(dir, BuildLayout::assemblyJar)
                 ? SKIP
-                : learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
+                : StepWalls.learnedFixedWeight(dir.toString(), TaskNames.PACKAGE_ASSEMBLY, ASSEMBLY_RUN);
     }
 
     /**
@@ -943,7 +841,7 @@ public final class EffortWeights {
      */
     public static int ociWeight(Path dir) {
         if (ociWillChange(dir)) {
-            return learnedFixedWeight(dir.toString(), TaskNames.WRITE_IMAGE, OCI_RUN);
+            return StepWalls.learnedFixedWeight(dir.toString(), TaskNames.WRITE_IMAGE, OCI_RUN);
         }
         return OCI_SKIP;
     }
@@ -1095,27 +993,84 @@ public final class EffortWeights {
      * {@code tailWeight} the packaging tail ({@link TaskNames#PACKAGING_TAILS}) that runs beside it;
      * {@code WorkSchedule} prices the module as {@code prefix + max(test, tail)}.
      */
-    public record ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight) {
-        /** No known tail — prices exactly as it did before tails were modelled. */
+    public record ModuleCost(
+            Path dir,
+            Set<Path> prereqs,
+            int weight,
+            int testWeight,
+            int tailWeight,
+            int gateWeight,
+            int suiteWall1,
+            int suiteClasses) {
+        /** No known tail, gate or suite shape — prices exactly as it did before any was modelled. */
         public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight) {
-            this(dir, prereqs, weight, testWeight, 0);
+            this(dir, prereqs, weight, testWeight, 0, ModuleWorkCost.UNKNOWN_GATE, 0, 0);
+        }
+
+        /** A known tail, no known gate or suite shape: dependents wait on the whole prefix. */
+        public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight) {
+            this(dir, prereqs, weight, testWeight, tailWeight, ModuleWorkCost.UNKNOWN_GATE, 0, 0);
+        }
+
+        /** A known tail and gate, no known suite shape. */
+        public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight, int gateWeight) {
+            this(dir, prereqs, weight, testWeight, tailWeight, gateWeight, 0, 0);
         }
 
         /**
-         * Same module, different total. The tail and the test slice ride along, which is the whole
-         * reason this exists: re-wrapping through the four-argument constructor silently zeroes
-         * {@code tailWeight}, and a zero tail prices the module as the SUM of its steps — the
+         * Same module, different total. The tail, the test slice and the gate ride along, which is
+         * the whole reason this exists: re-wrapping through the four-argument constructor silently
+         * zeroes {@code tailWeight}, and a zero tail prices the module as the SUM of its steps — the
          * serialization {@code BuildPlan} no longer has. That is not a visible failure, it is a
          * quietly larger estimate, so the copy is a method rather than a habit.
          */
         public ModuleCost withWeight(int newWeight) {
-            return new ModuleCost(dir, prereqs, Math.max(0, newWeight), testWeight, tailWeight);
+            return new ModuleCost(
+                    dir, prereqs, Math.max(0, newWeight), testWeight, tailWeight, gateWeight, suiteWall1, suiteClasses);
         }
 
-        /** The scheduler's DTO, carrying all three numbers. The only sanctioned conversion. */
-        public ModuleWorkCost toWorkCost() {
-            return new ModuleWorkCost(dir, prereqs, weight, testWeight, tailWeight);
+        /**
+         * The module with {@code w} more units of prefix work that its dependents also wait on:
+         * the total grows and so does the gate, when the gate is known.
+         */
+        public ModuleCost plusGated(int w) {
+            int add = Math.max(0, w);
+            int gate = gateWeight < 0 ? gateWeight : gateWeight + add;
+            return new ModuleCost(dir, prereqs, weight + add, testWeight, tailWeight, gate, suiteWall1, suiteClasses);
         }
+
+        /** The scheduler's DTO, carrying every number. The only sanctioned conversion. */
+        public ModuleWorkCost toWorkCost() {
+            return new ModuleWorkCost(
+                    dir, prereqs, weight, testWeight, tailWeight, gateWeight, suiteWall1, suiteClasses);
+        }
+    }
+
+    /**
+     * Steps that run before a module publishes its classes tree to its dependents: what the live
+     * scheduler waits on before admitting them ({@code WorkspaceRunPhase.classesWaitSet}) and
+     * everything the plan orders ahead of it. A codegen plugin step sits in the compile stage and
+     * gates too; a packaging or test plugin step does not.
+     */
+    static boolean gatesDependents(String step) {
+        String s = metricsStepName(step);
+        if (s.startsWith("plugin-")) return BuildStage.ofTaskName(s) == BuildStage.COMPILE;
+        return switch (s) {
+            case TaskNames.PARSE_BUILD,
+                    TaskNames.ENSURE_JDK,
+                    TaskNames.RESOLVE_DEPS,
+                    TaskNames.RESTORE_OUTPUTS,
+                    TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
+                    TaskNames.COMPILE_JAVA,
+                    TaskNames.COMPILE_KOTLIN,
+                    TaskNames.COMPILE_GROOVY,
+                    TaskNames.ASSEMBLE_CLASSES,
+                    TaskNames.WRITE_STAMP,
+                    TaskNames.WRITE_STAMP_KOTLIN,
+                    TaskNames.WRITE_STAMP_GROOVY,
+                    TaskNames.COPY_RESOURCES -> true;
+            default -> false;
+        };
     }
 
     /**
@@ -1142,6 +1097,7 @@ public final class EffortWeights {
         int weight = 0;
         int testWeight = 0;
         int tailWeight = 0;
+        int gateWeight = 0;
         for (Task step : plan.steps()) {
             int stepWeight;
             if (cachedSteps.contains(step.name())) {
@@ -1156,8 +1112,9 @@ public final class EffortWeights {
             weight += stepWeight;
             if (step.name().equals(TaskNames.RUN_TESTS)) testWeight += stepWeight;
             if (TaskNames.PACKAGING_TAILS.contains(step.name())) tailWeight = Math.max(tailWeight, stepWeight);
+            if (gatesDependents(step.name())) gateWeight += stepWeight;
         }
-        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
+        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight);
     }
 
     /**
@@ -1171,9 +1128,9 @@ public final class EffortWeights {
     /**
      * Estimate a build's wall-clock (ms) from per-module costs (Σ dirty step weights preferred).
      *
-     * <p>Mirrors {@link cc.jumpkick.runtime.base.WorkspaceScheduler}: a module may start only after every dirty prereq has
-     * <em>fully</em> finished (compile + test + package), and at most {@code concurrency} modules
-     * run at once. Serial ({@code -j1}) is the sum of module weights. When tests are serialized
+     * <p>Mirrors {@link cc.jumpkick.runtime.base.WorkspaceScheduler}: a module may start once every
+     * dirty prereq has published its classes tree, and at most {@code concurrency} modules run at
+     * once. Serial ({@code -j1}) is the sum of module weights. When tests are serialized
      * across modules ({@code parallelTests == false}), the serial test-step sum is also a lower
      * bound (same as the live cross-module test gate).
      */
@@ -1223,7 +1180,10 @@ public final class EffortWeights {
                     m.prereqs(),
                     scaleToMs(m.weight(), r),
                     scaleToMs(m.testWeight(), r),
-                    scaleToMs(m.tailWeight(), r)));
+                    scaleToMs(m.tailWeight(), r),
+                    m.gateWeight() < 0 ? m.gateWeight() : scaleToMs(m.gateWeight(), r),
+                    scaleToMs(m.suiteWall1(), r),
+                    m.suiteClasses()));
         }
         return scheduleMillis(inMs, concurrency, serial, parallelTests, 1L);
     }

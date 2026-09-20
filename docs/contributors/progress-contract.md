@@ -68,7 +68,8 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 | **One forecast** | Costs from `TaskForecaster` / `ExplainPlan` only. |
 | **Material dirty only** | A module is dirty only if a *material* step (compile/test/package/native/…) is not CACHED — not parse-build / resolve-deps / write-stamp bookkeeping. Resource drift is material: the forecaster emits `copy-resources` (main/extra) or `copy-test-resources` (test scope) only when trees actually drifted, and either schedules the module. Compile-consumer cascade seeds from **compile/package** only (not `copy-resources` alone): consumers hash the packaged jar; package is forecast against a post-copy projection when resources drifted. A dirty `order-after`-only prereq adds an unpriced `order-check` task: the dependent schedules (real action keys re-check out-of-band outputs) but contributes nothing to ETA. |
 | **Price material steps only** | ETA costs skip bookkeeping steps even when the plan still runs them. Cascade-forced compile/package/**native** (`dependency changed` / `main changed` / `compile changed` without local *compile* content) are recheck tokens, not suite/native walls. Resource-only modules (copy/package resources) price package+copy only — never unlock compile/test suite walls. `run-tests` stays full when the module has local compile content, no compile steps (test-dep only), a heavy packaging tail forecast (cli-shaped), or a red marker under its current key (`run tests · … · last run failed` — a failed suite stores its counts under the same key a green one does, so the re-run is evidence rather than stamp drift); pure cascade modules discount tests. |
-| **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
+| **Same lock view** | The forecast reads `jk-lock.toml` through `MemberRows.view`, as the build compiles: a partition row another member holds stays off this module's processor path, so forecast and live compile keys agree. |
+| **Same concurrency** | `etaConcurrency(jobs)` is the executor's module cap (`-j`, else resolved jobs). |
 | **Seed path lock** | Client freezes the R0 *seed path* when execute starts (provisional eta thrash guard). Residual still re-anchors the painted countdown mid-run. |
 | **Mild over-estimate** | After schedule + history clamp, non-zero `R0` gets `×1.01` (`preferSlightOverEstimate`) so a hair high is preferred over a hair low — not a multi-minute floor. |
 | **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`) — residual display does not rewrite R0 for this KPI. |
@@ -77,8 +78,16 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 
 ### Schedule admission (ETA ≡ live)
 
-`WorkSchedule` admits **first ready in topo/list order**, full prereq completion, at most
-`concurrency` in flight — same policy as bounded `WorkspaceScheduler` (not longest-first).
+`WorkSchedule` admits **first ready in topo/list order**, at most `concurrency` in flight, and a
+module is ready when every dirty prerequisite has passed its **gate** — the same policy as the
+bounded `WorkspaceScheduler`, which admits a dependent when its prerequisites have published their
+classes trees (compile and resource copy), not when they have packaged or tested. A cost carries the
+gate as `ModuleWorkCost.gateWeight` (`EffortWeights.gatesDependents` names the steps); a cost that
+never split its prefix gates on the whole prefix.
+
+`concurrency` is the executor's cap: the request's `-j`, else the engine's resolved jobs. Not the
+graph's ready width — with publish-time admission a build keeps as many modules in flight as the cap
+allows.
 
 Serial (`-j1` / concurrency ≤ 1): sum of module weights.  
 When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test floor.
@@ -96,7 +105,12 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ## Task pricing ladder
 
-1. Module measured task wall  
+1. Module measured task wall — the ledger's trimmed mean; the single sample when the row has one.
+   Never the last sample over a mean: on a rebuild the last sample is the most contended wall the
+   ledger holds. The harvest reads each run's window from its `record.json` and, while a row has a
+   sample from a run that ran alone, leaves out the samples taken while another run under the same
+   builds root overlapped it (any project, any worktree); a contended run carries a
+   `contention.toml` sidecar naming how many runs overlapped it.  
 2. Host task wall  
 3. Residual per-unit rates × count  
 4. Host continuous learned rates / calibration × host scale  
@@ -104,7 +118,10 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ### Test task (`run-tests`)
 
-1. **This module’s** whole `run-tests` task wall (preferred)  
+1. **This module’s** suite cost normalized to one runner (`wall1-ms`, `TestSuiteScaling`), re-sharded
+   for the runners the suite will get. The journal normalizes with `min(runners, classes)`, and the
+   schedule prices the suite when the module reaches it, at `jobs / modules in flight` capped by the
+   class count — the executor's own late-share rule — so the two sides agree on what a runner is.  
 2. Class walls when complete selection has walls  
 3. Methods × hierarchical method-ms + suite-startup (cold module with known count)  
 4. Host suite wall only when method count is unknown  

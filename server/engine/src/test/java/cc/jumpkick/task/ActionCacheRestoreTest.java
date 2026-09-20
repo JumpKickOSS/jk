@@ -72,6 +72,13 @@ class ActionCacheRestoreTest {
         ActionRecord record = ac.storeArtifacts("t", "key-1", Map.of(), baseDir, List.of(artifact));
 
         Files.writeString(artifact, "BBBB"); // same length, different bytes
+        // The store seeded the memo with AAAA's digest under the file's stat identity, and the
+        // kernel stamps mtime at clock-tick granularity: a rewrite inside the same tick as the seed
+        // is indistinguishable from it by stat alone. That is the memo's documented trade-off, not
+        // what this test is about, so the rewrite moves to its own tick.
+        Files.setLastModifiedTime(
+                artifact,
+                FileTime.fromMillis(Files.getLastModifiedTime(artifact).toMillis() + 5_000));
         assertThat(ac.restoreArtifacts(record, baseDir)).isTrue();
         assertThat(Files.readString(artifact)).isEqualTo("AAAA");
     }

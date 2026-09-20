@@ -59,6 +59,70 @@ class WorkScheduleTest {
     }
 
     @Test
+    void dependents_start_at_the_upstream_gate_when_the_cost_knows_it() {
+        // a: gate 10 (its compile), then 20 more of test compile and packaging, then a 20 suite —
+        // weight 50, test 20, gate 10. b needs only a's classes and starts at 10, not at 30.
+        Path a = Path.of("/a");
+        Path b = Path.of("/b");
+        long gated = WorkSchedule.schedule(
+                List.of(new ModuleWorkCost(a, Set.of(), 50, 20, 0, 10), new ModuleWorkCost(b, Set.of(a), 25, 0)),
+                4,
+                false,
+                true);
+        assertThat(gated).isEqualTo(50); // a's own wall is the long pole; b finished at 35
+        long unsplit = WorkSchedule.schedule(
+                List.of(new ModuleWorkCost(a, Set.of(), 50, 20, 0), new ModuleWorkCost(b, Set.of(a), 25, 0)),
+                4,
+                false,
+                true);
+        assertThat(unsplit).isEqualTo(55); // no gate known: b waits for the whole prefix (30)
+    }
+
+    @Test
+    void a_gate_never_lands_after_the_prefix() {
+        // A gate priced above the prefix (a residual cost, or a mis-summed step) cannot delay a
+        // dependent past the point the prefix itself would release it.
+        ModuleWorkCost m = new ModuleWorkCost(Path.of("/a"), Set.of(), 30, 20, 0, 99);
+        assertThat(m.artifactPoint()).isEqualTo(10);
+        assertThat(m.residual(0.5).gateWeight()).isEqualTo(50);
+        assertThat(new ModuleWorkCost(Path.of("/a"), Set.of(), 30, 20)
+                        .residual(0.5)
+                        .gateWeight())
+                .isEqualTo(ModuleWorkCost.UNKNOWN_GATE);
+    }
+
+    /**
+     * The suite is priced when the module reaches it, at the share the executor hands out then:
+     * the jobs budget over the modules in flight, capped by the suite's classes. A suite reached
+     * with two modules in flight on 24 jobs runs on 12 runners; the same suite alone on the
+     * machine gets every runner it has classes for.
+     */
+    @Test
+    void a_suite_is_priced_at_dispatch_with_the_share_the_machine_has_then() {
+        Path a = Path.of("/a");
+        Path b = Path.of("/b");
+        // a: prefix 10, a 40-class suite costing 1000 on one runner. b: 10 of prefix and a long
+        // 200 tail, no suite — it keeps a slot busy while a's suite dispatches.
+        ModuleWorkCost suite = new ModuleWorkCost(a, Set.of(), 10 + 1000, 1000, 0, 10, 1000, 40);
+        ModuleWorkCost busy = new ModuleWorkCost(b, Set.of(), 210, 0, 200, 10);
+        long together = WorkSchedule.schedule(List.of(suite, busy), 24, false, true);
+        long twelve = TestSuiteScaling.forRunners(1000, 12);
+        assertThat(together).isEqualTo(Math.max(10 + twelve, 210));
+
+        long alone = WorkSchedule.schedule(List.of(suite), 24, false, true);
+        assertThat(alone).isEqualTo(10 + TestSuiteScaling.forRunners(1000, 24));
+
+        // Two classes cannot use 24 runners.
+        ModuleWorkCost small = new ModuleWorkCost(a, Set.of(), 10 + 1000, 1000, 0, 10, 1000, 2);
+        assertThat(WorkSchedule.schedule(List.of(small), 24, false, true))
+                .isEqualTo(10 + TestSuiteScaling.forRunners(1000, 2));
+
+        // No single-runner cost known: the plan-time test weight stands.
+        ModuleWorkCost flat = new ModuleWorkCost(a, Set.of(), 10 + 300, 300, 0, 10);
+        assertThat(WorkSchedule.schedule(List.of(flat), 24, false, true)).isEqualTo(310);
+    }
+
+    @Test
     void artifact_wake_does_not_free_the_slot() {
         // conc=1: even though a's artifact lands early, b cannot start until a's slot frees.
         Path a = Path.of("/a");

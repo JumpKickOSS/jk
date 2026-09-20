@@ -8,6 +8,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.Sleepers;
+import cc.jumpkick.util.StoreWriteGate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,6 +29,14 @@ class WorkerAotCacheTest {
 
     private static final WorkerAotCache.Host HOTSPOT_25 =
             new WorkerAotCache.Host(Path.of("/jdk/temurin-25"), JdkVendor.TEMURIN, "25.0.4.1");
+
+    @BeforeEach
+    void fresh() {
+        // A store wipe earlier in this JVM (the cache inventory tests) switches recording off for
+        // the engine's lifetime; this class measures recording, so it starts from an unwiped gate.
+        StoreWriteGate.resetForTests();
+        WorkerAotCache.forgetFailuresForTests();
+    }
 
     @AfterEach
     void forget() {

@@ -84,21 +84,25 @@ class CommandWedgeTest {
     @Test
     void spinner_and_download_bar_are_silent_in_script_mode() {
         // : JK_OUTPUT=json puts every command in script mode, but Spinner.show and
-        // JdkDownloadBar.show gated only on --no-progress — jdk install / clean / new animated
+        // the download bar gated only on --no-progress — jdk install / clean / new animated
         // cursor ANSI and OSC into a machine-consumed stdout. The rule now lives on the
         // primitives, so no call site can route around it.
         var out = new ByteArrayOutputStream();
         var sink = new PrintStream(out, true, StandardCharsets.UTF_8);
         CliOutput.beginCommand(true);
         try {
-            try (Spinner s = Spinner.show(sink, "Cleaning...")) {
-                s.update("still cleaning");
+            try (ProgressRow clean =
+                    ProgressRow.of(sink, "Clean").status("Counting…").open()) {
+                clean.status("Removing target");
+                clean.follow(() -> 5L, 10L);
             }
-            try (JdkDownloadBar db = JdkDownloadBar.show(sink, "Temurin 26")) {
-                db.update(50, 100);
+            try (ProgressRow row =
+                    ProgressRow.of(sink, "JDK").status("Downloading Temurin 26").open()) {
+                row.update(50, 100);
             }
-            try (JdkDownloadBar db = JdkDownloadBar.showInstalling(sink, "Temurin 26")) {
-                db.update(80, 100);
+            try (ProgressRow row =
+                    ProgressRow.of(sink, "JDK").status("Installing Temurin 26").open()) {
+                row.status("still installing");
             }
         } finally {
             CliOutput.beginCommand(false);

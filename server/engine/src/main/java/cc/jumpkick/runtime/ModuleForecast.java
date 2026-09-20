@@ -19,6 +19,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -215,6 +216,7 @@ final class ModuleForecast {
             compileTest(prepared);
             guard(prepared);
             resource(prepared);
+            pluginTasks(prepared);
             packageJar(prepared);
             packageTails(prepared);
             nativeImage(prepared);
@@ -239,7 +241,9 @@ final class ModuleForecast {
     }
 
     private Prepared prepare() throws Exception {
-        Lockfile lock = LockfileReader.read(lockFile);
+        // The lock as this member reads it, the view the build compiles against: a partition row
+        // the member does not hold must not put its jar on this module's processor path.
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
         boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
         BuildLayout layout = BuildLayout.of(dir, project);
         int release = project.project().javaRelease();
@@ -387,6 +391,7 @@ final class ModuleForecast {
                     stampFresh = false;
                 }
             }
+            ForecastSteps.noteCompileMain(out, req, mainSrc.size(), release, stampFresh, compileDepDirty);
             if (stampFresh) {
                 // The stamp names the compile that produced this tree; that record is what the
                 // tree is held against below and what a wiped tree would be reconstructed from.
@@ -787,6 +792,27 @@ final class ModuleForecast {
                 if (TaskForecaster.resourcesOutOfSync(resTest, layout.testClassesDir())) {
                     testResourceDrift = true;
                 }
+            }
+        }
+    }
+
+    /**
+     * The module's declared plugin tasks (Spring AOT, d8, a code generator), one step each. Their
+     * action keys hash the classes tree, the tool jars and the plugin's own jar, which the forecast
+     * does not reproduce: a task is RUN when the module compiles or on a forced rebuild, else
+     * CACHED. A dropped step priced nothing, which is how a build that spends two thirds of its
+     * wall in Spring AOT was forecast at a quarter of it.
+     */
+    private void pluginTasks(Prepared prepared) {
+        ActivePlugins.@Nullable Declared plugin = prepared.plugin();
+        if (plugin == null) return;
+        for (TaskDecl step : plugin.decls().steps()) {
+            String name = "plugin-" + step.name();
+            if (force || compileDirty) {
+                String when = PlannerPlugin.beforeCompile(step) ? "before compile" : "after compile";
+                steps.add(new TaskForecast.Task(name, TaskForecast.Status.RUN, step.name() + " · " + when, null));
+            } else {
+                steps.add(new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", null));
             }
         }
     }

@@ -19,7 +19,8 @@ import java.util.Set;
  * <p>Admission policy matches the bounded live scheduler: among ready modules, admit the
  * <strong>first in declaration / topo order</strong> (not longest-first), with at most
  * {@code concurrency} in flight, and a module ready when every dirty prereq has published its
- * artifacts — not when every prereq has fully finished.
+ * classes tree ({@link ModuleWorkCost#artifactPoint()}) — not when every prereq has fully finished,
+ * and not when it has packaged.
  */
 public final class WorkSchedule {
 
@@ -28,20 +29,22 @@ public final class WorkSchedule {
     /**
      * Schedule wall cost in the same units as {@link ModuleWorkCost#weight()} (multiply by
      * ms-per-weight externally when those units are not already milliseconds).
+     *
+     * <p>{@code concurrency} is the executor's jobs budget as well as its module cap: the two are
+     * one number on the live side, and a suite's runner share is that budget over the modules in
+     * flight when the suite dispatches.
      */
     public static long schedule(List<ModuleWorkCost> mods, int concurrency, boolean serial, boolean parallelTests) {
         if (mods == null || mods.isEmpty()) return 0;
         long serialSum = 0;
         long testSum = 0;
         for (ModuleWorkCost m : mods) {
-            // Even at -j1 a module's own wall is its longer branch: -j bounds how many MODULES run
-            // at once, it does not put a module's suite and its packaging tail back in series.
-            long tw = Math.max(0, m.testWeight());
             // Even at -j1 a module's own wall is prefix + its longer branch: -j bounds how many
             // MODULES run at once, it does not put a module's suite and its packaging tail back in
-            // series. With no tail this is exactly m.weight(), as it was.
-            serialSum += moduleWall(m);
-            testSum += tw;
+            // series. Alone on the machine the suite gets the whole budget.
+            long test = m.suiteAt(shareAt(concurrency, 1, m));
+            serialSum += m.prefix() + Math.max(test, m.tailWeight());
+            testSum += test;
         }
         if (serial || concurrency <= 1) return serialSum;
         long scheduled = listSchedule(mods, Math.max(1, concurrency));
@@ -50,8 +53,8 @@ public final class WorkSchedule {
     }
 
     /**
-     * Rolling-window list schedule: first-ready admission (list order), full prereq completion,
-     * at most {@code concurrency} in flight.
+     * Rolling-window list schedule: first-ready admission (list order), every dirty prereq past
+     * its artifact point, at most {@code concurrency} in flight.
      */
     static long listSchedule(List<ModuleWorkCost> mods, int concurrency) {
         if (mods == null || mods.isEmpty()) return 0;
@@ -66,16 +69,21 @@ public final class WorkSchedule {
         }
         if (byDir.isEmpty()) return 0;
 
-        // Phase-gated admission: dependents wait on the upstream ARTIFACT point (its weight minus
-        // the run-tests slice — packaging does not gate on tests), never on the upstream's full
-        // plan. The slot stays occupied until the module's own finish, which is now its longer
-        // branch rather than the sum of its steps (see below).
+        // Phase-gated admission: dependents wait on the upstream's classes publish (its compile
+        // prefix, or the whole non-suite non-tail prefix when the cost did not split it), never
+        // on the upstream's full plan. The slot stays occupied until the module's own finish,
+        // which is its longer branch rather than the sum of its steps (see below).
         Map<Path, Long> artifactAt = new HashMap<>();
-        // Two event kinds: an artifact landing (wakes admission, frees nothing) and a flight
-        // finishing (frees the slot). Without artifact events a dependent could only start at
-        // some unrelated module's finish, overestimating exactly the overlap this models.
-        record Event(long at, Path dir, boolean finish) {}
-        PriorityQueue<Event> events = new PriorityQueue<>(Comparator.comparingLong(Event::at));
+        // Three event kinds: an artifact landing (wakes admission, frees nothing), a suite
+        // dispatching (prices the suite at the share the machine has to give right then), and a
+        // flight finishing (frees the slot). Without artifact events a dependent could only start
+        // at some unrelated module's finish, overestimating exactly the overlap this models.
+        record Event(long at, Path dir, Kind kind) {}
+        // Same instant: a finish frees its slot and leaves the in-flight count before a suite
+        // reads its share, and an artifact admits its dependents before that read too — the
+        // executor counts a module admitted at that moment as running.
+        PriorityQueue<Event> events = new PriorityQueue<>(Comparator.comparingLong(Event::at)
+                .thenComparingInt(e -> e.kind().ordinal()));
         long t = 0;
         long end = 0;
         int free = slots;
@@ -100,15 +108,19 @@ public final class WorkSchedule {
                 // BuildPlan admits first-ready. Pricing a module with a 10 s suite and a 37 s
                 // native-image at 47 s says the executor serializes them, which is the bug that
                 // executor no longer has.
-                long fin = t + moduleWall(m);
-                // Dependents need the jar, which lands with the compile prefix — before either
-                // branch. Without a known tail this degrades to "everything but the suite", the
-                // pre-tail behaviour.
-                long art = t + Math.max(0, m.weight() - Math.max(0, m.testWeight()) - Math.max(0, m.tailWeight()));
+                //
+                // The suite is priced when the module reaches it, not now: the executor reads the
+                // runner share when the suite dispatches, and on a wide build the modules that
+                // reach their suites last find most of the machine free.
+                long dispatch = t + m.prefix();
+                // Dependents compile against the classes tree, which lands at the gate — before
+                // test compile, packaging and either branch.
+                long art = t + m.artifactPoint();
                 artifactAt.put(next, art);
-                if (art < fin) events.add(new Event(art, next, false));
-                events.add(new Event(fin, next, true));
-                end = Math.max(end, fin);
+                // Always an event, even when the gate and the dispatch coincide: the dependents it
+                // admits are in flight before this module's suite reads its share.
+                events.add(new Event(art, next, Kind.ARTIFACT));
+                events.add(new Event(dispatch, next, Kind.DISPATCH));
                 free--;
                 flying++;
             }
@@ -120,12 +132,37 @@ public final class WorkSchedule {
             }
             Event e = events.poll();
             t = e.at();
-            if (e.finish()) {
-                free++;
-                flying--;
+            switch (e.kind()) {
+                case ARTIFACT -> {}
+                case DISPATCH -> {
+                    ModuleWorkCost m = Objects.requireNonNull(byDir.get(e.dir()));
+                    long fin = t + Math.max(m.suiteAt(shareAt(slots, flying, m)), m.tailWeight());
+                    events.add(new Event(fin, e.dir(), Kind.FINISH));
+                    end = Math.max(end, fin);
+                }
+                case FINISH -> {
+                    free++;
+                    flying--;
+                }
             }
         }
         return end;
+    }
+
+    /** Declaration order is the tie-break order at one instant. */
+    private enum Kind {
+        FINISH,
+        ARTIFACT,
+        DISPATCH
+    }
+
+    /**
+     * The runner share a suite dispatching now would get: the jobs budget over the modules in
+     * flight, never below one, capped by the suite's classes — the executor's own late-share rule.
+     */
+    static int shareAt(int jobs, int inFlight, ModuleWorkCost m) {
+        int share = Math.max(1, Math.max(1, jobs) / Math.max(1, inFlight));
+        return TestSuiteScaling.effectiveRunners(share, m.suiteClasses());
     }
 
     /**
@@ -141,10 +178,12 @@ public final class WorkSchedule {
      * tail branch never waits on: a known over-price, small next to a suite.
      */
     public static long moduleWall(ModuleWorkCost m) {
-        long test = Math.max(0, m.testWeight());
-        long tail = Math.max(0, m.tailWeight());
-        long prefix = Math.max(0, Math.max(0, m.weight()) - test - tail);
-        return prefix + Math.max(test, tail);
+        return m.prefix() + Math.max(m.testWeight(), m.tailWeight());
+    }
+
+    /** {@link #moduleWall} with the suite re-sharded for {@code runners}. */
+    public static long moduleWallAt(ModuleWorkCost m, int runners) {
+        return m.prefix() + Math.max(m.suiteAt(runners), m.tailWeight());
     }
 
     private static boolean prereqArtifactsReady(

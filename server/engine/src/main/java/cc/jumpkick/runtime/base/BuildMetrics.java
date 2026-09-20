@@ -149,9 +149,9 @@ public final class BuildMetrics {
     /**
      * {@code dir}'s {@code step} wall normalized to a single runner, or {@code 0} when not recorded.
      *
-     * <p>This, not {@link #stepOkAvgMillisOwn}, is the re-usable form of a suite cost: it is
+     * <p>This, not {@link cc.jumpkick.runtime.StepWalls#stepOkAvgMillisOwn}, is the re-usable form of a suite cost: it is
      * averaged over runs that sharded the suite differently without mixing their shapes. See
-     * {@link TestSuiteScaling}.
+     * {@link cc.jumpkick.wire.runtime.TestSuiteScaling}.
      */
     public long stepWall1Millis(String dir, String step) {
         Long n = stepWall1.get(slashKey(dir) + SEP + step);

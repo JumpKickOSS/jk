@@ -31,6 +31,9 @@ hits and misses before you run — [Explain](explain.md).
 `jk clean` deletes project `target/` outputs. The next build restores jars/classes/binaries
 from the action cache when inputs are unchanged (discovery + I/O only). Input fingerprints
 also live under `~/.jk/cache/projects/…` so clean does not force a full rebuild forecast.
+Every module's `target/` comes off disk at once, and inside each tree files are unlinked on a
+pool sized for the host OS; `JK_DELETE_JOBS=N` narrows or widens it (`1` is a serial walk) for a
+network or virtual disk that wants something else.
 
 **Compile avoidance.** A compile step is keyed on what the compiler can see of its classpath —
 each dependency's ABI (signatures, supertypes, inlined constants, annotations; for Kotlin also

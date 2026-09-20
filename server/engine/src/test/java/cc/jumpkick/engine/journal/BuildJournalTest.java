@@ -9,7 +9,7 @@ import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
-import cc.jumpkick.runtime.base.TestSuiteScaling;
+import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
