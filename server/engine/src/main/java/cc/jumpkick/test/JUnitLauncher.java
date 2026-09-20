@@ -228,15 +228,17 @@ public final class JUnitLauncher {
             // non-empty [test] env is not a test for "this is jk-cli" — server/engine sets one
             // too, and named a factory it cannot load JUnit logs a stack trace per @TempDir and
             // silently falls back, which costs the soft-fail delete this exists to provide.
+            if (shortTempDirFactory) {
+                flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.testing.ShortTempDirFactory");
+            }
             if (cliTempDirSupport) {
                 flags.add("-Djunit.jupiter.tempdir.deletion.strategy.default="
                         + "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
-                flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
             }
             flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=always");
             String jkHome = testEnv.extras().get("JK_HOME");
             if (jkHome != null && !jkHome.isBlank()) {
-                // Sibling of the sandbox home: <slot>/test-shared-cache (SharedTestCache).
+                // Sibling of the sandbox home: <slot>/test-shared-cache (TestCaches).
                 Path jkHomeParent = Path.of(jkHome).getParent();
                 if (jkHomeParent != null) {
                     flags.add("-Djk.test.cache.dir=" + jkHomeParent.resolve("test-shared-cache"));
@@ -291,6 +293,8 @@ public final class JUnitLauncher {
      * default strategy, so the soft-fail delete the flag exists to install is not installed.
      */
     private boolean cliTempDirSupport;
+
+    private boolean shortTempDirFactory;
 
     /**
      * The module root a test classes dir belongs to, under either jk layout: {@code
@@ -513,7 +517,7 @@ public final class JUnitLauncher {
         this.testEnv = Objects.requireNonNull(testEnv, "testEnv").withDefaults(defaults);
         this.testClassesDir = testClassesDir.toAbsolutePath().normalize();
         this.inferredModuleDir = inferModuleDir(testClassesDir);
-        this.testTmpDir = TestTmpDir.ensure(this.testEnv.extras().get("TMPDIR"));
+        this.testTmpDir = TestTmpDir.fresh(this.testEnv.extras().get("TMPDIR"));
 
         Path runnerJar = locateRunner(cacheRoot);
         var classpathBase = new LinkedHashSet<Path>();
@@ -523,7 +527,8 @@ public final class JUnitLauncher {
         // PluginMain already has it; extra entries are harmless.
         classpathBase.addAll(WorkerLaunchClasspath.paths(runnerJar));
         String classpath = Classpaths.join(classpathBase);
-        this.cliTempDirSupport = CliTempDirSupport.onClasspath(classpathBase);
+        this.cliTempDirSupport = CliTempDirSupport.onClasspath(classpathBase, CliTempDirSupport.STRATEGY_RESOURCE);
+        this.shortTempDirFactory = CliTempDirSupport.onClasspath(classpathBase, CliTempDirSupport.FACTORY_RESOURCE);
 
         int resolvedWorkers = wanted;
         List<String> preDiscovered = null;
