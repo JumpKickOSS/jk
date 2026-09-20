@@ -91,8 +91,10 @@ class CommandWedgeTest {
         var sink = new PrintStream(out, true, StandardCharsets.UTF_8);
         CliOutput.beginCommand(true);
         try {
-            try (Spinner s = Spinner.show(sink, "Cleaning...")) {
-                s.update("still cleaning");
+            try (ProgressRow clean =
+                    ProgressRow.of(sink, "Clean").status("Counting…").open()) {
+                clean.status("Removing target");
+                clean.follow(() -> 5L, 10L);
             }
             try (ProgressRow row =
                     ProgressRow.of(sink, "JDK").status("Downloading Temurin 26").open()) {

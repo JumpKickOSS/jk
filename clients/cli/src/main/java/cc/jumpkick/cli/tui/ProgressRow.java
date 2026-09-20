@@ -8,6 +8,7 @@ import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.host.time.Clock;
 import java.io.PrintStream;
 import java.time.Duration;
+import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,6 +44,7 @@ public final class ProgressRow implements AutoCloseable {
     private volatile String status;
     private volatile long numerator;
     private volatile long denominator;
+    private volatile @Nullable LongSupplier live;
     private long plainLastBeatMs;
 
     private ProgressRow(Builder b) {
@@ -111,9 +113,30 @@ public final class ProgressRow implements AutoCloseable {
 
     /** Report progress; a {@code total} of zero or less keeps the row in its spinner-only state. */
     public void update(long done, long total) {
+        this.live = null;
         this.numerator = done;
         this.denominator = total;
         if (total > 0) line.progress((int) Math.min(100, done * 100L / total));
+    }
+
+    /**
+     * Read the count done from {@code done} on every frame instead of waiting for {@link #update}
+     * calls — for work whose tally grows on other threads, such as a delete's running file count.
+     */
+    public void follow(LongSupplier done, long total) {
+        this.denominator = total;
+        this.live = done;
+        refreshLive();
+    }
+
+    /** The followed count into the row and the taskbar; a no-op when nothing is followed. */
+    private void refreshLive() {
+        LongSupplier source = live;
+        long total = denominator;
+        if (source == null || total <= 0) return;
+        long done = Math.max(0L, Math.min(total, source.getAsLong()));
+        numerator = done;
+        line.progress((int) (done * 100L / total));
     }
 
     /** Change the status text under the bar; safe from any thread. */
@@ -148,6 +171,7 @@ public final class ProgressRow implements AutoCloseable {
         long now = clock.millis();
         if (!force && now - plainLastBeatMs < Spinner.PLAIN_HEARTBEAT_MS) return;
         plainLastBeatMs = now;
+        refreshLive();
         out.println(JkWedge.plainStatusLine(chip, plainStatus(), JkWedge.PlainTail.WORKING));
         out.flush();
     }
@@ -176,6 +200,7 @@ public final class ProgressRow implements AutoCloseable {
 
     /** The animating row: spinner chip, the bar once a total is known, the status after it. */
     private String frame(RenderContext ctx) {
+        refreshLive();
         Theme t = Theme.active();
         String text = status;
         RichText gray = text.isEmpty() ? RichText.empty() : RichText.ansi(Theme.colorize(text, t.normalGray()));
