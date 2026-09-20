@@ -2,6 +2,8 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.GitVersion;
+import cc.jumpkick.version.Versions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,7 +26,46 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
             @Nullable String current,
             @Nullable String compatible,
             String latest,
-            @Nullable String tip) {}
+            @Nullable String tip) {
+
+        /**
+         * True when an update would change something: Compatible or Latest is strictly ahead of
+         * Current, or Current is not a version (unlocked, unknown) and so cannot be called current.
+         */
+        public boolean canMove() {
+            if (versionOf(current) == null) return true;
+            return compatibleAhead() || latestAhead();
+        }
+
+        /** Compatible is a strictly higher version than Current. */
+        public boolean compatibleAhead() {
+            return ahead(compatible, current);
+        }
+
+        /** Latest is a strictly higher version than Current. */
+        public boolean latestAhead() {
+            return ahead(latest, current);
+        }
+    }
+
+    /** True when {@code a} is a strictly higher version than {@code b} and both are versions. */
+    public static boolean ahead(@Nullable String a, @Nullable String b) {
+        String na = versionOf(a);
+        String nb = versionOf(b);
+        return na != null && nb != null && Versions.compare(na, nb) > 0;
+    }
+
+    /** A cell as a comparable Maven version, or null when it is not one ("", "tip", tag text). */
+    private static @Nullable String versionOf(@Nullable String v) {
+        if (v == null || v.isEmpty() || v.equals("tip")) return null;
+        String n = GitVersion.fromTag(v);
+        return (n.isEmpty() || !Character.isDigit(n.charAt(0))) ? null : n;
+    }
+
+    /** The rows an update would change; see {@link Row#canMove}. */
+    public List<Row> movable() {
+        return rows.stream().filter(Row::canMove).toList();
+    }
 
     public static OutdatedReport error(String message) {
         return new OutdatedReport(message, false, List.of());
@@ -57,17 +98,19 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
 
     /**
      * Structured form for map-shaped surfaces (MCP {@code structuredContent}) — the same rows
-     * {@link #encode} pipe-joins for the wire.
+     * {@link #encode} pipe-joins for the wire. {@code checked} counts every row examined;
+     * {@code rows} is the movable subset unless {@code all}.
      */
-    public Map<String, Object> toStructured() {
+    public Map<String, Object> toStructured(boolean all) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (error != null) {
             m.put("error", error);
             return m;
         }
         m.put("workspace", workspace);
+        m.put("checked", rows.size());
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Row r : rows) {
+        for (Row r : all ? rows : movable()) {
             Map<String, Object> o = new LinkedHashMap<>();
             o.put("module", r.moduleLabel());
             o.put("coordinate", r.coordinate());

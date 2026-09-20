@@ -69,7 +69,7 @@ class OutdatedCommandTest {
     }
 
     @Test
-    void exclude_up_to_date_hides_current_but_keeps_behind(@TempDir Path tempDir) throws Exception {
+    void default_hides_up_to_date_rows_and_all_restores_them(@TempDir Path tempDir) throws Exception {
         // upToDate: only 1.0 exists. behind: 1.0 pinned but 2.0 exists.
         maven.registerMetadata("com.foo.outdated", "upToDate", "1.0");
         maven.registerPom("com.foo.outdated", "upToDate", "1.0", pom("com.foo.outdated", "upToDate", "1.0"));
@@ -85,12 +85,42 @@ class OutdatedCommandTest {
                         + "        behind = { group = \"com.foo.outdated\", name = \"behind\", version = \"=1.0\" }");
         lockOrExplain(tempDir, cache);
 
-        String all = json(tempDir, cache);
-        assertThat(all).contains("com.foo.outdated:upToDate").contains("com.foo.outdated:behind");
-
-        String filtered = jsonArgs(tempDir, cache, "--exclude-up-to-date");
+        String filtered = json(tempDir, cache);
         assertThat(filtered).contains("com.foo.outdated:behind");
         assertThat(filtered).doesNotContain("com.foo.outdated:upToDate");
+
+        String all = jsonArgs(tempDir, cache, "--all");
+        assertThat(all).contains("com.foo.outdated:upToDate").contains("com.foo.outdated:behind");
+
+        String table = table(tempDir, cache);
+        assertThat(table).contains("behind").doesNotContain("upToDate");
+    }
+
+    @Test
+    void every_row_up_to_date_says_how_many_were_checked(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0");
+        maven.registerPom("com.foo.outdated", "leaf", "1.0", pom("com.foo.outdated", "leaf", "1.0"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"=1.0\" }");
+        lockOrExplain(tempDir, cache);
+
+        assertThat(table(tempDir, cache)).contains("(all 1 dependency up to date)");
+        assertThat(json(tempDir, cache).trim()).isEqualTo("[]");
+        assertThat(table(tempDir, cache, "--all"))
+                .contains("com.foo.outdated:leaf")
+                .contains("1.0");
+    }
+
+    @Test
+    void an_unlocked_row_stays_visible_by_default(@TempDir Path tempDir) throws Exception {
+        // Metadata only: the best-effort lock cannot resolve a POM, so Current is empty.
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0");
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"=1.0\" }");
+
+        String json = json(tempDir, cache);
+        assertThat(json).contains("\"dependency\":\"com.foo.outdated:leaf\"").contains("\"current\":\"\"");
     }
 
     @Test
@@ -186,7 +216,7 @@ class OutdatedCommandTest {
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
         lockOrExplain(tempDir, cache);
-        assertThat(json(tempDir, cache)).contains("\"latest\":\"1.1\"");
+        assertThat(jsonArgs(tempDir, cache, "--all")).contains("\"latest\":\"1.1\"");
 
         // Published after the lock: the catalog on disk is within its TTL and the engine holds the
         // list it read, and the report still has to say what the repository publishes now.
