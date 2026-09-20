@@ -90,7 +90,7 @@ calls may omit it. Tools outside the default list ([MCP tools](#mcp-tools)) are 
 | Add a library | `jk add jackson3-databind` · `jk add g:a:1.2.3` · `jk add g:a` (today's stable, written as a pin) | `jk_deps` `action=add` (`apply` defaults **false**) |
 | Remove a library | `jk remove jackson3-databind` | `jk_deps` `action=remove` |
 | Lock / refresh lock | `jk lock` | `jk_run kind=lock` |
-| See newer versions | `jk outdated` | `jk_outdated` |
+| See newer versions | `jk outdated` (rows an update would move; `--all` for every row); then read `target/jk-outdated-dependencies.md` instead of re-running | `jk_outdated` (`all`; returns the report path as `file`) |
 | Bump declared pins | `jk update` · `jk update <name>` · `jk update --major` | `jk_update` (`apply` defaults **false**: preview the `jk.toml` hunk, then `apply=true`) |
 | Compile | `jk compile` | `jk_run kind=compile` |
 | Package | `jk build` | `jk_run kind=build` (`wait` defaults true) |
