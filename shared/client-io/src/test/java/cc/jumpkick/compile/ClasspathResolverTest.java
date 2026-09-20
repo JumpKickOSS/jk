@@ -9,7 +9,6 @@ import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.lock.WriterBuild;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -86,8 +85,7 @@ class ClasspathResolverTest {
     void a_compile_classpath_fails_on_a_row_that_pins_no_checksum_and_names_no_pom_only_file(@TempDir Path tempDir)
             throws Exception {
         Path a = putJar(tempDir, "com/foo/a/1.0/a-1.0.jar", "aaaa");
-        Lockfile lock = lock(pkg("com.foo:a", "1.0", Hashing.sha256Hex(a)), unmarkedPicketbox())
-                .withWriterBuild(new WriterBuild("marking", Lockfile.FILELESS_ROWS_MARKED_SINCE));
+        Lockfile lock = lock(pkg("com.foo:a", "1.0", Hashing.sha256Hex(a)), unmarkedPicketbox());
 
         assertThatThrownBy(
                         () -> new ClasspathResolver(tempDir).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, true))
@@ -96,27 +94,6 @@ class ClasspathResolverTest {
                         "dependency org.picketbox:picketbox:5.0.3.Final has no file: its lock row pins no checksum and"
                                 + " names no POM-only file")
                 .hasMessageContaining("run `jk lock`");
-    }
-
-    /**
-     * A lock written before rows named the file they stand for carries its BOMs, aggregators and
-     * aliases unmarked: it is read by its writer's rule — every checksum-less row is file-less —
-     * and builds, and the next {@code jk lock} rewrites it with the marks. A lock with no build
-     * stamp at all is older still.
-     */
-    @Test
-    void a_lock_from_a_writer_before_the_mark_reads_an_unmarked_row_as_file_less(@TempDir Path tempDir)
-            throws Exception {
-        Path a = putJar(tempDir, "com/foo/a/1.0/a-1.0.jar", "aaaa");
-        Lockfile unstamped = lock(pkg("com.foo:a", "1.0", Hashing.sha256Hex(a)), unmarkedPicketbox());
-        Lockfile earlier = unstamped.withWriterBuild(
-                new WriterBuild("older", Lockfile.FILELESS_ROWS_MARKED_SINCE.minusSeconds(1)));
-
-        for (Lockfile lock : List.of(unstamped, earlier)) {
-            assertThat(lock.marksFilelessRows()).isFalse();
-            assertThat(new ClasspathResolver(tempDir).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, true))
-                    .containsExactly(a.toAbsolutePath().normalize());
-        }
     }
 
     private static Lockfile.Artifact unmarkedPicketbox() {

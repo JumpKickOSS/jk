@@ -2,6 +2,7 @@
 package cc.jumpkick.host;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -78,5 +79,24 @@ public final class Classpaths {
             if (!entry.isBlank()) out.add(Path.of(entry));
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Fail when a jar the {@code what} classpath names is not on disk. A compiler given such a path
+     * skips it and fails later on the first class it cannot find, which names neither the jar nor
+     * the reason; this names both. Directories are not checked — a sibling's classes tree may be
+     * legitimately empty — only archive entries.
+     */
+    public static void requireArchivesOnDisk(Collection<Path> classpath, String what) {
+        List<String> missing = new ArrayList<>();
+        for (Path entry : classpath) {
+            String name = entry.getFileName() == null ? "" : entry.getFileName().toString();
+            boolean archive = name.endsWith(".jar") || name.endsWith(".aar") || name.endsWith(".zip");
+            if (archive && !Files.isRegularFile(entry)) missing.add(entry.toString());
+        }
+        if (missing.isEmpty()) return;
+        throw new IllegalStateException(
+                what + " names " + missing.size() + " jar(s) that are not on disk: " + String.join(", ", missing)
+                        + " — run `jk sync` to fetch the lock's artifacts, or `jk lock` if the lock is stale");
     }
 }

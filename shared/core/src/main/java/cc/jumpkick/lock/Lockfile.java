@@ -4,7 +4,6 @@ package cc.jumpkick.lock;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -63,26 +62,6 @@ public record Lockfile(
             if (checksum == null) return null;
             return checksum.startsWith("sha256:") ? checksum.substring(7) : checksum;
         }
-    }
-
-    /**
-     * The build-time floor of a writer whose file-less rows name the POM or module file they
-     * stand for as their {@link Artifact#path}. A lock stamped by an earlier build, or by none,
-     * carries such rows unmarked, and a reader takes every checksum-less row of it as file-less;
-     * the next {@code jk lock} rewrites them with the mark. See {@link #marksFilelessRows}.
-     */
-    public static final Instant FILELESS_ROWS_MARKED_SINCE = Instant.parse("2026-09-18T11:00:00Z");
-
-    /**
-     * True when this lock's writer names the file a file-less row stands for, so a row that pins
-     * no checksum and names no such file is a jar nobody fetched rather than a BOM or aggregator;
-     * false for a lock written before the mark, whose unmarked checksum-less rows are file-less by
-     * the writer's rule and are rewritten with the mark by the next {@code jk lock}.
-     */
-    public boolean marksFilelessRows() {
-        return writerBuild != null
-                && writerBuild.time() != null
-                && !writerBuild.time().isBefore(FILELESS_ROWS_MARKED_SINCE);
     }
 
     /**

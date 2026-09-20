@@ -2,25 +2,19 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.Log;
-import cc.jumpkick.lock.FilelessRows;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
-import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -86,28 +80,6 @@ public final class AutoLock {
                 }
             }
             return reLock(dir, existing, cache, repoUrl, features, withDefaults, observer, warn);
-        }
-    }
-
-    /**
-     * Rewrite the lock at {@code lockFile} in place when a writer before the file-less mark left
-     * its BOMs and aggregators bare: each such row names its POM file, the manifest digest and
-     * every other row stay, so a fresh lock converges to the current rule without a resolve. A
-     * lock a newer jk wrote, or one with no digest (stale; the relock rewrites it anyway), is left
-     * alone. Returns whether the file was rewritten.
-     */
-    public static boolean markFilelessRows(Path lockFile) throws IOException {
-        if (!Files.isRegularFile(lockFile)) return false;
-        Path lockDir =
-                Objects.requireNonNull(lockFile.toAbsolutePath().normalize().getParent(), "lock dir");
-        synchronized (LockGate.monitorFor(lockDir)) {
-            Lockfile lock = LockfileReader.read(lockFile);
-            String manifestsSha = lock.manifestsSha256();
-            if (manifestsSha == null || !FilelessRows.needsMarks(lock)) return false;
-            if (LockRewriteGuard.refusal(lock) != null) return false;
-            LockfileWriter.write(
-                    FilelessRows.marked(lock).withGeneratedBy("jk " + JkVersion.VERSION), lockFile, manifestsSha);
-            return true;
         }
     }
 
