@@ -2,8 +2,10 @@
 package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -70,5 +72,19 @@ class ClasspathsTest {
         List<Path> entries = List.of(tmp.resolve("a.jar"), tmp.resolve("nested/b.jar"));
 
         assertThat(Classpaths.split(Classpaths.join(entries))).containsExactlyElementsOf(entries);
+    }
+
+    @Test
+    void a_compile_classpath_naming_a_jar_that_is_not_on_disk_is_refused_by_name(@TempDir Path tmp) throws Exception {
+        Path present = Files.writeString(tmp.resolve("present.jar"), "x");
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Classpaths.requireArchivesOnDisk(List.of(present, classes, tmp.resolve("empty-classes")), "cp");
+
+        Path gone = tmp.resolve("gone.jar");
+        assertThatThrownBy(() -> Classpaths.requireArchivesOnDisk(List.of(present, gone), "the javac classpath"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("the javac classpath names 1 jar(s) that are not on disk")
+                .hasMessageContaining(gone.toString())
+                .hasMessageContaining("jk sync");
     }
 }

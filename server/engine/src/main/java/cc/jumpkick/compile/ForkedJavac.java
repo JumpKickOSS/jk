@@ -8,6 +8,7 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
@@ -426,6 +427,7 @@ public final class ForkedJavac {
 
     /** Renders {@code req} and seals the network policy — its forks bypass {@code PluginLaunch}. */
     public static Path writeSpec(Request req) throws IOException {
+        Classpaths.requireArchivesOnDisk(req.classpath(), "the javac classpath");
         Map<String, Path> layout = new LinkedHashMap<>();
         layout.put("classesDir", req.classOutput());
         if (req.sourceOutput() != null) layout.put("sourceOutput", req.sourceOutput());

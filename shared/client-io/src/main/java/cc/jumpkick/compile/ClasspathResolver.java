@@ -442,7 +442,6 @@ public final class ClasspathResolver {
 
     private List<Entry> resolveEntries(
             Lockfile lock, List<Lockfile.Artifact> selected, Missing missing, ArtifactLocator locator) {
-        boolean marksFileless = lock.marksFilelessRows();
         List<Entry> result = new ArrayList<>(selected.size());
         List<String> absent = new ArrayList<>();
         List<String> unpinned = new ArrayList<>();
@@ -452,9 +451,7 @@ public final class ClasspathResolver {
                 // A row without a file by design — a BOM, an aggregator, a relocation stub, a KMP
                 // root — is not a classpath jar and says so on the row. One that says nothing pins
                 // a jar nobody fetched: a classpath built to compile against fails on it by name.
-                // A lock whose writer marked no row is read by that writer's rule — every such row
-                // is file-less — and the next `jk lock` rewrites it with the marks.
-                if (pkg.pomOnly() || !marksFileless) continue;
+                if (pkg.pomOnly()) continue;
                 if (missing == Missing.SKIP) continue;
                 if (missing == Missing.FAIL) {
                     unpinned.add(pkg.displayCoord());

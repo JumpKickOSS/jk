@@ -787,7 +787,7 @@ public final class LockPipeline {
                 // Nothing to materialize for a row without a file by design. A checksum-less row
                 // that names no such file pins a jar nobody fetched; the compile classpath fails
                 // on it by name, so here it is only noted.
-                if (!pkg.pomOnly() && lock.marksFilelessRows()) {
+                if (!pkg.pomOnly()) {
                     Log.info("jk: note: lock row " + pkg.name() + "@" + pkg.version()
                             + " pins no checksum and names no POM-only file — offline check skipped it");
                 }
