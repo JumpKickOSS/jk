@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -88,7 +89,8 @@ class MvnResultsCommandTest {
 
         Path results = projectDir.resolve("target").resolve("jk-results.md");
         assertThat(results).exists();
-        String md = Files.readString(results);
+        // The report carries the byte-order mark every jk-results.md is written with.
+        String md = MarkdownReports.strip(Files.readString(results));
         assertThat(md).startsWith("# jk results — FAIL\n\n**FAIL** · `com.example:reactor` · #1");
         assertThat(md).contains("trigger: cli · tool: mvn");
         assertThat(md).contains("## Tests");
