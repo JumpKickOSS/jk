@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.testing.Await;
 import java.io.IOException;
@@ -122,14 +123,42 @@ class PluginAotTest {
             Files.setLastModifiedTime(runner[i], FileTime.fromMillis(System.currentTimeMillis() - (i + 1) * day));
         }
         Path cache = dir.resolve("java-compiler-0000000000000000.aot");
-        PluginAot.trainAsync(
-                "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
+        PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> writesTrained(aotOutput));
         // The sweep runs inside runTrainer, between publishing the cache and dropping the claim —
         // so the claim's disappearance is the "trainer done, sweep included" signal. Waiting on
         // Files.exists(cache) alone races the sweep.
         Path claim = cache.resolveSibling(cache.getFileName() + ".training");
         Await.until(Duration.ofSeconds(30), () -> Files.exists(cache) && !Files.exists(claim));
         for (Path p : runner) assertThat(p).exists();
+    }
+
+    /**
+     * A stand-in trainer: any command that writes the aot output and exits 0. The host's own
+     * shell, named by its full path: a bare {@code bash} on Windows resolves to whichever launcher
+     * the fork's PATH lists first, and the WSL one in System32 cannot see a {@code C:} path.
+     */
+    private static List<String> writesTrained(Path aotOutput) {
+        return Os.isWindows()
+                ? List.of(cmdExe(), "/c", "echo trained> \"" + aotOutput + "\"")
+                : List.of("/bin/sh", "-c", "echo trained > '" + aotOutput + "'");
+    }
+
+    /** A stand-in trainer that fails without writing anything. */
+    private static List<String> exitsOne() {
+        return Os.isWindows() ? List.of(cmdExe(), "/c", "exit 1") : List.of("/bin/sh", "-c", "exit 1");
+    }
+
+    private static String cmdExe() {
+        String root = System.getenv("SystemRoot");
+        return Path.of(root == null ? "C:\\Windows" : root, "System32", "cmd.exe")
+                .toString();
+    }
+
+    /** A stand-in trainer that outlives any timeout the test sets. */
+    private static List<String> sleepsThirty() {
+        return Os.isWindows()
+                ? List.of(cmdExe(), "/c", "ping -n 31 127.0.0.1 > nul")
+                : List.of("/bin/sh", "-c", "sleep 30");
     }
 
     // ---- training lifecycle -------------------------------------------------------------------
@@ -158,8 +187,7 @@ class PluginAotTest {
 
         Path cache = dir.resolve("javac-newkey0000000000.aot");
         // A stand-in trainer: any command that writes the aot output and exits 0.
-        PluginAot.trainAsync(
-                "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
+        PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> writesTrained(aotOutput));
         // The sweep, dead-key expiry and manifest rewrite all run inside runTrainer between
         // publishing the cache and dropping the claim — the claim's disappearance is the
         // "trainer done, sweep included" signal. Awaiting any single swept file instead races
@@ -181,7 +209,7 @@ class PluginAotTest {
     @Test
     void failed_training_leaves_a_sticky_noaot_marker_instead_of_a_cache() throws Exception {
         Path cache = Files.createDirectories(tmp.resolve("aot2")).resolve("javac-failkey000000000.aot");
-        PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "exit 1"));
+        PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> exitsOne());
         Await.until(Duration.ofSeconds(10), () -> Files.exists(AotCacheFiles.marker(cache)));
         assertThat(cache).doesNotExist();
     }
@@ -193,7 +221,7 @@ class PluginAotTest {
         long prevTimeout = PluginAot.trainingTimeoutMillis;
         PluginAot.trainingTimeoutMillis = 200;
         try {
-            PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "sleep 30"));
+            PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> sleepsThirty());
             long claimedAt = Files.getLastModifiedTime(claim).toMillis();
             // The timeout branch refreshes the claim's mtime — the observable "overran" signal.
             Await.until(Duration.ofSeconds(10), () -> {
@@ -224,7 +252,7 @@ class PluginAotTest {
         CountDownLatch trainerBuilt = new CountDownLatch(1);
         PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> {
             trainerBuilt.countDown();
-            return List.of("bash", "-c", "echo trained > '" + aotOutput + "'");
+            return writesTrained(aotOutput);
         });
         // trainAsync rejects a fresh foreign claim synchronously — claimed() runs before any
         // trainer thread exists, and a refused claim leaves TRAINING before trainAsync returns.
