@@ -111,7 +111,15 @@ public final class FactsIndexing {
             } catch (IOException e) {
                 throw readFailure(rel, classesDir, e, Os.isWindows());
             }
-            ClassFacts facts = FactsExtractor.extract(bytes);
+            ClassFacts facts;
+            try {
+                facts = FactsExtractor.extract(bytes);
+            } catch (RuntimeException notAClassFile) {
+                throw new IOException(
+                        "class file " + rel + " in " + classesDir + " does not parse (" + bytes.length
+                                + " bytes) — a compile is still writing it, or it is not a class file",
+                        notAClassFile);
+            }
             classes.put(facts.name(), facts);
             reextracted++;
         }

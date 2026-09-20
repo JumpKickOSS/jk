@@ -112,6 +112,12 @@ jobs:
           curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$bootstrap" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
 
+      # native-image compiles C on Windows with MSVC and needs the Visual Studio environment
+      # (INCLUDE, LIB, PATH) the developer prompt sets; the engine that runs native-image inherits
+      # it from the first jk invocation, so it is set before jk is installed.
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        if: runner.os == 'Windows'
+
       - name: Bootstrap jk from the hosted release (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
