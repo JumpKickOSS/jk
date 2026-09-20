@@ -407,7 +407,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        # windows-2022 while the hosted bootstrap predates the engine passing the developer
+        # prompt's INCLUDE and LIB through: native-image locates Visual Studio 2022 on its own.
+        os: [macos-latest, windows-2022]
     runs-on: ${{ matrix.os }}
     env:
       JK_AOT_TRAIN: 'off'
