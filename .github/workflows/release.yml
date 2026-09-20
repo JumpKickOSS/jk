@@ -1,41 +1,39 @@
-# Tag-triggered release build + sign for the jumpkick.build layout.
+# The release build for the jumpkick.build layout, run by publishing a GitHub Release.
 #
-# Trigger: push tag v0.13.7 (or any vX.Y.Z matching JkVersion without the v). The tag or the
-# dispatch input is a request; JkVersion.java is the answer, and a request that differs from it
-# fails before anything is built (scripts/release-version.sh).
+# Trigger: a GitHub Release published for tag vX.Y.Z (X.Y.Z must equal JkVersion without the v).
+# The tag is a request; JkVersion.java is the answer, and a request that differs from it fails
+# before anything is built (scripts/release-version.sh). Cutting a release: push the tag, then
+# publish a release for it on GitHub (`gh release create vX.Y.Z --generate-notes`); this workflow
+# builds every platform, signs the tree, uploads it to GCS, redeploys the installers and attaches
+# the artifacts, the SBOM and the notes to that release. A workflow_dispatch is the dry run: it
+# builds, flattens and signs, and stops with the tree as a workflow artifact; nothing is published.
 #
 # Secrets:
 #   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key; only the publish job
 #                                sees it, since only the combined SHA256SUMS is signed
 #   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
-#   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket)
+#   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket,
+#                                firebasehosting.admin on the hosting project)
 #   GITHUB_TOKEN (automatic)   — read-only everywhere but the publish job, which writes the
 #                                GitHub Release (contents) and its provenance attestations
 #                                (id-token, attestations)
 #
-# Hosting: objects in GCS; public CDN will be Firebase later. Path:
+# Hosting: objects in GCS behind the Firebase CDN at https://jumpkick.build. Path:
 #   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/{LATEST,LATEST.sig,VERSION}
-# Public HTTPS (until Firebase): https://storage.googleapis.com/$BUCKET/releases/…
 #
-# Beside the bucket, a GitHub Release for the tag: the same version tree (clients, engine jar,
+# The GitHub Release that triggered the run receives the same version tree (clients, engine jar,
 # SHA256SUMS and its signature), the CycloneDX SBOM jk wrote of its engine (`jk publish --sbom
-# --dry-run`, the document the engine jar embeds), notes
-# from scripts/release-notes.sh (the version's highlights in docs/contributors/releases.md, then
-# the commits since the previous tag) and a build-provenance attestation per artifact. It is a
-# draft until the GCS tree and pointer are up; a tag push publishes it, a dispatch leaves the draft.
+# --dry-run`, the document the engine jar embeds), notes from scripts/release-notes.sh (the
+# version's highlights in docs/contributors/releases.md, then the commits since the previous tag)
+# and a build-provenance attestation per artifact — attached last, once the bucket, the pointer
+# and the installers are live, so the release never announces bytes an installer cannot fetch.
 
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (no v prefix), e.g. 0.13.7'
-        required: true
-        default: '0.13.7'
 
 # Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
 # `permissions:`, naming the one scope it needs.
@@ -44,6 +42,8 @@ permissions:
 
 env:
   TERM: xterm-256color
+  # Empty on a dispatch: scripts/release-version.sh then answers with the declared version.
+  RELEASE_TAG: ${{ github.event.release.tag_name }}
 
 jobs:
   build:
@@ -52,18 +52,19 @@ jobs:
       fail-fast: false
       matrix:
         # One row per platform jumpkick.build serves a client for at the release
-        # .jk/ci-bootstrap-version pins: jk is installed the way a user installs it, the same
-        # bootstrap as ci.yml's self-host job, and builds this commit's dist. A platform with no
-        # hosted client cannot bootstrap here — linux-aarch64, macos-x86_64 and windows-x86_64 are
-        # absent until the owner publishes a first client for each from a machine of that
-        # architecture (docs/contributors/releases.md, "Platforms without a hosted client"); a row
-        # joins this list with the pin bump that follows. Until every platform has a row, the
-        # publish job's flatten refuses the partial tree by design.
+        # .jk/ci-bootstrap-version pins — a native client for linux-x86_64 and windows-x86_64, the
+        # JVM client everywhere else the installer runs. jk is installed the way a user installs
+        # it, the same bootstrap as ci.yml's self-host job, and builds this commit's dist.
+        # linux-aarch64 and macos-x86_64 have no runner here and no client in the tree; the
+        # platform list the publish job flattens (JK_RELEASE_PLATFORMS below) names exactly the
+        # rows of this matrix.
         include:
           - os: ubuntu-latest
             arch_label: linux-x86_64
           - os: macos-14
             arch_label: macos-aarch64
+          - os: windows-latest
+            arch_label: windows-x86_64
     runs-on: ${{ matrix.os }}
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
@@ -81,17 +82,11 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      # The dispatch input reaches the shell as a variable, never as text spliced into the script.
       - name: Resolve version
         shell: bash
-        env:
-          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
-            REQUESTED_VERSION="${GITHUB_REF_NAME#v}"
-          fi
-          VER="$(scripts/release-version.sh "$REQUESTED_VERSION")"
+          VER="$(scripts/release-version.sh "${RELEASE_TAG#v}")"
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
           echo "Building release $VER (${{ matrix.arch_label }})"
 
@@ -100,6 +95,7 @@ jobs:
       # environment is the release being cut, so the bootstrap version rides the installer's own
       # environment and nothing else.
       - name: Bootstrap jk from the hosted release
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -108,11 +104,21 @@ jobs:
           curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$bootstrap" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
 
+      - name: Bootstrap jk from the hosted release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:JK_VERSION = (Get-Content .jk/ci-bootstrap-version -Raw).Trim()
+          Write-Host "bootstrapping jk $env:JK_VERSION from https://jumpkick.build"
+          Invoke-RestMethod https://jumpkick.build/install.ps1 | Invoke-Expression
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:JK_HOME 'bin')
+
       - name: Dist (native client + engine), built by jk
         shell: bash
         run: |
           set -euo pipefail
-          jk build --skip-tests
+          jk build --skip-tests --no-ansi
           ls -la target/dist target/dist/lib
 
       # The first-party plugins (formatter, compilers, test runner, guard packs, …) the release
@@ -123,7 +129,7 @@ jobs:
       - name: Shelve this commit's first-party plugins
         if: matrix.arch_label == 'linux-x86_64'
         shell: bash
-        run: jk install --skip-tests
+        run: jk install --skip-tests --no-ansi
 
       # The bill of materials of the engine, written by the jk that built it: `jk publish --sbom
       # --dry-run` leaves the CycloneDX document in the module's build output (a workspace
@@ -188,19 +194,23 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Merge + publish to GCS
+    name: Merge + publish
     needs: build
     runs-on: ubuntu-latest
     # Runs once the matrix has finished, whatever its outcome, so a missing platform is reported
     # here by name instead of the job being skipped; the flatten step refuses a partial tree.
     if: ${{ always() && !cancelled() }}
     # The one job that writes: the GitHub Release (contents) and the provenance attestations
-    # (id-token for the OIDC identity, attestations for the store). GCS is reached with the
-    # service-account secret, never with this token.
+    # (id-token for the OIDC identity, attestations for the store). GCS and Firebase are reached
+    # with the service-account secret, never with this token.
     permissions:
       contents: write
       id-token: write
       attestations: write
+    env:
+      # The platforms the flatten requires: every row of the build matrix, and nothing the matrix
+      # cannot build. A tree short of one of these is refused, never published.
+      JK_RELEASE_PLATFORMS: linux-x86_64 macos-aarch64 windows-x86_64
     steps:
       # The whole history and every tag: the notes list the commits since the previous release.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -208,17 +218,15 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # The dispatch input reaches the shell as a variable, never as text spliced into the script.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Resolve version
         shell: bash
-        env:
-          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
-            REQUESTED_VERSION="${GITHUB_REF_NAME#v}"
-          fi
-          VER="$(scripts/release-version.sh "$REQUESTED_VERSION")"
+          VER="$(scripts/release-version.sh "${RELEASE_TAG#v}")"
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
 
       # A precondition, before anything is downloaded: the version's highlights entry in
@@ -245,12 +253,10 @@ jobs:
           pattern: maven-repo-*
           merge-multiple: true
 
-      # One tree from five: each platform's client, and the engine jar from linux-x86_64 alone.
-      # The refusals (a missing platform, an engine jar whose bytes differ, two trees carrying one
-      # name) live in the script, which scripts/test-flatten-release.sh exercises in the gate. With
-      # the matrix above short of five platforms this step refuses, so the workflow builds and
-      # stages the platforms it has and the release itself is published by hand
-      # (docs/contributors/releases.md, "Manual upload").
+      # One tree from the matrix: each platform's client, and the platform-neutral jars from
+      # linux-x86_64 alone. The refusals (a missing platform, an engine jar whose bytes differ, two
+      # trees carrying one name) live in the script, which scripts/test-flatten-release.sh
+      # exercises in the gate.
       - name: Flatten into version directory
         shell: bash
         run: scripts/flatten-release.sh staging "out/${JK_VERSION}" "$JK_VERSION"
@@ -293,25 +299,16 @@ jobs:
           name: release-${{ env.JK_VERSION }}-merged
           path: out/
 
-      # The GitHub Release, as a draft: the version tree, the SBOM and the notes, attached to the
-      # tag that triggered the run (the script refuses to cut one). A draft is invisible, so it can
-      # exist before the bucket holds the bytes; it is published as the last step, and a re-run
-      # replaces the draft's assets while a published release is never rewritten.
-      - name: Draft the GitHub Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          scripts/publish-github-release.sh draft "$JK_VERSION" "$RUNNER_TEMP/RELEASE_NOTES.md" \
-            out/"${JK_VERSION}"/* out/sbom/jk-"${JK_VERSION}".cdx.json
-
+      # Everything below publishes. A dispatch is the dry run and ends here, with the signed tree
+      # in the artifact above.
       - name: Authenticate to Google Cloud
+        if: github.event_name == 'release'
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           credentials_json: ${{ secrets.JK_RELEASE_GCS_SA_JSON }}
 
       - name: Set up Cloud SDK
+        if: github.event_name == 'release'
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
       # Preconditions first, then the version tree and the Maven repository, and the latest pointer
@@ -319,6 +316,7 @@ jobs:
       # The pointer is signed data (scripts/sign-latest-pointer.sh); its signature goes up before
       # the pointer, so a client reading mid-publish gets a refusal, never an unverified version.
       - name: Upload to GCS
+        if: github.event_name == 'release'
         env:
           BUCKET: ${{ secrets.JK_RELEASE_GCS_BUCKET }}
           JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
@@ -347,27 +345,37 @@ jobs:
           echo "Published:"
           echo "  gs://${BUCKET}/releases/${VER}/"
           echo "  gs://${BUCKET}/releases/latest/{LATEST,LATEST.sig,VERSION}"
-          echo "  https://storage.googleapis.com/${BUCKET}/releases/latest/LATEST"
           echo "  https://jumpkick.build/repo/cc/jumpkick/jk-formatter/${VER}/jk-formatter-${VER}.jar"
           gsutil ls -l "gs://${BUCKET}/releases/${VER}/"
           gsutil cat "gs://${BUCKET}/releases/latest/LATEST"
+
+      # The installers under hosting/public carry this release's floor and signing key; they go
+      # live after the pointer, so a freshly served install.sh never refuses the pointer it reads.
+      # firebase-tools reads the service-account file the auth step exported.
+      - name: Deploy the installers to jumpkick.build
+        if: github.event_name == 'release'
+        shell: bash
+        run: npx --yes firebase-tools@15.30.2 deploy --only hosting --non-interactive
 
       # One build-provenance attestation per artifact — the clients, the engine jar and the SBOM —
       # signed with this run's OIDC identity and stored with the repository, verifiable with
       # `gh attestation verify <file> --repo <owner>/<repo>`.
       - name: Attest build provenance
+        if: github.event_name == 'release'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             out/${{ env.JK_VERSION }}/jk-*
             out/sbom/jk-${{ env.JK_VERSION }}.cdx.json
 
-      # The tree and the pointer are in the bucket and the attestations are stored: the release
-      # goes live and becomes latest. A dispatch is a dry run and leaves the draft for a person to
-      # read, or delete.
-      - name: Publish the GitHub Release
-        if: github.event_name == 'push'
+      # Last: the release that triggered the run receives the tree, the SBOM and the notes, and
+      # becomes latest. A re-run replaces the assets, as the rsync above replaced the tree.
+      - name: Attach the tree to the GitHub Release
+        if: github.event_name == 'release'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/publish-github-release.sh publish "$JK_VERSION"
+        run: |
+          set -euo pipefail
+          scripts/publish-github-release.sh "$JK_VERSION" "$RUNNER_TEMP/RELEASE_NOTES.md" \
+            out/"${JK_VERSION}"/* out/sbom/jk-"${JK_VERSION}".cdx.json
