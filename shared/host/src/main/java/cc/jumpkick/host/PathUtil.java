@@ -640,7 +640,7 @@ public final class PathUtil {
                     record(e);
                     return;
                 }
-                if (attrs.isDirectory()) {
+                if (entersAsDirectory(attrs)) {
                     directory(root);
                 } else {
                     record(leaf(root, attrs));
@@ -679,7 +679,7 @@ public final class PathUtil {
                         continue;
                     }
                     // A link to a directory is a leaf: unlinked, never entered. Do not follow.
-                    if (attrs.isDirectory()) {
+                    if (entersAsDirectory(attrs)) {
                         tasks.add(new DirTask(child));
                     } else {
                         files.add(child);
@@ -723,6 +723,17 @@ public final class PathUtil {
             protected void compute() {
                 for (int i = from; i < to; i++) record(leaf(files.get(i), attrs.get(i)));
             }
+        }
+
+        /**
+         * Only a real directory is entered. A Windows junction (or any other reparse point that is
+         * not a symlink) reports {@code isDirectory()} <em>and</em> {@code isOther()}, and a walk
+         * that trusted the first alone would descend into whatever the junction points at — a
+         * sandbox's link to the real JDK cost that JDK once. It is a leaf: one delete removes the
+         * junction and leaves its target alone.
+         */
+        private static boolean entersAsDirectory(BasicFileAttributes attrs) {
+            return attrs.isDirectory() && !attrs.isOther();
         }
 
         /** A file or link: tallied when regular, unlinked unless dry. */
