@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -13,8 +14,10 @@ public record Resolution(Map<String, ResolvedModule> modules) {
 
     public Resolution {
         Objects.requireNonNull(modules, "modules");
-        // Deterministic ordering for stable lockfile output downstream.
-        modules = Map.copyOf(new TreeMap<>(modules));
+        // Sorted and unmodifiable, and the sort must survive: {@code Map.copyOf} would keep the
+        // entries but iterate them in a per-JVM random order, and every walk of {@code values()}
+        // that becomes an ordered artifact (a worker classpath, a cache key) would move per process.
+        modules = Collections.unmodifiableSortedMap(new TreeMap<>(modules));
     }
 
     /**
