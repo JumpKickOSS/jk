@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,7 +47,7 @@ class CleanCommandTest {
         assertThat(warnings).isEmpty();
     }
 
-    // ---- deleteRecursively stats -------------------------------------------
+    // ---- delete tally -------------------------------------------
 
     @Test
     void delete_counts_files_and_bytes_once(@TempDir Path tempDir) throws IOException {
@@ -55,12 +56,12 @@ class CleanCommandTest {
         Files.createDirectories(root.resolve("sub"));
         Files.writeString(root.resolve("sub/b.txt"), "defgh");
 
-        long[] stats = {0, 0};
-        CleanCommand.deleteRecursively(root, stats);
+        var stats = new PathUtil.Removed();
+        PathUtil.deleteTrees(List.of(root), stats);
 
         assertThat(root).doesNotExist();
-        assertThat(stats[0]).isEqualTo(2);
-        assertThat(stats[1]).isEqualTo(8);
+        assertThat(stats.files()).isEqualTo(2);
+        assertThat(stats.bytes()).isEqualTo(8);
     }
 
     @Test
@@ -75,17 +76,16 @@ class CleanCommandTest {
         Files.writeString(locked.resolve("file.txt"), "defghi");
         Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("r-x------"));
 
-        long[] stats = {0, 0};
+        var stats = new PathUtil.Removed();
         try {
-            assertThatThrownBy(() -> CleanCommand.deleteRecursively(root, stats))
-                    .isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> PathUtil.deleteTrees(List.of(root), stats)).isInstanceOf(IOException.class);
         } finally {
             Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"));
         }
 
         // Both deletable files; the one that survived contributes nothing.
-        assertThat(stats[0]).as("files removed").isEqualTo(2);
-        assertThat(stats[1]).as("bytes removed").isEqualTo(6);
+        assertThat(stats.files()).as("files removed").isEqualTo(2);
+        assertThat(stats.bytes()).as("bytes removed").isEqualTo(6);
         assertThat(locked.resolve("file.txt")).exists();
     }
 }

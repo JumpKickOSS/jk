@@ -255,6 +255,12 @@ Build: **jk** (the root `jk.toml` workspace; `jk-lock.toml`; `.jk/*.kts` build s
 | `clients/` | `cli`, `cli-terminal`, `web` | Slim wire client (native/JVM), JDK-only TTY/style/keys leaf, dashboard SPA |
 | `plugins/` | `java-compiler` (job-scoped Zinc worker; PLAN for `jk explain`), `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
 
+`PathUtil` is the one owner of tree walks, copies and deletes. Every delete — `jk clean`, the cache
+verbs, worker scratch — goes through `PathUtil.deleteTrees`, which fans distinct roots and each
+directory of a tree across one daemon pool sized by `DeleteParallelism`: eight unlinkers on NTFS,
+sixteen on ext4 and APFS, numbers a bench set and `JK_DELETE_JOBS` overrides. Nothing else in the
+tree may call `Files.walk`, `Files.list` or `Files.delete` on a tree (guard `blind-tree-walks`).
+
 **Layering:** `host` → `{plugin-sdk, wire, cli, cli-terminal}` ; `jk-api` → `core` → `{client-io, wire, …}` → `ide` → server `{io, resolver, toolchain, guard}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `host`), not on engine internals. `host` is the only module a plugin worker, the engine and the native client all link, so it stays JDK-only — `core` cannot serve that role because it api-exposes tomlj.
 
 **Inside `server/engine`:** the root package `cc.jumpkick.engine` (server, connection, startup, the
