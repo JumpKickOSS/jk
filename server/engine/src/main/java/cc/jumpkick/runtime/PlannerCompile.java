@@ -39,6 +39,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClassAbi;
@@ -458,6 +459,24 @@ public final class PlannerCompile {
         ctx.put(JAVA_STAMP_DIGEST, optionsDigest);
         List<String> stampTokens = ActionKey.javacClasspathTokens(request);
         ctx.put(JAVA_STAMP_TOKENS, stampTokens);
+        if (Perf.enabled()) {
+            Perf.note(
+                    "live-compile-main " + javaOut,
+                    "optionsDigest",
+                    optionsDigest,
+                    "cp",
+                    request.classpath().size(),
+                    "pp",
+                    request.processorPath().size(),
+                    "src",
+                    sources.size(),
+                    "release",
+                    ctx.require(RELEASE),
+                    "javaHome",
+                    request.javaHome(),
+                    "pp-list",
+                    request.processorPath());
+        }
         // A fresh stamp vouches for the inputs, not for the tree: one that lost an output its
         // compile record owns falls through to the action cache, whose hit restores the record's
         // whole tree, instead of packaging the subset it has.
