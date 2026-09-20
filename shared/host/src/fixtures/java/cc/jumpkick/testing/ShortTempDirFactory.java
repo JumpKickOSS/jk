@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.engine;
+package cc.jumpkick.testing;
 
-import cc.jumpkick.testing.ShortTempDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -12,16 +11,20 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDirFactory;
 
 /**
- * Prefer short paths for UDS-friendly state ({@link ShortTempDirs#root()}). Cleanup is owned by
- * {@link JkTempDirDeletionStrategy}. If the root has no inodes left (tmpfs), sweep stale
- * {@code jk-junit-*} / {@code junit-*} dirs we own and retry once.
+ * A {@code @TempDir} rooted at {@link ShortTempDirs#root()} — {@code ~/.jk-test-tmp/<pid>} on every
+ * OS — so a fixture's paths stay short: a Unix-domain socket path has a hard cap, and a git
+ * checkout under {@code target/<module>/tmp/w<n>/junit-<20 digits>/…/<sha>/} runs past Windows'
+ * 260 characters. The test launcher names this factory for every module whose test classpath
+ * carries it. If the root has no inodes left (tmpfs), stale {@code jk-junit-*} / {@code junit-*}
+ * dirs we own are swept and the create retried once.
  *
- * <p>Always re-root rather than using {@code java.io.tmpdir}. The shared convention points that
- * at {@code build/tmp} / {@code target/tmp} inside the checkout, and a {@code @TempDir} fixture
- * must not sit there: jk's own {@code jk.toml} would become the workspace root as
- * {@code WorkspaceLocator.findRoot} walks up.
+ * <p>Always re-rooted rather than using {@code java.io.tmpdir}: the launcher points that at
+ * {@code target/tmp} inside the checkout, and a {@code @TempDir} fixture must not sit there — jk's
+ * own {@code jk.toml} would become the workspace root as {@code WorkspaceLocator.findRoot} walks
+ * up. Worker isolation is kept: each worker JVM has a private tmpdir, and {@link
+ * Files#createTempDirectory} still makes a distinct {@code jk-junit-*} directory per request.
  */
-public final class JkTempDirFactory implements TempDirFactory {
+public final class ShortTempDirFactory implements TempDirFactory {
 
     @Override
     public Path createTempDirectory(AnnotatedElementContext elementContext, ExtensionContext extensionContext)
@@ -35,15 +38,7 @@ public final class JkTempDirFactory implements TempDirFactory {
         }
     }
 
-    /**
-     * {@link ShortTempDirs#root()} — {@code ~/.jk-test-tmp/<pid>} on every OS — falling back to the
-     * configured temp dir only when that root cannot be had.
-     *
-     * <p>Worker isolation is not lost by ignoring the configured value: {@code JUnitLauncher} gives
-     * each worker JVM a private tmpdir so parallel workers don't share temp state, and
-     * {@link Files#createTempDirectory} still makes a distinct {@code jk-junit-*} directory per
-     * request under whichever root this returns.
-     */
+    /** {@link ShortTempDirs#root()}, falling back to the configured temp dir only when it cannot be had. */
     static Path root(String configuredTmpdir) {
         try {
             return ShortTempDirs.root();
@@ -73,9 +68,11 @@ public final class JkTempDirFactory implements TempDirFactory {
                 try {
                     Files.deleteIfExists(p);
                 } catch (IOException ignored) {
+                    // a file a live process still holds; the next sweep gets it
                 }
             });
         } catch (IOException ignored) {
+            // the tree is already gone or unreadable; nothing to sweep
         }
     }
 }

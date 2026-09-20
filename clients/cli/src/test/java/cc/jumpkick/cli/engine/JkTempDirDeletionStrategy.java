@@ -13,7 +13,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDirDeletionStrategy;
 
 /**
- * JUnit 6 TempDir cleanup for wire CLI tests.
+ * JUnit 6 TempDir cleanup for wire CLI tests; the directory itself comes from {@code ShortTempDirFactory}.
  *
  * <ol>
  * <li>Try the standard recursive delete.

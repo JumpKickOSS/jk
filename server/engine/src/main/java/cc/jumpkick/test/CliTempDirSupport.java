@@ -25,19 +25,23 @@ final class CliTempDirSupport {
     private CliTempDirSupport() {}
 
     /** The factory jk-cli registers for its own suites; its presence stands for the pair. */
-    private static final String FACTORY_RESOURCE = "cc/jumpkick/cli/engine/JkTempDirFactory.class";
+    /** The short-path {@code @TempDir} factory every module's fixtures carry. */
+    static final String FACTORY_RESOURCE = "cc/jumpkick/testing/ShortTempDirFactory.class";
+
+    /** jk-cli's deletion strategy, which stops the resident engine before a retry; jk-cli's tests only. */
+    static final String STRATEGY_RESOURCE = "cc/jumpkick/cli/engine/JkTempDirDeletionStrategy.class";
 
     /** True when {@code classpath} carries the classes — a classes dir holding it, or a jar with the entry. */
-    static boolean onClasspath(Collection<Path> classpath) {
+    static boolean onClasspath(Collection<Path> classpath, String resource) {
         for (Path entry : classpath) {
             if (entry == null) continue;
             if (Files.isDirectory(entry)) {
-                if (Files.isRegularFile(entry.resolve(FACTORY_RESOURCE))) return true;
+                if (Files.isRegularFile(entry.resolve(resource))) return true;
                 continue;
             }
             if (!Files.isRegularFile(entry)) continue;
             try (JarFile jar = new JarFile(entry.toFile())) {
-                if (jar.getEntry(FACTORY_RESOURCE) != null) return true;
+                if (jar.getEntry(resource) != null) return true;
             } catch (IOException notAJar) {
                 // A classpath entry that is not a readable jar simply does not carry them.
             }

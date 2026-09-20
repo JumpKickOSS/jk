@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -39,6 +40,27 @@ final class TestTmpDir {
         } catch (IOException | InvalidPathException unusable) {
             return null;
         }
+    }
+
+    /**
+     * {@link #ensure}, emptied first: what the previous launch's workers left — JUnit trees a
+     * crashed fork never deleted, a suite's scratch files — is not this launch's to inherit, and the
+     * module's tmp root is nobody else's. A tree that will not delete (a file a dying process still
+     * holds) is left; the launch still gets the directory.
+     */
+    static @Nullable Path fresh(@Nullable String configured) {
+        Path dir = ensure(configured);
+        if (dir == null) return null;
+        try {
+            // Quiet delete: a tree a dying process still holds stays until the next launch.
+            PathUtil.forEachChild(dir, (child, attrs) -> {
+                PathUtil.deleteRecursively(child);
+                return true;
+            });
+        } catch (IOException unreadable) {
+            // the directory exists; a listing that fails leaves it as it was
+        }
+        return dir;
     }
 
     /**
