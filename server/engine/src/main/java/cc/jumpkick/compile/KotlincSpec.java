@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
@@ -31,6 +32,7 @@ final class KotlincSpec {
      * reason).
      */
     static Path write(KotlincRequest request) throws IOException {
+        Classpaths.requireArchivesOnDisk(request.classpath(), "the kotlinc classpath");
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                 .configString("jvmTarget", String.valueOf(request.jvmTarget()));

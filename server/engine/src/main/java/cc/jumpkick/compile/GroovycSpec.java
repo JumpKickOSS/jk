@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
@@ -26,6 +27,7 @@ final class GroovycSpec {
 
     /** Render the request into the unified JSONL plugin spec. */
     static Path write(GroovycRequest request) throws IOException {
+        Classpaths.requireArchivesOnDisk(request.classpath(), "the groovyc classpath");
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
                 .configString("jvmTarget", String.valueOf(request.jvmTarget()));

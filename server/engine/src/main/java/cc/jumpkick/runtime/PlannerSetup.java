@@ -571,13 +571,8 @@ public final class PlannerSetup {
      * moved by the workspace preflight. A lock that cannot be read fails loudly on the read below,
      * with the reader's own message.
      */
-    /** The line a build prints when it rewrote a fresh lock's bare file-less rows with their POM files. */
-    public static final String MARKED_FILELESS_ROWS =
-            "lock: rows without a file now name the POM they stand for; nothing else changed";
-
     private static Lockfile followFirstPartyPins(BuildPlanner.Inputs in, JkBuild project, TaskContext ctx)
             throws IOException {
-        if (AutoLock.markFilelessRows(in.lockFile())) ctx.output(MARKED_FILELESS_ROWS);
         Set<String> declared = new HashSet<>();
         for (PluginDeclaration declaration : project.plugins()) declared.add(declaration.coordinate());
         List<FirstPartyPins.Repin> moved = FirstPartyPins.follow(in.dir(), declared);
