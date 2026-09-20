@@ -12,8 +12,10 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Properties;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -123,6 +125,22 @@ public final class JavaHomes {
 
     private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
+    }
+
+    /**
+     * The feature (major) version of the JDK at {@code javaHome}, read from its {@code release}
+     * file; {@code 0} when the file is missing or unreadable.
+     */
+    public static int featureVersion(Path javaHome) {
+        Path release = javaHome.resolve("release");
+        if (!Files.isRegularFile(release)) return 0;
+        Properties props = new Properties();
+        try (var in = Files.newInputStream(release)) {
+            props.load(in);
+        } catch (IOException e) {
+            return 0;
+        }
+        return Project.majorOf(props.getProperty("JAVA_VERSION", "").replace("\"", ""));
     }
 
     /**
