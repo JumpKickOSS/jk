@@ -8,6 +8,7 @@ import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -104,7 +105,8 @@ class MvnSpyFetchCommandTest {
 
         Path results = projectDir.resolve("target").resolve("jk-results.md");
         assertThat(results).exists();
-        String md = Files.readString(results);
+        // The report carries the byte-order mark every jk-results.md is written with.
+        String md = MarkdownReports.strip(Files.readString(results));
         assertThat(md).startsWith("# jk results — OK\n\n**OK** · `com.example:app`");
         assertThat(md).contains("trigger: cli · tool: mvn");
     }

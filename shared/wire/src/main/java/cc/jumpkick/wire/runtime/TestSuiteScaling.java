@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.runtime.base;
+package cc.jumpkick.wire.runtime;
 
 /**
  * Converts a measured suite wall to and from a runner-count-independent form.
@@ -28,7 +28,7 @@ package cc.jumpkick.runtime.base;
  * 2.6x above, not 24x — because JVM startup, class loading and the CAS all re-do per shard, and the
  * shards contend for one machine. A cube root fits the pair jk can actually measure: normalizing the
  * 24-runner observation gives {@code 17.4 x 24^(1/3) = 50.2 s} against the 1-runner observation's
- * {@code 45.5 s}, agreeing to about 10% — comfortably inside what {@link ScheduleBias} absorbs.
+ * {@code 45.5 s}, agreeing to about 10% — comfortably inside what the learned schedule bias absorbs.
  * A square root would predict a 4.9x speedup and under-price a narrow build by half.
  */
 public final class TestSuiteScaling {
@@ -37,6 +37,20 @@ public final class TestSuiteScaling {
 
     /** Sub-linear sharding exponent; see the class doc for the two observations behind it. */
     private static final double SHARD_EXPONENT = 1.0 / 3.0;
+
+    /**
+     * The runners a suite can use: never more than it has classes, since a class is the unit a
+     * runner takes, and never fewer than one. Both sides of {@code wall1} go through this — the
+     * journal when it normalizes a measured wall, the schedule when it prices a share — or a
+     * two-class suite handed 24 runners is stored as if 24 had sped it up, and read back for one.
+     *
+     * @param runners the share the executor handed out, or {@code <= 0} when unrecorded
+     * @param classes the suite's class count, or {@code <= 0} when unknown
+     */
+    public static int effectiveRunners(int runners, int classes) {
+        int r = Math.max(1, runners);
+        return classes > 0 ? Math.min(r, classes) : r;
+    }
 
     /**
      * The single-runner-equivalent of a wall measured on {@code runners}.

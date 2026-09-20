@@ -250,30 +250,47 @@ public final class PackagingKeys {
             Path cache,
             Map<Path, String> restoredJarShas)
             throws IOException {
+        String miss = nativeReplayMiss(dir, project, layout, lockFile, actionCache, cache, restoredJarShas);
+        Perf.note("forecast-native " + layout.nativeBinary(), "miss", miss == null ? "none" : miss);
+        return miss == null;
+    }
+
+    private static @Nullable String nativeReplayMiss(
+            Path dir,
+            JkBuild project,
+            BuildLayout layout,
+            Path lockFile,
+            ActionCache actionCache,
+            Path cache,
+            Map<Path, String> restoredJarShas)
+            throws IOException {
         if (PluginBuild.shape(project, dir)
                 .map(PluginDescriptor.Packaging::classesRun)
-                .orElse(false)) return false;
-        if (PlannerNative.packagerDeclaresNativeSources(project, dir)) return false;
+                .orElse(false)) return "classes-run packager";
+        if (PlannerNative.packagerDeclaresNativeSources(project, dir)) return "packager builds its own image";
         Path out = layout.nativeBinary();
         String task = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
         var record = actionCache.lastFor(task);
-        if (record.isEmpty()) return false;
+        if (record.isEmpty()) return "no native-image record for " + task;
         Map<String, String> stored = nativeTokens(record.get().inputs().get("inputs"));
-        if (stored.size() != NATIVE_TOKEN_PREFIXES.size()) return false;
+        if (stored.size() != NATIVE_TOKEN_PREFIXES.size())
+            return "record holds " + stored.size() + " tokens: " + stored.keySet();
         // An executable only: a shared library's record names no binary this replay can restore.
-        if (EnvValues.parseBool(stored.get("shared:")).orElse(true)) return false;
-        if (!"".equals(stored.get("framework:"))) return false;
-        if (!Objects.equals(stored.get("out:"), out.getFileName().toString())) return false;
+        if (EnvValues.parseBool(stored.get("shared:")).orElse(true)) return "shared library";
+        if (!"".equals(stored.get("framework:"))) return "framework sources";
+        if (!Objects.equals(stored.get("out:"), out.getFileName().toString()))
+            return "record names another binary: " + stored.get("out:");
 
         JkBuild.NativeConfig nativeCfg = project.nativeConfigOpt().orElse(null);
         String configuredMain =
                 nativeCfg != null && nativeCfg.mainClass() != null ? nativeCfg.mainClass() : project.mainClass();
         if (configuredMain != null && !configuredMain.isBlank() && !configuredMain.equals(stored.get("main:"))) {
-            return false;
+            return "configured main " + configuredMain + " vs record " + stored.get("main:");
         }
         List<String> declaredArgs = new ArrayList<>(PluginContributions.nativeArgs(project, dir));
         if (nativeCfg != null) declaredArgs.addAll(nativeCfg.args());
-        if (!declaredArgsMatch(Objects.requireNonNull(stored.get("args:")), declaredArgs)) return false;
+        if (!declaredArgsMatch(Objects.requireNonNull(stored.get("args:")), declaredArgs))
+            return "declared args differ from the record: " + declaredArgs + " vs " + stored.get("args:");
 
         List<Path> classpath = new ArrayList<>();
         classpath.add(layout.mainJar());
@@ -290,7 +307,9 @@ public final class PackagingKeys {
                 "graal:" + stored.get("graal:"),
                 "framework:",
                 "train:" + (trainReach == null ? "" : ClasspathFingerprint.entry(trainReach)));
-        return ForecastSteps.present(actionCache, ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens));
+        boolean present = ForecastSteps.present(
+                actionCache, ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens));
+        return present ? null : "key miss: " + tokens;
     }
 
     /**

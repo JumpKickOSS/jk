@@ -123,7 +123,7 @@ class NativeEffortTest {
         restoreHostState();
         Path cli = Path.of("clients/cli").toAbsolutePath().normalize();
         if (!Files.isRegularFile(cli.resolve("jk.toml"))) return;
-        long own = EffortWeights.stepOkAvgMillisOwn(
+        long own = StepWalls.stepOkAvgMillisOwn(
                 BuildMetrics.load(BuildMetrics.defaultFile()), cli.toString(), "native-image");
         if (own < NativeEffort.WALL_FLOOR_MS) return;
         long est = NativeEffort.wallMillis(cli);

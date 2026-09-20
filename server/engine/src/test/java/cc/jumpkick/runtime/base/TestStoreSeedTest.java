@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.ArtifactMemo;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,6 +81,38 @@ class TestStoreSeedTest {
         assertThat(metadata(sandbox, "org/opentest4j/opentest4j")).isRegularFile();
         // 6 launcher files + 2 opentest4j files + 2 version lists
         assertThat(seeded).isEqualTo(10);
+    }
+
+    /**
+     * A hollow stand-in (a fixture's empty zip under a real coordinate) is never seeded, and one an
+     * earlier seed left in the sandbox gives way to the host's real bytes.
+     */
+    @Test
+    void a_hollow_stand_in_is_neither_seeded_nor_kept(@TempDir Path tmp) throws Exception {
+        byte[] emptyZip = {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
+        Path hostStub = host.resolve("repos").resolve(RepositorySpec.CENTRAL).resolve(LAUNCHER + "/6.1.4");
+        Files.createDirectories(hostStub);
+        Files.write(hostStub.resolve("junit-platform-launcher-6.1.4.jar"), emptyZip);
+        Path sandbox = tmp.resolve("sandbox");
+        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        Path slot = central.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.jar");
+        Files.createDirectories(slot.getParent());
+        Files.write(slot, emptyZip);
+        Path memo =
+                slot.resolveSibling(ArtifactMemo.jkFileName(slot.getFileName().toString()));
+        Files.writeString(memo, "memo of the stand-in");
+
+        TestStoreSeed.seed(host, sandbox);
+
+        assertThat(central.resolve(LAUNCHER + "/6.1.4/junit-platform-launcher-6.1.4.jar"))
+                .as("the host's hollow jar is not the coordinate's bytes")
+                .doesNotExist();
+        assertThat(Files.readString(slot))
+                .as("the real bytes replace the stand-in")
+                .isEqualTo(".jar");
+        assertThat(memo).as("the stand-in's memo goes with it").doesNotExist();
     }
 
     /** A version whose POM the host never fetched cannot be solved from, so the list does not offer it. */

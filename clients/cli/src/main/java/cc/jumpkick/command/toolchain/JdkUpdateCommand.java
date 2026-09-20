@@ -9,7 +9,8 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.JdkDownloadBar;
+import cc.jumpkick.cli.tui.JdkInstallView;
+import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
@@ -289,7 +290,7 @@ public final class JdkUpdateCommand implements CliCommand {
         String label = JdkService.displayLabel(entry);
         long total = entry.archiveSize();
         InstalledJdk installed;
-        try (JdkDownloadBar pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
+        try (ProgressRow pb = JdkInstallView.downloadRow(CliOutput.stdout(), "JDK", label, total)) {
             installed = installer.install(entry, bytes -> pb.update(bytes, total));
             pb.finish();
         }

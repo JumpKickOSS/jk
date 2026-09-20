@@ -13,7 +13,7 @@ import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.Spinner;
+import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -71,23 +71,46 @@ public final class CleanCommand implements CliCommand {
         }
 
         long startMs = System.currentTimeMillis();
-        long[] stats = {0L, 0L}; // [fileCount, totalBytes]
+        List<Path> roots = deleteRoots(workspaceRoot, projectDirs, keepArtifacts);
+        var tally = new PathUtil.Removed();
 
-        CommandWedge.envelopeStart(); // leading blank before spinner / settle chrome
-        try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Cleaning...")) {
-            cleanTargets(workspaceRoot, projectDirs, keepArtifacts, stats);
+        // The row opens before anything is counted so a big tree gets chrome from the first
+        // moment; the bar appears once the count is in, and the settle takes the row's place.
+        ProgressRow row = ProgressRow.of(CliOutput.stdout(), "Clean")
+                .status("Counting…")
+                .cancelSubject("clean")
+                .open();
+        IOException stuck = null;
+        try {
+            long total = PathUtil.measureTrees(roots).files();
+            if (total > 0) {
+                row.status("Removing " + (keepArtifacts ? BuildLayout.TARGET + " intermediates" : BuildLayout.TARGET));
+                row.follow(tally::files, total);
+                PathUtil.deleteTrees(roots, tally);
+            }
+        } catch (IOException e) {
+            // The walk finished; what it could remove is gone. The settle below says so, and names
+            // the file that would not go — on Windows, one another process still has open.
+            stuck = e;
+        } finally {
+            row.finish();
         }
 
         long elapsedMs = System.currentTimeMillis() - startMs;
+        long files = tally.files();
+        String stats = String.format(
+                "%,d file%s, %s total", files, files == 1 ? "" : "s", CacheCommand.fmtBytes(tally.bytes()));
 
-        if (stats[0] == 0) {
+        if (stuck != null) {
+            CommandWedge.printFail("Clean", stuckMessage(stuck, workspaceRoot, files, stats));
+            return 1;
+        }
+        if (files == 0) {
             CommandWedge.printOk("Clean", "Nothing to remove");
         } else {
             String removed = Theme.colorize("Removed", Theme.active().focused());
-            String stats_ = String.format(
-                    "%,d file%s, %s total", stats[0], stats[0] == 1 ? "" : "s", CacheCommand.fmtBytes(stats[1]));
             String inTime = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
-            CommandWedge.printOk("Clean", removed + " " + stats_ + " " + inTime);
+            CommandWedge.printOk("Clean", removed + " " + stats + " " + inTime);
         }
 
         if (force) {
@@ -99,40 +122,62 @@ public final class CleanCommand implements CliCommand {
         return 0;
     }
 
+    /**
+     * The failure settle: what did go, then the first file that would not and how many more. A
+     * file that cannot be unlinked on Windows is one some process still has open — a build, the
+     * resident engine's worker, an IDE — so the line says where to look.
+     */
+    static String stuckMessage(IOException stuck, Path workspaceRoot, long files, String stats) {
+        String path = stuck.getMessage() == null ? "a file" : stuck.getMessage();
+        try {
+            Path p = Path.of(path);
+            if (p.isAbsolute() && p.startsWith(workspaceRoot)) {
+                path = workspaceRoot.relativize(p).toString().replace('\\', '/');
+            }
+        } catch (RuntimeException notAPath) {
+            // the message was not a path; show it as it came
+        }
+        int more = stuck.getSuppressed().length;
+        String others = more == 0 ? "" : " and " + more + " more";
+        String removed = files == 0 ? "Nothing removed" : "Removed " + stats + ", but";
+        return removed + " " + path + others + " could not be removed: another process has it open"
+                + " (a build, the engine, or an IDE)";
+    }
+
     /** Build-intermediate subdirs removed by {@code --keep-artifacts} (final jars stay). */
     private static final List<String> INTERMEDIATE_SUBDIRS =
             List.of("classes", "kotlin", "resources", "generated", "tmp", "test-results", "reports");
 
     /**
-     * Delete each project's output tree (or, with {@code keepArtifacts}, only its intermediates).
-     * Outputs live at the layout-resolved target dir — {@code <workspace>/target/<rel>/} for a
-     * member, not {@code <member>/target/}. A distinct member-local {@code target/} is also
-     * swept when present.
+     * Every root the clean removes, for one pooled delete: each project's output tree (or, with
+     * {@code keepArtifacts}, only its intermediates). Outputs live at the layout-resolved target
+     * dir — {@code <workspace>/target/<rel>/} for a member, not {@code <member>/target/}. A
+     * distinct member-local {@code target/} is also swept when present.
      *
-     * <p>The module's test sandbox home goes too. It is no longer under {@code target/} — it holds
-     * jk's whole layout and a directory of that shape inside a source tree is what a stray {@code
-     * git} command walks up out of ({@link TestHomes}) — so a full clean names it explicitly, which
-     * is what keeps {@code jk clean} reaching the whole sandbox. Only a full clean:
-     * {@code --keep-artifacts} keeps intermediates, and a warm store is the most intermediate thing
-     * here.
+     * <p>The module's test sandbox home goes too. It is not under {@code target/} — it holds jk's
+     * whole layout and a directory of that shape inside a source tree is what a stray {@code git}
+     * command walks up out of ({@link TestHomes}) — so a full clean names it explicitly. Only a
+     * full clean: {@code --keep-artifacts} keeps intermediates, and a warm store is the most
+     * intermediate thing here.
      */
-    static void cleanTargets(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, long[] stats)
-            throws IOException {
+    static List<Path> deleteRoots(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts) {
+        List<Path> roots = new ArrayList<>();
         for (Path projectDir : projectDirs) {
             Path layoutTarget = BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
             Path memberLocalTarget = projectDir.resolve(BuildLayout.TARGET);
             boolean distinct = !layoutTarget.equals(memberLocalTarget);
             if (!keepArtifacts) {
-                deleteRecursively(layoutTarget, stats);
-                if (distinct) deleteRecursively(memberLocalTarget, stats);
-                deleteRecursively(TestHomes.slotFor(projectDir), stats);
+                roots.add(layoutTarget);
+                if (distinct) roots.add(memberLocalTarget);
+                roots.add(TestHomes.slotFor(projectDir));
             } else {
                 for (String sub : INTERMEDIATE_SUBDIRS) {
-                    deleteRecursively(layoutTarget.resolve(sub), stats);
-                    if (distinct) deleteRecursively(memberLocalTarget.resolve(sub), stats);
+                    roots.add(layoutTarget.resolve(sub));
+                    if (distinct) roots.add(memberLocalTarget.resolve(sub));
                 }
             }
         }
+        return roots;
     }
 
     /**
@@ -209,23 +254,6 @@ public final class CleanCommand implements CliCommand {
         } catch (IOException e) {
             CommandWedge.printFail("Clean", e.getMessage());
             return Exit.SOFTWARE;
-        }
-    }
-
-    /**
-     * Delete {@code root} depth-first, folding what went into {@code stats}. One shared
-     * implementation ({@link cc.jumpkick.host.PathUtil#deleteRecursivelyOrThrow(Path,
-     * cc.jumpkick.host.PathUtil.Removed)}). The client waits for {@code job-finish} before
-     * returning, so a not-empty directory is a real failure — there is no writer left to race.
-     */
-    static void deleteRecursively(Path root, long[] stats) throws IOException {
-        var tally = new PathUtil.Removed();
-        try {
-            PathUtil.deleteRecursivelyOrThrow(root, tally);
-        } finally {
-            // Whatever it managed to remove is removed, failure or not — the report must match disk.
-            stats[0] += tally.files();
-            stats[1] += tally.bytes();
         }
     }
 }

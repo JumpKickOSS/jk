@@ -4,7 +4,7 @@ package cc.jumpkick.command.project;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.cli.tui.JdkDownloadBar;
+import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
@@ -124,7 +124,7 @@ final class NewJdkChoice {
             // Download (progress bar) then extract (spinner).
             var label = JdkService.displayLabel(entry);
             long total = entry.archiveSize();
-            try (var pb = JdkDownloadBar.show(CliOutput.stdout(), label)) {
+            try (var pb = JdkInstallView.downloadRow(CliOutput.stdout(), "JDK", label, total)) {
                 var dl = installer.download(entry, bytes -> pb.update(bytes, total));
                 pb.finish();
                 try (var sp = Spinner.show(CliOutput.stdout(), "Installing " + label + "...")) {
