@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cli.engine.EngineSpawn.Patience;
 import cc.jumpkick.cli.engine.EngineSpawn.Reachability;
-import cc.jumpkick.host.Os;
 import cc.jumpkick.testing.ShortTempDirs;
+import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
@@ -272,9 +272,6 @@ class EngineSpawnSilentPeerTest {
 
     /** A live process whose command line is visibly not java or jk. */
     private static Process notAJvm() throws IOException {
-        if (Os.isWindows()) {
-            return new ProcessBuilder("cmd", "/c", "ping", "-n", "40", "127.0.0.1").start();
-        }
-        return new ProcessBuilder("sleep", "30").start();
+        return Sleepers.sleeper(30).start();
     }
 }

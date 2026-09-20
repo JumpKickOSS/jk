@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -76,7 +77,7 @@ class EngineServerTest extends EngineServerHarness {
         Process[] trainer = new Process[1];
         server.aotTrainerSpawner(() -> {
             try {
-                trainer[0] = new ProcessBuilder("sleep", "30")
+                trainer[0] = Sleepers.sleeper(30)
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                         .redirectError(ProcessBuilder.Redirect.DISCARD)
                         .start();
