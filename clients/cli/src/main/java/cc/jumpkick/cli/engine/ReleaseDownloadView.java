@@ -5,9 +5,9 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.JdkDownloadBar;
 import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.GlobalConfig;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * </pre>
  *
  * <p>Output modes follow the stream, as {@link JdkInstallView}'s do: a terminal animates the bar;
- * plain mode (no ANSI) gets a {@code Downloading …} line from {@link JdkDownloadBar}; a
+ * plain mode (no ANSI) gets a {@code Downloading …} line from {@link ProgressRow}; a
  * machine-consumed stdout ({@code --output json}) keeps the human line on stderr so the JSONL
  * stream stays parseable. {@link AutoCloseable} so a failed fetch still wipes the active bar.
  */
@@ -33,7 +33,7 @@ public final class ReleaseDownloadView implements ReleaseArtifacts.Progress, Aut
 
     private final String chip;
     private final String label;
-    private @Nullable JdkDownloadBar bar;
+    private @Nullable ProgressRow bar;
 
     /** The engine jar's view: {@code version} is the client's, which the jar is paired with. */
     static ReleaseDownloadView engine(String version) {
@@ -51,12 +51,12 @@ public final class ReleaseDownloadView implements ReleaseArtifacts.Progress, Aut
 
     @Override
     public void start(String jarName, long totalBytes) {
-        bar = JdkDownloadBar.show(CliOutput.stdout(), chip, label);
+        bar = JdkInstallView.downloadRow(CliOutput.stdout(), chip, label, totalBytes);
     }
 
     @Override
     public void progress(long readBytes, long totalBytes) {
-        JdkDownloadBar b = bar;
+        ProgressRow b = bar;
         if (b != null) b.update(readBytes, totalBytes);
     }
 
@@ -73,7 +73,7 @@ public final class ReleaseDownloadView implements ReleaseArtifacts.Progress, Aut
     }
 
     private void finishBar() {
-        JdkDownloadBar b = bar;
+        ProgressRow b = bar;
         if (b != null) {
             b.finish();
             bar = null;

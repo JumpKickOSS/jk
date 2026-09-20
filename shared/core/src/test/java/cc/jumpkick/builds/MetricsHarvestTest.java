@@ -46,6 +46,55 @@ class MetricsHarvestTest {
     }
 
     /**
+     * A wall measured while another run shared the machine is a contended sample. The row's mean,
+     * last and count come from the runs that ran alone while there are any; a row only ever seen
+     * under contention keeps what it has; the overlap is written beside the run.
+     */
+    @Test
+    void contended_samples_stay_out_of_a_row_that_has_an_uncontended_one(@TempDir Path root) throws Exception {
+        ProjectBuilds.RunDir alone = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        ProjectBuilds.RunDir first = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        ProjectBuilds.RunDir second = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        ProjectBuilds.RunDir other = ProjectBuilds.openRun(root, "g:other", root.resolve("other"));
+        window(first, 0, 100);
+        window(second, 50, 150);
+        window(other, 90, 120);
+        window(alone, 200, 300);
+        Files.writeString(first.metricsFile(), """
+                module.a.task.compile-java.wall-ms = 40
+                module.b.task.run-tests.wall-ms = 40
+                """);
+        Files.writeString(second.metricsFile(), """
+                module.a.task.compile-java.wall-ms = 45
+                module.b.task.run-tests.wall-ms = 45
+                """);
+        Files.writeString(alone.metricsFile(), """
+                module.a.task.compile-java.wall-ms = 10
+                """);
+        MetricsHarvest.get().configure(50, 90);
+        MetricsHarvest.get().runOnce(root);
+
+        String pm = Files.readString(first.projectHome().resolve(ProjectBuilds.PROJECT_METRICS));
+        assertThat(pm)
+                .contains("[mean]\nmodule.a.task.compile-java.wall-ms = 10\n")
+                .contains("module.b.task.run-tests.wall-ms = 42.5")
+                .contains("[count]\nmodule.a.task.compile-java.wall-ms = 1\nmodule.b.task.run-tests.wall-ms = 2\n");
+        assertThat(Files.readString(second.runDir().resolve(RunContention.SIDECAR)))
+                .as("the second run overlapped the first and the other project's run")
+                .contains("overlapping-runs = 2");
+        assertThat(Files.readString(first.runDir().resolve(RunContention.SIDECAR)))
+                .as("the first run overlapped the second and the other project's run")
+                .contains("overlapping-runs = 2");
+        assertThat(alone.runDir().resolve(RunContention.SIDECAR)).doesNotExist();
+    }
+
+    private static void window(ProjectBuilds.RunDir run, long start, long end) throws Exception {
+        Files.writeString(
+                run.runDir().resolve(ProjectBuilds.RECORD),
+                "{\n  \"schema\": 1,\n  \"startedAt\": " + start + ",\n  \"finishedAt\": " + end + "\n}\n");
+    }
+
+    /**
      * Class walls are one table per package of a module in the run file and in the ledger alike,
      * the classes by their simple names; a default-package class sits under the module's own table.
      */

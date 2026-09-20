@@ -3,7 +3,6 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
@@ -14,6 +13,7 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.PlannerTails;
+import cc.jumpkick.runtime.StepWalls;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.Perf;
@@ -100,7 +100,7 @@ public final class BuildEta {
             Calibration.ensure(jdksDir);
             List<EffortWeights.ModuleCost> costs = etaCostsFromExplainPlan(
                     plan, cache, workers, jdksDir, profile, skipTests, verbose, maxModuleConcurrency);
-            int concurrency = etaConcurrency(plan.maxReadyWidth(), workers, parallelTests, maxModuleConcurrency);
+            int concurrency = etaConcurrency(maxModuleConcurrency);
             boolean serialEta = concurrency <= 1;
             if (costs.isEmpty()) return new BuildService.EtaModel(0, costs, concurrency, serialEta);
             Seed seed = seedEta(
@@ -114,11 +114,10 @@ public final class BuildEta {
                     jdksDir,
                     historyShapeForCosts(costs.size()));
             if (Perf.enabled()) {
-                // The three numbers per module that decide the whole estimate: WorkSchedule admits
-                // a dependent at `weight - test - tail`, so a collapsed split serializes the graph.
-                // Logged here rather than reconstructed from a synthetic plan — a hand-built
-                // ExplainPlan prices nothing like a real one and sends readers after the wrong
-                // suspect.
+                // The four numbers per module that decide the whole estimate: WorkSchedule admits
+                // a dependent at the gate, so a collapsed split serializes the graph. Logged here
+                // rather than reconstructed from a synthetic plan — a hand-built ExplainPlan
+                // prices nothing like a real one and sends readers after the wrong suspect.
                 for (EffortWeights.ModuleCost c : costs) {
                     Perf.note(
                             "eta-cost " + c.dir(),
@@ -127,7 +126,13 @@ public final class BuildEta {
                             "test",
                             c.testWeight(),
                             "tail",
-                            c.tailWeight());
+                            c.tailWeight(),
+                            "gate",
+                            c.gateWeight(),
+                            "wall1",
+                            c.suiteWall1(),
+                            "classes",
+                            c.suiteClasses());
                 }
                 Perf.note(
                         "eta",
@@ -148,26 +153,6 @@ public final class BuildEta {
             Log.warn("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             return BuildService.EtaModel.empty();
         }
-    }
-
-    /**
-     * Backward-compatible overload: {@code serial=true} → {@code maxModuleConcurrency=1}; otherwise
-     * no jobs clamp. Prefer the overload that takes {@code maxModuleConcurrency} so explain and
-     * build pass the same {@code -j} value.
-     */
-    public static long estimateEtaMillis(
-            ExplainPlan plan,
-            Path entryDir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            boolean serial,
-            boolean parallelTests) {
-        return estimateEtaMillis(
-                plan, entryDir, cache, workers, jdksDir, profile, skipTests, verbose, parallelTests, serial ? 1 : 0);
     }
 
     /**
@@ -210,19 +195,15 @@ public final class BuildEta {
     }
 
     /**
-     * Module-concurrency budget for the ETA schedule — <b>must</b> match {@link
-     * WorkspaceExecute}'s {@code concurrency} so explain and the live countdown clamp the same way.
+     * Module-concurrency budget for the ETA schedule — the executor's own cap, so explain and the
+     * live countdown clamp the same way: the request's {@code -j} when it carries one, else the
+     * engine's resolved jobs (every core). Not the graph's ready width: the live scheduler admits a
+     * dependent as soon as its prerequisites have compiled, so a build's in-flight count is bounded
+     * by the cap and not by how many modules are ready under full-completion semantics — the
+     * dogfood rebuild keeps 24 modules in flight where that width says 14.
      */
-    static int etaConcurrency(int maxReadyWidth, int workers, boolean parallelTests, int maxModuleConcurrency) {
-        int cores = Math.max(1, Runtime.getRuntime().availableProcessors());
-        int width = Math.max(1, maxReadyWidth);
-        if (maxModuleConcurrency > 0) width = Math.min(width, maxModuleConcurrency);
-        // HeapPlan multiplies module width by within-module workers when parallelTests; auto (-w 0)
-        // uses 1 here for the peak-JVM product (test auto-parallel is priced inside TestWorkers).
-        int wForHeap = workers > 0 ? workers : 1;
-        int requested = HeapPlan.requestedJvms(width, wForHeap, parallelTests, cores);
-        if (maxModuleConcurrency > 0) return Math.min(requested, maxModuleConcurrency);
-        return requested;
+    static int etaConcurrency(int maxModuleConcurrency) {
+        return Math.max(1, TestWorkers.jobsBudget(maxModuleConcurrency));
     }
 
     /**
@@ -358,11 +339,20 @@ public final class BuildEta {
                 counts.put(TaskNames.COMPILE_JAVA, m.sourceCount());
                 counts.put(TaskNames.COMPILE_TEST, m.sourceCount());
             }
-            int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             // The share is a cap, not a demand: a suite with fewer classes than runners gets fewer.
+            // The class count comes from the ledger when the module has run here; a cold module
+            // is guessed at three methods a class.
+            int knownClasses = EffortWeights.knownClassCount(BuildMetrics.slashKey(mdir.toString()));
+            int classGuess = knownClasses > 0 ? knownClasses : m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             int testW = TestWorkers.resolve(share, classGuess, share);
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
+            // resolve-deps runs on every scheduled module and the forecast lists it as bookkeeping,
+            // so it is priced from its own recorded wall: a Spring Boot module resolves for a
+            // second, jk's own modules for a tenth of that. Dependents wait on it too.
+            long resolveMs = StepWalls.stepOkAvgMillisOwn(
+                    metrics, BuildMetrics.slashKey(mdir.toString()), TaskNames.RESOLVE_DEPS);
+            if (resolveMs > 0) priced = priced.plusGated(EffortWeights.flatWeight(resolveMs));
             // This module's own `.jk/` scripts, for the anchors this build will actually reach.
             // They are prefix work — before-compile/after-compile/before-package all land ahead of
             // the suite-vs-tail split — so they go on `weight` and not on either branch.

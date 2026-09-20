@@ -78,8 +78,8 @@ class TaskForecasterPackageKeyTest {
     void estimate_eta_is_zero_when_plan_is_fully_cached(@TempDir Path tmp) {
         // Empty plan modules → 0; fully-cached modules skipped in estimateEtaMillis.
         ExplainPlan empty = new ExplainPlan(List.of(), Map.of(), 1, List.of());
-        long eta = BuildService.estimateEtaMillis(
-                empty, tmp, tmp.resolve("cache"), 1, null, null, false, false, true, false);
+        long eta =
+                BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("cache"), 1, null, null, false, false, false, 1);
         assertThat(eta).isZero();
     }
 

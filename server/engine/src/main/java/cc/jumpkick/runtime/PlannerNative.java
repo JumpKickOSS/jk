@@ -24,6 +24,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionKey;
@@ -121,6 +122,7 @@ public final class PlannerNative {
         allArgs = withReachabilityMetadata(ctx, dir, project, layout, lockFile, javaHome, frameworkSources, allArgs);
         ImageKey key = imageKey(
                 javaHome, classpath, allArgs, mainClass, shared, out, frameworkSources, trainReachabilityDir(layout));
+        Perf.note("live-native " + out, "key", key.key());
         if (!shared && restorePackaged(cache, key.key(), out.getParent())) {
             // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
             // (bar must not jump; accurate native weight is reserved up front).

@@ -7,6 +7,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.StepTimings;
+import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -93,15 +94,20 @@ class EffortWeightsStepEtaTest {
         assertThat(engCost.testWeight()).isGreaterThan(0);
         assertThat(cliCost.testWeight()).isEqualTo(cliCost.weight());
 
-        // Serial tests: test floor ≈ sum of test steps (~50s).
+        // The recorded walls are single-runner costs; each suite is re-sharded for the runners it
+        // will get when it dispatches. Serial tests: one suite at a time, each on all 8 jobs.
         long serialTests =
                 EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, false, EffortWeights.MS_PER_WEIGHT);
-        assertThat(serialTests).isBetween(48_000L, 55_000L);
-        // Phase-gated schedule (/2211): cli admits at eng's ARTIFACT point (~2s — the
-        // compile slice; eng's 40s suite overlaps), so wall ≈ eng alone (~42s), not 42+10.
+        long engOn8 = TestSuiteScaling.forRunners(engCost.suiteWall1(), 8);
+        long cliOn8 = TestSuiteScaling.forRunners(cliCost.suiteWall1(), 8);
+        assertThat(serialTests).isGreaterThanOrEqualTo((engOn8 + cliOn8) * EffortWeights.MS_PER_WEIGHT);
+        // Phase-gated schedule: cli admits at eng's gate (the ~2s compile), so both suites are in
+        // flight when eng's dispatches and each gets half the jobs; the wall is eng alone.
         long parallelTests =
                 EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, true, EffortWeights.MS_PER_WEIGHT);
-        assertThat(parallelTests).isBetween(40_000L, 44_000L);
+        long engGate = engCost.weight() - engCost.testWeight();
+        long engOn4 = TestSuiteScaling.forRunners(engCost.suiteWall1(), 4);
+        assertThat(parallelTests).isEqualTo((engGate + engOn4) * EffortWeights.MS_PER_WEIGHT);
     }
 
     @Test
@@ -268,6 +274,43 @@ class EffortWeightsStepEtaTest {
                 .containsEntry("compile-java", 227)
                 .containsEntry("run-tests", 884)
                 .containsEntry("parse-build", 1);
+    }
+
+    /**
+     * A plugin task the cold table does not know still prices: from the module's own wall, else
+     * the host's, else one token. Dropping it was how a build spending two thirds of its wall in
+     * Spring AOT was forecast at a quarter of it.
+     */
+    @Test
+    void a_plugin_step_prices_from_its_own_wall_then_host_then_token(@TempDir Path dir) throws Exception {
+        Path metricsFile = dir.resolve("metrics.json");
+        String app = "/ws/app";
+        String other = "/ws/other";
+        BuildMetrics.record(
+                metricsFile,
+                outcome("build", app, true, 6_000, List.of(sample(app, "plugin-spring-aot", 4_800))),
+                1_000L);
+        BuildMetrics.record(
+                metricsFile,
+                outcome("build", other, true, 3_000, List.of(sample(other, "plugin-spring-aot", 2_400))),
+                2_000L);
+        BuildMetrics metrics = BuildMetrics.load(metricsFile);
+
+        var own = EffortWeights.costFromRunningSteps(
+                Path.of(app), Set.of(), List.of("plugin-spring-aot"), metrics, null, List.of(), Map.of());
+        assertThat(own.weight()).isEqualTo(EffortWeights.flatWeight(4_800));
+
+        // A module that never ran the step here: the host row (the mean over both modules).
+        var host = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/fresh"), Set.of(), List.of("plugin-spring-aot"), metrics, null, List.of(), Map.of());
+        assertThat(host.weight())
+                .isEqualTo(EffortWeights.flatWeight(
+                        metrics.step("", "plugin-spring-aot").orElseThrow().ok().avgMillis()));
+
+        // Nothing recorded anywhere: a token, not a dropped step.
+        var cold = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/fresh"), Set.of(), List.of("plugin-d8"), metrics, null, List.of(), Map.of());
+        assertThat(cold.weight()).isEqualTo(EffortWeights.TOKEN);
     }
 
     private static BuildMetrics.Outcome outcome(

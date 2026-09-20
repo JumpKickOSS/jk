@@ -9,6 +9,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.DeleteParallelism;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -27,14 +28,17 @@ import cc.jumpkick.task.CasSweep;
 import cc.jumpkick.task.TmpGc;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.LongAdder;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -248,7 +252,7 @@ public final class CachePlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label(dryRun ? "Inspecting build cache…" : "Clearing build cache…");
-                    long[] acc = {0L, 0L}; // {files, bytes}
+                    var acc = new Tally();
                     List<Path> allModuleDirs = resolveModuleDirs(projectDir);
                     Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
                     if (Files.isDirectory(actionsDir)) {
@@ -256,32 +260,37 @@ public final class CachePlans {
                         Set<String> tags = tagsFor(moduleDirs);
                         List<String> prefixes =
                                 moduleDirs.stream().map(p -> p.toString()).toList();
-                        Set<String> deletedTaskIds = new LinkedHashSet<>();
+                        Set<String> deletedTaskIds = ConcurrentHashMap.newKeySet();
 
                         // 1) key records: match by qualified-task tag, or by an INPUT path under a module dir.
+                        // Thousands of small files read, matched and unlinked — across the delete pool.
                         Path keysDir = ActionTree.KEYS.under(actionsDir);
                         if (Files.isDirectory(keysDir)) {
-                            try (var stream = Files.list(keysDir)) {
-                                for (Path key : (Iterable<Path>) stream::iterator) {
-                                    if (!Files.isRegularFile(key)) continue;
-                                    String content = Files.readString(key);
-                                    String taskId = taskIdOf(content);
-                                    boolean hit = (taskId != null && tags.contains(tagOf(taskId)))
-                                            || inputsUnder(content, prefixes);
-                                    if (!hit) continue;
-                                    if (taskId != null) deletedTaskIds.add(taskId);
-                                    acc[1] += Files.size(key);
-                                    if (!dryRun) Files.deleteIfExists(key);
-                                    acc[0]++;
-                                }
-                            }
+                            List<Path> keys = new ArrayList<>();
+                            PathUtil.forEachChild(keysDir, (key, attrs) -> {
+                                if (attrs.isRegularFile()) keys.add(key);
+                                return true;
+                            });
+                            forEachOnDeletePool(keys, key -> {
+                                String content = Files.readString(key);
+                                String taskId = taskIdOf(content);
+                                boolean hit = (taskId != null && tags.contains(tagOf(taskId)))
+                                        || inputsUnder(content, prefixes);
+                                if (!hit) return;
+                                if (taskId != null) deletedTaskIds.add(taskId);
+                                acc.file(Files.size(key));
+                                if (!dryRun) Files.deleteIfExists(key);
+                            });
                         }
 
                         // 2) task pointers + incremental state, keyed by the same qualified-task id.
-                        deleteQualified(ActionTree.TASKS.under(actionsDir), tags, deletedTaskIds, dryRun, acc);
+                        List<Path> qualified = new ArrayList<>();
+                        qualified.addAll(qualifiedChildren(ActionTree.TASKS.under(actionsDir), tags, deletedTaskIds));
                         for (Path tree : ActionTree.incrementalUnder(actionsDir)) {
-                            deleteQualified(tree, tags, deletedTaskIds, dryRun, acc);
+                            qualified.addAll(qualifiedChildren(tree, tags, deletedTaskIds));
                         }
+                        PathUtil.Removed removed = dryRun ? PathUtil.measureTrees(qualified) : deleteAll(qualified);
+                        acc.add(removed);
                     }
                     // 3) preflight memos — their "clean" conclusions were derived from the
                     // action keys just deleted; a surviving memo turns clear into a no-op.
@@ -292,14 +301,13 @@ public final class CachePlans {
                         try (var files = Files.list(preflight)) {
                             for (Path f : (Iterable<Path>) files::iterator) {
                                 if (!Files.isRegularFile(f)) continue;
-                                acc[1] += Files.size(f);
+                                acc.file(Files.size(f));
                                 if (!dryRun) Files.deleteIfExists(f);
-                                acc[0]++;
                             }
                         }
                     }
-                    ctx.put(FILES, acc[0]);
-                    ctx.put(BYTES, acc[1]);
+                    ctx.put(FILES, acc.files.sum());
+                    ctx.put(BYTES, acc.bytes.sum());
                     ctx.progress(1);
                 })
                 .build();
@@ -416,35 +424,66 @@ public final class CachePlans {
     }
 
     /**
-     * Delete every child of {@code dir} whose name is a qualified task id with a tag in {@code tags},
-     * or whose name is in {@code alsoDelete}. Handles both plain files (task pointers) and directory
-     * trees (incremental state), accumulating {@code {files, bytes}} into {@code acc}.
+     * The children of {@code dir} whose name is a qualified task id with a tag in {@code tags}, or
+     * whose name is in {@code alsoDelete}: plain files (task pointers) and directory trees
+     * (incremental state) alike, each a root for one pooled delete.
      */
-    private static void deleteQualified(Path dir, Set<String> tags, Set<String> alsoDelete, boolean dryRun, long[] acc)
-            throws IOException {
-        if (!Files.isDirectory(dir)) return;
-        try (var stream = Files.list(dir)) {
-            for (Path child : (Iterable<Path>) stream::iterator) {
-                String name = child.getFileName().toString();
-                if (!tags.contains(tagOf(name)) && !alsoDelete.contains(name)) continue;
-                if (Files.isDirectory(child)) {
-                    try (var tree = Files.walk(child)) {
-                        List<Path> paths =
-                                tree.sorted(Comparator.reverseOrder()).toList();
-                        for (Path p : paths) {
-                            if (Files.isRegularFile(p)) {
-                                acc[1] += Files.size(p);
-                                acc[0]++;
-                            }
-                            if (!dryRun) Files.deleteIfExists(p);
+    private static List<Path> qualifiedChildren(Path dir, Set<String> tags, Set<String> alsoDelete) throws IOException {
+        List<Path> hits = new ArrayList<>();
+        PathUtil.forEachChild(dir, (child, attrs) -> {
+            String name = child.getFileName().toString();
+            if (tags.contains(tagOf(name)) || alsoDelete.contains(name)) hits.add(child);
+            return true;
+        });
+        return hits;
+    }
+
+    private static PathUtil.Removed deleteAll(List<Path> roots) throws IOException {
+        var removed = new PathUtil.Removed();
+        PathUtil.deleteTrees(roots, removed);
+        return removed;
+    }
+
+    /** {@code body} over every item on the delete pool; the first failure is rethrown. */
+    private static void forEachOnDeletePool(List<Path> items, IoConsumer body) throws IOException {
+        try {
+            DeleteParallelism.pool()
+                    .submit(() -> items.parallelStream().forEach(item -> {
+                        try {
+                            body.accept(item);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
                         }
-                    }
-                } else {
-                    acc[1] += Files.size(child);
-                    if (!dryRun) Files.deleteIfExists(child);
-                    acc[0]++;
-                }
-            }
+                    }))
+                    .get();
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof UncheckedIOException unchecked) throw unchecked.getCause();
+            if (cause instanceof RuntimeException runtime) throw runtime;
+            throw new IOException(cause);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted while clearing the build cache", e);
+        }
+    }
+
+    private interface IoConsumer {
+        void accept(Path item) throws IOException;
+    }
+
+    /** Files and bytes the clear reclaimed, written from the pool's threads. */
+    private static final class Tally {
+        final LongAdder files = new LongAdder();
+        final LongAdder bytes = new LongAdder();
+
+        void file(long size) {
+            files.increment();
+            bytes.add(size);
+        }
+
+        void add(PathUtil.Removed removed) {
+            files.add(removed.files());
+            bytes.add(removed.bytes());
         }
     }
 

@@ -105,7 +105,7 @@ public final class CliOutput {
     /**
      * Per-command flags {@link #beginCommand} owns. Captured/restored by the test boundary so a
      * script-mode leaf (or {@code --output json}) cannot leave {@link #scriptMode()} true for the
-     * next class in the same worker — Spinner and JdkDownloadBar treat that flag as silence.
+     * next class in the same worker — Spinner and ProgressRow treat that flag as silence.
      */
     record State(
             boolean scriptMode,

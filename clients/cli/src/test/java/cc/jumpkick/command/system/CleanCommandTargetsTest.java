@@ -3,6 +3,7 @@ package cc.jumpkick.command.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -28,14 +29,14 @@ class CleanCommandTargetsTest {
         Files.createDirectories(ws.resolve("target/classes"));
         Files.writeString(ws.resolve("target/classes/Root.class"), "x");
 
-        long[] stats = {0, 0};
-        CleanCommand.cleanTargets(ws, List.of(ws, ws.resolve("app")), true, stats);
+        var stats = new PathUtil.Removed();
+        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), true), stats);
 
         assertThat(Files.exists(appOut.resolve("classes"))).isFalse();
         assertThat(Files.exists(appOut.resolve("test-results"))).isFalse();
         assertThat(Files.exists(appOut.resolve("app-1.0.0.jar"))).isTrue(); // artifact kept
         assertThat(Files.exists(ws.resolve("target/classes"))).isFalse();
-        assertThat(stats[0]).isGreaterThan(0);
+        assertThat(stats.files()).isGreaterThan(0);
     }
 
     @Test
@@ -45,8 +46,8 @@ class CleanCommandTargetsTest {
         Files.writeString(legacy.resolve("classes/Old.class"), "x");
         Files.writeString(legacy.resolve("app.jar"), "jar-bytes");
 
-        long[] stats = {0, 0};
-        CleanCommand.cleanTargets(ws, List.of(ws, ws.resolve("app")), true, stats);
+        var stats = new PathUtil.Removed();
+        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), true), stats);
 
         assertThat(Files.exists(legacy.resolve("classes"))).isFalse();
         assertThat(Files.exists(legacy.resolve("app.jar"))).isTrue();
@@ -59,8 +60,8 @@ class CleanCommandTargetsTest {
         Files.createDirectories(ws.resolve("app/target"));
         Files.writeString(ws.resolve("app/target/old.jar"), "x");
 
-        long[] stats = {0, 0};
-        CleanCommand.cleanTargets(ws, List.of(ws, ws.resolve("app")), false, stats);
+        var stats = new PathUtil.Removed();
+        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), false), stats);
 
         assertThat(Files.exists(ws.resolve("target"))).isFalse();
         assertThat(Files.exists(ws.resolve("app/target"))).isFalse();

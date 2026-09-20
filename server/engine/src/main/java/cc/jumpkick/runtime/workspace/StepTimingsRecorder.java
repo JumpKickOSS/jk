@@ -14,6 +14,7 @@ import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
+import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashSet;
@@ -144,9 +145,11 @@ public final class StepTimingsRecorder implements BuildPlanListener {
             TestClassWalls.put(moduleKey, sum.classWallMs());
         }
         // The concurrency this wall was produced at, same hand-off. Without it the wall recorded
-        // above is not a prediction of anything: it is one runner count's outcome.
+        // above is not a prediction of anything: it is one runner count's outcome. Capped at the
+        // class count: runners past the classes ran nothing, and normalizing with them would store
+        // the wall as if they had.
         if (sum != null && sum.workers() > 0) {
-            TestSuiteRunners.put(moduleKey, sum.workers());
+            TestSuiteRunners.put(moduleKey, TestSuiteScaling.effectiveRunners(sum.workers(), classes));
         }
     }
 

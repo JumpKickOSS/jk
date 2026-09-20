@@ -1318,9 +1318,9 @@ Today these methods return `""` when `--no-osc` (`Ansi.java` L174–176):
 
 | Method | Call sites that must go through the wrapper |
 |--------|---------------------------------------------|
-| `taskbarProgress` | `SpinnerProgressBar`, `JdkDownloadBar`, `JkManagerView` |
+| `taskbarProgress` | `SpinnerProgressBar`, `ProgressRow`, `JkManagerView` |
 | `taskbarIndeterminate` | `Spinner`, `JkManagerView`, `IdeChrome`, `BuildNotifyTest` |
-| `taskbarClear` | `Spinner`, `SpinnerProgressBar`, `JdkDownloadBar`, `JkManager`, `JkManagerView`, `IdeChrome` |
+| `taskbarClear` | `Spinner`, `SpinnerProgressBar`, `ProgressRow`, `JkManager`, `JkManagerView`, `IdeChrome` |
 | `windowTitle` / `windowTitleClear` | `JkManager`; `BuildNotifyTest` asserts `windowTitle` empty under `--no-osc` |
 | `desktopNotify` | `BuildNotify`, `BuildNotifyTest` |
 | `oscEnabled` | `JkManager` (window-title gate), `BuildNotify`, `BuildNotifyTest` |
@@ -1759,7 +1759,7 @@ Direct JLine imports (must be gone after 5a for `org.jline.utils`, after 5b for 
 `Interactivity`, `Wizard`, `Prompt`, `Confirm`/`Confirmation`, `JkManager`, `DrainView`,
 `GlobalCancel`, `KeyReader` (delete), `TerminalSize` (delete), `Theme`/`JkDarkTheme`/`Coords`,
 `Rail`, `RichText`, `Choice`, `Tree`, `Table` (FQCN `AttributedStyle.DEFAULT` L129/L632),
-`JkWedge`, `Pill`, `Badge`, `Spinner`, `SpinnerProgressBar`, `ProgressBar`, `JdkDownloadBar`,
+`JkWedge`, `Pill`, `Badge`, `Spinner`, `SpinnerProgressBar`, `ProgressBar`, `ProgressRow`,
 `JkManagerView`, `JkManagerColor` (`WCWidth` FQCN), `HelpRenderer`, `RenderContext`
 (`AttributedString.stripAnsi`/`columnLength`), `TestFailureHighlight`, `DiagnosticReport`,
 `SyntaxHighlight`, JDK install/uninstall wizards (`JdkUninstallWizard` `AttributedStringBuilder`),
@@ -1945,7 +1945,7 @@ signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-o
 - **Files/components:** `Theme`/`JkDarkTheme`/`Coords` → `Style`; grep-driven list in
   Deletion set (rails, wedges, `Table` FQCNs, `RichText.merge`/`crossedOut`, highlighters,
   `HelpRenderer`, `ExplainCommand`, `JdkListCommand`, …); `cc.jumpkick.cli.api.Osc` + call-site
-  grep (`Spinner*`, `JdkDownloadBar`, `JkManager*`, `IdeChrome`, `BuildNotify`);
+  grep (`Spinner*`, `ProgressRow`, `JkManager*`, `IdeChrome`, `BuildNotify`);
   `RenderContext` delegates to `Width`; tests (`TestAnsi`, `*HighlightTest`,
   `TestFailureHighlightTest` SGR bits, `HelpWidthTest`, `BoxTableRenderTest`)
 - **Depends on:** #3

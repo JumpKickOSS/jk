@@ -5,7 +5,9 @@ import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.TaskForecaster.DepHint;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.wire.runtime.TaskForecast;
@@ -30,6 +32,39 @@ import org.jspecify.annotations.Nullable;
 final class ForecastSteps {
 
     private ForecastSteps() {}
+
+    /**
+     * The request the forecast keys compile-main with, as a perf note beside the live step's
+     * {@code live-compile-main}: the two lines diff when the forecast and the build disagree.
+     */
+    static void noteCompileMain(
+            Path out, CompileRequest req, int sources, int release, boolean stampFresh, boolean depDirty) {
+        if (!Perf.enabled()) return;
+        try {
+            Perf.note(
+                    "forecast-compile-main " + out,
+                    "optionsDigest",
+                    ActionKey.javacOptionsDigest(req),
+                    "cp",
+                    req.classpath().size(),
+                    "pp",
+                    req.processorPath().size(),
+                    "src",
+                    sources,
+                    "release",
+                    release,
+                    "javaHome",
+                    req.javaHome(),
+                    "stampFresh",
+                    stampFresh,
+                    "depDirty",
+                    depDirty,
+                    "pp-list",
+                    req.processorPath());
+        } catch (IOException e) {
+            Log.debug("noteCompileMain: the options digest could not be read", e);
+        }
+    }
 
     /**
      * Map a {@link JavaCompile.Prediction} to a step, honoring upstream dirtiness. A request that

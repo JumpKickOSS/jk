@@ -17,9 +17,9 @@ import java.util.Map;
  * successful multi-module builds, applied multiplicatively to {@link WorkSchedule}'s ideal
  * schedule in {@code BuildEta}. The simulation composes measured step walls into a perfect-overlap
  * timeline; reality pays JVM spawn queuing, {@code PluginSlots} gating, and cache/IO contention
- * the model cannot see — a structural, host-shaped gap (follow-up: the pipelined sim ran
- * ~25% hot on a 24-core monorepo rebuild). Learning the gap keeps the estimate honest across
- * future scheduler changes instead of baking in today's magic constant.
+ * the model cannot see, and it also overlaps work the model serializes. Learning the gap in
+ * either direction keeps the estimate honest across scheduler changes instead of baking in
+ * today's magic constant.
  *
  * <p>Same store discipline as {@link StepTimings}: a small file under {@link JkDirs#builds()},
  * success-only observations, clamped so one outlier cannot poison the fold.
@@ -47,20 +47,14 @@ public final class ScheduleBias {
      */
     static final double ALPHA = 0.25;
 
-    /** Bias applied to estimates is kept inside sane bounds even if the store is hand-edited. */
-    static final double MIN_BIAS = 0.9;
-
     /**
-     * Matches the fold clamp below, on purpose: the fold is what guards against an outlier
-     * observation, so this only has to guard a hand-edited store.
-     *
-     * <p>It was 2.0 and that bound was binding, not protective. With one bias per project a ratio
-     * near 2 meant the store had mixed two build shapes and neither number was trustworthy, so
-     * refusing to apply it was right. Now that the store is keyed by shape, 2 is just what the wide
-     * bucket measures — the dogfood build's 13-module cascade folds to 2.02, because the schedule
-     * model still predicts a native-image cache hit on a build that re-runs it. Clamping that back
-     * to 2.0 threw away a real correction.
+     * The bounds an observation is folded within and a stored bias is read within: the same pair,
+     * so a correction the fold recorded is applied as recorded, and only a hand-edited store is
+     * clamped on read. A simulator running 2x hot or 2x cold is a real shape of a real project
+     * (a wide dogfood rebuild measured 0.6, a 13-module cascade 2.0), so both halves are wide.
      */
+    static final double MIN_BIAS = 0.5;
+
     static final double MAX_BIAS = 2.5;
 
     /**
@@ -127,9 +121,9 @@ public final class ScheduleBias {
     public static void observe(Path entryDir, long rawScheduleMs, long actualMs, int dirtyModules) {
         if (dirtyModules < MIN_MODULES || rawScheduleMs < MIN_RAW_MS || actualMs < MIN_ACTUAL_MS) return;
         double ratio = actualMs / (double) rawScheduleMs;
-        // Wider than the read clamp: let the fold see mild over-estimates (ratio < 1) so the
-        // bias can come back DOWN when the sim stops running hot.
-        ratio = Math.max(0.5, Math.min(2.5, ratio));
+        // One observation moves the EWMA by at most a quarter of the way to these bounds; a
+        // build that finished in a third of its schedule teaches 0.5, not 0.37.
+        ratio = Math.max(MIN_BIAS, Math.min(MAX_BIAS, ratio));
         // Read-fold-write under one lock: two builds finishing together in one engine otherwise
         // each rewrite the whole file from their own read, and one of them loses its row.
         synchronized (STORE) {

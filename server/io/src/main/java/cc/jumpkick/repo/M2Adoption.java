@@ -66,6 +66,9 @@ final class M2Adoption {
      */
     void writeThrough(String relativePath, Path placed) {
         if (!enabled()) return;
+        // A fixture's hollow stand-in is never a Maven client's business, and the local repository
+        // is shared: promoted once under a real coordinate, it would seed every later store.
+        if (EmptyArchive.is(placed)) return;
         try {
             Path m2Target = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
             if (Files.isRegularFile(m2Target)) return;
