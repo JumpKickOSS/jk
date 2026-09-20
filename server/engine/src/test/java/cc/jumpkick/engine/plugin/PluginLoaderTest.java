@@ -3,7 +3,6 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.host.Os;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,8 +25,9 @@ class PluginLoaderTest {
         return Path.of(prop);
     }
 
-    private static Path javaExe() {
-        return Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "java.exe" : "java");
+    /** The JDK this test JVM runs under, as the home {@link PluginLoader#run} launches from. */
+    private static Path javaHome() {
+        return Path.of(System.getProperty("java.home"));
     }
 
     @Test
@@ -39,7 +39,7 @@ class PluginLoaderTest {
         // nonexistent spec file — it must exit non-zero, proving the
         // `-cp <jar> PluginMain` dispatch actually reached the plugin.
         int code = PluginLoader.run(
-                javaExe(),
+                javaHome(),
                 jar.toString(),
                 List.of(),
                 "##JKJC:",
