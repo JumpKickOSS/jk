@@ -215,6 +215,7 @@ final class ModuleForecast {
             compileTest(prepared);
             guard(prepared);
             resource(prepared);
+            pluginTasks(prepared);
             packageJar(prepared);
             packageTails(prepared);
             nativeImage(prepared);
@@ -787,6 +788,27 @@ final class ModuleForecast {
                 if (TaskForecaster.resourcesOutOfSync(resTest, layout.testClassesDir())) {
                     testResourceDrift = true;
                 }
+            }
+        }
+    }
+
+    /**
+     * The module's declared plugin tasks (Spring AOT, d8, a code generator), one step each. Their
+     * action keys hash the classes tree, the tool jars and the plugin's own jar, which the forecast
+     * does not reproduce: a task is RUN when the module compiles or on a forced rebuild, else
+     * CACHED. A dropped step priced nothing, which is how a build that spends two thirds of its
+     * wall in Spring AOT was forecast at a quarter of it.
+     */
+    private void pluginTasks(Prepared prepared) {
+        ActivePlugins.@Nullable Declared plugin = prepared.plugin();
+        if (plugin == null) return;
+        for (TaskDecl step : plugin.decls().steps()) {
+            String name = "plugin-" + step.name();
+            if (force || compileDirty) {
+                String when = PlannerPlugin.beforeCompile(step) ? "before compile" : "after compile";
+                steps.add(new TaskForecast.Task(name, TaskForecast.Status.RUN, step.name() + " · " + when, null));
+            } else {
+                steps.add(new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", null));
             }
         }
     }
