@@ -581,6 +581,9 @@ public final class PathUtil {
      * swallowed or handed to the caller; {@code dry} walks and tallies without unlinking.
      */
     private static final class Wipe {
+        /** Files of one directory handed to one forked task; below twice this the directory keeps them. */
+        private static final int LEAF_BATCH = 128;
+
         private final @Nullable Removed tally;
         private final boolean quiet;
         private final boolean dry;
@@ -660,7 +663,9 @@ public final class PathUtil {
         }
 
         private void directory(Path dir) {
-            List<DirTask> subdirs = new ArrayList<>();
+            List<RecursiveAction> tasks = new ArrayList<>();
+            List<Path> files = new ArrayList<>();
+            List<@Nullable BasicFileAttributes> fileAttrs = new ArrayList<>();
             try (DirectoryStream<Path> children = Files.newDirectoryStream(dir)) {
                 for (Path child : children) {
                     BasicFileAttributes attrs;
@@ -669,14 +674,16 @@ public final class PathUtil {
                     } catch (IOException e) {
                         // Unreadable, or gone under us: try the delete anyway, as a leaf.
                         record(e);
-                        record(leaf(child, null));
+                        files.add(child);
+                        fileAttrs.add(null);
                         continue;
                     }
                     // A link to a directory is a leaf: unlinked, never entered. Do not follow.
                     if (attrs.isDirectory()) {
-                        subdirs.add(new DirTask(child));
+                        tasks.add(new DirTask(child));
                     } else {
-                        record(leaf(child, attrs));
+                        files.add(child);
+                        fileAttrs.add(attrs);
                     }
                 }
             } catch (NoSuchFileException gone) {
@@ -686,8 +693,36 @@ public final class PathUtil {
                 // well be removable, so still fall through to the delete below.
                 record(e);
             }
-            if (!subdirs.isEmpty()) ForkJoinTask.invokeAll(subdirs);
+            // A flat directory of thousands of files (a package, an action-cache tier) would
+            // otherwise be one task's serial work: fork it in batches, keep the first one here.
+            int from = files.size() > 2 * LEAF_BATCH ? LEAF_BATCH : files.size();
+            for (int start = from; start < files.size(); start += LEAF_BATCH) {
+                tasks.add(new LeafBatch(files, fileAttrs, start, Math.min(files.size(), start + LEAF_BATCH)));
+            }
+            if (!tasks.isEmpty()) tasks.forEach(ForkJoinTask::fork);
+            for (int i = 0; i < from; i++) record(leaf(files.get(i), fileAttrs.get(i)));
+            for (RecursiveAction task : tasks) task.join();
             if (!dry) record(deleteOne(dir, null, null));
+        }
+
+        /** A run of one directory's files, unlinked on another worker. */
+        private final class LeafBatch extends RecursiveAction {
+            private final List<Path> files;
+            private final List<@Nullable BasicFileAttributes> attrs;
+            private final int from;
+            private final int to;
+
+            LeafBatch(List<Path> files, List<@Nullable BasicFileAttributes> attrs, int from, int to) {
+                this.files = files;
+                this.attrs = attrs;
+                this.from = from;
+                this.to = to;
+            }
+
+            @Override
+            protected void compute() {
+                for (int i = from; i < to; i++) record(leaf(files.get(i), attrs.get(i)));
+            }
         }
 
         /** A file or link: tallied when regular, unlinked unless dry. */
