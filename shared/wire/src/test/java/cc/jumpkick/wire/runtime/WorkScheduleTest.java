@@ -59,6 +59,39 @@ class WorkScheduleTest {
     }
 
     @Test
+    void dependents_start_at_the_upstream_gate_when_the_cost_knows_it() {
+        // a: gate 10 (its compile), then 20 more of test compile and packaging, then a 20 suite —
+        // weight 50, test 20, gate 10. b needs only a's classes and starts at 10, not at 30.
+        Path a = Path.of("/a");
+        Path b = Path.of("/b");
+        long gated = WorkSchedule.schedule(
+                List.of(new ModuleWorkCost(a, Set.of(), 50, 20, 0, 10), new ModuleWorkCost(b, Set.of(a), 25, 0)),
+                4,
+                false,
+                true);
+        assertThat(gated).isEqualTo(50); // a's own wall is the long pole; b finished at 35
+        long unsplit = WorkSchedule.schedule(
+                List.of(new ModuleWorkCost(a, Set.of(), 50, 20, 0), new ModuleWorkCost(b, Set.of(a), 25, 0)),
+                4,
+                false,
+                true);
+        assertThat(unsplit).isEqualTo(55); // no gate known: b waits for the whole prefix (30)
+    }
+
+    @Test
+    void a_gate_never_lands_after_the_prefix() {
+        // A gate priced above the prefix (a residual cost, or a mis-summed step) cannot delay a
+        // dependent past the point the prefix itself would release it.
+        ModuleWorkCost m = new ModuleWorkCost(Path.of("/a"), Set.of(), 30, 20, 0, 99);
+        assertThat(m.artifactPoint()).isEqualTo(10);
+        assertThat(m.residual(0.5).gateWeight()).isEqualTo(50);
+        assertThat(new ModuleWorkCost(Path.of("/a"), Set.of(), 30, 20)
+                        .residual(0.5)
+                        .gateWeight())
+                .isEqualTo(ModuleWorkCost.UNKNOWN_GATE);
+    }
+
+    @Test
     void artifact_wake_does_not_free_the_slot() {
         // conc=1: even though a's artifact lands early, b cannot start until a's slot frees.
         Path a = Path.of("/a");

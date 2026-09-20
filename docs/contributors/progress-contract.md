@@ -68,7 +68,7 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 | **One forecast** | Costs from `TaskForecaster` / `ExplainPlan` only. |
 | **Material dirty only** | A module is dirty only if a *material* step (compile/test/package/native/…) is not CACHED — not parse-build / resolve-deps / write-stamp bookkeeping. Resource drift is material: the forecaster emits `copy-resources` (main/extra) or `copy-test-resources` (test scope) only when trees actually drifted, and either schedules the module. Compile-consumer cascade seeds from **compile/package** only (not `copy-resources` alone): consumers hash the packaged jar; package is forecast against a post-copy projection when resources drifted. A dirty `order-after`-only prereq adds an unpriced `order-check` task: the dependent schedules (real action keys re-check out-of-band outputs) but contributes nothing to ETA. |
 | **Price material steps only** | ETA costs skip bookkeeping steps even when the plan still runs them. Cascade-forced compile/package/**native** (`dependency changed` / `main changed` / `compile changed` without local *compile* content) are recheck tokens, not suite/native walls. Resource-only modules (copy/package resources) price package+copy only — never unlock compile/test suite walls. `run-tests` stays full when the module has local compile content, no compile steps (test-dep only), a heavy packaging tail forecast (cli-shaped), or a red marker under its current key (`run tests · … · last run failed` — a failed suite stores its counts under the same key a green one does, so the re-run is evidence rather than stamp drift); pure cascade modules discount tests. |
-| **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
+| **Same concurrency** | `etaConcurrency(jobs)` is the executor's module cap (`-j`, else resolved jobs). |
 | **Seed path lock** | Client freezes the R0 *seed path* when execute starts (provisional eta thrash guard). Residual still re-anchors the painted countdown mid-run. |
 | **Mild over-estimate** | After schedule + history clamp, non-zero `R0` gets `×1.01` (`preferSlightOverEstimate`) so a hair high is preferred over a hair low — not a multi-minute floor. |
 | **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`) — residual display does not rewrite R0 for this KPI. |
@@ -77,8 +77,16 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 
 ### Schedule admission (ETA ≡ live)
 
-`WorkSchedule` admits **first ready in topo/list order**, full prereq completion, at most
-`concurrency` in flight — same policy as bounded `WorkspaceScheduler` (not longest-first).
+`WorkSchedule` admits **first ready in topo/list order**, at most `concurrency` in flight, and a
+module is ready when every dirty prerequisite has passed its **gate** — the same policy as the
+bounded `WorkspaceScheduler`, which admits a dependent when its prerequisites have published their
+classes trees (compile and resource copy), not when they have packaged or tested. A cost carries the
+gate as `ModuleWorkCost.gateWeight` (`EffortWeights.gatesDependents` names the steps); a cost that
+never split its prefix gates on the whole prefix.
+
+`concurrency` is the executor's cap: the request's `-j`, else the engine's resolved jobs. Not the
+graph's ready width — with publish-time admission a build keeps as many modules in flight as the cap
+allows.
 
 Serial (`-j1` / concurrency ≤ 1): sum of module weights.  
 When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test floor.

@@ -19,7 +19,8 @@ import java.util.Set;
  * <p>Admission policy matches the bounded live scheduler: among ready modules, admit the
  * <strong>first in declaration / topo order</strong> (not longest-first), with at most
  * {@code concurrency} in flight, and a module ready when every dirty prereq has published its
- * artifacts — not when every prereq has fully finished.
+ * classes tree ({@link ModuleWorkCost#artifactPoint()}) — not when every prereq has fully finished,
+ * and not when it has packaged.
  */
 public final class WorkSchedule {
 
@@ -50,8 +51,8 @@ public final class WorkSchedule {
     }
 
     /**
-     * Rolling-window list schedule: first-ready admission (list order), full prereq completion,
-     * at most {@code concurrency} in flight.
+     * Rolling-window list schedule: first-ready admission (list order), every dirty prereq past
+     * its artifact point, at most {@code concurrency} in flight.
      */
     static long listSchedule(List<ModuleWorkCost> mods, int concurrency) {
         if (mods == null || mods.isEmpty()) return 0;
@@ -66,10 +67,10 @@ public final class WorkSchedule {
         }
         if (byDir.isEmpty()) return 0;
 
-        // Phase-gated admission: dependents wait on the upstream ARTIFACT point (its weight minus
-        // the run-tests slice — packaging does not gate on tests), never on the upstream's full
-        // plan. The slot stays occupied until the module's own finish, which is now its longer
-        // branch rather than the sum of its steps (see below).
+        // Phase-gated admission: dependents wait on the upstream's classes publish (its compile
+        // prefix, or the whole non-suite non-tail prefix when the cost did not split it), never
+        // on the upstream's full plan. The slot stays occupied until the module's own finish,
+        // which is its longer branch rather than the sum of its steps (see below).
         Map<Path, Long> artifactAt = new HashMap<>();
         // Two event kinds: an artifact landing (wakes admission, frees nothing) and a flight
         // finishing (frees the slot). Without artifact events a dependent could only start at
@@ -101,10 +102,9 @@ public final class WorkSchedule {
                 // native-image at 47 s says the executor serializes them, which is the bug that
                 // executor no longer has.
                 long fin = t + moduleWall(m);
-                // Dependents need the jar, which lands with the compile prefix — before either
-                // branch. Without a known tail this degrades to "everything but the suite", the
-                // pre-tail behaviour.
-                long art = t + Math.max(0, m.weight() - Math.max(0, m.testWeight()) - Math.max(0, m.tailWeight()));
+                // Dependents compile against the classes tree, which lands at the gate — before
+                // test compile, packaging and either branch.
+                long art = t + m.artifactPoint();
                 artifactAt.put(next, art);
                 if (art < fin) events.add(new Event(art, next, false));
                 events.add(new Event(fin, next, true));
@@ -141,10 +141,7 @@ public final class WorkSchedule {
      * tail branch never waits on: a known over-price, small next to a suite.
      */
     public static long moduleWall(ModuleWorkCost m) {
-        long test = Math.max(0, m.testWeight());
-        long tail = Math.max(0, m.tailWeight());
-        long prefix = Math.max(0, Math.max(0, m.weight()) - test - tail);
-        return prefix + Math.max(test, tail);
+        return m.prefix() + Math.max(m.testWeight(), m.tailWeight());
     }
 
     private static boolean prereqArtifactsReady(

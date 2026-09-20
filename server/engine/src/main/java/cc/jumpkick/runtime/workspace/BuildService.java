@@ -263,31 +263,11 @@ public final class BuildService {
     }
 
     /**
-     * Backward-compatible overload: {@code serial=true} → {@code maxModuleConcurrency=1}; otherwise
-     * no jobs clamp. Prefer the overload that takes {@code maxModuleConcurrency} so explain and
-     * build pass the same {@code -j} value.
-     */
-    public static long estimateEtaMillis(
-            ExplainPlan plan,
-            Path entryDir,
-            Path cache,
-            int workers,
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            boolean skipTests,
-            boolean verbose,
-            boolean serial,
-            boolean parallelTests) {
-        return BuildEta.estimateEtaMillis(
-                plan, entryDir, cache, workers, jdksDir, profile, skipTests, verbose, serial, parallelTests);
-    }
-
-    /**
      * Module-concurrency budget for the ETA schedule — <b>must</b> match {@link
      * #buildWorkspace}'s {@code concurrency} so explain and the live countdown clamp the same way.
      */
-    static int etaConcurrency(int maxReadyWidth, int workers, boolean parallelTests, int maxModuleConcurrency) {
-        return BuildEta.etaConcurrency(maxReadyWidth, workers, parallelTests, maxModuleConcurrency);
+    static int etaConcurrency(int maxModuleConcurrency) {
+        return BuildEta.etaConcurrency(maxModuleConcurrency);
     }
 
     /**
