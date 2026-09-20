@@ -281,16 +281,6 @@ reason = "recognises a foreign build file's declared repository: every spelling 
 in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/gradle/GradleExporter.java"
 reason = "writes a foreign build file's repository block in that file's own vocabulary"
 
-# G24. The AOT refusal marker is named once, in AotCacheFiles; tests included, because a fixture
-# that spells the bare suffix follows a rename of the value and still passes.
-[guards.aot-marker]
-kind       = "vocabulary"
-owner      = "cc.jumpkick.host.AotCacheFiles"
-shape      = "regex:\\.noaot"
-source-set = "all"
-instead    = "AotCacheFiles.marker(cache) / isMarker(name) / cacheOf(name), or AotCacheFiles.MARKER"
-why        = "the AOT refusal marker is one suffix, spelled once"
-
 # G28. Retired wire-key spellings have no owner by definition — there is deliberately no constant
 # left to read them from — so the ban list is written here and the live owners are named in `instead`.
 [guards.retired-wire-keys]
@@ -868,10 +858,10 @@ kind    = "text"
 files   = [
   "**/Lockfile.java", "**/EngineProtocol.java", "**/McpEnvelope.java", "**/JsonlEnvelope.java",
   "**/CliSessionTranscript.java", "**/BuildRecord.java", "**/Calibration.java", "**/PreflightMemo.java",
-  "**/DepFrequency.java", "**/AotManifest.java", "**/BuildMetrics.java",
+  "**/DepFrequency.java", "**/BuildMetrics.java",
 ]
 pattern = "int\\s+(CURRENT_VERSION|PROTOCOL|SCHEMA)\\s*=\\s*1\\s*;"
-count   = { exactly = 11, per = "tree" }
+count   = { exactly = 10, per = "tree" }
 hit     = "int CURRENT_VERSION = 1;"
 miss    = "int CURRENT_VERSION = 2;"
 instead = "keep version 1 until 1.0"
@@ -1093,10 +1083,6 @@ reason = "engine-lifetime vitals publisher"
 [[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java"
 reason = "one thread per HTTP exchange; each handler binds the request's session itself"
-
-[[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginAot.java"
-reason = "an AOT trainer belongs to the cache, not to the request that triggered it; a cancel must not kill it"
 
 [[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobEnvelope.java"

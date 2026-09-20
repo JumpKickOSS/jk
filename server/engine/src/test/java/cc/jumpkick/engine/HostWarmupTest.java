@@ -91,10 +91,7 @@ class HostWarmupTest {
     void the_live_pass_is_calibration_only() throws Exception {
         String source = Files.readString(
                 RepoRoot.file(HostWarmupTest.class, "server/engine/src/main/java/cc/jumpkick/engine/HostWarmup.java"));
-        assertThat(source)
-                .doesNotContain("StoreFeedRefresh")
-                .doesNotContain("OfficialTemplatesFreshen")
-                .doesNotContain("PluginAot");
+        assertThat(source).doesNotContain("StoreFeedRefresh").doesNotContain("OfficialTemplatesFreshen");
     }
 
     /** One step's failure is that step's business; the rest of the pass still runs. */

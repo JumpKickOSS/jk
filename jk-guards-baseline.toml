@@ -1,9 +1,6 @@
 # Engine-owned. Tightened on every jk build; grown only by `jk guard freeze <id> --reason`.
 # Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
 
-[aot-marker]
-population = { constants = 1, files = 4065, literals = 135162 }
-
 [archive-instant-owner]
 [archive-instant-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
@@ -16,7 +13,7 @@ population = { constants = 1, files = 4065, literals = 135162 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 
 [archive-stream-owner]
 population = { files = 2172 }
@@ -41,7 +38,7 @@ population = { files = 2172 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "server/toolchain" = { classes = 20, sites = 1776 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 10, sites = 607 }
 "shared/host" = { classes = 46, sites = 1921 }
 "shared/toolchain-jdk" = { classes = 134, sites = 7278 }
@@ -237,10 +234,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.http.mcp.McpMachine#tools()Ljava/util/Map; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginAot#sweepTool(Ljava/nio/file/Path;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
@@ -492,10 +485,6 @@ at     = "cc.jumpkick.cache.DiskUsage#walkExclusive(Ljava/nio/file/Path;Lcc/jump
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/client-io"
-at     = "cc.jumpkick.cache.EngineInstall#hasPrimaryAot(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/client-io"
 at     = "cc.jumpkick.cache.EngineInstall#inferVersion(Ljava/lang/String;)Ljava/util/Optional; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -513,10 +502,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "shared/client-io"
 at     = "cc.jumpkick.cache.EngineInstall#sweepRetiredJars(Ljava/util/List;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.cache.EngineInstall#wipeAotDirectory(Ljava/nio/file/Path;Ljava/lang/String;Ljava/util/List;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/client-io"
@@ -581,10 +566,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "shared/core"
 at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#looksLikeTemplateMonorepo(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.util.AotManifest#list(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/dynamic-surface"
@@ -737,7 +718,7 @@ population = { constants = 29, files = 2235, literals = 43425 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 
 [central-address]
 population = { files = 2274 }
@@ -781,7 +762,7 @@ population = { examined = 4 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 "shared/host" = { classes = 51, sites = 2014 }
 "shared/toolchain-jdk" = { classes = 135, sites = 7304 }
 [[clock-owner.entries]]
@@ -1174,34 +1155,6 @@ at     = "cc.jumpkick.engine.plugin.JobWorkers#shutdownForRequest(JJ)I -> java.l
 reason = "wall-clock reads on 2026-09-07; five sites moved with their classes into engine.api and engine.plugin (pure move); the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginAot#claimed(Ljava/nio/file/Path;)Z -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginAot#quiesceTrainers(J)Ljava/util/List; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginAot#recordReady(Ljava/nio/file/Path;Lcc/jumpkick/engine/plugin/PluginAot$CacheMeta;Z)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginAot#recordUse(Ljava/nio/file/Path;Lcc/jumpkick/engine/plugin/PluginAot$CacheMeta;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginAot#sweepTool(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginAot#touch(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.plugin.PluginAot#waitForCache(Ljava/nio/file/Path;J)Z -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.engine.verbs.CalibrateVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
@@ -1493,18 +1446,6 @@ in     = "shared/core"
 at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#refreshQuiet(Ljava/util/function/Consumer;)V -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.util.AotManifest#lambda$reconcile$(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.util.AotManifest#nowIso()Ljava/lang/String; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/host"
-at     = "cc.jumpkick.host.AotCacheFiles#blocked(Ljava/nio/file/Path;)Z -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
 in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.JdkCatalogClient#cacheAge()Ljava/time/Duration; -> java.time.Instant#now()Ljava/time/Instant;"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
@@ -1668,7 +1609,7 @@ population = { examined = 15 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 
 [file-size]
 population = { units = 4060 }
@@ -1719,7 +1660,7 @@ population = { files = 1842 }
 "server/io" = { classes = 50, sites = 0 }
 "server/resolver" = { classes = 111, sites = 0 }
 "shared/client-io" = { classes = 106, sites = 0 }
-"shared/core" = { classes = 378, sites = 0 }
+"shared/core" = { classes = 373, sites = 0 }
 
 [json-concat]
 population = { files = 2208 }
@@ -2054,7 +1995,7 @@ population = { examined = 5 }
 "server/io" = { classes = 50, elements = 1 }
 "server/resolver" = { classes = 111, elements = 3 }
 "shared/client-io" = { classes = 106, elements = 7 }
-"shared/core" = { classes = 378, elements = 17 }
+"shared/core" = { classes = 373, elements = 17 }
 
 [one-digest-surface]
 [one-digest-surface.populations]
@@ -2068,7 +2009,7 @@ population = { examined = 5 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
@@ -2082,7 +2023,7 @@ population = { examined = 5 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 
 [one-host-surface]
 [one-host-surface.populations]
@@ -2096,7 +2037,7 @@ population = { examined = 5 }
 "server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
-"shared/core" = { classes = 378, sites = 17187 }
+"shared/core" = { classes = 373, sites = 16704 }
 
 [one-http-client]
 [one-http-client.populations]
@@ -2109,7 +2050,7 @@ population = { examined = 5 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 
 [one-json-codec]
 population = { examined = 1928 }
@@ -2132,7 +2073,7 @@ population = { files = 2172 }
 "server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
-"shared/core" = { classes = 378, sites = 17187 }
+"shared/core" = { classes = 373, sites = 16704 }
 
 [package-cycles]
 [package-cycles.populations]
@@ -2148,7 +2089,7 @@ population = { files = 2172 }
 "server/resolver" = { edges = 5, slices = 3 }
 "server/toolchain" = { edges = 4, slices = 4 }
 "shared/client-io" = { edges = 10, slices = 7 }
-"shared/core" = { edges = 33, slices = 17 }
+"shared/core" = { edges = 32, slices = 17 }
 "shared/plugin-sdk" = { edges = 7, slices = 4 }
 "shared/toolchain-jdk" = { edges = 7, slices = 11 }
 [[package-cycles.entries]]
@@ -2199,7 +2140,7 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 [[package-cycles.entries]]
 in     = "shared/core"
 unit   = "shared/core:builds"
-value  = 8
+value  = 7
 reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 [[package-cycles.entries]]
 in     = "shared/plugin-sdk"
@@ -2234,7 +2175,7 @@ population = { examined = 15 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 
 [published-installer-ps1]
 population = { left = 1095, right = 1095 }
@@ -2266,7 +2207,7 @@ population = { files = 2303 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }
 
 [schema-compared-to-its-constant]
 population = { files = 4156 }
@@ -2366,7 +2307,7 @@ population = { files = 1866 }
 "server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
-"shared/core" = { classes = 378, sites = 17187 }
+"shared/core" = { classes = 373, sites = 16704 }
 
 [tree-copy-owner]
 population = { files = 2172 }
@@ -2401,4 +2342,4 @@ population = { files = 1 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
-"shared/core" = { classes = 378, sites = 21771 }
+"shared/core" = { classes = 373, sites = 21199 }

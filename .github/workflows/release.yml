@@ -69,8 +69,6 @@ jobs:
           - os: windows-2022
             arch_label: windows-x86_64
     runs-on: ${{ matrix.os }}
-    env:
-      JK_AOT_TRAIN: 'off'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 

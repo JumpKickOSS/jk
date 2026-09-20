@@ -7,18 +7,14 @@ import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.command.project.OutdatedCommand;
 import cc.jumpkick.command.system.DoctorCommand;
-import cc.jumpkick.command.system.EngineAotCommand;
 import cc.jumpkick.command.system.EngineStatusCommand;
 import cc.jumpkick.command.system.EnvCommand;
 import cc.jumpkick.command.system.MavenSettingsRows;
 import cc.jumpkick.command.system.RepoStores;
 import cc.jumpkick.config.SecretRedactor;
-import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.wire.protocol.OutdatedReport;
-import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The bytes the commands' {@code --output json} shapes had when they were string concatenation,
@@ -127,42 +123,6 @@ class CommandJsonFrozenBytesTest {
                 .isEqualTo("[\n  {\"name\":\"TOKEN\",\"value\":\"" + SecretRedactor.MASK
                         + "\",\"source\":\".env\",\"secret\":true,\"shadowed\":\"short\"}\n]\n");
         assertThat(EnvCommand.toJson(List.of(), false)).isEqualTo("[\n]\n");
-    }
-
-    @Test
-    void engine_aot_caches_carry_only_the_fields_they_know(@TempDir Path dir) {
-        var bare = new AotManifest.Entry(
-                "a.aot", null, "", null, null, null, null, null, null, List.of(), List.of(), null, null, null, null,
-                null, null);
-        var full = new AotManifest.Entry(
-                "b.aot",
-                "java-compiler",
-                "k1",
-                "ok",
-                12L,
-                "/jdk",
-                "temurin",
-                "25",
-                "serial",
-                List.of("x.jar", "y.jar"),
-                List.of("-Xmx1g"),
-                "0.13.0",
-                "engine.jar",
-                34L,
-                56L,
-                "2026-09-07",
-                "2026-09-08");
-        // A Windows path puts backslashes in the value, and JSON escapes each one — so the
-        // expectation escapes them too rather than assuming a separator that needs no escape.
-        String dirJson = dir.toString().replace("\\", "\\\\");
-        assertThat(EngineAotCommand.toJson(dir, List.of(bare, full)))
-                .isEqualTo("{\"directory\":\"" + dirJson + "\",\"manifest\":false,\"caches\":["
-                        + "{\"file\":\"a.aot\"},"
-                        + "{\"file\":\"b.aot\",\"tool\":\"java-compiler\",\"key\":\"k1\",\"status\":\"ok\",\"sizeBytes\":12,"
-                        + "\"jdkHome\":\"/jdk\",\"jdkVendor\":\"temurin\",\"jdkVersion\":\"25\",\"gc\":\"serial\","
-                        + "\"jkVersion\":\"0.13.0\",\"engineJar\":\"engine.jar\",\"engineJarSize\":34,\"engineJarMtimeMs\":56,"
-                        + "\"created\":\"2026-09-07\",\"lastUsed\":\"2026-09-08\",\"classpath\":[\"x.jar\",\"y.jar\"],"
-                        + "\"jvmFlags\":[\"-Xmx1g\"]}]}");
     }
 
     @Test

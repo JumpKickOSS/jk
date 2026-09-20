@@ -5,13 +5,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * The engine JVM flag set that must be identical wherever an engine-shaped JVM is launched.
- *
- * <p>JEP 514 refuses to map an AOT cache when the dump-time and runtime property sets differ, so
- * the serving spawn line (EngineSpawn), the AOT trainer line (EngineMain), and the manifest row
- * that documents them consume this one list instead of hand-syncing three copies. A flag added to
- * one line and not the other silently degrades every engine start to a cold boot — AOTMode=auto
- * ignores the mismatch, and the refusal back-off then suppresses retraining for its TTL.
+ * The fixed flag set of the engine JVM, consumed by the spawn line ({@code EngineSpawn}) and by
+ * the tests that start an engine-shaped JVM by hand, so the two never drift.
  */
 public final class EngineJvmFlags {
     /**
@@ -23,7 +18,7 @@ public final class EngineJvmFlags {
     public static final int TRIM_NATIVE_HEAP_INTERVAL_MS = 30_000;
 
     /**
-     * Serving-line and trainer-line shared flags: SerialGC with tight heap-return ergonomics (an
+     * The serving line's flags: SerialGC with tight heap-return ergonomics (an
      * idle coordinator must snap committed to ~live on its boundary GC), a periodic native-heap
      * trim for the same reason one level down, real IPv4 sockets for WSL
      * localhost forwarding, native access for PosixDetach's setsid(2) downcall, and a JVM that
@@ -31,7 +26,7 @@ public final class EngineJvmFlags {
      * that survives an OOM is a silent peer every client has to displace; one that exits is
      * respawned on the next command with the dump to say why.
      */
-    public static final List<String> AOT_SENSITIVE = List.of(
+    public static final List<String> BASE = List.of(
             "-XX:+UseSerialGC",
             "-XX:MinHeapFreeRatio=10",
             "-XX:MaxHeapFreeRatio=25",

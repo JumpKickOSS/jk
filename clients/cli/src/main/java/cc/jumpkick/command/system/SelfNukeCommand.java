@@ -41,7 +41,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code --store} — {@code <home>/store} whole-tree, via {@code jk storage nuke}; the
  *       installed tool envs whose recorded classpaths lie under it go too, with their launchers,
  *       see {@link #toolOrphanRows}
- *   <li>{@code --state} — {@code <home>/state}: engine sockets, AOT, builds, scratch tmp, and
+ *   <li>{@code --state} — {@code <home>/state}: engine sockets, builds, scratch tmp, and
  *       the installed tool envs — the launchers {@code jk install} wrote into {@code bin} for
  *       them go too, see {@link #toolOrphanRows}
  *   <li>{@code --config} — {@code <home>/config.toml} and the per-app {@code <home>/config} tree
@@ -60,7 +60,7 @@ public final class SelfNukeCommand implements CliCommand {
     enum Target {
         CACHE("Cache tier"),
         STORE("Artifact store"),
-        STATE("Engine sockets, AOT, builds, installed tools"),
+        STATE("Engine sockets, builds, installed tools"),
         CONFIG("User config");
 
         final String what;
@@ -135,7 +135,7 @@ public final class SelfNukeCommand implements CliCommand {
                 Opt.flag("Nuke every target (default when none named).", "--all"),
                 Opt.flag("Nuke the cache tier only (action outputs).", "--cache"),
                 Opt.flag("Nuke the artifact store (repos, tools, templates, completions).", "--store"),
-                Opt.flag("Nuke engine state, AOT caches, builds, tmp, and installed tools.", "--state"),
+                Opt.flag("Nuke engine state, builds, tmp, and installed tools.", "--state"),
                 Opt.flag("Nuke user config.", "--config"));
     }
 
@@ -233,7 +233,7 @@ public final class SelfNukeCommand implements CliCommand {
         // engine and five surviving paths, plus the files the spawn attempt had just written.
         List<String> delegatedFailures = new ArrayList<>();
         // A dry run never previews the store: its walk runs engine-side, and even the preview
-        // spawns a daemon — which writes engine logs, an AOT index and a JDK registry into the
+        // spawns a daemon — which writes engine logs and a JDK registry into the
         // very state directory it is pretending to delete. The cache preview is a purely local
         // walk (the shared nuke's dry-run leg returns before any engine contact), so it stays;
         // only the store row goes un-itemised.
@@ -256,7 +256,7 @@ public final class SelfNukeCommand implements CliCommand {
         // `jk storage nuke` performs its delete engine-side: the wipe-store request calls
         // ensureRunning and the engine it boots is still there when it returns. Everything below
         // this line assumes a stopped fleet — the cache wipe skips the hosted purge on that
-        // assumption, and the STATE rows are about to delete the sockets and AOT cache that
+        // assumption, and the STATE rows are about to delete the sockets that
         // engine holds open, which it would then write straight back. Take it down again.
         if (enginesStopped && wantStore) stopFleet();
         List<String> failures = new ArrayList<>();

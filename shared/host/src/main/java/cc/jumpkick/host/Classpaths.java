@@ -38,7 +38,7 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>One caller keeps a rule of its own and is right to: {@code MicronautPlugin.joinCp} throws when
- * an entry does not exist, because an AOT run that "succeeds" with half its optimizers missing is
+ * an entry does not exist, because a Micronaut AOT run that "succeeds" with half its optimizers missing is
  * worse than one that fails. That is a policy about which classpaths are acceptable, not about how
  * one is spelled, so it stays there and calls {@link #join} for the spelling.
  *

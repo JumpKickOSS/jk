@@ -16,8 +16,7 @@ import java.util.stream.Stream;
  *
  * <p>A resident engine outlives the shell that started it and serves every later terminal, so
  * whatever that first shell happened to export would become the daemon's truth for days: {@code
- * JAVA_TOOL_OPTIONS} or {@code _JAVA_OPTIONS} silently altering the engine JVM (and defeating its
- * AOT cache, whose recorded flags must match), a cloud key or repository token reaching a process
+ * JAVA_TOOL_OPTIONS} or {@code _JAVA_OPTIONS} silently altering the engine JVM, a cloud key or repository token reaching a process
  * no manifest asked to trust with it. The engine gets the variables it reads — the {@code JK_*}
  * namespace, and the ones that say where the machine is and how it talks — and nothing else. Its
  * workers are narrowed again by {@code WorkerEnv}.

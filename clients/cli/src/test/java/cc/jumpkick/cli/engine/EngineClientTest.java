@@ -35,8 +35,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * verification per the Step 1 plan, not a unit test).
  *
  * <p>{@link IsolatedState} because a real engine <em>writes</em> the state root even when no test
- * here reads it: started at the product version with a job driven through it, one trains worker AOT
- * caches under {@code state/aot} and calibrates worker memory under {@code state/builds}. Those
+ * here reads it: started at the product version with a job driven through it, one calibrates
+ * worker memory under {@code state/builds}. Those
  * landed in the tier's shared {@code JK_HOME}, where a later class's compiler worker inherited them
  * and a build failed with {@code zinc worker exited} in two runs out of three while passing alone.
  * The socket paths here were already per-test temp dirs; the state root was the ambient part.
@@ -61,9 +61,9 @@ class EngineClientTest {
      *
      * <p>Joining is the part that matters. {@link EngineServer#close} only closes the listening
      * channel; the teardown that frees process-global state — the connection pool, the HTTP
-     * listener, the election registration, and {@code PluginAot.quiesceTrainers} — runs in the
+     * listener, the election registration — runs in the
      * server's own {@code cleanup()} as {@code run()} unwinds, on the background thread. A server
-     * closed but never joined leaves its AOT trainer processes alive, and the old code did not even
+     * closed but never joined leaves its worker processes alive, and the old code did not even
      * close one when an assertion above the {@code close()} call threw.
      */
     @AfterEach
@@ -84,8 +84,7 @@ class EngineClientTest {
         // unrelated tests sharing this test JVM.
         JvmOptions.resetSharedPlanForTests();
         assertThat(leaked)
-                .as("engine server threads still serving after teardown: their worker pool and AOT"
-                        + " trainers outlive this class")
+                .as("engine server threads still serving after teardown: their worker pool outlives this class")
                 .isEmpty();
     }
 

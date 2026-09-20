@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  *   config/       per-app config, &lt;bin&gt;/config.toml
  *   creds/        forge tokens (creds/forge) and per-repo credentials (creds/repo)
  *   lib/          live engine jar, installed fat/minified app jars
- *   state/        engine sockets, AOT, builds, JDK inventory, tmp
+ *   state/        engine sockets, builds, JDK inventory, tmp
  *   store/        repos, tools, templates, completions, jdks.json, libs.global.toml
  * </pre>
  *
@@ -319,7 +319,7 @@ public final class JkDirs {
         return storeDir().resolve(TOOLS_DIR);
     }
 
-    /** Engine sockets, AOT caches, build history, JDK inventory, scratch. Override with
+    /** Engine sockets, build history, JDK inventory, scratch. Override with
      * {@code JK_STATE_DIR}. */
     public Path stateDir() {
         return root("JK_STATE_DIR", "state");

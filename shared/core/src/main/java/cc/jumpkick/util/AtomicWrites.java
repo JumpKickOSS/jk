@@ -35,7 +35,7 @@ import java.util.function.IntConsumer;
  * not, leaving a zero-length or truncated target.
  *
  * <p>Use {@link #replaceDurably} for a file where a torn target is not recoverable by re-running.
- * There are four: {@code jk-lock.toml}, the engine install pointer, {@code aot.toml}, and
+ * There are three: {@code jk-lock.toml}, the engine install pointer, and
  * {@code run-number} — that last one because a lost increment lets a later run delete a completed run
  * tree, which is the hazard its flock exists for.
  *
@@ -83,7 +83,7 @@ public final class AtomicWrites {
      * As {@link #replace(Path, byte[])}, forcing the bytes to stable storage before the rename.
      *
      * <p>For the handful of files where a torn target is not recoverable by re-running: the lockfile,
-     * the engine install pointer, {@code aot.toml}, {@code run-number}. Everything else in this tree
+     * the engine install pointer, {@code run-number}. Everything else in this tree
      * is a cache or a hint whose loss costs one recomputation, and paying an {@code fsync} for those
      * would cost more than it protects — see the class javadoc.
      */

@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.testing.RepoRoot;
-import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -303,10 +302,6 @@ class EngineInstallTest {
         Files.writeString(store.engineHome().resolve("jk-engine-1.0.0.jar.old"), "legacy-park");
 
         Path state = Files.createDirectories(home.resolve("state"));
-        Path aot = Files.createDirectories(state.resolve("aot"));
-        Path staleCache = Files.writeString(aot.resolve("engine-0.9.0-aaaaaaaaaaaaaaaa.aot"), "x");
-        Path liveEng = Files.writeString(aot.resolve("engine-1.0.0-eeeeeeeeeeeeeeee.aot"), "live-aot");
-        Path liveWorker = Files.writeString(aot.resolve("java-compiler-1.0.0-ffffffffffffffff.aot"), "live-w");
 
         Path bin = Files.createDirectories(home.resolve("bin"));
         Path jkOld = Files.writeString(bin.resolve("jk.old"), "old-client");
@@ -317,9 +312,6 @@ class EngineInstallTest {
         assertThat(pruned).isNotEmpty();
         assertThat(store.engineHome().resolve("jk-engine-0.9.0.jar")).doesNotExist();
         assertThat(store.engineHome().resolve("jk-engine-1.0.0.jar.old")).doesNotExist();
-        assertThat(staleCache).doesNotExist();
-        assertThat(liveEng).exists();
-        assertThat(liveWorker).exists();
         assertThat(jkOld).doesNotExist();
         assertThat(liveJk).exists();
         assertThat(live.engineJar()).hasContent("live");
@@ -422,69 +414,5 @@ class EngineInstallTest {
         assertThat(EngineInstall.isEngineJarName("jk-engine-0.12.0.1724400000000.jar"))
                 .isTrue();
         assertThat(EngineInstall.isEngineJarName("widget-1.0.0.jar")).isFalse();
-    }
-
-    @Test
-    void wipe_aot_directory_keeps_live_version_only(@TempDir Path home) throws Exception {
-        Path aot = Files.createDirectories(home.resolve("aot"));
-        Path liveEng = Files.writeString(aot.resolve("engine-0.12.0-aaaaaaaaaaaaaaaa.aot"), "e");
-        Path liveWorker = Files.writeString(aot.resolve("java-compiler-0.12.0-bbbbbbbbbbbbbbbb.aot"), "w");
-        Path oldEng = Files.writeString(aot.resolve("engine-0.10.1-cccccccccccccccc.aot"), "old");
-        Path legacyWorker = Files.writeString(aot.resolve("java-compiler-dddddddddddddddd.aot"), "legacy");
-        Path snap = Files.writeString(aot.resolve("engine-0.12.0-SNAPSHOT-eeeeeeeeeeeeeeee.aot"), "snap");
-        Path lock = Files.writeString(aot.resolve("aot.toml.lock"), "");
-        AotManifest.upsert(
-                aot,
-                AotManifest.Entry.builder("engine-0.10.1-cccccccccccccccc.aot")
-                        .tool("engine")
-                        .status("ready")
-                        .build());
-
-        int removed = EngineInstall.wipeAotDirectory(aot, "0.12.0");
-
-        assertThat(removed).isEqualTo(3);
-        assertThat(liveEng).exists();
-        assertThat(liveWorker).exists();
-        assertThat(oldEng).doesNotExist();
-        assertThat(legacyWorker).doesNotExist();
-        assertThat(snap).doesNotExist();
-        assertThat(lock).exists();
-    }
-
-    @Test
-    void wipe_aot_without_keep_version_removes_everything(@TempDir Path home) throws Exception {
-        Path aot = Files.createDirectories(home.resolve("aot"));
-        Path eng = Files.writeString(aot.resolve("engine-0.12.0-aaaaaaaaaaaaaaaa.aot"), "e");
-        Path worker = Files.writeString(aot.resolve("java-compiler-0.12.0-bbbbbbbbbbbbbbbb.aot"), "w");
-        assertThat(EngineInstall.wipeAotDirectory(aot)).isEqualTo(2);
-        assertThat(eng).doesNotExist();
-        assertThat(worker).doesNotExist();
-    }
-
-    @Test
-    void wipe_aot_is_noop_when_dir_missing(@TempDir Path home) {
-        assertThat(EngineInstall.wipeAotDirectory(home.resolve("nope"))).isZero();
-        assertThat(EngineInstall.wipeAotDirectory(null)).isZero();
-        assertThat(EngineInstall.deleteSupersededEngineAot(home.resolve("nope"), "0.12.0"))
-                .isZero();
-    }
-
-    @Test
-    void belongs_to_product_version_requires_hex_key_after_version() {
-        assertThat(EngineInstall.belongsToProductVersion("java-compiler-0.12.0-7aa4b5ac124595f3.aot", "0.12.0"))
-                .isTrue();
-        assertThat(EngineInstall.belongsToProductVersion("engine-0.12.0-e7e6bff34867f44e.aot", "0.12.0"))
-                .isTrue();
-        assertThat(EngineInstall.belongsToProductVersion("engine-0.12.0-SNAPSHOT-aaaaaaaaaaaaaaaa.aot", "0.12.0"))
-                .isFalse();
-        assertThat(EngineInstall.belongsToProductVersion("java-compiler-7aa4b5ac124595f3.aot", "0.12.0"))
-                .isFalse();
-        assertThat(EngineInstall.isPrimaryAotCacheName("java-compiler-0.12.0-abc.aot"))
-                .isTrue();
-        assertThat(EngineInstall.isPrimaryAotCacheName("java-compiler-abc.aot.noaot"))
-                .isFalse();
-        assertThat(EngineInstall.isParkedClientName("jk.old")).isTrue();
-        assertThat(EngineInstall.isParkedClientName("jk.exe.old")).isTrue();
-        assertThat(EngineInstall.isParkedClientName("jk")).isFalse();
     }
 }

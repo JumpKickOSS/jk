@@ -14,10 +14,10 @@ import java.util.Map;
 
 /**
  * The Kotlin half of a worker compile: what {@link WorkerCompileDriver} tells {@code
- * jk-kotlin-compiler} that it does not tell {@code jk-groovy-compiler}. Two things are genuinely
- * Kotlin-only and are why this is not one spec writer with a flag — kotlinc takes the project JDK
+ * jk-kotlin-compiler} that it does not tell {@code jk-groovy-compiler}. One thing is genuinely
+ * Kotlin-only and is why this is not one spec writer with a flag — kotlinc takes the project JDK
  * as {@code -jdk-home} (groovyc takes no project JDK at all, and {@link GroovycRequest} correctly
- * has no {@code javaHome}), and the Kotlin worker is AOT-cached, so it needs a trainer command.
+ * has no {@code javaHome}).
  */
 final class KotlincSpec {
 

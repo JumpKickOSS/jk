@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * {@code :core} cannot depend on {@code :toolchain-jdk} — the edge already runs the other way — so
  * the richest of the four copies could not have become the owner without deleting the {@code :core}
  * one, and {@code :host} is where the campaign's other path vocabularies ({@code CacheTree}, {@code
- * AotCacheFiles}, {@code Classpaths}) already sit.
+ * Classpaths}) already sit.
  *
  * <p>{@code native-image} is spelled here as a FILE. The identical characters are also a step name,
  * owned by {@code cc.jumpkick.run.TaskNames.NATIVE_IMAGE}. Two vocabularies, free to diverge, and

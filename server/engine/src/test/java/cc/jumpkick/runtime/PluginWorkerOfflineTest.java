@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
  * launcher: {@code PluginLaunch.javaCommand} stamps every generic plugin fork (build steps,
  * packagers, plugin commands, format, audit, publish, image), and the compiler/formatter paths
  * that fork through {@code PluginLoader.command} directly — {@code ForkedJavac},
- * {@code KotlincSpec}, {@code GroovycSpec}, the AOT trainers — stamp at their spec producers.
+ * {@code KotlincSpec}, {@code GroovycSpec} — stamp at their spec producers.
  *
  * <p>Each case asserts the decoded value <em>and</em> whether the spec stated a policy at all. Only
  * the second distinguishes the stamp from the fail-closed default: with the stamp removed an

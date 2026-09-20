@@ -2,9 +2,9 @@
 package cc.jumpkick.engine.plugin;
 
 /**
- * Stand-in trainer fork for {@link PluginAotQuiesceTest}: it exists only to keep the jar on its
+ * Stand-in worker fork for {@link PluginProcessWatchdogTest}: it exists only to keep the jar on its
  * classpath open until something kills it. Not on the test classpath by accident — the test hands
- * the trainer command a jar and this class name, and the JVM maps that jar to find it.
+ * the command a jar and this class name, and the JVM maps that jar to find it.
  */
 public final class SleepForever {
 

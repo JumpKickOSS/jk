@@ -9,10 +9,8 @@ import org.junit.jupiter.api.Test;
 class EngineSpawnForwardedPropertiesTest {
 
     @Test
-    void jar_overrides_aot_switches_env_overlays_and_the_owner_pid_are_forwarded() {
+    void jar_overrides_env_overlays_and_the_owner_pid_are_forwarded() {
         assertThat(EngineSpawn.forwarded("jk.test.runner.jar")).isTrue();
-        assertThat(EngineSpawn.forwarded("jk.aot.train")).isTrue();
-        assertThat(EngineSpawn.forwarded("jk.worker.aot")).isTrue();
         assertThat(EngineSpawn.forwarded("jk.env.JK_HOME")).isTrue();
         assertThat(EngineSpawn.forwarded(EngineSpawn.OWNER_PID_PROPERTY)).isTrue();
     }
