@@ -7,6 +7,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.StepTimings;
+import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -93,15 +94,20 @@ class EffortWeightsStepEtaTest {
         assertThat(engCost.testWeight()).isGreaterThan(0);
         assertThat(cliCost.testWeight()).isEqualTo(cliCost.weight());
 
-        // Serial tests: test floor ≈ sum of test steps (~50s).
+        // The recorded walls are single-runner costs; each suite is re-sharded for the runners it
+        // will get when it dispatches. Serial tests: one suite at a time, each on all 8 jobs.
         long serialTests =
                 EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, false, EffortWeights.MS_PER_WEIGHT);
-        assertThat(serialTests).isBetween(48_000L, 55_000L);
-        // Phase-gated schedule (/2211): cli admits at eng's ARTIFACT point (~2s — the
-        // compile slice; eng's 40s suite overlaps), so wall ≈ eng alone (~42s), not 42+10.
+        long engOn8 = TestSuiteScaling.forRunners(engCost.suiteWall1(), 8);
+        long cliOn8 = TestSuiteScaling.forRunners(cliCost.suiteWall1(), 8);
+        assertThat(serialTests).isGreaterThanOrEqualTo((engOn8 + cliOn8) * EffortWeights.MS_PER_WEIGHT);
+        // Phase-gated schedule: cli admits at eng's gate (the ~2s compile), so both suites are in
+        // flight when eng's dispatches and each gets half the jobs; the wall is eng alone.
         long parallelTests =
                 EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, true, EffortWeights.MS_PER_WEIGHT);
-        assertThat(parallelTests).isBetween(40_000L, 44_000L);
+        long engGate = engCost.weight() - engCost.testWeight();
+        long engOn4 = TestSuiteScaling.forRunners(engCost.suiteWall1(), 4);
+        assertThat(parallelTests).isEqualTo((engGate + engOn4) * EffortWeights.MS_PER_WEIGHT);
     }
 
     @Test

@@ -127,7 +127,11 @@ public final class BuildEta {
                             "tail",
                             c.tailWeight(),
                             "gate",
-                            c.gateWeight());
+                            c.gateWeight(),
+                            "wall1",
+                            c.suiteWall1(),
+                            "classes",
+                            c.suiteClasses());
                 }
                 Perf.note(
                         "eta",
@@ -334,8 +338,11 @@ public final class BuildEta {
                 counts.put(TaskNames.COMPILE_JAVA, m.sourceCount());
                 counts.put(TaskNames.COMPILE_TEST, m.sourceCount());
             }
-            int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             // The share is a cap, not a demand: a suite with fewer classes than runners gets fewer.
+            // The class count comes from the ledger when the module has run here; a cold module
+            // is guessed at three methods a class.
+            int knownClasses = EffortWeights.knownClassCount(BuildMetrics.slashKey(mdir.toString()));
+            int classGuess = knownClasses > 0 ? knownClasses : m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             int testW = TestWorkers.resolve(share, classGuess, share);
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);

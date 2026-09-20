@@ -5,7 +5,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.runtime.base.StepTimings;
-import cc.jumpkick.runtime.base.TestSuiteScaling;
+import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.util.Collection;
 import java.util.Map;
 import java.util.OptionalDouble;
