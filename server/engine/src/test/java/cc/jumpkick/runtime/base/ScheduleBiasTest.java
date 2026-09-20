@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.data.Offset.offset;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
@@ -75,6 +76,26 @@ class ScheduleBiasTest {
         }
     }
 
+    /**
+     * A bias below one is the simulator running hot; it is applied as learned, down to the fold
+     * floor. Reading it back at 0.9 would leave the estimate wrong by the whole gap the store
+     * already knows about.
+     */
+    @Test
+    void a_learned_over_estimate_is_applied_as_learned() throws Exception {
+        Path proj = home.resolve("proj");
+        // Sim said 100s, the build took 60s.
+        ScheduleBias.observe(proj, 100_000, 60_000, 29);
+        assertThat(ScheduleBias.current(proj, 29)).isCloseTo(0.6, offset(1e-3));
+
+        // A hand-edited store below the fold floor reads as the floor, not as written.
+        Files.writeString(
+                ScheduleBias.file(),
+                "\"" + proj.toAbsolutePath().normalize() + "|w16\" = 0.3000\n",
+                StandardCharsets.UTF_8);
+        assertThat(ScheduleBias.current(proj, 29)).isEqualTo(ScheduleBias.MIN_BIAS);
+    }
+
     @Test
     void unobserved_projects_use_neutral_bias() {
         assertThat(ScheduleBias.current(home.resolve("proj"), 12)).isEqualTo(1.0);
@@ -104,7 +125,7 @@ class ScheduleBiasTest {
         ScheduleBias.observe(proj, 25_000, 21_000, 3); // narrow: simulated hot
 
         assertThat(ScheduleBias.current(proj, 13)).isCloseTo(70_000 / 40_000.0, offset(0.01));
-        assertThat(ScheduleBias.current(proj, 3)).isCloseTo(ScheduleBias.MIN_BIAS, offset(0.01));
+        assertThat(ScheduleBias.current(proj, 3)).isCloseTo(21_000 / 25_000.0, offset(0.01));
     }
 
     /** Counts round down to a power of two, so neighbouring widths share a history. */
