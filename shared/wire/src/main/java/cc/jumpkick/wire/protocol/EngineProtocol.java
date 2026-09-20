@@ -270,8 +270,14 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #PROJECT_INFO_REQUEST}. */
     public static final String PROJECT_INFO_ACK = "project-info-ack";
 
-    /** Client → server: read-only outdated deps ({@code jk outdated}); one {@link #OUTDATED_ACK}. */
+    /**
+     * Client → server: read-only outdated deps ({@code jk outdated}); {@link #OUTDATED_PROGRESS}
+     * lines, then one {@link #OUTDATED_ACK}.
+     */
     public static final String OUTDATED_REQUEST = "outdated-request";
+
+    /** Server → client: one per dependency about to be checked ({@link OutdatedProgressEvent}). */
+    public static final String OUTDATED_PROGRESS = "outdated-progress";
 
     /** Server → client, terminal for {@link #OUTDATED_REQUEST}. */
     public static final String OUTDATED_ACK = "outdated-ack";

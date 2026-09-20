@@ -443,12 +443,14 @@ public final class EngineClient {
 
     /**
      * Report declared dependencies with newer versions available against the engine ({@code jk
-     * outdated}) — one synchronous request, one {@link cc.jumpkick.wire.protocol.OutdatedReport}
-     * back. Read-only: the engine enumerates versions and writes nothing.
+     * outdated}): one inline read whose beats drive {@code handler}, one {@link
+     * cc.jumpkick.wire.protocol.OutdatedReport} back. Read-only: the engine enumerates versions
+     * and writes nothing.
      */
-    public static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req)
+    public static OutdatedReport runOutdated(
+            EnginePaths.Paths paths, EngineRequests.OutdatedRequest req, EngineRequests.OutdatedHandler handler)
             throws IOException {
-        return EngineResolveAdapter.runOutdated(paths, req);
+        return EngineResolveAdapter.runOutdated(paths, req, handler);
     }
 
     /** Ranked tests for the working tree or {@code since...HEAD} — no compile, no run. */
