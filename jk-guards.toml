@@ -363,6 +363,10 @@ instead  = "resolve paths through cc.jumpkick.util.JkDirs (JK_HOME, plus JK_STOR
 why      = "jk has one home; a layout it does not have, named anywhere, misleads the reader"
 
 [[guards.single-home-root.allow]]
+in     = "settings.gradle.kts"
+reason = "the Kotlin compiler daemon's own run-file registry (~/.local/share/kotlin/daemon/*.run), which the Gradle bootstrap sweeps for stale ports; not a jk home, and Gradle is on its way out"
+
+[[guards.single-home-root.allow]]
 in     = "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
 reason = "reads another program's XDG_CONFIG_HOME to find the terminal's font"
 
