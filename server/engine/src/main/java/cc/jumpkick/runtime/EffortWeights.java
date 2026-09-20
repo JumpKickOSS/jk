@@ -21,6 +21,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
@@ -493,6 +494,7 @@ public final class EffortWeights {
         int weight = 0;
         int testWeight = 0;
         int tailWeight = 0;
+        int gateWeight = 0;
         String mod = dir == null ? "" : BuildMetrics.slashKey(dir.toString());
         int wWorkers = Math.max(1, testWorkers);
         for (String raw : runningSteps) {
@@ -554,8 +556,9 @@ public final class EffortWeights {
             // the branch's length is its longest tail, not their sum (cli: native-image 37 +
             // assembly 3 + sources 2 priced 42 against a true 37).
             if (TaskNames.PACKAGING_TAILS.contains(step)) tailWeight = Math.max(tailWeight, w);
+            if (gatesDependents(step)) gateWeight += w;
         }
-        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
+        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight);
     }
 
     /**
@@ -1095,27 +1098,59 @@ public final class EffortWeights {
      * {@code tailWeight} the packaging tail ({@link TaskNames#PACKAGING_TAILS}) that runs beside it;
      * {@code WorkSchedule} prices the module as {@code prefix + max(test, tail)}.
      */
-    public record ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight) {
-        /** No known tail — prices exactly as it did before tails were modelled. */
+    public record ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight, int gateWeight) {
+        /** No known tail and no known gate — prices exactly as it did before either was modelled. */
         public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight) {
-            this(dir, prereqs, weight, testWeight, 0);
+            this(dir, prereqs, weight, testWeight, 0, ModuleWorkCost.UNKNOWN_GATE);
+        }
+
+        /** A known tail, no known gate: dependents wait on the whole prefix. */
+        public ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight, int tailWeight) {
+            this(dir, prereqs, weight, testWeight, tailWeight, ModuleWorkCost.UNKNOWN_GATE);
         }
 
         /**
-         * Same module, different total. The tail and the test slice ride along, which is the whole
-         * reason this exists: re-wrapping through the four-argument constructor silently zeroes
-         * {@code tailWeight}, and a zero tail prices the module as the SUM of its steps — the
+         * Same module, different total. The tail, the test slice and the gate ride along, which is
+         * the whole reason this exists: re-wrapping through the four-argument constructor silently
+         * zeroes {@code tailWeight}, and a zero tail prices the module as the SUM of its steps — the
          * serialization {@code BuildPlan} no longer has. That is not a visible failure, it is a
          * quietly larger estimate, so the copy is a method rather than a habit.
          */
         public ModuleCost withWeight(int newWeight) {
-            return new ModuleCost(dir, prereqs, Math.max(0, newWeight), testWeight, tailWeight);
+            return new ModuleCost(dir, prereqs, Math.max(0, newWeight), testWeight, tailWeight, gateWeight);
         }
 
-        /** The scheduler's DTO, carrying all three numbers. The only sanctioned conversion. */
+        /** The scheduler's DTO, carrying all four numbers. The only sanctioned conversion. */
         public ModuleWorkCost toWorkCost() {
-            return new ModuleWorkCost(dir, prereqs, weight, testWeight, tailWeight);
+            return new ModuleWorkCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight);
         }
+    }
+
+    /**
+     * Steps that run before a module publishes its classes tree to its dependents: what the live
+     * scheduler waits on before admitting them ({@code WorkspaceRunPhase.classesWaitSet}) and
+     * everything the plan orders ahead of it. A codegen plugin step sits in the compile stage and
+     * gates too; a packaging or test plugin step does not.
+     */
+    static boolean gatesDependents(String step) {
+        String s = metricsStepName(step);
+        if (s.startsWith("plugin-")) return BuildStage.ofTaskName(s) == BuildStage.COMPILE;
+        return switch (s) {
+            case TaskNames.PARSE_BUILD,
+                    TaskNames.ENSURE_JDK,
+                    TaskNames.RESOLVE_DEPS,
+                    TaskNames.RESTORE_OUTPUTS,
+                    TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
+                    TaskNames.COMPILE_JAVA,
+                    TaskNames.COMPILE_KOTLIN,
+                    TaskNames.COMPILE_GROOVY,
+                    TaskNames.ASSEMBLE_CLASSES,
+                    TaskNames.WRITE_STAMP,
+                    TaskNames.WRITE_STAMP_KOTLIN,
+                    TaskNames.WRITE_STAMP_GROOVY,
+                    TaskNames.COPY_RESOURCES -> true;
+            default -> false;
+        };
     }
 
     /**
@@ -1142,6 +1177,7 @@ public final class EffortWeights {
         int weight = 0;
         int testWeight = 0;
         int tailWeight = 0;
+        int gateWeight = 0;
         for (Task step : plan.steps()) {
             int stepWeight;
             if (cachedSteps.contains(step.name())) {
@@ -1156,8 +1192,9 @@ public final class EffortWeights {
             weight += stepWeight;
             if (step.name().equals(TaskNames.RUN_TESTS)) testWeight += stepWeight;
             if (TaskNames.PACKAGING_TAILS.contains(step.name())) tailWeight = Math.max(tailWeight, stepWeight);
+            if (gatesDependents(step.name())) gateWeight += stepWeight;
         }
-        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
+        return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight, gateWeight);
     }
 
     /**
@@ -1171,9 +1208,9 @@ public final class EffortWeights {
     /**
      * Estimate a build's wall-clock (ms) from per-module costs (Σ dirty step weights preferred).
      *
-     * <p>Mirrors {@link cc.jumpkick.runtime.base.WorkspaceScheduler}: a module may start only after every dirty prereq has
-     * <em>fully</em> finished (compile + test + package), and at most {@code concurrency} modules
-     * run at once. Serial ({@code -j1}) is the sum of module weights. When tests are serialized
+     * <p>Mirrors {@link cc.jumpkick.runtime.base.WorkspaceScheduler}: a module may start once every
+     * dirty prereq has published its classes tree, and at most {@code concurrency} modules run at
+     * once. Serial ({@code -j1}) is the sum of module weights. When tests are serialized
      * across modules ({@code parallelTests == false}), the serial test-step sum is also a lower
      * bound (same as the live cross-module test gate).
      */
@@ -1223,7 +1260,8 @@ public final class EffortWeights {
                     m.prereqs(),
                     scaleToMs(m.weight(), r),
                     scaleToMs(m.testWeight(), r),
-                    scaleToMs(m.tailWeight(), r)));
+                    scaleToMs(m.tailWeight(), r),
+                    m.gateWeight() < 0 ? m.gateWeight() : scaleToMs(m.gateWeight(), r)));
         }
         return scheduleMillis(inMs, concurrency, serial, parallelTests, 1L);
     }
