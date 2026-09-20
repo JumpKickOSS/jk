@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CliTempDirSupportTest {
 
-    private static final String FACTORY = "cc/jumpkick/cli/engine/JkTempDirFactory.class";
+    private static final String FACTORY = CliTempDirSupport.FACTORY_RESOURCE;
 
     @TempDir
     Path tmp;
@@ -34,7 +34,7 @@ class CliTempDirSupportTest {
         Files.createDirectories(classes.resolve(FACTORY).getParent());
         Files.writeString(classes.resolve(FACTORY), "");
 
-        assertThat(CliTempDirSupport.onClasspath(List.of(classes))).isTrue();
+        assertThat(CliTempDirSupport.onClasspath(List.of(classes), FACTORY)).isTrue();
     }
 
     @Test
@@ -46,7 +46,7 @@ class CliTempDirSupportTest {
             jos.closeEntry();
         }
 
-        assertThat(CliTempDirSupport.onClasspath(List.of(jar))).isTrue();
+        assertThat(CliTempDirSupport.onClasspath(List.of(jar), FACTORY)).isTrue();
     }
 
     @Test
@@ -56,7 +56,7 @@ class CliTempDirSupportTest {
         Path notAJar = Files.writeString(tmp.resolve("notes.txt"), "not a jar");
         Path missing = tmp.resolve("gone");
 
-        assertThat(CliTempDirSupport.onClasspath(List.of(classes, notAJar, missing)))
+        assertThat(CliTempDirSupport.onClasspath(List.of(classes, notAJar, missing), FACTORY))
                 .as("an unreadable or absent entry simply does not carry the classes")
                 .isFalse();
     }
