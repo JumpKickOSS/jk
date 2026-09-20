@@ -795,14 +795,14 @@ public final class ActionCache {
         sb.append("KEY ").append(record.actionKey()).append('\n');
         for (Map.Entry<String, String> e : new TreeMap<>(record.inputs()).entrySet()) {
             sb.append("INPUT ")
-                    .append(e.getValue())
+                    .append(encodeValue(e.getValue()))
                     .append(' ')
                     .append(e.getKey())
                     .append('\n');
         }
         for (Map.Entry<String, String> e : new TreeMap<>(record.outputs()).entrySet()) {
             sb.append("OUTPUT ")
-                    .append(e.getValue())
+                    .append(encodeValue(e.getValue()))
                     .append(' ')
                     .append(e.getKey())
                     .append('\n');
@@ -823,6 +823,22 @@ public final class ActionCache {
         return sb.toString();
     }
 
+    /**
+     * A record line is {@code INPUT <value> <key>} split at the first space, so a value carries no
+     * space of its own: {@code %} and space are percent-encoded on the way out and decoded on the
+     * way back. A content sha, the usual value, passes through untouched; a packaging token bag
+     * whose args carry spaces round-trips instead of coming back as an empty map.
+     */
+    static String encodeValue(String value) {
+        if (value.indexOf(' ') < 0 && value.indexOf('%') < 0) return value;
+        return value.replace("%", "%25").replace(" ", "%20");
+    }
+
+    static String decodeValue(String value) {
+        if (value.indexOf('%') < 0) return value;
+        return value.replace("%20", " ").replace("%25", "%");
+    }
+
     private static ActionRecord parse(String content) {
         String taskId = null;
         String actionKey = null;
@@ -839,11 +855,11 @@ public final class ActionCache {
             } else if (line.startsWith("INPUT ")) {
                 String body = line.substring("INPUT ".length());
                 int sp = body.indexOf(' ');
-                inputs.put(body.substring(sp + 1), body.substring(0, sp));
+                inputs.put(body.substring(sp + 1), decodeValue(body.substring(0, sp)));
             } else if (line.startsWith("OUTPUT ")) {
                 String body = line.substring("OUTPUT ".length());
                 int sp = body.indexOf(' ');
-                outputs.put(body.substring(sp + 1), body.substring(0, sp));
+                outputs.put(body.substring(sp + 1), decodeValue(body.substring(0, sp)));
             } else if (line.startsWith("EXEC ")) {
                 executables.add(line.substring("EXEC ".length()).trim());
             } else if (line.startsWith("UNIT ")) {
