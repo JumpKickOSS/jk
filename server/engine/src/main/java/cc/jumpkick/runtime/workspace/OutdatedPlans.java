@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
@@ -37,6 +38,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -75,14 +77,37 @@ public final class OutdatedPlans {
      * read fresh — past the metadata TTL, the process version-list memo and the not-found memo —
      * because the question is what the repositories publish now, not what the last lock saw.
      */
-    public static OutdatedReport compute(Path dir, Path cache, @Nullable URI repoUrl, Progress progress) {
+    public static OutdatedReport compute(
+            Path dir, Path cache, @Nullable URI repoUrl, boolean offline, Progress progress) {
         try {
-            return MavenMetadataCache.withForceRevalidate(() -> fresh(dir, repoUrl, progress));
+            OutdatedReport report = MavenMetadataCache.withForceRevalidate(() -> fresh(dir, repoUrl, progress));
+            if (report.error() == null) writeReport(dir, report, offline);
+            return report;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return OutdatedReport.error(Errors.text(e));
         } catch (Exception e) {
             return OutdatedReport.error(Errors.text(e));
+        }
+    }
+
+    /** The file for the report on {@code dir}: under the owning workspace root's {@code target/}. */
+    public static Path reportFile(Path dir) {
+        Path root = dir;
+        try {
+            root = WorkspaceLocator.owningRoot(dir).orElse(dir);
+        } catch (IOException e) {
+            Log.debug("reportFile: workspace root lookup failed", e);
+        }
+        return JkOutdatedMarkdown.latestPath(root);
+    }
+
+    /** Best effort: a report nobody can write down is still a report. */
+    private static void writeReport(Path dir, OutdatedReport report, boolean offline) {
+        try {
+            JkOutdatedMarkdown.write(reportFile(dir), report, offline, LocalDate.now());
+        } catch (IOException | RuntimeException e) {
+            Log.debug("writeReport: " + JkOutdatedMarkdown.FILE_NAME, e);
         }
     }
 
