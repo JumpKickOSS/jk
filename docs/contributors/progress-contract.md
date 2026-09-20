@@ -107,7 +107,10 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 1. Module measured task wall — the ledger's trimmed mean; the single sample when the row has one.
    Never the last sample over a mean: on a rebuild the last sample is the most contended wall the
-   ledger holds.  
+   ledger holds. The harvest reads each run's window from its `record.json` and, while a row has a
+   sample from a run that ran alone, leaves out the samples taken while another run under the same
+   builds root overlapped it (any project, any worktree); a contended run carries a
+   `contention.toml` sidecar naming how many runs overlapped it.  
 2. Host task wall  
 3. Residual per-unit rates × count  
 4. Host continuous learned rates / calibration × host scale  
