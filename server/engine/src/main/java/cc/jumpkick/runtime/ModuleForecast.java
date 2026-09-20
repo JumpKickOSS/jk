@@ -1056,6 +1056,11 @@ final class ModuleForecast {
         }
     }
 
+    /** Steps that act on a module's outputs after they exist: shelving the jar, writing the image. */
+    private static boolean isTerminalSideEffect(String step) {
+        return TaskNames.CACHE_INSTALL.equals(step) || TaskNames.WRITE_IMAGE.equals(step);
+    }
+
     private void restore(Prepared prepared) throws Exception {
         boolean compact = prepared.compact();
         BuildLayout layout = prepared.layout();
@@ -1065,8 +1070,11 @@ final class ModuleForecast {
         // target/ and workspace links dangle. When the promised outputs are absent, add a
         // restore step: the module schedules and its steps resolve as cheap cache restores.
         // The name is deliberately not compile-*/package-jar so it never seeds downstream
-        // dirtiness — restored outputs are byte-identical to what consumers hashed.
-        if (steps.stream().allMatch(TaskForecast.Task::cached)) {
+        // dirtiness — restored outputs are byte-identical to what consumers hashed. The install
+        // and image terminals are side-effects on those outputs, not producers of them, so their
+        // RUN must not hide a missing jar: without the restore an install would be judged
+        // shelf-only and try to shelve a jar that is not on disk.
+        if (steps.stream().allMatch(s -> s.cached() || isTerminalSideEffect(s.name()))) {
             boolean outputsAbsent = false;
             // A non-empty tree that lacks an output its compile record owns is a missing output
             // too: the key hits and every class file present is current, yet the jar packaged

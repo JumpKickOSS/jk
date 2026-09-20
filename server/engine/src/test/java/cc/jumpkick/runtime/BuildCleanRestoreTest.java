@@ -16,6 +16,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.TaskForecast;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -103,6 +104,25 @@ class BuildCleanRestoreTest {
                     .filter(s -> !s.name().equals("restore-outputs"))
                     .allMatch(TaskForecast.Task::cached)) {
                 assertThat(plan.get(0).steps())
+                        .extracting(TaskForecast.Task::name)
+                        .contains("restore-outputs");
+            }
+
+            // An install of the wiped module is never shelf-only: the cache-install terminal is a
+            // side-effect on the jar, so when every producing step is cached the restore gate
+            // still fires, and a jar that is not on disk is never shelved from a thin plan.
+            List<TaskForecast.Module> install =
+                    TaskForecaster.of(graph, cas, actionCache, cache, true, WorkspaceTarget.INSTALL, Set.of(project));
+            TaskForecast.Module installed = install.get(0);
+            assertThat(installed.dirty()).isTrue();
+            assertThat(installed.shelfOnly())
+                    .as("an emptied target/ needs the full install plan, not a shelf restamp")
+                    .isFalse();
+            if (installed.steps().stream()
+                    .filter(s ->
+                            !s.name().equals("restore-outputs") && !s.name().equals("cache-install"))
+                    .allMatch(TaskForecast.Task::cached)) {
+                assertThat(installed.steps())
                         .extracting(TaskForecast.Task::name)
                         .contains("restore-outputs");
             }
