@@ -436,8 +436,14 @@ and exclusions stay GA-scoped.
 
 Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.
 A digest-matching file in the Maven local repo is used in place; a mismatch is left untouched
-and the locked bytes live under `repos/<origin-id>/`. Action-cache restore stays copy-not-link so
-compilers cannot mutate cached outputs. `jk storage nuke` does not delete `~/.m2`.
+and the locked bytes live under `repos/<origin-id>/`. The same published checksum confirms a store
+copy a fresh lock is about to pin: the resolve reads the repository's `.sha256` / `.sha1` beside
+the artifact and skips only the download, so a slot holding the wrong bytes for a coordinate (a
+killed write, a jar copied in by hand, a republished artifact) is evicted and fetched again, with a
+line in the lock output. A pinned build trusts the lock's digest instead, an offline resolve serves
+the store as it stands, and a repository that publishes no checksum follows the `allow-unverified`
+rule a download does. Action-cache restore stays copy-not-link so compilers cannot mutate cached
+outputs. `jk storage nuke` does not delete `~/.m2`.
 
 ### Action keys and future remote cache (design)
 
