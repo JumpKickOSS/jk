@@ -36,19 +36,15 @@ class ExplainBuildEtaParityTest {
     }
 
     @Test
-    void eta_concurrency_matches_workspace_build_clamp() {
-        // Build: width = min(maxReady, maxModuleConcurrency); requestedJvms; min(requested, maxModuleConcurrency)
-        int maxReady = 27;
-        int workers = 0; // auto → heap factor 1
-        boolean parallelTests = true;
-        int jobs = 8;
-        int buildStyle = BuildService.etaConcurrency(maxReady, workers, parallelTests, jobs);
-        // Serial -j1
-        assertThat(BuildService.etaConcurrency(maxReady, workers, parallelTests, 1))
-                .isEqualTo(1);
-        // jobs clamp is applied
-        assertThat(buildStyle).isLessThanOrEqualTo(jobs);
-        assertThat(buildStyle).isGreaterThan(0);
+    void eta_concurrency_is_the_executors_cap_not_the_ready_width() {
+        // The live scheduler admits a dependent once its prerequisites have compiled, so a build
+        // keeps as many modules in flight as the jobs cap allows, whatever the graph's width under
+        // full-completion semantics. The request's -j is the cap; -j1 is serial.
+        assertThat(BuildService.etaConcurrency(8)).isEqualTo(8);
+        assertThat(BuildService.etaConcurrency(1)).isEqualTo(1);
+        // No cap on the request: the engine's own resolved jobs, the same number the build verb
+        // resolves a non-positive wire value to.
+        assertThat(BuildService.etaConcurrency(0)).isEqualTo(TestWorkers.effectiveJobs());
     }
 
     @Test
