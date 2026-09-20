@@ -6,7 +6,7 @@
 id        = "hello"
 table     = "hello"
 version   = "0.1.0"
-sdk       = "0.13.7"
+sdk       = "0.13.8"
 jk-compat = ">=0.13"
 
 [schema]
