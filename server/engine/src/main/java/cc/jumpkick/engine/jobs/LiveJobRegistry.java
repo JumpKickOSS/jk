@@ -9,7 +9,6 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
-import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -94,26 +93,12 @@ public final class LiveJobRegistry {
             Session.CancelToken token,
             AtomicReference<Thread> runnerRef,
             @Nullable BufferedWriter writer,
-            @Nullable SocketChannel channel,
-            @Nullable Thread connectionThread,
             CountDownLatch cancelSignal,
             String dir,
             String kind,
             long sinceMillis,
             boolean workspaceStream) {
-        liveJobs.put(
-                jid,
-                new LiveJob(
-                        token,
-                        runnerRef,
-                        writer,
-                        channel,
-                        connectionThread,
-                        cancelSignal,
-                        dir,
-                        kind,
-                        sinceMillis,
-                        workspaceStream));
+        liveJobs.put(jid, new LiveJob(token, runnerRef, writer, cancelSignal, dir, kind, sinceMillis, workspaceStream));
     }
 
     /**
@@ -152,13 +137,6 @@ public final class LiveJobRegistry {
         pushCancelledTerminal(job);
         // Remote `jk cancel` / POST /api/cancel — an explicit signal.
         beginUserCancel(jid, job.token(), job.runnerRef(), cancelGraceMs, true);
-        // The reader wake happens off-thread — a half-close where the transport allows it, so the
-        // write side stays open for the job-finish the client blocks on.
-        // Wakes the job's connection thread off its read; reads no session.
-        Thread.ofVirtual().name("jk-cancel-settle-" + jid).start(() -> {
-            if (job.connectionThread() != null)
-                ConnectionWatch.wakeOffClientRead(job.channel(), job.connectionThread());
-        });
         return true;
     }
 

@@ -28,7 +28,6 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -105,7 +104,6 @@ public final class JobEnvelope {
     public long submit(String requestLine, JobRequest job, JobTransport transport) {
         BufferedReader reader = transport instanceof JobTransport.SocketWatch w ? w.reader() : null;
         BufferedWriter writer = transport instanceof JobTransport.SocketWatch w ? w.writer() : null;
-        SocketChannel channel = transport instanceof JobTransport.SocketWatch w ? w.channel() : null;
         boolean detached = transport instanceof JobTransport.FireAndForget;
         WallDeadline deadline = WallDeadline.of(limits, transport);
         String threadPrefix = job.threadPrefix();
@@ -179,19 +177,12 @@ public final class JobEnvelope {
         }
         // A detached run has no CLI to open its transcript: the engine writes the header itself.
         if (detached) JobAdmit.openDetachedTranscript(host, eventKind, eventDir, trigger, session, admit);
-        // Capture this connection thread so remote cancel can wake it off client-readLine. The
-        // wake is Thread.interrupt, which on a thread blocked in an InterruptibleChannel read also
-        // CLOSES the channel — so only interrupt while actually parked on the read;
-        // an interrupt landing after the loop exits would poison teardown I/O instead.
         ConnectionWatch watch = new ConnectionWatch(host::nowMillis, host::log);
-        Thread connectionThread = Thread.currentThread();
         live.registerLiveJob(
                 eventRequestId,
                 cancelToken,
                 runnerRef,
                 writer,
-                channel,
-                detached ? null : connectionThread,
                 cancelSignal,
                 eventDir,
                 eventKind,
@@ -212,9 +203,7 @@ public final class JobEnvelope {
                 cancelSignal,
                 runnerRef,
                 writer,
-                channel,
                 watch,
-                connectionThread,
                 deadline,
                 new AtomicBoolean());
         // The job body binds its own session inside the verb (SessionContext.where); unstarted so runnerRef is set
@@ -482,9 +471,7 @@ public final class JobEnvelope {
             CountDownLatch cancelSignal,
             AtomicReference<Thread> runnerRef,
             @Nullable BufferedWriter writer,
-            @Nullable SocketChannel channel,
             ConnectionWatch watch,
-            Thread connectionThread,
             WallDeadline deadline,
             /**
              * Set once the body has returned or thrown — its terminal is on the wire and only the
@@ -498,15 +485,11 @@ public final class JobEnvelope {
         String requestLine = a.requestLine();
         JobBody runner = a.runner();
         boolean plan = a.plan();
-        boolean detached = a.detached();
         long eventRequestId = a.eventRequestId();
         String eventDir = a.eventDir();
         Session.CancelToken cancelToken = a.cancelToken();
         CountDownLatch done = a.done();
         BufferedWriter writer = a.writer();
-        SocketChannel channel = a.channel();
-        ConnectionWatch watch = a.watch();
-        Thread connectionThread = a.connectionThread();
         IoLedger io = host.runIo(eventRequestId);
         // Nothing between the lock and the try: a throw from the setup calls would
         // leak the read lock — one leak and the cache prune's write-lock tryLock never
@@ -573,13 +556,6 @@ public final class JobEnvelope {
             host.inFlight().release(eventRequestId);
             admission.release(eventRequestId);
             done.countDown();
-            // Unblock the connection thread only if it is parked on client readLine
-            // waiting for EOF — remote cancel finishes the runner without
-            // the client writing anything. Only while actually parked: a wake that lands
-            // after the read loop poisons teardown I/O instead (a stray interrupt once killed
-            // journal completion with ClosedByInterruptException, leaving a permanent
-            // "running" job in jk jobs).
-            if (!detached) watch.wakeIfParked(channel, connectionThread);
         }
     }
 

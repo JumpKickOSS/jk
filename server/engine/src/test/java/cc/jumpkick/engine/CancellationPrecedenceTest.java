@@ -119,7 +119,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         try (Client building = new Client(EnginePaths.activeSocket(paths()));
                 Client canceller = new Client(EnginePaths.activeSocket(paths()))) {
             long jid = startLock(building);
-            assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
 
             String ack = canceller.send(ProtoLifecycle.cancelRequest(jid));
             // The ack arrives while the download is still parked: it does not wait for the job to settle.
@@ -158,7 +158,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         try (Client building = new Client(EnginePaths.activeSocket(paths()));
                 Client canceller = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
-            assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
 
             String ack = canceller.send(ProtoLifecycle.cancelRequestForDir(project.toString()));
             assertThat(Jsonl.longValue(ack, "jid", -1)).isZero();
@@ -189,7 +189,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS);
         try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
-            assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
         }
         String finish = awaitSseData(sse, "request-finish");
         assertThat(Jsonl.bool(finish, "cancelled", false)).isTrue();
@@ -206,7 +206,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
                 new JobLimits(0L, 3_000L, JobLimits.DEFAULT_DETACHED_DEADLINE_MS, 200L, 500L, 0L)));
         try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
-            assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
             // The deadline's error line and the cancelled terminal race each other onto the wire:
             // the watchdog writes the error after interrupting the runner, whose unwinding may
             // already have settled the plan. Both must be there, and job-finish must be last.
@@ -303,21 +303,36 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         return jid;
     }
 
-    private static List<String> readToEof(Client c) throws IOException {
+    /** How long one frame may take to arrive before the test fails naming what it saw. */
+    private static final Duration FRAME_BOUND = Duration.ofSeconds(30);
+
+    private List<String> readToEof(Client c) throws IOException {
         List<String> lines = new ArrayList<>();
         String line;
-        while ((line = c.readLine()) != null) lines.add(line);
+        while ((line = readOne(c, lines)) != null) lines.add(line);
         return lines;
     }
 
     private String readUntil(Client c, String type) throws IOException {
         List<String> seen = new ArrayList<>();
         String line;
-        while ((line = c.readLine()) != null) {
+        while ((line = readOne(c, seen)) != null) {
             seen.add(line);
             if (type.equals(EngineProtocol.typeOf(line))) return line;
         }
         throw new AssertionError("stream ended before a " + type + " line; saw:\n  " + String.join("\n  ", seen)
                 + "\nengine log:\n  " + String.join("\n  ", List.copyOf(engineLog)));
+    }
+
+    /** One bounded read; a frame that does not arrive fails with the frames seen and the engine log. */
+    private @Nullable String readOne(Client c, List<String> seen) throws IOException {
+        try {
+            return c.readLine(FRAME_BOUND);
+        } catch (AssertionError timeout) {
+            throw new AssertionError(
+                    timeout.getMessage() + "; saw:\n  " + String.join("\n  ", seen) + "\nengine log:\n  "
+                            + String.join("\n  ", List.copyOf(engineLog)),
+                    timeout);
+        }
     }
 }

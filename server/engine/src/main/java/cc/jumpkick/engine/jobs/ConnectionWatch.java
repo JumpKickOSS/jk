@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.host.Log;
+import cc.jumpkick.config.SessionContext;
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.channels.SocketChannel;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -15,14 +13,16 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Watch a client connection for EOF while a job runs, then bound the join with the runner. The
- * connection thread may be interrupted only while it is actually parked in {@code readLine}: an
- * interrupt landing after the loop poisons teardown I/O, and a stray one once killed journal
- * completion with {@code ClosedByInterruptException}, leaving a permanently running job in
- * {@code jk jobs}. Its only host collaborators are the clock and the log.
+ * read that waits for the client's EOF sits on a thread of its own: a blocked socket read can only
+ * be ended by the peer (a half-close from this side does not wake it on Windows), so the
+ * connection thread never parks in it and needs no wake to run the finish tail. Its only host
+ * collaborators are the clock and the log.
  */
 final class ConnectionWatch {
 
-    private final AtomicBoolean parkedOnRead = new AtomicBoolean(false);
+    /** How often the wait for the runner looks at the EOF watcher's verdict. */
+    private static final long EOF_LOOK_MS = 50L;
+
     private final LongSupplier nowMillis;
     private final Consumer<String> log;
 
@@ -32,44 +32,38 @@ final class ConnectionWatch {
     }
 
     /**
-     * Read {@code reader} until the job ends or the client goes away. The client never writes on this
-     * socket mid-job, so a plain blocking read would park forever after the runner finished; cancel
-     * and runner teardown wake this thread so the finish tail can run. EOF or a read error while the
-     * job's body is still running is a disconnect, and runs {@code onDisconnect} once. Once
-     * {@code bodyFinished} holds, the body has sent its terminal and only its teardown remains, so
-     * the EOF is the client half-closing after reading that terminal — the end of the request, not a
+     * Wait until the job ends or the client goes away. The client never writes on this socket
+     * mid-job, so its EOF is read on a watcher thread that outlives this call when the job ends
+     * first; the connection closes after the job and ends that read. EOF or a read error while the
+     * job's body is still running is a disconnect, and runs {@code onDisconnect} once. Once {@code
+     * bodyFinished} holds, the body has sent its terminal and only its teardown remains, so the EOF
+     * is the client half-closing after reading that terminal — the end of the request, not a
      * disconnect that stops it — and nothing is cancelled. Returns with the interrupt flag cleared,
      * so the joins that follow are not spuriously skipped.
      */
     void watchForEof(
             @Nullable BufferedReader reader, CountDownLatch done, BooleanSupplier bodyFinished, Runnable onDisconnect) {
+        if (reader == null) return;
+        CountDownLatch gone = new CountDownLatch(1);
+        SessionContext.startVirtual("jk-conn-eof-watch", () -> {
+            try {
+                // Any in-band line while a job runs is noise: cancellation arrives out-of-band
+                // as CANCEL_REQUEST on its own connection, or as EOF here.
+                while (reader.readLine() != null) {}
+            } catch (IOException | RuntimeException e) {
+                // A read error is the client gone, the same as EOF.
+            }
+            gone.countDown();
+        });
         try {
-            while (reader != null && done.getCount() > 0) {
-                try {
-                    parkedOnRead.set(true);
-                    String line = reader.readLine();
-                    parkedOnRead.set(false);
-                    if (line == null) {
-                        // EOF / client gone mid-job — same bounded cancel path (not explicit:
-                        // an EOF after a reported failure is the terminal-read race).
-                        if (!bodyFinished.getAsBoolean()) onDisconnect.run();
-                        break;
-                    }
-                    // Any in-band line while a job runs is noise: cancellation arrives
-                    // out-of-band as CANCEL_REQUEST on its own connection, or as EOF here.
-                } catch (IOException e) {
-                    parkedOnRead.set(false);
-                    // Interrupt during read (ClosedByInterruptException, etc.) or a real error.
-                    if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
-                        break; // runner done / cancel wake — join below
-                    }
-                    if (!bodyFinished.getAsBoolean()) onDisconnect.run();
+            while (done.getCount() > 0) {
+                if (gone.await(EOF_LOOK_MS, TimeUnit.MILLISECONDS)) {
+                    if (done.getCount() > 0 && !bodyFinished.getAsBoolean()) onDisconnect.run();
                     break;
                 }
             }
-            parkedOnRead.set(false);
-        } catch (RuntimeException ignored) {
-            if (done.getCount() > 0 && !bodyFinished.getAsBoolean()) onDisconnect.run();
+        } catch (InterruptedException e) {
+            // A cancel or runner wake landed here: the joins below bound what is left.
         }
         Thread.interrupted();
     }
@@ -159,44 +153,6 @@ final class ConnectionWatch {
         if (!done.await(nextCheck, TimeUnit.MILLISECONDS)) {
             log.accept("jk engine: job " + jid + " still running after cancel+" + (joinBudget + nextCheck)
                     + "ms — abandoned; workers force-killed");
-        }
-    }
-
-    /** Whether the connection thread is parked in {@code readLine} right now. */
-    boolean parkedOnRead() {
-        return parkedOnRead.get();
-    }
-
-    /** Wake the connection thread only while it is actually parked on the read; otherwise nothing. */
-    void wakeIfParked(@Nullable SocketChannel channel, Thread connectionThread) {
-        if (parkedOnRead.get()) wakeOffClientRead(channel, connectionThread);
-    }
-
-    /**
-     * Wake the connection thread off client-readLine so it can run the finish tail.
-     *
-     * <p>Half-closing the read direction is the gentle wake: the blocked read sees EOF while the
-     * write direction stays usable, so the tail can still deliver {@code job-finish} — the line the
-     * client waits for before it may delete {@code target/}. {@link Thread#interrupt} is
-     * the fallback, and it is blunt: on a thread blocked in an InterruptibleChannel read it closes
-     * the whole channel, so the client learns the job ended one journal-write too early. A platform
-     * whose half-close does not wake a blocked read is still covered — the client half-closes its
-     * own end once it has the terminal, which delivers the same EOF.
-     */
-    static void wakeOffClientRead(@Nullable SocketChannel channel, Thread connectionThread) {
-        if (channel != null) {
-            try {
-                channel.shutdownInput();
-                return;
-            } catch (IOException | UnsupportedOperationException ignored) {
-                // Not a half-closable transport (or already gone) — fall through to the blunt wake.
-            }
-        }
-        try {
-            connectionThread.interrupt();
-        } catch (RuntimeException e) {
-            // best-effort wake
-            Log.debug("wakeOffClientRead: best-effort wake", e);
         }
     }
 }

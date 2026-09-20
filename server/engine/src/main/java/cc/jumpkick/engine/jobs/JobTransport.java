@@ -3,7 +3,6 @@ package cc.jumpkick.engine.jobs;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.nio.channels.SocketChannel;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -13,21 +12,10 @@ import org.jspecify.annotations.Nullable;
 public sealed interface JobTransport {
 
     /**
-     * CLI: connection owns the job; watch for EOF (cancel is out-of-band CANCEL_REQUEST); join before return.
-     *
-     * <p>{@code channel} is the same socket {@code reader}/{@code writer} sit on, carried so the
-     * job can wake the connection thread off client-readLine by half-closing the read direction —
-     * the blunt alternative, {@link Thread#interrupt}, closes the whole channel and costs the
-     * client its end-of-job line. May be {@code null} in tests.
+     * CLI socket: the connection's reader, watched for the client's EOF while the job runs, and the
+     * writer its events and terminal go to.
      */
-    record SocketWatch(
-            BufferedReader reader,
-            BufferedWriter writer,
-            @Nullable SocketChannel channel) implements JobTransport {
-        public SocketWatch(BufferedReader reader, BufferedWriter writer) {
-            this(reader, writer, null);
-        }
-    }
+    record SocketWatch(BufferedReader reader, BufferedWriter writer) implements JobTransport {}
 
     /**
      * HTTP/MCP: return request id immediately; progress is the sink (SSE). {@code deadlineMs} is the
