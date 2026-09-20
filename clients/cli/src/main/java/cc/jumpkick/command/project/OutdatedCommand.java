@@ -39,8 +39,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk outdated} — read-only report of declared deps an update would move (Current / Compatible /
- * Latest; optional Tip). Engine-hosted; writes nothing. At a workspace root, cascades over every
- * module. Rows already at their newest are hidden unless {@code --all}.
+ * Latest; optional Tip). Engine-hosted; writes nothing but the results file. At a workspace root,
+ * cascades over every module and prints one row per coordinate with the module count and the spread
+ * of pins; {@code --by-module} prints a row per module instead. Rows already at their newest are
+ * hidden unless {@code --all}.
  *
  * <p>Exit 0 on success whether or not any row can move (a non-empty JSON array is drift). Does not
  * re-resolve or rewrite the lock — use {@code jk update} after review. Machine output: {@code
@@ -50,6 +52,7 @@ public final class OutdatedCommand implements CliCommand {
 
     private boolean showTip;
     private boolean all;
+    private boolean byModule;
     private @Nullable URI repoUrl;
     private @Nullable Path cacheDir;
     private @Nullable GlobalOptions global;
@@ -69,6 +72,7 @@ public final class OutdatedCommand implements CliCommand {
         return List.of(
                 Opt.flag("Show Tip column (prerelease / git HEAD)", "--show-tip"),
                 Opt.flag("Every dependency, up to date included", "--all"),
+                Opt.flag("A row per module and dependency, not per coordinate", "--by-module"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
                 CommonOpts.cacheDir());
@@ -78,6 +82,7 @@ public final class OutdatedCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         this.showTip = in.isSet("show-tip");
         this.all = in.isSet("all");
+        this.byModule = in.isSet("by-module");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
@@ -130,9 +135,14 @@ public final class OutdatedCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
-        for (String line : renderTable(rows, report.workspace(), showTip, "Dependency versions")) {
-            CliOutput.out(line);
-        }
+        List<String> table = byModule
+                ? renderByModule(rows, report.workspace(), showTip, "Dependency versions")
+                : renderRollup(
+                        all ? report.rollup() : report.movableRollup(),
+                        report.workspace(),
+                        showTip,
+                        "Dependency versions");
+        for (String line : table) CliOutput.out(line);
         // Footer: lockfile-respecting workflow + graph inspection.
         CliOutput.out("Next: review with `jk why <coord>` / `jk tree`; `jk update [name…]` moves the declared"
                 + " pins to Compatible and relocks, `jk update --major` to Latest.");
@@ -183,9 +193,9 @@ public final class OutdatedCommand implements CliCommand {
         return "[" + String.join(",", items) + "]";
     }
 
-    // Rendering — box-drawn table mirroring JdkListCommand's style.
-    // Columns: Dependency Current Compatible Latest [Tip?] Scope. In a workspace each module is a
-    // full-width group header above its rows rather than a column of its own.
+    // Rendering — box-drawn tables mirroring JdkListCommand's style. The rollup has one row per
+    // coordinate: Dependency Current Compatible Latest [Tip?] [Modules] Scope. The by-module view
+    // has one row per module and dependency, each module a full-width group header above its rows.
 
     private static final String NONE = "—";
 
@@ -198,7 +208,66 @@ public final class OutdatedCommand implements CliCommand {
     /** Widest version cell; timestamped qualifiers like {@code 7.7.1.202607240634-r} are cut here. */
     static final int VERSION_COLUMNS = 14;
 
-    static List<String> renderTable(List<OutdatedReport.Row> rows, boolean workspace, boolean showTip, String title) {
+    /** Widest spread cell ({@code 1.1.1 ×11 · 1.2.0 ×1}); a wider spread ends in an ellipsis. */
+    static final int SPREAD_COLUMNS = 24;
+
+    static List<String> renderRollup(
+            List<OutdatedReport.Rollup> rollups, boolean workspace, boolean showTip, String title) {
+        List<String> headers = new ArrayList<>();
+        headers.add("Dependency");
+        headers.add("Current");
+        headers.add("Compatible");
+        headers.add("Latest");
+        if (showTip) headers.add("Tip");
+        if (workspace) headers.add("Modules");
+        headers.add("Scope");
+        int n = headers.size();
+
+        Table table = new Table(title).columns(headers.toArray(String[]::new));
+        for (OutdatedReport.Rollup r : rollups) {
+            RichText[] rich = new RichText[n];
+            int c = 0;
+            boolean hasShort = !r.display().isEmpty();
+            rich[c++] = styledCell(
+                    clip(hasShort ? r.display() : GroupInitials.module(r.coordinate()), DEPENDENCY_COLUMNS),
+                    hasShort ? Theme.active().path().italic() : Theme.active().path());
+            String current = OutdatedReport.spreadText(r.current());
+            String compatible = OutdatedReport.spreadText(r.compatible());
+            rich[c++] = styledCell(
+                    r.currentDiffers() ? clip(current, SPREAD_COLUMNS) : version(current, null),
+                    r.currentDiffers() ? Theme.active().warning() : null);
+            boolean compatibleDiffers = r.compatible().size() > 1;
+            rich[c++] = styledCell(
+                    compatibleDiffers ? clip(compatible, SPREAD_COLUMNS) : version(compatible, current),
+                    compatibleDiffers || anyAhead(r.compatible(), r.current())
+                            ? Theme.active().brightYellow()
+                            : null);
+            rich[c++] = styledCell(
+                    version(r.latest(), compatibleDiffers ? null : compatible),
+                    anyAhead(List.of(new OutdatedReport.Spread(r.latest(), 1)), r.compatible())
+                            ? Theme.active().brightCyan()
+                            : null);
+            if (showTip)
+                rich[c++] = styledCell(version(r.tip(), null), Theme.active().darkGray());
+            if (workspace) rich[c++] = styledCell(Integer.toString(r.modules().size()), null);
+            rich[c] = styledCell(String.join(" · ", r.scopes()), Theme.active().darkGray());
+            table.row(rich);
+        }
+        return table.render(RenderContext.current());
+    }
+
+    /** True when some version in {@code a} is strictly ahead of some version in {@code b}. */
+    private static boolean anyAhead(List<OutdatedReport.Spread> a, List<OutdatedReport.Spread> b) {
+        for (OutdatedReport.Spread x : a) {
+            for (OutdatedReport.Spread y : b) {
+                if (ahead(x.version(), y.version())) return true;
+            }
+        }
+        return false;
+    }
+
+    static List<String> renderByModule(
+            List<OutdatedReport.Row> rows, boolean workspace, boolean showTip, String title) {
         List<String> headers = new ArrayList<>();
         headers.add("Dependency");
         headers.add("Current");
@@ -252,9 +321,5 @@ public final class OutdatedCommand implements CliCommand {
     private static RichText styledCell(String text, @Nullable Style style) {
         if (style == null || !Theme.active().isAnsi()) return RichText.plain(text);
         return RichText.ansi(Theme.colorize(text, style));
-    }
-
-    private static String disp(@Nullable String v) {
-        return v == null || v.isEmpty() ? NONE : v;
     }
 }

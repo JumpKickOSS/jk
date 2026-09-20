@@ -188,9 +188,19 @@ class OutdatedCommandTest {
         assertThat(json).contains("\"module\":\"com.acme:app\"").contains("\"dependency\":\"com.foo.outdated:leaf\"");
         assertThat(json).contains("\"module\":\"com.acme:lib\"").contains("\"dependency\":\"com.foo.outdated:core\"");
 
-        // Each module is a full-width group header above its rows, not a column of its own.
+        // The default view is one row per coordinate with a Modules count and no module rows.
+        Path cache = tempDir.resolve("cache");
+        List<String> rollup = TestAnsi.strip(table(tempDir, cache)).lines().toList();
+        assertThat(rollup).anyMatch(l -> l.contains("Modules")).noneMatch(l -> l.contains("com.acme:app"));
+        assertThat(rollup.stream()
+                        .filter(l -> l.contains("c.f.o:leaf"))
+                        .findFirst()
+                        .orElseThrow())
+                .contains("│ 1 ");
+
+        // --by-module: each module is a full-width group header above its rows, not a column.
         List<String> lines =
-                TestAnsi.strip(table(tempDir, tempDir.resolve("cache"))).lines().toList();
+                TestAnsi.strip(table(tempDir, cache, "--by-module")).lines().toList();
         assertThat(lines).noneMatch(l -> l.contains("Module"));
         String appHeader = lines.stream()
                 .filter(l -> l.contains("com.acme:app"))
@@ -200,13 +210,63 @@ class OutdatedCommandTest {
         String leafRow =
                 lines.stream().filter(l -> l.contains("c.f.o:leaf")).findFirst().orElseThrow();
         assertThat(lines.indexOf(leafRow)).isGreaterThan(lines.indexOf(appHeader));
-        // Five content-sized columns: the table itself stays well under a 100-column terminal.
-        int widest = lines.stream()
-                .filter(l -> !l.isEmpty() && "│├╰|+".indexOf(l.charAt(0)) >= 0)
-                .mapToInt(Width::columns)
-                .max()
-                .orElse(0);
-        assertThat(widest).isBetween(30, 99);
+
+        // Content-sized columns: both tables stay well under a 100-column terminal.
+        for (List<String> view : List.of(rollup, lines)) {
+            int widest = view.stream()
+                    .filter(l -> !l.isEmpty() && "│├╰|+".indexOf(l.charAt(0)) >= 0)
+                    .mapToInt(Width::columns)
+                    .max()
+                    .orElse(0);
+            assertThat(widest).isBetween(30, 99);
+        }
+    }
+
+    @Test
+    void two_modules_on_two_pins_roll_up_to_one_row_with_the_spread(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        for (String v : List.of("1.0", "1.1")) {
+            maven.registerPom("com.foo.outdated", "leaf", v, pom("com.foo.outdated", "leaf", v));
+            maven.registerJar("com.foo.outdated", "leaf", v, "leaf".getBytes(StandardCharsets.UTF_8));
+        }
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "0.1.0"
+
+                [workspace]
+                modules = ["app", "lib"]
+                """);
+        for (String[] m : new String[][] {{"app", "=1.0"}, {"lib", "=1.1"}}) {
+            Path dir = Files.createDirectories(tempDir.resolve(m[0]));
+            Files.writeString(dir.resolve("jk.toml"), """
+                    group = "com.acme"
+                    name = "%s"
+                    version = "0.1.0"
+
+                    [dependencies]
+                    leaf = { group = "com.foo.outdated", name = "leaf", version = "%s" }
+                    """.formatted(m[0], m[1]));
+        }
+        Path cache = tempDir.resolve("cache");
+        lockOrExplain(tempDir, cache);
+
+        List<String> rollup = TestAnsi.strip(table(tempDir, cache)).lines().toList();
+        List<String> leafRows =
+                rollup.stream().filter(l -> l.contains("c.f.o:leaf")).toList();
+        assertThat(leafRows).hasSize(1);
+        assertThat(leafRows.getFirst())
+                .contains("1.0 ×1 · 1.1 ×1")
+                .contains("2.0")
+                .contains("│ 2 ");
+        assertThat(rollup).noneMatch(l -> l.contains("com.acme:app"));
+
+        List<String> byModule =
+                TestAnsi.strip(table(tempDir, cache, "--by-module")).lines().toList();
+        assertThat(byModule.stream().filter(l -> l.contains("c.f.o:leaf"))).hasSize(2);
+        assertThat(byModule).anyMatch(l -> l.contains("com.acme:app")).anyMatch(l -> l.contains("com.acme:lib"));
+
+        assertThat(json(tempDir, cache).split("\\{\\\"module\\\"", -1)).hasSize(3);
     }
 
     @Test
