@@ -7,6 +7,7 @@ import cc.jumpkick.config.Jobs;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.host.Log;
 import java.io.IOException;
 import java.util.function.Consumer;
@@ -57,6 +58,7 @@ final class EngineStartup {
         log.accept("jk engine: listening on " + won.active().socket() + " (pid " + pid + ")");
         yieldPredecessor(won);
         collectDisplacedInstallFiles();
+        sweepForeignWorkerCaches();
         bindHttp();
         abandonStaleJournalRows();
         Started started = startChores();
@@ -81,6 +83,15 @@ final class EngineStartup {
      */
     private void yieldPredecessor(EngineElection.Won won) throws IOException {
         election.askPredecessorToYield(won.displaced());
+    }
+
+    /** Worker startup caches for another jk version or another JDK can never map again. */
+    private void sweepForeignWorkerCaches() {
+        try {
+            WorkerAotCache.sweepForeign();
+        } catch (RuntimeException e) {
+            Log.debug("sweepForeignWorkerCaches: best-effort", e);
+        }
     }
 
     private void collectDisplacedInstallFiles() {

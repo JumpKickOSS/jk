@@ -106,6 +106,31 @@ class WorkerArgvOwnerTest {
         assertOwnerTail(argv, CP, List.of("@" + scratch.resolve("train.spec").toAbsolutePath()));
     }
 
+    /** The formatter worker's AOT trainer — the third module in the fork family. */
+    @Test
+    void the_formatter_aot_trainer_uses_the_owner(@TempDir Path tmp) throws Exception {
+        Path scratch = Files.createDirectories(tmp.resolve("fmt"));
+
+        List<String> argv = FormatPlans.trainerCommand(
+                tmp.resolve("jdk"),
+                CP,
+                tmp.resolve("fmt.aot"),
+                scratch,
+                "palantir",
+                "kotlinlang",
+                List.of(tmp.resolve("palantir.jar")),
+                List.of(),
+                List.of(tmp.resolve("ktfmt.jar")),
+                List.of(),
+                false,
+                true,
+                true,
+                true);
+
+        assertOwnerTail(
+                argv, CP, List.of(scratch.resolve("train.spec").toAbsolutePath().toString()));
+    }
+
     private static void assertOwnerTail(List<String> argv, String classpath, List<String> args) {
         int cp = argv.indexOf("-cp");
         assertThat(cp).describedAs("no -cp in %s", argv).isNotNegative();

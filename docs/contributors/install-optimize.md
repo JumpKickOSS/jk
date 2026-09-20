@@ -54,12 +54,15 @@ shrunk mid-chore.
 
 ## Worker startup caches
 
-The java-compiler and kotlinc workers (`java … PluginMain`) map a JEP 514 cache under
-`~/.jk/state/aot/<tool>-<jk-version>-<key>.aot`, keyed on the host JDK, the worker GC flag, the
-worker classpath and the module's own JVM flags (`WorkerAotCache`). Nothing pre-trains: the first
-compile that misses forks one background trainer (a synthetic `Hello.java` / `Hello.kt`) and the
-next compile maps the result. A recording that fails is not retried until the next engine start.
-`JK_WORKER_AOT=off` turns mapping and recording off; suite JVMs and CI set it.
+The java-compiler, kotlinc and formatter workers (`java … PluginMain`) map a JEP 514 cache under
+`~/.jk/state/aot/<tool>-<jk-version>-<jdk tag>-<key>.aot` (`WorkerAotCache`). The rule is one file
+per tool, recorded only for the JDK jk itself runs on: a worker forked on a project's own JDK
+runs without a cache, a landing cache deletes the tool's other caches, and the engine deletes
+every cache for another jk version or another JDK when it starts. The key hashes the worker GC
+flag, the worker classpath and the module's own JVM flags. Nothing pre-trains: the first run that
+misses forks one background trainer (a synthetic `Hello.java` / `Hello.kt` / formatter sources)
+and the next run maps the result. A recording that fails is not retried until the next engine
+start. `JK_WORKER_AOT=off` turns mapping and recording off; suite JVMs and CI set it.
 
 ## Install
 
