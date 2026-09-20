@@ -90,7 +90,17 @@ class EngineEnvironmentTest {
     @Test
     void windows_matches_names_case_insensitively_and_keeps_its_system_roots() {
         for (String needed : new String[] {
-            "Path", "systemroot", "ComSpec", "USERPROFILE", "ProgramFiles", "PATHEXT", "TEMP", "jk_home"
+            "Path",
+            "systemroot",
+            "ComSpec",
+            "USERPROFILE",
+            "ProgramFiles",
+            "PATHEXT",
+            "TEMP",
+            "jk_home",
+            "INCLUDE",
+            "LIB",
+            "LIBPATH"
         }) {
             assertThat(EngineEnvironment.inherited(needed, true)).as(needed).isTrue();
         }
