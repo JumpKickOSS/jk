@@ -195,6 +195,33 @@ class TestStoreSeedTest {
         assertThat(TestStoreSeed.seed(host, sandbox)).isZero();
     }
 
+    /**
+     * A slot seeded when the host knew one launcher version must lock a version the host fetched
+     * later: the synthesised list follows the host, where an index the store fetched itself is
+     * not touched.
+     */
+    @Test
+    void a_synthesised_version_list_follows_the_host_store(@TempDir Path tmp) throws Exception {
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
+        Path sandbox = tmp.resolve("sandbox");
+        TestStoreSeed.seed(host, sandbox);
+        assertThat(Files.readString(metadata(sandbox, LAUNCHER)))
+                .contains(TestStoreSeed.SEED_MARK)
+                .contains("<latest>6.1.3</latest>")
+                .doesNotContain("6.1.4");
+
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.4", ".pom", ".jar");
+        assertThat(TestStoreSeed.seed(host, sandbox))
+                .as("two new files and the rewritten list")
+                .isEqualTo(3);
+        assertThat(Files.readString(metadata(sandbox, LAUNCHER)))
+                .contains("<version>6.1.3</version>")
+                .contains("<version>6.1.4</version>")
+                .contains("<latest>6.1.4</latest>");
+        assertThat(TestStoreSeed.seed(host, sandbox)).as("settled").isZero();
+    }
+
     @Test
     void one_store_named_twice_or_a_host_without_central_is_a_no_op(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
