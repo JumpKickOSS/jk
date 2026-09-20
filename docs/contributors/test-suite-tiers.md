@@ -152,7 +152,6 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 | Tool run | One path per language | `ToolRunCommandTest` has many near-identical error/help methods |
 | EngineServer / Http | Handshake + auth + one SSE | Deep host-header matrix → keep tagged, trim methods over time |
 | Git backends | jgit | CLI-git matrix can stay `slow` or one smoke |
-| AOT | — | `ForkedJavacAotBenchTest` is `@Tag("bench")`, so `benchTest` and nothing else |
 
 ## CI
 

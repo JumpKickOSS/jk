@@ -143,8 +143,7 @@ public final class KotlinAbiWarmup {
         RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         var kt = KotlinPluginSetup.prepare(repos, cas, kotlinVersion);
         Path snapshotDir = CacheTree.KOTLIN_CP_SNAPSHOTS.under(cache);
-        // The trainer behind an AOT miss compiles a hello-world against this classpath, so the
-        // stdlib rides along; the snapshot itself only reads the entries asked for.
+        // The stdlib rides along; the snapshot itself only reads the entries asked for.
         KotlincRequest request = KotlincRequest.builder()
                 .classpath(List.of(classes, kt.stdlib()))
                 .outputDir(snapshotDir)

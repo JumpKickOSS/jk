@@ -5,7 +5,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
@@ -505,15 +504,7 @@ public final class JavaCompilerHost {
         private void converse(ForkedJavac.Request template, Path hostJavaHome, @Nullable Long heapBytes)
                 throws Exception {
             String workerCp = ForkedJavac.workerClasspath(template);
-            List<String> jvmFlags = ForkedJavac.workerJvmFlags(
-                    PluginAot.javaCompilerFlags(
-                            hostJavaHome,
-                            workerCp,
-                            ForkedJavac.novelJvmArgs(template),
-                            (aotOutput, scratch) ->
-                                    ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)),
-                    heapBytes,
-                    template.jvmArgs());
+            List<String> jvmFlags = ForkedJavac.workerJvmFlags(heapBytes, template.jvmArgs());
             List<String> command = PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("--pull"));
             int exit = new PluginClient(ForkedJavac.PREFIX)
                     .passthrough(this::output)

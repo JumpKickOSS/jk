@@ -2,7 +2,6 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -54,8 +53,8 @@ public final class KotlincSnapshots {
     private KotlincSnapshots() {}
 
     /**
-     * A snapshotter over the worker {@code request} names: its Build Tools API closure, its
-     * snapshot directory and — for the AOT trainer — its compile classpath and JDK.
+     * A snapshotter over the worker {@code request} names: its Build Tools API closure and its
+     * snapshot directory.
      */
     public static KotlinClasspathAbi.Snapshotter snapshotter(KotlincRequest request, WorkerEnv env) {
         return entries -> snapshot(request, entries, env);
@@ -74,13 +73,7 @@ public final class KotlincSnapshots {
         String classpath = Classpaths.join(request.workerClasspath());
         Path spec = writeSpec(request, entries);
         try {
-            // The same worker classpath maps the same AOT cache the compile fork uses; a miss trains
-            // in the background with the compile's own trainer.
-            List<String> jvmFlags = new ArrayList<>(PluginAot.kotlincFlags(
-                    hostJavaHome,
-                    classpath,
-                    (aotOutput, scratch) ->
-                            KotlincSpec.trainerCommand(request, classpath, hostJavaHome, aotOutput, scratch)));
+            List<String> jvmFlags = new ArrayList<>();
             jvmFlags.add("--enable-native-access=ALL-UNNAMED");
             List<String> assembled =
                     PluginLoader.command(hostJavaHome, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
