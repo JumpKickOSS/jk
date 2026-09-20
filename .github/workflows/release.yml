@@ -63,7 +63,10 @@ jobs:
             arch_label: linux-x86_64
           - os: macos-14
             arch_label: macos-aarch64
-          - os: windows-latest
+          # Visual Studio 2022: native-image locates that one on its own, and the hosted jk that
+          # bootstraps this row predates the engine passing the developer prompt's INCLUDE and
+          # LIB through. Once the pin is a release that does, any Windows image serves.
+          - os: windows-2022
             arch_label: windows-x86_64
     runs-on: ${{ matrix.os }}
     env:
