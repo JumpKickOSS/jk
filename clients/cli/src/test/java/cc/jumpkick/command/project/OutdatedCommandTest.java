@@ -110,9 +110,7 @@ class OutdatedCommandTest {
 
         assertThat(table(tempDir, cache)).contains("(all 1 dependency up to date)");
         assertThat(json(tempDir, cache).trim()).isEqualTo("[]");
-        assertThat(table(tempDir, cache, "--all"))
-                .contains("c.f.o:leaf")
-                .contains("1.0");
+        assertThat(table(tempDir, cache, "--all")).contains("c.f.o:leaf").contains("1.0");
     }
 
     @Test
@@ -324,6 +322,33 @@ class OutdatedCommandTest {
                 .contains("\"scope\":")
                 .contains("\"module\":")
                 .contains("\"display\":");
+    }
+
+    @Test
+    void every_run_writes_the_results_file_and_the_table_names_it(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        maven.registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
+        lockOrExplain(tempDir, cache);
+        Path file = tempDir.resolve("target").resolve("jk-outdated-dependencies.md");
+
+        String out = table(tempDir, cache);
+        assertThat(out).contains("Report:").contains("target/jk-outdated-dependencies.md");
+        assertThat(file).exists();
+        String md = Files.readString(file);
+        assertThat(md)
+                .contains("# jk outdated dependencies")
+                .contains("## Can move")
+                .contains("## Up to date");
+        assertThat(md).contains("| `com.foo.outdated:leaf` | 1.1 | 1.1 | 2.0 | main |");
+
+        // JSON is still one array and nothing else; the file is written all the same.
+        Files.delete(file);
+        String json = json(tempDir, cache).trim();
+        assertThat(json).startsWith("[").endsWith("]").doesNotContain("Report:");
+        assertThat(file).exists();
     }
 
     @Test

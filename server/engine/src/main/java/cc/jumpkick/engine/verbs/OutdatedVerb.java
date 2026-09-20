@@ -60,7 +60,11 @@ public final class OutdatedVerb implements HostedVerb {
                 report = SessionContext.where(
                         session,
                         () -> OutdatedPlans.compute(
-                                dir, cache, repoUrl == null ? null : URI.create(repoUrl), beatsTo(writer)));
+                                dir,
+                                cache,
+                                repoUrl == null ? null : URI.create(repoUrl),
+                                req.offline(),
+                                beatsTo(writer)));
             } catch (Exception e) {
                 report = OutdatedReport.error(Errors.text(e));
             }

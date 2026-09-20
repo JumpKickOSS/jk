@@ -99,7 +99,7 @@ class LockNativePinStageTest {
         RepoGroup.clearProcessVersionsCache();
 
         OutdatedReport report =
-                OutdatedPlans.compute(project, tmp.resolve("cache"), repo.toUri(), OutdatedPlans.Progress.NONE);
+                OutdatedPlans.compute(project, tmp.resolve("cache"), repo.toUri(), false, OutdatedPlans.Progress.NONE);
 
         assertThat(report.error()).isNull();
         assertThat(report.rows())
@@ -131,6 +131,7 @@ class LockNativePinStageTest {
                 project,
                 tmp.resolve("cache"),
                 repo.toUri(),
+                false,
                 (checked, total, coordinate) -> beats.add(checked + "/" + total + " " + coordinate));
 
         assertThat(report.rows()).hasSize(2);
@@ -145,7 +146,8 @@ class LockNativePinStageTest {
         Path project = project(tmp, null);
         lock(project, repo, tmp);
 
-        assertThat(OutdatedPlans.compute(project, tmp.resolve("cache"), repo.toUri(), OutdatedPlans.Progress.NONE)
+        assertThat(OutdatedPlans.compute(
+                                project, tmp.resolve("cache"), repo.toUri(), false, OutdatedPlans.Progress.NONE)
                         .rows())
                 .noneMatch(r -> r.coordinate().contains("graalvm-reachability-metadata"));
     }

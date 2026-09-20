@@ -15,7 +15,10 @@ import cc.jumpkick.cli.tui.OutdatedBar;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GroupInitials;
 import cc.jumpkick.model.command.CliCommand;
@@ -26,6 +29,7 @@ import cc.jumpkick.terminal.Style;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.OutdatedReport;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -122,6 +126,7 @@ public final class OutdatedCommand implements CliCommand {
                     checked == 0
                             ? "(no dependencies to check)"
                             : "(all " + checked + (checked == 1 ? " dependency" : " dependencies") + " up to date)");
+            printReportFile(dir);
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
@@ -131,7 +136,23 @@ public final class OutdatedCommand implements CliCommand {
         // Footer: lockfile-respecting workflow + graph inspection.
         CliOutput.out("Next: review with `jk why <coord>` / `jk tree`; `jk update [name…]` moves the declared"
                 + " pins to Compatible and relocks, `jk update --major` to Latest.");
+        printReportFile(dir);
         return Exit.SUCCESS;
+    }
+
+    /** Written by the engine on every successful run; mirrors the engine's file name. */
+    static final String REPORT_FILE = "jk-outdated-dependencies.md";
+
+    /** The engine wrote the whole report under the owning root's {@code target/}; say where. */
+    private static void printReportFile(Path dir) {
+        Path root = dir;
+        try {
+            root = WorkspaceLocator.owningRoot(dir).orElse(dir);
+        } catch (IOException e) {
+            Log.debug("printReportFile: workspace root lookup failed", e);
+        }
+        Path file = root.resolve(BuildLayout.TARGET).resolve(REPORT_FILE);
+        if (Files.exists(file)) CliOutput.out("Report: " + PathDisplay.styled(file, dir));
     }
 
     @Override
