@@ -99,6 +99,11 @@ A row prints when Compatible or Latest is strictly ahead of Current, or when Cur
 (unlocked). Rows already at their newest are counted, not printed: `(all 284 dependencies up to
 date)` is the whole report when nothing can move. `--all` prints every row checked.
 
+In the table a cell that repeats the one to its left prints `=`, a coordinate with no catalog
+short name shows its group as initials (`o.a.m:maven-core` for `org.apache.maven:maven-core`),
+and in a workspace each module is a header row above its dependencies. Long names and
+timestamped versions are clipped with `…`. JSON keeps full coordinates and versions.
+
 Exit code is always `0` on a successful report. There is no `--fail-if-outdated` — lockfile
 changes stay intentional. For CI “fail if drift”, `--output json` is a non-empty array exactly
 when something can move.
