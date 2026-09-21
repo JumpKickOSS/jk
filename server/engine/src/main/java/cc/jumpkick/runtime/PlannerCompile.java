@@ -240,13 +240,12 @@ public final class PlannerCompile {
             // The joint Groovy compile retained Java-visible stubs — put them on javac's
             // sourcepath so Java→Groovy references resolve even before the real Groovy classes are
             // visible; the assemble merge overwrites any stub-compiled .class with the real Groovy
-            // output afterwards.
-            Path stubs = in.layout().groovyStubsDir();
-            if (Files.isDirectory(stubs)) {
-                options = new ArrayList<>(options);
-                options.add("--source-path");
-                options.add(stubs.toAbsolutePath().toString());
-            }
+            // output afterwards. Unconditional for a mixed module: javac ignores a source-path
+            // entry that does not exist, and a key decided by what is on disk would differ between
+            // a fresh checkout and a built one.
+            options = new ArrayList<>(options);
+            options.add("--source-path");
+            options.add(in.layout().groovyStubsDir().toAbsolutePath().toString());
         }
         CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
                 .sources(in.sources())

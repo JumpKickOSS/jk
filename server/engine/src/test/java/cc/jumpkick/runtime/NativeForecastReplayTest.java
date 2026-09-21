@@ -128,15 +128,15 @@ class NativeForecastReplayTest {
 
     @Test
     void declared_args_match_the_record_with_or_without_the_metadata_prefix() {
-        String prefix = "-H:+UnlockExperimentalVMOptions -H:ConfigurationFileDirectories=/m/a,/m/b"
-                + " -H:-UnlockExperimentalVMOptions";
+        String prefix = "-H:+UnlockExperimentalVMOptions,-H:ConfigurationFileDirectories=m/a,m/b"
+                + ",-H:-UnlockExperimentalVMOptions";
         assertThat(PackagingKeys.declaredArgsMatch("-O2", List.of("-O2"))).isTrue();
         assertThat(PackagingKeys.declaredArgsMatch("", List.of())).isTrue();
-        assertThat(PackagingKeys.declaredArgsMatch(prefix + " -O2", List.of("-O2")))
+        assertThat(PackagingKeys.declaredArgsMatch(prefix + ",-O2", List.of("-O2")))
                 .isTrue();
         assertThat(PackagingKeys.declaredArgsMatch(prefix, List.of())).isTrue();
         assertThat(PackagingKeys.declaredArgsMatch("-O3", List.of("-O2"))).isFalse();
-        assertThat(PackagingKeys.declaredArgsMatch(prefix + " -O2", List.of())).isFalse();
+        assertThat(PackagingKeys.declaredArgsMatch(prefix + ",-O2", List.of())).isFalse();
     }
 
     private static Path module(Path tmp, String args) throws Exception {
