@@ -10,6 +10,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -47,7 +48,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Optional {@code storeCas}: Class-C blobs promoted by {@link cc.jumpkick.cache.ActionPromote} /
  * Staged natives/jars may live only in the artifact store — restore falls back there on cache miss.
- * Class-C tasks also keep a short generation list ({@code tasks/<taskId>.gens}).
+ * Class-C tasks also keep a short generation list per checkout ({@code tasks/<taskId>.gens}, see
+ * {@link HeavyActionPolicy}).
  */
 public final class ActionCache {
 
@@ -251,7 +253,7 @@ public final class ActionCache {
         if (outputs.isEmpty()) {
             return new ActionRecord(taskId, actionKey, inputs, Map.of());
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables, outputDir);
     }
 
     /**
@@ -380,80 +382,72 @@ public final class ActionCache {
      * Write an action record using a pre-computed {@code outputs} map — used by callers that already
      * CAS'd the files via {@link CasPrewriter} (or anything else that hashed + copied while the
      * action was still running). Skips the output-dir walk; just writes the manifest and pointer.
+     * These callers store no Class-C task, so no generation list is kept for them.
      */
     public ActionRecord storeWithOutputs(
             String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs)
             throws IOException {
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of());
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of(), null);
     }
 
-    /** As above, recording which outputs were executable so a restore can put the bit back. */
-    public ActionRecord storeWithOutputs(
+    /**
+     * The store every path funnels through: the record, then the task pointer, then the Class-C
+     * generation trim. {@code executables} are the outputs a restore gives the bit back to; {@code
+     * outputRoot} is the tree the outputs were written under, which names the checkout a Class-C
+     * generation belongs to.
+     */
+    private ActionRecord storeWithOutputs(
             @Nullable String taskId,
             @Nullable String actionKey,
             Map<String, String> inputs,
             Map<String, String> outputs,
-            Set<String> executables)
+            Set<String> executables,
+            @Nullable Path outputRoot)
             throws IOException {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
         meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
-        ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, executables);
+        String task = Objects.requireNonNull(taskId, "taskId");
+        String key = Objects.requireNonNull(actionKey, "actionKey");
+        ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
-        AtomicWrites.replace(keysDir().resolve(actionKey), render(record));
-        // Generation trim for Class-C (native / OCI / fat assembly) before flipping the pointer.
-        String previous = null;
-        Path pointer = tasksDir().resolve(taskId);
-        if (Files.isRegularFile(pointer)) {
-            try {
-                previous = Files.readString(pointer).trim();
-            } catch (IOException ignored) {
-                previous = null;
-            }
-        }
-        AtomicWrites.replace(pointer, Objects.requireNonNull(actionKey, "actionKey"));
-        trimGenerations(taskId, actionKey, previous);
+        AtomicWrites.replace(keysDir().resolve(key), render(record));
+        AtomicWrites.replace(tasksDir().resolve(task), key);
+        trimGenerations(task, key, outputRoot);
         return record;
     }
 
     /**
-     * Keep at most {@link HeavyActionPolicy#generations(String)} action keys for Class-C tasks:
-     * current pointer + {@code tasks/<taskId>.gens} (newest first). Older key files are deleted so
-     * {@link CasSweep} can reclaim their blobs.
+     * Keep at most {@link HeavyActionPolicy#generations(String)} action keys of a Class-C task for
+     * the checkout that wrote {@code outputRoot}, {@code newKey} included; older key files of that
+     * checkout are deleted so {@link CasSweep} can reclaim their blobs. Per checkout rather than by
+     * task-pointer flips: the pointer is shared by every checkout of the project, so two worktrees
+     * on different branches would otherwise evict each other's native image or OCI tarball on
+     * every alternate build. A key another checkout's generations still name is left alone.
      */
-    private void trimGenerations(@Nullable String taskId, @Nullable String newKey, @Nullable String previousKey)
-            throws IOException {
+    private void trimGenerations(String taskId, String newKey, @Nullable Path outputRoot) throws IOException {
         int keep = HeavyActionPolicy.generations(taskId);
-        if (keep == Integer.MAX_VALUE) return; // not Class-C
+        if (keep == Integer.MAX_VALUE || outputRoot == null) return; // not Class-C
+        String checkout = ActionKey.checkoutTag(outputRoot);
         Path gens = HeavyActionPolicy.gensFile(tasksDir(), taskId);
-        List<String> history = new ArrayList<>();
-        if (previousKey != null && !previousKey.isBlank() && !previousKey.equals(newKey)) {
-            history.add(previousKey);
-        }
-        if (Files.isRegularFile(gens)) {
-            for (String line : Files.readAllLines(gens)) {
-                String k = line.trim();
-                if (k.isEmpty() || k.equals(newKey) || history.contains(k)) continue;
-                history.add(k);
+        FileLocks.withLock(HeavyActionPolicy.gensLock(gens), () -> {
+            List<HeavyActionPolicy.Generation> mine = new ArrayList<>();
+            List<HeavyActionPolicy.Generation> others = new ArrayList<>();
+            mine.add(new HeavyActionPolicy.Generation(checkout, newKey));
+            for (HeavyActionPolicy.Generation g : HeavyActionPolicy.readGenerations(gens)) {
+                if (!g.checkout().equals(checkout)) others.add(g);
+                else if (!g.key().equals(newKey)) mine.add(g);
             }
-        }
-        // keep total generations including current (newKey): retain keep-1 predecessors
-        int retain = Math.max(0, keep - 1);
-        List<String> drop = new ArrayList<>();
-        if (history.size() > retain) {
-            drop.addAll(history.subList(retain, history.size()));
-            history = new ArrayList<>(history.subList(0, retain));
-        }
-        for (String k : drop) {
-            Files.deleteIfExists(keysDir().resolve(k));
-        }
-        if (history.isEmpty()) {
-            Files.deleteIfExists(gens);
-        } else {
-            Files.createDirectories(gens.getParent());
-            AtomicWrites.replace(gens, String.join("\n", history) + "\n");
-        }
+            int retained = Math.min(keep, mine.size());
+            for (HeavyActionPolicy.Generation dropped : mine.subList(retained, mine.size())) {
+                boolean namedElsewhere = others.stream().anyMatch(o -> o.key().equals(dropped.key()));
+                if (!namedElsewhere) Files.deleteIfExists(keysDir().resolve(dropped.key()));
+            }
+            List<HeavyActionPolicy.Generation> kept = new ArrayList<>(others);
+            kept.addAll(mine.subList(0, retained));
+            HeavyActionPolicy.writeGenerations(gens, kept);
+        });
     }
 
     /**
@@ -693,7 +687,7 @@ public final class ActionCache {
         if (outputs.isEmpty()) {
             throw new IOException("packaging produced no files to cache: " + artifacts);
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables, root);
     }
 
     /**

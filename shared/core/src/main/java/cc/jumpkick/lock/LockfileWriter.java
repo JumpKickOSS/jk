@@ -5,6 +5,7 @@ import cc.jumpkick.builds.DeclaredDeps;
 import cc.jumpkick.builds.DepFrequency;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Scope;
@@ -69,6 +70,7 @@ public final class LockfileWriter {
         try {
             LockfileReader.clearCache();
             TomlScan.forget(file);
+            refreshMemoizedId(owner);
             ProjectIdentity identity = ProjectIdentity.resolve(owner, stamped);
             Path home = ProjectBuilds.projectHome(ProjectBuilds.buildsRoot(), identity);
             ProjectIdentity.IdentityFile.write(home, identity);
@@ -84,6 +86,23 @@ public final class LockfileWriter {
         } catch (Exception e) {
             // best-effort; lock is already durable
             Log.debug("write: best-effort", e);
+        }
+    }
+
+    /**
+     * Re-memoize {@code owner}'s project id now that the lock on disk carries one. A first build
+     * memoizes the path or git id at admission and then mints the lock id in its lock step; without
+     * this, every action key and task pointer the rest of that build writes is tagged with an id no
+     * later build resolves to. Both spellings of the directory, as given and real, are refreshed,
+     * since the memo is keyed by the string a caller passed.
+     */
+    private static void refreshMemoizedId(Path owner) {
+        ProjectIds.refresh(owner.toString());
+        try {
+            Path real = owner.toRealPath();
+            if (!real.equals(owner)) ProjectIds.refresh(real.toString());
+        } catch (IOException ignored) {
+            // The directory was just written into; a real path that cannot be taken keeps the memo it has.
         }
     }
 

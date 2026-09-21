@@ -149,9 +149,10 @@ still references. Entries and blobs touched in the last hour are never evicted, 
 under constant write pressure can sit above its budget until the machine goes quiet.
 
 Class-C outputs (native images, OCI tarballs, fat/minified jars) keep at most **2**
-generations of action keys (**1** for OCI). There is no separate Class-C size share and no
-Class-C TTL — a replaced generation is simply superseded, which is already the front of the
-queue.
+generations of action keys (**1** for OCI) **per checkout**: two worktrees of one project on
+different branches each keep their own, so neither evicts the other's image on an alternate
+build. There is no separate Class-C size share and no Class-C TTL — a replaced generation is
+simply superseded, which is already the front of the queue.
 
 ### Cadence
 
