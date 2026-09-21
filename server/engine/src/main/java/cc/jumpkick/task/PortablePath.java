@@ -4,7 +4,6 @@ package cc.jumpkick.task;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,12 +12,16 @@ import java.util.concurrent.TimeUnit;
 /**
  * The spelling of a path inside an action key. An action key depends on the content of its
  * inputs, not on where the workspace is checked out, so a path is rendered relative to the module
- * that owns it — the nearest ancestor carrying {@code jk.toml} — with forward slashes. Two checkouts
- * of the same project at different paths then compute the same key for identical inputs, which is
- * what a shared cache needs and what an absolute path designs out.
+ * that owns it — the nearest ancestor that {@linkplain ManifestPaths#describesProject describes a
+ * project}, by {@code jk.toml} or by {@code pom.xml} — with forward slashes. Two checkouts of the
+ * same project at different paths then compute the same key for identical inputs, which is what a
+ * shared cache needs and what an absolute path designs out.
  *
- * <p>A path under no module (a JDK, a store blob, a jar declared by absolute path) keeps its last two
- * segments: enough to tell two absent entries apart, nothing that names the machine.
+ * <p>A path under no module (a JDK, a store blob, a jar declared by absolute path) has two
+ * spellings. {@link #of} keeps its last two segments: key material that names nothing about the
+ * machine, at the price that two distinct paths may spell the same. {@link #key} keeps the whole
+ * absolute path, forward-slashed: the spelling for a record's map keys, where two distinct inputs
+ * must never fold onto one entry. Under a module the two agree.
  */
 public final class PortablePath {
 
@@ -43,16 +46,35 @@ public final class PortablePath {
 
     private PortablePath() {}
 
+    /** Module-relative under a module, else the last two segments. Key material. */
     public static String of(Path path) {
         Path abs = path.toAbsolutePath().normalize();
-        Path dir = abs.getParent();
-        Optional<Path> root = dir == null ? Optional.empty() : moduleRoot(dir);
-        if (root.isPresent()) return root.get().relativize(abs).toString().replace('\\', '/');
+        Optional<String> relative = moduleRelative(abs);
+        if (relative.isPresent()) return relative.get();
         Path name = abs.getFileName();
-        if (name == null) return abs.toString().replace('\\', '/');
+        if (name == null) return slashed(abs);
         Path parent = abs.getParent();
         Path parentName = parent == null ? null : parent.getFileName();
         return (parentName == null ? "" : parentName + "/") + name;
+    }
+
+    /**
+     * Module-relative under a module, else the absolute path with forward slashes. The map key of
+     * a record entry: unique per path, and location-free wherever {@link #of} is.
+     */
+    public static String key(Path path) {
+        Path abs = path.toAbsolutePath().normalize();
+        return moduleRelative(abs).orElseGet(() -> slashed(abs));
+    }
+
+    private static Optional<String> moduleRelative(Path abs) {
+        Path dir = abs.getParent();
+        Optional<Path> root = dir == null ? Optional.empty() : moduleRoot(dir);
+        return root.map(r -> slashed(r.relativize(abs)));
+    }
+
+    private static String slashed(Path p) {
+        return p.toString().replace('\\', '/');
     }
 
     private static Optional<Path> moduleRoot(Path dir) {
@@ -60,7 +82,7 @@ public final class PortablePath {
         if (memo != null && Clock.SYSTEM.nanos() - memo.expiresAtNanos() < 0) return memo.root();
         Optional<Path> found = Optional.empty();
         for (Path d = dir; d != null; d = d.getParent()) {
-            if (Files.isRegularFile(d.resolve(ManifestPaths.MANIFEST))) {
+            if (ManifestPaths.describesProject(d)) {
                 found = Optional.of(d);
                 break;
             }
@@ -71,16 +93,16 @@ public final class PortablePath {
     }
 
     /**
-     * The project root that owns {@code path}: the nearest ancestor carrying {@code jk.toml} (the
-     * path itself when it does), lifted to the workspace root that lists it ({@link
-     * WorkspaceScan#owningRoot}). Empty for a path under no project. This is the root {@link
-     * ActionKey#taskTag} spells an output dir against, so a module's outputs and its own directory
-     * resolve to the same root whether they sit under the workspace's {@code target/} or the
-     * module's.
+     * The project root that owns {@code path}: the nearest ancestor describing a project by {@code
+     * jk.toml} or {@code pom.xml} (the path itself when it does), lifted to the workspace root that
+     * lists it ({@link WorkspaceScan#owningRoot}). Empty for a path under no project. This is the
+     * root {@link ActionKey#taskTag} spells an output dir against, so a module's outputs and its
+     * own directory resolve to the same root whether they sit under the workspace's {@code
+     * target/} or the module's.
      */
     public static Optional<Path> projectRoot(Path path) {
         Path abs = path.toAbsolutePath().normalize();
-        Optional<Path> nearest = Files.isRegularFile(abs.resolve(ManifestPaths.MANIFEST))
+        Optional<Path> nearest = ManifestPaths.describesProject(abs)
                 ? Optional.of(abs)
                 : abs.getParent() == null ? Optional.empty() : moduleRoot(abs.getParent());
         if (nearest.isEmpty()) return Optional.empty();

@@ -30,20 +30,59 @@ class NativeImageKeyTest {
         Files.writeString(train.resolve("reachability-metadata.json"), "{\"workload\":\"first\"}");
         List<String> args = List.of("-H:ConfigurationFileDirectories=" + train.toAbsolutePath());
 
-        String untrained = PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, null)
+        String untrained = PlannerNative.imageKey(
+                        javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of())
                 .key();
-        String first = PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, train)
+        String first = PlannerNative.imageKey(
+                        javaHome, List.of(jar), args, "app.Main", false, out, null, train, List.of())
                 .key();
         assertThat(first).as("the train dir is an input when it is used").isNotEqualTo(untrained);
-        assertThat(PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, train)
+        assertThat(PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, train, List.of())
                         .key())
                 .as("the same trained content keys the same image")
                 .isEqualTo(first);
 
         Files.writeString(train.resolve("reachability-metadata.json"), "{\"workload\":\"second\"}");
-        assertThat(PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, train)
+        assertThat(PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, train, List.of())
                         .key())
                 .as("a retrain behind the same path is a different image")
+                .isNotEqualTo(first);
+    }
+
+    /**
+     * A metadata-repository dir is named in the args as {@code <repoVersion>/<group>/<artifact>/
+     * <version>}, and its portable spelling keeps only the last two: a repository release that
+     * rewrites the metadata behind the same artifact version has to move the key on its content.
+     */
+    @Test
+    void the_metadata_repository_content_is_an_image_input(@TempDir Path tmp) throws Exception {
+        Path javaHome = Files.createDirectories(tmp.resolve("graal"));
+        Files.writeString(javaHome.resolve("release"), "JAVA_VERSION=\"25\"\n");
+        Path jar = Files.writeString(tmp.resolve("app.jar"), "app");
+        Path out = tmp.resolve("target/native/app");
+        Path repo = tmp.resolve("store/native/metadata-repository");
+        Path netty = Files.createDirectories(repo.resolve("0.3.10/io.netty/netty-common/4.1.100"));
+        Files.writeString(netty.resolve("reflect-config.json"), "[]");
+        List<String> args = List.of("-H:ConfigurationFileDirectories=" + netty.toAbsolutePath());
+
+        String first = PlannerNative.imageKey(
+                        javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of(netty))
+                .key();
+        assertThat(PlannerNative.imageKey(
+                                javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of(netty))
+                        .key())
+                .as("the same metadata keys the same image")
+                .isEqualTo(first);
+        assertThat(PlannerNative.imageKey(javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of())
+                        .key())
+                .as("the dir counts as an input only when it is one")
+                .isNotEqualTo(first);
+
+        Files.writeString(netty.resolve("reflect-config.json"), "[{\"name\":\"io.netty.Fixed\"}]");
+        assertThat(PlannerNative.imageKey(
+                                javaHome, List.of(jar), args, "app.Main", false, out, null, null, List.of(netty))
+                        .key())
+                .as("rewritten metadata behind the same path is a different image")
                 .isNotEqualTo(first);
     }
 
@@ -67,7 +106,7 @@ class NativeImageKeyTest {
             List<String> args = List.of(
                     "-H:+UnlockExperimentalVMOptions", "-H:ConfigurationFileDirectories=" + train.toAbsolutePath());
             PlannerNative.ImageKey key =
-                    PlannerNative.imageKey(graal, List.of(jar), args, "app.Main", false, out, null, train);
+                    PlannerNative.imageKey(graal, List.of(jar), args, "app.Main", false, out, null, train, List.of());
             assertThat(key.tokens()).noneMatch(t -> t.contains(tmp.toString()));
             if (first == null) first = key.key();
             else assertThat(key.key()).isEqualTo(first);
