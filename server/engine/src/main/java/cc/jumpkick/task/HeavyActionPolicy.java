@@ -60,9 +60,15 @@ public final class HeavyActionPolicy {
         };
     }
 
+    /** Suffix of a task pointer's generation list: {@code tasks/<taskId>.gens}. */
+    public static final String GENS_SUFFIX = ".gens";
+
+    /** Suffix of the lock beside a generation list: {@code tasks/<taskId>.gens.lock}. */
+    public static final String GENS_LOCK_SUFFIX = GENS_SUFFIX + ".lock";
+
     /** Generation-list sidecar for {@code taskId} under {@code tasksDir} ({@code <taskId>.gens}). */
     public static Path gensFile(Path tasksDir, @Nullable String taskId) {
-        return tasksDir.resolve(taskId + ".gens");
+        return tasksDir.resolve(taskId + GENS_SUFFIX);
     }
 
     /** The lock beside a generation list ({@code <gens>.lock}); held across every read-fold-write. */
