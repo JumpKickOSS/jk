@@ -21,7 +21,7 @@ class ExternalToolWallTest {
     @Test
     void the_tools_wall_is_the_records_headline_and_its_start() {
         BuildAccumulator a = new BuildAccumulator("mvn", "/proj", "demo:app", "cli");
-        a.addModule(new ModuleOutcome("demo:app", Path.of("/proj"), true, 0, 3_190L, true, false, null));
+        a.addModule(new ModuleOutcome("demo:app", Path.of("/proj"), true, 0, 3_190L, true, false));
         a.addTask("/proj", "compiler:compile", "", "SUCCESS", 2_800L, 0L);
         a.stamp(JobOutcome.ok());
         a.noteToolWall(3_200L);

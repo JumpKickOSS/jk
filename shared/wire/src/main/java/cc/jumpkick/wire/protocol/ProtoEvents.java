@@ -425,7 +425,7 @@ public final class ProtoEvents {
 
     public static String moduleFinish(
             String dir, String coord, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
-        return moduleFinish(dir, coord, success, exitCode, millis, didWork, cancelled, null);
+        return moduleFinish(dir, coord, success, exitCode, millis, didWork, cancelled, null, null);
     }
 
     public static String moduleFinish(
@@ -436,8 +436,10 @@ public final class ProtoEvents {
             long millis,
             boolean didWork,
             boolean cancelled,
-            ModuleOutcome.@Nullable Image image) {
-        return new ModuleFinishEvent(dir, coord, success, exitCode, millis, didWork, cancelled, image).encode();
+            ModuleOutcome.@Nullable Image image,
+            ModuleOutcome.@Nullable Shelved shelved) {
+        return new ModuleFinishEvent(dir, coord, success, exitCode, millis, didWork, cancelled, image, shelved)
+                .encode();
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
