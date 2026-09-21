@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.KotlincRequest;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -114,6 +115,57 @@ class KotlincJavaSourceKeyTest {
                 .as("a new Java file is a new declaration")
                 .isTrue();
         assertThat(LangCompile.javaDeclarationsMoved(Map.of(), request(dir, kt, null)))
+                .as("a Kotlin-only module has no Java declarations to move")
+                .isFalse();
+    }
+
+    /**
+     * The compile that vouches for a checkout's state is the one the state's own ledger names. The
+     * task pointer is shared by every checkout of the project, so the record it names can carry
+     * this checkout's current Java declarations while the state here was linked against older
+     * ones; reading it would keep a state that must start over.
+     */
+    @Test
+    void the_state_is_vouched_for_by_its_own_compile_not_the_shared_pointer(@TempDir Path dir) throws IOException {
+        Path javaRoot = Files.createDirectories(dir.resolve("src"));
+        Path util = Files.writeString(javaRoot.resolve("Util.java"), UTIL);
+        Path kt = Files.writeString(javaRoot.resolve("App.kt"), "package com.example\nobject App");
+        KotlincRequest request = request(dir, kt, javaRoot);
+        ActionCache cache = new ActionCache(new Cas(dir.resolve("cas")), dir.resolve("actions"));
+        Path state = Files.createDirectories(dir.resolve("state"));
+        String task = "compile-kotlin@t";
+        Map<String, String> outputs = Map.of("com/example/App.class", "aa");
+
+        // This checkout's compile read Util as declared above and left the state linked against it.
+        Map<String, String> linked = ActionKey.kotlincInputs(request, KotlinClasspathAbi.MEMOIZED_ONLY);
+        cache.storeWithOutputs(task, "own", linked, outputs);
+        LangCompile.recordTree(state, "own", outputs);
+
+        // Another checkout compiled the new signature and flipped the shared pointer to its record.
+        Files.writeString(util, UTIL.replace("public static int twice", "public static long twice"));
+        Map<String, String> current = ActionKey.kotlincInputs(request, KotlinClasspathAbi.MEMOIZED_ONLY);
+        cache.storeWithOutputs(task, "foreign", current, outputs);
+        assertThat(LangCompile.javaDeclarationsMoved(
+                        cache.lastFor(task).orElseThrow().inputs(), request))
+                .as("the pointer's record agrees with the sources on disk")
+                .isFalse();
+
+        assertThat(LangCompile.javaDeclarationsMoved(cache, state, request))
+                .as("the state's own compile read another declaration: start over")
+                .isTrue();
+        LangCompile.recordTree(state, "foreign", outputs);
+        assertThat(LangCompile.javaDeclarationsMoved(cache, state, request))
+                .as("a state whose compile read the current declarations stays")
+                .isFalse();
+        LangCompile.recordTree(state, "pruned", outputs);
+        assertThat(LangCompile.javaDeclarationsMoved(cache, state, request))
+                .as("a ledger naming a record that is gone vouches for nothing")
+                .isTrue();
+        Files.delete(state.resolve(LangCompile.TREE_LEDGER));
+        assertThat(LangCompile.javaDeclarationsMoved(cache, state, request))
+                .as("a state with no ledger vouches for nothing")
+                .isTrue();
+        assertThat(LangCompile.javaDeclarationsMoved(cache, state, request(dir, kt, null)))
                 .as("a Kotlin-only module has no Java declarations to move")
                 .isFalse();
     }
