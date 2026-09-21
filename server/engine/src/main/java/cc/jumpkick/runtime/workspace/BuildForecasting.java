@@ -6,8 +6,10 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.Perf;
@@ -190,15 +192,21 @@ public final class BuildForecasting {
             @Nullable String profile,
             @Nullable Path m2Dir) {
         WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
-        // The dirty memo's clean claim covers package outputs only (it checks the module target
-        // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE/INSTALL/RESHELVE must always run the
-        // target-aware forecast walk — a memo hit here would skip a missing binary, a
-        // never-skippable image push, or a cache-install into repos/jk-local. The memo is also
-        // keyed without target, so a PACKAGE store must never be consumed by a terminal-target
-        // run (jk build && jk install would no-op to success). The suite/tag selection needs no
-        // gate here: the memo carries it as a header, so a widened run misses on its own key
-        // instead of costing every workspace with `[test] exclude-tags` the whole walk.
-        boolean memoSafe = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
+        // The memo answers exactly one question: are this module's *inputs* unchanged. That is the
+        // whole of what PACKAGE and TEST need, and it is also the expensive half of an INSTALL —
+        // an install's own question, "does the shelf already hold these bytes", is one probe per
+        // terminal module and is asked in withPendingInstalls below. NATIVE/IMAGE/COMPILE/RESHELVE
+        // still take the full target-aware walk: each has a terminal output whose presence no
+        // input fingerprint can speak for, and a hit here would skip a missing binary or a
+        // never-skippable image push. The suite/tag selection needs no gate: the memo carries it
+        // as a header, so a widened run misses on its own key instead of costing every workspace
+        // with `[test] exclude-tags` the whole walk.
+        boolean memoReadable =
+                t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST || t == WorkspaceTarget.INSTALL;
+        // Only a run whose dirty set *is* the input-dirty set may write the memo. An install's set
+        // also carries modules whose inputs are clean and whose bytes are merely not shelved yet;
+        // storing those as input-dirty would have the next `jk build` recompile them.
+        boolean memoWritable = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --redo: every module runs — skip the expensive per-step forecast walk for dirty
@@ -209,10 +217,10 @@ public final class BuildForecasting {
         }
         Map<Path, String> fps;
         Map<Path, PreflightMemo.Uncertain> uncertain = Map.of();
-        if (entryDir == null || !memoSafe) {
+        if (entryDir == null || !memoReadable) {
             Perf.note("preflight-memo skipped", "entryDir", entryDir, "buildTarget", t);
         }
-        if (entryDir != null && memoSafe) {
+        if (entryDir != null && memoReadable) {
             var memo = PreflightMemo.tryLoadDirty(
                     entryDir,
                     graph,
@@ -233,6 +241,9 @@ public final class BuildForecasting {
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
                 Set<Path> memoDirty = new HashSet<>(memo.get().dirty());
                 withStaleOutputs(graph, entryDir, memo.get().fingerprints(), memoDirty);
+                if (t == WorkspaceTarget.INSTALL) {
+                    withPendingInstalls(graph, terminalDirs, cache, m2Dir, memoDirty);
+                }
                 return new Preflight(
                         memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
             }
@@ -286,13 +297,39 @@ public final class BuildForecasting {
                 Log.warn("jk: " + e.getKey().getFileName() + " " + REBUILT_BECAUSE
                         + e.getValue().reason());
             }
-            if (entryDir != null && memoSafe && persistMemo) {
+            if (entryDir != null && memoWritable && persistMemo) {
                 // Store input-dirty only — restoreNeeded is re-derived from missing outputs on load.
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, dirty, fps);
             }
             return new Preflight(dirty, restoreNeeded, fps, modules, reasons);
         } catch (RuntimeException e) {
             return new Preflight(all, Set.of(), fps, List.of());
+        }
+    }
+
+    /**
+     * Add every terminal module the shelf does not already hold at the tree's bytes.
+     *
+     * <p>Whether an install has happened is not an input, so it is the one question a memo hit
+     * leaves open for {@code jk install}. This asks it the way the forecast walk's cache-install
+     * arm does — one {@link InstallPlans#alreadyInstalled} probe per terminal module — which is
+     * milliseconds against the seconds the walk it replaces costs.
+     */
+    private static void withPendingInstalls(
+            BuildGraph.Result graph,
+            @Nullable Set<Path> terminalDirs,
+            Path cache,
+            @Nullable Path m2Dir,
+            Set<Path> dirty) {
+        if (terminalDirs == null || terminalDirs.isEmpty()) return;
+        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
+            Path dir = unit.dir();
+            if (!terminalDirs.contains(dir)) continue;
+            if (dirty.contains(dir) || dirty.contains(dir.toAbsolutePath().normalize())) continue;
+            JkBuild project = unit.manifest();
+            if (!InstallPlans.alreadyInstalled(project, BuildLayout.of(dir, project), cache, m2Dir)) {
+                dirty.add(dir);
+            }
         }
     }
 
