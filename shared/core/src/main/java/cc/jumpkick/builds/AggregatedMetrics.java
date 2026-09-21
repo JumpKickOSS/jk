@@ -128,8 +128,10 @@ public final class AggregatedMetrics {
             Path project = home.resolve(ProjectBuilds.PROJECT_METRICS);
             stamps.add(FileStamp.of(project));
             // The ledger keys modules relative to a checkout root; expand it against every live
-            // checkout of the id so each worktree's absolute module dirs find their rows.
-            for (String root : identityRoots(home)) parseProjectFile(project, root, m, l, c, w);
+            // checkout of the id so each worktree's absolute module dirs find their rows. One read
+            // serves every root.
+            String text = readLedger(project);
+            if (text != null) for (String root : identityRoots(home)) parseProjectText(text, root, m, l, c, w);
             mergePreferHigherCount(mean, last, count, m, l, c);
             // The preferred home's walls win; a later home fills in only classes it alone saw.
             for (var e : w.entrySet()) {
@@ -342,10 +344,29 @@ public final class AggregatedMetrics {
             Map<String, Double> last,
             Map<String, Long> count,
             Map<String, Map<String, Long>> classWalls) {
-        if (!Files.isRegularFile(file)) return;
+        String text = readLedger(file);
+        if (text != null) parseProjectText(text, root, mean, last, count, classWalls);
+    }
+
+    private static @Nullable String readLedger(Path file) {
+        if (!Files.isRegularFile(file)) return null;
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            Log.debug("readLedger: IOException|RuntimeException ignored", e);
+            return null;
+        }
+    }
+
+    private static void parseProjectText(
+            String text,
+            @Nullable String root,
+            Map<String, Double> mean,
+            Map<String, Double> last,
+            Map<String, Long> count,
+            Map<String, Map<String, Long>> classWalls) {
         PARSES.incrementAndGet();
         try {
-            String text = Files.readString(file, StandardCharsets.UTF_8);
             MetricsFile.scan(
                     text,
                     (section, rawKey, v) -> {
@@ -366,8 +387,8 @@ public final class AggregatedMetrics {
                                 .computeIfAbsent(ModuleKeys.absoluteDir(dir, root), k -> new LinkedHashMap<>())
                                 .put(fqcn, Math.round(ms));
                     });
-        } catch (IOException | RuntimeException e) {
-            Log.debug("parseProjectFile: IOException|RuntimeException ignored", e);
+        } catch (RuntimeException e) {
+            Log.debug("parseProjectText: RuntimeException ignored", e);
         }
     }
 

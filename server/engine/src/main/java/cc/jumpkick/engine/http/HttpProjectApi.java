@@ -254,12 +254,11 @@ final class HttpProjectApi {
                         "project " + projectId + " has " + several.checkouts().size()
                                 + " live checkouts; pass \"dir\" to name one");
                 body.put("projectId", projectId);
-                body.put("checkouts", checkoutRows(ProjectIdentity.checkoutsForId(projectId)));
+                body.put("checkouts", checkoutRows(several.checkouts()));
                 HttpResponses.sendJson(exchange, 400, MiniJson.write(body));
             }
             case WorkspaceFileAccess.Root.NotACheckout wrong ->
-                HttpResponses.sendJson(
-                        exchange, 404, notACheckout(projectId, wrong.dir(), ProjectIdentity.checkoutsForId(projectId)));
+                HttpResponses.sendJson(exchange, 404, notACheckout(projectId, wrong.dir(), wrong.checkouts()));
         }
         return null;
     }

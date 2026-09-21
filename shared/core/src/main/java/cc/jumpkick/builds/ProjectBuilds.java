@@ -394,21 +394,21 @@ public final class ProjectBuilds {
     }
 
     /**
-     * The checkout a run was recorded for: the top-level {@code dir} of its {@code record.json},
-     * else the {@link #CHECKOUT} marker {@link #openRun} writes for a run the client opened
-     * without the engine. {@code null} when neither names one.
+     * The checkout a run was recorded for: the one-line {@link #CHECKOUT} marker the journal and
+     * {@link #openRun} write beside the record, else the top-level {@code dir} of its {@code
+     * record.json}. {@code null} when neither names one.
      */
     public static @Nullable Path runCheckout(Path runDir) {
-        Path record = runDir.resolve(RECORD);
         try {
-            if (Files.isRegularFile(record)) {
-                String dir = Jsonl.topStr(Files.readString(record, StandardCharsets.UTF_8), "dir");
-                if (dir != null && !dir.isBlank()) return Path.of(dir);
-            }
             Path marker = runDir.resolve(CHECKOUT);
             if (Files.isRegularFile(marker)) {
                 String dir = Files.readString(marker, StandardCharsets.UTF_8).trim();
                 if (!dir.isEmpty()) return Path.of(dir);
+            }
+            Path record = runDir.resolve(RECORD);
+            if (Files.isRegularFile(record)) {
+                String dir = Jsonl.topStr(Files.readString(record, StandardCharsets.UTF_8), "dir");
+                if (dir != null && !dir.isBlank()) return Path.of(dir);
             }
             return null;
         } catch (IOException | RuntimeException unreadable) {
