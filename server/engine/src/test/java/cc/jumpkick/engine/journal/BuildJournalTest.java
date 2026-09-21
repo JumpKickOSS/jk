@@ -337,6 +337,18 @@ class BuildJournalTest {
      * 130 — {@code 128 + SIGINT} — so `jk history` reported a crashed machine as "the user pressed
      * Ctrl-C". 70 is {@code Exit.SOFTWARE}, spelled here as the literal a reader of the record sees.
      */
+    /** A lock or format row has no build number; the sweep still finds its directory by record id. */
+    @Test
+    void a_running_row_without_a_build_number_is_abandoned_with_its_engine() {
+        BuildJournal j = new BuildJournal(dir);
+        String locator = requireNonNull(
+                j.begin(BuildRecord.running(0, "lock", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli")));
+        assertThat(j.get(locator).orElseThrow().running()).isTrue();
+
+        assertThat(j.abandonStaleRunning("9.9", owner -> false).abandoned()).isEqualTo(1);
+        assertThat(j.get(locator).orElseThrow().running()).isFalse();
+    }
+
     @Test
     void an_abandoned_run_is_a_software_failure_not_a_user_cancel() {
         BuildJournal j = new BuildJournal(dir);
