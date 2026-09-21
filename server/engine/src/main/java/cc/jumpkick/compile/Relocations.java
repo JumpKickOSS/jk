@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
 
@@ -33,7 +34,7 @@ final class Relocations {
     /** The same rules as internal-name prefixes ({@code org/apache/lucene}). */
     private final Map<String, String> slashed;
 
-    private final Remapper remapper = new Remapper() {
+    private final Remapper remapper = new Remapper(Opcodes.ASM9) {
         @Override
         public String map(String internalName) {
             return relocateSlashed(internalName);
