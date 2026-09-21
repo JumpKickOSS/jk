@@ -211,6 +211,11 @@ public final class OutdatedCommand implements CliCommand {
     /** Widest spread cell ({@code 1.1.1 ×11 · 1.2.0 ×1}); a wider spread ends in an ellipsis. */
     static final int SPREAD_COLUMNS = 24;
 
+    /** The rollup carries a Modules column, so its Dependency and version cells give up a little. */
+    static final int ROLLUP_DEPENDENCY_COLUMNS = 26;
+
+    static final int ROLLUP_VERSION_COLUMNS = 12;
+
     static List<String> renderRollup(
             List<OutdatedReport.Rollup> rollups, boolean workspace, boolean showTip, String title) {
         List<String> headers = new ArrayList<>();
@@ -229,26 +234,30 @@ public final class OutdatedCommand implements CliCommand {
             int c = 0;
             boolean hasShort = !r.display().isEmpty();
             rich[c++] = styledCell(
-                    clip(hasShort ? r.display() : GroupInitials.module(r.coordinate()), DEPENDENCY_COLUMNS),
+                    clip(hasShort ? r.display() : GroupInitials.module(r.coordinate()), ROLLUP_DEPENDENCY_COLUMNS),
                     hasShort ? Theme.active().path().italic() : Theme.active().path());
             String current = OutdatedReport.spreadText(r.current());
             String compatible = OutdatedReport.spreadText(r.compatible());
             rich[c++] = styledCell(
-                    r.currentDiffers() ? clip(current, SPREAD_COLUMNS) : version(current, null),
+                    r.currentDiffers() ? clip(current, SPREAD_COLUMNS) : version(current, null, ROLLUP_VERSION_COLUMNS),
                     r.currentDiffers() ? Theme.active().warning() : null);
             boolean compatibleDiffers = r.compatible().size() > 1;
             rich[c++] = styledCell(
-                    compatibleDiffers ? clip(compatible, SPREAD_COLUMNS) : version(compatible, current),
+                    compatibleDiffers
+                            ? clip(compatible, SPREAD_COLUMNS)
+                            : version(compatible, current, ROLLUP_VERSION_COLUMNS),
                     compatibleDiffers || anyAhead(r.compatible(), r.current())
                             ? Theme.active().brightYellow()
                             : null);
             rich[c++] = styledCell(
-                    version(r.latest(), compatibleDiffers ? null : compatible),
+                    version(r.latest(), compatibleDiffers ? null : compatible, ROLLUP_VERSION_COLUMNS),
                     anyAhead(List.of(new OutdatedReport.Spread(r.latest(), 1)), r.compatible())
                             ? Theme.active().brightCyan()
                             : null);
             if (showTip)
-                rich[c++] = styledCell(version(r.tip(), null), Theme.active().darkGray());
+                rich[c++] = styledCell(
+                        version(r.tip(), null, ROLLUP_VERSION_COLUMNS),
+                        Theme.active().darkGray());
             if (workspace) rich[c++] = styledCell(Integer.toString(r.modules().size()), null);
             rich[c] = styledCell(String.join(" · ", r.scopes()), Theme.active().darkGray());
             table.row(rich);
@@ -309,9 +318,13 @@ public final class OutdatedCommand implements CliCommand {
 
     /** The version cell: {@value #SAME} when it repeats {@code left}, the dash when empty, else clipped. */
     private static String version(@Nullable String v, @Nullable String left) {
+        return version(v, left, VERSION_COLUMNS);
+    }
+
+    private static String version(@Nullable String v, @Nullable String left, int columns) {
         if (v == null || v.isEmpty()) return NONE;
         if (v.equals(left)) return SAME;
-        return clip(v, VERSION_COLUMNS);
+        return clip(v, columns);
     }
 
     private static String clip(String text, int columns) {

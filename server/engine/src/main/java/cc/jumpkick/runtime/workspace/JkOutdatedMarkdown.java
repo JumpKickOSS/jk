@@ -150,10 +150,14 @@ public final class JkOutdatedMarkdown {
         return sb.toString();
     }
 
-    /** The coordinate in code, with the catalog short name after it when one exists. */
+    /** The coordinate in code, with the catalog short name after it when it says something new. */
     private static String dependency(OutdatedReport.Rollup r) {
         String c = code(r.coordinate());
-        return r.display().isEmpty() || r.display().equals(r.coordinate()) ? c : c + " (" + r.display() + ")";
+        String d = r.display();
+        if (d.isEmpty() || d.equals(r.coordinate())) return c;
+        int colon = r.coordinate().indexOf(':');
+        if (colon >= 0 && d.equals(r.coordinate().substring(colon + 1))) return c;
+        return c + " (" + d + ")";
     }
 
     private static void tableHead(StringBuilder sb, List<String> headers) {
