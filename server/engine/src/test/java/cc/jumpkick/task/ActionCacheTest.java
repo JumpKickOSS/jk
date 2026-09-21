@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -424,6 +425,88 @@ class ActionCacheTest {
                 .isTrue();
         assertThat(exe).exists();
         assertThat(Files.readString(exe)).isEqualTo("native-image-bytes");
+    }
+
+    /**
+     * Two checkouts of one project share a task pointer but, on different branches, not a key.
+     * Trimming generations by pointer flips would take the other checkout's key on every
+     * alternate build; the generations are counted per checkout instead.
+     */
+    @Test
+    void two_checkouts_alternating_a_class_c_task_both_keep_hitting(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path actions = tempDir.resolve("actions");
+        ActionCache cache = new ActionCache(cas, actions);
+        String task = TaskNames.WRITE_IMAGE + "@shared"; // one generation per checkout
+        Path a = Files.createDirectories(tempDir.resolve("checkout-a/target"));
+        Path b = Files.createDirectories(tempDir.resolve("checkout-b/target"));
+
+        for (int round = 0; round < 3; round++) {
+            storeImage(cache, task, "key-a", a);
+            storeImage(cache, task, "key-b", b);
+        }
+        assertThat(cache.lookup("key-a")).as("A's key survives B's stores").isPresent();
+        assertThat(cache.lookup("key-b")).isPresent();
+        assertThat(cache.restoreArtifacts(cache.lookup("key-a").orElseThrow(), a))
+                .isTrue();
+
+        // A's own next generation replaces A's previous one and leaves B's alone.
+        storeImage(cache, task, "key-a2", a);
+        assertThat(cache.lookup("key-a"))
+                .as("A's superseded generation is dropped")
+                .isEmpty();
+        assertThat(cache.lookup("key-a2")).isPresent();
+        assertThat(cache.lookup("key-b"))
+                .as("B's generation is not A's to drop")
+                .isPresent();
+        assertThat(HeavyActionPolicy.readGenerations(HeavyActionPolicy.gensFile(ActionTree.TASKS.under(actions), task)))
+                .extracting(HeavyActionPolicy.Generation::key)
+                .containsExactlyInAnyOrder("key-a2", "key-b");
+    }
+
+    /** A key two checkouts both stored goes only when neither checkout's generations name it. */
+    @Test
+    void a_generation_two_checkouts_share_outlives_either_ones_trim(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        String task = TaskNames.NATIVE_IMAGE + "@shared"; // two generations per checkout
+        Path a = Files.createDirectories(tempDir.resolve("checkout-a/target"));
+        Path b = Files.createDirectories(tempDir.resolve("checkout-b/target"));
+
+        storeImage(cache, task, "key-same", a);
+        storeImage(cache, task, "key-same", b);
+        storeImage(cache, task, "key-a2", a);
+        storeImage(cache, task, "key-a3", a);
+        assertThat(cache.lookup("key-same"))
+                .as("A trimmed it from its own generations; B still names it")
+                .isPresent();
+        storeImage(cache, task, "key-b2", b);
+        storeImage(cache, task, "key-b3", b);
+        assertThat(cache.lookup("key-same")).as("no checkout names it any more").isEmpty();
+        assertThat(cache.lookup("key-a2")).isPresent();
+        assertThat(cache.lookup("key-b2")).isPresent();
+        assertThat(cache.lastFor(task).orElseThrow().actionKey()).isEqualTo("key-b3");
+    }
+
+    /** A record whose store path carries no output root keeps no generation list. */
+    @Test
+    void a_store_with_no_output_root_keeps_no_generations(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path actions = tempDir.resolve("actions");
+        ActionCache cache = new ActionCache(cas, actions);
+        String task = TaskNames.NATIVE_IMAGE + "@shared";
+        cache.storeWithOutputs(task, "k1", Map.of(), Map.of("bin", "sha"));
+        cache.storeWithOutputs(task, "k2", Map.of(), Map.of("bin", "sha"));
+        cache.storeWithOutputs(task, "k3", Map.of(), Map.of("bin", "sha"));
+        assertThat(cache.lookup("k1")).isPresent();
+        assertThat(HeavyActionPolicy.gensFile(ActionTree.TASKS.under(actions), task))
+                .doesNotExist();
+    }
+
+    /** One artifact under {@code base}, stored as a Class-C generation of {@code task}. */
+    private static void storeImage(ActionCache cache, String task, String key, Path base) throws IOException {
+        Path artifact = Files.writeString(base.resolve("app.tar"), "image " + key);
+        cache.storeArtifacts(task, key, Map.of(), base, List.of(artifact));
     }
 
     @Test

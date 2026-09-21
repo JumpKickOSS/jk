@@ -6,7 +6,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -498,9 +498,10 @@ public final class ActionCachePrune {
                     // would move the whole cache to the front of the eviction queue.
                     return null;
                 }
+                // A pointer is one key; a generation-list line is `<checkout> <key>`.
                 for (String line : lines) {
-                    String key = line.trim();
-                    if (!key.isEmpty()) live.add(key);
+                    String l = line.strip();
+                    if (!l.isEmpty()) live.add(l.substring(l.lastIndexOf(' ') + 1));
                 }
             }
         }
@@ -587,15 +588,14 @@ public final class ActionCachePrune {
         }
         Path gens = HeavyActionPolicy.gensFile(tasksDir, taskId);
         if (!Files.isRegularFile(gens)) return;
-        List<String> kept = new ArrayList<>();
-        for (String line : Files.readAllLines(gens, StandardCharsets.UTF_8)) {
-            String key = line.trim();
-            if (!key.isEmpty() && !key.equals(actionKey)) kept.add(key);
-        }
-        // Atomic like the writer side (ActionCache.trimGenerations): a second engine sharing this
-        // cache root holds neither the cache gate nor .prune.lock, so a torn plain write here would
-        // clobber its concurrent update.
-        if (kept.isEmpty()) Files.deleteIfExists(gens);
-        else AtomicWrites.replace(gens, String.join("\n", kept) + "\n");
+        // Under the list's lock, like the store side: a second engine sharing this cache root holds
+        // neither the cache gate nor .prune.lock, so an unlocked fold here would lose its line.
+        FileLocks.withLock(HeavyActionPolicy.gensLock(gens), () -> {
+            List<HeavyActionPolicy.Generation> kept = new ArrayList<>();
+            for (HeavyActionPolicy.Generation g : HeavyActionPolicy.readGenerations(gens)) {
+                if (!g.key().equals(actionKey)) kept.add(g);
+            }
+            HeavyActionPolicy.writeGenerations(gens, kept);
+        });
     }
 }

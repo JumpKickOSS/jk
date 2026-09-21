@@ -118,7 +118,7 @@ public final class LangCompile {
         if (request.incremental()
                 && workingDir != null
                 && Files.isDirectory(workingDir)
-                && (!hasClasses(request.outputDir()) || javaDeclarationsMoved(actionCache, taskId, request))) {
+                && (!hasClasses(request.outputDir()) || javaDeclarationsMoved(actionCache, workingDir, request))) {
             PathUtil.deleteRecursively(workingDir);
         }
         return forkAndStore(
@@ -349,22 +349,29 @@ public final class LangCompile {
 
     /**
      * True when the Java declarations kotlinc reads through {@code -Xjava-source-roots} differ from
-     * the ones the task's last compile recorded. The incremental state tracks Kotlin sources and
-     * classpath snapshots; a Java signature it read from source is invisible to it, so an
-     * incremental compile after such an edit finds nothing to do and leaves Kotlin classes linked
-     * against a declaration that no longer exists. The state is started over instead, and the
-     * full compile reads the new declarations. A mixed module with no recorded compile is treated
-     * as moved: nothing vouches for the state.
+     * the ones the compile that produced {@code stateDir} read. The incremental state tracks Kotlin
+     * sources and classpath snapshots; a Java signature it read from source is invisible to it, so
+     * an incremental compile after such an edit finds nothing to do and leaves Kotlin classes linked
+     * against a declaration that no longer exists. The state is started over instead, and the full
+     * compile reads the new declarations.
+     *
+     * <p>The compile asked is the one the state's own {@link #TREE_LEDGER} names, never the task's
+     * shared pointer: that pointer is whichever checkout of the project stored last, and its record
+     * can agree with this checkout's Java sources while the state here was linked against older
+     * ones. A state with no ledger, or whose record is gone, is treated as moved: nothing vouches
+     * for it.
      */
-    static boolean javaDeclarationsMoved(ActionCache actionCache, String taskId, KotlincRequest request)
+    static boolean javaDeclarationsMoved(ActionCache actionCache, Path stateDir, KotlincRequest request)
             throws IOException {
         if (request.javaSourceRoots().isEmpty()) return false;
-        Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId);
-        if (prior.isEmpty()) return true;
-        return javaDeclarationsMoved(prior.get().inputs(), request);
+        Ledger ledger = readLedger(stateDir.resolve(TREE_LEDGER));
+        if (ledger == null) return true;
+        Optional<ActionCache.ActionRecord> own = actionCache.lookup(ledger.key());
+        if (own.isEmpty()) return true;
+        return javaDeclarationsMoved(own.get().inputs(), request);
     }
 
-    /** {@link #javaDeclarationsMoved(ActionCache, String, KotlincRequest)} against a record's inputs. */
+    /** {@link #javaDeclarationsMoved(ActionCache, Path, KotlincRequest)} against a record's inputs. */
     static boolean javaDeclarationsMoved(Map<String, String> priorInputs, KotlincRequest request) throws IOException {
         List<Path> javaSources = KotlincInputs.javaSources(request);
         Map<Path, String> digests = JavaSourceApi.digests(javaSources);
