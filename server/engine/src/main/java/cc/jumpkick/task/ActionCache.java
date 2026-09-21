@@ -221,6 +221,23 @@ public final class ActionCache {
     }
 
     /**
+     * The record of the compile whose incremental state {@code stateDir} holds — the one its tree
+     * ledger names — falling back to the task pointer's when the state has no ledger or the record
+     * is gone. The pointer is shared by every checkout of the project; the ledger is this
+     * checkout's, so a forecast explains a rebuild against this checkout's own last compile.
+     */
+    public Optional<ActionRecord> lastFor(String taskId, @Nullable Path stateDir) throws IOException {
+        if (stateDir != null) {
+            LangCompile.Ledger ledger = LangCompile.readLedger(stateDir.resolve(LangCompile.TREE_LEDGER));
+            if (ledger != null) {
+                Optional<ActionRecord> own = lookup(ledger.key());
+                if (own.isPresent()) return own;
+            }
+        }
+        return lastFor(taskId);
+    }
+
+    /**
      * Compute output hashes from {@code outputDir}, deposit each file in the CAS, and write the
      * {@link ActionRecord}. After this, callers can later restore the same outputs via {@link
      * #restore}.
@@ -413,8 +430,12 @@ public final class ActionCache {
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         AtomicWrites.replace(keysDir().resolve(key), render(record));
-        AtomicWrites.replace(tasksDir().resolve(task), key);
-        trimGenerations(task, key, outputRoot);
+        Path pointer = tasksDir().resolve(task);
+        if (HeavyActionPolicy.generations(task) == Integer.MAX_VALUE || outputRoot == null) {
+            AtomicWrites.replace(pointer, key); // not Class-C: no generation list to agree with
+        } else {
+            trimGenerations(task, key, outputRoot, () -> AtomicWrites.replace(pointer, key));
+        }
         return record;
     }
 
@@ -424,14 +445,17 @@ public final class ActionCache {
      * checkout are deleted so {@link CasSweep} can reclaim their blobs. Per checkout rather than by
      * task-pointer flips: the pointer is shared by every checkout of the project, so two worktrees
      * on different branches would otherwise evict each other's native image or OCI tarball on
-     * every alternate build. A key another checkout's generations still name is left alone.
+     * every alternate build. A key another checkout's generations still name is left alone. {@code
+     * flipPointer} runs under the same lock, so the pointer and the list agree when two engines
+     * store one task at once.
      */
-    private void trimGenerations(String taskId, String newKey, @Nullable Path outputRoot) throws IOException {
+    private void trimGenerations(String taskId, String newKey, Path outputRoot, FileLocks.Action flipPointer)
+            throws IOException {
         int keep = HeavyActionPolicy.generations(taskId);
-        if (keep == Integer.MAX_VALUE || outputRoot == null) return; // not Class-C
         String checkout = ActionKey.checkoutTag(outputRoot);
         Path gens = HeavyActionPolicy.gensFile(tasksDir(), taskId);
         FileLocks.withLock(HeavyActionPolicy.gensLock(gens), () -> {
+            flipPointer.run();
             List<HeavyActionPolicy.Generation> mine = new ArrayList<>();
             List<HeavyActionPolicy.Generation> others = new ArrayList<>();
             mine.add(new HeavyActionPolicy.Generation(checkout, newKey));
