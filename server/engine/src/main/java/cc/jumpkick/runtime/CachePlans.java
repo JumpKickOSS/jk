@@ -25,6 +25,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.CacheRetention;
 import cc.jumpkick.task.CacheRoots;
 import cc.jumpkick.task.CasSweep;
+import cc.jumpkick.task.HeavyActionPolicy;
 import cc.jumpkick.task.TmpGc;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -408,10 +409,21 @@ public final class CachePlans {
         return null;
     }
 
-    /** The {@code @<tag>} suffix of a qualified task id, or {@code ""} for an unqualified name. */
-    private static String tagOf(String taskId) {
-        int at = taskId.lastIndexOf('@');
-        return at < 0 ? "" : taskId.substring(at + 1);
+    /**
+     * The {@code @<tag>} suffix of a qualified task id, or {@code ""} for an unqualified name. A
+     * {@code tasks/} entry may be the pointer's generation list or that list's lock rather than the
+     * pointer itself; both carry the pointer's tag.
+     */
+    static String tagOf(String taskId) {
+        String name = taskId;
+        for (String suffix : List.of(HeavyActionPolicy.GENS_LOCK_SUFFIX, HeavyActionPolicy.GENS_SUFFIX)) {
+            if (name.endsWith(suffix)) {
+                name = name.substring(0, name.length() - suffix.length());
+                break;
+            }
+        }
+        int at = name.lastIndexOf('@');
+        return at < 0 ? "" : name.substring(at + 1);
     }
 
     /** True when any {@code INPUT} source/classpath path in the record is under one of {@code prefixes}. */
