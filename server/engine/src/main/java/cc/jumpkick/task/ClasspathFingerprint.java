@@ -14,6 +14,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Content (not path/mtime) fingerprint for cache keys: CAS path encodes the hash; local files use
@@ -30,6 +32,26 @@ import java.util.TreeMap;
 public final class ClasspathFingerprint {
 
     private ClasspathFingerprint() {}
+
+    /** The read-only reader's memo of {@link #entry} tokens, bound only inside {@link #withEntryMemo}. */
+    private static final ScopedValue<Map<Path, String>> ENTRY_MEMO = ScopedValue.newInstance();
+
+    /**
+     * Run {@code body} with {@link #entry} memoized per path.
+     *
+     * <p>Only for a reader that writes nothing while it runs. A forecast reads one classpath entry
+     * once per module that names it — for this repository, 19,103 readings of 376 distinct entries
+     * — and a directory entry is a whole tree walk, so the repetition is most of what the walk
+     * costs. Nothing can move under the memo because the walk is read-only; a live build must
+     * never bind it, since its steps rewrite the very trees they key on.
+     *
+     * <p>Bound as a {@link ScopedValue}, not a static: two jobs forecast at once in one engine, and
+     * the binding reaches the threads the body structurally forks.
+     */
+    public static <T> T withEntryMemo(Callable<T> body) throws Exception {
+        return ScopedValue.where(ENTRY_MEMO, new ConcurrentHashMap<Path, String>())
+                .<T, Exception>call(body::call);
+    }
 
     /**
      * How one classpath entry's content identity is read. {@link #ON_DISK} reads what is there;
@@ -157,6 +179,17 @@ public final class ClasspathFingerprint {
     /** Content identity of a single entry (CAS blob, jar, classes dir, or missing). */
     public static String entry(Path p) throws IOException {
         Path abs = p.toAbsolutePath().normalize();
+        if (!ENTRY_MEMO.isBound()) return entryOf(abs);
+        Map<Path, String> memo = ENTRY_MEMO.get();
+        String hit = memo.get(abs);
+        if (hit != null) return hit;
+        String token = entryOf(abs);
+        memo.put(abs, token);
+        return token;
+    }
+
+    /** {@link #entry} without the memo; {@code abs} is already absolute and normalized. */
+    private static String entryOf(Path abs) throws IOException {
         BasicFileAttributes attrs;
         try {
             // One attribute read answers directory / regular / missing, where three predicates

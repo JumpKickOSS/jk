@@ -25,6 +25,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -136,19 +137,18 @@ public final class TaskForecaster {
             // forecast without a worker still uses action-cache + zinc-file presence
             Log.debug("of: forecast without a worker still uses action-cache + zinc-file presence", e);
         }
+        Path worker = workerJar;
         try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
-            return forecastModules(
-                    graph,
-                    cas,
-                    resolver,
-                    actionCache,
-                    cache,
-                    skipTests,
-                    target,
-                    terminalDirs,
-                    workerJar,
-                    profile,
-                    m2Dir);
+            // The walk reads the same classpath entry once per module that names it, and a
+            // directory entry is a whole tree walk. It writes nothing, so one reading each is the
+            // same answer — see ClasspathFingerprint.withEntryMemo, which only a reader may bind.
+            return ClasspathFingerprint.withEntryMemo(() -> forecastModules(
+                    graph, cas, resolver, actionCache, cache, skipTests, target, terminalDirs, worker, profile, m2Dir));
+        } catch (RuntimeException | Error direct) {
+            throw direct;
+        } catch (Exception impossible) {
+            // forecastModules declares nothing checked; the memo scope's signature does.
+            throw new IllegalStateException(impossible);
         }
     }
 
