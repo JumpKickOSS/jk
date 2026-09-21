@@ -74,10 +74,7 @@ export const previewMethods = {
         (async () => {
           try {
             const blob = await getBlob(
-              '/api/project/file/raw?project=' +
-                encodeURIComponent(this.projectId) +
-                '&path=' +
-                encodeURIComponent(rel),
+              '/api/project/file/raw?' + this.projectQuery() + '&path=' + encodeURIComponent(rel),
             );
             if (gen !== this._previewGen) return;
             const url = URL.createObjectURL(blob);
@@ -171,10 +168,7 @@ export const previewMethods = {
         this.previewHtml = '';
         const { getBlob } = await import('./api.js');
         const blob = await getBlob(
-          '/api/project/file/raw?project=' +
-            encodeURIComponent(this.projectId) +
-            '&path=' +
-            encodeURIComponent(this.path),
+          '/api/project/file/raw?' + this.projectQuery() + '&path=' + encodeURIComponent(this.path),
         );
         if (gen !== this._previewGen) return;
         this.previewImageUrl = URL.createObjectURL(blob);

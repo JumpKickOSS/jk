@@ -3,11 +3,14 @@ package cc.jumpkick.builds;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -60,24 +63,86 @@ class ProjectBuildsTest {
 
     @Test
     void latestRunFile_skips_newer_runs_missing_the_file(@TempDir Path root) throws Exception {
-        Path proj = Files.createDirectories(root.resolve("proj"));
-        Files.writeString(proj.resolve("jk.toml"), """
-                id = "latest-run-file"
-                group = "g"
-                name = "n"
-                version = "1"
-                """);
+        Path proj = checkout(root, "proj", "latest-run-file");
         Path builds = root.resolve("builds");
-        ProjectBuilds.RunDir older = ProjectBuilds.openRun(builds, "g:n", proj);
+        ProjectBuilds.RunDir older = openRecorded(builds, proj);
         Files.writeString(older.resultsFile(), "older\n");
         Files.writeString(older.detailsFile(), "{\"type\":\"error\"}\n");
-        ProjectBuilds.RunDir newer = ProjectBuilds.openRun(builds, "g:n", proj);
+        ProjectBuilds.RunDir newer = openRecorded(builds, proj);
         Files.writeString(newer.detailsFile(), "{\"type\":\"task-finish\"}\n");
         assertThat(ProjectBuilds.latestRunFile(builds, proj, ProjectBuilds.RESULTS))
                 .contains(older.resultsFile());
         assertThat(ProjectBuilds.latestRunFile(builds, proj, ProjectBuilds.DETAILS))
                 .contains(newer.detailsFile());
         assertThat(ProjectBuilds.latestRunFile(builds, proj, "../escape")).isEmpty();
+    }
+
+    /**
+     * Two worktrees of one repository share the id their lock carries, so they share a project
+     * home and one build-number sequence. The latest run of each is the newest run whose record
+     * names that checkout, never the sibling's; a run without a record belongs to neither.
+     */
+    @Test
+    void latestRunFile_answers_for_the_callers_checkout(@TempDir Path root) throws Exception {
+        Path a = checkout(root, "wt-a", "shared-lock-id");
+        Path b = checkout(root, "wt-b", "shared-lock-id");
+        Path builds = root.resolve("builds");
+        ProjectBuilds.RunDir first = openRecorded(builds, a);
+        Files.writeString(first.resultsFile(), "a #1\n");
+        ProjectBuilds.RunDir second = openRecorded(builds, b);
+        Files.writeString(second.resultsFile(), "b #2\n");
+        ProjectBuilds.RunDir third = openRecorded(builds, a);
+        Files.writeString(third.resultsFile(), "a #3\n");
+        ProjectBuilds.RunDir unrecorded = ProjectBuilds.openRun(builds, "g:n", b);
+        Files.writeString(unrecorded.resultsFile(), "nobody's #4\n");
+
+        assertThat(first.projectHome()).isEqualTo(second.projectHome());
+        assertThat(List.of(first.buildNumber(), second.buildNumber(), third.buildNumber(), unrecorded.buildNumber()))
+                .containsExactly(1L, 2L, 3L, 4L);
+        assertThat(ProjectBuilds.latestRunFile(builds, a, ProjectBuilds.RESULTS))
+                .contains(third.resultsFile());
+        assertThat(ProjectBuilds.latestRunFile(builds, b, ProjectBuilds.RESULTS))
+                .contains(second.resultsFile());
+        assertThat(ProjectBuilds.runCheckout(unrecorded.runDir())).isNull();
+
+        var identity = ProjectIdentity.IdentityFile.read(first.projectHome()).orElseThrow();
+        assertThat(identity.checkouts().stream().map(ProjectIdentity.Checkout::path))
+                .containsExactly(
+                        a.toAbsolutePath().normalize(), b.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void sameCheckout_compares_real_paths(@TempDir Path root) throws Exception {
+        Path real = Files.createDirectories(root.resolve("real"));
+        Path link = Symlinks.create(root.resolve("link"), real);
+        assertThat(ProjectBuilds.sameCheckout(link, real)).isTrue();
+        assertThat(ProjectBuilds.sameCheckout(root.resolve("real/../real"), real))
+                .isTrue();
+        assertThat(ProjectBuilds.sameCheckout(root.resolve("gone-a"), root.resolve("gone-b")))
+                .isFalse();
+        assertThat(ProjectBuilds.sameCheckout(root.resolve("gone"), root.resolve("gone")))
+                .isTrue();
+    }
+
+    private static Path checkout(Path root, String name, String id) throws Exception {
+        Path proj = Files.createDirectories(root.resolve(name));
+        Files.writeString(proj.resolve("jk.toml"), """
+                id = "%s"
+                group = "g"
+                name = "n"
+                version = "1"
+                """.formatted(id));
+        return proj;
+    }
+
+    /** A run the engine would have journaled: its {@code record.json} names the checkout. */
+    private static ProjectBuilds.RunDir openRecorded(Path builds, Path proj) throws Exception {
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(builds, "g:n", proj);
+        Files.writeString(
+                run.recordFile(),
+                MiniJson.write(
+                        Map.of("dir", proj.toAbsolutePath().normalize().toString(), "buildNumber", run.buildNumber())));
+        return run;
     }
 
     @Test
