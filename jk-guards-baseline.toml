@@ -8,7 +8,7 @@
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -32,7 +32,7 @@ population = { files = 2172 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -449,10 +449,6 @@ at     = "cc.jumpkick.task.CasPrewriter#pollOnce()V -> java.nio.file.Files#walkF
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.task.ClasspathFingerprint#hashInto(Ljava/nio/file/Path;Ljava/util/Map;Z)V -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.task.FileHashMemo$Store#sweepResidue(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -705,7 +701,7 @@ population = { constants = 29, files = 2235, literals = 43352 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -749,7 +745,7 @@ population = { examined = 4 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -1580,7 +1576,7 @@ population = { examined = 15 }
 
 [engine-log-owner]
 [engine-log-owner.populations]
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -1592,7 +1588,7 @@ population = { units = 4071 }
 
 [forecast-key-parity]
 [forecast-key-parity.populations]
-"server/engine" = { examined = 557 }
+"server/engine" = { examined = 559 }
 
 [git-writes-are-pinned]
 population = { files = 2208 }
@@ -1631,7 +1627,7 @@ population = { files = 1851 }
 "plugins/publisher" = { classes = 16, sites = 0 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
 "plugins/test-runner" = { classes = 15, sites = 0 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 0 }
 "server/io" = { classes = 50, sites = 0 }
 "server/resolver" = { classes = 111, sites = 0 }
@@ -1966,7 +1962,7 @@ population = { examined = 5 }
 "plugins/protobuf" = { classes = 4, elements = 1 }
 "plugins/publisher" = { classes = 16, elements = 1 }
 "plugins/test-runner" = { classes = 15, elements = 1 }
-"server/engine" = { classes = 1109, elements = 20 }
+"server/engine" = { classes = 1121, elements = 20 }
 "server/guard" = { classes = 178, elements = 7 }
 "server/io" = { classes = 50, elements = 1 }
 "server/resolver" = { classes = 111, elements = 3 }
@@ -1980,7 +1976,7 @@ population = { examined = 5 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -1994,7 +1990,7 @@ population = { examined = 5 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -2008,7 +2004,7 @@ population = { examined = 5 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "plugins/test-runner" = { classes = 15, sites = 832 }
-"server/engine" = { classes = 1109, sites = 53646 }
+"server/engine" = { classes = 1121, sites = 54138 }
 "server/guard" = { classes = 178, sites = 8280 }
 "server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 111, sites = 5253 }
@@ -2021,7 +2017,7 @@ population = { examined = 5 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -2044,7 +2040,7 @@ population = { files = 2172 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "plugins/test-runner" = { classes = 15, sites = 832 }
-"server/engine" = { classes = 1109, sites = 53646 }
+"server/engine" = { classes = 1121, sites = 54138 }
 "server/guard" = { classes = 178, sites = 8280 }
 "server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 111, sites = 5253 }
@@ -2146,7 +2142,7 @@ population = { examined = 15 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -2178,7 +2174,7 @@ population = { files = 2303 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -2278,7 +2274,7 @@ population = { files = 1877 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "plugins/test-runner" = { classes = 15, sites = 832 }
-"server/engine" = { classes = 1109, sites = 53646 }
+"server/engine" = { classes = 1121, sites = 54138 }
 "server/guard" = { classes = 178, sites = 8280 }
 "server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 111, sites = 5253 }
@@ -2313,7 +2309,7 @@ population = { files = 1 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1109, sites = 72382 }
+"server/engine" = { classes = 1121, sites = 73051 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 111, sites = 6750 }

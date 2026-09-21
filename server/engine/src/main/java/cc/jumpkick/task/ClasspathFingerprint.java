@@ -3,11 +3,10 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -16,6 +15,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Content (not path/mtime) fingerprint for cache keys: CAS path encodes the hash; local files use
@@ -45,12 +45,28 @@ public final class ClasspathFingerprint {
      * costs. Nothing can move under the memo because the walk is read-only; a live build must
      * never bind it, since its steps rewrite the very trees they key on.
      *
-     * <p>Bound as a {@link ScopedValue}, not a static: two jobs forecast at once in one engine, and
-     * the binding reaches the threads the body structurally forks.
+     * <p>Bound as a {@link ScopedValue}, not a static, because two jobs can forecast at once in one
+     * engine and must not share one. A binding does not follow work onto a pre-existing pool's
+     * threads, so a reader that fans out passes {@link #entryMemo()} to each lane.
      */
     public static <T> T withEntryMemo(Callable<T> body) throws Exception {
-        return ScopedValue.where(ENTRY_MEMO, new ConcurrentHashMap<Path, String>())
-                .<T, Exception>call(body::call);
+        return withEntryMemo(new ConcurrentHashMap<Path, String>(), body);
+    }
+
+    /**
+     * As {@link #withEntryMemo(Callable)} sharing an existing memo — what {@link #entryMemo()}
+     * returned on the thread that forked this one. A {@code ScopedValue} binding does not ride a
+     * pre-existing pool's thread hop, so a reader that fans out has to carry it across by hand or
+     * each lane starts cold.
+     */
+    public static <T> T withEntryMemo(@Nullable Map<Path, String> memo, Callable<T> body) throws Exception {
+        if (memo == null) return body.call();
+        return ScopedValue.where(ENTRY_MEMO, memo).<T, Exception>call(body::call);
+    }
+
+    /** The memo bound around this thread, or {@code null}; for handing to a lane via {@link #withEntryMemo}. */
+    public static @Nullable Map<Path, String> entryMemo() {
+        return ENTRY_MEMO.isBound() ? ENTRY_MEMO.get() : null;
     }
 
     /**
@@ -161,18 +177,18 @@ public final class ClasspathFingerprint {
      * output content in a classes tree but never in a resource root.
      */
     private static void hashInto(Path root, Map<String, String> digests, boolean skipScratch) throws IOException {
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path f, BasicFileAttributes attrs) throws IOException {
-                if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
-                if (BuildStamps.isStampFile(f.getFileName().toString())) return FileVisitResult.CONTINUE;
-                Path rel = root.relativize(f);
-                if (skipScratch && ActionCache.hasJkScratchSegment(rel)) return FileVisitResult.CONTINUE;
-                digests.put(
-                        rel.toString().replace('\\', '/'),
-                        FileHashMemo.contentHash(f.toAbsolutePath().normalize(), attrs));
-                return FileVisitResult.CONTINUE;
-            }
+        // Through PathUtil rather than a hand-rolled walkFileTree: a directory read is a native
+        // call the virtual-thread scheduler does not compensate for, so a walk holds its carrier
+        // until it ends. This is the largest walk a forecast runs, and the forecast now runs a
+        // wave of them at once — without the helper's periodic yield they would leave every other
+        // virtual thread in the engine unscheduled for as long as the wave lasts.
+        PathUtil.forEachRegularFile(root, (f, attrs) -> {
+            if (BuildStamps.isStampFile(f.getFileName().toString())) return;
+            Path rel = root.relativize(f);
+            if (skipScratch && ActionCache.hasJkScratchSegment(rel)) return;
+            digests.put(
+                    rel.toString().replace('\\', '/'),
+                    FileHashMemo.contentHash(f.toAbsolutePath().normalize(), attrs));
         });
     }
 
