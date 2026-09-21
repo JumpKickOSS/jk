@@ -45,8 +45,9 @@ final class ShelfPinning {
         if (engine.isEmpty()) return SHELF_NOT_PINNED;
         ShelfManifest.record(shelfFile, engine.get(), source, jars, poms, Clock.SYSTEM);
         String sha = engine.get();
-        return "Pinned " + jars.size() + " shelf jar" + (jars.size() == 1 ? "" : "s") + " to engine "
-                + (sha.length() > 12 ? sha.substring(0, 12) : sha) + " from " + PathDisplay.of(source);
+        String engineLabel = (sha.length() > 12 ? sha.substring(0, 12) : sha) + " from " + PathDisplay.of(source);
+        if (jars.isEmpty()) return "Shelf pins unchanged for engine " + engineLabel;
+        return "Pinned " + jars.size() + " shelf jar" + (jars.size() == 1 ? "" : "s") + " to engine " + engineLabel;
     }
 
     /**
