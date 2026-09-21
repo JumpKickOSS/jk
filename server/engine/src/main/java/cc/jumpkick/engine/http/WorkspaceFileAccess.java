@@ -23,14 +23,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Identity-scoped source-tree access for the dashboard {@code #project/<id>/files} viewer. List
- * and read share one {@link #servable} predicate; the sandbox root is
- * {@link ProjectIdentity#pathForId} only.
+ * and read share one {@link #servable} predicate; the sandbox root is one of the checkouts
+ * {@code identity.toml} records for the id ({@link #resolveRoot}), never a caller-supplied tree.
  */
 final class WorkspaceFileAccess {
 
@@ -150,11 +149,40 @@ final class WorkspaceFileAccess {
 
     private WorkspaceFileAccess() {}
 
-    static Optional<Path> resolveRoot(@Nullable String projectId) {
-        if (projectId == null || projectId.isBlank()) return Optional.empty();
+    /** Which checkout of a project id a file request works in. */
+    sealed interface Root {
+        record Ok(Path root) implements Root {}
+
+        /** The id is malformed, unknown, or records no checkout that still exists. */
+        record Unknown() implements Root {}
+
+        /** Several live checkouts and no {@code dir} to pick one. */
+        record Ambiguous(List<Path> checkouts) implements Root {}
+
+        /** {@code dir} is none of the id's live checkouts. */
+        record NotACheckout(String dir, List<Path> checkouts) implements Root {}
+    }
+
+    /**
+     * The sandbox root for {@code projectId}: its one live checkout, or the one {@code dir} names
+     * among several (real-path compared). Never a directory the id does not record — a tree that
+     * merely contains a {@code jk.toml} is not enough.
+     */
+    static Root resolveRoot(@Nullable String projectId, @Nullable String dir) {
+        if (projectId == null || projectId.isBlank()) return new Root.Unknown();
         String id = projectId.trim();
-        if (!ProjectIdentity.isValidId(id)) return Optional.empty();
-        return ProjectIdentity.pathForId(id).filter(Files::isDirectory);
+        if (!ProjectIdentity.isValidId(id)) return new Root.Unknown();
+        List<ProjectIdentity.Checkout> checkouts = ProjectIdentity.checkoutsForId(id);
+        if (checkouts.isEmpty()) return new Root.Unknown();
+        List<Path> paths =
+                checkouts.stream().map(ProjectIdentity.Checkout::path).toList();
+        if (dir != null && !dir.isBlank()) {
+            return ProjectIdentity.selectCheckout(checkouts, dir)
+                    .<Root>map(c -> new Root.Ok(c.path()))
+                    .orElseGet(() -> new Root.NotACheckout(dir, paths));
+        }
+        if (checkouts.size() == 1) return new Root.Ok(paths.getFirst());
+        return new Root.Ambiguous(paths);
     }
 
     /**

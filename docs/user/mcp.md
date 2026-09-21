@@ -47,9 +47,12 @@ Results use MCP `structuredContent` plus a short `content` text summary. Tool JS
 
 A job result (`jk_run`, `jk_build`, `jk_test`, `jk_lock`) names who asked — `trigger: "mcp"`
 and `session: "claude-code 3f9a"` when the client echoes its session id — and carries
-**`dashboard`**: the authenticated project page (`{httpUrl}#project/<id>?t=<token>`) that
-follows the newest run of that project, so the human supervising the agent can open it and
-watch. Absent when HTTP is not serving. Same facts as `target/jk-results.md`: [Web](web.md).
+**`dashboard`**: the authenticated project page
+(`{httpUrl}#project/<id>?dir=<checkout>&t=<token>`) that follows the newest run of that
+checkout, so the human supervising the agent can open it and watch. The link names the checkout
+because every git worktree of a repository shares the project id; `jk_results`, `jk_details` and
+`jk://runs/latest/*` likewise answer for the bound `dir`, never a sibling worktree's run. Absent
+when HTTP is not serving. Same facts as `target/jk-results.md`: [Web](web.md).
 
 ## Tools
 

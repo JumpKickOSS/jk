@@ -88,6 +88,7 @@ public final class HistoryListVerb implements HostedVerb {
                         .put("buildNumber", r.buildNumber())
                         .put("kind", r.kind())
                         .put("dir", r.dir())
+                        .put("projectId", r.projectId())
                         .put("coord", r.coord())
                         .put("trigger", r.trigger())
                         .put("session", r.session())

@@ -23,14 +23,18 @@ class ProjectBuildsMetricsHomesTest {
         Files.writeString(lockHome.resolve(ProjectBuilds.IDENTITY), """
                 id = "lock-id"
                 coord = "cc.jumpkick:jk"
-                path = "%s"
                 source = "lock"
+
+                [[checkout]]
+                path = "%s"
                 """.formatted(path));
         Files.writeString(staleHome.resolve(ProjectBuilds.IDENTITY), """
                 id = "stale-id"
                 coord = "cc.jumpkick:jk"
-                path = "%s"
                 source = "path"
+
+                [[checkout]]
+                path = "%s"
                 """.formatted(path));
         // Stale has more runs but lock still wins.
         Files.createDirectories(staleHome.resolve(ProjectBuilds.RUNS).resolve("1"));
@@ -56,8 +60,10 @@ class ProjectBuildsMetricsHomesTest {
             Files.writeString(e.getKey().resolve(ProjectBuilds.IDENTITY), """
                     id = "%s"
                     coord = "cc.jumpkick:jk"
-                    path = "%s"
                     source = "lock"
+
+                    [[checkout]]
+                    path = "%s"
                     """.formatted(e.getValue(), path));
         }
         for (int i = 1; i <= 5; i++) {

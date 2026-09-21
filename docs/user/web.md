@@ -84,10 +84,18 @@ an unauthenticated tab can render **Access Denied** (no paste field: recover wit
 Project routes use a durable **project id**, not a filesystem path:
 
 ```text
-#project/<projectId>              # follows the newest run
-#project/<projectId>/run/<n>      # pinned to build #n
+#project/<projectId>                 # follows the newest run
+#project/<projectId>?dir=<checkout>  # one worktree of a repository several build under
+#project/<projectId>/run/<n>         # pinned to build #n
 #project/<projectId>/files
 ```
+
+The id is the `project-id` your committed `jk-lock.toml` carries, so every git worktree of the
+repository shares it — and its build numbers. While one worktree is alive the page just shows
+it. Once two have built, the project page lists the **checkouts** and asks you to pick one to
+follow and edit (**all** shows every worktree's runs with a Checkout column); the files pane and
+its Save work in the picked tree only, and a link from `jk` or an MCP result already names the
+tree the build ran in. A deleted worktree drops out of the list on the next build of a sibling.
 
 New project: a modal that calls the same scaffolder as `jk new` (templates, layout as
 file placement). See [Templates](templates.md).
