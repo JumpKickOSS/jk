@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -259,12 +260,7 @@ class ProjectIdentityTest {
     void a_symlinked_spelling_is_the_same_checkout(@TempDir Path tmp, @TempDir Path home) throws Exception {
         String id = "aabbccddeeff00112233445566778899";
         Path real = Files.createDirectories(tmp.resolve("wt-a"));
-        Path link;
-        try {
-            link = Files.createSymbolicLink(tmp.resolve("link-a"), real);
-        } catch (IOException | UnsupportedOperationException noSymlinks) {
-            return;
-        }
+        Path link = Symlinks.create(tmp.resolve("link-a"), real);
         ProjectIdentity.IdentityFile.write(home, identityAt(id, real));
         ProjectIdentity.IdentityFile.write(home, identityAt(id, link));
         ProjectIdentity.IdentityFile one =
