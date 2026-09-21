@@ -1214,10 +1214,6 @@ in     = "server/engine/src/main/java/cc/jumpkick/runtime/workspace/ManifestUpda
 reason = "rewrites written manifests; a shadow is rendered, never written to"
 
 [[guards.manifest-reader-owner.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/task/PortablePath.java"
-reason = "walks up to the written jk.toml that marks a module boundary when relativizing a path"
-
-[[guards.manifest-reader-owner.allow]]
 in     = "server/toolchain/src/main/java/cc/jumpkick/compat/ProjectImport.java"
 reason = "names the module jk.toml files the import writes"
 

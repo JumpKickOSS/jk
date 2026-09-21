@@ -119,9 +119,19 @@ public final class PlannerNative {
         Path frameworkSources = frameworkSources(ctx, project, dir, cache, layout);
         List<String> allArgs = imageArgs(ctx, project, dir, nativeCfg, extra, frameworkSources);
         List<Path> classpath = imageClasspath(project, dir, cache, lockFile, layout, mainJar);
-        allArgs = withReachabilityMetadata(ctx, dir, project, layout, lockFile, javaHome, frameworkSources, allArgs);
+        ReachabilityArgs reach =
+                withReachabilityMetadata(ctx, dir, project, layout, lockFile, javaHome, frameworkSources, allArgs);
+        allArgs = reach.args();
         ImageKey key = imageKey(
-                javaHome, classpath, allArgs, mainClass, shared, out, frameworkSources, trainReachabilityDir(layout));
+                javaHome,
+                classpath,
+                allArgs,
+                mainClass,
+                shared,
+                out,
+                frameworkSources,
+                trainReachabilityDir(layout),
+                reach.metadataDirs());
         Perf.note("live-native " + out, "key", key.key());
         if (!shared && restorePackaged(cache, key.key(), out.getParent())) {
             // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
@@ -316,9 +326,10 @@ public final class PlannerNative {
      * config to the GraalVM metadata repository rather than their own jars. Matched dirs ride
      * -H:ConfigurationFileDirectories; unavailable (offline) degrades to building without it.
      * Trained reachability from `jk train` (target/train/merged/reachability) goes first. Returns
-     * the args with the metadata flags prepended, or unchanged when there is none.
+     * the args with the metadata flags prepended, or unchanged when there is none, beside the
+     * repository dirs the flag names.
      */
-    private static List<String> withReachabilityMetadata(
+    private static ReachabilityArgs withReachabilityMetadata(
             TaskContext ctx,
             Path dir,
             JkBuild project,
@@ -344,6 +355,7 @@ public final class PlannerNative {
         if (frameworkSources != null) {
             metadataDirs = List.of();
         }
+        List<Path> repositoryDirs = List.copyOf(metadataDirs);
         Path trainReach = trainReachabilityDir(layout);
         if (trainReach != null) {
             ArrayList<Path> withTrain = new ArrayList<>(metadataDirs);
@@ -361,7 +373,7 @@ public final class PlannerNative {
                 throw new RuntimeException(e);
             }
         }
-        if (metadataDirs.isEmpty()) return allArgs;
+        if (metadataDirs.isEmpty()) return new ReachabilityArgs(allArgs, repositoryDirs);
         StringBuilder dirsArg = new StringBuilder();
         for (Path d : metadataDirs) {
             if (dirsArg.length() > 0) dirsArg.append(',');
@@ -374,8 +386,11 @@ public final class PlannerNative {
         withMeta.add("-H:ConfigurationFileDirectories=" + dirsArg);
         withMeta.add("-H:-UnlockExperimentalVMOptions");
         withMeta.addAll(allArgs);
-        return withMeta;
+        return new ReachabilityArgs(withMeta, repositoryDirs);
     }
+
+    /** The image args with the metadata flag in front, and the metadata-repository dirs it names. */
+    private record ReachabilityArgs(List<String> args, List<Path> metadataDirs) {}
 
     /**
      * The trained reachability metadata {@code jk train} merged under the module target, when it
@@ -397,9 +412,9 @@ public final class PlannerNative {
 
     /**
      * Packaging cache (executable only): the binary is a pure function of the runtime classpath,
-     * the build args, the main class, the GraalVM toolchain and the content of the trained
-     * reachability metadata the args name. Shared libraries (+ generated C headers) aren't
-     * cached yet.
+     * the build args, the main class, the GraalVM toolchain and the content of every reachability
+     * metadata dir the args name — the trained one and each metadata-repository dir. Shared
+     * libraries (+ generated C headers) aren't cached yet.
      */
     static ImageKey imageKey(
             Path javaHome,
@@ -409,12 +424,13 @@ public final class PlannerNative {
             boolean shared,
             Path out,
             @Nullable Path frameworkSources,
-            @Nullable Path trainReach)
+            @Nullable Path trainReach,
+            List<Path> metadataDirs)
             throws Exception {
         // The toolchain by its release file, as ActionKey.jdkToken spells a JDK; a home with no
         // release file keys its portable spelling, never the machine's path.
         String graalTok = ActionKey.jdkToken(javaHome);
-        List<String> nativeTokens = List.of(
+        List<String> nativeTokens = new ArrayList<>(List.of(
                 "cp:" + ClasspathFingerprint.of(classpath),
                 "args:" + ActionKey.optionsToken(allArgs),
                 "main:" + (mainClass == null ? "" : mainClass),
@@ -427,7 +443,11 @@ public final class PlannerNative {
                 // The args name the train dir by path; its content is what shapes the image, so a
                 // `jk train` with another workload must miss the cache rather than restore the
                 // binary the previous workload produced.
-                "train:" + (trainReach == null ? "" : ClasspathFingerprint.entry(trainReach)));
+                "train:" + (trainReach == null ? "" : ClasspathFingerprint.entry(trainReach))));
+        // The args spell a metadata-repository dir without its repository release; the content is
+        // what shapes the image, so a lock that bumps the release behind the same artifact version
+        // must miss the cache.
+        for (Path dir : metadataDirs) nativeTokens.add("metadata:" + ClasspathFingerprint.entry(dir));
         String nTask = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
         String nKey = ActionKey.forArtifact(nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
         return new ImageKey(nTask, nKey, nativeTokens);
