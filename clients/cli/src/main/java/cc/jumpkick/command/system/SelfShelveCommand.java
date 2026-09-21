@@ -78,10 +78,12 @@ public final class SelfShelveCommand implements CliCommand {
         String packagedBy = materializedEngineSha();
         Path store = JkStores.store();
         Map<String, String> jars = new LinkedHashMap<>();
+        Map<String, String> poms = new LinkedHashMap<>();
         for (Path artifact : artifacts) {
             String relative = source.relativize(artifact).toString().replace('\\', '/');
             String sha = RepoArtifactStore.writeToLocalStore(store, relative, artifact, packagedBy);
             if (relative.endsWith(".jar")) jars.put(RepoArtifactStore.inferGav(relative), sha);
+            else if (relative.endsWith(".pom")) poms.put(RepoArtifactStore.inferGav(relative), sha);
         }
         String shelved = "Shelved " + artifacts.size() + " artifacts into "
                 + store.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
@@ -91,7 +93,7 @@ public final class SelfShelveCommand implements CliCommand {
             // The dist directory the repos/ tree sits in: what the engine reports as its source.
             Path repos = Objects.requireNonNull(source.getParent(), "repos dir");
             Path dist = Objects.requireNonNull(repos.getParent(), "dist dir");
-            ShelfManifest.record(EngineInstall.current().shelfFile(), packagedBy, dist, jars, Clock.SYSTEM);
+            ShelfManifest.record(EngineInstall.current().shelfFile(), packagedBy, dist, jars, poms, Clock.SYSTEM);
             shelved += "; " + jars.size() + " jars pinned to engine " + packagedBy.substring(0, 12);
         }
         CommandWedge.printOk("Self", shelved);

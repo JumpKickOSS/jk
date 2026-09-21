@@ -320,8 +320,11 @@ fork next. The engine therefore names its workers by content, not by path:
   (`repos/jk-local/.shelf.lock`), the memo hashed from the staged copy — so the memo beside a jar
   always describes that jar, however two installs interleave.
 - `jk install` (and `jk self shelve`) then writes **`~/.jk/lib/jk-engine/jk-shelf.toml`** beside
-  the engine pointer: the engine's jar sha, the checkout it came from, and every workspace
-  module's thin jar by `group:artifact:version` and sha256.
+  the engine pointer: the engine's jar sha, the checkout it came from, and the thin jar of every
+  module the pass shelved by `group:artifact:version` and sha256, with the POM published beside it
+  under `[poms]`. A cwd-scoped install shelves the selected cone only and rewrites only those pins;
+  the rest stay as they were. The write is a locked read-merge-write (`jk-shelf.toml.lock`), so two
+  installs for one engine keep each other's pins.
 
   ```toml
   engine-sha256 = "…"
@@ -330,6 +333,9 @@ fork next. The engine therefore names its workers by content, not by path:
 
   [jars]
   "cc.jumpkick:jk-java-compiler:0.13.4" = "…"
+
+  [poms]
+  "cc.jumpkick:jk-java-compiler:0.13.4" = "…"
   ```
 
 - An engine adopts the manifest while it names the engine's own jar (re-reading it, so a reinstall
@@ -337,8 +343,11 @@ fork next. The engine therefore names its workers by content, not by path:
   the file for another engine. At every fork the worker launcher resolves each `repos/jk-local` jar
   through it: a shelf jar whose bytes are the pinned ones is copied into the CAS as before; one
   another install replaced is served from the CAS at the pinned sha; a pinned sha the store no
-  longer holds fails the launch naming both shas and the checkout to reinstall from. A jar the
-  manifest does not name (a third-party `jk install <file.jar>`) launches as the shelf has it.
+  longer holds fails the launch naming both shas and the checkout to reinstall from. The worker's
+  runtime closure is walked from the pinned POM the same way — the shelf's while it is the pinned
+  one, the CAS copy once another install replaced it — so a worker never forks on another
+  checkout's dependency list. A jar the manifest does not name (a third-party
+  `jk install <file.jar>`) launches as the shelf has it.
 
 Two worktrees installing in turn therefore leave the live engine the last installer's, every fork
 of it running that installer's workers, and the displaced engine draining with the workers it was
