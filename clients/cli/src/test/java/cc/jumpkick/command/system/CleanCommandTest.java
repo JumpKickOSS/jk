@@ -4,7 +4,9 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.builds.CheckoutSlot;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,6 +47,22 @@ class CleanCommandTest {
         List<Path> dirs = CleanCommand.resolveModuleDirs(ws, List.of("lib/../app"), warnings);
         assertThat(dirs).containsExactly(ws.toAbsolutePath().normalize().resolve("app"));
         assertThat(warnings).isEmpty();
+    }
+
+    // ---- held checkout ------------------------------------------------------
+
+    @Test
+    void a_checkout_a_build_holds_is_refused_with_its_number(@TempDir Path ws) throws IOException {
+        Path app = Files.createDirectories(ws.resolve("app"));
+        FileLocks.Hold hold = (FileLocks.Hold) FileLocks.tryHold(CheckoutSlot.lockFile(app));
+        try {
+            hold.write("pid=1\nbuild=7\nkind=build\nstarted=1\n");
+            assertThat(CleanCommand.heldMessage(ws, List.of(ws, app)))
+                    .hasValueSatisfying(m -> assertThat(m).startsWith("Build #7 is running in app"));
+        } finally {
+            hold.close();
+        }
+        assertThat(CleanCommand.heldMessage(ws, List.of(ws, app))).isEmpty();
     }
 
     // ---- delete tally -------------------------------------------
