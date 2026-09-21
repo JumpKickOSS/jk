@@ -60,7 +60,7 @@ class NativeForecastReplayTest {
                 "-H:-UnlockExperimentalVMOptions",
                 "-O2");
         PlannerNative.ImageKey key =
-                PlannerNative.imageKey(graal, List.of(jar), liveArgs, "t.Main", false, out, null, null);
+                PlannerNative.imageKey(graal, List.of(jar), liveArgs, "t.Main", false, out, null, null, List.of());
         Session session = Session.defaults().withCacheDir(cache);
         SessionContext.where(session, () -> {
             PlannerSupport.storePackagedForTest(cache, key.task(), key.key(), key.tokens(), target, List.of(out), true);
