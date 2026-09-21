@@ -76,23 +76,31 @@ class McpConnectionTest {
 
     @Test
     void the_run_answers_its_origin_and_the_dashboard_url_that_follows_it() {
-        mcp.dashboardLink(dir -> DashboardLinks.project("http://127.0.0.1:8910/", "tok-EN_1", "p-" + dir.length()));
+        mcp.dashboardLink(
+                dir -> DashboardLinks.project("http://127.0.0.1:8910/", "tok-EN_1", "p-" + dir.length(), dir));
         String id = initialize("claude-code");
         Map<String, Object> accepted = run(id);
         assertThat(accepted.get("type")).isEqualTo("job-accepted");
         assertThat(accepted.get("trigger")).isEqualTo("mcp");
         assertThat(accepted.get("session")).isEqualTo("claude-code " + id);
-        assertThat(accepted.get("dashboard")).isEqualTo("http://127.0.0.1:8910/#project/p-3?t=tok-EN_1");
+        assertThat(accepted.get("dashboard"))
+                .as("the link names the checkout: every worktree of a repository shares the id")
+                .isEqualTo("http://127.0.0.1:8910/#project/p-3?dir=%2Fws&t=tok-EN_1");
     }
 
     @Test
-    void dashboard_links_carry_the_token_and_the_project_route() {
-        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", "T", "abc"))
+    void dashboard_links_carry_the_token_the_project_route_and_the_checkout() {
+        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", "T", "abc", "/ws/my app"))
+                .isEqualTo("http://127.0.0.1:8910/#project/abc?dir=%2Fws%2Fmy%20app&t=T");
+        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", "T", "abc", null))
                 .isEqualTo("http://127.0.0.1:8910/#project/abc?t=T");
-        assertThat(DashboardLinks.project("http://127.0.0.1:8910", "T", null)).isEqualTo("http://127.0.0.1:8910/#t=T");
-        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", null, "abc"))
+        assertThat(DashboardLinks.project("http://127.0.0.1:8910", "T", null, "/ws"))
+                .isEqualTo("http://127.0.0.1:8910/#t=T");
+        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", null, "abc", "/ws"))
+                .isEqualTo("http://127.0.0.1:8910/#project/abc?dir=%2Fws");
+        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", null, "abc", null))
                 .isEqualTo("http://127.0.0.1:8910/#project/abc");
-        assertThat(DashboardLinks.project(null, "T", "abc")).isNull();
+        assertThat(DashboardLinks.project(null, "T", "abc", "/ws")).isNull();
     }
 
     @Test

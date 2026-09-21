@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -619,21 +620,53 @@ class WorkspaceFileAccessTest {
         assertThat(list.files()).anyMatch(f -> f.path().startsWith("target/"));
     }
 
+    /**
+     * The sandbox root is one of the checkouts the id records: implied while there is one, named
+     * by {@code dir} once a second worktree builds under the same id, and never a tree the id does
+     * not list.
+     */
     @Test
-    void resolve_root_uses_identity_only(@TempDir Path checkout, @TempDir Path buildsDir) throws Exception {
-        writeJkToml(checkout, "demo");
+    void resolve_root_is_one_of_the_ids_live_checkouts(@TempDir Path tmp, @TempDir Path buildsDir) throws Exception {
         System.setProperty("jk.env.JK_STATE_DIR", buildsDir.toString());
         try {
-            var identity = ProjectIdentity.resolve(checkout);
-            ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
-            assertThat(WorkspaceFileAccess.resolveRoot(identity.id()))
-                    .contains(checkout.toAbsolutePath().normalize());
-            assertThat(WorkspaceFileAccess.resolveRoot("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"))
-                    .isEmpty();
-            assertThat(WorkspaceFileAccess.resolveRoot("")).isEmpty();
+            String id = "aabbccddeeff00112233445566778899";
+            Path a = tmp.resolve("wt-a").toAbsolutePath().normalize();
+            Path b = tmp.resolve("wt-b").toAbsolutePath().normalize();
+            writeJkToml(a, "demo");
+            writeJkToml(b, "demo");
+            Path home = ProjectBuilds.projectHome(id);
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, a));
+            assertThat(WorkspaceFileAccess.resolveRoot(id, null)).isEqualTo(new WorkspaceFileAccess.Root.Ok(a));
+
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+            assertThat(WorkspaceFileAccess.resolveRoot(id, null))
+                    .isEqualTo(new WorkspaceFileAccess.Root.Ambiguous(List.of(a, b)));
+            assertThat(WorkspaceFileAccess.resolveRoot(id, b.toString())).isEqualTo(new WorkspaceFileAccess.Root.Ok(b));
+            assertThat(WorkspaceFileAccess.resolveRoot(
+                            id, tmp.resolve("wt-b/../wt-a").toString()))
+                    .as("a selector is compared as a path, not a string")
+                    .isEqualTo(new WorkspaceFileAccess.Root.Ok(a));
+            Path elsewhere = Files.createDirectories(tmp.resolve("elsewhere"));
+            writeJkToml(elsewhere, "demo");
+            assertThat(WorkspaceFileAccess.resolveRoot(id, elsewhere.toString()))
+                    .as("a jk.toml elsewhere does not widen the sandbox")
+                    .isEqualTo(new WorkspaceFileAccess.Root.NotACheckout(elsewhere.toString(), List.of(a, b)));
+
+            // The deleted worktree stops counting without anyone rewriting the file.
+            Files.delete(a.resolve("jk.toml"));
+            Files.delete(a);
+            assertThat(WorkspaceFileAccess.resolveRoot(id, null)).isEqualTo(new WorkspaceFileAccess.Root.Ok(b));
+
+            assertThat(WorkspaceFileAccess.resolveRoot("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", null))
+                    .isEqualTo(new WorkspaceFileAccess.Root.Unknown());
+            assertThat(WorkspaceFileAccess.resolveRoot("", null)).isEqualTo(new WorkspaceFileAccess.Root.Unknown());
         } finally {
             System.clearProperty("jk.env.JK_STATE_DIR");
         }
+    }
+
+    private static ProjectIdentity identityAt(String id, Path checkout) {
+        return new ProjectIdentity(id, "g:demo", checkout, ProjectIdentity.Source.LOCK, null, null);
     }
 
     @Test

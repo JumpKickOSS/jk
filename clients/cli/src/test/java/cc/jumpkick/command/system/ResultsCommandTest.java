@@ -4,16 +4,19 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.cli.CommandDispatch;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.util.MarkdownReports;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.function.IntSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -176,8 +179,38 @@ class ResultsCommandTest {
                 .isEqualTo(ws.toAbsolutePath().normalize());
     }
 
+    /**
+     * Two worktrees of one repository share the project id, its home and its build numbers. Each
+     * {@code jk results} prints the newest run recorded for its own checkout, never the sibling's,
+     * and the identity file lists both checkouts.
+     */
+    @Test
+    void prints_this_checkouts_run_not_the_sibling_worktrees() throws Exception {
+        Path a = project("wt-a");
+        Path b = project("wt-b");
+        Files.writeString(open(a).resultsFile(), "# a #1\n");
+        Files.writeString(open(b).resultsFile(), "# b #2\n");
+        ProjectBuilds.RunDir third = open(a);
+        Files.writeString(third.resultsFile(), "# a #3\n");
+        assertThat(third.buildNumber()).as("one sequence per id").isEqualTo(3);
+
+        assertThat(Capture.stdout(() -> Jk.execute("-C", a.toString(), "results")))
+                .isEqualTo("# a #3\n");
+        assertThat(Capture.stdout(() -> Jk.execute("-C", b.toString(), "results")))
+                .isEqualTo("# b #2\n");
+
+        var identity = ProjectIdentity.IdentityFile.read(third.projectHome()).orElseThrow();
+        assertThat(identity.checkouts().stream().map(ProjectIdentity.Checkout::path))
+                .containsExactly(
+                        a.toAbsolutePath().normalize(), b.toAbsolutePath().normalize());
+    }
+
     private Path project() throws Exception {
-        Path proj = Files.createDirectories(tmp.resolve("app"));
+        return project("app");
+    }
+
+    private Path project(String name) throws Exception {
+        Path proj = Files.createDirectories(tmp.resolve(name));
         Files.writeString(proj.resolve("jk.toml"), """
                 id = "results-cmd"
                 group = "g"
@@ -187,8 +220,14 @@ class ResultsCommandTest {
         return proj;
     }
 
+    /** A run as the engine journals it: {@code record.json} names the checkout it ran in. */
     private ProjectBuilds.RunDir open(Path proj) throws Exception {
-        return ProjectBuilds.openRun(tmp.resolve("builds"), "g:app", proj);
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(tmp.resolve("builds"), "g:app", proj);
+        Files.writeString(
+                run.recordFile(),
+                MiniJson.write(
+                        Map.of("dir", proj.toAbsolutePath().normalize().toString(), "buildNumber", run.buildNumber())));
+        return run;
     }
 
     private static Captured capture(IntSupplier body) {

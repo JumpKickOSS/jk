@@ -63,7 +63,7 @@ public final class LockfileWriter {
         // Durable: the lockfile is the source of truth, not a cache. A torn target after power loss is
         // not recoverable by re-running — the resolve that produced it is gone.
         AtomicWrites.replaceDurably(file, render(stamped));
-        // Materialize identity.toml so project= id resolves to a checkout without a prior build.
+        // Record this checkout in identity.toml so project=<id> knows it without a prior build.
         // The identity comes from the lock in memory: reading a megabyte lock back through the TOML
         // parser to learn the id this method just wrote is what pushed the engine past its heap.
         try {
