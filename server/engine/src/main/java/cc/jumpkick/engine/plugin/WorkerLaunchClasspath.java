@@ -3,12 +3,15 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -16,6 +19,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -24,10 +29,12 @@ import org.jspecify.annotations.Nullable;
  * worker also gets plugin-sdk and host from {@code target/shared/} (the codec a shipped worker jar
  * vendors).
  *
- * <p>{@code repos/jk-local} jars are pinned into the artifact CAS before the fork sees them: a
- * concurrent {@code cache-install} replaces the shelf path in place, and on Windows that rename
- * is refused while a worker still has the shelf file mapped. A content-addressed copy is never
- * overwritten, so the shelf can move under the workers.
+ * <p>{@code repos/jk-local} jars reach a fork as artifact-CAS blobs, never as shelf paths: a
+ * {@code cache-install} from another checkout replaces the shelf path in place, and on Windows
+ * that rename is refused while a worker still has the shelf file mapped. The engine's shelf
+ * manifest ({@link ShelfPins}) says which blob: a jar it pins launches at the pinned sha whatever
+ * the shelf holds now, so every fork of one engine runs the workers that engine was installed
+ * with. A jar the manifest does not name launches as the shelf has it.
  */
 public final class WorkerLaunchClasspath {
 
@@ -57,16 +64,30 @@ public final class WorkerLaunchClasspath {
     }
 
     /**
-     * Copy each {@code repos/jk-local} jar into the artifact CAS (idempotent by sha). POM
-     * resolution still reads the shelf; only the paths handed to the forked JVM change.
+     * Copy each {@code repos/jk-local} jar into the artifact CAS (idempotent by sha), at the sha
+     * the engine's shelf manifest pins when it names the jar. POM resolution still reads the
+     * shelf; only the paths handed to the forked JVM change.
      */
     static List<Path> pinJkLocal(List<Path> resolved) {
+        return pinJkLocal(resolved, ShelfPins.current());
+    }
+
+    static List<Path> pinJkLocal(List<Path> resolved, @Nullable ShelfManifest pins) {
         Cas cas = JkStores.storeCas();
         List<Path> out = new ArrayList<>(resolved.size());
         for (Path p : resolved) {
-            out.add(isJkLocalJar(p) ? pinOne(cas, p) : p);
+            out.add(isJkLocalJar(p) ? pinOne(cas, p, pins) : p);
         }
         return List.copyOf(out);
+    }
+
+    /** The live store's {@code repos/jk-local}, absolute and normalized. */
+    private static Path shelfRoot() {
+        return JkStores.store()
+                .resolve("repos")
+                .resolve(RepoArtifactResolver.JK_LOCAL)
+                .toAbsolutePath()
+                .normalize();
     }
 
     /**
@@ -76,23 +97,56 @@ public final class WorkerLaunchClasspath {
      */
     static boolean isJkLocalJar(Path path) {
         if (path == null) return false;
-        Path shelf = JkStores.store()
-                .resolve("repos")
-                .resolve(RepoArtifactResolver.JK_LOCAL)
-                .toAbsolutePath()
-                .normalize();
-        return path.toAbsolutePath().normalize().startsWith(shelf);
+        return path.toAbsolutePath().normalize().startsWith(shelfRoot());
     }
 
-    private static Path pinOne(Cas cas, Path jar) {
+    /** {@code group:artifact:version} of a shelf jar, from its Maven-layout path. */
+    static String coordinateOf(Path shelfJar) {
+        Path rel = shelfRoot().relativize(shelfJar.toAbsolutePath().normalize());
+        return RepoArtifactStore.inferGav(rel.toString().replace('\\', '/'));
+    }
+
+    /** Shelf jars already reported as served from the store instead of the shelf, so the log says it once each. */
+    private static final Set<String> REPORTED = ConcurrentHashMap.newKeySet();
+
+    /**
+     * The blob to launch {@code jar} from. Pinned by the manifest: the shelf's bytes when they
+     * are the pinned ones, else the store's copy at the pinned sha — the install put it there
+     * before it wrote the shelf — and a launch failure naming both shas when the store has none.
+     * Unpinned: the shelf's bytes, whatever they are.
+     */
+    private static Path pinOne(Cas cas, Path jar, @Nullable ShelfManifest pins) {
+        String coordinate = coordinateOf(jar);
+        String pinned = pins == null ? null : pins.sha(coordinate).orElse(null);
+        String from = pins == null || pins.source().isEmpty() ? "" : " from " + pins.source();
+        String hex;
         try {
-            String hex = shaOf(jar);
-            return cas.putFile(jar, hex);
-        } catch (IOException e) {
+            hex = shaOf(jar);
+        } catch (IOException unreadable) {
+            if (pinned != null && cas.contains(pinned)) return cas.pathFor(pinned);
             // Launch with the shelf path: cache-install may still race, but a pin failure must not
             // refuse every worker on a full disk.
             return jar;
         }
+        if (pinned == null || pinned.equalsIgnoreCase(hex)) {
+            try {
+                return cas.putFile(jar, hex);
+            } catch (IOException e) {
+                return jar;
+            }
+        }
+        if (cas.contains(pinned)) {
+            if (REPORTED.add(coordinate + "@" + pinned)) {
+                Log.info("jk engine: " + coordinate + " on the shelf is " + hex.substring(0, 12)
+                        + ", another install's; launching the pinned " + pinned.substring(0, 12)
+                        + " from the store (installed" + from + ")");
+            }
+            return cas.pathFor(pinned);
+        }
+        throw new IllegalStateException("the shelf holds " + coordinate + " at " + hex.substring(0, 12)
+                + " but this engine was installed with " + pinned.substring(0, 12) + from
+                + ", and the store has no copy of those bytes — run `jk install` from that checkout, or let the"
+                + " next `jk` invocation take the engine over to the install the home names");
     }
 
     /**

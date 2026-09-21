@@ -3,8 +3,10 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -18,7 +20,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * read. The installers run it right after materializing the engine, so the engine an install
  * spawns launches the workers built beside it rather than fetching the published ones of the same
  * version. The memo names the materialized engine of this version as the packager when the home
- * has one, the same fact {@code jk install} records.
+ * has one, the same fact {@code jk install} records — and, as {@code jk install} does, the jars
+ * are pinned to that engine in {@link ShelfManifest} beside its pointer.
  */
 public final class SelfShelveCommand implements CliCommand {
 
@@ -71,14 +77,22 @@ public final class SelfShelveCommand implements CliCommand {
         }
         String packagedBy = materializedEngineSha();
         Path store = JkStores.store();
+        Map<String, String> jars = new LinkedHashMap<>();
         for (Path artifact : artifacts) {
             String relative = source.relativize(artifact).toString().replace('\\', '/');
-            RepoArtifactStore.writeToLocalStore(store, relative, artifact, packagedBy);
+            String sha = RepoArtifactStore.writeToLocalStore(store, relative, artifact, packagedBy);
+            if (relative.endsWith(".jar")) jars.put(RepoArtifactStore.inferGav(relative), sha);
         }
-        CommandWedge.printOk(
-                "Self",
-                "Shelved " + artifacts.size() + " artifacts into "
-                        + store.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL));
+        String shelved = "Shelved " + artifacts.size() + " artifacts into "
+                + store.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
+        if (packagedBy != null) {
+            // The dist directory the repos/ tree sits in: what the engine reports as its source.
+            Path repos = Objects.requireNonNull(source.getParent(), "repos dir");
+            Path dist = Objects.requireNonNull(repos.getParent(), "dist dir");
+            ShelfManifest.record(EngineInstall.current().shelfFile(), packagedBy, dist, jars, Clock.SYSTEM);
+            shelved += "; " + jars.size() + " jars pinned to engine " + packagedBy.substring(0, 12);
+        }
+        CommandWedge.printOk("Self", shelved);
         return 0;
     }
 
