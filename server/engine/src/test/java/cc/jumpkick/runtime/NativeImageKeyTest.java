@@ -47,6 +47,33 @@ class NativeImageKeyTest {
                 .isNotEqualTo(first);
     }
 
+    /**
+     * The args name the metadata dirs by absolute path and a Graal home without a release file
+     * would otherwise key its path: two checkouts of one project key one image.
+     */
+    @Test
+    void the_image_key_is_the_same_from_two_checkouts(@TempDir Path tmp) throws Exception {
+        Path graal = Files.createDirectories(tmp.resolve("graal-without-release"));
+        String first = null;
+        for (String checkout : List.of("one", "two/deeper")) {
+            Path module = Files.createDirectories(tmp.resolve(checkout).resolve("app"));
+            Files.writeString(module.resolve("jk.toml"), "name = \"app\"\n");
+            Files.writeString(
+                    module.resolve("jk-lock.toml"), "version = 1\nproject-id = \"0123456789abcdef0123456789abcdef\"\n");
+            Path jar = Files.writeString(module.resolve("app.jar"), "app");
+            Path out = module.resolve("target/native/app");
+            Path train = Files.createDirectories(module.resolve("target/train/merged/reachability"));
+            Files.writeString(train.resolve("reachability-metadata.json"), "{\"workload\":\"first\"}");
+            List<String> args = List.of(
+                    "-H:+UnlockExperimentalVMOptions", "-H:ConfigurationFileDirectories=" + train.toAbsolutePath());
+            PlannerNative.ImageKey key =
+                    PlannerNative.imageKey(graal, List.of(jar), args, "app.Main", false, out, null, train);
+            assertThat(key.tokens()).noneMatch(t -> t.contains(tmp.toString()));
+            if (first == null) first = key.key();
+            else assertThat(key.key()).isEqualTo(first);
+        }
+    }
+
     @Test
     void the_train_dir_counts_only_when_its_merged_metadata_exists(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("m"));

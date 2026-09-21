@@ -461,6 +461,7 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Task type / id | `task:` line, `<base>@<tag>` — the tag is the project id plus the workspace-relative output path | Portable across checkouts of one project |
 | jk version | `jk:` in key material | Pin engine version for cross-machine hits |
 | Toolchain / release | `--release`, Kotlin target | Include JDK major when outputs are version-sensitive |
+| Compiler argv | `options:` / `args:` with every absolute path spelled as a `PortablePath` (`ActionKey.optionsToken`) | The compiler still receives absolute paths; the key never does |
 | Sources | module-relative path + content SHA-256 | Portable: two checkouts of one module compute the same key |
 | Compile classpath | ABI token (`abi:<sha256>` for javac/groovyc, `kt-abi:<sha256>` for kotlinc) | Content-derived; a body-only dependency change keeps the key |
 | Processors / runtime classpath | content identity (`file:<sha256>`, `dir:<sha256>`) | Hex identity, independent of on-disk path |

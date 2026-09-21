@@ -319,7 +319,7 @@ public final class JavaCompile {
         if (!String.valueOf(request.release()).equals(in.getOrDefault("release", null))) {
             return new Prediction(Outcome.FULL, key, request.sources().size(), "release changed");
         }
-        if (!String.join(",", request.extraOptions()).equals(in.getOrDefault("options", ""))) {
+        if (!ActionKey.optionsToken(request.extraOptions()).equals(in.getOrDefault("options", ""))) {
             return new Prediction(Outcome.FULL, key, request.sources().size(), "javac options changed");
         }
         List<Path> changed = changedSources(request, in);

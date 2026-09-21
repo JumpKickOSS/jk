@@ -7,10 +7,12 @@ import cc.jumpkick.compile.GroovycInputs;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincInputs;
 import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.BuildIdentity;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -132,7 +134,7 @@ public final class ActionKey {
         // In argv order, never sorted: options pair with the value that follows them, so
         // `--add-modules a --limit-modules b` and `--add-modules b --limit-modules a` hold the
         // same words and are different compiles.
-        sb.append("options:").append(String.join(",", request.extraOptions())).append('\n');
+        sb.append("options:").append(optionsToken(request.extraOptions())).append('\n');
         if (request.mixedScala()) {
             sb.append("scala:").append(request.scalaVersion()).append('\n');
             List<Path> scp = new ArrayList<>(request.compilerClasspath());
@@ -218,7 +220,7 @@ public final class ActionKey {
             sb.append("moduleName:").append(request.moduleName()).append('\n');
         }
         // Argv order, as forJavac: a flag pairs with the value after it.
-        sb.append("args:").append(String.join(",", request.extraArgs())).append('\n');
+        sb.append("args:").append(optionsToken(request.extraArgs())).append('\n');
 
         // Compiler plugins reshape the output (all-open/no-arg synthesize members)
         // key on id + jar CONTENT + options so a plugin change re-compiles.
@@ -269,7 +271,7 @@ public final class ActionKey {
         result.put("jdk", jdkToken(request.javaHome()));
         String moduleName = request.moduleName();
         result.put("moduleName", moduleName == null ? "" : moduleName);
-        result.put("args", String.join(",", request.extraArgs()));
+        result.put("args", optionsToken(request.extraArgs()));
         for (var plugin : request.plugins()) {
             result.put(
                     "plugin:" + plugin.id(),
@@ -296,7 +298,7 @@ public final class ActionKey {
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
         sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
-        sb.append("args:").append(String.join(",", request.extraArgs())).append('\n');
+        sb.append("args:").append(optionsToken(request.extraArgs())).append('\n');
 
         // The hashed set IS the spec's SOURCE set (GroovycInputs): explicit sources plus every
         // .java the roots feed joint resolution — an edit to a swept file invalidates the key
@@ -369,7 +371,7 @@ public final class ActionKey {
         snapshotEntries(result, "cp:", request.classpath(), ClasspathAbi::token);
         snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         result.put("release", Integer.toString(request.release()));
-        result.put("options", String.join(",", request.extraOptions()));
+        result.put("options", optionsToken(request.extraOptions()));
         // The key hashes the JDK, so the why-rebuilt diff has to be able to name it: without this
         // a JDK switch reads as "nothing changed, rebuilt anyway".
         result.put("jdk", jdkToken(request.javaHome()));
@@ -384,7 +386,7 @@ public final class ActionKey {
         snapshotEntries(result, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
         snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         result.put("jvmTarget", Integer.toString(request.jvmTarget()));
-        result.put("args", String.join(",", request.extraArgs()));
+        result.put("args", optionsToken(request.extraArgs()));
         return result;
     }
 
@@ -422,6 +424,53 @@ public final class ActionKey {
         sorted.sort(Comparator.comparing(Path::toString));
         for (Path entry : sorted) {
             into.put(prefix + PortablePath.of(entry), token.of(entry));
+        }
+    }
+
+    /**
+     * The spelling of compiler argv in key material: the tokens joined by commas, in order, with
+     * every absolute path inside a token rendered as a {@link PortablePath}. A compiler receives
+     * absolute paths ({@code --source-path}, {@code --patch-module m=<roots>}, {@code
+     * -Xjava-source-roots=<roots>}, native-image's {@code -H:ConfigurationFileDirectories=<dirs>}),
+     * and a key that hashed them would name the checkout. Paths are recognised inside {@code =},
+     * {@code ,} and path-separator lists; everything else passes through unchanged. The content the
+     * paths name enters the key on its own terms (sources by hash, classpath entries by ABI).
+     */
+    public static String optionsToken(List<String> options) {
+        StringBuilder sb = new StringBuilder();
+        for (String option : options) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(portableArgument(option));
+        }
+        return sb.toString();
+    }
+
+    static String portableArgument(String token) {
+        StringBuilder out = new StringBuilder(token.length());
+        int start = 0;
+        for (int i = 0; i <= token.length(); i++) {
+            boolean end = i == token.length();
+            char c = end ? 0 : token.charAt(i);
+            if (end || c == ',' || c == '=' || c == Classpaths.SEPARATOR.charAt(0)) {
+                out.append(portablePiece(token.substring(start, i)));
+                if (!end) out.append(c);
+                start = i + 1;
+            }
+        }
+        return out.toString();
+    }
+
+    private static String portablePiece(String piece) {
+        boolean drive = piece.length() > 2
+                && Character.isLetter(piece.charAt(0))
+                && piece.charAt(1) == ':'
+                && (piece.charAt(2) == '\\' || piece.charAt(2) == '/');
+        if (!(piece.startsWith("/") || drive)) return piece;
+        try {
+            Path p = Path.of(piece);
+            return p.isAbsolute() ? PortablePath.of(p) : piece;
+        } catch (InvalidPathException notAPath) {
+            return piece;
         }
     }
 
