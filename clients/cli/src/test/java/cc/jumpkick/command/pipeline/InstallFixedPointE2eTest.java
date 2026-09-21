@@ -47,6 +47,8 @@ class InstallFixedPointE2eTest {
         Path home = tmp.resolve("home");
         Path engineHome = home.resolve("lib").resolve(EngineInstall.BIN_NAME);
         copyTree(sandboxEngine.get().root(), engineHome);
+        // The sandbox home's own pins came with the engine; this home's pins are this test's.
+        Files.deleteIfExists(engineHome.resolve(EngineInstall.SHELF_NAME));
         Path pointer = engineHome.resolve(EngineInstall.POINTER_NAME);
         assumeTrue(Files.isRegularFile(pointer), "the sandbox engine home carries no pointer");
         byte[] pointerBefore = Files.readAllBytes(pointer);
