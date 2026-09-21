@@ -11,10 +11,10 @@ import cc.jumpkick.task.KotlinClasspathAbi;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -35,14 +35,18 @@ final class RestoredOutputs {
 
     private final ActionCache actionCache;
 
+    // Concurrent, because the forecast walks one wave of independent modules at a time: a
+    // producer publishes here before any consumer's wave reads it, but several producers publish
+    // at once. Nothing in a wave reads what another member of it writes.
+
     /** Wiped jar → the CAS sha of its payload in the record its current package key names. */
-    private final Map<Path, String> jarShas = new HashMap<>();
+    private final Map<Path, String> jarShas = new ConcurrentHashMap<>();
 
     /** Wiped tree → the {@code abi:} token of the tree its record restores. */
-    private final Map<Path, String> treeAbi = new HashMap<>();
+    private final Map<Path, String> treeAbi = new ConcurrentHashMap<>();
 
     /** Wiped tree → the {@code dir:} content identity of the tree its record restores. */
-    private final Map<Path, String> treeIdentity = new HashMap<>();
+    private final Map<Path, String> treeIdentity = new ConcurrentHashMap<>();
 
     RestoredOutputs(ActionCache actionCache) {
         this.actionCache = actionCache;

@@ -21,6 +21,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
@@ -35,12 +36,16 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -164,36 +169,40 @@ public final class TaskForecaster {
             @Nullable Path workerJar,
             @Nullable String profile,
             @Nullable Path m2Dir) {
-        List<TaskForecast.Module> out = new ArrayList<>();
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
         // predicts a full rebuild — a self-contradiction).
         boolean force = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
         // Dirs whose *main output* will change this build — seeds downstream and
-        // cross-module dirtiness. Filled as we walk in dependency order.
-        Set<Path> dirty = new HashSet<>();
+        // cross-module dirtiness. Filled wave by wave, so a wave reads only earlier waves.
+        Set<Path> dirty = ConcurrentHashMap.newKeySet();
         // What each walked module's CURRENT records say the build restores before its consumers
         // key on it — wiped trees by the token and identity of the tree that comes back, wiped
         // jars by their payload sha — never an unvalidated last-record pointer (which may name a
         // different edit of the sibling). Consumers read every sibling through this ledger, so a
         // wiped workspace forecasts the keys the build will compute.
         RestoredOutputs restored = new RestoredOutputs(actionCache);
-        // Sibling lookup for scope-aware dirtiness (coord + bare name → dir).
+        // Sibling lookup for scope-aware dirtiness (coord + bare name → dir). Filled before the
+        // walk and read-only inside it.
         Map<String, Path> dirByCoord = new HashMap<>();
         Map<String, Path> dirByName = new HashMap<>();
         // Each walked module's reading of its own API for the consumers that follow it.
-        Map<Path, ModuleHint> hints = new HashMap<>();
+        Map<Path, ModuleHint> hints = new ConcurrentHashMap<>();
+        Map<Path, BuildGraph.BuildUnit> byDir = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
             dirByCoord.put(unit.coord(), unit.dir());
             dirByName.put(unit.manifest().project().name(), unit.dir());
+            byDir.put(unit.dir(), unit);
         }
-        for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+        Map<Path, TaskForecast.Module> forecast = new ConcurrentHashMap<>();
+        Set<Path> seeds = ConcurrentHashMap.newKeySet();
+        Consumer<BuildGraph.BuildUnit> one = u -> {
             // A cancelled job stops at the module boundary: a walk over a thousand-module reactor
             // otherwise runs on for minutes after the client has gone, and the abandoned forecast
             // holds its request's scope the whole time.
             if (SessionContext.current().cancelled()) {
-                throw new CancellationException("forecast cancelled after " + out.size() + " of "
+                throw new CancellationException("forecast cancelled after " + forecast.size() + " of "
                         + graph.topoOrder().size() + " modules");
             }
             // Scope-aware: a dirty *test-only* sibling (e.g. cli → engine via test-dependencies)
@@ -220,6 +229,7 @@ public final class TaskForecaster {
                     profile,
                     m2Dir);
             Perf.end("forecast " + u.coord(), t0);
+            forecast.put(u.dir(), m);
             // Seed main-output dirtiness for *compile* consumers only when this module's
             // consumed classes/jar will change — not when only test-scope work is dirty.
             // Package matters on its own: a consumer's tests and packaging read the sibling
@@ -229,11 +239,104 @@ public final class TaskForecaster {
             // Also seed when a compile-scope dep is dirty even if predictors still look cached
             // against pre-rebuild sibling jars (pessimistic; avoids under-reserve).
             if (seedsCompileConsumerCascade(m) || dep.compileDepDirty()) {
-                dirty.add(u.dir());
+                seeds.add(u.dir());
             }
-            out.add(m);
+        };
+        for (List<Path> wave : BuildGraph.waves(byDir.keySet(), graph.edges())) {
+            List<BuildGraph.BuildUnit> members = new ArrayList<>(wave.size());
+            for (Path d : wave) {
+                BuildGraph.BuildUnit u = byDir.get(d);
+                if (u != null) members.add(u);
+            }
+            walkWave(members, one);
+            // Published between waves rather than inside one: only a later wave reads it, and
+            // holding it back keeps the dirty set a value every member of a wave agrees on.
+            for (BuildGraph.BuildUnit u : members) {
+                if (seeds.contains(u.dir())) dirty.add(u.dir());
+            }
+        }
+        // Anything the waves could not reach — a cycle the graph resolve should already have
+        // refused — is still forecast, in dependency order, rather than silently missing.
+        for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+            if (forecast.containsKey(u.dir())) continue;
+            one.accept(u);
+            if (seeds.contains(u.dir())) dirty.add(u.dir());
+        }
+        List<TaskForecast.Module> out = new ArrayList<>(graph.topoOrder().size());
+        for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+            TaskForecast.Module m = forecast.get(u.dir());
+            if (m != null) out.add(m);
         }
         return out;
+    }
+
+    /**
+     * Ceiling on lanes per wave. The arms wait on the filesystem far more than on the CPU, so the
+     * useful width is what the device absorbs rather than the core count; past this the lanes queue
+     * on the device and only add contention. Under {@link JkThreads#CPU_THREADS} on purpose, so a
+     * wave never takes the whole shared pool.
+     */
+    private static final int WAVE_LANES = 16;
+
+    /** Modules a lane must be worth before one is opened; below this the wave runs on the caller. */
+    private static final int MIN_MODULES_PER_WAVE_LANE = 2;
+
+    /**
+     * Forecast every member of one wave, concurrently when the wave is wide enough to pay for it.
+     *
+     * <p>Nothing in a wave depends on anything else in it (see {@link BuildGraph#waves}), so no
+     * member reads what another writes: each publishes its own trees to the restore ledger, its own
+     * API hint and its own verdict. Every lane is joined before the caller starts the next wave,
+     * which is what makes that wave's reads of the ledger, the hints and the dirty set complete.
+     *
+     * <p>{@link JkThreads#cpu()}, whose threads are platform threads, rather than the io pool: an
+     * arm's dominant cost is reading directories, and a directory read is a native call the
+     * virtual-thread scheduler does not compensate for, so a wave of them on virtual threads would
+     * hold a carrier each and leave the engine's own virtual threads — the ones answering hello and
+     * status — unscheduled for as long as the wave lasts. Either pool carries the ambient context a
+     * lane needs: the session and its cancel token, the run's io ledger, and the request scope a
+     * compile prediction forks its plan worker under, so the lanes share one worker pool rather
+     * than starting one each. The entry memo is a {@code ScopedValue}, which does not ride a pool
+     * hop, so it is handed across explicitly.
+     */
+    private static void walkWave(List<BuildGraph.BuildUnit> members, Consumer<BuildGraph.BuildUnit> one) {
+        int lanes = Math.clamp(members.size() / MIN_MODULES_PER_WAVE_LANE, 1, WAVE_LANES);
+        if (lanes == 1) {
+            for (BuildGraph.BuildUnit u : members) one.accept(u);
+            return;
+        }
+        Map<Path, String> memo = ClasspathFingerprint.entryMemo();
+        int chunk = (members.size() + lanes - 1) / lanes;
+        List<Future<?>> pending = new ArrayList<>(lanes);
+        for (int lane = 0; lane < lanes; lane++) {
+            List<BuildGraph.BuildUnit> slice = members.subList(
+                    Math.min(lane * chunk, members.size()), Math.min((lane + 1) * chunk, members.size()));
+            pending.add(JkThreads.cpu()
+                    .submit(() -> ClasspathFingerprint.withEntryMemo(memo, () -> {
+                        for (BuildGraph.BuildUnit u : slice) one.accept(u);
+                        return null;
+                    })));
+        }
+        joinWave(pending);
+    }
+
+    /** Wait for every lane of a wave, re-raising the first failure as the serial walk would have. */
+    private static void joinWave(List<Future<?>> pending) {
+        RuntimeException failure = null;
+        for (Future<?> f : pending) {
+            try {
+                f.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new CancellationException("forecast interrupted");
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause() == null ? e : e.getCause();
+                if (cause instanceof Error error) throw error;
+                if (failure != null) continue;
+                failure = cause instanceof RuntimeException runtime ? runtime : new IllegalStateException(cause);
+            }
+        }
+        if (failure != null) throw failure;
     }
 
     /**

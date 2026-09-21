@@ -115,9 +115,24 @@ public final class BuildGraph {
      * for engine, so the width is 1 and each gets the whole machine in turn.
      */
     public static int maxReadyWidth(Set<Path> dirs, Map<Path, Set<Path>> edges) {
+        int max = 1;
+        for (List<Path> wave : waves(dirs, edges)) max = Math.max(max, wave.size());
+        return max;
+    }
+
+    /**
+     * The waves the ready-set drains in: every dir in a wave has all of its in-graph prereqs in an
+     * earlier one, and none in its own. Dependency order holds between waves and nothing inside a
+     * wave depends on anything else there, which is what lets a reader walk a wave concurrently.
+     *
+     * <p>A dir a cycle leaves unreachable is dropped rather than looped on: the graph resolve
+     * reports the cycle, and nothing here should spin waiting for a prereq that never arrives. A
+     * caller that must cover every dir checks what came back.
+     */
+    public static List<List<Path>> waves(Set<Path> dirs, Map<Path, Set<Path>> edges) {
         Set<Path> done = new HashSet<>();
         List<Path> remaining = new ArrayList<>(dirs);
-        int max = 1;
+        List<List<Path>> waves = new ArrayList<>();
         while (!remaining.isEmpty()) {
             List<Path> ready = remaining.stream()
                     .filter(d -> edges.getOrDefault(d, Set.of()).stream()
@@ -125,11 +140,11 @@ public final class BuildGraph {
                             .allMatch(done::contains))
                     .toList();
             if (ready.isEmpty()) break; // defensive: a cycle would otherwise spin
-            max = Math.max(max, ready.size());
+            waves.add(ready);
             done.addAll(ready);
             remaining.removeAll(ready);
         }
-        return max;
+        return waves;
     }
 
     /**
