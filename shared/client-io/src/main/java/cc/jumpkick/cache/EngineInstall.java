@@ -38,12 +38,16 @@ import org.jspecify.annotations.Nullable;
  * possible; a collision with different bytes publishes {@code jk-engine-<version>.<epochMillis>.jar}
  * beside the old file. {@link #gc} deletes every engine jar except the live name, plus parked PATH
  * binaries ({@code jk.old} / {@code jk.exe.old}).
+ *
+ * <p>{@code jk-shelf.toml} beside the pointer ({@link ShelfManifest}) names the first-party
+ * shelf the last install pinned to its engine; it is the install's to write and never swept.
  */
 public final class EngineInstall {
 
     public static final String BIN_NAME = "jk-engine";
     public static final String LOCK_NAME = ".jk-engine.lock";
     public static final String POINTER_NAME = "jk-engine.toml";
+    public static final String SHELF_NAME = ShelfManifest.FILE_NAME;
 
     /**
      * {@code jk-engine-<version>.jar} or {@code jk-engine-<version>.<10-13 digit epoch>.jar}. The
@@ -85,6 +89,11 @@ public final class EngineInstall {
     /** Live pointer beside the jars. */
     public Path configFile() {
         return engineHome().resolve(POINTER_NAME);
+    }
+
+    /** The shelf manifest beside the pointer; may not exist. */
+    public Path shelfFile() {
+        return engineHome().resolve(SHELF_NAME);
     }
 
     /**
@@ -429,7 +438,7 @@ public final class EngineInstall {
             for (Path p : entries) {
                 if (!Files.isRegularFile(p)) continue;
                 String name = p.getFileName().toString();
-                if (LOCK_NAME.equals(name) || POINTER_NAME.equals(name)) continue;
+                if (LOCK_NAME.equals(name) || POINTER_NAME.equals(name) || SHELF_NAME.equals(name)) continue;
                 if (liveName != null && liveName.equals(name)) continue;
                 if (isEngineJarName(name) || name.endsWith(".tmp") || name.endsWith(".old") || name.contains(".old-")) {
                     tryDelete(p, removed);

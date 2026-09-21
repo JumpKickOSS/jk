@@ -68,6 +68,11 @@ public final class EngineProbe {
             @Nullable String ignoredSignals,
             /** Jobs waiting for engine memory; {@code 0} when none or when the engine did not report. */
             int queuedBuildPlans,
+            /**
+             * The checkout the engine's first-party workers were installed from; {@code ""} when no
+             * install pinned a shelf to it, {@code null} when the engine did not report.
+             */
+            @Nullable String installSource,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
             List<Job> jobs) {
 
@@ -215,6 +220,7 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "logRolledAt", -1),
                     Jsonl.str(ack, "ignoredSignals"),
                     Jsonl.intValue(ack, "queuedBuildPlans", 0),
+                    Jsonl.str(ack, "installSource"),
                     Job.decodeAll(ack)));
         } catch (IOException e) {
             return Optional.empty();

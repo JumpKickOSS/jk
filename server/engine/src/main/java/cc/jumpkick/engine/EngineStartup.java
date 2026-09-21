@@ -7,6 +7,7 @@ import cc.jumpkick.config.Jobs;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.host.Log;
 import java.io.IOException;
@@ -57,6 +58,7 @@ final class EngineStartup {
         sizeSharedWorkerMemory();
         log.accept("jk engine: listening on " + won.active().socket() + " (pid " + pid + ")");
         yieldPredecessor(won);
+        adoptShelfPins();
         collectDisplacedInstallFiles();
         sweepForeignWorkerCaches();
         bindHttp();
@@ -92,6 +94,21 @@ final class EngineStartup {
         } catch (RuntimeException e) {
             Log.debug("sweepForeignWorkerCaches: best-effort", e);
         }
+    }
+
+    /**
+     * Read the shelf manifest now, while the pointer still names this engine: a later install from
+     * another checkout rewrites it for another engine, and this engine must keep forking the
+     * workers it was installed with until it drains.
+     */
+    private void adoptShelfPins() {
+        var pins = ShelfPins.current();
+        if (pins == null) {
+            log.accept(
+                    "jk engine: no shelf manifest names this engine; first-party workers launch from the shelf as is");
+            return;
+        }
+        log.accept("jk engine: " + pins.jars().size() + " shelf jars pinned by the install from " + pins.source());
     }
 
     private void collectDisplacedInstallFiles() {

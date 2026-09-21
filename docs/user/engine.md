@@ -35,9 +35,12 @@ the running build and refuses with its number.
 
 ### Live and queued jobs
 
-`jk engine status` lists every job the engine holds under its `Live Jobs` and `Queued` rows —
-jid, kind, project directory, when it was admitted or arrived, its live worker processes and
-how long since its last task event:
+`jk engine status` prints the engine's version and, when the engine was installed by
+`jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
+engine forks (`installSource` in `--output json` and `GET /api/status`; see
+[install](install.md#on-disk-layout)). It lists every job the engine holds under its `Live Jobs`
+and `Queued` rows — jid, kind, project directory, when it was admitted or arrived, its live worker
+processes and how long since its last task event:
 
 ```
  Live Jobs: 1

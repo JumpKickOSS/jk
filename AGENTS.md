@@ -130,7 +130,7 @@ jk build --skip-tests && jk install --skip-tests
 | `./gradlew installLocal` | Worker jars onto the shelf; engine jar into `~/.jk/lib/jk-engine/`; daemon bounce |
 | `./install.sh build/dist/jk` | PATH client from the Gradle ship layout |
 | `jk build --skip-tests` | Every module compiled and packaged; `target/dist/jk` (native CLI) + `target/dist/lib/jk-engine-<version>.jar` |
-| `jk install --skip-tests` | Shelves every library and worker jar under `~/.jk/store/repos/jk-local`, materializes the engine jar into `~/.jk/lib/jk-engine/` and swaps the native client into `~/.jk/bin/jk`; the next invocation takes over the resident engine |
+| `jk install --skip-tests` | Shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
 
 Windows thin client (Smart App Control blocks unsigned `jk.exe`):
 `.\gradlew :cli:installDist installLocal` then `.\install.cmd clients\cli\build\install\jk\bin\jk.bat`.
@@ -138,7 +138,7 @@ Windows thin client (Smart App Control blocks unsigned `jk.exe`):
 Then verify on PATH (or the install dir):
 
 ```bash
-jk engine status          # engine starts / answers; no version-skew crash
+jk engine status          # engine answers, no version-skew crash; `Source` names this checkout
 # simple smoke project (any temp dir; `jk init` takes no directory — it initializes the cwd):
 jk new smoke-app --lang java && cd smoke-app && jk build
 ```
