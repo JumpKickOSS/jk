@@ -322,9 +322,12 @@ fork next. The engine therefore names its workers by content, not by path:
 - `jk install` (and `jk self shelve`) then writes **`~/.jk/lib/jk-engine/jk-shelf.toml`** beside
   the engine pointer: the engine's jar sha, the checkout it came from, and the thin jar of every
   module the pass shelved by `group:artifact:version` and sha256, with the POM published beside it
-  under `[poms]`. A cwd-scoped install shelves the selected cone only and rewrites only those pins;
-  the rest stay as they were. The write is a locked read-merge-write (`jk-shelf.toml.lock`), so two
-  installs for one engine keep each other's pins.
+  under `[poms]`. The shas are the ones the engine's `cache-install` step reports on each module's
+  outcome (`shelfJarSha256` / `shelfPomSha256` on `module-finish`), never a re-read of the shelf, so
+  an install from another checkout landing after the pass cannot lend this manifest its bytes. A
+  cwd-scoped install shelves the selected cone only and rewrites only those pins; the rest stay as
+  they were. The write is a locked read-merge-write (`jk-shelf.toml.lock`), so two installs for one
+  engine keep each other's pins.
 
   ```toml
   engine-sha256 = "…"

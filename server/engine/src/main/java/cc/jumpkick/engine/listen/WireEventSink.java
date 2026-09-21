@@ -105,7 +105,8 @@ public final class WireEventSink implements EventSink {
                         e.millis(),
                         e.didWork(),
                         e.cancelled(),
-                        e.image());
+                        e.image(),
+                        e.shelved());
             case EngineEvent.Eta e -> ProtoEvents.eta(e.remainingMs());
             // SSE-only events: the wire already carries plan-module weights and a kind-specific
             // terminal (PlanFinishLine).

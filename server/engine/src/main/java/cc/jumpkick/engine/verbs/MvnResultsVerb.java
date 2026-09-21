@@ -120,8 +120,7 @@ public final class MvnResultsVerb implements HostedVerb {
                         m.success() ? Exit.SUCCESS : Exit.FAILURE,
                         m.millis(),
                         true,
-                        false,
-                        null));
+                        false));
         if (!m.tests().isEmpty()) MarkdownTestReport.publish(dir, m.coord(), m.tests());
     }
 }
