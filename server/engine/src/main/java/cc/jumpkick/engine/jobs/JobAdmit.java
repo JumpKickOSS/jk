@@ -23,8 +23,9 @@ public final class JobAdmit {
     private JobAdmit() {}
 
     /**
-     * Allocate a build number (journaled kinds), take an exclusive fingerprint slot when required,
-     * and persist an in-flight journal stub.
+     * Allocate a build number (journaled kinds), take an exclusive fingerprint slot when required
+     * — in this engine's table and, through {@link BuildSlot}, against every other engine on the
+     * machine — and persist an in-flight journal stub.
      */
     public static AdmitResult admit(
             JobEnvelope.Host host,
@@ -43,6 +44,16 @@ public final class JobAdmit {
         }
         String canonDir = BuildJobFingerprint.canonicalDir(dir);
         String coord = host.coordOf(dir);
+        // Another engine on this machine may hold the checkout: its slot lock says so, and names
+        // the build it is running.
+        BuildSlot slot = null;
+        if (exclusive && !fp.isEmpty() && canonDir != null && !canonDir.isBlank()) {
+            Path checkout = Path.of(canonDir);
+            slot = BuildSlot.tryTake(checkout).orElse(null);
+            if (slot == null && BuildSlot.heldElsewhere(checkout)) {
+                return AdmitResult.reject(BuildSlot.holderOf(checkout, fp, dir, coord));
+            }
+        }
         long buildNumber = 0L;
         if (BuildHistoryKinds.isBuildLike(kind) && canonDir != null && !canonDir.isBlank()) {
             buildNumber = BuildNumberAllocator.allocate(canonDir, coord);
@@ -72,7 +83,12 @@ public final class JobAdmit {
                 // Scoped: journalId is this project's build number, which another project may
                 // also use.
                 if (journalId != null) host.journal().delete(journalId, coord, dir);
+                if (slot != null) slot.close();
                 return AdmitResult.reject(raced.get());
+            }
+            if (slot != null) {
+                slot.describe(candidate);
+                host.inFlight().attachSlot(requestId, slot);
             }
         } else {
             host.inFlight().tryAcquire(candidate);

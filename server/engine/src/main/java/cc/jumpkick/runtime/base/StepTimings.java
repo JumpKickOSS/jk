@@ -2,10 +2,12 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.AggregatedMetrics;
+import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
@@ -233,18 +235,21 @@ public final class StepTimings {
         if (f.equals(defaultFile()) || isLiveBuildsTimings(f)) {
             return;
         }
-        Map<String, Entry> m = new HashMap<>(readFile(f).entries);
-        for (Sample s : samples) {
-            // Ignore negative and near-zero (cache-hit / empty work) so rates stay about real work.
-            if (s.observedPerUnit() < 1e-6) continue;
-            String k = key(s.dir(), s.step());
-            Entry prev = m.get(k);
-            double next =
-                    prev == null ? s.observedPerUnit() : alpha * s.observedPerUnit() + (1 - alpha) * prev.perUnit();
-            m.put(k, new Entry(next, nowMillis));
-        }
         try {
-            write(f, m);
+            FileLocks.withLock(ProjectBuilds.ledgerLock(f), () -> {
+                Map<String, Entry> m = new HashMap<>(readFile(f).entries);
+                for (Sample s : samples) {
+                    // Near-zero (cache-hit / empty work) is ignored so rates stay about real work.
+                    if (s.observedPerUnit() < 1e-6) continue;
+                    String k = key(s.dir(), s.step());
+                    Entry prev = m.get(k);
+                    double next = prev == null
+                            ? s.observedPerUnit()
+                            : alpha * s.observedPerUnit() + (1 - alpha) * prev.perUnit();
+                    m.put(k, new Entry(next, nowMillis));
+                }
+                write(f, m);
+            });
             MEMO.remove(f); // next load in this process sees the update
         } catch (IOException | RuntimeException e) {
             // advisory store — never fail the build over it

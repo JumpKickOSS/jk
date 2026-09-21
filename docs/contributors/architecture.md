@@ -62,6 +62,15 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   record of them (`jk-jdks.toml`, fingerprints, Java/Graal defaults) lives under the platform
   **state** dir (`$JK_STATE_DIR`, default `~/.jk/state`). No `default-jdk` / `current-jdk`
   symlinks under data, and no access log — jk never evicts a JDK, so there is nothing to rank.
+- **Exclusivity** — one build-like job per checkout. Inside an engine the fingerprint table
+  (`InFlightBuilds`, keyed by the checkout's real path) refuses a second same-checkout job with
+  `Build #N is already running`; across engines on one machine (a draining predecessor beside
+  its successor, two homes sharing a cache) the checkout's `target/.jk/build.lock` (`BuildSlot`)
+  does the same, and the file names the holder's build so the refusal can too. The OS releases
+  the lock with the process. Whole-file ledgers under the builds root (`schedule-bias.toml`,
+  `project-metrics.toml`, `host-metrics.toml`, the run-number counter) fold under a sibling
+  `<file>.lock` (`FileLocks`), so two engines cannot lose each other's rows; non-build journal
+  dirs carry the engine's pid.
 - **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
   identity hash because two invocations can share a state dir while disagreeing about where downloads
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several

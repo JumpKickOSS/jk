@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.api;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -11,8 +13,8 @@ import org.jspecify.annotations.Nullable;
  * Engine-local exclusive slots for same-fingerprint build-like jobs plus a view of every
  * in-flight hold for durable history / dashboard.
  *
- * <p>Not a distributed lock: one resident engine process. Different engines on the same host
- * are out of scope.
+ * <p>One engine's table. Across engines on one host the checkout's {@code target/.jk/build.lock}
+ * ({@code BuildSlot}) arbitrates; the slot rides with the hold here so one release frees both.
  */
 public final class InFlightBuilds {
 
@@ -31,6 +33,9 @@ public final class InFlightBuilds {
 
     private final ConcurrentHashMap<String, Hold> byFingerprint = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Hold> byRequestId = new ConcurrentHashMap<>();
+
+    /** The checkout's cross-process slot each exclusive hold took, closed with the hold. */
+    private final ConcurrentHashMap<Long, Closeable> slots = new ConcurrentHashMap<>();
 
     /** Current holder of {@code fingerprint}, if any. */
     public Optional<Hold> peek(String fingerprint) {
@@ -61,8 +66,21 @@ public final class InFlightBuilds {
         return Optional.ofNullable(rejected[0]);
     }
 
+    /** Pair {@code requestId}'s hold with the checkout slot it took; {@link #release} closes it. */
+    public void attachSlot(long requestId, Closeable slot) {
+        slots.put(requestId, slot);
+    }
+
     /** Release after finish/cancel. Idempotent. */
     public void release(long requestId) {
+        Closeable slot = slots.remove(requestId);
+        if (slot != null) {
+            try {
+                slot.close();
+            } catch (IOException ignored) {
+                // the OS releases the lock with the channel either way
+            }
+        }
         Hold h = byRequestId.remove(requestId);
         if (h == null) return;
         if (h.fingerprint() != null && !h.fingerprint().isEmpty()) {
