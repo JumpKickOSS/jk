@@ -206,7 +206,9 @@ jk tree -t
 
 Every compile/test/package step is keyed by a hash of its **inputs**. Outputs live in a
 **content-addressed store**. Unchanged inputs restore; one file change re-runs only what
-must. `jk explain` forecasts the work before you spend the time.
+must. A key names content and a project-relative output, never the checkout, so a second
+worktree or a CI agent at the same commit restores what the first built. `jk explain`
+forecasts the work before you spend the time.
 
 ### A small engine, not a multi-gigabyte daemon
 
