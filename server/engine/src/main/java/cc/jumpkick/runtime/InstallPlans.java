@@ -45,6 +45,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -71,6 +72,10 @@ public final class InstallPlans {
 
     // Cross-step keys.
     public static final BuildPlanKey<Coordinate> PRIMARY = BuildPlanKey.scalar("primary-coord", Coordinate.class);
+    /** What {@code cache-install} put on the shelf: the module's coordinate and the shas it published. */
+    public static final BuildPlanKey<ModuleOutcome.Shelved> SHELVED =
+            BuildPlanKey.scalar("shelved", ModuleOutcome.Shelved.class);
+
     public static final BuildPlanKey<Path> CHECKOUT = BuildPlanKey.scalar("checkout-dir", Path.class);
     public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.scalar("fetched-sha", String.class);
 
@@ -153,7 +158,7 @@ public final class InstallPlans {
      * would be the one build verb that skips it silently; {@code --skip-tests} stays the opt-out.
      */
     public static void appendCacheInstall(BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir) {
-        builder.stateKeys(PRIMARY);
+        builder.stateKeys(PRIMARY, SHELVED);
         // Require whatever the plan already ends on, not just package-jar. appendDeclaredTails
         // re-roots the terminal onto its own join so the assembly / minified / sources tails are
         // not pruned; taking the terminal for cache-install without requiring that join pruned
@@ -216,30 +221,35 @@ public final class InstallPlans {
                 .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir))
                 .build();
         return BuildPlan.builder("reshelve")
-                .stateKeys(BuildPlanner.PROJECT, BuildPlanner.LAYOUT, PRIMARY)
+                .stateKeys(BuildPlanner.PROJECT, BuildPlanner.LAYOUT, PRIMARY, SHELVED)
                 .addTask(parseBuild)
                 .addTask(cacheInstall)
                 .terminal(TaskNames.CACHE_INSTALL)
                 .build();
     }
 
-    /** Shared {@code cache-install} body: stamp when the shelf already matches, else write. */
+    /**
+     * Shared {@code cache-install} body: stamp when the shelf already matches, else write. Either
+     * way {@link #SHELVED} names the shas the shelf holds for this module when the step returns.
+     */
     private static void executeCacheInstall(TaskContext ctx, Path cache, Path m2Dir) {
         JkBuild project = ctx.require(BuildPlanner.PROJECT);
         BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-        if (alreadyInstalled(project, layout, cache, m2Dir)) {
+        ModuleOutcome.Shelved shelved = installedShas(project, layout, cache, m2Dir);
+        if (shelved != null) {
             ctx.label("already in local repo");
             ctx.cached();
             stampShelfPackager(coord, BuildIdentity.codeSha256());
             ctx.put(PRIMARY, coord);
+            ctx.put(SHELVED, shelved);
             ctx.progress(1);
             return;
         }
         ctx.label("install " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " to cache");
         try {
-            cacheInstallArtifact(project, layout, cache, m2Dir);
+            shelved = cacheInstallArtifact(project, layout, cache, m2Dir);
         } catch (IOException e) {
             // Class name first: Windows FileSystemException messages are often just
             // "a -> b" with no reason, which hides whether it was access-denied or a
@@ -248,7 +258,16 @@ public final class InstallPlans {
             throw new RuntimeException(e);
         }
         ctx.put(PRIMARY, coord);
+        ctx.put(SHELVED, shelved);
         ctx.progress(1);
+    }
+
+    /**
+     * What {@code plan}'s {@code cache-install} step put on the shelf; {@code null} when the plan
+     * has no such step or never reached it.
+     */
+    public static ModuleOutcome.@Nullable Shelved shelvedOf(BuildPlan plan) {
+        return plan.get(SHELVED).orElse(null);
     }
 
     /**
@@ -329,12 +348,6 @@ public final class InstallPlans {
         }
     }
 
-    /** Cache-install the thin jar of {@code moduleDir} after a workspace package. */
-    public static void installThinJar(Path moduleDir, Path cache, Path m2Dir) throws IOException {
-        JkBuild proj = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir));
-        cacheInstallArtifact(proj, BuildLayout.of(moduleDir, proj), cache, m2Dir);
-    }
-
     /**
      * Install the built JAR and POM into {@code repos/jk-local/} — always, in full: that shelf is
      * where jk's own resolvers and the worker launcher read, and a memo pointing elsewhere is a
@@ -342,9 +355,11 @@ public final class InstallPlans {
      * JK_M2_INSTALL} policy) is on, the same bytes also go to the Maven local repo with Maven's
      * checksum sidecars, for Maven and Gradle builds beside jk. Independent of {@code [m2]
      * integration}.
+     *
+     * @return the coordinate and the shas of the jar and POM bytes this call published
      */
-    private static void cacheInstallArtifact(JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir)
-            throws IOException {
+    private static ModuleOutcome.Shelved cacheInstallArtifact(
+            JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir) throws IOException {
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         Path jar = layout.mainJar();
@@ -352,8 +367,8 @@ public final class InstallPlans {
         String pomRelPath = MavenLayout.pomPath(coord);
         byte[] pomBytes = renderedPom(project, layout);
 
-        writeToLocalStore(cacheDir, jarRelPath, jar);
-        writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
+        String jarSha = writeToLocalStore(cacheDir, jarRelPath, jar);
+        String pomSha = writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
         if (PluginModule.isWorker(layout.moduleRoot())) stageWorkerClosure(coord, cacheDir, jarRelPath);
 
         if (installToMavenLocal(p)) {
@@ -372,6 +387,7 @@ public final class InstallPlans {
             M2CompatWriter.MavenHashes pomH = M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);
             M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
         }
+        return new ModuleOutcome.Shelved(coord.toGav(), jarSha, pomSha);
     }
 
     /** Project {@code [m2] install} and the machine {@code JK_M2_INSTALL} / {@code [m2] install} policy. */
@@ -393,9 +409,19 @@ public final class InstallPlans {
      * machine's.
      */
     public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir, @Nullable Path m2Dir) {
-        if (project == null || layout == null) return false;
+        return installedShas(project, layout, cacheDir, m2Dir) != null;
+    }
+
+    /**
+     * The shas the shelf (and, when {@code [m2] install} is on, the Maven local repo) already
+     * holds for this module's thin jar and rendered POM; {@code null} when either is missing or
+     * differs from the tree's bytes.
+     */
+    static ModuleOutcome.@Nullable Shelved installedShas(
+            JkBuild project, BuildLayout layout, Path cacheDir, @Nullable Path m2Dir) {
+        if (project == null || layout == null) return null;
         Path jar = layout.mainJar();
-        if (!Files.isRegularFile(jar)) return false;
+        if (!Files.isRegularFile(jar)) return null;
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         String jarRel = MavenLayout.artifactPath(coord);
@@ -405,12 +431,14 @@ public final class InstallPlans {
             String pomHex = Hashing.sha256Hex(renderedPom(project, layout));
             RepoArtifactStore local = localStore(cacheDir);
             if (local.locate(jarRel, jarHex).isEmpty()
-                    || local.locate(pomRel, pomHex).isEmpty()) return false;
-            if (!installToMavenLocal(p)) return true;
+                    || local.locate(pomRel, pomHex).isEmpty()) return null;
+            ModuleOutcome.Shelved shelved = new ModuleOutcome.Shelved(coord.toGav(), jarHex, pomHex);
+            if (!installToMavenLocal(p)) return shelved;
             Path m2 = m2Dir == null ? M2Dirs.localRepository() : m2Dir.resolve("repository");
-            return sameBytes(m2.resolve(jarRel), jarHex) && sameBytes(m2.resolve(pomRel), pomHex);
+            boolean inM2 = sameBytes(m2.resolve(jarRel), jarHex) && sameBytes(m2.resolve(pomRel), pomHex);
+            return inM2 ? shelved : null;
         } catch (RuntimeException | IOException e) {
-            return false;
+            return null;
         }
     }
 
@@ -651,12 +679,17 @@ public final class InstallPlans {
         return RepoArtifactStore.forStoreId(JkStores.store(), RepoArtifactResolver.JK_LOCAL);
     }
 
-    /** Write byte content into {@code repos/jk-local/} as a full-store entry with a {@code .jk} memo. */
-    private static void writeBytesToLocalStore(Path cacheDir, String relativePath, byte[] content) throws IOException {
+    /**
+     * Write byte content into {@code repos/jk-local/} as a full-store entry with a {@code .jk} memo.
+     *
+     * @return the sha256 of the published bytes
+     */
+    private static String writeBytesToLocalStore(Path cacheDir, String relativePath, byte[] content)
+            throws IOException {
         Path tmp = Files.createTempFile("jk-install-", ".bin");
         try {
             Files.write(tmp, content);
-            writeToLocalStore(cacheDir, relativePath, tmp);
+            return writeToLocalStore(cacheDir, relativePath, tmp);
         } finally {
             Files.deleteIfExists(tmp);
         }

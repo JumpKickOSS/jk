@@ -229,9 +229,14 @@ class ProtoEventsFrozenBytesTest {
                         9,
                         true,
                         false,
-                        new ModuleOutcome.Image("ghcr.io/x:1", null, "x", null, null)))
+                        new ModuleOutcome.Image("ghcr.io/x:1", null, "x", null, null),
+                        null))
                 .isEqualTo(
                         "{\"type\":\"module-finish\",\"dir\":\"a/b\",\"coord\":\"g:a\",\"success\":true,\"exitCode\":0,\"millis\":9,\"didWork\":true,\"cancelled\":false,\"imageRef\":\"ghcr.io/x:1\",\"imageName\":\"x\",\"hasImage\":true}");
+        assertThat(ProtoEvents.moduleFinish(
+                        "a/b", "g:a", true, 0, 9, true, false, null, new ModuleOutcome.Shelved("g:a:1", "aa", "bb")))
+                .isEqualTo(
+                        "{\"type\":\"module-finish\",\"dir\":\"a/b\",\"coord\":\"g:a\",\"success\":true,\"exitCode\":0,\"millis\":9,\"didWork\":true,\"cancelled\":false,\"shelfCoord\":\"g:a:1\",\"shelfJarSha256\":\"aa\",\"shelfPomSha256\":\"bb\"}");
         assertThat(ProtoEvents.workspaceFinish(
                         false, 2, SecretRedactor.of(List.of("s3cret")).redactAll(List.of("m1", "m2")), true))
                 .isEqualTo(

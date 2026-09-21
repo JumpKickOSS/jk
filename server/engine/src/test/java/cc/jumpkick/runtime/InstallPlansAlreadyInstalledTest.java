@@ -3,12 +3,14 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,9 +46,14 @@ class InstallPlansAlreadyInstalledTest {
             Files.writeString(pomFile, PublishablePom.render(project, null).xml());
             InstallPlans.writeToLocalStore(cache, MavenLayout.pomPath(coord), pomFile);
             assertThat(InstallPlans.alreadyInstalled(project, layout, cache)).isTrue();
+            // The skipped step still reports the shas the shelf holds, for the client's pins.
+            assertThat(InstallPlans.installedShas(project, layout, cache, null))
+                    .isEqualTo(new ModuleOutcome.Shelved(
+                            coord.toGav(), Hashing.sha256Hex(layout.mainJar()), Hashing.sha256Hex(pomFile)));
 
             Files.writeString(layout.mainJar(), "jar-bytes-changed");
             assertThat(InstallPlans.alreadyInstalled(project, layout, cache)).isFalse();
+            assertThat(InstallPlans.installedShas(project, layout, cache, null)).isNull();
         } finally {
             if (prev != null) System.setProperty("jk.env.JK_STORE_DIR", prev);
             else System.clearProperty("jk.env.JK_STORE_DIR");

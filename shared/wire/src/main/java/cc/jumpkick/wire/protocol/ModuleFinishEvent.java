@@ -9,6 +9,8 @@ import org.jspecify.annotations.Nullable;
  * A module's terminal. {@code didWork} and {@code cancelled} are additive; the image fields ride
  * only for an image module (each only when set) and are followed by {@code hasImage} so a reader can
  * tell "image module with nothing to say" from "not an image module" (see {@link EngineProtocol#MODULE_FINISH}).
+ * The shelf fields ({@code shelfCoord}, {@code shelfJarSha256}, {@code shelfPomSha256}) ride only
+ * when an install pass shelved the module, all three together.
  */
 public record ModuleFinishEvent(
         String dir,
@@ -18,7 +20,8 @@ public record ModuleFinishEvent(
         long millis,
         boolean didWork,
         boolean cancelled,
-        ModuleOutcome.@Nullable Image image) {
+        ModuleOutcome.@Nullable Image image,
+        ModuleOutcome.@Nullable Shelved shelved) {
     public String encode() {
         RequestJson json = RequestJson.request(EngineProtocol.MODULE_FINISH)
                 .string("dir", dir)
@@ -36,6 +39,11 @@ public record ModuleFinishEvent(
                     .optionalString("imageDaemonExe", image.daemonExe())
                     .bool("hasImage", true);
         }
+        if (shelved != null) {
+            json.string("shelfCoord", shelved.coordinate())
+                    .string("shelfJarSha256", shelved.jarSha256())
+                    .string("shelfPomSha256", shelved.pomSha256());
+        }
         return json.finish();
     }
 
@@ -48,6 +56,13 @@ public record ModuleFinishEvent(
                         Jsonl.str(json, "imageVersion"),
                         Jsonl.str(json, "imageDaemonExe"))
                 : null;
+        String shelfCoord = Jsonl.str(json, "shelfCoord");
+        ModuleOutcome.Shelved shelved = shelfCoord == null
+                ? null
+                : new ModuleOutcome.Shelved(
+                        shelfCoord,
+                        Jsonl.requiredStr(json, "shelfJarSha256"),
+                        Jsonl.requiredStr(json, "shelfPomSha256"));
         return new ModuleFinishEvent(
                 Jsonl.requiredStr(json, "dir"),
                 Jsonl.requiredStr(json, "coord"),
@@ -56,6 +71,7 @@ public record ModuleFinishEvent(
                 Jsonl.longValue(json, "millis", 0),
                 Jsonl.bool(json, "didWork", false),
                 Jsonl.bool(json, "cancelled", false),
-                image);
+                image,
+                shelved);
     }
 }
