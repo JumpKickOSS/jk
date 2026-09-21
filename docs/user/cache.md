@@ -22,7 +22,17 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 | **Project `target/`** | This checkout’s outputs | `jk clean` |
 
 `jk clean` does **not** by itself force a full recompute: unchanged inputs restore from
-the action cache. `--force` also invalidates this project’s action-cache entries.
+the action cache. `--force` also invalidates this project’s action-cache entries — every
+checkout's, since the entries are shared; a neighbour worktree rebuilds them on its next build.
+
+One rule decides where a byte lives. **Content** (an action key and its outputs, a dependency's
+ABI, a fetched jar) is shared by every checkout and every project: it is a function of its
+inputs, so a second checkout of the same commit hits the first's records. **Checkout** state
+(`target/`, freshness stamps, incremental compiler analyses, test sandboxes) is keyed by the
+checkout's real path and never shared. **Project** state (run history, metrics, the run-number
+sequence) is shared by every checkout of one project through the lock's `project-id`, and every
+row names the checkout it came from. [CI](ci.md#sharing-a-cache-across-checkouts-and-agents)
+lists which roots a runner may therefore share.
 
 Everything under a cache root — including its `sha256/` blob pool — is cache tier:
 cleaned with `jk cache clean` and wiped by `jk cache nuke`. A nuke removes the root

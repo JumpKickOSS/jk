@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.plugin.protocol.PluginSpec;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -208,5 +209,43 @@ class FormatKeyTest {
                         List.of(),
                         null)
                 .digest();
+    }
+    /** The index names its sources module-relative, so two checkouts share both format stores. */
+    @Test
+    void the_index_identity_is_the_same_from_two_checkouts(@TempDir Path tmp) throws IOException {
+        Path worker = Files.writeString(tmp.resolve("jk-formatter.jar"), "thin worker");
+        Files.writeString(tmp.resolve("jk-formatter.pom"), "<project/>\n");
+        Path a = module(tmp.resolve("one/app"));
+        Path b = module(tmp.resolve("two/deeper/app"));
+        FormatKey keyA = key(worker, List.of(a.resolve("src/main/java/A.java"), a.resolve("src/main/java/B.java")));
+        FormatKey keyB = key(worker, List.of(b.resolve("src/main/java/B.java"), b.resolve("src/main/java/A.java")));
+        assertThat(keyA.digest()).isEqualTo(keyB.digest());
+        assertThat(key(worker, List.of(a.resolve("src/main/java/A.java"))).digest())
+                .as("the set of nameable types still moves the key")
+                .isNotEqualTo(keyA.digest());
+    }
+
+    private static FormatKey key(Path worker, List<Path> indexFiles) {
+        return new FormatKey(
+                "palantir",
+                FormatPlans.PALANTIR_VERSION,
+                "kotlinlang",
+                FormatPlans.KTFMT_VERSION,
+                FormatPlans.KOTLIN_MAX_WIDTH,
+                true,
+                true,
+                true,
+                FormatPlans.GOOGLE_VERSION,
+                FormatPlans.SCALAFMT_VERSION,
+                indexFiles,
+                worker);
+    }
+
+    private static Path module(Path root) throws IOException {
+        Files.createDirectories(root.resolve("src/main/java"));
+        Files.writeString(root.resolve("jk.toml"), "name = \"app\"\n");
+        Files.writeString(root.resolve("src/main/java/A.java"), "class A {}");
+        Files.writeString(root.resolve("src/main/java/B.java"), "class B {}");
+        return root;
     }
 }
