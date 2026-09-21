@@ -59,4 +59,32 @@ class PortablePathTest {
         PortablePath.expire();
         assertThat(PortablePath.of(file)).isEqualTo("src/B.java");
     }
+
+    @Test
+    void a_pom_only_directory_is_a_module_root(@TempDir Path tmp) throws Exception {
+        // Built in place from pom.xml, the module has no jk.toml of its own: its shadow manifest
+        // lives under target/. The POM dir is still the root every source spells against.
+        Files.writeString(tmp.resolve(ManifestPaths.MANIFEST), "[project]\nname='outer'\n");
+        Path module = Files.createDirectories(tmp.resolve("legacy"));
+        Files.writeString(module.resolve(ManifestPaths.POM), "<project/>");
+        Path file = Files.writeString(
+                Files.createDirectories(module.resolve("src/main/java")).resolve("A.java"), "");
+        assertThat(PortablePath.of(file)).isEqualTo("src/main/java/A.java");
+        assertThat(PortablePath.key(file)).isEqualTo("src/main/java/A.java");
+        assertThat(PortablePath.projectRoot(module.resolve("target/classes"))).contains(module);
+        assertThat(PortablePath.projectRoot(module)).contains(module);
+    }
+
+    @Test
+    void under_no_root_the_key_spelling_is_unique_and_the_token_spelling_is_not(@TempDir Path tmp) throws Exception {
+        Path user = Files.createDirectories(tmp.resolve("user/model")).resolve("Event.java");
+        Path order = Files.createDirectories(tmp.resolve("order/model")).resolve("Event.java");
+        Files.writeString(user, "");
+        Files.writeString(order, "");
+        assertThat(PortablePath.of(user)).isEqualTo("model/Event.java").isEqualTo(PortablePath.of(order));
+        assertThat(PortablePath.key(user))
+                .isNotEqualTo(PortablePath.key(order))
+                .isEqualTo(user.toAbsolutePath().normalize().toString().replace('\\', '/'));
+        assertThat(PortablePath.projectRoot(user)).isEmpty();
+    }
 }

@@ -147,7 +147,7 @@ public final class LangCompile {
         if (javaSources.isEmpty()) return moved;
         Map<Path, String> digests = JavaSourceApi.digests(javaSources);
         for (Path src : javaSources) {
-            if (!Objects.equals(digests.get(src), snapshot.get(ActionKey.JAVA_API + PortablePath.of(src)))) {
+            if (!Objects.equals(digests.get(src), snapshot.get(ActionKey.JAVA_API + PortablePath.key(src)))) {
                 moved.add(src);
             }
         }
@@ -370,7 +370,7 @@ public final class LangCompile {
         Map<Path, String> digests = JavaSourceApi.digests(javaSources);
         Map<String, String> now = new HashMap<>();
         for (Path src : javaSources) {
-            now.put(ActionKey.JAVA_API + PortablePath.of(src), Objects.requireNonNull(digests.get(src), "digest"));
+            now.put(ActionKey.JAVA_API + PortablePath.key(src), Objects.requireNonNull(digests.get(src), "digest"));
         }
         Map<String, String> recorded = new HashMap<>();
         for (Map.Entry<String, String> e : priorInputs.entrySet()) {
