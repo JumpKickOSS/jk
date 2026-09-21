@@ -4,6 +4,7 @@ package cc.jumpkick.cache;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -48,15 +49,29 @@ public record ShelfManifest(String engineSha256, String source, Instant installe
     private static final Pattern ENTRY =
             Pattern.compile("^\\s*(\"(?:[^\"\\\\]|\\\\.)*\"|[A-Za-z0-9._-]+)\\s*=\\s*(.+?)\\s*$");
 
+    /** A plain {@code group:artifact:version}: three non-empty segments, no whitespace or control characters. */
+    private static final Pattern COORDINATE =
+            Pattern.compile("[^\\s:\\p{Cntrl}]+:[^\\s:\\p{Cntrl}]+:[^\\s:\\p{Cntrl}]+");
+
     public ShelfManifest {
         Objects.requireNonNull(engineSha256, "engineSha256");
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(installedAt, "installedAt");
         engineSha256 = engineSha256.strip().toLowerCase(Locale.ROOT);
         Map<String, String> lowered = new TreeMap<>();
-        for (var e : jars.entrySet())
+        for (var e : jars.entrySet()) {
+            if (!isCoordinate(e.getKey())) {
+                throw new IllegalArgumentException(
+                        "shelf pin key is not a plain group:artifact:version: " + MinimalToml.quote(e.getKey()));
+            }
             lowered.put(e.getKey(), e.getValue().strip().toLowerCase(Locale.ROOT));
+        }
         jars = Map.copyOf(lowered);
+    }
+
+    /** True when {@code key} is a plain {@code group:artifact:version} — no colour escapes, no whitespace. */
+    public static boolean isCoordinate(@Nullable String key) {
+        return key != null && COORDINATE.matcher(key).matches();
     }
 
     /** True when this manifest pins the engine whose jar hashes to {@code engineSha256}. */
@@ -72,17 +87,26 @@ public record ShelfManifest(String engineSha256, String source, Instant installe
     /**
      * Record {@code jars} as the shelf of engine {@code engineSha256} in {@code file}: over the
      * entries a manifest already there holds for the same engine, so a scoped install keeps the
-     * pins it did not touch; replacing the file outright when it named another engine.
+     * pins it did not touch; replacing the file outright when it named another engine. The
+     * read-merge-write runs under {@code <file>.lock}, so two installs for one engine keep each
+     * other's pins.
      */
     public static ShelfManifest record(
             Path file, String engineSha256, Path source, Map<String, String> jars, Clock clock) throws IOException {
-        Map<String, String> merged = new LinkedHashMap<>();
-        read(file).filter(m -> m.pins(engineSha256)).ifPresent(m -> merged.putAll(m.jars()));
-        merged.putAll(jars);
-        ShelfManifest manifest = new ShelfManifest(
-                engineSha256, source.toAbsolutePath().normalize().toString(), clock.instant(), merged);
-        manifest.write(file);
-        return manifest;
+        return FileLocks.withLock(lockFile(file), () -> {
+            Map<String, String> merged = new LinkedHashMap<>();
+            read(file).filter(m -> m.pins(engineSha256)).ifPresent(m -> merged.putAll(m.jars()));
+            merged.putAll(jars);
+            ShelfManifest manifest = new ShelfManifest(
+                    engineSha256, source.toAbsolutePath().normalize().toString(), clock.instant(), merged);
+            manifest.write(file);
+            return manifest;
+        });
+    }
+
+    /** The lock every writer of {@code file} takes: {@code <file>.lock} beside it. */
+    static Path lockFile(Path file) {
+        return file.resolveSibling(file.getFileName() + ".lock");
     }
 
     /** The manifest at {@code file}; empty when it is absent or does not name an engine. */
@@ -115,7 +139,7 @@ public record ShelfManifest(String engineSha256, String source, Instant installe
             String key = MinimalToml.unquote(m.group(1));
             String value = MinimalToml.unquote(m.group(2));
             if (inJars) {
-                if (Hashing.isHex(value, 64)) jars.put(key, value);
+                if (isCoordinate(key) && Hashing.isHex(value, 64)) jars.put(key, value);
                 continue;
             }
             switch (key) {

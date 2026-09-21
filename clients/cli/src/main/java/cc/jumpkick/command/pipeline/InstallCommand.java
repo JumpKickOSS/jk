@@ -706,7 +706,7 @@ public final class InstallCommand {
             lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
             modules++;
         }
-        pinShelf(pass).ifPresent(lines::add);
+        lines.add(pinShelf(pass));
         return new Applied(modules, lines);
     }
 
@@ -715,16 +715,28 @@ public final class InstallCommand {
      * has built, by coordinate and sha256, into {@link ShelfManifest} beside the engine pointer.
      * Written after the copy step, so the engine named is the one this pass materialized (or left
      * in place); the engine adopts it at its next fork, or at startup when the pass replaced it.
-     * Empty when the home names no engine — there is nothing to pin the shelf to.
      */
-    private static Optional<String> pinShelf(WorkspacePass pass) throws IOException {
-        Optional<String> engine = liveEngineSha();
-        if (engine.isEmpty()) return Optional.empty();
+    private static String pinShelf(WorkspacePass pass) throws IOException {
         Map<String, String> jars = shelfJars(pass.moduleDirs(), pass.infoByDir());
-        ShelfManifest.record(EngineInstall.current().shelfFile(), engine.get(), pass.wsRoot(), jars, Clock.SYSTEM);
-        return Optional.of("Pinned " + jars.size() + " shelf jar" + (jars.size() == 1 ? "" : "s") + " to engine "
-                + shortSha(engine) + " from " + PathDisplay.of(pass.wsRoot()));
+        return pinShelf(liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), jars);
     }
+
+    /**
+     * Record {@code jars} in the manifest at {@code shelfFile} as engine {@code engine}'s shelf,
+     * installed from {@code source}; the line the install prints for it. A home whose pointer
+     * names no engine jar by sha256 has nothing to pin the shelf to, and the line says so.
+     */
+    static String pinShelf(Optional<String> engine, Path shelfFile, Path source, Map<String, String> jars)
+            throws IOException {
+        if (engine.isEmpty()) return SHELF_NOT_PINNED;
+        ShelfManifest.record(shelfFile, engine.get(), source, jars, Clock.SYSTEM);
+        return "Pinned " + jars.size() + " shelf jar" + (jars.size() == 1 ? "" : "s") + " to engine " + shortSha(engine)
+                + " from " + PathDisplay.of(source);
+    }
+
+    /** What an install says instead of pinning when the home names no engine jar by sha256. */
+    static final String SHELF_NOT_PINNED =
+            "Shelf not pinned: the home names no engine jar by sha256, so its workers launch as the shelf holds them";
 
     /**
      * {@code group:artifact:version} to sha256 of the thin jar {@code jk build} left for each
@@ -740,8 +752,7 @@ public final class InstallCommand {
             if (jarPath == null || jarPath.isBlank()) continue;
             Path jar = Path.of(jarPath);
             if (!Files.isRegularFile(jar)) continue;
-            String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
-            jars.put(coord, Hashing.sha256Hex(jar));
+            jars.put(Coordinate.of(info.group(), info.name(), info.version()).toGav(), Hashing.sha256Hex(jar));
         }
         return jars;
     }
@@ -825,9 +836,13 @@ public final class InstallCommand {
         return sha.map(s -> s.length() > 12 ? s.substring(0, 12) : s).orElse("(none)");
     }
 
-    /** The engine jar the product library's pointer names, by digest; empty when the home has none. */
+    /**
+     * The engine jar the product library's pointer names, by digest; empty when the home has none,
+     * or names one without a sha256 (a jar inferred from the engine home).
+     */
     private static Optional<String> liveEngineSha() {
-        return EngineInstall.current().currentInstall().map(EngineInstall.Materialized::engineSha);
+        EngineInstall install = EngineInstall.current();
+        return install.currentInstall().flatMap(m -> install.engineSha(m.version()));
     }
 
     /** The product version of the engine the pointer names; empty when the home has none. */
