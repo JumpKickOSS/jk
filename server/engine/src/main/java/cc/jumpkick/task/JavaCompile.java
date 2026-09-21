@@ -131,6 +131,8 @@ public final class JavaCompile {
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent() && actionCache.restore(hit.get(), out)) {
+                Files.createDirectories(stateDir);
+                LangCompile.recordTree(stateDir, key, hit.get().outputs());
                 return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of(), List.of(), 0L);
             }
         }
@@ -204,6 +206,10 @@ public final class JavaCompile {
         }
         if (persist) {
             actionCache.storeWithOutputs(taskId, key, inputs, outputs);
+            // The state's ledger names the compile that produced it, so the forecast reads this
+            // checkout's own last compile rather than the shared pointer's.
+            Files.createDirectories(stateDir);
+            LangCompile.recordTree(stateDir, key, outputs);
         } else if (Files.isDirectory(stateDir)) {
             PathUtil.deleteRecursively(stateDir);
         }
@@ -311,7 +317,7 @@ public final class JavaCompile {
             }
             return new Prediction(Outcome.INCREMENTAL, key, files.size(), reason, files);
         }
-        Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId);
+        Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId, stateDir);
         if (prior.isEmpty()) {
             return new Prediction(Outcome.FULL, key, request.sources().size(), "no prior compile record");
         }
