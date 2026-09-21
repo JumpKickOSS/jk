@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.rules;
 
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -11,6 +12,7 @@ import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,6 +43,16 @@ public final class GuardPacks {
 
     /** The Maven group every rule pack that ships inside jk publishes under. */
     public static final String FIRST_PARTY_GROUP = "cc.jumpkick.guards";
+
+    /**
+     * Parsed {@code [guards] extends} per rules file, stamped on its (size, mtime).
+     *
+     * <p>{@link GuardRules#stamp} calls this for every module of a workspace, and a stamp is meant
+     * to cost a stat: without the memo each call re-read and re-parsed the whole rules file, which
+     * on a large workspace is the single most expensive thing in the cache check and the engine's
+     * biggest allocator during it.
+     */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> DECLARED = StampedMemo.bounded(64);
 
     private GuardPacks() {}
 
@@ -81,8 +93,19 @@ public final class GuardPacks {
     /** The {@code [guards] extends} coordinates of the root rules file, as written (unparsed). */
     public static List<String> declared(Path root) throws IOException {
         Path file = GuardsPresence.rulesFile(root);
-        if (!Files.isRegularFile(file)) return List.of();
-        return declared(Files.readString(file, StandardCharsets.UTF_8));
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
+        if (stamp == null || !Files.isRegularFile(file)) return List.of();
+        try {
+            return DECLARED.get(file, stamp, () -> {
+                try {
+                    return declared(Files.readString(file, StandardCharsets.UTF_8));
+                } catch (IOException unreadable) {
+                    throw new UncheckedIOException(unreadable);
+                }
+            });
+        } catch (UncheckedIOException unreadable) {
+            throw unreadable.getCause();
+        }
     }
 
     static List<String> declared(String rootText) {
