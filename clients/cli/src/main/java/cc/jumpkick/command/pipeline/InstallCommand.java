@@ -706,44 +706,25 @@ public final class InstallCommand {
             lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
             modules++;
         }
-        pinShelf(pass).ifPresent(lines::add);
+        lines.add(pinShelf(pass, result));
         return new Applied(modules, lines);
     }
 
     /**
-     * Pin the shelf to the engine the home names now: every workspace module's thin jar the tree
-     * has built, by coordinate and sha256, into {@link ShelfManifest} beside the engine pointer.
+     * Pin the shelf to the engine the home names now: the thin jar of every module this pass
+     * shelved, by coordinate and sha256, into {@link ShelfManifest} beside the engine pointer.
      * Written after the copy step, so the engine named is the one this pass materialized (or left
      * in place); the engine adopts it at its next fork, or at startup when the pass replaced it.
-     * Empty when the home names no engine — there is nothing to pin the shelf to.
      */
-    private static Optional<String> pinShelf(WorkspacePass pass) throws IOException {
-        Optional<String> engine = liveEngineSha();
-        if (engine.isEmpty()) return Optional.empty();
-        Map<String, String> jars = shelfJars(pass.moduleDirs(), pass.infoByDir());
-        ShelfManifest.record(EngineInstall.current().shelfFile(), engine.get(), pass.wsRoot(), jars, Clock.SYSTEM);
-        return Optional.of("Pinned " + jars.size() + " shelf jar" + (jars.size() == 1 ? "" : "s") + " to engine "
-                + shortSha(engine) + " from " + PathDisplay.of(pass.wsRoot()));
-    }
-
-    /**
-     * {@code group:artifact:version} to sha256 of the thin jar {@code jk build} left for each
-     * module — the bytes {@code cache-install} shelved. A module with no jar on disk contributes
-     * nothing; a coordinator root publishes nothing.
-     */
-    static Map<String, String> shelfJars(List<Path> moduleDirs, Map<Path, ProjectInfo> infoByDir) throws IOException {
-        Map<String, String> jars = new LinkedHashMap<>();
-        for (Path mod : moduleDirs) {
-            ProjectInfo info = infoByDir.get(mod);
-            if (info == null || info.error() != null || info.coordinatorOnly()) continue;
-            String jarPath = info.mainJarPath();
-            if (jarPath == null || jarPath.isBlank()) continue;
-            Path jar = Path.of(jarPath);
-            if (!Files.isRegularFile(jar)) continue;
-            String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
-            jars.put(coord, Hashing.sha256Hex(jar));
+    private String pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
+        Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
+        for (Path mod : ShelfPinning.shelved(result)) {
+            infoByDir.put(
+                    mod, pass.infoByDir().containsKey(mod) ? pass.infoByDir().get(mod) : projectInfo(mod));
         }
-        return jars;
+        Map<String, String> jars = ShelfPinning.shelfJars(List.copyOf(infoByDir.keySet()), infoByDir);
+        Map<String, String> poms = ShelfPinning.shelfPoms(jars.keySet(), JkStores.store());
+        return ShelfPinning.record(liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), jars, poms);
     }
 
     /** The success wedge of a workspace install: what this pass put in place, or that nothing needed to be. */
@@ -825,9 +806,13 @@ public final class InstallCommand {
         return sha.map(s -> s.length() > 12 ? s.substring(0, 12) : s).orElse("(none)");
     }
 
-    /** The engine jar the product library's pointer names, by digest; empty when the home has none. */
+    /**
+     * The engine jar the product library's pointer names, by digest; empty when the home has none,
+     * or names one without a sha256 (a jar inferred from the engine home).
+     */
     private static Optional<String> liveEngineSha() {
-        return EngineInstall.current().currentInstall().map(EngineInstall.Materialized::engineSha);
+        EngineInstall install = EngineInstall.current();
+        return install.currentInstall().flatMap(m -> install.engineSha(m.version()));
     }
 
     /** The product version of the engine the pointer names; empty when the home has none. */
