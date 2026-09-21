@@ -241,6 +241,38 @@ class TestStoreSeedTest {
                 .isRegularFile();
     }
 
+    /**
+     * A hint that lost the POM's own line still vouches for it when every line it kept names
+     * Central: the version's files came from one repository, and the seed completes and advertises
+     * the version rather than leaving the fixture lock to reach for Central.
+     */
+    @Test
+    void a_pom_in_a_version_dir_central_served_is_taken_without_its_own_hint_line(@TempDir Path tmp) throws Exception {
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
+        Path m2 = tmp.resolve("m2");
+        m2File(m2, LAUNCHER, "6.1.3", ".pom", null);
+        m2File(m2, LAUNCHER, "6.1.3", ".module", RepositorySpec.CENTRAL);
+        Path mixed = tmp.resolve("m2-mixed");
+        m2File(mixed, LAUNCHER, "6.1.3", ".pom", null);
+        m2File(mixed, LAUNCHER, "6.1.3", ".module", "nexus");
+
+        Path sandbox = tmp.resolve("sandbox");
+        TestStoreSeed.seed(host, sandbox, m2);
+        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        assertThat(central.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
+                .isRegularFile();
+        assertThat(metadata(sandbox, LAUNCHER)).content().contains("<latest>6.1.3</latest>");
+
+        Path sandbox2 = tmp.resolve("sandbox-mixed");
+        TestStoreSeed.seed(host, sandbox2, mixed);
+        assertThat(sandbox2.resolve("repos")
+                        .resolve(RepositorySpec.CENTRAL)
+                        .resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
+                .as("a sibling another repository served vouches for nothing")
+                .doesNotExist();
+    }
+
     /** A second seed finds nothing to link, and an index the sandbox fetched itself is kept. */
     @Test
     void a_second_seed_finds_nothing_to_do_and_a_real_index_already_there_is_kept(@TempDir Path tmp) throws Exception {

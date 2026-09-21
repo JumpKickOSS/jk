@@ -225,7 +225,8 @@ public final class TestStoreSeed {
     /**
      * True when the {@code _remote.repositories} beside {@code file} carries the line {@code <file
      * name>>central=}, the way Maven Resolver and jk's write-through both record which repository
-     * answered. No file, no line, or another repository's id: not Central's bytes.
+     * answered, or carries no line for the file while every line it does carry names Central. No
+     * hint, an empty one, or another repository's id: not Central's bytes.
      */
     static boolean centralServed(Path file) {
         Path dir = file.getParent();
@@ -233,13 +234,25 @@ public final class TestStoreSeed {
         if (dir == null || name == null) return false;
         Path hint = dir.resolve("_remote.repositories");
         if (!Files.isRegularFile(hint)) return false;
-        String wanted = name + ">" + RepositorySpec.CENTRAL + "=";
+        String own = name + ">";
+        String central = ">" + RepositorySpec.CENTRAL + "=";
+        boolean anyLine = false;
+        boolean allCentral = true;
         try {
-            for (String line : Files.readAllLines(hint)) if (line.strip().equals(wanted)) return true;
+            for (String raw : Files.readAllLines(hint)) {
+                String line = raw.strip();
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                if (line.startsWith(own)) return line.equals(own + RepositorySpec.CENTRAL + "=");
+                anyLine = true;
+                allCentral &= line.endsWith(central);
+            }
         } catch (IOException e) {
             return false;
         }
-        return false;
+        // No line of its own: a version directory every recorded file of which Central served
+        // vouches for its siblings — Maven fetches one version's files from one repository, and a
+        // hint that lost a line is the common way a POM ends up unrecorded.
+        return anyLine && allCentral;
     }
 
     /**
