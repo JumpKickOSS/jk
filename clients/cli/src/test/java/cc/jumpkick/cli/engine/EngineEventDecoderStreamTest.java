@@ -15,6 +15,7 @@ import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import cc.jumpkick.wire.protocol.TimelineEvent;
 import cc.jumpkick.wire.protocol.WorkspaceFinishEvent;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -225,6 +226,28 @@ class EngineEventDecoderStreamTest {
 
         assertThat(rec.stepDurations).containsExactly(Duration.ofMillis(1_234));
         assertThat(rec.stepWaits).containsExactly(Duration.ofMillis(900));
+    }
+
+    /** The shelf publish an install pass reports rides the module's outcome to the client. */
+    @Test
+    void a_module_finish_carries_what_the_install_pass_shelved() throws Exception {
+        ModuleOutcome.Shelved shelved = new ModuleOutcome.Shelved("g:a:1", "a".repeat(64), "b".repeat(64));
+        WorkspaceResult result = EngineEventDecoder.streamWorkspaceEvents(
+                stream(
+                        ProtoLifecycle.jobStart(53, "install", "/w", 1),
+                        ProtoEvents.planModule("/w/a", "g:a:1", "a", 10, false),
+                        ProtoEvents.planDone(1),
+                        ProtoEvents.moduleStart("/w/a"),
+                        ProtoEvents.planFinish("/w/a", true),
+                        ProtoEvents.moduleFinish("/w/a", "g:a:1", true, 0, 12, true, false, null, shelved),
+                        ProtoEvents.workspaceFinish(true, 0, List.of(), false),
+                        ProtoLifecycle.jobFinish(53)),
+                new Recorder(),
+                Path.of("/cache"),
+                null);
+
+        assertThat(result.modules()).hasSize(1);
+        assertThat(result.modules().getFirst().shelved()).isEqualTo(shelved);
     }
 
     /**
