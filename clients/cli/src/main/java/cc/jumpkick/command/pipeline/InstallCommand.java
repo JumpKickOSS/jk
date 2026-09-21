@@ -711,20 +711,15 @@ public final class InstallCommand {
     }
 
     /**
-     * Pin the shelf to the engine the home names now: the thin jar of every module this pass
-     * shelved, by coordinate and sha256, into {@link ShelfManifest} beside the engine pointer.
-     * Written after the copy step, so the engine named is the one this pass materialized (or left
-     * in place); the engine adopts it at its next fork, or at startup when the pass replaced it.
+     * Pin the shelf to the engine the home names now: the thin jar and POM of every module this
+     * pass shelved, by coordinate and the sha256 the engine reported for them, into {@link
+     * ShelfManifest} beside the engine pointer. Written after the copy step, so the engine named is
+     * the one this pass materialized (or left in place); the engine adopts it at its next fork, or
+     * at startup when the pass replaced it.
      */
-    private String pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
-        Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
-        for (Path mod : ShelfPinning.shelved(result)) {
-            infoByDir.put(
-                    mod, pass.infoByDir().containsKey(mod) ? pass.infoByDir().get(mod) : projectInfo(mod));
-        }
-        Map<String, String> jars = ShelfPinning.shelfJars(List.copyOf(infoByDir.keySet()), infoByDir);
-        Map<String, String> poms = ShelfPinning.shelfPoms(jars.keySet(), JkStores.store());
-        return ShelfPinning.record(liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), jars, poms);
+    private static String pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
+        return ShelfPinning.record(
+                liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), ShelfPinning.shelved(result));
     }
 
     /** The success wedge of a workspace install: what this pass put in place, or that nothing needed to be. */

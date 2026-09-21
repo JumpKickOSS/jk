@@ -14,6 +14,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.KotlinAbiWarmup;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
@@ -213,6 +214,8 @@ final class WorkspaceRunPhase {
                     module.coord(), module.dir(), result.success() && !cancelled, exit, millis, didWork, cancelled);
             ModuleOutcome.Image image = ImagePlans.outcomeOf(module.plan());
             if (image != null) outcome = outcome.withImage(image);
+            ModuleOutcome.Shelved shelved = InstallPlans.shelvedOf(module.plan());
+            if (shelved != null) outcome = outcome.withShelved(shelved);
             listener.onModuleFinish(outcome);
             return outcome;
         } catch (RuntimeException e) {

@@ -112,8 +112,8 @@ class MavenRunReportTest {
                             m.errors(),
                             false,
                             false));
-            acc.addModule(new ModuleOutcome(
-                    m.coord(), m.dir(), m.success(), m.success() ? 0 : 1, m.millis(), true, false, null));
+            acc.addModule(
+                    new ModuleOutcome(m.coord(), m.dir(), m.success(), m.success() ? 0 : 1, m.millis(), true, false));
             if (!m.tests().isEmpty()) MarkdownTestReport.publish(dir, m.coord(), m.tests());
         }
         acc.addTests(report.tests());
