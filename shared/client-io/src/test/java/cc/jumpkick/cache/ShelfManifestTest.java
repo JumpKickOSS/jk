@@ -23,7 +23,9 @@ class ShelfManifestTest {
     @Test
     void a_written_manifest_reads_back_with_every_pin_and_its_provenance(@TempDir Path tmp) throws Exception {
         Path file = tmp.resolve("lib/jk-engine/" + ShelfManifest.FILE_NAME);
-        Path source = tmp.resolve("checkout with \"quotes\"");
+        // A space is all a path can portably carry that still forces the writer to quote: Windows
+        // rejects a `"` in a filename outright. MinimalTomlTest covers the escaping itself.
+        Path source = tmp.resolve("checkout with spaces");
         FakeClock clock = new FakeClock().set(Instant.parse("2026-09-20T12:00:00Z"));
 
         ShelfManifest written = ShelfManifest.record(
