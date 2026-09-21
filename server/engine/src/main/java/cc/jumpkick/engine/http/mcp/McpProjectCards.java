@@ -55,12 +55,13 @@ public final class McpProjectCards {
 
     private static @Nullable Map<String, Object> lastRun(String absDir, List<String> historyRaw) {
         if (historyRaw == null) return null;
-        String want = McpHistoryViews.normalizeDir(absDir);
         for (String raw : historyRaw) {
             Map<String, Object> rec = parseObj(raw);
             if (rec == null) continue;
-            String have = McpHistoryViews.normalizeDir(McpHistoryViews.str(rec, "dir"));
-            if (!have.equals(want) && !have.startsWith(want + "/")) continue;
+            if (!McpHistoryViews.dirMatches(
+                    McpHistoryViews.str(rec, "dir"), absDir, McpHistoryViews.str(rec, "projectId"))) {
+                continue;
+            }
             Map<String, Object> sum = McpHistoryViews.summarize(rec);
             Map<String, Object> one = new LinkedHashMap<>();
             one.put("id", sum.get("id"));

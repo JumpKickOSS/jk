@@ -193,9 +193,12 @@ last-built = "2026-09-20T13:01:02Z"
 ```
 
 Every writer — build admission, the journal, `jk lock`, `jk new` — upserts its own checkout
-through `ProjectIdentity.IdentityFile.write`, which also drops entries whose directory no longer
-exists. `ProjectIdentity.checkoutsForId` answers the live ones; a caller that needs one path says
-which (`selectCheckout`, real-path compared). Nothing reads "the" path of an id.
+through `ProjectIdentity.IdentityFile.write`, a read-fold-write under the file's `.lock` like
+every other ledger, so two engines cannot drop each other's rows. A checkout is spelled by its
+real path, so a symlinked spelling and its target are one entry. The fold drops an entry whose
+directory is gone or now carries another project's lock or explicit id.
+`ProjectIdentity.checkoutsForId` answers the live ones; a caller that needs one path says which
+(`selectCheckout`, real-path compared). Nothing reads "the" path of an id.
 
 Each run's `record.json` names the checkout it ran in (`dir`); a run the client opened without
 the engine carries a one-line `checkout` marker instead. Readers that want a checkout's

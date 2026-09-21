@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
@@ -60,12 +61,29 @@ public final class McpHistoryViews {
         if (success != null && success.booleanValue() != bool(rec, "success")) {
             return false;
         }
-        if (dir != null && !dir.isBlank()) {
-            String recDir = str(rec, "dir");
-            if (recDir.isEmpty()) return false;
-            String want = normalizeDir(dir);
-            String have = normalizeDir(recDir);
-            if (!have.equals(want) && !have.startsWith(want + "/")) return false;
+        if (dir != null && !dir.isBlank() && !dirMatches(str(rec, "dir"), dir, str(rec, "projectId"))) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * True when a run recorded for {@code recDir} answers for {@code dir}: the same directory, or
+     * one beneath it that is not another recorded checkout of the same project. A worktree nested
+     * under the main checkout is a sibling in the project's checkout set, so a connection bound to
+     * the parent never reads the nested worktree's runs as its own.
+     */
+    public static boolean dirMatches(@Nullable String recDir, String dir, @Nullable String projectId) {
+        if (recDir == null || recDir.isEmpty()) return false;
+        String want = normalizeDir(dir);
+        String have = normalizeDir(recDir);
+        if (have.equals(want)) return true;
+        if (!have.startsWith(want + "/")) return false;
+        if (projectId == null || projectId.isBlank()) return true;
+        for (ProjectIdentity.Checkout other : ProjectIdentity.checkoutsForId(projectId)) {
+            String checkout = normalizeDir(other.path().toString());
+            if (checkout.equals(want)) continue;
+            if (have.equals(checkout) || have.startsWith(checkout + "/")) return false;
         }
         return true;
     }

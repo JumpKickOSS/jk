@@ -7,10 +7,12 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -250,6 +252,81 @@ class ProjectIdentityTest {
                         checkouts, tmp.resolve("elsewhere").toString()))
                 .isEmpty();
         assertThat(ProjectIdentity.selectCheckout(checkouts, "\0not a path")).isEmpty();
+    }
+
+    /** Two spellings of one directory are one checkout, spelled by its real path. */
+    @Test
+    void a_symlinked_spelling_is_the_same_checkout(@TempDir Path tmp, @TempDir Path home) throws Exception {
+        String id = "aabbccddeeff00112233445566778899";
+        Path real = Files.createDirectories(tmp.resolve("wt-a"));
+        Path link;
+        try {
+            link = Files.createSymbolicLink(tmp.resolve("link-a"), real);
+        } catch (IOException | UnsupportedOperationException noSymlinks) {
+            return;
+        }
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, real));
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, link));
+        ProjectIdentity.IdentityFile one =
+                ProjectIdentity.IdentityFile.read(home).orElseThrow();
+        assertThat(one.checkouts().stream().map(ProjectIdentity.Checkout::path)).containsExactly(real.toRealPath());
+    }
+
+    /** A directory that now carries another project's lock has left this id's checkout set. */
+    @Test
+    void a_repurposed_directory_is_not_live(@TempDir Path tmp, @TempDir Path home) throws Exception {
+        String id = "aabbccddeeff00112233445566778899";
+        Path a = Files.createDirectories(tmp.resolve("wt-a"));
+        Path b = Files.createDirectories(tmp.resolve("wt-b"));
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, a));
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+        Files.writeString(a.resolve("jk-lock.toml"), "project-id = \"99887766554433221100ffeeddccbbaa\"\n");
+        ProjectIdentity.IdentityFile before =
+                ProjectIdentity.IdentityFile.read(home).orElseThrow();
+        assertThat(before.liveCheckouts().stream().map(ProjectIdentity.Checkout::path))
+                .containsExactly(b.toRealPath());
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+        assertThat(ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts())
+                .extracting(ProjectIdentity.Checkout::path)
+                .containsExactly(b.toRealPath());
+    }
+
+    /** Writers in several processes upsert their own checkout and lose none of the others. */
+    @Test
+    void concurrent_writers_keep_every_checkout(@TempDir Path tmp, @TempDir Path home) throws Exception {
+        String id = "aabbccddeeff00112233445566778899";
+        int writers = 4;
+        List<Process> running = new ArrayList<>();
+        for (int i = 0; i < writers; i++) {
+            Path checkout = Files.createDirectories(tmp.resolve("wt-" + i));
+            List<String> cmd = new ArrayList<>(List.of(
+                    Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-cp",
+                    System.getProperty("java.class.path"),
+                    WriterMain.class.getName(),
+                    home.toString(),
+                    id,
+                    checkout.toString(),
+                    "25"));
+            running.add(new ProcessBuilder(cmd).redirectErrorStream(true).start());
+        }
+        for (Process p : running) {
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(p.waitFor()).as(out).isZero();
+        }
+        assertThat(ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts())
+                .hasSize(writers);
+    }
+
+    /** Subprocess body for {@link #concurrent_writers_keep_every_checkout}. */
+    public static final class WriterMain {
+        public static void main(String[] args) throws Exception {
+            Path home = Path.of(args[0]);
+            ProjectIdentity identity = identityAt(args[1], Path.of(args[2]));
+            for (int i = 0; i < Integer.parseInt(args[3]); i++) {
+                ProjectIdentity.IdentityFile.write(home, identity);
+            }
+        }
     }
 
     private static ProjectIdentity identityAt(String id, Path checkout) {

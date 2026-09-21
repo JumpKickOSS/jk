@@ -9,6 +9,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -68,11 +69,24 @@ public record ProjectIdentity(
     public ProjectIdentity {
         if (id == null || id.isBlank()) throw new IllegalArgumentException("id");
         if (coord == null || coord.isBlank()) coord = "unknown:unknown";
-        path = path == null
-                ? Path.of(".").toAbsolutePath().normalize()
-                : path.toAbsolutePath().normalize();
+        path = canonical(path == null ? Path.of(".") : path);
         if (source == null) source = Source.PATH;
         id = normalizeId(id);
+    }
+
+    /**
+     * The one spelling of a checkout: its real path while the directory exists, so a symlinked
+     * spelling and the directory it points at are one checkout in the set, in the records and in
+     * the links; the absolute normalized path once it is gone.
+     */
+    public static Path canonical(Path dir) {
+        Path abs = dir.toAbsolutePath().normalize();
+        if (!Files.isDirectory(abs)) return abs;
+        try {
+            return abs.toRealPath();
+        } catch (IOException | RuntimeException unreadable) {
+            return abs;
+        }
     }
 
     /** Resolve identity for a project or workspace root directory. */
@@ -451,12 +465,18 @@ public record ProjectIdentity(
      */
     public record Checkout(Path path, @Nullable Instant lastBuilt) {
         public Checkout {
-            path = path.toAbsolutePath().normalize();
+            path = canonical(path);
         }
 
-        /** True while the directory exists; a deleted worktree is pruned on the next write. */
-        public boolean live() {
-            return Files.isDirectory(path);
+        /**
+         * True while the directory exists and still belongs to {@code id}: no manifest or lock in
+         * it names another project. A deleted worktree, or one repurposed for another project, is
+         * pruned on the next write.
+         */
+        public boolean live(String id) {
+            if (!Files.isDirectory(path)) return false;
+            Optional<String> own = explicitId(path).or(() -> lockId(path));
+            return own.isEmpty() || own.get().equals(id);
         }
     }
 
@@ -491,9 +511,9 @@ public record ProjectIdentity(
             checkouts = checkouts == null ? List.of() : List.copyOf(checkouts);
         }
 
-        /** The checkouts whose directory still exists, sorted by path. */
+        /** The checkouts that still exist and still belong to this id, sorted by path. */
         public List<Checkout> liveCheckouts() {
-            return checkouts.stream().filter(Checkout::live).toList();
+            return checkouts.stream().filter(c -> c.live(id)).toList();
         }
 
         public static Optional<IdentityFile> read(Path projectHome) {
@@ -559,10 +579,17 @@ public record ProjectIdentity(
 
         public static void write(Path projectHome, ProjectIdentity identity, Clock clock) throws IOException {
             Files.createDirectories(projectHome);
+            Path file = projectHome.resolve(ProjectBuilds.IDENTITY);
+            FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> fold(projectHome, file, identity, clock));
+        }
+
+        /** The read-fold-write behind {@link #write}, run under the file's ledger lock. */
+        private static void fold(Path projectHome, Path file, ProjectIdentity identity, Clock clock)
+                throws IOException {
             Path own = identity.path();
             List<Checkout> merged = new ArrayList<>();
             for (Checkout c : read(projectHome).map(IdentityFile::checkouts).orElse(List.of())) {
-                if (c.path().equals(own) || !c.live()) continue;
+                if (ProjectBuilds.sameCheckout(c.path(), own) || !c.live(identity.id())) continue;
                 merged.add(c);
             }
             merged.add(new Checkout(own, clock.instant()));
@@ -593,7 +620,7 @@ public record ProjectIdentity(
                             .append('\n');
                 }
             }
-            AtomicWrites.replace(projectHome.resolve(ProjectBuilds.IDENTITY), b.toString());
+            AtomicWrites.replace(file, b.toString());
         }
 
         private static List<Checkout> sortedByPath(List<Checkout> checkouts) {
