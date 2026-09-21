@@ -53,11 +53,16 @@ export function parseTruthy(raw) {
  *  #project/<id>/files
  *  #project/<id>/files/<rel/path>?line=<n>
  *  #project/<id>/files/<rel/path>?line=<n>&col=<c>&err=true&msg=<note>  (fail-report / OSC-8)
+ *
+ * Any project route may carry `?dir=<checkout>`: every worktree of a repository shares the id, so
+ * the checkout names which tree the page shows and the files pane edits. Without it the engine
+ * implies the one live checkout, or the page lists several to pick from.
  */
 function routeFields(over = {}) {
   return {
     view: 'activity',
     projectId: null,
+    dir: null,
     files: false,
     path: null,
     line: 0,
@@ -84,6 +89,7 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
     const segs = pathPart.slice('#project/'.length).split('/');
     const id = decodeComp(segs[0] || '');
     if (!id) return empty;
+    const dir = q.dir || null;
     if (segs[1] === 'files') {
       const rel = [];
       for (const raw of segs.slice(2)) {
@@ -93,6 +99,7 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
           return routeFields({
             view: 'project',
             projectId: id,
+            dir,
             files: true,
             line: parseLine(q.line),
             col: parseLine(q.col),
@@ -105,6 +112,7 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
       return routeFields({
         view: 'project',
         projectId: id,
+        dir,
         files: true,
         path: rel.length ? rel.join('/') : null,
         line: parseLine(q.line),
@@ -114,37 +122,42 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
       });
     }
     if (segs[1] === 'run') {
-      return routeFields({ view: 'project', projectId: id, run: parseLine(segs[2]) });
+      return routeFields({ view: 'project', projectId: id, dir, run: parseLine(segs[2]) });
     }
-    return routeFields({ view: 'project', projectId: id });
+    return routeFields({ view: 'project', projectId: id, dir });
   }
   return empty;
 }
 
-export function buildProjectHash({ projectId, files, path, line, col, err, msg, run } = {}) {
+export function buildProjectHash({ projectId, dir, files, path, line, col, err, msg, run } = {}) {
   if (!projectId) return '#projects';
   let h = '#project/' + encodeURIComponent(projectId);
-  if (run > 0 && !files && !path) return h + '/run/' + run;
-  if (files || path) {
-    h += '/files';
-    if (path) {
-      h +=
-        '/' +
-        String(path)
-          .split('/')
-          .filter(Boolean)
-          .map((s) => encodeURIComponent(s))
-          .join('/');
+  const query = [];
+  if (run > 0 && !files && !path) {
+    h += '/run/' + run;
+  } else {
+    if (files || path) {
+      h += '/files';
+      if (path) {
+        h +=
+          '/' +
+          String(path)
+            .split('/')
+            .filter(Boolean)
+            .map((s) => encodeURIComponent(s))
+            .join('/');
+      }
+    }
+    if (line > 0) {
+      query.push('line=' + line);
+      if (col > 0) query.push('col=' + col);
+      if (err) query.push('err=true');
+      const note = clipHashMsg(msg);
+      if (note) query.push('msg=' + encodeURIComponent(note));
     }
   }
-  if (line > 0) {
-    h += '?line=' + line;
-    if (col > 0) h += '&col=' + col;
-    if (err) h += '&err=true';
-    const note = clipHashMsg(msg);
-    if (note) h += '&msg=' + encodeURIComponent(note);
-  }
-  return h;
+  if (dir) query.push('dir=' + encodeURIComponent(dir));
+  return query.length ? h + '?' + query.join('&') : h;
 }
 
 /**

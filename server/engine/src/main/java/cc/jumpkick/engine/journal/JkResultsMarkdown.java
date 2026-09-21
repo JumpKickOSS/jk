@@ -163,7 +163,14 @@ public final class JkResultsMarkdown {
         if (r.requestId() > 0) sb.append(" · jid ").append(r.requestId());
         sb.append('\n');
         boolean meta = false;
+        // Every worktree of a repository shares the id and the build numbers; the meta line says
+        // which one this #N ran in.
+        if (notBlank(r.dir())) {
+            sb.append("checkout: ").append(r.dir());
+            meta = true;
+        }
         if (notBlank(r.trigger())) {
+            if (meta) sb.append(" · ");
             sb.append("trigger: ").append(r.trigger());
             if (notBlank(r.session())) sb.append(" · session: ").append(r.session());
             meta = true;

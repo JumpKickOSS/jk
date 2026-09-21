@@ -14,9 +14,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Deep links from CLI failure snippets into the dashboard Monaco files pane
- * ({@code #project/<id>/files/<rel>?line=N&col=C&err=true&msg=…} — same route as the web
- * fail-report path; {@code err=true} paints the jump line with the error wash; {@code msg=} is the
- * Monaco hover on that mark).
+ * ({@code #project/<id>/files/<rel>?line=N&col=C&err=true&msg=…&dir=<checkout>} — same route as
+ * the web fail-report path; {@code err=true} paints the jump line with the error wash; {@code msg=}
+ * is the Monaco hover on that mark; {@code dir=} is the checkout the build ran in, since every
+ * worktree of a repository shares the id).
  *
  * <p>HTTP base and project id are best-effort: when the engine HTTP surface is off or the checkout
  * has no durable id, callers paint an unlinked path. Token bootstrap stays on {@code #t=} from
@@ -149,6 +150,22 @@ public final class DashboardCodeLink {
             int line,
             int col,
             @Nullable String msg) {
+        return fileUrl(httpBase, projectId, null, workspaceRelPath, line, col, msg);
+    }
+
+    /**
+     * Like {@link #fileUrl(String, String, String, int, int, String)} naming the checkout the
+     * build ran in ({@code &dir=}): every worktree of a repository shares the project id, so the
+     * files pane needs the directory to open the right tree.
+     */
+    public static @Nullable String fileUrl(
+            @Nullable String httpBase,
+            @Nullable String projectId,
+            @Nullable Path checkoutDir,
+            @Nullable String workspaceRelPath,
+            int line,
+            int col,
+            @Nullable String msg) {
         if (httpBase == null || httpBase.isBlank()) return null;
         if (projectId == null || projectId.isBlank()) return null;
         if (workspaceRelPath == null || workspaceRelPath.isBlank()) return null;
@@ -159,13 +176,19 @@ public final class DashboardCodeLink {
             if (seg.isEmpty()) continue;
             hash.append('/').append(encodeSeg(seg));
         }
+        List<String> query = new ArrayList<>();
         if (line > 0) {
-            hash.append("?line=").append(line);
-            if (col > 0) hash.append("&col=").append(col);
-            hash.append("&err=true");
+            query.add("line=" + line);
+            if (col > 0) query.add("col=" + col);
+            query.add("err=true");
             String note = clipMsg(msg);
-            if (!note.isEmpty()) hash.append("&msg=").append(encodeSeg(note));
+            if (!note.isEmpty()) query.add("msg=" + encodeSeg(note));
         }
+        if (checkoutDir != null) {
+            query.add(
+                    "dir=" + encodeSeg(checkoutDir.toAbsolutePath().normalize().toString()));
+        }
+        if (!query.isEmpty()) hash.append('?').append(String.join("&", query));
         String base = httpBase.strip();
         while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         return base + hash;
@@ -197,7 +220,7 @@ public final class DashboardCodeLink {
         if (http == null) return null;
         String projectId = resolveProjectId(checkout);
         if (projectId == null) return null;
-        return fileUrl(http, projectId, rel, line, col, msg);
+        return fileUrl(http, projectId, checkout, rel, line, col, msg);
     }
 
     static String clipMsg(@Nullable String msg) {

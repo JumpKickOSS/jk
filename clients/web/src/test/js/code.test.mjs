@@ -49,6 +49,7 @@ test('routeFromHash nests files under #project/<id>', () => {
   assert.deepEqual(routeFromHash('#project/ab12'), {
     view: 'project',
     projectId: 'ab12',
+    dir: null,
     files: false,
     path: null,
     line: 0,
@@ -60,6 +61,7 @@ test('routeFromHash nests files under #project/<id>', () => {
   assert.deepEqual(routeFromHash('#project/ab12/files'), {
     view: 'project',
     projectId: 'ab12',
+    dir: null,
     files: true,
     path: null,
     line: 0,
@@ -89,6 +91,33 @@ test('routeFromHash nests files under #project/<id>', () => {
   assert.equal(noted.lineErr, true);
   assert.equal(routeFromHash('#code').view, 'activity');
   assert.equal(routeFromHash('#project/').view, 'activity');
+});
+
+test('project routes carry the checkout as ?dir= — every worktree of a repository shares the id', () => {
+  assert.equal(routeFromHash('#project/ab12?dir=%2Fws%2Fwt-b').dir, '/ws/wt-b');
+  assert.equal(routeFromHash('#project/ab12?dir=%2Fws%2Fwt-b&t=tok').projectId, 'ab12');
+  const run = routeFromHash('#project/ab12/run/7?dir=%2Fws%2Fwt-b');
+  assert.equal(run.run, 7);
+  assert.equal(run.dir, '/ws/wt-b');
+  const file = routeFromHash('#project/ab12/files/src/Main.java?line=3&err=true&dir=%2Fws%2Fmy%20app');
+  assert.equal(file.path, 'src/Main.java');
+  assert.equal(file.line, 3);
+  assert.equal(file.dir, '/ws/my app');
+  assert.equal(routeFromHash('#project/ab12/files?dir=%2Fws').dir, '/ws');
+
+  assert.equal(buildProjectHash({ projectId: 'ab', dir: '/ws/wt-b' }), '#project/ab?dir=%2Fws%2Fwt-b');
+  assert.equal(buildProjectHash({ projectId: 'ab', dir: null }), '#project/ab');
+  assert.equal(buildProjectHash({ projectId: 'ab', dir: '/ws/wt-b', run: 7 }), '#project/ab/run/7?dir=%2Fws%2Fwt-b');
+  assert.equal(buildProjectHash({ projectId: 'ab', dir: '/ws', files: true }), '#project/ab/files?dir=%2Fws');
+  assert.equal(
+    buildProjectHash({ projectId: 'ab', dir: '/ws/my app', path: 'src/Main.java', line: 3, err: true }),
+    '#project/ab/files/src/Main.java?line=3&err=true&dir=%2Fws%2Fmy%20app',
+  );
+  // Round trip: what the CLI's failure link and the MCP dashboard link spell is what the route reads.
+  const back = routeFromHash(buildProjectHash({ projectId: 'ab', dir: '/ws/my app', path: 'a/b.java', line: 9 }));
+  assert.equal(back.dir, '/ws/my app');
+  assert.equal(back.path, 'a/b.java');
+  assert.equal(back.line, 9);
 });
 
 test('parseHashQuery drops malformed percent escapes', () => {

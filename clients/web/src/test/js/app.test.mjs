@@ -119,7 +119,38 @@ test('a stale project-meta response never overwrites the current project', async
   w.fetchProjectMeta = () => Promise.resolve({ dir: '/same' });
   await w.loadProjectMeta('same');
   assert.equal(w.projectMeta.dir, '/same');
-  assert.equal(w.selectedProjectDir, '/same');
+  assert.equal(w.selectedProjectDir, null, 'the route names a checkout, the meta only implies one');
+});
+
+test('the route names the checkout; a changed checkout refetches the meta for it', async () => {
+  const flush = () => new Promise((r) => setImmediate(r));
+  globalThis.location.hash = '#project/abc123?dir=%2Fws%2Fwt-b';
+  const v = vm({ selectedProjectId: null, projectMeta: null, projectHistory: [{}] });
+  const asked = [];
+  v.fetchProjectMeta = (id, dir) => {
+    asked.push(dir);
+    return Promise.resolve({ dir: '/ws/wt-b', coord: 'g:n', checkouts: [{ dir: '/ws/wt-a' }, { dir: '/ws/wt-b' }] });
+  };
+  v.applyRoute();
+  await flush();
+  assert.equal(v.selectedProjectDir, '/ws/wt-b');
+  assert.deepEqual(asked, ['/ws/wt-b']);
+  // Same id, other checkout: the meta is that tree's card, so it is fetched again.
+  globalThis.location.hash = '#project/abc123?dir=%2Fws%2Fwt-a';
+  v.applyRoute();
+  await flush();
+  assert.deepEqual(asked, ['/ws/wt-b', '/ws/wt-a']);
+  assert.equal(v.selectedProjectDir, '/ws/wt-a');
+  // Picking a checkout writes the route (the browser's hashchange then applies it); "all" drops
+  // it. Pinning a run keeps the checkout.
+  v.pickCheckout('/ws/wt-b');
+  assert.equal(globalThis.location.hash, '#project/abc123?dir=%2Fws%2Fwt-b');
+  v.applyRoute();
+  await flush();
+  assert.equal(v.projectRunHash('abc123', 4), '#project/abc123/run/4?dir=%2Fws%2Fwt-b');
+  v.pickCheckout(null);
+  assert.equal(globalThis.location.hash, '#project/abc123');
+  globalThis.location.hash = '';
 });
 
 test('manifest saves and build finishes refresh the open project header', async () => {
@@ -142,7 +173,8 @@ test('manifest saves and build finishes refresh the open project header', async 
   await flush();
   assert.equal(fetches, 1);
   assert.equal(v.projectMeta.coord, 'g:new');
-  assert.equal(v.selectedProjectDir, '/new');
+  assert.equal(v.projectMeta.dir, '/new');
+  assert.equal(v.selectedProjectDir, '/old', 'a refresh never rewrites the checkout the route named');
   // Non-manifest saves do not refetch.
   v.onCodeSaved({ path: 'src/Main.java' });
   await flush();

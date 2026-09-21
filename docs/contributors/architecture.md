@@ -159,6 +159,43 @@ the product default and not a per-worker budget.
 jk engine start | status | stop
 ```
 
+### Project identity, checkouts and run history
+
+Build history lives under `<state>/builds/projects/<id>/` (`ProjectBuilds`). The key is the
+durable **project id** (`ProjectIdentity`): an explicit `id` in `jk.toml`, else the `project-id`
+the committed `jk-lock.toml` carries, else a git-remote or path hash. Because the lock is
+committed, **every git worktree of one repository shares the id**, and with it the project home,
+the metrics ledger and one `run-number.txt` sequence.
+
+The home's `identity.toml` therefore records a **set of checkouts**, not one path:
+
+```toml
+id = "…"
+coord = "group:name"
+source = "lock"
+
+[[checkout]]
+path = "/home/me/src/app"
+last-built = "2026-09-20T12:34:56Z"
+
+[[checkout]]
+path = "/home/me/src/app-wt-feature"
+last-built = "2026-09-20T13:01:02Z"
+```
+
+Every writer — build admission, the journal, `jk lock`, `jk new` — upserts its own checkout
+through `ProjectIdentity.IdentityFile.write`, which also drops entries whose directory no longer
+exists. `ProjectIdentity.checkoutsForId` answers the live ones; a caller that needs one path says
+which (`selectCheckout`, real-path compared). Nothing reads "the" path of an id.
+
+Each run's `record.json` names the checkout it ran in (`dir`). Readers that want a checkout's
+latest run — `jk results` (`ProjectBuilds.latestRunFile`), the delta's previous run
+(`JournalLineage`), the coverage baseline — filter runs by that `dir`, so a worktree never prints
+its sibling's report. `jk history list` shows a Checkout column when an id in view has more than
+one live checkout, `jk-results.md` prints `checkout: <dir>` under the headline, and the dashboard
+and MCP resolve `project=<id>` to a checkout explicitly ([HTTP](http.md#get-apiproject),
+[web client](webclient.md#project-routes)).
+
 ### Dashboard static assets (`web-root`)
 
 The engine HTTP server serves the dashboard from **disk first**, then classpath `/web`

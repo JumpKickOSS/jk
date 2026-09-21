@@ -186,6 +186,76 @@ class ProjectIdentityTest {
         assertThat(ProjectIdentity.coordOf(dir)).isEqualTo("com.example:root");
     }
 
+    /**
+     * Every worktree of one repository writes the same identity file. The set keeps each live
+     * checkout with its own stamp, drops a checkout whose directory is gone on the next write,
+     * and {@code checkoutsForId} answers only the live ones.
+     */
+    @Test
+    void identity_file_keeps_every_live_checkout_and_prunes_dead_ones(@TempDir Path tmp, @TempDir Path stateDir)
+            throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
+        try {
+            String id = "aabbccddeeff00112233445566778899";
+            Path a = Files.createDirectories(tmp.resolve("wt-a"));
+            Path b = Files.createDirectories(tmp.resolve("wt-b"));
+            Path home = ProjectBuilds.projectHome(id);
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, a));
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+
+            ProjectIdentity.IdentityFile both =
+                    ProjectIdentity.IdentityFile.read(home).orElseThrow();
+            assertThat(both.checkouts()).hasSize(2);
+            assertThat(both.checkouts().stream().map(ProjectIdentity.Checkout::path))
+                    .containsExactly(
+                            a.toAbsolutePath().normalize(), b.toAbsolutePath().normalize());
+            assertThat(both.checkouts())
+                    .allSatisfy(c -> assertThat(c.lastBuilt()).isNotNull());
+            String text = Files.readString(home.resolve(ProjectBuilds.IDENTITY));
+            assertThat(text).contains("[[checkout]]").contains("last-built = ");
+            assertThat(text.substring(0, text.indexOf("[[checkout]]")))
+                    .as("no path scalar beside the set")
+                    .doesNotContain("path =");
+            assertThat(ProjectIdentity.checkoutsForId(id)).hasSize(2);
+
+            // A build in b after a's worktree was deleted drops a from the set.
+            Files.delete(a);
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+            ProjectIdentity.IdentityFile pruned =
+                    ProjectIdentity.IdentityFile.read(home).orElseThrow();
+            assertThat(pruned.checkouts().stream().map(ProjectIdentity.Checkout::path))
+                    .containsExactly(b.toAbsolutePath().normalize());
+
+            // A recorded checkout that vanished without a later write is still not live.
+            Files.delete(b);
+            assertThat(ProjectIdentity.checkoutsForId(id)).isEmpty();
+            assertThat(ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts())
+                    .hasSize(1);
+        } finally {
+            System.clearProperty("jk.env.JK_STATE_DIR");
+        }
+    }
+
+    @Test
+    void selectCheckout_matches_by_real_path(@TempDir Path tmp) throws Exception {
+        Path a = Files.createDirectories(tmp.resolve("wt-a"));
+        Path b = Files.createDirectories(tmp.resolve("wt-b"));
+        List<ProjectIdentity.Checkout> checkouts =
+                List.of(new ProjectIdentity.Checkout(a, null), new ProjectIdentity.Checkout(b, null));
+        assertThat(ProjectIdentity.selectCheckout(
+                        checkouts, tmp.resolve("wt-b/../wt-b").toString()))
+                .map(ProjectIdentity.Checkout::path)
+                .contains(b.toAbsolutePath().normalize());
+        assertThat(ProjectIdentity.selectCheckout(
+                        checkouts, tmp.resolve("elsewhere").toString()))
+                .isEmpty();
+        assertThat(ProjectIdentity.selectCheckout(checkouts, "\0not a path")).isEmpty();
+    }
+
+    private static ProjectIdentity identityAt(String id, Path checkout) {
+        return new ProjectIdentity(id, "com.example:demo", checkout, ProjectIdentity.Source.LOCK, null, null);
+    }
+
     @Test
     void identity_file_round_trips_quotes_backslashes_controls_and_non_ascii(@TempDir Path home) throws Exception {
         String coord = "com.exàmple:we\"ird\\na\nme";

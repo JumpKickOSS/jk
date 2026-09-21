@@ -397,6 +397,115 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         });
     }
 
+    /**
+     * Two worktrees of one repository share the id, so the id alone no longer names a tree. The
+     * file API answers a structured 400 listing the checkouts until {@code dir} names one, and a
+     * save with {@code dir} lands in that tree with an etag computed against it.
+     */
+    @Test
+    void api_project_file_needs_a_checkout_selector_when_the_id_has_two() throws Exception {
+        System.setProperty(
+                "jk.env.JK_STATE_DIR", stateDir.resolve("two-checkouts-state").toString());
+        try {
+            String id = "aabbccddeeff00112233445566778899";
+            Path a = sharedIdCheckout("wt-a", id, "class Main { int a; }\n");
+            Path b = sharedIdCheckout("wt-b", id, "class Main { int b; }\n");
+
+            HttpResponse<String> listing = get("/api/project?project=" + id);
+            assertThat(listing.statusCode()).isEqualTo(200);
+            assertThat(listing.body())
+                    .contains("\"checkouts\":[")
+                    .contains("\"dir\":\"" + json(a) + "\"")
+                    .contains("\"dir\":\"" + json(b) + "\"")
+                    .contains("\"lastBuilt\":")
+                    .doesNotContain("\"coord\":\"g:n\",\"dir\"");
+            assertThat(Jsonl.topStr(listing.body(), "dir"))
+                    .as("no checkout is implied")
+                    .isNull();
+
+            HttpResponse<String> card = get("/api/project?project=" + id + "&dir=" + encDir(b));
+            assertThat(card.statusCode()).isEqualTo(200);
+            assertThat(Jsonl.topStr(card.body(), "dir")).isEqualTo(b.toString());
+            assertThat(card.body()).contains("\"coord\":\"g:n\"").contains("\"checkouts\":[");
+
+            HttpResponse<String> files = get("/api/project/files?project=" + id);
+            assertThat(files.statusCode()).isEqualTo(400);
+            assertThat(files.body())
+                    .contains("2 live checkouts")
+                    .contains("\"checkouts\":[")
+                    .contains(json(a));
+            assertThat(get("/api/project/files?project=" + id + "&dir=" + encDir(b))
+                            .statusCode())
+                    .isEqualTo(200);
+            HttpResponse<String> stranger =
+                    get("/api/project/files?project=" + id + "&dir=" + encDir(stateDir.resolve("two-checkouts-state")));
+            assertThat(stranger.statusCode()).isEqualTo(404);
+            assertThat(stranger.body()).contains("not a live checkout");
+
+            HttpResponse<String> fileB =
+                    get("/api/project/file?project=" + id + "&path=src%2FMain.java&dir=" + encDir(b));
+            assertThat(fileB.statusCode()).isEqualTo(200);
+            assertThat(fileB.body()).contains("int b;");
+            String etagB = fileB.body().replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
+            String etagA = get("/api/project/file?project=" + id + "&path=src%2FMain.java&dir=" + encDir(a))
+                    .body()
+                    .replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
+            assertThat(etagA).isNotEqualTo(etagB);
+
+            HttpResponse<String> unselected = putFile("{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
+                    + "\"content\":\"class Main { int guess; }\\n\"}");
+            assertThat(unselected.statusCode()).isEqualTo(400);
+            assertThat(unselected.body()).contains("\"checkouts\":[");
+            assertThat(Files.readString(a.resolve("src/Main.java"))).isEqualTo("class Main { int a; }\n");
+            assertThat(Files.readString(b.resolve("src/Main.java"))).isEqualTo("class Main { int b; }\n");
+
+            HttpResponse<String> wrongEtag = putFile("{\"project\":\"" + id + "\",\"dir\":\"" + json(b)
+                    + "\",\"path\":\"src/Main.java\",\"content\":\"class Main { int b2; }\\n\",\"etag\":\"" + etagA
+                    + "\"}");
+            assertThat(wrongEtag.statusCode())
+                    .as("the etag is checked against the named tree")
+                    .isEqualTo(409);
+
+            HttpResponse<String> saved = putFile("{\"project\":\"" + id + "\",\"dir\":\"" + json(b)
+                    + "\",\"path\":\"src/Main.java\",\"content\":\"class Main { int b2; }\\n\",\"etag\":\"" + etagB
+                    + "\"}");
+            assertThat(saved.statusCode()).isEqualTo(200);
+            assertThat(Jsonl.topStr(saved.body(), "dir")).isEqualTo(b.toString());
+            assertThat(Files.readString(b.resolve("src/Main.java"))).isEqualTo("class Main { int b2; }\n");
+            assertThat(Files.readString(a.resolve("src/Main.java"))).isEqualTo("class Main { int a; }\n");
+
+            // One worktree deleted: the id implies the other again, selector or not.
+            PathUtil.deleteRecursively(a);
+            assertThat(Jsonl.topStr(get("/api/project?project=" + id).body(), "dir"))
+                    .isEqualTo(b.toString());
+            assertThat(get("/api/project/files?project=" + id).statusCode()).isEqualTo(200);
+        } finally {
+            System.clearProperty("jk.env.JK_STATE_DIR");
+        }
+    }
+
+    /** A checkout whose manifest pins {@code id}, recorded in the id's identity file. */
+    private Path sharedIdCheckout(String name, String id, String main) throws Exception {
+        Path checkout = stateDir.resolve(name).toAbsolutePath().normalize();
+        Files.createDirectories(checkout.resolve("src"));
+        Files.writeString(checkout.resolve("jk.toml"), """
+                id = "%s"
+                group = "g"
+                name = "n"
+                version = "1"
+                """.formatted(id));
+        Files.writeString(checkout.resolve("src/Main.java"), main);
+        var identity = ProjectIdentity.resolve(checkout);
+        assertThat(identity.id()).isEqualTo(id);
+        ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(id), identity);
+        return checkout;
+    }
+
+    /** {@code p} as it appears inside a JSON string (Windows separators escaped). */
+    private static String json(Path p) {
+        return p.toString().replace("\\", "\\\\");
+    }
+
     @Test
     void api_project_file_put_refuses_images_and_accepts_escaped_control_characters() throws Exception {
         withScopedCheckout("file-put-kinds-state", "src-put-kinds", c -> {
