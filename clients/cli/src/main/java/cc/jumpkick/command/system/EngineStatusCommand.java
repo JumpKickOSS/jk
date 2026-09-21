@@ -34,8 +34,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk engine status} — pings first (the same liveness authority every engine-aware command
- * uses, never a bare pidfile read) and reports pid/version/uptime/active requests and
- * best-effort memory usage (heap used/committed/max, plus OS RSS where readable), or "not running"
+ * uses, never a bare pidfile read) and reports pid/version/source checkout/uptime/active requests
+ * and best-effort memory usage (heap used/committed/max, plus OS RSS where readable), or "not running"
  * with a non-zero exit so scripts can branch on it. {@code --output json} emits one flat object
  * instead, for scripts/CI that want to parse the result rather than scrape text ({@code -1} =
  * that number couldn't be observed).
@@ -100,6 +100,7 @@ public final class EngineStatusCommand implements CliCommand {
         CliOutput.out(JkWedge.chipLine(
                 Glyphs.PLAY, "Engine", GlobalConfig.nerdFont(), "Engine is running (pid " + pidStyled(s.pid()) + ")"));
         detail("Version", s.version());
+        if (s.installSource() != null && !s.installSource().isEmpty()) detail("Source", s.installSource());
         detail("Uptime", formatUptime(uptimeSeconds));
         detail("Live Jobs", String.valueOf(s.activeBuildPlans()));
         for (EngineProbe.Job job : s.jobs()) if (job.live()) jobRow(job, now);
@@ -273,6 +274,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("logBytes", s.logBytes())
                 .number("logRolledAt", s.logRolledAt())
                 .string("ignoredSignals", s.ignoredSignals())
+                .string("installSource", s.installSource())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
                 .string("mcpUrl", s.mcpUrl());

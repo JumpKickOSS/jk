@@ -52,6 +52,7 @@ class CommandJsonFrozenBytesTest {
                 1_700_000_000_500L,
                 "",
                 2,
+                "/home/me/src/jk",
                 List.of());
         assertThat(EngineStatusCommand.runningJson(s, 60, List.of()))
                 .isEqualTo("{\"running\":true,\"pid\":4242,\"version\":\"0.13.0\",\"startedAt\":1700000000000,"
@@ -59,7 +60,8 @@ class CommandJsonFrozenBytesTest {
                         + "\"heapMaxBytes\":300,\"rssBytes\":400,\"cores\":8,\"totalMemoryBytes\":32000,"
                         + "\"availableMemoryBytes\":16000,\"systemCpuLoad\":0.25,\"systemLoadAverage\":1.5,"
                         + "\"engineEpoch\":\"epoch-1\",\"logBytes\":40960,\"logRolledAt\":1700000000500,"
-                        + "\"ignoredSignals\":\"\",\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
+                        + "\"ignoredSignals\":\"\",\"installSource\":\"/home/me/src/jk\","
+                        + "\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
                         + "\"mcpUrl\":\"http://127.0.0.1:8910/mcp\",\"engines\":[]}");
         EngineProbe.Status withVfs = new EngineProbe.Status(
                 "0.13.0",
@@ -87,6 +89,7 @@ class CommandJsonFrozenBytesTest {
                 -1,
                 null,
                 0,
+                null,
                 List.of());
         assertThat(EngineStatusCommand.runningJson(withVfs, 0, List.of()))
                 .contains(

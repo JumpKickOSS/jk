@@ -42,6 +42,7 @@ class HttpStatusJobsTest extends HttpEngineServerHarness {
                 SNAPSHOT.logRolledAt(),
                 SNAPSHOT.ignoredSignals(),
                 1,
+                "",
                 JobRow.toJson(rows));
 
         HttpResponse<String> response = get("/api/status");
