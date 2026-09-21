@@ -706,19 +706,38 @@ public final class InstallCommand {
             lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
             modules++;
         }
-        lines.add(pinShelf(pass));
+        lines.add(pinShelf(pass, result));
         return new Applied(modules, lines);
     }
 
     /**
-     * Pin the shelf to the engine the home names now: every workspace module's thin jar the tree
-     * has built, by coordinate and sha256, into {@link ShelfManifest} beside the engine pointer.
+     * Pin the shelf to the engine the home names now: the thin jar of every module this pass
+     * shelved, by coordinate and sha256, into {@link ShelfManifest} beside the engine pointer.
      * Written after the copy step, so the engine named is the one this pass materialized (or left
      * in place); the engine adopts it at its next fork, or at startup when the pass replaced it.
      */
-    private static String pinShelf(WorkspacePass pass) throws IOException {
-        Map<String, String> jars = shelfJars(pass.moduleDirs(), pass.infoByDir());
+    private String pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
+        Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
+        for (Path mod : shelved(result)) {
+            infoByDir.put(
+                    mod, pass.infoByDir().containsKey(mod) ? pass.infoByDir().get(mod) : projectInfo(mod));
+        }
+        Map<String, String> jars = shelfJars(List.copyOf(infoByDir.keySet()), infoByDir);
         return pinShelf(liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), jars);
+    }
+
+    /**
+     * The modules whose shelf slot this pass wrote: every one the engine ran to success. The
+     * engine runs the selected cone only, and within it skips a module whose shelf jar already
+     * holds the tree's bytes, so the pins the pass does not touch are the ones the manifest merge
+     * keeps.
+     */
+    static List<Path> shelved(WorkspaceResult result) {
+        List<Path> out = new ArrayList<>();
+        for (var m : result.modules()) {
+            if (m.success()) out.add(m.dir());
+        }
+        return out;
     }
 
     /**
