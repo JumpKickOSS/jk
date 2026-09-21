@@ -508,11 +508,14 @@ public final class BuildJournal {
         long now = Clock.SYSTEM.millis();
         for (BuildRecord r : list()) {
             if (r == null || !r.running()) continue;
-            String locator = r.buildNumber() > 0
-                    ? ProjectBuilds.runDirName(r.buildNumber())
-                    : (r.id() != null ? "j-" + r.id() : null);
-            if (locator == null) continue;
-            EngineOwner owner = runDir(locator, r).map(BuildJournal::ownerOf).orElse(null);
+            // A numbered row lives under its project's runs/<n>; a lock or format row under a
+            // j-… directory only its record id finds.
+            Optional<Path> dir = r.buildNumber() > 0
+                    ? runDir(ProjectBuilds.runDirName(r.buildNumber()), r)
+                    : (r.id() == null ? Optional.empty() : locateById(r.id()).map(Located::dir));
+            if (dir.isEmpty()) continue;
+            String locator = dir.get().getFileName().toString();
+            EngineOwner owner = ownerOf(dir.get());
             if (owner != null && alive.test(owner)) {
                 live++;
                 continue;
