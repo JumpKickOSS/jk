@@ -93,7 +93,7 @@ class SelfShelveCommandTest {
         Path entry = repos.resolve("jk-local/cc/jumpkick/jk-test-runner/1.0.0");
         Files.createDirectories(entry);
         Path worker = Files.writeString(entry.resolve("jk-test-runner-1.0.0.jar"), "worker-bytes");
-        Files.writeString(entry.resolve("jk-test-runner-1.0.0.pom"), "<project/>");
+        Path pom = Files.writeString(entry.resolve("jk-test-runner-1.0.0.pom"), "<project/>");
 
         int[] exit = {0};
         var streams = Capture.both(() -> exit[0] = shelve(repos));
@@ -104,6 +104,7 @@ class SelfShelveCommandTest {
         assertThat(pins.pins(Hashing.sha256Hex(engineJar))).isTrue();
         assertThat(pins.source()).isEqualTo(dist.toAbsolutePath().normalize().toString());
         assertThat(pins.jars()).containsExactly(entry("cc.jumpkick:jk-test-runner:1.0.0", Hashing.sha256Hex(worker)));
+        assertThat(pins.poms()).containsExactly(entry("cc.jumpkick:jk-test-runner:1.0.0", Hashing.sha256Hex(pom)));
         assertThat(JkStores.storeCas().pathFor(Hashing.sha256Hex(worker)))
                 .as("the shelf publish fed the store first")
                 .hasContent("worker-bytes");

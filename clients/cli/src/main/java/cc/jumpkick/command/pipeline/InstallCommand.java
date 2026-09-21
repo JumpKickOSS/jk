@@ -718,62 +718,13 @@ public final class InstallCommand {
      */
     private String pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
         Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
-        for (Path mod : shelved(result)) {
+        for (Path mod : ShelfPinning.shelved(result)) {
             infoByDir.put(
                     mod, pass.infoByDir().containsKey(mod) ? pass.infoByDir().get(mod) : projectInfo(mod));
         }
-        Map<String, String> jars = shelfJars(List.copyOf(infoByDir.keySet()), infoByDir);
-        return pinShelf(liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), jars);
-    }
-
-    /**
-     * The modules whose shelf slot this pass wrote: every one the engine ran to success. The
-     * engine runs the selected cone only, and within it skips a module whose shelf jar already
-     * holds the tree's bytes, so the pins the pass does not touch are the ones the manifest merge
-     * keeps.
-     */
-    static List<Path> shelved(WorkspaceResult result) {
-        List<Path> out = new ArrayList<>();
-        for (var m : result.modules()) {
-            if (m.success()) out.add(m.dir());
-        }
-        return out;
-    }
-
-    /**
-     * Record {@code jars} in the manifest at {@code shelfFile} as engine {@code engine}'s shelf,
-     * installed from {@code source}; the line the install prints for it. A home whose pointer
-     * names no engine jar by sha256 has nothing to pin the shelf to, and the line says so.
-     */
-    static String pinShelf(Optional<String> engine, Path shelfFile, Path source, Map<String, String> jars)
-            throws IOException {
-        if (engine.isEmpty()) return SHELF_NOT_PINNED;
-        ShelfManifest.record(shelfFile, engine.get(), source, jars, Clock.SYSTEM);
-        return "Pinned " + jars.size() + " shelf jar" + (jars.size() == 1 ? "" : "s") + " to engine " + shortSha(engine)
-                + " from " + PathDisplay.of(source);
-    }
-
-    /** What an install says instead of pinning when the home names no engine jar by sha256. */
-    static final String SHELF_NOT_PINNED =
-            "Shelf not pinned: the home names no engine jar by sha256, so its workers launch as the shelf holds them";
-
-    /**
-     * {@code group:artifact:version} to sha256 of the thin jar {@code jk build} left for each
-     * module — the bytes {@code cache-install} shelved. A module with no jar on disk contributes
-     * nothing; a coordinator root publishes nothing.
-     */
-    static Map<String, String> shelfJars(List<Path> moduleDirs, Map<Path, ProjectInfo> infoByDir) throws IOException {
-        Map<String, String> jars = new LinkedHashMap<>();
-        for (Path mod : moduleDirs) {
-            ProjectInfo info = infoByDir.get(mod);
-            if (info == null || info.error() != null || info.coordinatorOnly()) continue;
-            String jarPath = info.mainJarPath();
-            if (jarPath == null || jarPath.isBlank()) continue;
-            Path jar = Path.of(jarPath);
-            if (!Files.isRegularFile(jar)) continue;
-            jars.put(Coordinate.of(info.group(), info.name(), info.version()).toGav(), Hashing.sha256Hex(jar));
-        }
-        return jars;
+        Map<String, String> jars = ShelfPinning.shelfJars(List.copyOf(infoByDir.keySet()), infoByDir);
+        Map<String, String> poms = ShelfPinning.shelfPoms(jars.keySet(), JkStores.store());
+        return ShelfPinning.record(liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), jars, poms);
     }
 
     /** The success wedge of a workspace install: what this pass put in place, or that nothing needed to be. */
