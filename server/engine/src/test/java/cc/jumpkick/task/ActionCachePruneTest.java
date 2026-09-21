@@ -167,13 +167,32 @@ class ActionCachePruneTest {
         Path evicted = key(root, "gen-current", "native-image@mod", OLDEST, sha);
         Path tasks = root.resolve("actions").resolve("tasks");
         Path gens = HeavyActionPolicy.gensFile(tasks, "native-image@mod");
-        Files.writeString(gens, "gen-current\ngen-previous\n");
+        Files.writeString(gens, "checkout-a gen-current\ncheckout-a gen-previous\n");
 
         ActionCachePrune.run(root, cas, budgetOnly(1_000), Set.of(), false);
 
         assertThat(evicted).doesNotExist();
         assertThat(tasks.resolve("native-image@mod")).doesNotExist();
-        assertThat(Files.readString(gens)).isEqualTo("gen-previous\n");
+        assertThat(Files.readString(gens)).isEqualTo("checkout-a gen-previous\n");
+    }
+
+    /** A key only another checkout's generation list names is still reachable, so it is not superseded. */
+    @Test
+    void a_generation_another_checkout_keeps_is_not_superseded(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        String dead = blob(cas, 300_000, 'd', RECENT);
+        String theirs = blob(cas, 100_000, 't', OLDER);
+        Path supersededKey = key(root, "key-churn", "native-image@mod", RECENT, dead);
+        Path theirKey = key(root, "key-theirs", "native-image@mod", OLDER, theirs);
+        pointAt(root, "native-image@mod", "key-current");
+        Path tasks = root.resolve("actions").resolve("tasks");
+        Files.writeString(HeavyActionPolicy.gensFile(tasks, "native-image@mod"), "checkout-b key-theirs\n");
+
+        var report = ActionCachePrune.run(root, cas, budgetOnly(150_000), Set.of(), false);
+
+        assertThat(supersededKey).doesNotExist();
+        assertThat(theirKey).exists();
+        assertThat(report.deletedKeys()).isEqualTo(1);
     }
 
     /**
