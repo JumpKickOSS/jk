@@ -34,6 +34,44 @@ path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if you accept that
 
 After restoring cache, a normal `jk build` should hit action cache for unchanged modules.
 
+## Sharing a cache across checkouts and agents
+
+An action key names content and a project-relative output, never the checkout: the sources by
+hash, the compile classpath by ABI, compiler argv with paths spelled module-relative, and a task
+tag made of the lock's `project-id` plus the output's workspace-relative path. Two checkouts of
+one commit therefore compute one key set, whatever their absolute paths, and the second restores
+every compile, package and test the first produced. Keys never collide across projects (the
+project id is in the tag) or across modules of one workspace (the output path is).
+
+| Root | Share across branches | Share across concurrent agents | Why |
+|------|----------------------|-------------------------------|-----|
+| `JK_CACHE_DIR` | yes | yes | content-addressed records and blobs; every write is an atomic replace |
+| `JK_STORE_DIR` | yes | yes | checksum-verified artifacts; one origin, one tree |
+| `JK_STATE_DIR` | yes | yes | run history, metrics and the run-number counter fold under file locks; every run names its checkout |
+| `~/.jk/test-homes` | per checkout | per checkout | keyed by the module's real path |
+| `target/` | never | never | the checkout's outputs, its freshness stamps and its build slot |
+
+What a checkout changed is what it recomputes: an edited source, a moved dependency ABI, a new
+lock digest or a different option is a different key, so a branch that diverges from its
+neighbours rebuilds exactly its divergence and shares the rest. An incremental compiler's
+analysis stays with the checkout whose absolute paths it holds; a fresh checkout compiles from
+the restored classes on its first miss.
+
+A self-hosted runner that serves several agents at once gives each agent its own `JK_HOME` (one
+resident engine, one set of sockets) and points every agent at one cache and one store:
+
+```yaml
+env:
+  JK_HOME: ${{ runner.temp }}/jk-home-${{ github.run_id }}
+  JK_CACHE_DIR: /var/lib/jk/cache
+  JK_STORE_DIR: /var/lib/jk/store
+```
+
+Two engines that meet on one checkout do not interleave: the build holds `target/.jk/build.lock`
+for its lifetime and the second engine is refused with the running build's number. The property
+is pinned by the engine's `SharedCacheAcrossCheckoutsE2eTest`, which builds one workspace from two
+checkouts through one cache.
+
 ## Installing jk on a runner
 
 Pin the release, and keep the pin in one file so a new release is one edit:

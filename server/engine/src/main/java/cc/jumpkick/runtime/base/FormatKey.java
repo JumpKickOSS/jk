@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.task.PortablePath;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -88,12 +89,15 @@ public record FormatKey(
      * adding, deleting, renaming or moving a type moves this digest. A second type declared inside
      * an existing file is the acknowledged gap: renaming that one does not re-key, and the tree
      * converges on the next run that touches the file for any other reason.
+     *
+     * <p>Each path is spelled as a {@link PortablePath}, module-relative, so two checkouts of one
+     * tree name the same index and share both format stores.
      */
     private String indexIdentity() {
         if (indexFiles.isEmpty()) return "none";
         List<String> normalized = new ArrayList<>(indexFiles.size());
         for (Path entry : indexFiles) {
-            normalized.add(entry.toAbsolutePath().normalize().toString());
+            normalized.add(PortablePath.of(entry));
         }
         // Sorted: the walk order is already deterministic, but the key must not depend on that.
         Collections.sort(normalized);

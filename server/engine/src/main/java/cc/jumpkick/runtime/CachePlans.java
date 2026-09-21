@@ -292,17 +292,20 @@ public final class CachePlans {
                         PathUtil.Removed removed = dryRun ? PathUtil.measureTrees(qualified) : deleteAll(qualified);
                         acc.add(removed);
                     }
-                    // 3) preflight memos — their "clean" conclusions were derived from the
-                    // action keys just deleted; a surviving memo turns clear into a no-op.
+                    // 3) preflight memos, both copies — their "clean" conclusions were derived
+                    // from the action keys just deleted; a surviving memo turns clear into a no-op,
+                    // and the load prefers the durable copy under the cache root.
                     for (Path m : allModuleDirs) {
-                        Path preflight =
-                                m.resolve(BuildLayout.TARGET).resolve(".jk").resolve("preflight");
-                        if (!Files.isDirectory(preflight)) continue;
-                        try (var files = Files.list(preflight)) {
-                            for (Path f : (Iterable<Path>) files::iterator) {
-                                if (!Files.isRegularFile(f)) continue;
-                                acc.file(Files.size(f));
-                                if (!dryRun) Files.deleteIfExists(f);
+                        for (Path preflight : List.of(
+                                m.resolve(BuildLayout.TARGET).resolve(".jk").resolve("preflight"),
+                                PreflightMemo.durablePreflightDir(m))) {
+                            if (!Files.isDirectory(preflight)) continue;
+                            try (var files = Files.list(preflight)) {
+                                for (Path f : (Iterable<Path>) files::iterator) {
+                                    if (!Files.isRegularFile(f)) continue;
+                                    acc.file(Files.size(f));
+                                    if (!dryRun) Files.deleteIfExists(f);
+                                }
                             }
                         }
                     }

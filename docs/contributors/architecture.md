@@ -449,6 +449,17 @@ and exclusions stay GA-scoped.
 | **Artifact store** | `~/.jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<origin-id>/…` plus `.jk` memos — one tree per repository origin (`RepoIdentity`: reserved `central`/`google`/`jumpkick`, else `<host>-<digest>`), the project's name for it only a label in `.origin`; first-party workers under `repos/jk-local/`; `libs.global.toml`; cloned Giter8 catalogs under `templates/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
 | **Cache** | `~/.jk/cache/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
+**Three sharing tiers**, one rule for where a byte lives. *Content* — action keys and their
+outputs, ABI tokens, the store — is a function of declared inputs and is shared by every checkout
+and every project; a second checkout of one commit hits the first's records. *Checkout* — `target/`,
+freshness stamps, the incremental compiler analyses under `actions/incremental-*`, the preflight
+memo under `cache/projects/<pathhash>`, test sandboxes, the build slot — is keyed by the
+checkout's real path and never shared. *Project* — the ledger under `state/builds/projects/<id>`
+(runs, metrics, run numbers, the checkouts file) — is shared by every checkout of one project
+through the lock's `project-id`, and every row names its checkout. Anything that hashes an
+absolute path into key material, or routes a write through a project-level scalar, breaks the
+rule; `SharedCacheAcrossCheckoutsE2eTest` pins the first half.
+
 Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.
 A digest-matching file in the Maven local repo is used in place; a mismatch is left untouched
 and the locked bytes live under `repos/<origin-id>/`. The same published checksum confirms a store
