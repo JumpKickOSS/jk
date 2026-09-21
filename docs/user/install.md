@@ -127,9 +127,9 @@ rm -rf ~/.jk/store     # re-download everything, slow
 The live engine jar is `~/.jk/lib/jk-engine/jk-engine-<version>.jar` (or
 `jk-engine-<version>.<epoch>.jar` when that name is already occupied), with the live pointer
 in `~/.jk/lib/jk-engine/jk-engine.toml`. `jk-shelf.toml` beside it names, by sha256, the
-first-party worker jars that engine was installed with and the checkout they came from; the
-engine launches its workers by those shas, so a later install from another checkout cannot swap
-a worker under it.
+first-party worker jars and POMs that engine was installed with and the checkout they came from;
+the engine launches its workers by those shas, so a later install from another checkout cannot
+swap a worker or its dependency list under it.
 
 **Managed JDKs are the one exception** and stay outside `~/.jk`: they use the IntelliJ shared
 root (`~/.jdks`, or `~/Library/Java/JavaVirtualMachines` on macOS) so the IDE and JumpKick

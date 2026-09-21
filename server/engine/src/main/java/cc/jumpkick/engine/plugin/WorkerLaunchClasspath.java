@@ -34,20 +34,30 @@ import org.jspecify.annotations.Nullable;
  * that rename is refused while a worker still has the shelf file mapped. The engine's shelf
  * manifest ({@link ShelfPins}) says which blob: a jar it pins launches at the pinned sha whatever
  * the shelf holds now, so every fork of one engine runs the workers that engine was installed
- * with. A jar the manifest does not name launches as the shelf has it.
+ * with. A jar the manifest does not name launches as the shelf has it. The worker's POM is pinned
+ * the same way: the runtime closure is walked from the store's copy of the pinned POM when the
+ * shelf holds another install's, so a worker never forks on another checkout's dependency list.
  */
 public final class WorkerLaunchClasspath {
 
     private WorkerLaunchClasspath() {}
 
     public static List<Path> paths(Path workerJar) {
+        return paths(workerJar, ShelfPins.current());
+    }
+
+    static List<Path> paths(Path workerJar, @Nullable ShelfManifest pins) {
         // A CAS blob can only reach a fork as a path-pinned plugin jar — coordinate pins and
         // first-party workers resolve to Maven-layout paths. A path pin carries no POM, so the
         // sha-verified jar is its whole classpath here; the SDK floor it compiled against joins at
         // the launch from the consumer's lock (PluginSdkFloor).
         if (Cas.isBlobPath(workerJar)) return List.of(workerJar);
         Path worker = workerJar.toAbsolutePath().normalize();
-        List<Path> resolved = pinJkLocal(PomRuntimeClasspath.resolve(worker));
+        Path pinnedPom = pinnedPom(worker, pins);
+        List<Path> closure = pinnedPom == null
+                ? PomRuntimeClasspath.resolve(worker)
+                : PomRuntimeClasspath.resolve(worker, pinnedPom);
+        List<Path> resolved = pinJkLocal(closure, pins);
         List<Path> codec = workspaceCodec(worker);
         if (codec.isEmpty()) return resolved;
         // Codec dirs FIRST so a just-compiled classes/main wins over the copy the worker jar vendors
@@ -106,8 +116,42 @@ public final class WorkerLaunchClasspath {
         return RepoArtifactStore.inferGav(rel.toString().replace('\\', '/'));
     }
 
-    /** Shelf jars already reported as served from the store instead of the shelf, so the log says it once each. */
+    /** Shelf artifacts already reported as served from the store instead of the shelf, so the log says it once each. */
     private static final Set<String> REPORTED = ConcurrentHashMap.newKeySet();
+
+    /**
+     * The POM to walk {@code worker}'s runtime closure from when it is not the shelf's own: the
+     * store's copy at the sha the manifest pins, once another install has replaced the shelf POM.
+     * Null when the worker is not a shelf jar, the manifest pins no POM for it, or the shelf POM
+     * is the pinned one.
+     */
+    static @Nullable Path pinnedPom(Path worker, @Nullable ShelfManifest pins) {
+        if (pins == null || !isJkLocalJar(worker)) return null;
+        String coordinate = coordinateOf(worker);
+        String pinned = pins.pomSha(coordinate).orElse(null);
+        if (pinned == null) return null;
+        Path shelfPom = PomRuntimeClasspath.pomOf(worker);
+        if (shelfPom != null) {
+            try {
+                if (pinned.equalsIgnoreCase(shaOf(shelfPom))) return null;
+            } catch (IOException unreadable) {
+                // Not the shelf's to answer: the pinned copy below decides.
+            }
+        }
+        Cas cas = JkStores.storeCas();
+        String from = pins.source().isEmpty() ? "" : " from " + pins.source();
+        if (cas.contains(pinned)) {
+            if (REPORTED.add(coordinate + ".pom@" + pinned)) {
+                Log.info("jk engine: the POM of " + coordinate + " on the shelf is another install's; walking the"
+                        + " pinned " + pinned.substring(0, 12) + " from the store (installed" + from + ")");
+            }
+            return cas.pathFor(pinned);
+        }
+        throw new IllegalStateException("this engine was installed with the POM of " + coordinate + " at "
+                + pinned.substring(0, 12) + from + ", the shelf holds another install's, and the store has no copy"
+                + " of those bytes — run `jk install` from that checkout, or let the next `jk` invocation take the"
+                + " engine over to the install the home names");
+    }
 
     /**
      * The blob to launch {@code jar} from. Pinned by the manifest: the shelf's bytes when they
