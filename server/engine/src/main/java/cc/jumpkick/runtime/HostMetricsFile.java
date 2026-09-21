@@ -180,6 +180,12 @@ final class HostMetricsFile {
     }
 
     static void writeTo(Path file, Calibration c) throws IOException {
+        // Read, fold and replace under the ledger lock: MetricsHarvest folds the same file from
+        // another engine, and a fold that read before its write would drop the other's rows.
+        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> fold(file, c));
+    }
+
+    private static void fold(Path file, Calibration c) throws IOException {
         // Merge [calibration] into host-metrics.toml; carry [lock], [fetch], [bootstrap] and the
         // language buckets verbatim, and fold this calibration's learned rates into the ONE [mean].
         // [mean] is co-owned: MetricsHarvest owns the run keys (task.*/phase.*/module.*/...), this
@@ -226,7 +232,7 @@ final class HostMetricsFile {
         for (String line : continuousKeys.values()) out.append(line).append('\n');
         if (!foreign.isEmpty()) out.append('\n').append(foreign);
         out.append('\n').append(renderCalibrationSection(c));
-        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> AtomicWrites.replace(file, out.toString()));
+        AtomicWrites.replace(file, out.toString());
     }
 
     /**

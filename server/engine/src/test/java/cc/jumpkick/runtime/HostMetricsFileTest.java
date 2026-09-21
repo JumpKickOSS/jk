@@ -255,4 +255,38 @@ class HostMetricsFileTest {
         // Preserved in the writer's fixed order: foreign sections first, calibration last.
         assertThat(rewritten.indexOf("[bootstrap]")).isLessThan(rewritten.indexOf("[calibration]"));
     }
+
+    /**
+     * Two writers folding one file at once keep each other's rates: the read, the fold and the
+     * replace happen under the ledger lock, so a writer never replaces the file with a fold of a
+     * copy it read before the other wrote.
+     */
+    @Test
+    void concurrent_folds_keep_both_writers_rates(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        int rounds = 40;
+        Thread a = writer(f, HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 42, rounds);
+        Thread b = writer(f, HostLearnedRates.PACKAGE_JAR_MS, 300, rounds);
+        a.start();
+        b.start();
+        a.join();
+        b.join();
+        String text = Files.readString(f);
+        assertThat(text).contains(HostLearnedRates.RUN_TESTS_PER_METHOD_MS + " = ");
+        assertThat(text).contains(HostLearnedRates.PACKAGE_JAR_MS + " = ");
+    }
+
+    private static Thread writer(Path f, String key, int ms, int rounds) {
+        HostLearnedRates learned = new HostLearnedRates().withSample(key, ms, 0);
+        Calibration c = Calibration.testInstance(100.0, true, JkVersion.VERSION, NOW, learned, 200, 15, 20);
+        return new Thread(() -> {
+            for (int i = 0; i < rounds; i++) {
+                try {
+                    HostMetricsFile.writeTo(f, c);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+    }
 }

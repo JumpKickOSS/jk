@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -81,12 +83,11 @@ public final class M2CompatWriter {
      */
     public static void writeRemoteRepositories(Path versionDir, String repoName, String filename) {
         Path target = versionDir.resolve("_remote.repositories");
-        // One version's POM, jar and module descriptor arrive on different resolver threads
-        // within milliseconds; a read-fold-write per thread loses lines, and a lost POM line is a
-        // test-store seed that no longer vouches for the POM.
-        synchronized (
-                HINT_LOCKS[Math.floorMod(target.toAbsolutePath().normalize().hashCode(), HINT_LOCKS.length)]) {
-            try {
+        // One version's POM, jar and module descriptor arrive on different resolver threads, and
+        // two engines or an engine and a client can write one version directory at once; the
+        // read-fold-write holds the hint's own lock so no line is lost.
+        try {
+            FileLocks.withLock(ProjectBuilds.ledgerLock(target), () -> {
                 List<String> lines = new ArrayList<>();
                 lines.add("#NOTE: This is a jk-written provenance hint for Maven tooling.");
                 if (Files.isRegularFile(target)) {
@@ -98,16 +99,9 @@ public final class M2CompatWriter {
                 }
                 lines.add(filename + ">" + repoName + "=");
                 AtomicWrites.replace(target, String.join("\n", lines) + "\n");
-            } catch (IOException ignored) {
-            }
+            });
+        } catch (IOException ignored) {
         }
-    }
-
-    /** Serialises hint writes per version directory within this process; striped, so the set is bounded. */
-    private static final Object[] HINT_LOCKS = new Object[64];
-
-    static {
-        for (int i = 0; i < HINT_LOCKS.length; i++) HINT_LOCKS[i] = new Object();
     }
 
     /**
