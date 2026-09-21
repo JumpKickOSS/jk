@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.BuildMetrics;
-import cc.jumpkick.runtime.base.ProjectIds;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;

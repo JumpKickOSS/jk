@@ -78,7 +78,7 @@ class KotlincJavaSourceKeyTest {
         KotlincRequest request = request(dir, kt, javaRoot);
 
         Map<String, String> inputs = ActionKey.kotlincInputs(request, KotlinClasspathAbi.MEMOIZED_ONLY);
-        String key = "java-api:" + util.toAbsolutePath().normalize();
+        String key = "java-api:" + PortablePath.of(util);
         assertThat(inputs).containsEntry(key, JavaSourceApi.digest(util));
         assertThat(ActionKey.kotlincJavaSourceTokens(request))
                 .containsExactly("java-api:" + PortablePath.of(util) + ":" + JavaSourceApi.digest(util));

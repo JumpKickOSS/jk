@@ -402,7 +402,8 @@ final class ModuleForecast {
             } else {
                 String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, out);
                 Path actions = CacheTree.ACTIONS.under(cache);
-                Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(taskId);
+                Path stateDir =
+                        ActionKey.stateDir(ActionTree.INCREMENTAL_JAVA.under(actions), TaskNames.COMPILE_MAIN, out);
                 long tc = Perf.start();
                 var pred = JavaCompile.predict(
                         taskId,
@@ -622,7 +623,8 @@ final class ModuleForecast {
                     layout.classesDir()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path actions = CacheTree.ACTIONS.under(cache);
-            Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(taskId);
+            Path stateDir =
+                    ActionKey.stateDir(ActionTree.INCREMENTAL_JAVA.under(actions), TaskNames.COMPILE_TEST, testOut);
             long tt = Perf.start();
             var pred = JavaCompile.predict(
                     taskId,

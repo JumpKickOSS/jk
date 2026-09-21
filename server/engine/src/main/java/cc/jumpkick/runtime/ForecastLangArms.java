@@ -108,9 +108,10 @@ final class ForecastLangArms {
         String key;
         KotlincRequest request;
         try {
-            Path workingDir = ActionTree.INCREMENTAL_KOTLIN
-                    .under(CacheTree.ACTIONS.under(cache))
-                    .resolve(taskId);
+            Path workingDir = ActionKey.stateDir(
+                    ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cache)),
+                    TaskNames.COMPILE_KOTLIN,
+                    layout.classesDir());
             PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
                     project,
                     dir,

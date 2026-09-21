@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.runtime.base;
+package cc.jumpkick.builds;
 
-import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.host.time.Clock;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +30,7 @@ public final class ProjectIds {
     public static @Nullable String idOf(String dir) {
         if (dir == null || dir.isBlank()) return null;
         Entry e = CACHE.get(dir);
-        if (e != null && System.nanoTime() - e.expiresAtNanos() < 0) return e.id();
+        if (e != null && Clock.SYSTEM.nanos() - e.expiresAtNanos() < 0) return e.id();
         return refresh(dir);
     }
 
@@ -40,7 +40,7 @@ public final class ProjectIds {
         try {
             String id = ProjectBuilds.key(Path.of(dir));
             if (CACHE.size() >= MAX_ENTRIES) CACHE.clear();
-            CACHE.put(dir, new Entry(id, System.nanoTime() + TTL_NANOS));
+            CACHE.put(dir, new Entry(id, Clock.SYSTEM.nanos() + TTL_NANOS));
             return id;
         } catch (RuntimeException e) {
             return null;

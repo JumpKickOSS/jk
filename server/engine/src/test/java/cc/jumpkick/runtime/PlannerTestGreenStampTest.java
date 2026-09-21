@@ -88,6 +88,6 @@ class PlannerTestGreenStampTest {
     }
 
     private static ActionCache.ActionRecord record(Map<String, String> outputs) {
-        return new ActionCache.ActionRecord("run-tests", "key", Map.of(), outputs, Map.of(), Set.of());
+        return new ActionCache.ActionRecord("run-tests", "key", Map.of(), outputs, Set.of());
     }
 }

@@ -42,6 +42,15 @@ Platform from the sandbox store the engine seeds (`TestStoreSeed`), never from t
 **Every tag is run by exactly one tier.** G23 verifies the executable partition, and G52 verifies
 that the marked table above matches it.
 
+## The shared-cache proof
+
+`SharedCacheAcrossCheckoutsE2eTest` (engine, `integration`) builds one workspace from two
+checkouts at different absolute paths through one cache: the second checkout restores every
+compile, package and test step, a body-only edit in it reruns only that module and the tests on
+its classpath, an API edit misses its consumer, and the first checkout keeps hitting throughout.
+`ActionKeyTest` keys every family (javac, kotlinc, groovyc, artifact bags, the run-tests stamp)
+from two roots through the production task id. A key factory that hashes a location fails both.
+
 ## The curated integration lane (every pull request)
 
 The fast tier runs no integration class, and the full profile is too slow to gate on, so a wire,

@@ -172,7 +172,8 @@ final class ForecastSteps {
             if (Objects.equals(now.get(k), prior.get(k))) continue;
             if (k.startsWith("cp:")) api.add(fileName(k.substring(3)));
             else if (k.startsWith("pp:")) processors.add(fileName(k.substring(3)));
-            else if (k.startsWith("java-api:")) declarations.add(fileName(k.substring("java-api:".length())));
+            else if (k.startsWith(ActionKey.JAVA_API))
+                declarations.add(fileName(k.substring(ActionKey.JAVA_API.length())));
             else if (k.startsWith("worker:")) compiler = true;
             else if (k.indexOf('/') >= 0 || k.indexOf('\\') >= 0) sources++;
         }

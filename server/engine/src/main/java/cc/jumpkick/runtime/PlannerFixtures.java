@@ -153,9 +153,10 @@ public final class PlannerFixtures {
                 project.build().javac(),
                 javaHome);
         String fxTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, layout.testFixturesClassesDir());
-        Path fxState = ActionTree.INCREMENTAL_JAVA
-                .under(CacheTree.ACTIONS.under(cache))
-                .resolve(fxTaskId);
+        Path fxState = ActionKey.stateDir(
+                ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(cache)),
+                TaskNames.COMPILE_TEST_FIXTURES,
+                layout.testFixturesClassesDir());
         var fxPred = JavaCompile.predict(
                 fxTaskId,
                 fxReq,
@@ -223,9 +224,10 @@ public final class PlannerFixtures {
                             project.build().javac(),
                             ctx.require(JAVA_HOME));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, out);
-                    Path stateDir = ActionTree.INCREMENTAL_JAVA
-                            .under(CacheTree.ACTIONS.under(in.cache()))
-                            .resolve(taskId);
+                    Path stateDir = ActionKey.stateDir(
+                            ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),
+                            TaskNames.COMPILE_TEST_FIXTURES,
+                            out);
                     boolean rerun = in.session().config().rebuildOr(false);
                     if (!rerun) {
                         try {

@@ -658,7 +658,7 @@ public final class TestSupport {
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot));
         boolean useCache = !SessionContext.current().config().rebuildOr(false);
         Path actions = CacheTree.ACTIONS.under(cacheRoot);
-        Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(cacheTaskId);
+        Path stateDir = ActionKey.stateDir(ActionTree.INCREMENTAL_JAVA.under(actions), taskId, outputDir);
 
         // Reweight the bar slice from the real request: a CAS hit is a cheap
         // restore (3), else a full compile. Same key JavaCompile uses.

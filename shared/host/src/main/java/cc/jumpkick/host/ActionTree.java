@@ -31,7 +31,10 @@ public enum ActionTree {
     /** One key record per cached action, flat, named by the action key. The count of cached actions. */
     KEYS("keys"),
 
-    /** One pointer per qualified task id at the action key it last produced. */
+    /**
+     * One pointer per qualified task id at the action key it last produced. The id names the
+     * output within its project, so every checkout of the project shares the pointer.
+     */
     TASKS("tasks"),
 
     /** {@code jk sync} reachability manifests, one per project fingerprint. */

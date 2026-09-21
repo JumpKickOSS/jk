@@ -365,8 +365,7 @@ class ForecastKeyOwnerTest {
                 expectedTask,
                 expectedKey,
                 Map.of(),
-                Map.of(layout.assemblyJar().getFileName().toString(), sha),
-                Map.of());
+                Map.of(layout.assemblyJar().getFileName().toString(), sha));
 
         assertThat(PackagingKeys.assemblyActionCached(
                         module,
