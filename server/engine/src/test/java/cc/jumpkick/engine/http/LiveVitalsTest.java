@@ -90,6 +90,7 @@ class LiveVitalsTest {
                 base.logRolledAt(),
                 base.ignoredSignals(),
                 base.queuedBuildPlans(),
+                "",
                 JobRow.toJson(rows));
     }
 
