@@ -197,7 +197,8 @@ through `ProjectIdentity.IdentityFile.write`, which also drops entries whose dir
 exists. `ProjectIdentity.checkoutsForId` answers the live ones; a caller that needs one path says
 which (`selectCheckout`, real-path compared). Nothing reads "the" path of an id.
 
-Each run's `record.json` names the checkout it ran in (`dir`). Readers that want a checkout's
+Each run's `record.json` names the checkout it ran in (`dir`); a run the client opened without
+the engine carries a one-line `checkout` marker instead. Readers that want a checkout's
 latest run — `jk results` (`ProjectBuilds.latestRunFile`), the delta's previous run
 (`JournalLineage`), the coverage baseline — filter runs by that `dir`, so a worktree never prints
 its sibling's report. `jk history list` shows a Checkout column when an id in view has more than

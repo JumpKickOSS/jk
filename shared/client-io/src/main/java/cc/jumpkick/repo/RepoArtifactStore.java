@@ -10,16 +10,14 @@ import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -669,12 +667,6 @@ public final class RepoArtifactStore {
     public static final String SHELF_LOCK_NAME = ".shelf.lock";
 
     /**
-     * Shelf publishes of this process, serialized: {@link FileChannel#lock} is per file across
-     * processes but throws when a second thread of the same JVM asks for the same file.
-     */
-    private static final Object SHELF_WRITE = new Object();
-
-    /**
      * As {@link #writeToLocalStore(Path, String, Path)}, recording {@code packagedBy} — the sha256
      * of the engine jar that built the artifact — in its memo, so the shelf can later be compared
      * with the engine the home names. Null records none (a client-side file install).
@@ -709,15 +701,13 @@ public final class RepoArtifactStore {
                     Files.size(tmp),
                     hex,
                     packagedBy);
-            synchronized (SHELF_WRITE) {
-                try (FileChannel lockChannel = FileChannel.open(
-                                shelf.resolve(SHELF_LOCK_NAME), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                        FileLock lock = lockChannel.lock()) {
-                    AtomicWrites.moveInto(tmp, target);
-                    moved = true;
-                    memo.write(memoFile);
-                }
-            }
+            boolean[] published = new boolean[1];
+            FileLocks.withLock(shelf.resolve(SHELF_LOCK_NAME), () -> {
+                AtomicWrites.moveInto(tmp, target);
+                published[0] = true;
+                memo.write(memoFile);
+            });
+            moved = published[0];
             return hex;
         } finally {
             if (!moved) Files.deleteIfExists(tmp);

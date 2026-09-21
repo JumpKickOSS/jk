@@ -93,8 +93,9 @@ class ProjectBuildsTest {
         Files.writeString(second.resultsFile(), "b #2\n");
         ProjectBuilds.RunDir third = openRecorded(builds, a);
         Files.writeString(third.resultsFile(), "a #3\n");
+        // A run the client opened without the engine: no record.json, but the checkout marker.
         ProjectBuilds.RunDir unrecorded = ProjectBuilds.openRun(builds, "g:n", b);
-        Files.writeString(unrecorded.resultsFile(), "nobody's #4\n");
+        Files.writeString(unrecorded.resultsFile(), "b #4 (client-opened)\n");
 
         assertThat(first.projectHome()).isEqualTo(second.projectHome());
         assertThat(List.of(first.buildNumber(), second.buildNumber(), third.buildNumber(), unrecorded.buildNumber()))
@@ -102,8 +103,9 @@ class ProjectBuildsTest {
         assertThat(ProjectBuilds.latestRunFile(builds, a, ProjectBuilds.RESULTS))
                 .contains(third.resultsFile());
         assertThat(ProjectBuilds.latestRunFile(builds, b, ProjectBuilds.RESULTS))
-                .contains(second.resultsFile());
-        assertThat(ProjectBuilds.runCheckout(unrecorded.runDir())).isNull();
+                .contains(unrecorded.resultsFile());
+        assertThat(ProjectBuilds.runCheckout(unrecorded.runDir()))
+                .isEqualTo(b.toAbsolutePath().normalize());
 
         var identity = ProjectIdentity.IdentityFile.read(first.projectHome()).orElseThrow();
         assertThat(identity.checkouts().stream().map(ProjectIdentity.Checkout::path))

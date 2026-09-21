@@ -46,6 +46,10 @@ import org.jspecify.annotations.Nullable;
 public final class ProjectBuilds {
 
     public static final String HOST_METRICS = "host-metrics.toml";
+
+    /** One line, the absolute checkout dir, in a run the client opened without the engine. */
+    public static final String CHECKOUT = "checkout";
+
     public static final String IDENTITY = "identity.toml";
     public static final String RUN_NUMBER = "run-number.txt";
     public static final String PROJECT_METRICS = "project-metrics.toml";
@@ -155,6 +159,9 @@ public final class ProjectBuilds {
         long n = allocateRunNumber(home);
         Path runDir = runDir(home, n);
         Files.createDirectories(runDir);
+        // A run the client opens without the engine has no record.json; the marker keeps it
+        // attributable to its checkout for latestRunFile.
+        Files.writeString(runDir.resolve(CHECKOUT), abs + "\n", StandardCharsets.UTF_8);
         return new RunDir(identity.id(), home, runDir, n, identity.coord(), abs);
     }
 
@@ -387,15 +394,23 @@ public final class ProjectBuilds {
     }
 
     /**
-     * The checkout a run was recorded for: the top-level {@code dir} of its {@code record.json}.
-     * {@code null} when the run has no record or the record names none.
+     * The checkout a run was recorded for: the top-level {@code dir} of its {@code record.json},
+     * else the {@link #CHECKOUT} marker {@link #openRun} writes for a run the client opened
+     * without the engine. {@code null} when neither names one.
      */
     public static @Nullable Path runCheckout(Path runDir) {
         Path record = runDir.resolve(RECORD);
-        if (!Files.isRegularFile(record)) return null;
         try {
-            String dir = Jsonl.topStr(Files.readString(record, StandardCharsets.UTF_8), "dir");
-            return dir == null || dir.isBlank() ? null : Path.of(dir);
+            if (Files.isRegularFile(record)) {
+                String dir = Jsonl.topStr(Files.readString(record, StandardCharsets.UTF_8), "dir");
+                if (dir != null && !dir.isBlank()) return Path.of(dir);
+            }
+            Path marker = runDir.resolve(CHECKOUT);
+            if (Files.isRegularFile(marker)) {
+                String dir = Files.readString(marker, StandardCharsets.UTF_8).trim();
+                if (!dir.isEmpty()) return Path.of(dir);
+            }
+            return null;
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }
