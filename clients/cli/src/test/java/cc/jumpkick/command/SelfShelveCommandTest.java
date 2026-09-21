@@ -2,11 +2,17 @@
 package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.system.SelfShelveCommand;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.util.JkDirs;
@@ -19,7 +25,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code jk self shelve <repos-dir>} copies a dist's {@code repos/jk-local} tree onto the home's
- * shelf with a memo per artifact, so a private install runs the workers built beside its engine.
+ * shelf with a memo per artifact, so a private install runs the workers built beside its engine,
+ * and pins the jars to the engine the home has materialized.
  */
 class SelfShelveCommandTest {
 
@@ -75,6 +82,31 @@ class SelfShelveCommandTest {
                 .exists();
         assertThat(shelf.resolve("cc/jumpkick/guards/spring/1.0.0/spring-1.0.0.jar"))
                 .hasContent("pack-bytes");
+    }
+
+    @Test
+    void with_a_materialized_engine_the_shelved_jars_are_pinned_to_it(@TempDir Path dist) throws Exception {
+        Path engineJar = Files.writeString(dist.resolve("jk-engine-" + JkVersion.VERSION + ".jar"), "engine-bytes");
+        EngineInstall install = EngineInstall.current();
+        install.materializeFromFiles(JkVersion.VERSION, JkStores.storeCas(), engineJar);
+        Path repos = dist.resolve("repos");
+        Path entry = repos.resolve("jk-local/cc/jumpkick/jk-test-runner/1.0.0");
+        Files.createDirectories(entry);
+        Path worker = Files.writeString(entry.resolve("jk-test-runner-1.0.0.jar"), "worker-bytes");
+        Files.writeString(entry.resolve("jk-test-runner-1.0.0.pom"), "<project/>");
+
+        int[] exit = {0};
+        var streams = Capture.both(() -> exit[0] = shelve(repos));
+
+        assertThat(exit[0]).isZero();
+        assertThat(TestAnsi.strip(streams.out())).contains("1 jars pinned to engine");
+        ShelfManifest pins = ShelfManifest.read(install.shelfFile()).orElseThrow();
+        assertThat(pins.pins(Hashing.sha256Hex(engineJar))).isTrue();
+        assertThat(pins.source()).isEqualTo(dist.toAbsolutePath().normalize().toString());
+        assertThat(pins.jars()).containsExactly(entry("cc.jumpkick:jk-test-runner:1.0.0", Hashing.sha256Hex(worker)));
+        assertThat(JkStores.storeCas().pathFor(Hashing.sha256Hex(worker)))
+                .as("the shelf publish fed the store first")
+                .hasContent("worker-bytes");
     }
 
     @Test

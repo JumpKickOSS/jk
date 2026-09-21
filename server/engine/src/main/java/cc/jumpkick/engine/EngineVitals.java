@@ -32,6 +32,7 @@ public final class EngineVitals {
     private final LongSupplier logRolledAtMillis;
     private final Supplier<String> ignoredSignals;
     private final IntSupplier queuedBuildPlans;
+    private final Supplier<String> installSource;
     private final Supplier<List<Map<String, Object>>> jobs;
 
     public StatusSnapshot snapshot() {
@@ -63,6 +64,7 @@ public final class EngineVitals {
                 logRolledAtMillis.getAsLong(),
                 ignoredSignals.get(),
                 queuedBuildPlans.getAsInt(),
+                installSource.get(),
                 jobs.get());
     }
 

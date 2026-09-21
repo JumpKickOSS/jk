@@ -4,13 +4,20 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.groups.Tuple.tuple;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -294,5 +301,88 @@ class RepoArtifactStoreTest {
         Files.writeString(shelved, "replaced from a remote");
         shelf.writeMemo(rel, shelved, Hashing.sha256Hex(shelved));
         assertThat(ArtifactMemo.read(memo).orElseThrow().packagedBy()).isNull();
+    }
+
+    @Test
+    void a_shelf_publish_puts_the_bytes_in_the_cas_and_memoizes_the_staged_copy(@TempDir Path dir) throws IOException {
+        Path store = dir.resolve("store");
+        String rel = "cc/jumpkick/jk-foo/1.0/jk-foo-1.0.jar";
+        Path built = Files.writeString(dir.resolve("jk-foo-1.0.jar"), "worker bytes");
+        String expected = Hashing.sha256Hex(built);
+
+        String hex = RepoArtifactStore.writeToLocalStore(store, rel, built, null);
+
+        assertThat(hex).isEqualTo(expected);
+        Path shelved = store.resolve("repos/jk-local").resolve(rel);
+        ArtifactMemo memo = ArtifactMemo.read(ArtifactMemo.jkPath(store.resolve("repos/jk-local"), rel))
+                .orElseThrow();
+        assertThat(memo.sha256()).isEqualTo(expected);
+        assertThat(memo.size()).isEqualTo(Files.size(shelved));
+        assertThat(memo.mtimeMillis())
+                .isEqualTo(Files.getLastModifiedTime(shelved).toMillis());
+        assertThat(memo.coordinate()).isEqualTo("cc.jumpkick:jk-foo:1.0");
+        assertThat(new Cas(store).pathFor(expected))
+                .as("the store holds the bytes by sha")
+                .hasContent("worker bytes");
+    }
+
+    /**
+     * Two installs racing on one slot: however their moves and memo writes interleave, the memo
+     * beside the published jar describes that jar, never the other install's.
+     */
+    @Test
+    void racing_publishes_of_different_bytes_to_one_slot_leave_the_memo_of_the_jar_beside_it(@TempDir Path dir)
+            throws Exception {
+        Path store = dir.resolve("store");
+        String rel = "cc/jumpkick/jk-foo/1.0/jk-foo-1.0.jar";
+        Path shelf = store.resolve("repos/jk-local");
+        Path shelved = shelf.resolve(rel);
+        Path memoFile = ArtifactMemo.jkPath(shelf, rel);
+        Path treeA = Files.writeString(dir.resolve("a.jar"), "a".repeat(4096));
+        Path treeB = Files.writeString(dir.resolve("b.jar"), "b".repeat(8192));
+        String shaA = Hashing.sha256Hex(treeA);
+        String shaB = Hashing.sha256Hex(treeB);
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 40; round++) {
+                CountDownLatch go = new CountDownLatch(1);
+                Future<String> a = pool.submit(() -> {
+                    go.await();
+                    return RepoArtifactStore.writeToLocalStore(store, rel, treeA, "a".repeat(64));
+                });
+                Future<String> b = pool.submit(() -> {
+                    go.await();
+                    return RepoArtifactStore.writeToLocalStore(store, rel, treeB, "b".repeat(64));
+                });
+                go.countDown();
+                assertThat(a.get(30, TimeUnit.SECONDS)).isEqualTo(shaA);
+                assertThat(b.get(30, TimeUnit.SECONDS)).isEqualTo(shaB);
+
+                ArtifactMemo memo = ArtifactMemo.read(memoFile).orElseThrow();
+                byte[] bytes = Files.readAllBytes(shelved);
+                assertThat(memo.sha256())
+                        .as("round %d: the memo names the jar beside it", round)
+                        .isEqualTo(Hashing.sha256Hex(bytes));
+                assertThat(memo.size()).isEqualTo(bytes.length);
+                assertThat(memo.mtimeMillis())
+                        .isEqualTo(Files.getLastModifiedTime(shelved).toMillis());
+                assertThat(memo.packagedBy()).isEqualTo(memo.sha256().equals(shaA) ? "a".repeat(64) : "b".repeat(64));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        Cas cas = new Cas(store);
+        assertThat(cas.pathFor(shaA))
+                .as("both installs' bytes stay in the store")
+                .exists();
+        assertThat(cas.pathFor(shaB)).exists();
+        assertThat(new String(Files.readAllBytes(cas.pathFor(shaA)), StandardCharsets.UTF_8))
+                .isEqualTo("a".repeat(4096));
+        try (var files = Files.list(shelved.getParent())) {
+            assertThat(files.map(p -> p.getFileName().toString()))
+                    .as("no staging file lingers")
+                    .noneMatch(n -> n.endsWith(".part"));
+        }
     }
 }

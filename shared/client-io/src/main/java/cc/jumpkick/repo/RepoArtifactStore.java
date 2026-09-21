@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -12,10 +13,13 @@ import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -626,7 +630,7 @@ public final class RepoArtifactStore {
     }
 
     /** {@code g:a:v} from a Maven-relative path, or {@code -} when the path is too short. */
-    static String inferGav(String relativePath) {
+    public static String inferGav(String relativePath) {
         Path rel = Path.of(relativePath);
         int n = rel.getNameCount();
         if (n < 3) return "-";
@@ -654,41 +658,74 @@ public final class RepoArtifactStore {
      * the local-install write path shared by the engine's install plan and the client's
      * {@code jk install <file.jar>} mode (a local, content-addressed write, like {@code
      * Cas.putByLink} — no network).
+     *
+     * @return the sha256 of the published bytes, lower-case hex
      */
-    public static void writeToLocalStore(Path artifactRoot, String relativePath, Path source) throws IOException {
-        writeToLocalStore(artifactRoot, relativePath, source, null);
+    public static String writeToLocalStore(Path artifactRoot, String relativePath, Path source) throws IOException {
+        return writeToLocalStore(artifactRoot, relativePath, source, null);
     }
+
+    /** The lock every shelf publish under one store takes; lives at the shelf root. */
+    public static final String SHELF_LOCK_NAME = ".shelf.lock";
+
+    /**
+     * Shelf publishes of this process, serialized: {@link FileChannel#lock} is per file across
+     * processes but throws when a second thread of the same JVM asks for the same file.
+     */
+    private static final Object SHELF_WRITE = new Object();
 
     /**
      * As {@link #writeToLocalStore(Path, String, Path)}, recording {@code packagedBy} — the sha256
      * of the engine jar that built the artifact — in its memo, so the shelf can later be compared
      * with the engine the home names. Null records none (a client-side file install).
+     *
+     * <p>The bytes go into the store's artifact CAS before the shelf names them, so an engine
+     * whose install pinned this sha is served from there once another install has replaced the
+     * shelf path. The jar and its memo are published under one lock, the
+     * memo describing the bytes that were staged: two installs interleaving on one slot leave a
+     * memo that names the jar beside it, never the other install's.
      */
-    public static void writeToLocalStore(
+    public static String writeToLocalStore(
             Path artifactRoot, String relativePath, Path source, @Nullable String packagedBy) throws IOException {
         // The caller picks the root deliberately: the engine install plan passes the
         // store (where resolvers read since the cache/store split); plugin install-local may pass
         // an isolated --cache-dir root on purpose.
-        Path target = MavenLayout.safeResolve(
-                artifactRoot.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL), relativePath);
+        Path shelf = artifactRoot.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
+        Path target = MavenLayout.safeResolve(shelf, relativePath);
+        Path memoFile = target.resolveSibling(
+                ArtifactMemo.jkFileName(target.getFileName().toString()));
         Files.createDirectories(target.getParent());
         Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
         // Failure path only — moveInto consumed tmp on success.
         boolean moved = false;
         try {
             Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
-            AtomicWrites.moveInto(tmp, target);
-            moved = true;
+            String hex = Hashing.sha256Hex(tmp);
+            new Cas(artifactRoot).putFile(tmp, hex);
+            // The move keeps the inode, so the staged copy's size and mtime are the published file's.
+            ArtifactMemo memo = new ArtifactMemo(
+                    inferGav(relativePath),
+                    Files.getLastModifiedTime(tmp).toMillis(),
+                    Files.size(tmp),
+                    hex,
+                    packagedBy);
+            synchronized (SHELF_WRITE) {
+                try (FileChannel lockChannel = FileChannel.open(
+                                shelf.resolve(SHELF_LOCK_NAME), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                        FileLock lock = lockChannel.lock()) {
+                    AtomicWrites.moveInto(tmp, target);
+                    moved = true;
+                    memo.write(memoFile);
+                }
+            }
+            return hex;
         } finally {
             if (!moved) Files.deleteIfExists(tmp);
         }
-        String hex = Hashing.sha256Hex(target);
-        ArtifactMemo.ofBlob(target, inferGav(relativePath), hex, packagedBy)
-                .write(target.resolveSibling(
-                        ArtifactMemo.jkFileName(target.getFileName().toString())));
     }
 
+    /** A jk-owned side file of the tree, not an artifact: a memo, a checksum sidecar, the shelf lock. */
     private static boolean isMemoName(String fileName) {
-        return fileName.endsWith(".jk") || fileName.endsWith(".sha256");
+        return fileName.endsWith(".jk") || fileName.endsWith(".sha256") || SHELF_LOCK_NAME.equals(fileName);
     }
 }

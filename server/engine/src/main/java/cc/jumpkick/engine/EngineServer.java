@@ -13,6 +13,7 @@ import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
@@ -419,6 +420,7 @@ public final class EngineServer implements AutoCloseable {
                 this::logRolledAtMillis,
                 TerminalSignals::ignoredSignals,
                 jobs::queued,
+                ShelfPins::source,
                 jobs::jobsJson);
     }
 
