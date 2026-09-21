@@ -298,7 +298,7 @@ jk install            # or --skip-tests; install runs the suite like `jk build`
 |---|---|
 | Library (`shared/*`, `server/*`, rule packs) | Thin jar + POM onto the shelf, `~/.jk/store/repos/jk-local/<g>/<a>/<v>/` |
 | Plugin worker (`plugins/*`) | Same shelf entry; launch rebuilds the runtime classpath from that POM |
-| `server/engine` — declares `[install] product-lib = "jk-engine"` | Assembly jar materialized into `~/.jk/lib/jk-engine/`, pointer stamped by sha; the next client invocation takes over the resident engine |
+| `server/engine` — declares `[install] product-lib = "jk-engine"` | Assembly jar materialized into `~/.jk/lib/jk-engine/`, pointer stamped by sha; the next client invocation takes over the resident engine. The shelf is pinned to that engine in `jk-shelf.toml` beside the pointer ([the pinned shelf](#the-pinned-shelf)) |
 | `clients/cli` — declares `[install] product-bin = "jk"` | Native binary replaces `~/.jk/bin/jk` (previous client parked as `.old`, `jkx` re-linked), the same swap `jk self update` performs — and `~/.jk/bin/jk-jvm` (`jk-jvm.cmd` on Windows) is written beside it: `cc.jumpkick.cli.Jk` on a JVM over the shelf's `jk-cli` closure. On a machine that built no native client (no GraalVM) the launcher is the whole install and the PATH client is left alone |
 
 The shelf always holds the full entry; with the machine default `[m2] install` on, the same bytes
@@ -308,6 +308,44 @@ only because jk installs itself — no other project should declare them. The sh
 
 A module the forecast finds clean is still checked against its destination: a shelf entry, engine
 jar or PATH client holding other bytes than the build output is reinstalled.
+
+### The pinned shelf
+
+The shelf is keyed by coordinate, and two checkouts at one version publish to the same slots, so
+an install from a second worktree replaces the jars the first worktree's resident engine would
+fork next. The engine therefore names its workers by content, not by path:
+
+- Every shelf publish puts the bytes into the store's artifact CAS (`<store>/sha256/`) before it
+  moves them into `repos/jk-local/`, and publishes the jar and its `.jk` memo under one lock
+  (`repos/jk-local/.shelf.lock`), the memo hashed from the staged copy — so the memo beside a jar
+  always describes that jar, however two installs interleave.
+- `jk install` (and `jk self shelve`) then writes **`~/.jk/lib/jk-engine/jk-shelf.toml`** beside
+  the engine pointer: the engine's jar sha, the checkout it came from, and every workspace
+  module's thin jar by `group:artifact:version` and sha256.
+
+  ```toml
+  engine-sha256 = "…"
+  source = "/home/me/src/jk"
+  installed-at = "2026-09-20T12:00:00Z"
+
+  [jars]
+  "cc.jumpkick:jk-java-compiler:0.13.4" = "…"
+  ```
+
+- An engine adopts the manifest while it names the engine's own jar (re-reading it, so a reinstall
+  of the same engine moves its pins) and keeps the one it adopted once another install has written
+  the file for another engine. At every fork the worker launcher resolves each `repos/jk-local` jar
+  through it: a shelf jar whose bytes are the pinned ones is copied into the CAS as before; one
+  another install replaced is served from the CAS at the pinned sha; a pinned sha the store no
+  longer holds fails the launch naming both shas and the checkout to reinstall from. A jar the
+  manifest does not name (a third-party `jk install <file.jar>`) launches as the shelf has it.
+
+Two worktrees installing in turn therefore leave the live engine the last installer's, every fork
+of it running that installer's workers, and the displaced engine draining with the workers it was
+installed with. `jk engine status` prints the checkout the hosted engine's shelf came from as its
+`Source` row (`installSource` in `--output json` and `GET /api/status`), and the install's summary
+says how many jars it pinned and to which engine. An engine run from a classes directory has no
+jar identity and pins nothing.
 
 The pass is run by the engine the home names when it starts, and every artifact-shaped action key
 names the engine that packaged the artifact. So when the pass materializes another engine than the
@@ -363,7 +401,8 @@ target/dist/
 
 `install.sh <dist>/jk` copies the binary, materializes the engine jar from `lib/` (`jk self
 materialize`) and shelves `repos/jk-local/` onto the home's `<store>/repos/jk-local/` (`jk self
-shelve`, one `.jk` memo per artifact, the materialized engine recorded as the packager). The
+shelve`, one `.jk` memo per artifact, the materialized engine recorded as the packager and the
+jars pinned to it in `jk-shelf.toml`). The
 engine launches its workers from that shelf and fetches a worker it lacks from jumpkick.build at
 its own version, so the shelf is what makes a dist install run the workers built beside its engine
 rather than the published ones of the same version. A dist with no `repos/` installs and says so;
@@ -398,7 +437,7 @@ stops the private engine, swaps the binary, the engine jar and the shelf, and st
 | Under `$JK_HOME` (private) | Shared with `~/.jk` |
 |---|---|
 | `bin/jk` — the binary `jk build` linked | the managed JDK root, `~/.jdks` (`JK_JDKS_DIR`): the private engine and its compilers run on JDKs the default home already installed |
-| `lib/jk-engine/` — the engine jar from `target/dist/lib/` | `~/.m2`, read for third-party jars when `[m2] integration` is on |
+| `lib/jk-engine/` — the engine jar from `target/dist/lib/`, its pointer and the shelf manifest pinning the workers to it | `~/.m2`, read for third-party jars when `[m2] integration` is on |
 | `store/repos/jk-local/` — every module jar from `target/dist/repos/`: the workers the engine launches, the rule packs, the libraries | nothing else: `JK_STORE_DIR=$HOME/.jk/store` shares the artifact store on purpose when a cold store is the wrong cost |
 | `store/` (artifacts, templates, the library catalog), `cache/` (action cache), `state/` (the engine's socket, log and build history), `config.toml`, `creds/` | |
 

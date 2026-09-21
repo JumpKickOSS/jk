@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.api.BuildOptions;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
@@ -705,7 +706,44 @@ public final class InstallCommand {
             lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
             modules++;
         }
+        pinShelf(pass).ifPresent(lines::add);
         return new Applied(modules, lines);
+    }
+
+    /**
+     * Pin the shelf to the engine the home names now: every workspace module's thin jar the tree
+     * has built, by coordinate and sha256, into {@link ShelfManifest} beside the engine pointer.
+     * Written after the copy step, so the engine named is the one this pass materialized (or left
+     * in place); the engine adopts it at its next fork, or at startup when the pass replaced it.
+     * Empty when the home names no engine — there is nothing to pin the shelf to.
+     */
+    private static Optional<String> pinShelf(WorkspacePass pass) throws IOException {
+        Optional<String> engine = liveEngineSha();
+        if (engine.isEmpty()) return Optional.empty();
+        Map<String, String> jars = shelfJars(pass.moduleDirs(), pass.infoByDir());
+        ShelfManifest.record(EngineInstall.current().shelfFile(), engine.get(), pass.wsRoot(), jars, Clock.SYSTEM);
+        return Optional.of("Pinned " + jars.size() + " shelf jar" + (jars.size() == 1 ? "" : "s") + " to engine "
+                + shortSha(engine) + " from " + PathDisplay.of(pass.wsRoot()));
+    }
+
+    /**
+     * {@code group:artifact:version} to sha256 of the thin jar {@code jk build} left for each
+     * module — the bytes {@code cache-install} shelved. A module with no jar on disk contributes
+     * nothing; a coordinator root publishes nothing.
+     */
+    static Map<String, String> shelfJars(List<Path> moduleDirs, Map<Path, ProjectInfo> infoByDir) throws IOException {
+        Map<String, String> jars = new LinkedHashMap<>();
+        for (Path mod : moduleDirs) {
+            ProjectInfo info = infoByDir.get(mod);
+            if (info == null || info.error() != null || info.coordinatorOnly()) continue;
+            String jarPath = info.mainJarPath();
+            if (jarPath == null || jarPath.isBlank()) continue;
+            Path jar = Path.of(jarPath);
+            if (!Files.isRegularFile(jar)) continue;
+            String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
+            jars.put(coord, Hashing.sha256Hex(jar));
+        }
+        return jars;
     }
 
     /** The success wedge of a workspace install: what this pass put in place, or that nothing needed to be. */

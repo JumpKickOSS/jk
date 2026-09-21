@@ -197,6 +197,7 @@ class McpHandlerTest {
                 base.logRolledAt(),
                 base.ignoredSignals(),
                 1,
+                "",
                 JobRow.toJson(rows));
         McpHandler withLive = new McpHandler(
                 () -> withJobs,

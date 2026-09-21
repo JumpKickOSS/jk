@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineSpawn;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -23,7 +25,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Two consecutive {@code jk install}s of one tree reach a fixed point: the second re-shelves
- * nothing, and the home names the same engine before and after it. The property spans the whole
+ * nothing, the home names the same engine before and after it, and the shelf manifest pins the
+ * tree's jars to that engine. The property spans the whole
  * install — packagers, artifact keys carrying the engine identity, the second pass's handoff — so
  * it is proven on a forked client against a private {@code JK_HOME}, not in-process.
  *
@@ -65,6 +68,18 @@ class InstallFixedPointE2eTest {
                             .currentInstall()
                             .map(EngineInstall.Materialized::engineSha))
                     .contains(sandboxEngine.get().engineSha());
+
+            // The shelf is pinned to that engine: both module jars by sha, and the checkout named.
+            ShelfManifest pins = ShelfManifest.read(engineHome.resolve(EngineInstall.SHELF_NAME))
+                    .orElseThrow();
+            assertThat(pins.pins(sandboxEngine.get().engineSha())).isTrue();
+            assertThat(pins.source()).isEqualTo(ws.toAbsolutePath().normalize().toString());
+            assertThat(pins.jars()).containsOnlyKeys("com.example:lib:0.1.0", "com.example:app:0.1.0");
+            assertThat(pins.sha("com.example:lib:0.1.0"))
+                    .contains(Hashing.sha256Hex(ws.resolve("target/lib/lib/lib-0.1.0.jar")));
+            Run status = jk(home, ws, "engine", "status");
+            assertThat(status.exit()).as(status.output()).isZero();
+            assertThat(status.output()).contains("Source").contains(pins.source());
         } finally {
             jk(home, ws, "engine", "stop", "--now");
         }

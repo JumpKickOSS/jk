@@ -70,6 +70,11 @@ public record StatusSnapshot(
         /** Jobs waiting for coordinator memory before they may run; not counted in {@link #activeBuildPlans}. */
         int queuedBuildPlans,
         /**
+         * The checkout the engine's pinned shelf was installed from — where its first-party
+         * workers come from; {@code ""} when no install pinned a shelf to this engine.
+         */
+        String installSource,
+        /**
          * Every live and queued job, live first in admission order then queued in arrival order,
          * each as {@code JobRow.toJson()} renders it: {@code jid}, {@code kind}, {@code dir},
          * {@code state} ({@code live} | {@code queued}), {@code since}, {@code workers},
@@ -128,6 +133,7 @@ public record StatusSnapshot(
                 logRolledAt,
                 ignoredSignals,
                 queuedBuildPlans,
+                "",
                 List.of());
     }
 
@@ -167,6 +173,7 @@ public record StatusSnapshot(
                 /* logRolledAt */ -1L,
                 /* ignoredSignals */ "",
                 /* queuedBuildPlans */ 0,
+                /* installSource */ "",
                 /* jobs */ List.of());
     }
 
@@ -215,6 +222,7 @@ public record StatusSnapshot(
         m.put("logBytes", logBytes);
         m.put("logRolledAt", logRolledAt);
         m.put("ignoredSignals", ignoredSignals);
+        m.put("installSource", installSource);
         m.put("jobs", jobs);
         return m;
     }
