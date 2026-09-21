@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.builds.CheckoutSlot;
 import cc.jumpkick.engine.api.InFlightBuilds;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.util.FileLocks;
 import java.io.Closeable;
 import java.io.IOException;
@@ -19,8 +19,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class BuildSlot implements Closeable {
 
-    static final String LOCK_FILE = "build.lock";
-
     private final FileLocks.Hold hold;
 
     private BuildSlot(FileLocks.Hold hold) {
@@ -29,7 +27,7 @@ public final class BuildSlot implements Closeable {
 
     /** Where {@code checkout}'s slot lock lives. */
     static Path lockFile(Path checkout) {
-        return checkout.resolve(BuildLayout.TARGET).resolve(".jk").resolve(LOCK_FILE);
+        return CheckoutSlot.lockFile(checkout);
     }
 
     /** What {@link #take} found. */
@@ -84,30 +82,9 @@ public final class BuildSlot implements Closeable {
      * holder that has not written its build number yet reports number 0.
      */
     static InFlightBuilds.Hold holderOf(Path checkout, String fingerprint, String dir, @Nullable String coord) {
-        long build = 0;
-        String kind = "build";
-        long started = 0;
-        for (String line : FileLocks.describeHolder(lockFile(checkout)).split("\n")) {
-            int eq = line.indexOf('=');
-            if (eq < 0) continue;
-            String k = line.substring(0, eq).trim();
-            String v = line.substring(eq + 1).trim();
-            switch (k) {
-                case "build" -> build = parseLong(v);
-                case "kind" -> kind = v.isEmpty() ? kind : v;
-                case "started" -> started = parseLong(v);
-                default -> {}
-            }
-        }
-        return new InFlightBuilds.Hold(0L, build, fingerprint, kind, dir, coord, started, null, null, null);
-    }
-
-    private static long parseLong(String v) {
-        try {
-            return Long.parseLong(v);
-        } catch (NumberFormatException notANumber) {
-            return 0;
-        }
+        CheckoutSlot.Holder h = CheckoutSlot.holderOf(checkout);
+        return new InFlightBuilds.Hold(
+                0L, h.buildNumber(), fingerprint, h.kind(), dir, coord, h.startedAt(), null, null, null);
     }
 
     @Override

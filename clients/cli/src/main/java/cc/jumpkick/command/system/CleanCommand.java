@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.builds.CheckoutSlot;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
@@ -30,6 +31,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -68,6 +70,12 @@ public final class CleanCommand implements CliCommand {
         List<Path> projectDirs = collectProjectDirs(workspaceRoot, warnings);
         for (String warning : warnings) {
             CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + warning);
+        }
+
+        Optional<String> held = heldMessage(workspaceRoot, projectDirs);
+        if (held.isPresent()) {
+            CommandWedge.printFail("Clean", held.get());
+            return 1;
         }
 
         long startMs = System.currentTimeMillis();
@@ -142,6 +150,26 @@ public final class CleanCommand implements CliCommand {
         String removed = files == 0 ? "Nothing removed" : "Removed " + stats + ", but";
         return removed + " " + path + others + " could not be removed: another process has it open"
                 + " (a build, the engine, or an IDE)";
+    }
+
+    /**
+     * The refusal when a build holds one of the checkouts about to be wiped: its slot lock lives
+     * under the {@code target/} the clean removes, and on Linux unlinking it would let the next
+     * engine lock a fresh file while the build still writes the tree.
+     */
+    static Optional<String> heldMessage(Path workspaceRoot, List<Path> projectDirs) {
+        for (Path projectDir : projectDirs) {
+            Optional<CheckoutSlot.Holder> holder = CheckoutSlot.heldBy(projectDir);
+            if (holder.isEmpty()) continue;
+            String where = projectDir.equals(workspaceRoot)
+                    ? "this checkout"
+                    : workspaceRoot.relativize(projectDir).toString().replace('\\', '/');
+            long n = holder.get().buildNumber();
+            String build = n > 0 ? "Build #" + n : "A build";
+            return Optional.of(
+                    build + " is running in " + where + "; nothing removed. Wait for it, or cancel it first");
+        }
+        return Optional.empty();
     }
 
     /** Build-intermediate subdirs removed by {@code --keep-artifacts} (final jars stay). */
