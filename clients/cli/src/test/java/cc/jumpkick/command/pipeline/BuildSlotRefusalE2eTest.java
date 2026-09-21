@@ -42,7 +42,7 @@ class BuildSlotRefusalE2eTest {
         Path project = project(tmp.resolve("app"));
         Path lock = project.resolve("target").resolve(".jk").resolve("build.lock");
         try {
-            FileLocks.Hold held = FileLocks.tryHold(lock).orElseThrow();
+            FileLocks.Hold held = (FileLocks.Hold) FileLocks.tryHold(lock);
             try {
                 held.write("pid=" + ProcessHandle.current().pid() + "\nbuild=7\nkind=build\nstarted=1\n");
                 Run refused = jk(home, project, "build", "--skip-tests");
@@ -56,15 +56,9 @@ class BuildSlotRefusalE2eTest {
             }
             Run built = jk(home, project, "build", "--skip-tests");
             assertThat(built.exit()).as(built.output()).isZero();
-            assertThat(FileLocks.tryHold(lock))
-                    .as("the engine released the slot with the job")
-                    .hasValueSatisfying(h -> {
-                        try {
-                            h.close();
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
+            FileLocks.Probe released = FileLocks.tryHold(lock);
+            assertThat(released).as("the engine released the slot with the job").isInstanceOf(FileLocks.Hold.class);
+            ((FileLocks.Hold) released).close();
         } finally {
             jk(home, project, "engine", "stop", "--now");
         }

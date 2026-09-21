@@ -8,21 +8,27 @@ import cc.jumpkick.util.FileLocks;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class BuildSlotTest {
 
+    private static BuildSlot take(Path checkout) {
+        return ((BuildSlot.Taken) BuildSlot.take(checkout)).slot();
+    }
+
     @Test
     void one_slot_per_checkout_and_the_holder_is_described(@TempDir Path dir) throws Exception {
         Path checkout = Files.createDirectories(dir.resolve("ws"));
-        BuildSlot slot = BuildSlot.tryTake(checkout).orElseThrow();
+        BuildSlot slot = take(checkout);
+        assertThat(BuildSlot.holderOf(checkout, "fp", checkout.toString(), "g:a")
+                        .buildNumber())
+                .as("taken, number not yet known")
+                .isZero();
         slot.describe(
                 new InFlightBuilds.Hold(9L, 27L, "fp", "test", checkout.toString(), "g:a", 1234L, null, null, null));
 
-        assertThat(BuildSlot.tryTake(checkout)).as("held by this engine").isEmpty();
-        assertThat(BuildSlot.heldElsewhere(checkout)).isTrue();
+        assertThat(BuildSlot.take(checkout)).as("held by this engine").isInstanceOf(BuildSlot.Held.class);
         InFlightBuilds.Hold holder = BuildSlot.holderOf(checkout, "fp", checkout.toString(), "g:a");
         assertThat(holder.buildNumber()).isEqualTo(27L);
         assertThat(holder.kind()).isEqualTo("test");
@@ -30,8 +36,11 @@ class BuildSlotTest {
         assertThat(holder.requestId()).as("not this engine's request").isZero();
 
         slot.close();
-        assertThat(BuildSlot.heldElsewhere(checkout)).isFalse();
-        BuildSlot again = BuildSlot.tryTake(checkout).orElseThrow();
+        assertThat(BuildSlot.holderOf(checkout, "fp", checkout.toString(), "g:a")
+                        .buildNumber())
+                .as("the description leaves with the slot")
+                .isZero();
+        BuildSlot again = take(checkout);
         again.close();
     }
 
@@ -39,8 +48,8 @@ class BuildSlotTest {
     void two_checkouts_have_two_slots(@TempDir Path dir) throws Exception {
         Path a = Files.createDirectories(dir.resolve("a"));
         Path b = Files.createDirectories(dir.resolve("b"));
-        try (BuildSlot slotA = BuildSlot.tryTake(a).orElseThrow();
-                BuildSlot slotB = BuildSlot.tryTake(b).orElseThrow()) {
+        try (BuildSlot slotA = take(a);
+                BuildSlot slotB = take(b)) {
             assertThat(slotA).isNotNull();
             assertThat(slotB).isNotNull();
         }
@@ -63,8 +72,10 @@ class BuildSlotTest {
             while ((c = holder.getInputStream().read()) >= 0 && c != '\n') line.append((char) c);
             assertThat(line.toString()).isEqualTo("held");
 
-            assertThat(BuildSlot.tryTake(checkout)).isEmpty();
-            assertThat(BuildSlot.heldElsewhere(checkout)).isTrue();
+            assertThat(BuildSlot.take(checkout)).isInstanceOf(BuildSlot.Held.class);
+            assertThat(BuildSlot.take(checkout))
+                    .as("probing twice changes nothing")
+                    .isInstanceOf(BuildSlot.Held.class);
             assertThat(BuildSlot.holderOf(checkout, "fp", checkout.toString(), null)
                             .buildNumber())
                     .isEqualTo(41L);
@@ -74,25 +85,23 @@ class BuildSlotTest {
             }
             holder.waitFor();
         }
-        assertThat(BuildSlot.heldElsewhere(checkout))
-                .as("released with the process")
-                .isFalse();
+        assertThat(BuildSlot.take(checkout)).as("released with the process").isInstanceOf(BuildSlot.Taken.class);
     }
 
     /** Subprocess body: hold the checkout's slot until stdin closes. */
     public static final class HolderMain {
         public static void main(String[] args) throws Exception {
             Path checkout = Path.of(args[0]);
-            Optional<FileLocks.Hold> hold = FileLocks.tryHold(BuildSlot.lockFile(checkout));
-            if (hold.isEmpty()) {
+            if (!(FileLocks.tryHold(BuildSlot.lockFile(checkout)) instanceof FileLocks.Hold hold)) {
                 System.out.println("not held");
                 System.exit(2);
+                return;
             }
-            hold.get().write("pid=" + ProcessHandle.current().pid() + "\nbuild=41\nkind=build\nstarted=1\n");
+            hold.write("pid=" + ProcessHandle.current().pid() + "\nbuild=41\nkind=build\nstarted=1\n");
             System.out.println("held");
             System.out.flush();
             System.in.read();
-            hold.get().close();
+            hold.close();
         }
     }
 }
