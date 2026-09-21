@@ -3,12 +3,16 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
@@ -516,6 +520,28 @@ class ActionKeyTest {
 
         Path bare = tempDir.resolve("nowhere/target/classes/main");
         assertThat(ActionKey.taskTag(bare)).isEqualTo(ActionKey.checkoutTag(bare));
+    }
+
+    /**
+     * A fresh project's first build tags its early steps with the lockless id, then its lock step
+     * mints {@code project-id}. Every tag computed after the write must already carry the lock's id,
+     * or the keys that build stores are unreachable from the next one.
+     */
+    @Test
+    void the_task_tag_follows_the_id_the_lock_step_mints(@TempDir Path tempDir) throws IOException {
+        Path root = tempDir.resolve("fresh");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("jk.toml"), "name = \"fresh\"\n");
+        Path classes = root.resolve("target/classes/main");
+        ProjectIds.clear();
+        String before = ActionKey.taskTag(classes);
+
+        LockfileWriter.write(Lockfile.empty("test"), root.resolve("jk-lock.toml"));
+        String minted = ProjectIdentity.recordedId(root.resolve("jk-lock.toml")).orElseThrow();
+
+        assertThat(ActionKey.taskTag(classes))
+                .isNotEqualTo(before)
+                .isEqualTo(Hashing.sha256Hex(minted + "\ntarget/classes/main").substring(0, 12));
     }
 
     @Test
