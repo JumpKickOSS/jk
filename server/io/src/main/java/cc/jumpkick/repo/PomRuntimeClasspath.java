@@ -106,7 +106,23 @@ public final class PomRuntimeClasspath {
             throw new IllegalStateException("worker jar is missing: " + workerJar);
         }
         Path worker = workerJar.toAbsolutePath().normalize();
-        Path pom = pomFor(worker);
+        return resolveFrom(worker, pomFor(worker));
+    }
+
+    /**
+     * As {@link #resolve(Path)}, walking {@code pom} instead of the POM found beside the jar: the
+     * engine's shelf manifest pins a worker's POM, and hands the store's copy here when the shelf
+     * holds another install's.
+     */
+    public static List<Path> resolve(Path workerJar, Path pom) {
+        if (workerJar == null || !Files.isRegularFile(workerJar)) {
+            throw new IllegalStateException("worker jar is missing: " + workerJar);
+        }
+        return resolveFrom(
+                workerJar.toAbsolutePath().normalize(), pom.toAbsolutePath().normalize());
+    }
+
+    private static List<Path> resolveFrom(Path worker, @Nullable Path pom) {
         Path extra = extraStoreFor(worker);
         String key = pom == null ? null : resolveCacheKey(worker, pom, extra);
         if (key != null) {
@@ -123,7 +139,7 @@ public final class PomRuntimeClasspath {
                 RESOLVE_CACHE.remove(key);
             }
         }
-        List<Path> resolved = List.copyOf(resolve(worker, reposFor(worker)));
+        List<Path> resolved = List.copyOf(resolve(worker, pom, reposFor(worker)));
         if (key != null && RESOLVE_CACHE.size() < RESOLVE_CACHE_MAX) {
             RESOLVE_CACHE.put(key, resolved);
         }
@@ -171,7 +187,10 @@ public final class PomRuntimeClasspath {
             throw new IllegalStateException("worker jar is missing: " + workerJar);
         }
         Path worker = workerJar.toAbsolutePath().normalize();
-        Path pom = pomFor(worker);
+        return resolve(worker, pomFor(worker), repos);
+    }
+
+    private static List<Path> resolve(Path worker, @Nullable Path pom, RepoGroup repos) {
         if (pom == null) {
             throw new IllegalStateException(
                     "worker " + worker + " has no Maven POM; run `jk install` to publish jar+pom to repos/jk-local");
