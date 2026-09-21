@@ -24,13 +24,13 @@ class HistoryCheckoutColumnTest {
     @Test
     void two_live_checkouts_of_one_id_label_every_row(@TempDir Path tmp) throws Exception {
         Path a = Files.createDirectories(tmp.resolve("jk"));
-        Path b = Files.createDirectories(tmp.resolve("jk-wt-3854"));
+        Path b = Files.createDirectories(tmp.resolve("jk-wt-feature"));
         Path other = Files.createDirectories(tmp.resolve("other"));
         Map<String, String> labels =
                 HistoryCommand.checkoutLabels(List.of(entry("p1", a), entry("p1", b), entry("p2", other)));
         assertThat(labels)
                 .containsEntry(a.toString(), "jk")
-                .containsEntry(b.toString(), "jk-wt-3854")
+                .containsEntry(b.toString(), "jk-wt-feature")
                 .containsEntry(other.toString(), "other");
     }
 

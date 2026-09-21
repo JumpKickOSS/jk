@@ -175,7 +175,7 @@ final class ForecastSteps {
             else if (k.startsWith(ActionKey.JAVA_API))
                 declarations.add(fileName(k.substring(ActionKey.JAVA_API.length())));
             else if (k.startsWith("worker:")) compiler = true;
-            else if (k.indexOf('/') >= 0 || k.indexOf('\\') >= 0) sources++;
+            else if (k.indexOf(':') < 0 || k.indexOf('/') >= 0 || k.indexOf('\\') >= 0) sources++;
         }
         List<String> parts = new ArrayList<>();
         if (sources > 0) parts.add(count(sources, "source") + " changed");

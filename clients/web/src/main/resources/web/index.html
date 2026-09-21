@@ -425,7 +425,7 @@
           <span v-if="projectRun.outcome === 'running'" class="spin"></span>
           <span v-else class="badge" :class="projectRun.outcome"><jk-icon :name="stateIcon(projectRun.outcome)"></jk-icon>{{ activityBadge(projectRun.card) }}</span>
           <span v-if="projectRun.buildNumber" class="mono">#{{ projectRun.buildNumber }}</span>
-          <span v-if="projectCheckouts().length > 1 && projectRun.card.dir" class="mono dim checkout" :data-tip="projectRun.card.dir">{{ shortDir(projectRun.card.dir) }}</span>
+          <span v-if="projectCheckouts().length > 1 && !selectedProjectDir && projectRun.card.dir" class="mono dim checkout" :data-tip="projectRun.card.dir">{{ shortDir(projectRun.card.dir) }}</span>
           <span class="kind">{{ kindLabel(projectRun.card) }}</span>
           <span v-if="projectRun.card.trigger" class="origin" :class="'origin-' + projectRun.card.trigger">{{ originLabel(projectRun.card) }}</span>
           <span class="spacer"></span>
@@ -461,12 +461,12 @@
           <div class="panel wide">
             <div class="panel-head"><span class="lbl">build history</span><span class="spacer"></span><span class="mono dim">{{ projectDetail.total }} builds total · click a row to pin it</span></div>
             <table class="stats history">
-              <thead><tr><th>Build</th><th v-if="projectCheckouts().length > 1">Checkout</th><th>Trigger</th><th>Commit</th><th>Tests</th><th>Cache</th><th>Duration</th><th>When</th></tr></thead>
+              <thead><tr><th>Build</th><th v-if="projectCheckouts().length > 1 && !selectedProjectDir">Checkout</th><th>Trigger</th><th>Commit</th><th>Tests</th><th>Cache</th><th>Duration</th><th>When</th></tr></thead>
               <tbody>
                 <tr v-for="r in projectDetail.rows" :key="r.id" class="pinnable" :class="{ pinned: pinnedRun && r.buildNumber === pinnedRun }"
                     tabindex="0" @click="pinRun(r.buildNumber)" @keydown.enter.prevent="pinRun(r.buildNumber)">
                   <td><span class="badge" :class="r.outcome"><jk-icon :name="stateIcon(r.outcome)"></jk-icon><template v-if="r.buildNumber">#{{ r.buildNumber }}</template></span></td>
-                  <td v-if="projectCheckouts().length > 1" class="mono" :data-tip="r.dir">{{ r.dir ? shortDir(r.dir) : '—' }}</td>
+                  <td v-if="projectCheckouts().length > 1 && !selectedProjectDir" class="mono" :data-tip="r.dir">{{ r.dir ? shortDir(r.dir) : '—' }}</td>
                   <td>{{ originLabel(r) }}</td>
                   <td class="mono">{{ r.commit || '—' }}</td>
                   <td><template v-if="r.tests">{{ r.tests.succeeded }} / {{ r.tests.total }}</template><template v-else>—</template></td>
