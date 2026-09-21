@@ -474,7 +474,9 @@ and exclusions stay GA-scoped.
    the checkout. Two worktrees of one project therefore compute one key set and share every
    hit; the incremental compiler state, whose Zinc analysis holds absolute paths, is the one
    thing keyed by the checkout's real path (`ActionKey.stateDir`). A record spells its inputs
-   the same way (`PortablePath`), so `jk explain` reads a neighbour checkout's record correctly.
+   the same way (`PortablePath.key`: module-relative under a project — a `jk.toml` or a `pom.xml`
+   dir — and the whole path only under none, so two inputs never share an entry), so `jk explain`
+   reads a neighbour checkout's record correctly.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store. A javac
    miss hands the worker the Zinc analyses of the jk-built entries on its classpath
    (`ProducerAnalyses`, found from the entry alone because a compile's state is keyed by its
