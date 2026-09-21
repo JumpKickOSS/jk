@@ -243,6 +243,117 @@ class ActionKeyTest {
                 .isNotEqualTo(ActionKey.taskTag(a.resolve("target/classes")));
     }
 
+    /**
+     * Two sources under no project whose last two segments agree: the record keeps both, and a
+     * compile that compares its request against that record finds nothing moved. A key that fell
+     * onto one entry for both would drop every such compile's record and its incremental state.
+     */
+    @Test
+    void two_no_root_sources_with_the_same_tail_keep_separate_record_entries(@TempDir Path tempDir) throws IOException {
+        Path user = tempDir.resolve("user/model/Event.java");
+        Path order = tempDir.resolve("order/model/Event.java");
+        Files.createDirectories(user.getParent());
+        Files.createDirectories(order.getParent());
+        Files.writeString(user, "class Event { int user; }");
+        Files.writeString(order, "class Event { int order; }");
+        List<Path> sources = List.of(user, order);
+
+        CompileRequest javac = CompileRequest.builder()
+                .sources(sources)
+                .outputDir(tempDir.resolve("out"))
+                .release(25)
+                .build();
+        var snapshot = ActionKey.snapshotInputs(javac);
+        assertThat(snapshot).containsKey(PortablePath.key(user)).containsKey(PortablePath.key(order));
+        assertThat(PortablePath.key(user)).isNotEqualTo(PortablePath.key(order));
+        assertThat(ActionKey.changedSources(sources, snapshot)).isEmpty();
+
+        Path worker = tempDir.resolve("worker.jar");
+        Files.writeString(worker, "worker");
+        KotlincRequest kotlinc = KotlincRequest.builder()
+                .sources(sources)
+                .outputDir(tempDir.resolve("out"))
+                .jvmTarget(25)
+                .workerClasspath(List.of(worker))
+                .javaHome(jdk(tempDir.resolve("jdk"), "25"))
+                .build();
+        assertThat(ActionKey.changedSources(
+                        sources, ActionKey.kotlincInputs(kotlinc, KotlinClasspathAbi.MEMOIZED_ONLY)))
+                .isEmpty();
+    }
+
+    /**
+     * A module built in place from its {@code pom.xml} has no {@code jk.toml}; its shadow manifest
+     * and lock live under {@code target/}. The POM dir is still the module root, so two checkouts
+     * share the task pointer and the key, and the record spells each source against the module.
+     */
+    @Test
+    void a_pom_only_module_is_a_root_shared_across_checkouts(@TempDir Path tempDir) throws IOException {
+        Path a = pomModule(tempDir.resolve("checkout-a/app"));
+        Path b = pomModule(tempDir.resolve("elsewhere/deeper/app"));
+        String taskA = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, a.resolve("target/classes"));
+        String taskB = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, b.resolve("target/classes"));
+        assertThat(taskA).as("the task pointer is shared across checkouts").isEqualTo(taskB);
+        assertThat(ActionKey.taskTag(a.resolve("target/classes")))
+                .isNotEqualTo(ActionKey.checkoutTag(a.resolve("target/classes")));
+        assertThat(ActionKey.forJavac(taskA, pomRequest(a), "0.1.0"))
+                .isEqualTo(ActionKey.forJavac(taskB, pomRequest(b), "0.1.0"));
+        assertThat(ActionKey.snapshotInputs(pomRequest(a)))
+                .containsKey("src/main/java/com/acme/user/model/Event.java")
+                .containsKey("src/main/java/com/acme/order/model/Event.java");
+    }
+
+    /** A pom-only module with a lock beside its shadow: every checkout of it carries the same {@code project-id}. */
+    private static Path pomModule(Path root) throws IOException {
+        Files.writeString(Files.createDirectories(root).resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                </project>
+                """);
+        Path shadow = Files.createDirectories(root.resolve("target/jk/shadow"));
+        Files.writeString(
+                shadow.resolve("jk-lock.toml"), "version = 1\nproject-id = \"fedcba9876543210fedcba9876543210\"\n");
+        for (String rel : List.of("user", "order")) {
+            Path src = root.resolve("src/main/java/com/acme").resolve(rel).resolve("model/Event.java");
+            Files.createDirectories(src.getParent());
+            Files.writeString(src, "package com.acme." + rel + ".model; class Event {}");
+        }
+        return root;
+    }
+
+    private static CompileRequest pomRequest(Path module) {
+        return CompileRequest.builder()
+                .sources(List.of(
+                        module.resolve("src/main/java/com/acme/user/model/Event.java"),
+                        module.resolve("src/main/java/com/acme/order/model/Event.java")))
+                .outputDir(module.resolve("target/classes"))
+                .release(25)
+                .build();
+    }
+
+    /**
+     * A home with no release file keys its install directory, not the {@code Contents/Home} every
+     * macOS bundle ends in, so two such JDKs on one machine do not collapse onto one token.
+     */
+    @Test
+    void release_less_jdk_homes_key_their_install_directory(@TempDir Path tempDir) throws IOException {
+        Path jdk21 = Files.createDirectories(tempDir.resolve("JavaVirtualMachines/temurin-21.jdk/Contents/Home"));
+        Path jdk25 = Files.createDirectories(tempDir.resolve("JavaVirtualMachines/temurin-25.jdk/Contents/Home"));
+        assertThat(ActionKey.jdkToken(jdk21)).isNotEqualTo(ActionKey.jdkToken(jdk25));
+        assertThat(ActionKey.jdkToken(jdk21))
+                .isEqualTo(ActionKey.jdkToken(jdk21))
+                .doesNotContain(tempDir.toString());
+
+        Path modules = Files.createDirectories(jdk21.resolve("lib")).resolve("modules");
+        Files.writeString(modules, "image");
+        String small = ActionKey.jdkToken(jdk21);
+        Files.writeString(modules, "a larger image");
+        assertThat(ActionKey.jdkToken(jdk21)).as("the runtime image counts").isNotEqualTo(small);
+    }
+
     /** A project with a lock: every checkout of it carries the same {@code project-id}. */
     private static Path module(Path root) throws IOException {
         Files.createDirectories(root.resolve("src/main/java"));
@@ -296,7 +407,7 @@ class ActionKeyTest {
                 String key = ActionKey.forJavac("compile-main", request, "0.1.0");
                 var snap = ActionKey.snapshotInputs(request);
                 assertThat(key).isNotBlank();
-                assertThat(snap).containsKey(PortablePath.of(src));
+                assertThat(snap).containsKey(PortablePath.key(src));
                 assertThat(FileHashMemo.contentReads())
                         .as("forJavac + snapshotInputs share one content read")
                         .isEqualTo(1);
@@ -370,8 +481,8 @@ class ActionKeyTest {
 
         var snapshot = ActionKey.snapshotInputs(request);
         assertThat(snapshot)
-                .containsEntry("cp:" + PortablePath.of(dep), ClasspathAbi.token(dep))
-                .containsEntry("pp:" + PortablePath.of(processor), ClasspathFingerprint.entry(processor));
+                .containsEntry("cp:" + PortablePath.key(dep), ClasspathAbi.token(dep))
+                .containsEntry("pp:" + PortablePath.key(processor), ClasspathFingerprint.entry(processor));
     }
 
     private static CompileRequest withClasspath(Path src, Path tempDir, Path dep) {

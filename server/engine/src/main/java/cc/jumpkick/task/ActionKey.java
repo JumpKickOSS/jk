@@ -251,18 +251,18 @@ public final class ActionKey {
         sortedSources.sort(Comparator.comparing(Path::toString));
         for (Path src : sortedSources) {
             Path abs = src.toAbsolutePath().normalize();
-            result.put(PortablePath.of(abs), FileHashMemo.contentHash(abs));
+            result.put(PortablePath.key(abs), FileHashMemo.contentHash(abs));
         }
         List<Path> javaSources = KotlincInputs.javaSources(request);
         if (!javaSources.isEmpty()) {
             Map<Path, String> digests = JavaSourceApi.digests(javaSources);
             for (Path src : javaSources) {
-                result.put(JAVA_API + PortablePath.of(src), Objects.requireNonNull(digests.get(src), "digest"));
+                result.put(JAVA_API + PortablePath.key(src), Objects.requireNonNull(digests.get(src), "digest"));
             }
         }
         List<String> tokens = KotlinClasspathAbi.tokens(request.classpath(), snapshotter);
         for (int i = 0; i < tokens.size(); i++) {
-            result.put("cp:" + PortablePath.of(request.classpath().get(i)), tokens.get(i));
+            result.put("cp:" + PortablePath.key(request.classpath().get(i)), tokens.get(i));
         }
         for (Path entry : request.workerClasspath()) {
             result.put("worker:" + FreshnessStamp.identityKey(entry), "");
@@ -392,7 +392,7 @@ public final class ActionKey {
 
     /**
      * The sources whose bytes differ from what {@code recorded} holds for them under {@link
-     * #snapshotInputs}' spelling ({@link PortablePath} to content hash), or that are gone. A
+     * #snapshotInputs}' spelling ({@link PortablePath#key} to content hash), or that are gone. A
      * compile compares its request's sources against the snapshot it took before the worker read
      * them, so an edit that landed while the worker ran is named; the record diff for
      * {@code jk why-rebuilt} asks the same question of a prior record.
@@ -401,7 +401,7 @@ public final class ActionKey {
         List<Path> changed = new ArrayList<>();
         for (Path s : sources) {
             Path abs = s.toAbsolutePath().normalize();
-            String prior = recorded.get(PortablePath.of(abs));
+            String prior = recorded.get(PortablePath.key(abs));
             if (prior == null || !Files.isRegularFile(abs) || !prior.equals(FileHashMemo.contentHash(abs))) {
                 changed.add(s);
             }
@@ -414,7 +414,7 @@ public final class ActionKey {
         sorted.sort(Comparator.comparing(Path::toString));
         for (Path src : sorted) {
             Path abs = src.toAbsolutePath().normalize();
-            into.put(PortablePath.of(abs), FileHashMemo.contentHash(abs));
+            into.put(PortablePath.key(abs), FileHashMemo.contentHash(abs));
         }
     }
 
@@ -423,7 +423,7 @@ public final class ActionKey {
         List<Path> sorted = new ArrayList<>(entries);
         sorted.sort(Comparator.comparing(Path::toString));
         for (Path entry : sorted) {
-            into.put(prefix + PortablePath.of(entry), token.of(entry));
+            into.put(prefix + PortablePath.key(entry), token.of(entry));
         }
     }
 
@@ -480,8 +480,8 @@ public final class ActionKey {
      * exactly the facts that decide which platform classes the compiler sees. Content, not path,
      * so a point-release upgraded in place (or reached through a stable {@code <vendor>-<major>}
      * pointer that has been repointed) still moves the key. Deliberately NOT a tree fingerprint:
-     * a JDK is tens of thousands of files and this runs on every compile. A directory with no
-     * readable release file keys its directory name, the one fact about it that is not a location.
+     * a JDK is tens of thousands of files and this runs on every compile. A home with no readable
+     * release file keys its install directory ({@link #installDirToken}).
      *
      * <p>The one JDK-identity convention in the tree: {@link #forJavac}, {@link #forKotlinc} and
      * the {@code jdk:} token both {@code PlannerPlugin} arms add to their {@link #forArtifact}
@@ -493,10 +493,26 @@ public final class ActionKey {
         if (javaHome == null) return "none";
         Path abs = javaHome.toAbsolutePath().normalize();
         Path release = abs.resolve("release");
-        return Files.isRegularFile(release) ? FileHashMemo.contentHash(release) : PortablePath.of(abs);
+        return Files.isRegularFile(release) ? FileHashMemo.contentHash(release) : installDirToken(abs);
     }
 
-    /** How one classpath entry is spelled in a key: by ABI, or by content. */
+    /**
+     * A release-less home by the two segments naming its install directory — above the {@code
+     * Contents/Home} every macOS bundle ends in, which would otherwise spell every JDK alike — and
+     * the size of its {@code lib/modules} image, the one cheap fact that moves with its content.
+     */
+    private static String installDirToken(Path home) throws IOException {
+        Path install = home;
+        if (home.endsWith(Path.of("Contents", "Home"))) {
+            Path contents = home.getParent();
+            Path bundle = contents == null ? null : contents.getParent();
+            if (bundle != null) install = bundle;
+        }
+        Path modules = home.resolve("lib").resolve("modules");
+        String image = Files.isRegularFile(modules) ? ":modules=" + Files.size(modules) : "";
+        return "home:" + PortablePath.of(install) + image;
+    }
+
     /**
      * How a classpath entry is spelled in a key. {@link ClasspathAbi#token} for a compile
      * classpath; the forecast substitutes a view that answers a tree not yet on disk with the
