@@ -227,8 +227,6 @@ class SharedCacheAcrossCheckoutsE2eTest {
         BuildPlan lock =
                 LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
-        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
-        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
     }
 
     /** Every label each step said, per module. */

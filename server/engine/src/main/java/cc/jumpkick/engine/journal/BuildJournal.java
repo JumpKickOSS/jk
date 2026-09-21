@@ -177,6 +177,10 @@ public final class BuildJournal {
             try {
                 BuildRecord withIds = withId(record.withBuildNumber(n), timestamp);
                 Files.writeString(tmp.resolve(RECORD), Json.write(withIds), StandardCharsets.UTF_8);
+                if (record.dir() != null && !record.dir().isBlank()) {
+                    // One line a reader scanning for a checkout's run takes before the record.
+                    Files.writeString(tmp.resolve(ProjectBuilds.CHECKOUT), record.dir() + "\n", StandardCharsets.UTF_8);
+                }
                 writeSnapshot(tmp, snapshot);
                 if (record.running()) {
                     Files.writeString(

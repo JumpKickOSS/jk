@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.List;
 import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -640,7 +639,10 @@ class WorkspaceFileAccessTest {
 
             ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
             assertThat(WorkspaceFileAccess.resolveRoot(id, null))
-                    .isEqualTo(new WorkspaceFileAccess.Root.Ambiguous(List.of(a, b)));
+                    .isInstanceOfSatisfying(
+                            WorkspaceFileAccess.Root.Ambiguous.class, several -> assertThat(several.checkouts())
+                                    .extracting(ProjectIdentity.Checkout::path)
+                                    .containsExactly(a, b));
             assertThat(WorkspaceFileAccess.resolveRoot(id, b.toString())).isEqualTo(new WorkspaceFileAccess.Root.Ok(b));
             assertThat(WorkspaceFileAccess.resolveRoot(
                             id, tmp.resolve("wt-b/../wt-a").toString()))
@@ -650,7 +652,12 @@ class WorkspaceFileAccessTest {
             writeJkToml(elsewhere, "demo");
             assertThat(WorkspaceFileAccess.resolveRoot(id, elsewhere.toString()))
                     .as("a jk.toml elsewhere does not widen the sandbox")
-                    .isEqualTo(new WorkspaceFileAccess.Root.NotACheckout(elsewhere.toString(), List.of(a, b)));
+                    .isInstanceOfSatisfying(WorkspaceFileAccess.Root.NotACheckout.class, wrong -> {
+                        assertThat(wrong.dir()).isEqualTo(elsewhere.toString());
+                        assertThat(wrong.checkouts())
+                                .extracting(ProjectIdentity.Checkout::path)
+                                .containsExactly(a, b);
+                    });
 
             // The deleted worktree stops counting without anyone rewriting the file.
             Files.delete(a.resolve("jk.toml"));

@@ -157,10 +157,10 @@ final class WorkspaceFileAccess {
         record Unknown() implements Root {}
 
         /** Several live checkouts and no {@code dir} to pick one. */
-        record Ambiguous(List<Path> checkouts) implements Root {}
+        record Ambiguous(List<ProjectIdentity.Checkout> checkouts) implements Root {}
 
         /** {@code dir} is none of the id's live checkouts. */
-        record NotACheckout(String dir, List<Path> checkouts) implements Root {}
+        record NotACheckout(String dir, List<ProjectIdentity.Checkout> checkouts) implements Root {}
     }
 
     /**
@@ -174,15 +174,13 @@ final class WorkspaceFileAccess {
         if (!ProjectIdentity.isValidId(id)) return new Root.Unknown();
         List<ProjectIdentity.Checkout> checkouts = ProjectIdentity.checkoutsForId(id);
         if (checkouts.isEmpty()) return new Root.Unknown();
-        List<Path> paths =
-                checkouts.stream().map(ProjectIdentity.Checkout::path).toList();
         if (dir != null && !dir.isBlank()) {
             return ProjectIdentity.selectCheckout(checkouts, dir)
                     .<Root>map(c -> new Root.Ok(c.path()))
-                    .orElseGet(() -> new Root.NotACheckout(dir, paths));
+                    .orElseGet(() -> new Root.NotACheckout(dir, checkouts));
         }
-        if (checkouts.size() == 1) return new Root.Ok(paths.getFirst());
-        return new Root.Ambiguous(paths);
+        if (checkouts.size() == 1) return new Root.Ok(checkouts.getFirst().path());
+        return new Root.Ambiguous(checkouts);
     }
 
     /**
