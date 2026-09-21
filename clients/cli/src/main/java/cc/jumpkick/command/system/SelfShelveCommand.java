@@ -85,7 +85,9 @@ public final class SelfShelveCommand implements CliCommand {
         }
         String shelved = "Shelved " + artifacts.size() + " artifacts into "
                 + store.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
-        if (packagedBy != null) {
+        if (packagedBy == null) {
+            shelved += "; not pinned: the home names no jk " + JkVersion.VERSION + " engine jar by sha256";
+        } else {
             // The dist directory the repos/ tree sits in: what the engine reports as its source.
             Path repos = Objects.requireNonNull(source.getParent(), "repos dir");
             Path dist = Objects.requireNonNull(repos.getParent(), "dist dir");
@@ -110,11 +112,11 @@ public final class SelfShelveCommand implements CliCommand {
         return fileName.endsWith(".jk") || fileName.endsWith(".sha256");
     }
 
-    /** The sha of this version's materialized engine jar, or null when the home holds none. */
+    /**
+     * The sha256 of this version's materialized engine jar; null when the home holds none, or
+     * holds one its pointer does not name by sha256.
+     */
     private static @Nullable String materializedEngineSha() {
-        return EngineInstall.current()
-                .resolve(JkVersion.VERSION)
-                .map(EngineInstall.Materialized::engineSha)
-                .orElse(null);
+        return EngineInstall.current().engineSha(JkVersion.VERSION).orElse(null);
     }
 }

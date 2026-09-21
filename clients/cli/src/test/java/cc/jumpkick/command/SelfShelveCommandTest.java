@@ -110,6 +110,28 @@ class SelfShelveCommandTest {
     }
 
     @Test
+    void an_engine_jar_the_pointer_does_not_name_by_sha_leaves_the_shelf_unpinned(@TempDir Path dist) throws Exception {
+        // A jar dropped into the engine home with no pointer is inferred by name; it has no sha256.
+        EngineInstall install = EngineInstall.current();
+        Files.createDirectories(install.engineHome());
+        Files.writeString(install.engineHome().resolve("jk-engine-" + JkVersion.VERSION + ".jar"), "engine-bytes");
+        assertThat(install.resolve(JkVersion.VERSION)).isPresent();
+        Path repos = dist.resolve("repos");
+        Path entry = repos.resolve("jk-local/cc/jumpkick/jk-test-runner/1.0.0");
+        Files.createDirectories(entry);
+        Files.writeString(entry.resolve("jk-test-runner-1.0.0.jar"), "worker-bytes");
+
+        int[] exit = {0};
+        var streams = Capture.both(() -> exit[0] = shelve(repos));
+
+        assertThat(exit[0]).isZero();
+        assertThat(TestAnsi.strip(streams.out()))
+                .contains("Shelved 1 artifacts")
+                .contains("not pinned");
+        assertThat(install.shelfFile()).doesNotExist();
+    }
+
+    @Test
     void a_dist_without_a_jk_local_tree_is_refused(@TempDir Path dist) throws Exception {
         Path repos = Files.createDirectories(dist.resolve("repos"));
 
