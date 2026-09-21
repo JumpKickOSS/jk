@@ -107,11 +107,11 @@ final class ForecastLangArms {
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir());
         String key;
         KotlincRequest request;
+        Path workingDir = ActionKey.stateDir(
+                ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cache)),
+                TaskNames.COMPILE_KOTLIN,
+                layout.classesDir());
         try {
-            Path workingDir = ActionKey.stateDir(
-                    ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cache)),
-                    TaskNames.COMPILE_KOTLIN,
-                    layout.classesDir());
             PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
                     project,
                     dir,
@@ -138,7 +138,8 @@ final class ForecastLangArms {
         String why = "";
         if (!hit) {
             try {
-                why = ForecastSteps.langMissReason(actionCache, taskId, ActionKey.kotlincInputs(request, snapshotter));
+                why = ForecastSteps.langMissReason(
+                        actionCache, taskId, workingDir, ActionKey.kotlincInputs(request, snapshotter));
             } catch (IOException e) {
                 Log.debug("kotlinStep: no miss reason", e);
             }
@@ -240,7 +241,8 @@ final class ForecastLangArms {
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir());
         String key = ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion(), classpathToken);
         boolean hit = ForecastSteps.present(actionCache, key);
-        String why = hit ? "" : ForecastSteps.langMissReason(actionCache, taskId, ActionKey.snapshotInputs(req));
+        // groovyc keeps no incremental state, so the pointer is the only prior record.
+        String why = hit ? "" : ForecastSteps.langMissReason(actionCache, taskId, null, ActionKey.snapshotInputs(req));
         return new LangStep(
                 ForecastSteps.langCompileStep(
                         TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why, depHint),
