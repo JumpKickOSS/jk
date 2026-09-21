@@ -2,14 +2,12 @@
 package cc.jumpkick.builds;
 
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -18,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
@@ -54,8 +51,6 @@ public final class ProjectBuilds {
     public static final String RESULTS = "jk-results.md";
     public static final String METRICS = "metrics.toml";
 
-    private static final ReentrantLock RUN_NUMBER_LOCK = new ReentrantLock();
-
     private ProjectBuilds() {}
 
     public static Path buildsRoot() {
@@ -64,6 +59,15 @@ public final class ProjectBuilds {
 
     public static Path hostMetricsFile() {
         return hostMetricsFile(buildsRoot());
+    }
+
+    /**
+     * The lock beside a whole-file ledger ({@code <ledger>.lock}): every writer that reads,
+     * folds and replaces the file holds it, so two engines on one builds root cannot lose each
+     * other's rows.
+     */
+    public static Path ledgerLock(Path ledger) {
+        return ledger.resolveSibling(ledger.getFileName() + ".lock");
     }
 
     public static Path hostMetricsFile(Path buildsRoot) {
@@ -169,44 +173,12 @@ public final class ProjectBuilds {
      * once (a displaced engine drains in-flight work while its successor already serves). With a
      * JVM-only lock both could read {@code 7},
      * both write {@code 8}, and the second {@code runs/8} write would delete the first's completed
-     * run tree. Threads first, then a file lock, since a second {@code FileChannel.lock()} in one
-     * JVM throws.
+     * run tree. {@link FileLocks#withLock} is the cross-process guard.
      */
     public static long allocateRunNumber(Path projectHome) throws IOException {
         Files.createDirectories(projectHome);
         Path f = projectHome.resolve(RUN_NUMBER);
-        Path lockPath =
-                projectHome.resolve(RUN_NUMBER + ".lock").toAbsolutePath().normalize();
-        RUN_NUMBER_LOCK.lock();
-        try {
-            FileChannel ch = null;
-            try {
-                ch = FileChannel.open(
-                        lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
-            } catch (IOException | RuntimeException noLockFile) {
-                // No usable lock file (exotic or read-only filesystem): still allocate under the
-                // JVM lock rather than failing the build — degrades to the previous
-                // single-process guarantee instead of breaking.
-                return bumpRunNumber(f);
-            }
-            try (FileChannel channel = ch) {
-                FileLock fileLock = null;
-                try {
-                    fileLock = channel.lock();
-                } catch (IOException | RuntimeException noFlock) {
-                    return bumpRunNumber(f); // e.g. NFS without lockd
-                }
-                try {
-                    return bumpRunNumber(f);
-                } finally {
-                    fileLock.release();
-                }
-            }
-        } finally {
-            RUN_NUMBER_LOCK.unlock();
-        }
-        // The 0-byte .lock file intentionally stays on disk: unlinking it while another process
-        // holds the flock would let a third process lock a fresh inode at the same path.
+        return FileLocks.withLock(projectHome.resolve(RUN_NUMBER + ".lock"), () -> bumpRunNumber(f));
     }
 
     private static long bumpRunNumber(Path f) throws IOException {

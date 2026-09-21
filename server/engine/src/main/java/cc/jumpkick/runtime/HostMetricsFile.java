@@ -2,9 +2,11 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
@@ -224,7 +226,7 @@ final class HostMetricsFile {
         for (String line : continuousKeys.values()) out.append(line).append('\n');
         if (!foreign.isEmpty()) out.append('\n').append(foreign);
         out.append('\n').append(renderCalibrationSection(c));
-        AtomicWrites.replace(file, out.toString());
+        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> AtomicWrites.replace(file, out.toString()));
     }
 
     /**

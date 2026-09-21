@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.runtime.WorkSchedule;
 import java.io.IOException;
@@ -120,29 +121,29 @@ public final class ScheduleBias {
      */
     public static void observe(Path entryDir, long rawScheduleMs, long actualMs, int dirtyModules) {
         if (dirtyModules < MIN_MODULES || rawScheduleMs < MIN_RAW_MS || actualMs < MIN_ACTUAL_MS) return;
-        double ratio = actualMs / (double) rawScheduleMs;
         // One observation moves the EWMA by at most a quarter of the way to these bounds; a
         // build that finished in a third of its schedule teaches 0.5, not 0.37.
-        ratio = Math.max(MIN_BIAS, Math.min(MAX_BIAS, ratio));
-        // Read-fold-write under one lock: two builds finishing together in one engine otherwise
-        // each rewrite the whole file from their own read, and one of them loses its row.
-        synchronized (STORE) {
-            try {
-                Path f = file();
+        double ratio = Math.max(MIN_BIAS, Math.min(MAX_BIAS, actualMs / (double) rawScheduleMs));
+        // Read-fold-write under the file's lock: two builds finishing together, in one engine or
+        // two, otherwise each rewrite the whole file from their own read and one loses its row.
+        try {
+            Path f = file();
+            FileLocks.withLock(lockFile(f), () -> {
                 Map<String, Double> m = load(f);
                 String k = shapeKey(entryDir, dirtyModules);
                 Double prev = m.get(k);
                 m.put(k, prev == null ? ratio : prev + ALPHA * (ratio - prev));
                 write(f, m);
-            } catch (RuntimeException | IOException e) {
-                // best-effort — an unlearned bias just means the raw schedule is used
-                Log.debug("observe: best-effort", e);
-            }
+            });
+        } catch (RuntimeException | IOException e) {
+            // best-effort — an unlearned bias just means the raw schedule is used
+            Log.debug("observe: best-effort", e);
         }
     }
 
-    /** Serialises the store's read-fold-write cycles within this engine. */
-    private static final Object STORE = new Object();
+    private static Path lockFile(Path f) {
+        return f.resolveSibling(f.getFileName() + ".lock");
+    }
 
     private static String key(Path entryDir) {
         return entryDir.toAbsolutePath().normalize().toString();

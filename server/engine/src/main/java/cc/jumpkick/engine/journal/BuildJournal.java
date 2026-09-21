@@ -169,7 +169,8 @@ public final class BuildJournal {
             try {
                 Files.createDirectory(tmp);
             } catch (FileAlreadyExistsException e) {
-                // concurrent same number should not happen under allocator lock; last write wins via replace
+                // A stale staging dir from a killed engine; numbers are allocated under a lock and
+                // job dirs carry the pid, so no live writer shares this name.
                 PathUtil.deleteRecursively(tmp);
                 Files.createDirectory(tmp);
             }
@@ -987,9 +988,13 @@ public final class BuildJournal {
         return Optional.empty();
     }
 
-    /** Non-build journal dirs: {@code j-<timestamp>} (no run-number allocation). */
+    /**
+     * Non-build journal dirs: {@code j-<timestamp>-<pid>[-<requestId>]} (no run-number
+     * allocation). The pid keeps two engines on one builds root apart: request ids are
+     * engine-local, and two lock jobs in one millisecond would otherwise share a directory.
+     */
     static String jobDirName(String timestamp, long requestId) {
-        String base = "j-" + timestamp;
+        String base = "j-" + timestamp + "-" + ProcessHandle.current().pid();
         if (requestId > 0) return base + "-" + requestId;
         return base;
     }
