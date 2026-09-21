@@ -17,15 +17,24 @@ import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk history} — browse and prune the persisted build-history journal
- * ({@code ~/.jk/state/builds/journal/}). The journal is owned by the engine; these commands are thin
- * RPCs (spawning the engine if it isn't running), rendering the flat JSONL the engine streams back.
+ * ({@code ~/.jk/state/builds/projects/<id>/runs/}). The journal is owned by the engine; these
+ * commands are thin RPCs (spawning the engine if it isn't running), rendering the flat JSONL the
+ * engine streams back. Rows carry the checkout they ran in; the list grows a Checkout column when
+ * one project id is built from several.
  */
 public final class HistoryCommand extends GroupCommand {
 
@@ -96,6 +105,46 @@ public final class HistoryCommand extends GroupCommand {
         return s.length() <= max ? s : s.substring(0, max - 1) + "…";
     }
 
+    /**
+     * Checkout labels for the rows of one listing, keyed by {@code dir}: empty while every project
+     * id in view has a single live checkout — the default timeline needs no column — else one
+     * label per directory, its last path segment, or the whole path when two checkouts share a
+     * name. Rows without a project id are grouped by their coordinate.
+     */
+    static Map<String, String> checkoutLabels(List<String> entries) {
+        Map<String, Set<String>> liveDirsByProject = new LinkedHashMap<>();
+        for (String e : entries) {
+            String dir = Jsonl.str(e, "dir");
+            if (dir == null || dir.isBlank() || !isLiveDir(dir)) continue;
+            String project = Jsonl.str(e, "projectId");
+            if (project == null || project.isBlank()) project = "coord:" + Jsonl.str(e, "coord");
+            liveDirsByProject
+                    .computeIfAbsent(project, k -> new LinkedHashSet<>())
+                    .add(dir);
+        }
+        if (liveDirsByProject.values().stream().noneMatch(dirs -> dirs.size() > 1)) return Map.of();
+        Map<String, Integer> nameCounts = new HashMap<>();
+        Set<String> dirs = new LinkedHashSet<>();
+        for (String e : entries) {
+            String dir = Jsonl.str(e, "dir");
+            if (dir != null && !dir.isBlank() && dirs.add(dir)) nameCounts.merge(label(null, dir), 1, Integer::sum);
+        }
+        Map<String, String> labels = new LinkedHashMap<>();
+        for (String dir : dirs) {
+            String name = label(null, dir);
+            labels.put(dir, nameCounts.getOrDefault(name, 0) > 1 ? dir : name);
+        }
+        return labels;
+    }
+
+    private static boolean isLiveDir(String dir) {
+        try {
+            return Files.isDirectory(Path.of(dir));
+        } catch (RuntimeException notAPath) {
+            return false;
+        }
+    }
+
     // --- subcommands ------------------------------------------------------------
 
     /** {@code jk history list} — recent runs, newest first. */
@@ -127,6 +176,9 @@ public final class HistoryCommand extends GroupCommand {
                 return 0;
             }
             long now = System.currentTimeMillis();
+            // A project id with two live checkouts (two worktrees of one repository) gets a
+            // Checkout column beside the number; one checkout per id keeps the plain timeline.
+            Map<String, String> checkouts = checkoutLabels(entries);
             List<List<String>> rows = new ArrayList<>();
             for (String e : entries) {
                 boolean success = Jsonl.bool(e, "success", false);
@@ -140,22 +192,26 @@ public final class HistoryCommand extends GroupCommand {
                         ? duration(savedMillis) + " (" + pctString(savedMillis, estMillis) + ")"
                         : "";
                 String note = failed > 0 ? failed + " failed" : "";
-                rows.add(List.of(
-                        glyph(success, cancelled),
-                        String.valueOf(Jsonl.str(e, "id")),
-                        label,
+                List<String> row =
+                        new ArrayList<>(List.of(glyph(success, cancelled), String.valueOf(Jsonl.str(e, "id")), label));
+                if (!checkouts.isEmpty()) {
+                    String dir = Jsonl.str(e, "dir");
+                    row.add(truncate(checkouts.getOrDefault(dir == null ? "" : dir, ""), 40));
+                }
+                row.addAll(List.of(
                         kind == null ? "" : kind,
                         origin(Jsonl.str(e, "trigger"), Jsonl.str(e, "session")),
                         duration(Jsonl.longValue(e, "millis", -1)),
                         ago(Jsonl.longValue(e, "finishedAt", 0), now),
                         saved,
                         note));
+                rows.add(row);
             }
+            List<String> header = new ArrayList<>(List.of("", "Id", "Project"));
+            if (!checkouts.isEmpty()) header.add("Checkout");
+            header.addAll(List.of("Kind", "Trigger", "Took", "When", "Saved", "Notes"));
             CommandWedge.envelopeStart();
-            for (String line : Table.render(
-                    "Build history",
-                    List.of("", "Id", "Project", "Kind", "Trigger", "Took", "When", "Saved", "Notes"),
-                    rows)) {
+            for (String line : Table.render("Build history", header, rows)) {
                 CliOutput.out(line);
             }
             return 0;

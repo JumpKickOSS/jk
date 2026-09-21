@@ -35,7 +35,7 @@ import { JkIcon } from './icons.js';
 import { PhaseChain } from './phase.js';
 import { RunCoverage } from './coverage.js';
 import { RunDelta } from './delta.js';
-import { projectComputed } from './projects.js';
+import { projectComputed, projectMethods } from './projects.js';
 import { FailReport } from './report.js';
 import { buildProjectHash, routeFromHash } from './route.js';
 import { sessionComputed, sessionMethods } from './sessions.js';
@@ -60,8 +60,11 @@ export const appOptions = {
     codeMsg: routeFromHash().msg || '',
     pinnedRun: routeFromHash().run || 0, // #project/<id>/run/<n>: 0 follows the newest run
     groupBySession: false, // Activity feed: one card per run, or runs grouped under the session that asked
-    selectedProjectDir: null, // checkout path resolved from project meta
-    projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
+    // The checkout the route names (#project/<id>?dir=…) — picked on the page, or carried by an
+    // MCP / CLI link. Null while the id implies its one checkout; projectDir() folds in the
+    // engine's answer.
+    selectedProjectDir: routeFromHash().dir || null,
+    projectMeta: null, // live /api/project payload (coord + description + dir + checkouts) for the open project
     // Dependencies panel on the Project page — closed by default; graph fetch + echarts
     // only when opened (ModuleDepGraph mounts lazily).
     projectGraphOpen: false,
@@ -141,6 +144,7 @@ export const appOptions = {
     ...sessionComputed,
   },
   methods: {
+    ...projectMethods,
     ...cardMethods,
     ...statusMethods,
     ...wizardMethods,
@@ -309,6 +313,8 @@ export const appOptions = {
       return this.loadHistory();
     },
     // Open a project's page by durable id — hash creates a history entry so Back returns to the list.
+    // The dir only resolves the id from a history row; the route names a checkout when the user
+    // picks one, not on every click (pickCheckout).
     openProject(projectId, dir) {
       if (!projectId && dir) {
         // Resolve id from a history row when only path is known (rare).
@@ -316,8 +322,12 @@ export const appOptions = {
         projectId = hit ? hit.projectId : null;
       }
       if (!projectId) return;
-      if (dir) this.selectedProjectDir = dir;
       location.hash = buildProjectHash({ projectId });
+    },
+    /** Show one checkout of the open project (null: all of them); the route carries the choice. */
+    pickCheckout(dir) {
+      if (!this.selectedProjectId) return;
+      location.hash = buildProjectHash({ projectId: this.selectedProjectId, dir: dir || null });
     },
     /** The files pane's Back control: up one level to the project page, not out to the list. */
     closeCode() {
@@ -338,8 +348,10 @@ export const appOptions = {
       if (this.authModal) return;
       const r = routeFromHash();
       const idChanged = r.projectId !== this.selectedProjectId;
+      const dirChanged = (r.dir || null) !== this.selectedProjectDir;
       this.view = r.view;
       this.selectedProjectId = r.projectId;
+      this.selectedProjectDir = r.dir || null;
       this.filesOpen = !!r.files;
       this.codePath = r.path;
       this.codeLine = r.line;
@@ -358,7 +370,7 @@ export const appOptions = {
       if (
         r.view === 'project' &&
         r.projectId &&
-        (idChanged || (!this.projectMeta && this._projectMetaFor !== r.projectId))
+        (idChanged || dirChanged || (!this.projectMeta && this._projectMetaFor !== r.projectId))
       ) {
         this.loadProjectMeta(r.projectId);
       }
@@ -373,7 +385,7 @@ export const appOptions = {
     },
     /** `#project/<id>/run/<n>`, or the plain project route when `buildNumber` is 0 (follow newest). */
     projectRunHash(projectId, buildNumber) {
-      return buildProjectHash({ projectId, run: buildNumber || 0 });
+      return buildProjectHash({ projectId, dir: this.selectedProjectDir, run: buildNumber || 0 });
     },
     openCode({ projectId, path, line, col, err, msg, replace } = {}) {
       if (this.authModal) return;
@@ -381,6 +393,7 @@ export const appOptions = {
       if (!id) return;
       const hash = buildProjectHash({
         projectId: id,
+        dir: this.selectedProjectDir,
         files: true,
         path: path || null,
         line: line || 0,
@@ -408,9 +421,15 @@ export const appOptions = {
     toggleProjectGraph() {
       this.projectGraphOpen = !this.projectGraphOpen;
     },
-    /** The raw meta fetch — separated so the headless suite can control response timing. */
-    fetchProjectMeta(projectId) {
-      return get('/api/project?project=' + encodeURIComponent(projectId));
+    /**
+     * The raw meta fetch — separated so the headless suite can control response timing. With a
+     * checkout named, the engine answers that tree's card; without one it implies the single
+     * live checkout or answers only the `checkouts` list.
+     */
+    fetchProjectMeta(projectId, dir) {
+      return get(
+        '/api/project?project=' + encodeURIComponent(projectId) + (dir ? '&dir=' + encodeURIComponent(dir) : ''),
+      );
     },
     // Live coord + description for the open project (by durable id).
     async loadProjectMeta(projectId) {
@@ -418,15 +437,12 @@ export const appOptions = {
       this._projectMetaFor = projectId;
       this.projectMeta = null;
       try {
-        const meta = await this.fetchProjectMeta(projectId);
+        const meta = await this.fetchProjectMeta(projectId, this.selectedProjectDir);
         // A slow response for a project the user already navigated away from must not overwrite
         // the current project's state — with same-project refetches suppressed above, the stale
         // data would stick until the next switch.
         if (this.selectedProjectId !== projectId) return;
         this.projectMeta = meta;
-        if (meta && meta.dir) {
-          this.selectedProjectDir = meta.dir;
-        }
       } catch (e) {
         // A failed load must not latch the guard — the next click retries.
         if (this._projectMetaFor === projectId) this._projectMetaFor = null;
@@ -445,11 +461,10 @@ export const appOptions = {
       const projectId = this.selectedProjectId;
       if (this.authModal || this.view !== 'project' || !projectId) return;
       try {
-        const meta = await this.fetchProjectMeta(projectId);
+        const meta = await this.fetchProjectMeta(projectId, this.selectedProjectDir);
         if (this.selectedProjectId !== projectId) return; // stale response
         this.projectMeta = meta;
         this._projectMetaFor = projectId;
-        if (meta && meta.dir) this.selectedProjectDir = meta.dir;
       } catch {
         // keep the last known header
       }

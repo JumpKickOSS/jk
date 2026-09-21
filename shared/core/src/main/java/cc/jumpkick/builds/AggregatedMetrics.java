@@ -127,7 +127,9 @@ public final class AggregatedMetrics {
             Map<String, Map<String, Long>> w = new LinkedHashMap<>();
             Path project = home.resolve(ProjectBuilds.PROJECT_METRICS);
             stamps.add(FileStamp.of(project));
-            parseProjectFile(project, identityRoot(home), m, l, c, w);
+            // The ledger keys modules relative to a checkout root; expand it against every live
+            // checkout of the id so each worktree's absolute module dirs find their rows.
+            for (String root : identityRoots(home)) parseProjectFile(project, root, m, l, c, w);
             mergePreferHigherCount(mean, last, count, m, l, c);
             // The preferred home's walls win; a later home fills in only classes it alone saw.
             for (var e : w.entrySet()) {
@@ -142,15 +144,22 @@ public final class AggregatedMetrics {
         return new AggregatedMetrics(mean, last, count, hostMean, classWalls, List.copyOf(stamps));
     }
 
-    /** The checkout a project home last recorded, as a key root; null when the home has none. */
-    private static @Nullable String identityRoot(Path home) {
+    /**
+     * The checkouts a project home records, as key roots; a home that records none yields one
+     * {@code null} root so its relative keys still load.
+     */
+    private static List<@Nullable String> identityRoots(Path home) {
         var idf = ProjectIdentity.IdentityFile.read(home);
-        if (idf.isEmpty() || idf.get().path() == null || idf.get().path().isBlank()) return null;
-        try {
-            return rootKey(Path.of(idf.get().path()));
-        } catch (RuntimeException e) {
-            return null;
+        List<ProjectIdentity.Checkout> checkouts =
+                idf.map(ProjectIdentity.IdentityFile::liveCheckouts).orElse(List.of());
+        if (checkouts.isEmpty()) {
+            List<@Nullable String> none = new ArrayList<>(1);
+            none.add(null);
+            return none;
         }
+        List<@Nullable String> roots = new ArrayList<>(checkouts.size());
+        for (ProjectIdentity.Checkout c : checkouts) roots.add(rootKey(c.path()));
+        return roots;
     }
 
     /**

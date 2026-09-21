@@ -185,7 +185,7 @@ public final class HttpEngineServer implements AutoCloseable {
         if (this.mcp != null) this.mcp.detailsFile(journal::detailsFile);
         // jk_run answers the project page that follows the job it just started, authenticated.
         if (this.mcp != null) {
-            this.mcp.dashboardLink(dir -> DashboardLinks.project(url(), tokens.tokenText(), ProjectIds.idOf(dir)));
+            this.mcp.dashboardLink(dir -> DashboardLinks.project(url(), tokens.tokenText(), ProjectIds.idOf(dir), dir));
         }
         this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);

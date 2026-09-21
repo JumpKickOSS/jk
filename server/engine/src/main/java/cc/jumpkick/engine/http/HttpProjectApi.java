@@ -151,8 +151,10 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code GET /api/project?project=&lt;id&gt;} or {@code ?dir=…} — live workspace metadata.
-     * Prefer {@code project=} (durable identity); {@code dir=} remains for direct checkout ops.
+     * {@code GET /api/project?project=&lt;id&gt;[&amp;dir=…]} or {@code ?dir=…} — live workspace
+     * metadata. {@code project=} is the durable identity; an id with one live checkout implies it,
+     * an id with several answers only the {@code checkouts} list until {@code dir=} names one.
+     * {@code dir=} alone remains for direct checkout ops.
      */
     void handleProject(HttpExchange exchange) throws IOException {
         String q = exchange.getRequestURI().getRawQuery();
@@ -176,43 +178,111 @@ final class HttpProjectApi {
                             .toString());
             return;
         }
+        List<ProjectIdentity.Checkout> checkouts = List.of();
         if (projectId != null && !projectId.isBlank()) {
-            var path = ProjectIdentity.pathForId(projectId);
-            if (path.isEmpty()) {
+            checkouts = ProjectIdentity.isValidId(projectId) ? ProjectIdentity.checkoutsForId(projectId) : List.of();
+            if (checkouts.isEmpty()) {
                 HttpResponses.sendJson(
                         exchange,
                         404,
                         JsonOut.object()
-                                .put("error", "unknown project id or checkout path missing: " + projectId)
+                                .put("error", "unknown project id or no live checkout: " + projectId)
                                 .put("projectId", projectId)
                                 .toString());
                 return;
             }
-            dir = path.get().toString();
+            if (dir != null && !dir.isBlank()) {
+                Optional<ProjectIdentity.Checkout> picked = ProjectIdentity.selectCheckout(checkouts, dir);
+                if (picked.isEmpty()) {
+                    HttpResponses.sendJson(exchange, 404, notACheckout(projectId, dir, checkouts));
+                    return;
+                }
+                dir = picked.get().path().toString();
+            } else if (checkouts.size() == 1) {
+                dir = checkouts.getFirst().path().toString();
+            } else {
+                // Several live checkouts and no selector: name them; the card is per checkout.
+                Map<String, Object> listing = new LinkedHashMap<>();
+                listing.put("projectId", projectId);
+                ProjectIdentity.homeForId(projectId)
+                        .flatMap(ProjectIdentity.IdentityFile::read)
+                        .map(ProjectIdentity.IdentityFile::coord)
+                        .ifPresent(coord -> listing.put("coord", coord));
+                listing.put("checkouts", checkoutRows(checkouts));
+                HttpResponses.sendJson(exchange, 200, MiniJson.write(listing));
+                return;
+            }
         }
         // One card, one parse path (shared with MCP jk_project): identity resolves without a
         // parseable manifest, so a ?dir= call on a broken workspace still gets its durable id.
         ProjectCard card = ProjectCard.of(Path.of(dir));
         String resolvedId = card.projectId() != null ? card.projectId() : projectId;
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("dir", dir);
+        body.put("projectId", resolvedId == null ? "" : resolvedId);
         if (card.coord() != null) {
-            HttpResponses.sendJson(
-                    exchange,
-                    200,
-                    JsonOut.object()
-                            .put("dir", dir)
-                            .put("projectId", resolvedId)
-                            .put("coord", card.coord())
-                            .put("description", card.description())
-                            .toString());
-        } else {
-            HttpResponses.sendJson(
-                    exchange,
-                    200,
-                    JsonOut.object()
-                            .put("dir", dir)
-                            .put("projectId", resolvedId == null ? "" : resolvedId)
-                            .toString());
+            body.put("coord", card.coord());
+            body.put("description", card.description());
         }
+        if (!checkouts.isEmpty()) body.put("checkouts", checkoutRows(checkouts));
+        HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
+    }
+
+    /**
+     * The checkout an id-routed file request works in, or {@code null} after answering the
+     * error: 404 for an id with no live checkout or a {@code dir} that is none of them, 400 when
+     * the id has several live checkouts and the request named none.
+     */
+    private static @Nullable Path checkoutRoot(HttpExchange exchange, String projectId, @Nullable String dir)
+            throws IOException {
+        switch (WorkspaceFileAccess.resolveRoot(projectId, dir)) {
+            case WorkspaceFileAccess.Root.Ok ok -> {
+                return ok.root();
+            }
+            case WorkspaceFileAccess.Root.Unknown ignored ->
+                HttpResponses.sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object()
+                                .put("error", "unknown project id or no live checkout: " + projectId)
+                                .put("projectId", projectId)
+                                .toString());
+            case WorkspaceFileAccess.Root.Ambiguous several -> {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put(
+                        "error",
+                        "project " + projectId + " has " + several.checkouts().size()
+                                + " live checkouts; pass \"dir\" to name one");
+                body.put("projectId", projectId);
+                body.put("checkouts", checkoutRows(ProjectIdentity.checkoutsForId(projectId)));
+                HttpResponses.sendJson(exchange, 400, MiniJson.write(body));
+            }
+            case WorkspaceFileAccess.Root.NotACheckout wrong ->
+                HttpResponses.sendJson(
+                        exchange, 404, notACheckout(projectId, wrong.dir(), ProjectIdentity.checkoutsForId(projectId)));
+        }
+        return null;
+    }
+
+    private static String notACheckout(String projectId, String dir, List<ProjectIdentity.Checkout> checkouts) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "not a live checkout of project " + projectId + ": " + dir);
+        body.put("projectId", projectId);
+        body.put("dir", dir);
+        body.put("checkouts", checkoutRows(checkouts));
+        return MiniJson.write(body);
+    }
+
+    /** {@code [{ dir, lastBuilt }]} — the id's live checkouts as the SPA and MCP list them. */
+    static List<Map<String, Object>> checkoutRows(List<ProjectIdentity.Checkout> checkouts) {
+        List<Map<String, Object>> rows = new ArrayList<>(checkouts.size());
+        for (ProjectIdentity.Checkout c : checkouts) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("dir", c.path().toString());
+            if (c.lastBuilt() != null) row.put("lastBuilt", c.lastBuilt().toString());
+            rows.add(row);
+        }
+        return rows;
     }
 
     /**
@@ -281,13 +351,17 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code GET /api/project/files?project=&lt;id&gt;} — allow-listed source paths under the
-     * identity checkout. No {@code dir=} fallback.
+     * {@code GET /api/project/files?project=&lt;id&gt;[&amp;dir=…]} — allow-listed source paths
+     * under one of the id's live checkouts. {@code dir} is required when the id has several; it
+     * never widens the sandbox to a tree the id does not record.
      */
     void handleProjectFiles(HttpExchange exchange) throws IOException {
         String projectId;
+        String dir;
         try {
-            projectId = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "project");
+            String q = exchange.getRequestURI().getRawQuery();
+            projectId = HttpQuery.queryParam(q, "project");
+            dir = HttpQuery.queryParam(q, "dir");
         } catch (IllegalArgumentException e) {
             HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
@@ -300,20 +374,11 @@ final class HttpProjectApi {
                     JsonOut.object().put("error", "missing \"project\"").toString());
             return;
         }
-        var root = WorkspaceFileAccess.resolveRoot(projectId);
-        if (root.isEmpty()) {
-            HttpResponses.sendJson(
-                    exchange,
-                    404,
-                    JsonOut.object()
-                            .put("error", "unknown project id or checkout path missing: " + projectId)
-                            .put("projectId", projectId)
-                            .toString());
-            return;
-        }
+        Path root = checkoutRoot(exchange, projectId, dir);
+        if (root == null) return;
         WorkspaceFileAccess.FileList list;
         try {
-            list = WorkspaceFileAccess.list(root.get());
+            list = WorkspaceFileAccess.list(root);
         } catch (IOException e) {
             HttpResponses.sendJson(
                     exchange,
@@ -339,16 +404,18 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code GET /api/project/file?project=&lt;id&gt;&amp;path=&lt;rel&gt;} — UTF-8 source body
-     * for one allow-listed path. Identity-scoped; no {@code dir=}.
+     * {@code GET /api/project/file?project=&lt;id&gt;&amp;path=&lt;rel&gt;[&amp;dir=…]} — UTF-8
+     * source body for one allow-listed path, in the checkout {@link #checkoutRoot} selects.
      */
     void handleProjectFile(HttpExchange exchange) throws IOException {
         String projectId;
         String path;
+        String dir;
         try {
             String q = exchange.getRequestURI().getRawQuery();
             projectId = HttpQuery.queryParam(q, "project");
             path = HttpQuery.queryParam(q, "path");
+            dir = HttpQuery.queryParam(q, "dir");
         } catch (IllegalArgumentException e) {
             HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
@@ -368,18 +435,9 @@ final class HttpProjectApi {
                     JsonOut.object().put("error", "missing \"path\"").toString());
             return;
         }
-        var root = WorkspaceFileAccess.resolveRoot(projectId);
-        if (root.isEmpty()) {
-            HttpResponses.sendJson(
-                    exchange,
-                    404,
-                    JsonOut.object()
-                            .put("error", "unknown project id or checkout path missing: " + projectId)
-                            .put("projectId", projectId)
-                            .toString());
-            return;
-        }
-        switch (WorkspaceFileAccess.read(root.get(), path)) {
+        Path root = checkoutRoot(exchange, projectId, dir);
+        if (root == null) return;
+        switch (WorkspaceFileAccess.read(root, path)) {
             case WorkspaceFileAccess.ReadResult.BadRequest bad ->
                 HttpResponses.sendJson(
                         exchange,
@@ -430,10 +488,12 @@ final class HttpProjectApi {
     void handleProjectFileRaw(HttpExchange exchange) throws IOException {
         String projectId;
         String path;
+        String dir;
         try {
             String q = exchange.getRequestURI().getRawQuery();
             projectId = HttpQuery.queryParam(q, "project");
             path = HttpQuery.queryParam(q, "path");
+            dir = HttpQuery.queryParam(q, "dir");
         } catch (IllegalArgumentException e) {
             HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
@@ -453,18 +513,9 @@ final class HttpProjectApi {
                     JsonOut.object().put("error", "missing \"path\"").toString());
             return;
         }
-        var root = WorkspaceFileAccess.resolveRoot(projectId);
-        if (root.isEmpty()) {
-            HttpResponses.sendJson(
-                    exchange,
-                    404,
-                    JsonOut.object()
-                            .put("error", "unknown project id or checkout path missing: " + projectId)
-                            .put("projectId", projectId)
-                            .toString());
-            return;
-        }
-        switch (WorkspaceFileAccess.readRaw(root.get(), path)) {
+        Path root = checkoutRoot(exchange, projectId, dir);
+        if (root == null) return;
+        switch (WorkspaceFileAccess.readRaw(root, path)) {
             case WorkspaceFileAccess.RawResult.BadRequest bad ->
                 HttpResponses.sendJson(
                         exchange,
@@ -491,8 +542,9 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code PUT /api/project/file} — replace a text-servable file under the identity checkout.
-     * Body JSON: {@code { "project", "path", "content", "etag"? }}. When {@code etag} is present it
+     * {@code PUT /api/project/file} — replace a text-servable file in one of the id's checkouts.
+     * Body JSON: {@code { "project", "path", "content", "etag"?, "dir"? }}; {@code dir} is required
+     * when the id has several live checkouts. When {@code etag} is present it
      * must match the current on-disk SHA-256 or the write is {@code 409}. Cap matches {@link
      * WorkspaceFileAccess#MAX_FILE_BYTES} (not the smaller global POST body limit).
      */
@@ -520,6 +572,7 @@ final class HttpProjectApi {
         String content = Jsonl.topStr(body, "content");
         String etag = Jsonl.topStr(body, "etag");
         String encoding = Jsonl.topStr(body, "encoding");
+        String dir = Jsonl.topStr(body, "dir");
         if (projectId == null || projectId.isBlank()) {
             HttpResponses.sendJson(
                     exchange,
@@ -541,18 +594,9 @@ final class HttpProjectApi {
                     JsonOut.object().put("error", "missing \"content\"").toString());
             return;
         }
-        var root = WorkspaceFileAccess.resolveRoot(projectId);
-        if (root.isEmpty()) {
-            HttpResponses.sendJson(
-                    exchange,
-                    404,
-                    JsonOut.object()
-                            .put("error", "unknown project id or checkout path missing: " + projectId)
-                            .put("projectId", projectId)
-                            .toString());
-            return;
-        }
-        switch (WorkspaceFileAccess.write(root.get(), path, content, etag, encoding)) {
+        Path root = checkoutRoot(exchange, projectId, dir);
+        if (root == null) return;
+        switch (WorkspaceFileAccess.write(root, path, content, etag, encoding)) {
             case WorkspaceFileAccess.WriteResult.BadRequest bad ->
                 HttpResponses.sendJson(
                         exchange,

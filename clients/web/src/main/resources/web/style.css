@@ -1003,6 +1003,20 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* ---- project detail ---- */
 
 .detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 4px; }
+/* The checkout picker under the project header: one button per live worktree of the id. */
+.checkouts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.checkouts button.ghost {
+  background: var(--s1);
+  color: var(--mu);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  padding: 4px 9px;
+  font: 600 11.5px var(--mono);
+  cursor: pointer;
+}
+.checkouts button.ghost:hover { color: var(--cn); }
+.checkouts button.ghost.active { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.45); }
+.focused-run .checkout { font-size: 11px; }
 .back {
   display: inline-flex;
   align-items: center;

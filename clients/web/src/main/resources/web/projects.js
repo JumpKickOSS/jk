@@ -35,6 +35,30 @@ function benefitStats(rec) {
   };
 }
 
+/** Checkout-aware helpers the project page and its computed share; plain methods so the headless suite reaches them. */
+export const projectMethods = {
+  /** The id's live checkouts as `/api/project` lists them (`[{ dir, lastBuilt }]`); several means a picker. */
+  projectCheckouts() {
+    return (this.projectMeta && this.projectMeta.checkouts) || [];
+  },
+  /** The checkout the page works in: the one the route names, else the one the engine implied. */
+  projectDir() {
+    return this.selectedProjectDir || (this.projectMeta && this.projectMeta.dir) || null;
+  },
+  /**
+   * Whether a journal record or live card belongs on the open project page: the id's rows, and
+   * only those from the named checkout once the route picks one — two worktrees of one repository
+   * share the id.
+   */
+  inOpenProject(r) {
+    const id = this.selectedProjectId;
+    const picked = this.selectedProjectDir;
+    if (id && r.projectId) return r.projectId === id && (!picked || r.dir === picked);
+    const dir = this.projectDir();
+    return !!dir && r.dir === dir;
+  },
+};
+
 export const projectComputed = {
   // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
   // recomputes only when projectHistory or the live cards change — never on the 1s clock tick, so
@@ -126,9 +150,9 @@ export const projectComputed = {
    */
   projectRun() {
     const id = this.selectedProjectId;
-    const dir = this.selectedProjectDir || (this.projectMeta && this.projectMeta.dir);
+    const dir = this.projectDir();
     if (!id && !dir) return null;
-    const same = (r) => (id && r.projectId ? r.projectId === id : dir && r.dir === dir);
+    const same = (r) => this.inOpenProject(r);
     const records = (this.projectHistory || []).filter(same);
     const cards = (this.cards || []).filter(same);
     const focus = focusedRun(records, cards, this.pinnedRun || 0);
@@ -142,13 +166,10 @@ export const projectComputed = {
   // Recomputes only when the history, selection, or meta change — not on the 1s clock tick.
   projectDetail() {
     const id = this.selectedProjectId;
-    const dir = this.selectedProjectDir || (this.projectMeta && this.projectMeta.dir);
+    const dir = this.projectDir();
     if (!id && !dir) return null;
     const RECENT = 30;
-    const records = (this.projectHistory || []).filter((r) => {
-      if (id && r.projectId) return r.projectId === id;
-      return dir && r.dir === dir;
-    });
+    const records = (this.projectHistory || []).filter((r) => this.inOpenProject(r));
     // Prefer live /api/project coord (jk.toml), else the newest journal record.
     const metaCoord = this.projectMeta && this.projectMeta.coord ? this.projectMeta.coord : null;
     const parts = this.coordParts({ coord: metaCoord || (records[0] && records[0].coord), dir });
@@ -198,6 +219,7 @@ export const projectComputed = {
       const bs = benefitStats(r);
       return {
         id: r.id,
+        dir: r.dir || '',
         buildNumber: r.buildNumber || null,
         outcome: recordOutcome(r),
         trigger: r.trigger || null,

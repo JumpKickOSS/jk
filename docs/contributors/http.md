@@ -122,10 +122,16 @@ Missing or invalid credentials → **401** (plus SPA hard-gate). Engine generati
 
 ### `GET /api/project`
 
-`GET /api/project?project=<id>` (preferred) or `?dir=<abs-path>`.
+`GET /api/project?project=<id>[&dir=<abs-path>]` (preferred) or `?dir=<abs-path>`.
 
-Returns `{ projectId, dir, coord, description }`. `project` is the durable identity; `dir` is the
-last-known checkout path for build/graph ops.
+Returns `{ projectId, dir, coord, description, checkouts }`. `project` is the durable identity —
+the `project-id` the committed lock carries, so every git worktree of one repository shares it.
+`checkouts` lists the id's **live** checkouts as `[{ dir, lastBuilt }]` (the directories
+`identity.toml` records that still exist, sorted by path). With one live checkout the card is
+that tree's and `dir` names it. With several, `dir=` selects one (real-path compared; a
+directory the id does not record is a **404**); without a selector the response is only
+`{ projectId, coord, checkouts }` — no `dir`, no guess — and the SPA lists the checkouts to pick
+from. An id with no live checkout is a **404**. `dir=` alone remains for direct checkout ops.
 
 ### `GET /api/project/graph`
 
@@ -162,10 +168,13 @@ both; `transitive=1` matches `jk tree -t` / `--transitive`.
 
 ### `GET /api/project/files`
 
-`GET /api/project/files?project=<id>`
+`GET /api/project/files?project=<id>[&dir=<abs-path>]`
 
-Allow-listed source paths under the identity checkout (`ProjectIdentity.pathForId`). No `dir=`
-fallback — a tree that merely contains a `jk.toml` is not enough.
+Allow-listed source paths under one of the id's live checkouts (`WorkspaceFileAccess.resolveRoot`,
+over `ProjectIdentity.checkoutsForId`). One live checkout is implied; when the id has several,
+`dir=` is **required** and must be one of them — a request without it is a structured **400**
+`{ error, projectId, checkouts: [{ dir, lastBuilt }] }`, never a guess. `dir=` never widens the
+sandbox: a tree that merely contains a `jk.toml` is a **404**.
 
 Response: `{ projectId, dir, truncated, files: [{ path, lang }] }`. `path` is workspace-relative
 with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `scala` / `toml` / `xml` / `yaml` /
@@ -181,15 +190,18 @@ target escapes the workspace are omitted, matching the read endpoints. Entries a
 path; `truncated: true` means more remain (file cap or depth cap — deeper files stay readable
 via `GET /api/project/file`).
 
-Errors: missing `project` → **400**; unknown id or missing checkout → **404**. Token-gated.
+Errors: missing `project` → **400**; several live checkouts and no `dir` → **400** with the
+`checkouts` list; unknown id, no live checkout, or a `dir` the id does not record → **404**.
+Token-gated.
 
 ### `GET /api/project/file`
 
-`GET /api/project/file?project=<id>&path=<rel>`
+`GET /api/project/file?project=<id>&path=<rel>[&dir=<abs-path>]`
 
 UTF-8 body of one allow-listed file. `path` is workspace-relative (`src%2FMain.java`). Same
-sandbox as the list: identity checkout, real-path containment, shared allow-list. Hidden /
-output / unsupported paths are **404** (existence is not distinguishable).
+sandbox as the list: the id's checkout (`dir=` selects among several), real-path containment,
+shared allow-list. Hidden / output / unsupported paths are **404** (existence is not
+distinguishable).
 
 Response: `{ projectId, dir, path, lang, bytes, lines, encoding, etag, content }`. `encoding` is
 `utf-8`, or `iso-8859-1` when the bytes were not valid UTF-8 (the pane labels the fallback
@@ -200,15 +212,15 @@ here — use the raw endpoint below.
 | Status | When |
 | --- | --- |
 | 200 | OK |
-| 400 | missing `project` / `path`, or illegal relative path |
+| 400 | missing `project` / `path`, illegal relative path, or several live checkouts and no `dir` |
 | 401 | no / bad bearer |
-| 404 | unknown project, missing file, or non-servable path |
+| 404 | unknown project, `dir` not one of its checkouts, missing file, or non-servable path |
 | 413 | servable file larger than 1 MiB |
 | 415 | binary / image path (NUL in the first 8 KiB, or image extension) |
 
 ### `GET /api/project/file/raw`
 
-`GET /api/project/file/raw?project=<id>&path=<rel>`
+`GET /api/project/file/raw?project=<id>&path=<rel>[&dir=<abs-path>]`
 
 Raw bytes of one allow-listed file with a suitable `Content-Type` (images for the dashboard
 Preview pane). Same sandbox as the JSON body endpoint. Clients must `fetch` with the bearer
@@ -217,19 +229,22 @@ token and build a blob URL — a bare `<img src>` cannot send `Authorization`.
 | Status | When |
 | --- | --- |
 | 200 | OK (`Cache-Control: no-store`) |
-| 400 | missing `project` / `path`, or illegal relative path |
+| 400 | missing `project` / `path`, illegal relative path, or several live checkouts and no `dir` |
 | 401 | no / bad bearer |
-| 404 | unknown project, missing file, or non-servable path |
+| 404 | unknown project, `dir` not one of its checkouts, missing file, or non-servable path |
 | 413 | larger than 1 MiB |
 
 ### `PUT /api/project/file`
 
-`PUT /api/project/file` with JSON body `{ "project", "path", "content", "etag"?, "encoding"? }`.
+`PUT /api/project/file` with JSON body
+`{ "project", "path", "content", "etag"?, "encoding"?, "dir"? }`. `dir` names the checkout to
+write, required when the id has several live ones; the `etag` is compared against that tree's
+bytes, so a save cannot land in a sibling worktree.
 `encoding` echoes the value GET returned (`utf-8` default, `iso-8859-1` for the Latin-1
 fallback) so a save re-encodes to the original charset instead of transcoding; content no
 longer representable in the declared charset → **400**.
 
-Replace a **text-servable** file under the identity checkout (atomic temp+move). Images and
+Replace a **text-servable** file under the selected checkout (atomic temp+move). Images and
 non-servable paths are not writable. Body size is capped near 1 MiB of content (not the smaller
 global 64 KiB mutation limit used for build/cancel).
 
@@ -244,9 +259,9 @@ Response: `{ projectId, dir, path, lang, bytes, lines, etag }` (new content hash
 | Status | When |
 | --- | --- |
 | 200 | OK |
-| 400 | missing fields or illegal path |
+| 400 | missing fields, illegal path, or several live checkouts and no `dir` (body lists `checkouts`) |
 | 401 | no / bad bearer |
-| 404 | unknown project, missing file, or non-servable path |
+| 404 | unknown project, `dir` not one of its checkouts, missing file, or non-servable path |
 | 409 | `etag` present but file changed on disk (not engine-epoch) |
 | 413 | content larger than 1 MiB (or request body over cap) |
 | 415 | file type is not text-writable (e.g. image) |
@@ -258,7 +273,9 @@ The dashboard `#project/<id>/files/…` pane is the primary consumer (Copy / Pre
 
 The persisted journal, newest first, as the engine wrote each `record.json` (finished rows
 stream verbatim; in-flight rows gain live `jid`/`progress`/phase fields — see "Mid-build
-connect"). Every row carries `trigger` (`cli` / `mcp` / `web` / `bsp`, or a fixture trigger the
+connect"). Every row carries `dir`, the checkout it ran in — several worktrees of one repository
+share a `projectId` and one build-number sequence, and `dir` is what tells their rows apart —
+plus `trigger` (`cli` / `mcp` / `web` / `bsp`, or a fixture trigger the
 list already hides) and, when the surface had one, `session` — the MCP connection's
 `<client> <id>` or the BSP client's `<displayName> <id>`; a CLI row has no `session` key. The
 dashboard's **By session** grouping and the project page's followed run read only these
