@@ -7,7 +7,6 @@ import cc.jumpkick.util.FileLocks;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,28 +32,32 @@ public final class BuildSlot implements Closeable {
         return checkout.resolve(BuildLayout.TARGET).resolve(".jk").resolve(LOCK_FILE);
     }
 
-    /**
-     * Take {@code checkout}'s slot without waiting. Empty when another process holds it, or when
-     * the tree refuses a lock file (a read-only checkout builds without the cross-process guard).
-     */
-    static Optional<BuildSlot> tryTake(Path checkout) {
-        try {
-            return FileLocks.tryHold(lockFile(checkout)).map(BuildSlot::new);
-        } catch (IOException noLock) {
-            return Optional.empty();
-        }
-    }
+    /** What {@link #take} found. */
+    sealed interface Outcome permits Taken, Held, Unguarded {}
 
-    /** True when a lock file exists and another process holds it. */
-    static boolean heldElsewhere(Path checkout) {
-        try {
-            Optional<FileLocks.Hold> probe = FileLocks.tryHold(lockFile(checkout));
-            if (probe.isEmpty()) return true;
-            probe.get().close();
-            return false;
-        } catch (IOException noLock) {
-            return false;
-        }
+    /** This engine holds the checkout; the slot closes with the job. */
+    record Taken(BuildSlot slot) implements Outcome {}
+
+    /** Another engine — or another job in this one — holds the checkout. */
+    record Held() implements Outcome {}
+
+    /** The tree refuses a lock file, or the filesystem refuses locks; the build runs without the guard. */
+    record Unguarded(String reason) implements Outcome {}
+
+    /**
+     * Take {@code checkout}'s slot without waiting. The file names this engine at once so a
+     * refusal in the moments before the build number is known still finds a holder.
+     */
+    static Outcome take(Path checkout) {
+        return switch (FileLocks.tryHold(lockFile(checkout))) {
+            case FileLocks.Hold hold -> {
+                BuildSlot slot = new BuildSlot(hold);
+                slot.write("pid=" + ProcessHandle.current().pid() + "\n");
+                yield new Taken(slot);
+            }
+            case FileLocks.Held held -> new Held();
+            case FileLocks.Unavailable unavailable -> new Unguarded(unavailable.reason());
+        };
     }
 
     /** Record who holds the slot, for the engine that is refused. */
@@ -64,8 +67,12 @@ public final class BuildSlot implements Closeable {
         sb.append("build=").append(holder.buildNumber()).append('\n');
         sb.append("kind=").append(holder.kind()).append('\n');
         sb.append("started=").append(holder.startedAt()).append('\n');
+        write(sb.toString());
+    }
+
+    private void write(String description) {
         try {
-            hold.write(sb.toString());
+            hold.write(description);
         } catch (IOException ignored) {
             // the description is a courtesy to the refused side; the lock itself is what matters
         }
@@ -73,7 +80,8 @@ public final class BuildSlot implements Closeable {
 
     /**
      * The holder another process described in {@code checkout}'s lock file, as the hold a
-     * rejection reports: request id 0 (not this engine's), the build number and kind it wrote.
+     * rejection reports: request id 0 (not this engine's), the build number and kind it wrote. A
+     * holder that has not written its build number yet reports number 0.
      */
     static InFlightBuilds.Hold holderOf(Path checkout, String fingerprint, String dir, @Nullable String coord) {
         long build = 0;

@@ -15,6 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /** Exclusive fingerprint + start-time journal stub for one job. */
@@ -49,11 +51,47 @@ public final class JobAdmit {
         BuildSlot slot = null;
         if (exclusive && !fp.isEmpty() && canonDir != null && !canonDir.isBlank()) {
             Path checkout = Path.of(canonDir);
-            slot = BuildSlot.tryTake(checkout).orElse(null);
-            if (slot == null && BuildSlot.heldElsewhere(checkout)) {
-                return AdmitResult.reject(BuildSlot.holderOf(checkout, fp, dir, coord));
+            switch (BuildSlot.take(checkout)) {
+                case BuildSlot.Taken taken -> slot = taken.slot();
+                case BuildSlot.Held held -> {
+                    InFlightBuilds.Hold holder = BuildSlot.holderOf(checkout, fp, dir, coord);
+                    if (holder.buildNumber() == 0) {
+                        // Taken by this engine moments ago, before its number was written.
+                        holder = host.inFlight().peek(fp).orElse(holder);
+                    }
+                    return AdmitResult.reject(holder);
+                }
+                case BuildSlot.Unguarded unguarded -> {
+                    if (UNGUARDED_NOTED.add(canonDir)) {
+                        host.log("build slot: " + canonDir + " builds without the cross-process lock ("
+                                + unguarded.reason() + ")");
+                    }
+                }
             }
         }
+        try {
+            return admitHolding(host, requestId, kind, dir, fp, trigger, session, exclusive, canonDir, coord, slot);
+        } catch (RuntimeException failed) {
+            if (slot != null) slot.close();
+            throw failed;
+        }
+    }
+
+    /** Checkouts already noted as building unguarded, so the log says it once per engine. */
+    private static final Set<String> UNGUARDED_NOTED = ConcurrentHashMap.newKeySet();
+
+    private static AdmitResult admitHolding(
+            JobEnvelope.Host host,
+            long requestId,
+            String kind,
+            String dir,
+            String fp,
+            String trigger,
+            @Nullable String session,
+            boolean exclusive,
+            @Nullable String canonDir,
+            @Nullable String coord,
+            @Nullable BuildSlot slot) {
         long buildNumber = 0L;
         if (BuildHistoryKinds.isBuildLike(kind) && canonDir != null && !canonDir.isBlank()) {
             buildNumber = BuildNumberAllocator.allocate(canonDir, coord);
@@ -66,7 +104,7 @@ public final class JobAdmit {
                     .begin(BuildRecord.running(
                             buildNumber,
                             kind,
-                            dir,
+                            canonDir,
                             coord,
                             projectId,
                             startedAt,
