@@ -70,7 +70,9 @@ class BuildSlotTest {
             int c;
             StringBuilder line = new StringBuilder();
             while ((c = holder.getInputStream().read()) >= 0 && c != '\n') line.append((char) c);
-            assertThat(line.toString()).isEqualTo("held");
+            // strip(), because println ends the line with CRLF on Windows and the read above stops
+            // at the newline alone.
+            assertThat(line.toString().strip()).isEqualTo("held");
 
             assertThat(BuildSlot.take(checkout)).isInstanceOf(BuildSlot.Held.class);
             assertThat(BuildSlot.take(checkout))
