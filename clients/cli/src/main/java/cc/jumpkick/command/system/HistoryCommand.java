@@ -67,9 +67,16 @@ public final class HistoryCommand extends GroupCommand {
     static String label(@Nullable String coord, @Nullable String dir) {
         if (coord != null && !coord.isBlank()) return coord;
         if (dir == null || dir.isBlank()) return "?";
-        String norm = dir.endsWith("/") ? dir.substring(0, dir.length() - 1) : dir;
-        int slash = norm.lastIndexOf('/');
-        return slash >= 0 && slash < norm.length() - 1 ? norm.substring(slash + 1) : norm;
+        // Both separators, always: the record is text, and a history file written on one OS is
+        // read on another. Splitting on '/' alone left every Windows row labelled with its whole
+        // path, which also defeated the same-name check in checkoutLabels.
+        String norm = endsWithSeparator(dir) ? dir.substring(0, dir.length() - 1) : dir;
+        int cut = Math.max(norm.lastIndexOf('/'), norm.lastIndexOf('\\'));
+        return cut >= 0 && cut < norm.length() - 1 ? norm.substring(cut + 1) : norm;
+    }
+
+    private static boolean endsWithSeparator(String dir) {
+        return dir.endsWith("/") || dir.endsWith("\\");
     }
 
     /** {@code trigger}, then {@code · session} when the run record names one. */
