@@ -47,7 +47,7 @@ project id is in the tag) or across modules of one workspace (the output path is
 |------|----------------------|-------------------------------|-----|
 | `JK_CACHE_DIR` | yes | yes | content-addressed records and blobs; every write is an atomic replace |
 | `JK_STORE_DIR` | yes | yes | checksum-verified artifacts; one origin, one tree |
-| `JK_STATE_DIR` | yes | yes | run history, metrics and the run-number counter fold under file locks; every run names its checkout |
+| `JK_STATE_DIR` | yes | yes | run history, metrics, the run-number counter and the checkout set fold under file locks; every run names its checkout |
 | `~/.jk/test-homes` | per checkout | per checkout | keyed by the module's real path |
 | `target/` | never | never | the checkout's outputs, its freshness stamps and its build slot |
 
