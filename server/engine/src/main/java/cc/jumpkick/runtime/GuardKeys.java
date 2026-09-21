@@ -7,6 +7,7 @@ import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.guard.eval.WorkspaceModel;
 import cc.jumpkick.guard.eval.WorkspaceModules;
+import cc.jumpkick.guard.explain.RuleSummaries;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
@@ -89,10 +90,18 @@ final class GuardKeys {
                 tokens.add("test-facts:" + test.get());
             }
             addRuleTokens(tokens, load);
-            String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD, dir), tokens, baselineSha(root));
-            if (actionCache.lookup(key).isPresent()) {
-                return Optional.of(
-                        new TaskForecast.Task(TaskNames.GUARD, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
+            String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
+            String key = laneKey(taskId, tokens, baselineSha(root));
+            Optional<ActionCache.ActionRecord> verdict = actionCache.lookup(key);
+            if (verdict.isPresent()) {
+                // A verdict that carries the lane's evidence is cached only where that evidence is
+                // on disk: a fresh checkout runs the lane once so the hit restores it for the tree
+                // lane's no-bite judgement.
+                if (verdict.get().outputs().isEmpty() || Files.isRegularFile(RuleSummaries.file(root, taskId))) {
+                    return Optional.of(new TaskForecast.Task(
+                            TaskNames.GUARD, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
+                }
+                return Optional.of(run("guards · lane evidence to restore"));
             }
             return Optional.of(run("guards · " + load.rules().rules().size() + " rules to evaluate"));
         } catch (IOException e) {
