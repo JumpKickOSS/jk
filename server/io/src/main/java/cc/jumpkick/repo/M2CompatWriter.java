@@ -80,21 +80,34 @@ public final class M2CompatWriter {
      * which takes a local-repository body for Central only when this file says Central served it.
      */
     public static void writeRemoteRepositories(Path versionDir, String repoName, String filename) {
-        try {
-            Path target = versionDir.resolve("_remote.repositories");
-            List<String> lines = new ArrayList<>();
-            lines.add("#NOTE: This is a jk-written provenance hint for Maven tooling.");
-            if (Files.isRegularFile(target)) {
-                for (String line : Files.readAllLines(target)) {
-                    String entry = line.strip();
-                    if (entry.isEmpty() || entry.startsWith("#") || entry.startsWith(filename + ">")) continue;
-                    lines.add(entry);
+        Path target = versionDir.resolve("_remote.repositories");
+        // One version's POM, jar and module descriptor arrive on different resolver threads
+        // within milliseconds; a read-fold-write per thread loses lines, and a lost POM line is a
+        // test-store seed that no longer vouches for the POM.
+        synchronized (
+                HINT_LOCKS[Math.floorMod(target.toAbsolutePath().normalize().hashCode(), HINT_LOCKS.length)]) {
+            try {
+                List<String> lines = new ArrayList<>();
+                lines.add("#NOTE: This is a jk-written provenance hint for Maven tooling.");
+                if (Files.isRegularFile(target)) {
+                    for (String line : Files.readAllLines(target)) {
+                        String entry = line.strip();
+                        if (entry.isEmpty() || entry.startsWith("#") || entry.startsWith(filename + ">")) continue;
+                        lines.add(entry);
+                    }
                 }
+                lines.add(filename + ">" + repoName + "=");
+                AtomicWrites.replace(target, String.join("\n", lines) + "\n");
+            } catch (IOException ignored) {
             }
-            lines.add(filename + ">" + repoName + "=");
-            AtomicWrites.replace(target, String.join("\n", lines) + "\n");
-        } catch (IOException ignored) {
         }
+    }
+
+    /** Serialises hint writes per version directory within this process; striped, so the set is bounded. */
+    private static final Object[] HINT_LOCKS = new Object[64];
+
+    static {
+        for (int i = 0; i < HINT_LOCKS.length; i++) HINT_LOCKS[i] = new Object();
     }
 
     /**
