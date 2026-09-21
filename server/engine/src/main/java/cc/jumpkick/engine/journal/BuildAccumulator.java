@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.diagnostic.CompilerLocus;
@@ -11,7 +12,6 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
-import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.CancelledShortfall;

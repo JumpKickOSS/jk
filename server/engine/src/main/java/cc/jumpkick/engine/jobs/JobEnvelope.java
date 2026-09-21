@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.RequestScope;
@@ -16,7 +17,6 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.base.LiveUnits;
-import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.EngineProtocol;

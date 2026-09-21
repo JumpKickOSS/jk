@@ -419,6 +419,12 @@ and exclusions stay GA-scoped.
    first source. A source whose bytes move while the compiler runs is re-read afterwards: the
    compile is reported and not recorded, its incremental analysis is dropped, and the stamp reads
    stale for that source, so the next build compiles the module from what is then on disk.
+   Every key opens with its task id, `<base>@<tag>`, and the tag names the output within the
+   project — the lock's `project-id` plus the output's workspace-relative path, hashed — never
+   the checkout. Two worktrees of one project therefore compute one key set and share every
+   hit; the incremental compiler state, whose Zinc analysis holds absolute paths, is the one
+   thing keyed by the checkout's real path (`ActionKey.stateDir`). A record spells its inputs
+   the same way (`PortablePath`), so `jk explain` reads a neighbour checkout's record correctly.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store. A javac
    miss hands the worker the Zinc analyses of the jk-built entries on its classpath
    (`ProducerAnalyses`, found from the entry alone because a compile's state is keyed by its
@@ -452,7 +458,7 @@ keys** when adding a read-only remote later — only add an optional remote look
 
 | Ingredient | Local today | Remote note |
 |---|---|---|
-| Task type / id | `task:` line (e.g. `compile-main`) | Keep stable names |
+| Task type / id | `task:` line, `<base>@<tag>` — the tag is the project id plus the workspace-relative output path | Portable across checkouts of one project |
 | jk version | `jk:` in key material | Pin engine version for cross-machine hits |
 | Toolchain / release | `--release`, Kotlin target | Include JDK major when outputs are version-sensitive |
 | Sources | module-relative path + content SHA-256 | Portable: two checkouts of one module compute the same key |

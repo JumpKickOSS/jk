@@ -249,9 +249,9 @@ public final class ActionCache {
         // in it. A check whose whole result is "nothing to say" records that through
         // storeVerdict, where the caller asserts there is nothing to restore.
         if (outputs.isEmpty()) {
-            return new ActionRecord(taskId, actionKey, inputs, Map.of(), Map.of());
+            return new ActionRecord(taskId, actionKey, inputs, Map.of());
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of(), executables);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables);
     }
 
     /**
@@ -384,18 +384,7 @@ public final class ActionCache {
     public ActionRecord storeWithOutputs(
             String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs)
             throws IOException {
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of());
-    }
-
-    /** As above, plus the per-source {@code units} grouping (incremental builds). */
-    public ActionRecord storeWithOutputs(
-            String taskId,
-            String actionKey,
-            Map<String, String> inputs,
-            Map<String, String> outputs,
-            Map<String, List<String>> units)
-            throws IOException {
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, units, Set.of());
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of());
     }
 
     /** As above, recording which outputs were executable so a restore can put the bit back. */
@@ -404,13 +393,12 @@ public final class ActionCache {
             @Nullable String actionKey,
             Map<String, String> inputs,
             Map<String, String> outputs,
-            Map<String, List<String>> units,
             Set<String> executables)
             throws IOException {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
         meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
-        ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, units, executables);
+        ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, executables);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         AtomicWrites.replace(keysDir().resolve(actionKey), render(record));
@@ -705,7 +693,7 @@ public final class ActionCache {
         if (outputs.isEmpty()) {
             throw new IOException("packaging produced no files to cache: " + artifacts);
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of(), executables);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables);
     }
 
     /**
@@ -753,12 +741,16 @@ public final class ActionCache {
 
     // --- record + serialization --------------------------------------------
 
+    /**
+     * One cached action: the task pointer it was stored under, its key, the inputs the key hashed
+     * (spelled as {@link ActionKey#snapshotInputs} spells them, so the record reads the same from
+     * any checkout), and each output's relative path to its CAS digest.
+     */
     public record ActionRecord(
             @Nullable String taskId,
             @Nullable String actionKey,
             Map<String, String> inputs,
             Map<String, String> outputs,
-            Map<String, List<String>> units,
             /**
              * Output rel-paths that were executable when stored. CAS blobs carry no mode, so
              * without this a restored binary comes back 0644 and is unrunnable. Empty means no
@@ -772,20 +764,14 @@ public final class ActionCache {
             inputs = Map.copyOf(inputs);
             outputs = Map.copyOf(outputs);
             executables = executables == null ? Set.of() : Set.copyOf(executables);
-            // units: source-abs-path → output relPaths it produced. Populated by
-            // an incremental compiler; empty for full rebuilds.
-            Map<String, List<String>> u = new LinkedHashMap<>();
-            if (units != null) units.forEach((k, v) -> u.put(k, List.copyOf(v)));
-            units = Map.copyOf(u);
         }
 
         public ActionRecord(
                 @Nullable String taskId,
                 @Nullable String actionKey,
                 Map<String, String> inputs,
-                Map<String, String> outputs,
-                Map<String, List<String>> units) {
-            this(taskId, actionKey, inputs, outputs, units, Set.of());
+                Map<String, String> outputs) {
+            this(taskId, actionKey, inputs, outputs, Set.of());
         }
     }
 
@@ -811,15 +797,6 @@ public final class ActionCache {
         for (String rel : new TreeSet<>(record.executables())) {
             sb.append("EXEC ").append(rel).append('\n');
         }
-        // UNIT <relPath> <sourceAbsPath> — relPath is space-free (Java class
-        // path), source is the rest of the line so it may contain spaces.
-        for (Map.Entry<String, List<String>> e : new TreeMap<>(record.units()).entrySet()) {
-            List<String> rels = new ArrayList<>(e.getValue());
-            rels.sort(Comparator.naturalOrder());
-            for (String rel : rels) {
-                sb.append("UNIT ").append(rel).append(' ').append(e.getKey()).append('\n');
-            }
-        }
         return sb.toString();
     }
 
@@ -844,7 +821,6 @@ public final class ActionCache {
         String actionKey = null;
         Map<String, String> inputs = new LinkedHashMap<>();
         Map<String, String> outputs = new LinkedHashMap<>();
-        Map<String, List<String>> units = new LinkedHashMap<>();
         Set<String> executables = new LinkedHashSet<>();
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
@@ -862,13 +838,6 @@ public final class ActionCache {
                 outputs.put(body.substring(sp + 1), decodeValue(body.substring(0, sp)));
             } else if (line.startsWith("EXEC ")) {
                 executables.add(line.substring("EXEC ".length()).trim());
-            } else if (line.startsWith("UNIT ")) {
-                // UNIT <relPath> <sourceAbsPath> — omitted when the compiler recorded no per-source units.
-                String body = line.substring("UNIT ".length());
-                int sp = body.indexOf(' ');
-                String rel = body.substring(0, sp);
-                String source = body.substring(sp + 1);
-                units.computeIfAbsent(source, k -> new ArrayList<>()).add(rel);
             }
         }
         return new ActionRecord(
@@ -876,7 +845,6 @@ public final class ActionCache {
                 Objects.requireNonNull(actionKey, "actionKey in record"),
                 inputs,
                 outputs,
-                units,
                 executables);
     }
 

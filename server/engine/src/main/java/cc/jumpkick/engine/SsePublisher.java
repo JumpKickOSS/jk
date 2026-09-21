@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.api.CoalescingBuildPlanListener;
 import cc.jumpkick.engine.api.InFlightBuilds;
@@ -17,7 +18,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
-import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;

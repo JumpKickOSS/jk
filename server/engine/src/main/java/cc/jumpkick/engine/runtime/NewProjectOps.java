@@ -3,6 +3,7 @@ package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.SessionContext;
@@ -20,7 +21,6 @@ import cc.jumpkick.model.Layout;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.StableVersions;
-import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
 import cc.jumpkick.scaffold.ScaffoldVersions;

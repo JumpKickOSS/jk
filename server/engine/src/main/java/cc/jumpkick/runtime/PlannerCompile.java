@@ -497,9 +497,10 @@ public final class PlannerCompile {
             return;
         }
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, javaOut);
-        Path javaStateDir = ActionTree.INCREMENTAL_JAVA
-                .under(CacheTree.ACTIONS.under(in.cache()))
-                .resolve(taskId);
+        Path javaStateDir = ActionKey.stateDir(
+                ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(in.cache())),
+                TaskNames.COMPILE_MAIN,
+                javaOut);
         // The stamp's instant: before the first source is hashed, so an edit landing while the
         // compile runs is stale on the next build instead of vouched for by a later stamp.
         ctx.put(JAVA_STAMP_CLOCK, FreshnessStamp.clockNow(javaOut));
@@ -798,9 +799,10 @@ public final class PlannerCompile {
                     // dir with javac's output (it would delete the.class files).
                     Path ktOut = ctx.require(LAYOUT).kotlinClassesDir();
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, classes);
-                    Path workingDir = ActionTree.INCREMENTAL_KOTLIN
-                            .under(CacheTree.ACTIONS.under(in.cache()))
-                            .resolve(taskId);
+                    Path workingDir = ActionKey.stateDir(
+                            ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(in.cache())),
+                            TaskNames.COMPILE_KOTLIN,
+                            classes);
                     PlannerLang.KotlinWorker worker =
                             PlannerLang.kotlinWorker(ctx, in, cas, ktSources, classpath, ktOut, workingDir, config);
                     // The stamp spells the classpath by ABI token, like the action key: a sibling

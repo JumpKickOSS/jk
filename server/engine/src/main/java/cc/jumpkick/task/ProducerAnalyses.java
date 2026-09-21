@@ -18,7 +18,7 @@ import java.util.Optional;
  * consumer's classes one producer class at a time rather than every class that touched the jar.
  *
  * <p>A compile's incremental state is keyed by its output directory ({@link
- * ActionKey#qualifiedTaskId}), and {@link BuildLayout#compiledClassesOf} names that directory from
+ * ActionKey#stateDir}), and {@link BuildLayout#compiledClassesOf} names that directory from
  * the entry alone, so a producer contributes the same analysis whether the classpath carries its
  * jar or its classes directory, and no workspace index is consulted.
  *
@@ -58,6 +58,6 @@ public final class ProducerAnalyses {
     private static Path stateDir(Path incrementalRoot, Path classes) {
         String task =
                 "test".equals(String.valueOf(classes.getFileName())) ? TaskNames.COMPILE_TEST : TaskNames.COMPILE_MAIN;
-        return incrementalRoot.resolve(ActionKey.qualifiedTaskId(task, classes));
+        return ActionKey.stateDir(incrementalRoot, task, classes);
     }
 }

@@ -4,11 +4,13 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,24 +22,147 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ActionKeyTest {
 
-    /** Two checkouts of the same module at different paths: identical inputs, identical key. */
+    /**
+     * Two checkouts of the same project at different paths: identical inputs, identical key and
+     * identical task pointer, through the production task id. The project id is the committed
+     * lock's, so the tag names the output within the project and never the checkout.
+     */
     @Test
     void the_key_does_not_depend_on_where_the_module_is_checked_out(@TempDir Path tempDir) throws IOException {
         Path a = module(tempDir.resolve("checkout-a/app"));
         Path b = module(tempDir.resolve("elsewhere/deeper/app"));
-        String keyA = ActionKey.forJavac("compile-main", requestFor(a), "0.1.0");
-        String keyB = ActionKey.forJavac("compile-main", requestFor(b), "0.1.0");
+        String taskA = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, a.resolve("target/classes"));
+        String taskB = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, b.resolve("target/classes"));
+        assertThat(taskA).as("the task pointer is shared across checkouts").isEqualTo(taskB);
+        String keyA = ActionKey.forJavac(taskA, requestFor(a), "0.1.0");
+        String keyB = ActionKey.forJavac(taskB, requestFor(b), "0.1.0");
         assertThat(keyA).isEqualTo(keyB);
 
         Files.writeString(b.resolve("src/main/java/Hello.java"), "class Hello { void changed() {} }");
-        assertThat(ActionKey.forJavac("compile-main", requestFor(b), "0.1.0"))
+        assertThat(ActionKey.forJavac(taskB, requestFor(b), "0.1.0"))
                 .as("content still moves the key")
                 .isNotEqualTo(keyA);
     }
 
+    /**
+     * Every key family, from two checkouts of one project: kotlinc, groovyc, an artifact bag and
+     * the run-tests stamp with its compile-test keys folded in. A factory that hashed a location
+     * would separate the two.
+     */
+    @Test
+    void every_key_family_is_equal_across_two_checkouts_of_one_project(@TempDir Path tempDir) throws IOException {
+        Path a = module(tempDir.resolve("one/app"));
+        Path b = module(tempDir.resolve("two/nested/app"));
+        for (Path m : List.of(a, b)) {
+            Files.writeString(m.resolve("src/main/java/App.kt"), "object App");
+            Files.writeString(m.resolve("src/main/java/Script.groovy"), "class Script {}");
+            Files.writeString(m.resolve("worker.jar"), "worker");
+            Files.createDirectories(m.resolve("src/test/java"));
+            Files.writeString(m.resolve("src/test/java/AppTest.java"), "class AppTest {}");
+            Files.createDirectories(m.resolve("target/classes/main"));
+            Files.writeString(m.resolve("target/classes/main/Hello.class"), "bytes");
+        }
+        Path javaHome = Path.of(System.getProperty("java.home"));
+
+        String ktA = ActionKey.forKotlinc(
+                ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, a.resolve("target/classes/main")),
+                kotlinc(a, javaHome),
+                "0.1.0",
+                KotlinClasspathAbi.MEMOIZED_ONLY);
+        String ktB = ActionKey.forKotlinc(
+                ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, b.resolve("target/classes/main")),
+                kotlinc(b, javaHome),
+                "0.1.0",
+                KotlinClasspathAbi.MEMOIZED_ONLY);
+        assertThat(ktA).as("kotlinc").isEqualTo(ktB);
+
+        String gvA = ActionKey.forGroovyc(
+                ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, a.resolve("target/classes/main")),
+                groovyc(a),
+                "0.1.0");
+        String gvB = ActionKey.forGroovyc(
+                ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, b.resolve("target/classes/main")),
+                groovyc(b),
+                "0.1.0");
+        assertThat(gvA).as("groovyc").isEqualTo(gvB);
+
+        List<String> tokens = List.of("classes:dir:abc", "main:App", "manifest:");
+        String jarA = ActionKey.forArtifact(
+                ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, a.resolve("target/app-1.0.jar")), "0.1.0", tokens);
+        String jarB = ActionKey.forArtifact(
+                ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, b.resolve("target/app-1.0.jar")), "0.1.0", tokens);
+        assertThat(jarA).as("artifact").isEqualTo(jarB);
+
+        String javacA = ActionKey.forJavac(
+                ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, a.resolve("target/classes/test")),
+                requestFor(a),
+                "0.1.0");
+        String javacB = ActionKey.forJavac(
+                ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, b.resolve("target/classes/test")),
+                requestFor(b),
+                "0.1.0");
+        List<String> extrasA =
+                TestStamp.withCompileTest(List.of("jk:0.1.0"), new TestStamp.CompileTestKeys(javacA, null, null));
+        List<String> extrasB =
+                TestStamp.withCompileTest(List.of("jk:0.1.0"), new TestStamp.CompileTestKeys(javacB, null, null));
+        String stampA = TestStamp.computeKey(
+                List.of(a.resolve("src/test/java/AppTest.java")),
+                a.resolve("target/classes/main"),
+                List.of(),
+                a.resolve("jk-lock.toml"),
+                List.of(a.resolve("target/classes/main")),
+                extrasA);
+        String stampB = TestStamp.computeKey(
+                List.of(b.resolve("src/test/java/AppTest.java")),
+                b.resolve("target/classes/main"),
+                List.of(),
+                b.resolve("jk-lock.toml"),
+                List.of(b.resolve("target/classes/main")),
+                extrasB);
+        assertThat(stampA).as("run-tests stamp").isNotNull().isEqualTo(stampB);
+    }
+
+    private static KotlincRequest kotlinc(Path module, Path javaHome) {
+        return KotlincRequest.builder()
+                .sources(List.of(module.resolve("src/main/java/App.kt")))
+                .outputDir(module.resolve("target/classes/main"))
+                .jvmTarget(21)
+                .workerClasspath(List.of(module.resolve("worker.jar")))
+                .javaHome(javaHome)
+                .build();
+    }
+
+    private static GroovycRequest groovyc(Path module) {
+        return GroovycRequest.builder()
+                .sources(List.of(module.resolve("src/main/java/Script.groovy")))
+                .classpath(List.of())
+                .outputDir(module.resolve("target/classes/main"))
+                .stubsOut(module.resolve("target/stubs"))
+                .jvmTarget(21)
+                .workerClasspath(List.of(module.resolve("worker.jar")))
+                .build();
+    }
+
+    /** The incremental compiler state, whose analysis holds absolute paths, stays per checkout. */
+    @Test
+    void the_state_dir_names_the_checkout_and_the_task_pointer_does_not(@TempDir Path tempDir) throws IOException {
+        Path a = module(tempDir.resolve("checkout-a/app"));
+        Path b = module(tempDir.resolve("checkout-b/app"));
+        Path root = tempDir.resolve("incremental-java");
+        assertThat(ActionKey.stateDir(root, TaskNames.COMPILE_MAIN, a.resolve("target/classes")))
+                .isNotEqualTo(ActionKey.stateDir(root, TaskNames.COMPILE_MAIN, b.resolve("target/classes")));
+        assertThat(ActionKey.stateDir(root, TaskNames.COMPILE_MAIN, a.resolve("target/classes")))
+                .isEqualTo(ActionKey.stateDir(root, TaskNames.COMPILE_MAIN, a.resolve("target/classes")));
+        assertThat(ActionKey.checkoutTag(a.resolve("target/classes")))
+                .isNotEqualTo(ActionKey.taskTag(a.resolve("target/classes")));
+    }
+
+    /** A project with a lock: every checkout of it carries the same {@code project-id}. */
     private static Path module(Path root) throws IOException {
         Files.createDirectories(root.resolve("src/main/java"));
         Files.writeString(root.resolve("jk.toml"), "name = \"app\"\n");
+        Files.writeString(
+                root.resolve("jk-lock.toml"), "version = 1\nproject-id = \"0123456789abcdef0123456789abcdef\"\n");
         Files.writeString(root.resolve("src/main/java/Hello.java"), "class Hello {}");
         return root;
     }
@@ -85,7 +210,7 @@ class ActionKeyTest {
                 String key = ActionKey.forJavac("compile-main", request, "0.1.0");
                 var snap = ActionKey.snapshotInputs(request);
                 assertThat(key).isNotBlank();
-                assertThat(snap).containsKey(src.toAbsolutePath().normalize().toString());
+                assertThat(snap).containsKey(PortablePath.of(src));
                 assertThat(FileHashMemo.contentReads())
                         .as("forJavac + snapshotInputs share one content read")
                         .isEqualTo(1);
@@ -159,8 +284,8 @@ class ActionKeyTest {
 
         var snapshot = ActionKey.snapshotInputs(request);
         assertThat(snapshot)
-                .containsEntry("cp:" + dep.toAbsolutePath().normalize(), ClasspathAbi.token(dep))
-                .containsEntry("pp:" + processor.toAbsolutePath().normalize(), ClasspathFingerprint.entry(processor));
+                .containsEntry("cp:" + PortablePath.of(dep), ClasspathAbi.token(dep))
+                .containsEntry("pp:" + PortablePath.of(processor), ClasspathFingerprint.entry(processor));
     }
 
     private static CompileRequest withClasspath(Path src, Path tempDir, Path dep) {
@@ -269,18 +394,42 @@ class ActionKeyTest {
                         "task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:none\noptions:\n"));
     }
 
+    /**
+     * The tag tells modules and projects apart without naming a location: two members of one
+     * workspace differ by their workspace-relative output path, two projects by their id, and a
+     * directory under no project falls back to the checkout tag.
+     */
     @Test
-    void qualified_task_id_differs_per_module_and_is_stable() {
-        Path a = Path.of("/work/projA/target/build/classes/main");
-        Path b = Path.of("/work/projB/target/build/classes/main");
-        String qa = ActionKey.qualifiedTaskId("compile-main", a);
-        String qb = ActionKey.qualifiedTaskId("compile-main", b);
+    void qualified_task_id_differs_per_module_and_project_and_is_stable(@TempDir Path tempDir) throws IOException {
+        Path ws = tempDir.resolve("ws");
+        Files.createDirectories(ws.resolve("lib"));
+        Files.createDirectories(ws.resolve("app"));
+        Files.writeString(ws.resolve("jk.toml"), "name = \"ws\"\n[workspace]\nmodules = [\"lib\", \"app\"]\n");
+        Files.writeString(
+                ws.resolve("jk-lock.toml"), "version = 1\nproject-id = \"0123456789abcdef0123456789abcdef\"\n");
+        Files.writeString(ws.resolve("lib/jk.toml"), "name = \"lib\"\n");
+        Files.writeString(ws.resolve("app/jk.toml"), "name = \"app\"\n");
+        Path lib = ws.resolve("target/lib/classes/main");
+        Path app = ws.resolve("target/app/classes/main");
 
-        assertThat(qa).startsWith("compile-main@");
-        assertThat(qa).isNotEqualTo(qb); // different modules → no pointer collision
-        assertThat(qa).isEqualTo(ActionKey.qualifiedTaskId("compile-main", a)); // stable
-        // compile-main vs compile-test in the same module stay distinct too.
-        assertThat(qa).isNotEqualTo(ActionKey.qualifiedTaskId("compile-test", a));
+        String ql = ActionKey.qualifiedTaskId("compile-main", lib);
+        assertThat(ql).startsWith("compile-main@");
+        assertThat(ql).isNotEqualTo(ActionKey.qualifiedTaskId("compile-main", app));
+        assertThat(ql).isEqualTo(ActionKey.qualifiedTaskId("compile-main", lib));
+        assertThat(ql).isNotEqualTo(ActionKey.qualifiedTaskId("compile-test", lib));
+        // The module dir itself (a guard lane's tag) resolves to the same workspace root.
+        assertThat(ActionKey.qualifiedTaskId("guard", ws.resolve("lib")))
+                .isNotEqualTo(ActionKey.qualifiedTaskId("guard", ws.resolve("app")));
+
+        Path other = module(tempDir.resolve("other"));
+        Files.writeString(
+                other.resolve("jk-lock.toml"), "version = 1\nproject-id = \"fedcba9876543210fedcba9876543210\"\n");
+        assertThat(ActionKey.qualifiedTaskId("compile-main", other.resolve("target/classes/main")))
+                .as("another project's identical relative output is another pointer")
+                .isNotEqualTo(ActionKey.qualifiedTaskId("compile-main", tempDir.resolve("ws/target/classes/main")));
+
+        Path bare = tempDir.resolve("nowhere/target/classes/main");
+        assertThat(ActionKey.taskTag(bare)).isEqualTo(ActionKey.checkoutTag(bare));
     }
 
     @Test

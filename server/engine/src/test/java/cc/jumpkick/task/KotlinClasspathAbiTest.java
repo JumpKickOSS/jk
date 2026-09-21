@@ -186,7 +186,7 @@ class KotlinClasspathAbiTest {
             assertThat(inputs)
                     .containsEntry(
                             "cp:" + PortablePath.of(lib), KotlinClasspathAbi.PREFIX + Hashing.sha256Hex("api A"));
-            assertThat(inputs).containsKeys(src.toAbsolutePath().normalize().toString(), "jvmTarget", "jdk", "args");
+            assertThat(inputs).containsKeys(PortablePath.of(src), "jvmTarget", "jdk", "args");
         });
     }
 

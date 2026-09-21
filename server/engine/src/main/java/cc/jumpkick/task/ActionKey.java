@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycInputs;
 import cc.jumpkick.compile.GroovycRequest;
@@ -17,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -25,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * <p>The action key for a javac invocation is a stable hash of:
  *
  * <ul>
- * <li>the task identifier (e.g. {@code "compile-main"})
+ * <li>the task identifier ({@link #qualifiedTaskId}: the base name plus a location-free tag)
  * <li>jk version
  * <li>{@code --release}, the pinned source encoding, and any extra javac options
  * <li>the project JDK's identity ({@link #jdkToken})
@@ -50,6 +52,9 @@ public final class ActionKey {
      * of being able to move it.
      */
     public static final String SOURCE_ENCODING = "UTF-8";
+
+    /** Prefix of a Java declaration-digest line in a kotlinc key and its record. */
+    public static final String JAVA_API = "java-api:";
 
     private ActionKey() {}
 
@@ -196,7 +201,7 @@ public final class ActionKey {
         Map<Path, String> digests = JavaSourceApi.digests(javaSources);
         List<String> lines = new ArrayList<>(javaSources.size());
         for (Path src : javaSources) {
-            lines.add("java-api:" + PortablePath.of(src) + ":" + Objects.requireNonNull(digests.get(src), "digest"));
+            lines.add(JAVA_API + PortablePath.of(src) + ":" + Objects.requireNonNull(digests.get(src), "digest"));
         }
         return lines;
     }
@@ -229,7 +234,7 @@ public final class ActionKey {
     }
 
     /**
-     * The inputs of a Kotlin compile record, for {@code jk why-rebuilt}: each source's hash, each
+     * The inputs of a Kotlin compile record, for {@code jk explain}: each source's hash, each
      * Java source's declaration digest under {@code java-api:} (so a Java signature edit names the
      * file and a body-only one reads as nothing), each classpath entry's {@link KotlinClasspathAbi
      * ABI token} under its module-relative path (so a sibling whose ABI moved reads as that entry
@@ -244,13 +249,13 @@ public final class ActionKey {
         sortedSources.sort(Comparator.comparing(Path::toString));
         for (Path src : sortedSources) {
             Path abs = src.toAbsolutePath().normalize();
-            result.put(abs.toString(), FileHashMemo.contentHash(abs));
+            result.put(PortablePath.of(abs), FileHashMemo.contentHash(abs));
         }
         List<Path> javaSources = KotlincInputs.javaSources(request);
         if (!javaSources.isEmpty()) {
             Map<Path, String> digests = JavaSourceApi.digests(javaSources);
             for (Path src : javaSources) {
-                result.put("java-api:" + src, Objects.requireNonNull(digests.get(src), "digest"));
+                result.put(JAVA_API + PortablePath.of(src), Objects.requireNonNull(digests.get(src), "digest"));
             }
         }
         List<String> tokens = KotlinClasspathAbi.tokens(request.classpath(), snapshotter);
@@ -351,11 +356,12 @@ public final class ActionKey {
     }
 
     /**
-     * Snapshot of inputs that produced an action — for {@code jk why-rebuilt} diffs. Source hashes
-     * reuse {@link FileHashMemo#contentHash} so a prior {@link #forJavac} on the same thread does
-     * not re-read file bytes. Classpath entries are keyed by path and valued by the very token the
-     * key hashed ({@link #javacClasspathTokens}), so a body-only dependency change diffs as
-     * "nothing changed" and an API change names the entry that moved.
+     * Snapshot of inputs that produced an action — for {@code jk explain} diffs. Every path is a
+     * {@link PortablePath}, so a record one checkout wrote reads correctly in another. Source
+     * hashes reuse {@link FileHashMemo#contentHash} so a prior {@link #forJavac} on the same thread
+     * does not re-read file bytes. Classpath entries are valued by the very token the key hashed
+     * ({@link #javacClasspathTokens}), so a body-only dependency change diffs as "nothing changed"
+     * and an API change names the entry that moved.
      */
     public static Map<String, String> snapshotInputs(CompileRequest request) throws IOException {
         Map<String, String> result = new LinkedHashMap<>();
@@ -384,7 +390,7 @@ public final class ActionKey {
 
     /**
      * The sources whose bytes differ from what {@code recorded} holds for them under {@link
-     * #snapshotInputs}' spelling (absolute normalized path to content hash), or that are gone. A
+     * #snapshotInputs}' spelling ({@link PortablePath} to content hash), or that are gone. A
      * compile compares its request's sources against the snapshot it took before the worker read
      * them, so an edit that landed while the worker ran is named; the record diff for
      * {@code jk why-rebuilt} asks the same question of a prior record.
@@ -393,7 +399,7 @@ public final class ActionKey {
         List<Path> changed = new ArrayList<>();
         for (Path s : sources) {
             Path abs = s.toAbsolutePath().normalize();
-            String prior = recorded.get(abs.toString());
+            String prior = recorded.get(PortablePath.of(abs));
             if (prior == null || !Files.isRegularFile(abs) || !prior.equals(FileHashMemo.contentHash(abs))) {
                 changed.add(s);
             }
@@ -406,7 +412,7 @@ public final class ActionKey {
         sorted.sort(Comparator.comparing(Path::toString));
         for (Path src : sorted) {
             Path abs = src.toAbsolutePath().normalize();
-            into.put(abs.toString(), FileHashMemo.contentHash(abs));
+            into.put(PortablePath.of(abs), FileHashMemo.contentHash(abs));
         }
     }
 
@@ -415,7 +421,7 @@ public final class ActionKey {
         List<Path> sorted = new ArrayList<>(entries);
         sorted.sort(Comparator.comparing(Path::toString));
         for (Path entry : sorted) {
-            into.put(prefix + entry.toAbsolutePath().normalize(), token.of(entry));
+            into.put(prefix + PortablePath.of(entry), token.of(entry));
         }
     }
 
@@ -482,25 +488,40 @@ public final class ActionKey {
     }
 
     /**
-     * Qualify a base task id (e.g. {@code compile-main}) with a stable tag derived from a
-     * module-unique directory (the compile output dir), so the {@link ActionCache} {@code
-     * tasks/<taskId>} pointer doesn't collide across projects or workspace modules that share the
-     * same base task name. This tag is the only place a location enters the cache: the action key
-     * hashes module-relative paths and content, so two modules with identical inputs share one key
-     * on purpose, and the tag is what keeps their {@code tasks/} pointers apart.
+     * Qualify a base task id (e.g. {@code compile-main}) with a tag naming the output within its
+     * project: the project's durable id ({@link ProjectIds}) and {@code outputDir}'s path relative
+     * to the workspace root, hashed to 12 hex characters. Every checkout of one project spells the
+     * same tag for the same output, so the {@code task:} line of a key and the {@link ActionCache}
+     * {@code tasks/<taskId>} pointer are shared across worktrees, while two modules or two projects
+     * with identical inputs keep distinct pointers. No absolute path enters; a directory under no
+     * project at all falls back to {@link #checkoutTag}.
      */
-    public static String qualifiedTaskId(String base, @Nullable Path moduleDir) {
-        return base + "@" + taskTag(moduleDir);
+    public static String qualifiedTaskId(String base, @Nullable Path outputDir) {
+        return base + "@" + taskTag(outputDir);
     }
 
     /**
-     * The 12-hex-char tag {@link #qualifiedTaskId} appends after {@code @} — a stable hash of a
-     * module-unique directory. Exposed so cache maintenance ({@code jk clean --force}) can recompute
-     * the tags for a project's output dirs and match every {@code tasks/<base>@<tag>} pointer that
-     * belongs to it, regardless of the base task name.
+     * The 12-hex-char tag {@link #qualifiedTaskId} appends after {@code @}. Exposed so cache
+     * maintenance ({@code jk clean --force}) can recompute the tags for a project's output dirs and
+     * match every {@code tasks/<base>@<tag>} pointer that belongs to it.
      */
-    public static String taskTag(@Nullable Path moduleDir) {
-        Path p = (moduleDir == null ? Path.of("") : moduleDir).toAbsolutePath().normalize();
+    public static String taskTag(@Nullable Path outputDir) {
+        Path p = (outputDir == null ? Path.of("") : outputDir).toAbsolutePath().normalize();
+        Optional<Path> root = PortablePath.projectRoot(p);
+        if (root.isEmpty()) return checkoutTag(p);
+        String id = ProjectIds.idOf(root.get().toString());
+        if (id == null) return checkoutTag(p);
+        String rel = root.get().relativize(p).toString().replace('\\', '/');
+        return Hashing.sha256Hex(id + "\n" + rel).substring(0, 12);
+    }
+
+    /**
+     * A 12-hex-char tag of {@code dir}'s real absolute path: the one spelling in the cache that
+     * names a checkout. It qualifies the incremental compiler state ({@link #stateDir}), whose
+     * analysis holds absolute paths and belongs to one checkout only; never a key or a pointer.
+     */
+    public static String checkoutTag(@Nullable Path dir) {
+        Path p = (dir == null ? Path.of("") : dir).toAbsolutePath().normalize();
         Path probe = p;
         while (probe != null && !Files.exists(probe)) {
             probe = probe.getParent();
@@ -514,5 +535,14 @@ public final class ActionKey {
             }
         }
         return Hashing.sha256Hex(p.toString()).substring(0, 12);
+    }
+
+    /**
+     * The incremental compiler state dir for {@code base} writing {@code outputDir}, under {@code
+     * incrementalRoot} ({@code ActionTree.INCREMENTAL_JAVA} or {@code INCREMENTAL_KOTLIN} under the
+     * actions tree): {@code <base>@<checkoutTag>}. Per checkout, unlike the task pointer.
+     */
+    public static Path stateDir(Path incrementalRoot, String base, @Nullable Path outputDir) {
+        return incrementalRoot.resolve(base + "@" + checkoutTag(outputDir));
     }
 }
