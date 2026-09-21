@@ -309,8 +309,7 @@ public final class MetricsHarvest {
             if (n != null) sb.append(key).append(" = ").append(n).append('\n');
         }
         appendClassWallTables(sb, classWalls);
-        Files.createDirectories(file.getParent());
-        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> AtomicWrites.replace(file, sb.toString()));
+        AtomicWrites.replace(file, sb.toString());
     }
 
     /** The class tables close the file: every row after a package's header is one of its classes. */
@@ -358,6 +357,13 @@ public final class MetricsHarvest {
     }
 
     private static void writeHostMetrics(Path file, Map<String, List<Double>> samples) throws IOException {
+        Files.createDirectories(file.getParent());
+        // Read, fold and replace under the ledger lock: the calibration writer folds the same
+        // file, and a fold that read before its write would drop the other's rows.
+        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> foldHostMetrics(file, samples));
+    }
+
+    private static void foldHostMetrics(Path file, Map<String, List<Double>> samples) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("# host-metrics — derived by MetricsHarvest (scalars only)\n");
         // Preserve bootstrap/probe/lock/fetch/calibration + language buckets (jk optimize).
@@ -408,8 +414,7 @@ public final class MetricsHarvest {
         });
         if (!preserved.isBlank()) sb.append(preserved);
         if (!byLanguage.isBlank()) sb.append(byLanguage);
-        Files.createDirectories(file.getParent());
-        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> AtomicWrites.replace(file, sb.toString()));
+        AtomicWrites.replace(file, sb.toString());
     }
 
     /**
