@@ -547,4 +547,32 @@ class ActionCacheTest {
             throw new AssertionError("torn metadata observed", fail.get());
         }
     }
+
+    /**
+     * The record a forecast reads is this checkout's own last compile — the one the state's ledger
+     * names — not whichever checkout flipped the shared pointer last; without a ledger, or with a
+     * ledger naming a pruned record, the pointer stands in.
+     */
+    @Test
+    void the_last_record_for_a_state_dir_is_the_one_its_ledger_names(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        cache.storeWithOutputs("compile-java@t", "mine", Map.of("src/A.java", "a1"), Map.of());
+        cache.storeWithOutputs("compile-java@t", "theirs", Map.of("src/A.java", "a2"), Map.of());
+        Path state = Files.createDirectories(tempDir.resolve("state"));
+
+        assertThat(cache.lastFor("compile-java@t", state).map(ActionCache.ActionRecord::actionKey))
+                .as("no ledger: the pointer")
+                .contains("theirs");
+        LangCompile.recordTree(state, "mine", Map.of());
+        assertThat(cache.lastFor("compile-java@t", state).map(ActionCache.ActionRecord::actionKey))
+                .as("the ledger's compile")
+                .contains("mine");
+        LangCompile.recordTree(state, "gone", Map.of());
+        assertThat(cache.lastFor("compile-java@t", state).map(ActionCache.ActionRecord::actionKey))
+                .as("a pruned record: the pointer again")
+                .contains("theirs");
+        assertThat(cache.lastFor("compile-java@t", null).map(ActionCache.ActionRecord::actionKey))
+                .contains("theirs");
+    }
 }

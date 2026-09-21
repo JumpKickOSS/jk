@@ -145,17 +145,18 @@ final class ForecastSteps {
     }
 
     /**
-     * Why a stamp-language compile's key misses, read off the task's last record the way {@code
-     * JavaCompile.predict} reads javac's: the inputs both records spell — sources by content,
+     * Why a stamp-language compile's key misses, read off this checkout's last record — the one
+     * {@code stateDir}'s ledger names, else the task pointer's — the way {@code JavaCompile.predict}
+     * reads javac's: the inputs both records spell — sources by content,
      * {@code java-api:} declarations, {@code cp:} ABI tokens, {@code pp:} processors, {@code
      * worker:} compiler — compared line by line, so a body-only dependency rewrite reads as no
      * classpath change and an API change names the entry. Empty when there is no prior record or
      * only the option-bearing lines moved.
      */
-    static String langMissReason(ActionCache ac, String taskId, Map<String, String> now) {
+    static String langMissReason(ActionCache ac, String taskId, @Nullable Path stateDir, Map<String, String> now) {
         Map<String, String> prior;
         try {
-            var record = ac.lastFor(taskId);
+            var record = ac.lastFor(taskId, stateDir);
             if (record.isEmpty()) return "";
             prior = record.get().inputs();
         } catch (IOException e) {
