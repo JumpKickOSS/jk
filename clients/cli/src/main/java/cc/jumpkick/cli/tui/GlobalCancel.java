@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
@@ -107,6 +108,35 @@ public final class GlobalCancel {
         return interrupted ? Exit.INTERRUPTED : verbExit;
     }
 
+    /**
+     * Leave the terminal in a settled, clearly canceled state: repaint the live region (a plan
+     * becomes its cancelled job line) or print the generic notice, then close the command's
+     * blank-line envelope. {@link Runtime#halt} skips the dispatch return that normally calls
+     * {@link CliOutput#closeEnvelope()}, so the closing blank has to be printed here or the cancel
+     * line ends up flush against the next shell prompt.
+     */
+    static void settleAsCanceled() {
+        LiveRegion active = LiveRegion.active();
+        boolean handled = false;
+        String message = "Build job was cancelled";
+        if (active != null) {
+            handled = active.renderCanceled();
+            message = active.canceledMessage();
+        }
+        var err = System.err;
+        if (!handled) {
+            CliOutput.err(
+                    Theme.colorize(Glyphs.CROSS + " " + message, Theme.active().error()));
+        }
+        err.print(Ansi.RESET);
+        CliOutput.closeEnvelope();
+        err.flush();
+        // stdout too, not only err: when stdout is not a TTY it is buffered with autoFlush off,
+        // and the halt skips shutdown hooks — so up to a full buffer of `-O json` output was
+        // silently lost on Ctrl-C into a pipe.
+        System.out.flush();
+    }
+
     public static void install() {
         Signals.register("INT", () -> {
             // 0) Claim the exit code before anything that can block or throw: from here on this
@@ -134,25 +164,7 @@ public final class GlobalCancel {
                     .name("jk-sigint-cancel")
                     .start(() -> EngineCancel.cancelBestEffortForInterrupt(dir));
             // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
-            LiveRegion active = LiveRegion.active();
-            boolean handled = false;
-            String message = "Build job was cancelled";
-            if (active != null) {
-                handled = active.renderCanceled();
-                message = active.canceledMessage();
-            }
-            var err = System.err;
-            if (!handled) {
-                err.print("\n"
-                        + Theme.colorize(
-                                Glyphs.CROSS + " " + message, Theme.active().error()) + "\n");
-            }
-            err.print(Ansi.RESET);
-            err.flush();
-            // stdout too, not only err: when stdout is not a TTY it is buffered with autoFlush off,
-            // and halt() below skips shutdown hooks — so up to a full buffer of `-O json` output was
-            // silently lost on Ctrl-C into a pipe.
-            System.out.flush();
+            settleAsCanceled();
 
             // 3) The verb's own children — an app under `jk dev`, its sidecars — stop here, before
             // the halt below skips every finally block that would have stopped them.
