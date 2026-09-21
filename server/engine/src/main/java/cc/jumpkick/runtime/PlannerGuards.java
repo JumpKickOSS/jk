@@ -74,6 +74,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
@@ -674,7 +675,13 @@ final class PlannerGuards {
         ActionCache cache = env.actionCache();
         boolean useCache = !env.in().session().config().forceOr(false)
                 && !env.in().session().config().rebuildOr(false);
-        if (useCache && cache.lookup(key).isPresent()) {
+        Optional<ActionCache.ActionRecord> verdict = useCache ? cache.lookup(key) : Optional.empty();
+        if (verdict.isPresent()) {
+            // The lane's summary and observations ride the verdict, so a checkout that never ran
+            // the lane still has the evidence the tree lane's no-bite judgement reads.
+            if (!verdict.get().outputs().isEmpty()) {
+                cache.restoreArtifacts(verdict.get(), RuleSummaries.dir(g.root()));
+            }
             ctx.label(rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)");
             ctx.cached();
             return;
@@ -732,7 +739,16 @@ final class PlannerGuards {
         // is enough to have it judged — a cached green would outlive the reason it was green.
         if (!result.complete()) return;
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedBaselineSha);
-        cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedBaselineSha));
+        List<Path> evidence = new ArrayList<>();
+        for (Path f : List.of(RuleSummaries.file(g.root(), taskId), observationsFile(g.root(), taskId))) {
+            if (Files.isRegularFile(f)) evidence.add(f);
+        }
+        if (evidence.isEmpty()) {
+            cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedBaselineSha));
+        } else {
+            cache.storeArtifacts(
+                    taskId, storeKey, inputsOf(tokens, storedBaselineSha), RuleSummaries.dir(g.root()), evidence);
+        }
     }
 
     /**
@@ -892,11 +908,14 @@ final class PlannerGuards {
         return inputs;
     }
 
+    /** The observations of lane {@code taskId}: {@code target/jk-guards/<lane>.jsonl}. */
+    private static Path observationsFile(Path root, String taskId) {
+        return RuleSummaries.dir(root).resolve(taskId.replaceAll("[^A-Za-z0-9._-]", "_") + ".jsonl");
+    }
+
     /** The full list, every lane its own file: {@code target/jk-guards/<lane>.jsonl}. */
     private static void writeJsonl(Path root, String taskId, LaneRun.Result result) throws IOException {
-        Path dir = root.resolve(BuildLayout.TARGET).resolve("jk-guards");
-        Files.createDirectories(dir);
-        String name = taskId.replaceAll("[^A-Za-z0-9._-]", "_") + ".jsonl";
+        Files.createDirectories(RuleSummaries.dir(root));
         StringBuilder sb = new StringBuilder();
         for (RuleReport r : result.reports()) {
             for (Observation o : r.fresh())
@@ -904,7 +923,7 @@ final class PlannerGuards {
             for (Observation o : r.baselined())
                 sb.append(GuardMessages.jsonl(r, o, false)).append('\n');
         }
-        Path file = dir.resolve(name);
+        Path file = observationsFile(root, taskId);
         if (sb.length() == 0) {
             Files.deleteIfExists(file);
         } else {
