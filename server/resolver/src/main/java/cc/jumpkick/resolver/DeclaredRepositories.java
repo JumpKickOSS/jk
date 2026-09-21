@@ -103,8 +103,7 @@ final class DeclaredRepositories {
 
     /**
      * One line per declared repository a row of {@code rows} came from, one per repository refused,
-     * and one per artifact a declared repository verified against an {@code .md5} sidecar alone,
-     * sorted.
+     * and each checksum note a declared repository raised, sorted.
      */
     List<String> notes(Collection<Lockfile.Artifact> rows) {
         Set<String> out = new LinkedHashSet<>(notes);
@@ -113,7 +112,7 @@ final class DeclaredRepositories {
             Pom.Repository served = plus < 0 ? null : declared.get(row.source().substring(plus + 1));
             if (served != null && built.containsKey(served.url())) out.add(consulted(served));
         }
-        for (MavenRepo repo : built.values()) out.addAll(repo.weakChecksumNotes());
+        for (MavenRepo repo : built.values()) out.addAll(repo.checksumNotes());
         List<String> sorted = new ArrayList<>(out);
         sorted.sort(null);
         return List.copyOf(sorted);
