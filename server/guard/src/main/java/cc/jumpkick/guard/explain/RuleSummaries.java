@@ -65,9 +65,14 @@ public final class RuleSummaries {
             sb.append(",\"ts\":").append(now);
             sb.append("}\n");
         }
-        Path file = dir.resolve(taskId.replaceAll("[^A-Za-z0-9._-]", "_") + SUFFIX);
+        Path file = file(root, taskId);
         if (sb.length() == 0) Files.deleteIfExists(file);
         else AtomicWrites.replace(file, sb.toString());
+    }
+
+    /** The summary file of lane {@code taskId}: {@code target/jk-guards/<lane>.rules.jsonl}. */
+    public static Path file(Path root, String taskId) {
+        return dir(root).resolve(taskId.replaceAll("[^A-Za-z0-9._-]", "_") + SUFFIX);
     }
 
     static String population(Map<String, Long> population) {
