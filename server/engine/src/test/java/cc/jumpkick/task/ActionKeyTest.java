@@ -143,6 +143,92 @@ class ActionKeyTest {
                 .build();
     }
 
+    /**
+     * Compiler argv that names absolute paths — javac's Groovy-stub source path and JPMS patch
+     * roots, kotlinc's Java source roots — keys the same from two checkouts, while the argv the
+     * compiler receives keeps its absolute paths.
+     */
+    @Test
+    void path_bearing_compiler_options_key_the_same_from_two_checkouts(@TempDir Path tempDir) throws IOException {
+        Path a = module(tempDir.resolve("one/app"));
+        Path b = module(tempDir.resolve("two/deeper/app"));
+        String keyA = ActionKey.forJavac("compile-test", pathOptions(a), "0.1.0");
+        String keyB = ActionKey.forJavac("compile-test", pathOptions(b), "0.1.0");
+        assertThat(keyA).isEqualTo(keyB);
+        assertThat(ActionKey.javacOptionsDigest(pathOptions(a)))
+                .isEqualTo(ActionKey.javacOptionsDigest(pathOptions(b)));
+        assertThat(ActionKey.snapshotInputs(pathOptions(a)).get("options"))
+                .isEqualTo(ActionKey.snapshotInputs(pathOptions(b)).get("options"))
+                .contains("--source-path,target/groovy-stubs")
+                .contains("--patch-module,app=test/src")
+                .doesNotContain(tempDir.toString());
+        assertThat(ActionKey.forJavac("compile-test", pathOptions(a, "--source-path", "other"), "0.1.0"))
+                .as("a different option still moves the key")
+                .isNotEqualTo(keyA);
+
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        Files.writeString(a.resolve("worker.jar"), "worker");
+        Files.writeString(b.resolve("worker.jar"), "worker");
+        Files.writeString(a.resolve("src/main/java/App.kt"), "object App");
+        Files.writeString(b.resolve("src/main/java/App.kt"), "object App");
+        KotlincRequest ktA = KotlincRequest.builder()
+                .sources(List.of(a.resolve("src/main/java/App.kt")))
+                .outputDir(a.resolve("target/classes/main"))
+                .jvmTarget(21)
+                .workerClasspath(List.of(a.resolve("worker.jar")))
+                .javaHome(javaHome)
+                .javaSourceRoots(List.of(a.resolve("src/main/java")))
+                .extraArgs(List.of(
+                        "-Xjava-source-roots=" + a.resolve("src/main/java").toAbsolutePath()))
+                .build();
+        KotlincRequest ktB = KotlincRequest.builder()
+                .sources(List.of(b.resolve("src/main/java/App.kt")))
+                .outputDir(b.resolve("target/classes/main"))
+                .jvmTarget(21)
+                .workerClasspath(List.of(b.resolve("worker.jar")))
+                .javaHome(javaHome)
+                .javaSourceRoots(List.of(b.resolve("src/main/java")))
+                .extraArgs(List.of(
+                        "-Xjava-source-roots=" + b.resolve("src/main/java").toAbsolutePath()))
+                .build();
+        assertThat(ActionKey.forKotlinc("compile-kotlin", ktA, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY))
+                .isEqualTo(ActionKey.forKotlinc("compile-kotlin", ktB, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY));
+        assertThat(ActionKey.kotlincInputs(ktA, KotlinClasspathAbi.MEMOIZED_ONLY)
+                        .get("args"))
+                .isEqualTo("-Xjava-source-roots=src/main/java");
+    }
+
+    /** Tokens that are not paths pass through; paths inside lists are spelled portably. */
+    @Test
+    void portable_argument_rewrites_only_absolute_paths(@TempDir Path tempDir) throws IOException {
+        Path m = module(tempDir.resolve("m"));
+        String root = m.resolve("src").toAbsolutePath().toString();
+        assertThat(ActionKey.portableArgument("-parameters")).isEqualTo("-parameters");
+        assertThat(ActionKey.portableArgument("-Xplugin:Lombok")).isEqualTo("-Xplugin:Lombok");
+        assertThat(ActionKey.portableArgument("app=" + root)).isEqualTo("app=src");
+        assertThat(ActionKey.portableArgument(root + "," + root)).isEqualTo("src,src");
+        assertThat(ActionKey.portableArgument("-H:ConfigurationFileDirectories=" + root))
+                .isEqualTo("-H:ConfigurationFileDirectories=src");
+    }
+
+    private static CompileRequest pathOptions(Path module) {
+        return pathOptions(
+                module,
+                "--source-path",
+                module.resolve("target/groovy-stubs").toAbsolutePath().toString(),
+                "--patch-module",
+                "app=" + module.resolve("test/src").toAbsolutePath());
+    }
+
+    private static CompileRequest pathOptions(Path module, String... options) {
+        return CompileRequest.builder()
+                .sources(List.of(module.resolve("src/main/java/Hello.java")))
+                .outputDir(module.resolve("target/classes/test"))
+                .release(25)
+                .extraOptions(List.of(options))
+                .build();
+    }
+
     /** The incremental compiler state, whose analysis holds absolute paths, stays per checkout. */
     @Test
     void the_state_dir_names_the_checkout_and_the_task_pointer_does_not(@TempDir Path tempDir) throws IOException {

@@ -345,14 +345,14 @@ public final class PackagingKeys {
      * {@code -H:+UnlockExperimentalVMOptions -H:ConfigurationFileDirectories=… -H:-UnlockExperimentalVMOptions}.
      */
     static boolean declaredArgsMatch(String storedArgs, List<String> declared) {
-        String tail = String.join(" ", declared);
+        String tail = ActionKey.optionsToken(declared);
         if (storedArgs.equals(tail)) return true;
-        String unlock = "-H:+UnlockExperimentalVMOptions -H:ConfigurationFileDirectories=";
+        String unlock = "-H:+UnlockExperimentalVMOptions,-H:ConfigurationFileDirectories=";
         if (!storedArgs.startsWith(unlock)) return false;
-        int relock = storedArgs.indexOf(" -H:-UnlockExperimentalVMOptions", unlock.length());
+        int relock = storedArgs.indexOf(",-H:-UnlockExperimentalVMOptions", unlock.length());
         if (relock < 0) return false;
-        String rest = storedArgs.substring(relock + " -H:-UnlockExperimentalVMOptions".length());
-        return rest.equals(tail.isEmpty() ? "" : " " + tail);
+        String rest = storedArgs.substring(relock + ",-H:-UnlockExperimentalVMOptions".length());
+        return rest.equals(tail.isEmpty() ? "" : "," + tail);
     }
 
     // ---- plugin packager (spring-boot / grails / quarkus / minified / android) ---------------

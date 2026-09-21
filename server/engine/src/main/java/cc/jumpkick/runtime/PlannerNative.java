@@ -411,13 +411,12 @@ public final class PlannerNative {
             @Nullable Path frameworkSources,
             @Nullable Path trainReach)
             throws Exception {
-        Path releaseFile = javaHome.resolve("release");
-        String graalTok = Files.isRegularFile(releaseFile)
-                ? cc.jumpkick.host.Hashing.sha256Hex(releaseFile)
-                : javaHome.toString();
+        // The toolchain by its release file, as ActionKey.jdkToken spells a JDK; a home with no
+        // release file keys its portable spelling, never the machine's path.
+        String graalTok = ActionKey.jdkToken(javaHome);
         List<String> nativeTokens = List.of(
                 "cp:" + ClasspathFingerprint.of(classpath),
-                "args:" + String.join(" ", allArgs),
+                "args:" + ActionKey.optionsToken(allArgs),
                 "main:" + (mainClass == null ? "" : mainClass),
                 "shared:" + shared,
                 "out:" + out.getFileName(),
