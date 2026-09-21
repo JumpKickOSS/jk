@@ -434,7 +434,7 @@ public final class JobEnvelope {
             boolean claimedBuildPlanSlot,
             @Nullable BufferedWriter writer) {
         String label = "test".equals(eventKind) ? "Test" : "Build";
-        String msg = label + " #" + h.buildNumber() + " is already running";
+        String msg = label + (h.buildNumber() > 0 ? " #" + h.buildNumber() : "") + " is already running";
         if (detached) {
             if (claimedBuildPlanSlot) host.abandonBuildPlanSlot();
             throw new AlreadyRunning(msg, h.requestId(), h.buildNumber());
