@@ -29,7 +29,9 @@ Every engine-hosted operation gets a **jid** at admission.
 | **Web / MCP** | `POST /api/cancel` with `{"jid":N}` · MCP `jk_cancel` |
 
 A second same-kind build in the same checkout is rejected: **Build #N already running**.
-Worktrees are different slots.
+Worktrees are different slots. The rule holds across engines too: the checkout's
+`target/.jk/build.lock` is held for the job's lifetime, so another engine on the machine sees
+the running build and refuses with its number.
 
 ### Live and queued jobs
 

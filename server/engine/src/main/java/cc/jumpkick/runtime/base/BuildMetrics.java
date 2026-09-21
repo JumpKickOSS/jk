@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.AggregatedMetrics;
+import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.host.Log;
@@ -9,6 +10,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.DirKeys;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -456,33 +458,35 @@ public final class BuildMetrics {
         }
         LOCK.lock();
         try {
-            BuildMetrics cur = read(file);
-            Map<String, Entry> inv = new LinkedHashMap<>(cur.invocations);
-            Map<String, Entry> ph = new LinkedHashMap<>(cur.steps);
+            return FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> {
+                BuildMetrics cur = read(file);
+                Map<String, Entry> inv = new LinkedHashMap<>(cur.invocations);
+                Map<String, Entry> ph = new LinkedHashMap<>(cur.steps);
 
-            foldInvocation(inv, o.kind(), o.dir(), o.coord(), o, nowMillis);
-            foldInvocation(inv, o.kind(), "", null, o, nowMillis);
-            // Cancelled workspaces must not train step/module averages: a mid-run kill leaves
-            // SUCCESS steps with truncated walls that poison ETA / estimator hygiene).
-            // Only fully-successful workspaces teach per-step `ok` stats (the guard two lines
-            // down); failed-but-complete runs teach only their failure buckets, for diagnostics
-            // ; see docs/perf/progress-contract.md "Success-only teaching").
-            if (!o.cancelled()) {
-                for (StepSample s : o.steps()) {
-                    if (s.step() == null || s.step().isEmpty()) continue;
-                    String bucket = bucketOf(s.status());
-                    if (bucket == null) continue;
-                    // Success-only teaching for ok; failures stay in their bucket for diagnostics.
-                    if ("ok".equals(bucket) && !o.success()) continue;
-                    foldStep(ph, s.dir() == null ? o.dir() : s.dir(), s.step(), bucket, s.millis(), nowMillis);
-                    foldStep(ph, "", s.step(), bucket, s.millis(), nowMillis);
+                foldInvocation(inv, o.kind(), o.dir(), o.coord(), o, nowMillis);
+                foldInvocation(inv, o.kind(), "", null, o, nowMillis);
+                // Cancelled workspaces must not train step/module averages: a mid-run kill leaves
+                // SUCCESS steps with truncated walls that poison ETA / estimator hygiene).
+                // Only fully-successful workspaces teach per-step `ok` stats (the guard two lines
+                // down); failed-but-complete runs teach only their failure buckets, for diagnostics
+                // ; see docs/perf/progress-contract.md "Success-only teaching").
+                if (!o.cancelled()) {
+                    for (StepSample s : o.steps()) {
+                        if (s.step() == null || s.step().isEmpty()) continue;
+                        String bucket = bucketOf(s.status());
+                        if (bucket == null) continue;
+                        // Success-only teaching for ok; failures stay in their bucket for diagnostics.
+                        if ("ok".equals(bucket) && !o.success()) continue;
+                        foldStep(ph, s.dir() == null ? o.dir() : s.dir(), s.step(), bucket, s.millis(), nowMillis);
+                        foldStep(ph, "", s.step(), bucket, s.millis(), nowMillis);
+                    }
                 }
-            }
 
-            write(file, inv, ph);
-            MEMO.remove(file); // next load in this process sees the update
-            if (assignedBuildNumber > 0) return assignedBuildNumber;
-            return projectRunCount(inv, o.dir());
+                write(file, inv, ph);
+                MEMO.remove(file); // next load in this process sees the update
+                if (assignedBuildNumber > 0) return assignedBuildNumber;
+                return projectRunCount(inv, o.dir());
+            });
         } catch (IOException | RuntimeException ignored) {
             // advisory state — never fail the build over it
             return assignedBuildNumber > 0 ? assignedBuildNumber : 0;

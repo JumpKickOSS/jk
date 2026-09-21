@@ -294,7 +294,10 @@ jk build --affected-since=origin/main
 
 A second `jk build` (same checkout + kind) while one is already running is **rejected**:
 **Build #N already running**. `jk jobs` lists it; `jk cancel` stops it. Worktrees are
-different slots. HTTP/MCP get the same rule (409).
+different slots. HTTP/MCP get the same rule (409). The slot is held on disk as
+`target/.jk/build.lock`, so a build started through another engine on the same machine (a
+second `JK_HOME`, or an engine still draining after an upgrade) is refused the same way, and a
+crashed holder releases it with its process.
 
 ## JVM startup cache (app AOT / CDS)
 

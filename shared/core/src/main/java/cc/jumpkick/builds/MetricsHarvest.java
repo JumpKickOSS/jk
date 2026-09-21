@@ -5,6 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -309,7 +310,7 @@ public final class MetricsHarvest {
         }
         appendClassWallTables(sb, classWalls);
         Files.createDirectories(file.getParent());
-        AtomicWrites.replace(file, sb.toString());
+        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> AtomicWrites.replace(file, sb.toString()));
     }
 
     /** The class tables close the file: every row after a package's header is one of its classes. */
@@ -408,7 +409,7 @@ public final class MetricsHarvest {
         if (!preserved.isBlank()) sb.append(preserved);
         if (!byLanguage.isBlank()) sb.append(byLanguage);
         Files.createDirectories(file.getParent());
-        AtomicWrites.replace(file, sb.toString());
+        FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> AtomicWrites.replace(file, sb.toString()));
     }
 
     /**
