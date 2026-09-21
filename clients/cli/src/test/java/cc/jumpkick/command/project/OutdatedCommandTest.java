@@ -282,8 +282,11 @@ class OutdatedCommandTest {
                 "leaf = { group = \"com.foo.outdated\", name = \"a-very-long-artifact-name-nobody-shortens\", version = \"^7.7\" }");
         // No lock: Current is empty and Compatible/Latest come straight from the index.
         String out = TestAnsi.strip(table(tempDir, cache));
-        assertThat(out).contains("c.f.o:a-very-long-artifact-na…").doesNotContain("nobody-shortens");
-        assertThat(out).contains("7.8.0.2026090…").doesNotContain("7.8.0.202609011348-r");
+        assertThat(out).contains("c.f.o:a-very-long-artifac…").doesNotContain("nobody-shortens");
+        assertThat(out).contains("7.8.0.20260…").doesNotContain("7.8.0.202609011348-r");
+        // The by-module view has no Modules column and gives its cells the extra room.
+        String byModule = TestAnsi.strip(table(tempDir, cache, "--by-module"));
+        assertThat(byModule).contains("c.f.o:a-very-long-artifact-na…").contains("7.8.0.2026090…");
         assertThat(json(tempDir, cache))
                 .contains("com.foo.outdated:a-very-long-artifact-name-nobody-shortens")
                 .contains("7.8.0.202609011348-r");

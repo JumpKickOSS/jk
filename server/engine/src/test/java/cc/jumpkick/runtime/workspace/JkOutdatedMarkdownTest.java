@@ -17,9 +17,9 @@ class JkOutdatedMarkdownTest {
                 true,
                 List.of(
                         new OutdatedReport.Row(
-                                "acme:core", "org.tomlj:tomlj", "tomlj", "main", "1.1.1", "1.1.1", "1.3.0", ""),
+                                "acme:core", "org.tomlj:tomlj", "toml", "main", "1.1.1", "1.1.1", "1.3.0", ""),
                         new OutdatedReport.Row(
-                                "acme:app", "org.tomlj:tomlj", "tomlj", "main", "1.2.0", "1.2.0", "1.3.0", ""),
+                                "acme:app", "org.tomlj:tomlj", "toml", "main", "1.2.0", "1.2.0", "1.3.0", ""),
                         new OutdatedReport.Row(
                                 "acme:core",
                                 "org.junit.jupiter:junit-jupiter",
@@ -39,7 +39,14 @@ class JkOutdatedMarkdownTest {
                                 "6.1.3",
                                 ""),
                         new OutdatedReport.Row(
-                                "acme:app", "org.antlr:antlr4-runtime", "", "main", "4.11.1", "4.11.1", "4.13.2", "")));
+                                "acme:app",
+                                "org.antlr:antlr4-runtime",
+                                "antlr4-runtime",
+                                "main",
+                                "4.11.1",
+                                "4.11.1",
+                                "4.13.2",
+                                "")));
     }
 
     @Test
@@ -53,7 +60,7 @@ class JkOutdatedMarkdownTest {
                 .contains("## Can move\n\n| Dependency | Current | Compatible | Latest | Modules | Scope |\n")
                 .contains("| `org.antlr:antlr4-runtime` | 4.11.1 | 4.11.1 | 4.13.2 | 1 | main |")
                 .contains(
-                        "| `org.tomlj:tomlj` (tomlj) | 1.1.1 ×1 · 1.2.0 ×1 | 1.1.1 ×1 · 1.2.0 ×1 | 1.3.0 | 2 | main |");
+                        "| `org.tomlj:tomlj` (toml) | 1.1.1 ×1 · 1.2.0 ×1 | 1.1.1 ×1 · 1.2.0 ×1 | 1.3.0 | 2 | main |");
         assertThat(md)
                 .contains("## By module\n\n| Module | Dependency | Current | Compatible | Latest | Scope |\n")
                 .contains("| `acme:core` | `org.tomlj:tomlj` | 1.1.1 | 1.1.1 | 1.3.0 | main |")
