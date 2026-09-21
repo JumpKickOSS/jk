@@ -637,11 +637,14 @@ public final class InstallPlans {
     /**
      * See {@link RepoArtifactStore#writeToLocalStore} — the one shared local-install write, routed
      * to the store root.
+     *
+     * @return the sha256 of the published bytes
      */
-    public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
+    public static String writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
         // The shelf records which engine packaged it: this one.
         String engine = BuildIdentity.codeSha256();
-        RepoArtifactStore.writeToLocalStore(JkStores.store(), relativePath, source, engine.isEmpty() ? null : engine);
+        return RepoArtifactStore.writeToLocalStore(
+                JkStores.store(), relativePath, source, engine.isEmpty() ? null : engine);
     }
 
     private static RepoArtifactStore localStore(Path cacheDir) {
