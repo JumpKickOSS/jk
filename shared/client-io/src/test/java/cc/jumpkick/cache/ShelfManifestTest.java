@@ -2,6 +2,7 @@
 package cc.jumpkick.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.FakeClock;
 import java.nio.file.Files;
@@ -79,5 +80,27 @@ class ShelfManifestTest {
                 .orElseThrow();
         assertThat(partial.jars()).containsOnlyKeys("g:a:1");
         assertThat(partial.source()).isEmpty();
+    }
+
+    @Test
+    void a_key_that_is_not_a_plain_coordinate_is_refused_on_write_and_skipped_on_read(@TempDir Path tmp) {
+        String painted = "\u001b[38;2;0;212;224mcc.jumpkick\u001b[0m:jk-java-compiler:0.13.4";
+        assertThat(ShelfManifest.isCoordinate(painted)).isFalse();
+        assertThat(ShelfManifest.isCoordinate("cc.jumpkick:jk-java-compiler:0.13.4"))
+                .isTrue();
+        assertThat(ShelfManifest.isCoordinate("g:a")).isFalse();
+        assertThat(ShelfManifest.isCoordinate("g:a :1")).isFalse();
+
+        assertThatThrownBy(() -> new ShelfManifest(ENGINE_A, "", Instant.EPOCH, Map.of(painted, SHA_1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("group:artifact:version");
+
+        ShelfManifest read = ShelfManifest.parse(List.of(
+                        "engine-sha256 = \"" + ENGINE_A + "\"",
+                        "[jars]",
+                        "\"\\u001b[36mg\\u001b[0m:a:1\" = \"" + SHA_1 + "\"",
+                        "\"g:b:1\" = \"" + SHA_2 + "\""))
+                .orElseThrow();
+        assertThat(read.jars()).containsExactly(Map.entry("g:b:1", SHA_2));
     }
 }
