@@ -344,9 +344,10 @@ public final class ScriptPlans {
                     // it; paired with -no-stdlib).
                     List<Path> compileCp = new ArrayList<>(depsClasspath);
                     compileCp.add(ctx.require(KT_STDLIB));
-                    Path workingDir = ActionTree.INCREMENTAL_KOTLIN
-                            .under(CacheTree.ACTIONS.under(cacheDir))
-                            .resolve(ActionKey.qualifiedTaskId("script", classesDir));
+                    Path workingDir = ActionKey.stateDir(
+                            ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cacheDir)),
+                            "script",
+                            classesDir);
                     List<Path> workerCp = ctx.require(WORKER_CP);
                     // @file:DependsOn/@file:Repository were resolved by jk (parseKotlin);
                     // kotlinc can't compile them — feed it a line-preserving neutralized copy.

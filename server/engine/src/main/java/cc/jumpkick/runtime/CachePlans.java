@@ -360,7 +360,11 @@ public final class CachePlans {
         return new ArrayList<>(dirs);
     }
 
-    /** Recompute the {@link ActionKey#taskTag} of every build-output dir for each module. */
+    /**
+     * Recompute the tags of every build-output dir for each module: the {@link ActionKey#taskTag}
+     * that names key records and task pointers, and the {@link ActionKey#checkoutTag} that names
+     * this checkout's incremental state.
+     */
     private static Set<String> tagsFor(List<Path> moduleDirs) {
         Set<String> tags = new HashSet<>();
         for (Path dir : moduleDirs) {
@@ -386,6 +390,7 @@ public final class CachePlans {
                     layout.nativeLibrary(),
                     layout.ociImageTar())) {
                 tags.add(ActionKey.taskTag(out));
+                tags.add(ActionKey.checkoutTag(out));
             }
         }
         return tags;

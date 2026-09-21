@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
-import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
 import org.jspecify.annotations.Nullable;

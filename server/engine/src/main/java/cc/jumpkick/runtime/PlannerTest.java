@@ -328,9 +328,10 @@ public final class PlannerTest {
         if (src.ktTest().isEmpty()) return;
         ctx.label("compiling " + src.ktTest().size() + " Kotlin test sources");
         String ktTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_KOTLIN, testClasses);
-        Path ktWorkingDir = ActionTree.INCREMENTAL_KOTLIN
-                .under(CacheTree.ACTIONS.under(in.cache()))
-                .resolve(ktTaskId);
+        Path ktWorkingDir = ActionKey.stateDir(
+                ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(in.cache())),
+                TaskNames.COMPILE_TEST_KOTLIN,
+                testClasses);
         List<Path> javaRoots = mixedTest ? List.of(src.javaTestSrc()) : null;
         PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
                 ctx,

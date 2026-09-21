@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +33,9 @@ public final class PortablePath {
      */
     private static final ConcurrentHashMap<Path, Entry> ROOTS = new ConcurrentHashMap<>();
 
+    /** Module root → the workspace root that owns it (or itself), same TTL as {@link #ROOTS}. */
+    private static final ConcurrentHashMap<Path, Entry> OWNERS = new ConcurrentHashMap<>();
+
     private static final long TTL_NANOS = TimeUnit.SECONDS.toNanos(5);
     private static final int MAX_ENTRIES = 4_096;
 
@@ -52,7 +57,7 @@ public final class PortablePath {
 
     private static Optional<Path> moduleRoot(Path dir) {
         Entry memo = ROOTS.get(dir);
-        if (memo != null && System.nanoTime() - memo.expiresAtNanos() < 0) return memo.root();
+        if (memo != null && Clock.SYSTEM.nanos() - memo.expiresAtNanos() < 0) return memo.root();
         Optional<Path> found = Optional.empty();
         for (Path d = dir; d != null; d = d.getParent()) {
             if (Files.isRegularFile(d.resolve(ManifestPaths.MANIFEST))) {
@@ -61,17 +66,42 @@ public final class PortablePath {
             }
         }
         if (ROOTS.size() >= MAX_ENTRIES) ROOTS.clear();
-        ROOTS.put(dir, new Entry(found, System.nanoTime() + TTL_NANOS));
+        ROOTS.put(dir, new Entry(found, Clock.SYSTEM.nanos() + TTL_NANOS));
         return found;
+    }
+
+    /**
+     * The project root that owns {@code path}: the nearest ancestor carrying {@code jk.toml} (the
+     * path itself when it does), lifted to the workspace root that lists it ({@link
+     * WorkspaceScan#owningRoot}). Empty for a path under no project. This is the root {@link
+     * ActionKey#taskTag} spells an output dir against, so a module's outputs and its own directory
+     * resolve to the same root whether they sit under the workspace's {@code target/} or the
+     * module's.
+     */
+    public static Optional<Path> projectRoot(Path path) {
+        Path abs = path.toAbsolutePath().normalize();
+        Optional<Path> nearest = Files.isRegularFile(abs.resolve(ManifestPaths.MANIFEST))
+                ? Optional.of(abs)
+                : abs.getParent() == null ? Optional.empty() : moduleRoot(abs.getParent());
+        if (nearest.isEmpty()) return Optional.empty();
+        Path module = nearest.get();
+        Entry memo = OWNERS.get(module);
+        if (memo != null && Clock.SYSTEM.nanos() - memo.expiresAtNanos() < 0) return memo.root();
+        Optional<Path> owner = Optional.of(WorkspaceScan.owningRoot(module).orElse(module));
+        if (OWNERS.size() >= MAX_ENTRIES) OWNERS.clear();
+        OWNERS.put(module, new Entry(owner, Clock.SYSTEM.nanos() + TTL_NANOS));
+        return owner;
     }
 
     /** Test seam: drop every memo, as the TTL would. */
     static void forget() {
         ROOTS.clear();
+        OWNERS.clear();
     }
 
     /** Test seam: age every memo past its TTL so the next lookup walks again. */
     static void expire() {
-        ROOTS.replaceAll((dir, e) -> new Entry(e.root(), System.nanoTime() - 1));
+        ROOTS.replaceAll((dir, e) -> new Entry(e.root(), Clock.SYSTEM.nanos() - 1));
+        OWNERS.replaceAll((dir, e) -> new Entry(e.root(), Clock.SYSTEM.nanos() - 1));
     }
 }

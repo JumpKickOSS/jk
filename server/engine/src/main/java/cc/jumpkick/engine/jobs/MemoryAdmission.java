@@ -3,6 +3,7 @@ package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
@@ -13,7 +14,6 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.DeclaredDependencies;
 import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.runtime.base.ProjectIds;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

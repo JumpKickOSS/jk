@@ -147,7 +147,9 @@ public final class LangCompile {
         if (javaSources.isEmpty()) return moved;
         Map<Path, String> digests = JavaSourceApi.digests(javaSources);
         for (Path src : javaSources) {
-            if (!Objects.equals(digests.get(src), snapshot.get("java-api:" + src))) moved.add(src);
+            if (!Objects.equals(digests.get(src), snapshot.get(ActionKey.JAVA_API + PortablePath.of(src)))) {
+                moved.add(src);
+            }
         }
         return moved;
     }
@@ -368,11 +370,11 @@ public final class LangCompile {
         Map<Path, String> digests = JavaSourceApi.digests(javaSources);
         Map<String, String> now = new HashMap<>();
         for (Path src : javaSources) {
-            now.put("java-api:" + src, Objects.requireNonNull(digests.get(src), "digest"));
+            now.put(ActionKey.JAVA_API + PortablePath.of(src), Objects.requireNonNull(digests.get(src), "digest"));
         }
         Map<String, String> recorded = new HashMap<>();
         for (Map.Entry<String, String> e : priorInputs.entrySet()) {
-            if (e.getKey().startsWith("java-api:")) recorded.put(e.getKey(), e.getValue());
+            if (e.getKey().startsWith(ActionKey.JAVA_API)) recorded.put(e.getKey(), e.getValue());
         }
         return !now.equals(recorded);
     }

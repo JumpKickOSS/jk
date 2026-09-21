@@ -66,7 +66,7 @@ class TaskForecasterPackageKeyTest {
         byte[] bytes = "payload".getBytes(StandardCharsets.UTF_8);
         String sha = Hashing.sha256Hex(bytes);
         Path blob = ac.cas().put(bytes, sha);
-        ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha), Map.of());
+        ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha));
 
         assertThat(ForecastSteps.present(ac, "key-1")).isTrue();
         Files.delete(blob); // the payload is gone; the record is not

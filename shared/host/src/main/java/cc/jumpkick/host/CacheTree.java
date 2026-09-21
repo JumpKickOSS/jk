@@ -68,7 +68,7 @@ public enum CacheTree {
     /** Annotation-processor output for test compiles, keyed by task id. */
     GENERATED("generated"),
 
-    /** Per-project preflight memo, keyed by project identity. */
+    /** Per-checkout preflight memo, keyed by the hash of the checkout's real path. */
     PROJECTS("projects"),
 
     /** Tool scripts fetched from a URL, keyed by the hash of that URL. */
