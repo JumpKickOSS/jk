@@ -616,10 +616,10 @@ public final class BuildJournal {
     static final int PREVIOUS_COVERAGE_LOOKBACK = 50;
 
     /**
-     * The newest earlier run of {@code current}'s project that measured coverage — the baseline its
-     * {@code jk-results.md} shows deltas against. Runs without coverage in between are skipped, so
-     * a plain build does not erase the comparison; the scan stops after {@value
-     * #PREVIOUS_COVERAGE_LOOKBACK} runs.
+     * The newest earlier run of {@code current}'s checkout that measured coverage — the baseline
+     * its {@code jk-results.md} shows deltas against. Runs without coverage in between and runs
+     * from another worktree of the same id are skipped, so a plain build does not erase the
+     * comparison; the scan stops after {@value #PREVIOUS_COVERAGE_LOOKBACK} runs.
      */
     public Optional<BuildRecord> previousWithCoverage(BuildRecord current) {
         if (current.buildNumber() <= 0 || current.dir() == null || current.dir().isBlank()) return Optional.empty();
@@ -634,8 +634,9 @@ public final class BuildJournal {
             long number = ProjectBuilds.runNumberOf(run);
             if (number <= 0 || number >= current.buildNumber()) continue;
             if (seen++ >= PREVIOUS_COVERAGE_LOOKBACK) break;
-            Optional<BuildRecord> record =
-                    readRecord(run).filter(r -> !r.running() && !r.coverage().isEmpty());
+            Optional<BuildRecord> record = readRecord(run)
+                    .filter(r -> !r.running() && !r.coverage().isEmpty())
+                    .filter(r -> JournalLineage.sameCheckout(r.dir(), current.dir()));
             if (record.isPresent()) return record;
         }
         return Optional.empty();

@@ -18,6 +18,8 @@ import { ancestorDirs, buildFileTree, defaultFilePath, plainRows, visibleRows } 
 export const CodeView = {
   props: {
     projectId: { type: String, default: null },
+    /** The checkout to list and edit; the engine requires it when the id has several live ones. */
+    dir: { type: String, default: null },
     path: { type: String, default: null },
     line: { type: Number, default: 0 },
     /** 1-based column from {@code ?col=}; 0 means line-only. */
@@ -400,6 +402,12 @@ export const CodeView = {
         this._savedTimer = null;
       }, 1500);
     },
+    /** `project=<id>[&dir=<checkout>]` — the identity every file request carries. */
+    projectQuery() {
+      return (
+        'project=' + encodeURIComponent(this.projectId) + (this.dir ? '&dir=' + encodeURIComponent(this.dir) : '')
+      );
+    },
     async loadList() {
       if (this._listAbort) this._listAbort.abort();
       this.files = [];
@@ -415,7 +423,7 @@ export const CodeView = {
       this.loadingList = true;
       try {
         const { get } = await import('./api.js');
-        const data = await get('/api/project/files?project=' + encodeURIComponent(this.projectId), {
+        const data = await get('/api/project/files?' + this.projectQuery(), {
           signal: ac.signal,
         });
         if (ac.signal.aborted) return;
@@ -474,10 +482,7 @@ export const CodeView = {
         }
         const { get } = await import('./api.js');
         const data = await get(
-          '/api/project/file?project=' +
-            encodeURIComponent(this.projectId) +
-            '&path=' +
-            encodeURIComponent(this.path),
+          '/api/project/file?' + this.projectQuery() + '&path=' + encodeURIComponent(this.path),
           { signal: ac.signal },
         );
         if (ac.signal.aborted) return;
@@ -631,6 +636,7 @@ export const CodeView = {
           path: savedPath,
           content,
         };
+        if (this.dir) body.dir = this.dir;
         if (this._etag) body.etag = this._etag;
         // Echo the charset the file was decoded under so the engine re-encodes to the
         // original bytes instead of silently transcoding a Latin-1 file to UTF-8.

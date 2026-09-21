@@ -101,16 +101,24 @@ user opens `/files`, so that ordering holds.
 ## Project routes
 
 Project detail is `#project/<projectId>` — a durable opaque id (from `project-id` in `jk-lock.toml`,
-or hybrid git/path resolution), **not** an absolute filesystem path. `GET /api/project?project=<id>`
-resolves the last-known checkout path via `identity.toml` under the builds state dir.
+or hybrid git/path resolution), **not** an absolute filesystem path. Every git worktree of one
+repository shares the id, so `GET /api/project?project=<id>` answers the id's live **checkouts**
+from `identity.toml` under the builds state dir: one is implied; several come back as a list and
+the page shows a picker. The chosen checkout rides the route as `?dir=<abs-path>` (an MCP
+`dashboard` link and a CLI failure link spell it too); `selectedProjectDir` is that route value,
+`projectDir()` folds in the engine's implied one, and the files pane sends it as `dir=` on every
+list / read / raw / PUT so an edit lands in the tree the build ran in. With a checkout picked the
+run the page follows and its history rows are that checkout's; **all** shows every checkout's
+rows with a Checkout column.
 
 Source files hang off the same route:
 
 ```text
 #project/<projectId>                 (follows the project's newest run)
+#project/<projectId>?dir=<checkout>  (one worktree of an id several build under)
 #project/<projectId>/run/<n>         (pinned to build #n — a history row click; Follow newest clears it)
 #project/<projectId>/files
-#project/<projectId>/files/src/Main.java?line=42
+#project/<projectId>/files/src/Main.java?line=42&dir=<checkout>
 ```
 
 The **focused run** panel above the build history renders `projectRun` (`projects.js`): the

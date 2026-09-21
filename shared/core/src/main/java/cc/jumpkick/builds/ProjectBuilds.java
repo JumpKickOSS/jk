@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,8 +38,10 @@ import org.jspecify.annotations.Nullable;
  * </pre>
  *
  * <p>Key = {@link ProjectIdentity#id()} (hybrid: explicit / lock / git / path). Run directories are the
- * plain build number (e.g. {@code 27}), not a timestamp. Absolute path is operational checkout
- * metadata in {@code identity.toml}, not the key.
+ * plain build number (e.g. {@code 27}), not a timestamp. Every checkout of one id — each git
+ * worktree of a repository whose lock carries the id — shares the home and the build-number
+ * sequence; {@code identity.toml} lists the checkouts, and each run's {@code record.json} names
+ * the one it ran in ({@link #runCheckout}).
  */
 public final class ProjectBuilds {
 
@@ -227,7 +231,7 @@ public final class ProjectBuilds {
      * Project homes to use for metrics harvest / global loadAll — at most one home per absolute
      * checkout path. When lock re-key left a stale sibling home for the same path (different id),
      * keep the preferred one (source=lock, then most runs, then newest identity) so one-sample
-     * outliers cannot re-enter aggregates.
+     * outliers cannot re-enter aggregates. A home listing several checkouts claims each of them.
      */
     public static List<Path> listProjectHomesForMetrics(Path buildsRoot) {
         List<Path> all = listProjectHomes(buildsRoot);
@@ -237,25 +241,21 @@ public final class ProjectBuilds {
         List<Path> noPath = new ArrayList<>();
         for (Path home : all) {
             var idf = ProjectIdentity.IdentityFile.read(home);
-            if (idf.isEmpty() || idf.get().path() == null || idf.get().path().isBlank()) {
-                noPath.add(home);
-                continue;
-            }
-            String pathKey;
-            try {
-                pathKey = Path.of(idf.get().path()).toAbsolutePath().normalize().toString();
-            } catch (RuntimeException e) {
+            if (idf.isEmpty() || idf.get().checkouts().isEmpty()) {
                 noPath.add(home);
                 continue;
             }
             long score = metricsHomeScore(home, idf.get());
-            Long prev = scoreByPath.get(pathKey);
-            if (prev == null || score > prev) {
-                scoreByPath.put(pathKey, score);
-                bestByPath.put(pathKey, home);
+            for (ProjectIdentity.Checkout checkout : idf.get().checkouts()) {
+                String pathKey = checkout.path().toString();
+                Long prev = scoreByPath.get(pathKey);
+                if (prev == null || score > prev) {
+                    scoreByPath.put(pathKey, score);
+                    bestByPath.put(pathKey, home);
+                }
             }
         }
-        List<Path> out = new ArrayList<>(bestByPath.values());
+        List<Path> out = new ArrayList<>(new LinkedHashSet<>(bestByPath.values()));
         out.addAll(noPath);
         out.sort(Comparator.naturalOrder());
         return out;
@@ -359,9 +359,10 @@ public final class ProjectBuilds {
     }
 
     /**
-     * Newest run directory for {@code projectDir} that contains {@code fileName} (e.g. {@link
-     * #RESULTS}, {@link #DETAILS}). Newest-first by build number; in-progress runs without the file
-     * are skipped. {@code fileName} must be a single path segment.
+     * Newest run of the checkout {@code projectDir} that contains {@code fileName} (e.g. {@link
+     * #RESULTS}, {@link #DETAILS}). Runs are newest-first by build number; a run whose {@code
+     * record.json} names another checkout of the same id is not this checkout's and is skipped, as
+     * is an in-progress run without the file. {@code fileName} must be a single path segment.
      */
     public static Optional<Path> latestRunFile(Path projectDir, String fileName) {
         return latestRunFile(buildsRoot(), projectDir, fileName);
@@ -378,9 +379,41 @@ public final class ProjectBuilds {
         Path home = projectHome(buildsRoot, ProjectIdentity.resolve(abs));
         for (Path run : listRuns(home)) {
             Path f = run.resolve(fileName);
-            if (Files.isRegularFile(f)) return Optional.of(f);
+            if (!Files.isRegularFile(f)) continue;
+            Path checkout = runCheckout(run);
+            if (checkout != null && sameCheckout(checkout, abs)) return Optional.of(f);
         }
         return Optional.empty();
+    }
+
+    /**
+     * The checkout a run was recorded for: the top-level {@code dir} of its {@code record.json}.
+     * {@code null} when the run has no record or the record names none.
+     */
+    public static @Nullable Path runCheckout(Path runDir) {
+        Path record = runDir.resolve(RECORD);
+        if (!Files.isRegularFile(record)) return null;
+        try {
+            String dir = Jsonl.topStr(Files.readString(record, StandardCharsets.UTF_8), "dir");
+            return dir == null || dir.isBlank() ? null : Path.of(dir);
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
+    }
+
+    /**
+     * True when {@code a} and {@code b} are one directory: by real path while both exist, so a
+     * symlinked spelling still matches; by normalized absolute path once either is gone.
+     */
+    public static boolean sameCheckout(Path a, Path b) {
+        Path na = a.toAbsolutePath().normalize();
+        Path nb = b.toAbsolutePath().normalize();
+        if (na.equals(nb)) return true;
+        try {
+            return na.toRealPath().equals(nb.toRealPath());
+        } catch (IOException | RuntimeException gone) {
+            return false;
+        }
     }
 
     /**

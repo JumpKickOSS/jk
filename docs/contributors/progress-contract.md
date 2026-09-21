@@ -137,7 +137,8 @@ ratchet (`wall-baseline.toml`) fails a scheduled run when either jk row regresse
 ### Metrics hygiene
 
 - `AggregatedMetrics.loadAll` / harvest use **one project home per checkout path** (prefer
-  `source=lock`, higher run count).  
+  `source=lock`, higher run count); a home whose `identity.toml` lists several checkouts —
+  worktrees sharing one lock id — claims each, and its module keys expand against every one.  
 - Merge-by-higher-count when keys still collide.  
 - Session workspace loads project-scoped metrics for live ETA.  
 - **Heavy-step floors:** native-image &lt; 5s and write-image &lt; 3s walls are dropped at journal

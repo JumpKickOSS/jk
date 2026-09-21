@@ -353,7 +353,7 @@
             v-if="!filesOpen"
             class="ghost"
             :class="{ active: projectGraphOpen }"
-            :disabled="!selectedProjectDir"
+            :disabled="!projectDir()"
             @click="toggleProjectGraph"
             :data-tip="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph (loads on demand)'"
           >Dependencies</button>
@@ -368,17 +368,25 @@
             aria-label="View/edit this codebase"
             data-tip="View/edit this codebase"
           ><jk-icon name="code"></jk-icon></button>
-          <button v-if="projectDetail" class="action-green" @click="buildProject(projectDetail.dir)" data-tip="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
+          <button v-if="projectDetail" class="action-green" :disabled="!projectDetail.dir" @click="buildProject(projectDetail.dir)"
+                  :data-tip="projectDetail.dir ? 'Build this project now' : 'Pick a checkout to build'"><jk-icon name="bolt"></jk-icon>Build</button>
         </div>
       </div>
       <template v-if="filesOpen">
-        <code-view ref="codeView" :project-id="selectedProjectId" :path="codePath" :line="codeLine"
+        <code-view ref="codeView" :project-id="selectedProjectId" :dir="projectDir()" :path="codePath" :line="codeLine"
                    :col="codeCol"
                    :line-err="codeLineErr"
                    :msg="codeMsg"
-                   :key="selectedProjectId" @navigate="onCodeNavigate" @saved="onCodeSaved"></code-view>
+                   :key="selectedProjectId + '|' + (projectDir() || '')" @navigate="onCodeNavigate" @saved="onCodeSaved"></code-view>
       </template>
       <template v-else>
+      <!-- Several worktrees build under this id: name the one to follow and edit, or watch them all. -->
+      <div v-if="projectCheckouts().length > 1" class="checkouts">
+        <span class="lbl">checkouts</span>
+        <button type="button" class="ghost small" :class="{ active: !selectedProjectDir }" @click="pickCheckout(null)">all</button>
+        <button v-for="c in projectCheckouts()" :key="c.dir" type="button" class="ghost small mono"
+                :class="{ active: selectedProjectDir === c.dir }" :data-tip="c.dir" @click="pickCheckout(c.dir)">{{ shortDir(c.dir) }}</button>
+      </div>
       <p v-if="projectDetail && projectDetail.description" class="proj-desc">
         <span class="proj-desc-q" aria-hidden="true">"</span><span class="proj-desc-body">{{ projectDetail.description }}</span><span class="proj-desc-q" aria-hidden="true">"</span>
       </p>
@@ -396,13 +404,13 @@
       </template>
 
       <!-- above build history; closed by default; fetch + echarts only when open. -->
-      <section v-if="projectGraphOpen && selectedProjectDir" class="panel wide dep-graph-panel">
+      <section v-if="projectGraphOpen && projectDir()" class="panel wide dep-graph-panel">
         <div class="panel-head">
           <span class="lbl">dependency graph</span>
           <span class="spacer"></span>
           <span class="mono dim">like jk tree · on demand</span>
         </div>
-        <module-dep-graph :dir="selectedProjectDir" :key="selectedProjectDir"></module-dep-graph>
+        <module-dep-graph :dir="projectDir()" :key="projectDir()"></module-dep-graph>
       </section>
 
       <!-- The run this page shows: the newest by default (a live one first), or the one a history
@@ -417,6 +425,7 @@
           <span v-if="projectRun.outcome === 'running'" class="spin"></span>
           <span v-else class="badge" :class="projectRun.outcome"><jk-icon :name="stateIcon(projectRun.outcome)"></jk-icon>{{ activityBadge(projectRun.card) }}</span>
           <span v-if="projectRun.buildNumber" class="mono">#{{ projectRun.buildNumber }}</span>
+          <span v-if="projectCheckouts().length > 1 && projectRun.card.dir" class="mono dim checkout" :data-tip="projectRun.card.dir">{{ shortDir(projectRun.card.dir) }}</span>
           <span class="kind">{{ kindLabel(projectRun.card) }}</span>
           <span v-if="projectRun.card.trigger" class="origin" :class="'origin-' + projectRun.card.trigger">{{ originLabel(projectRun.card) }}</span>
           <span class="spacer"></span>
@@ -452,11 +461,12 @@
           <div class="panel wide">
             <div class="panel-head"><span class="lbl">build history</span><span class="spacer"></span><span class="mono dim">{{ projectDetail.total }} builds total · click a row to pin it</span></div>
             <table class="stats history">
-              <thead><tr><th>Build</th><th>Trigger</th><th>Commit</th><th>Tests</th><th>Cache</th><th>Duration</th><th>When</th></tr></thead>
+              <thead><tr><th>Build</th><th v-if="projectCheckouts().length > 1">Checkout</th><th>Trigger</th><th>Commit</th><th>Tests</th><th>Cache</th><th>Duration</th><th>When</th></tr></thead>
               <tbody>
                 <tr v-for="r in projectDetail.rows" :key="r.id" class="pinnable" :class="{ pinned: pinnedRun && r.buildNumber === pinnedRun }"
                     tabindex="0" @click="pinRun(r.buildNumber)" @keydown.enter.prevent="pinRun(r.buildNumber)">
                   <td><span class="badge" :class="r.outcome"><jk-icon :name="stateIcon(r.outcome)"></jk-icon><template v-if="r.buildNumber">#{{ r.buildNumber }}</template></span></td>
+                  <td v-if="projectCheckouts().length > 1" class="mono" :data-tip="r.dir">{{ r.dir ? shortDir(r.dir) : '—' }}</td>
                   <td>{{ originLabel(r) }}</td>
                   <td class="mono">{{ r.commit || '—' }}</td>
                   <td><template v-if="r.tests">{{ r.tests.succeeded }} / {{ r.tests.total }}</template><template v-else>—</template></td>

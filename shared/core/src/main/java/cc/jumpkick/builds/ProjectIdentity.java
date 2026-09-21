@@ -4,7 +4,7 @@ package cc.jumpkick.builds;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
@@ -16,7 +16,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -33,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * <ol>
  *   <li>Explicit root-level {@code id} in {@code jk.toml} (rare override)
  *   <li>{@code project-id} in root {@code jk-lock.toml} (normal auto-id)
- *   <li>Recovered id from an existing {@code identity.toml} (path or git match — )
+ *   <li>Recovered id from an existing {@code identity.toml} (a recorded checkout or git match)
  *   <li>Git remote + path relative to worktree root
  *   <li>Absolute path (last resort)
  * </ol>
@@ -42,7 +44,9 @@ import org.jspecify.annotations.Nullable;
  * material — renaming a project must not split its identity.
  *
  * <p>The opaque {@link #id()} is URL-safe and is the sole key under {@code builds/projects/&lt;id&gt;/}.
- * Absolute path is operational (where to build), not the identity.
+ * {@link #path()} is the checkout this resolution ran in, not the identity: every worktree of a
+ * repository shares the id its committed lock carries, and {@code identity.toml} lists them all
+ * ({@link #checkoutsForId}).
  */
 public record ProjectIdentity(
         String id,
@@ -203,12 +207,8 @@ public record ProjectIdentity(
                 if (idf.isEmpty()) continue;
                 IdentityFile f = idf.get();
                 if (f.id() == null || f.id().isBlank()) continue;
-                boolean pathMatch = false;
-                try {
-                    pathMatch = abs.equals(Path.of(f.path()).toAbsolutePath().normalize());
-                } catch (RuntimeException e) {
-                    Log.debug("recoverId: RuntimeException ignored", e);
-                }
+                boolean pathMatch =
+                        f.checkouts().stream().anyMatch(c -> c.path().equals(abs));
                 boolean gitMatch = git.isPresent()
                         && f.gitRemote() != null
                         && f.gitRelPath() != null
@@ -239,11 +239,32 @@ public record ProjectIdentity(
         return Files.isDirectory(home) ? Optional.of(home) : Optional.empty();
     }
 
-    /** Last known absolute path for this id from identity.toml, if any. */
-    public static Optional<Path> pathForId(String id) {
+    /**
+     * The live checkouts recorded for {@code id}, sorted by path; empty for an unknown id or when
+     * every recorded directory is gone. One entry means the id maps to a checkout without asking;
+     * several mean a caller that needs one path must say which.
+     */
+    public static List<Checkout> checkoutsForId(String id) {
         return homeForId(id)
                 .flatMap(IdentityFile::read)
-                .map(f -> Path.of(f.path()).toAbsolutePath().normalize());
+                .map(IdentityFile::liveCheckouts)
+                .orElse(List.of());
+    }
+
+    /**
+     * The one checkout {@code dir} names among {@code checkouts}, compared by real path so a
+     * symlinked spelling of a recorded directory still selects it; empty when it is none of them.
+     */
+    public static Optional<Checkout> selectCheckout(List<Checkout> checkouts, String dir) {
+        Path want;
+        try {
+            want = Path.of(dir);
+        } catch (RuntimeException notAPath) {
+            return Optional.empty();
+        }
+        return checkouts.stream()
+                .filter(c -> ProjectBuilds.sameCheckout(c.path(), want))
+                .findFirst();
     }
 
     /**
@@ -424,52 +445,130 @@ public record ProjectIdentity(
         }
     }
 
-    /** Sidecar written under {@code builds/projects/<id>/identity.toml}. */
+    /**
+     * One checkout of a project: the absolute directory and when a build, lock or scaffold last
+     * ran there. Two git worktrees of one repository are two checkouts of one id.
+     */
+    public record Checkout(Path path, @Nullable Instant lastBuilt) {
+        public Checkout {
+            path = path.toAbsolutePath().normalize();
+        }
+
+        /** True while the directory exists; a deleted worktree is pruned on the next write. */
+        public boolean live() {
+            return Files.isDirectory(path);
+        }
+    }
+
+    /**
+     * Sidecar written under {@code builds/projects/<id>/identity.toml}: the id's display and
+     * recovery metadata plus every checkout that has built under it.
+     *
+     * <pre>
+     * id = "…"
+     * coord = "group:name"
+     * source = "lock"
+     * git-remote = "…"        # optional
+     * git-rel-path = "…"      # optional
+     *
+     * [[checkout]]
+     * path = "/abs/worktree-a"
+     * last-built = "2026-09-20T12:34:56Z"
+     * </pre>
+     *
+     * Checkouts are sorted by path; {@link #write} upserts the writer's own and drops any whose
+     * directory no longer exists.
+     */
     public record IdentityFile(
             String id,
             @Nullable String coord,
-            String path,
+            List<Checkout> checkouts,
             @Nullable String source,
             @Nullable String gitRemote,
             @Nullable String gitRelPath) {
+
+        public IdentityFile {
+            checkouts = checkouts == null ? List.of() : List.copyOf(checkouts);
+        }
+
+        /** The checkouts whose directory still exists, sorted by path. */
+        public List<Checkout> liveCheckouts() {
+            return checkouts.stream().filter(Checkout::live).toList();
+        }
 
         public static Optional<IdentityFile> read(Path projectHome) {
             Path f = projectHome.resolve(ProjectBuilds.IDENTITY);
             if (!Files.isRegularFile(f)) return Optional.empty();
             try {
-                String id = null, coord = null, path = null, source = null, remote = null, rel = null;
+                String id = null, coord = null, source = null, remote = null, rel = null;
+                List<Checkout> checkouts = new ArrayList<>();
+                String checkoutPath = null;
+                Instant checkoutBuilt = null;
+                boolean inCheckout = false;
                 for (String line : Files.readAllLines(f, StandardCharsets.UTF_8)) {
                     line = line.trim();
                     if (line.isEmpty() || line.startsWith("#")) continue;
+                    if (line.startsWith("[")) {
+                        if (inCheckout && checkoutPath != null) {
+                            checkouts.add(new Checkout(Path.of(checkoutPath), checkoutBuilt));
+                        }
+                        inCheckout = line.equals("[[checkout]]");
+                        checkoutPath = null;
+                        checkoutBuilt = null;
+                        continue;
+                    }
                     int eq = line.indexOf('=');
                     if (eq < 0) continue;
                     String k = line.substring(0, eq).trim();
                     String v = MinimalToml.unquote(line.substring(eq + 1).trim());
+                    if (inCheckout) {
+                        switch (k) {
+                            case "path" -> checkoutPath = v;
+                            case "last-built" -> checkoutBuilt = parseInstant(v);
+                            default -> {}
+                        }
+                        continue;
+                    }
                     switch (k) {
                         case "id" -> id = v;
                         case "coord" -> coord = v;
-                        case "path" -> path = v;
                         case "source" -> source = v;
                         case "git-remote" -> remote = v;
                         case "git-rel-path" -> rel = v;
                         default -> {}
                     }
                 }
-                if (path == null || id == null || id.isBlank()) return Optional.empty();
-                return Optional.of(new IdentityFile(id, coord, path, source, remote, rel));
-            } catch (IOException e) {
+                if (inCheckout && checkoutPath != null) {
+                    checkouts.add(new Checkout(Path.of(checkoutPath), checkoutBuilt));
+                }
+                if (id == null || id.isBlank()) return Optional.empty();
+                return Optional.of(new IdentityFile(id, coord, sortedByPath(checkouts), source, remote, rel));
+            } catch (IOException | RuntimeException e) {
                 return Optional.empty();
             }
         }
 
+        /**
+         * Record {@code identity}'s checkout under its project home: the scalars are rewritten
+         * from {@code identity}, the checkout set keeps every other live checkout the file already
+         * listed, and the writer's own entry is stamped with the clock's instant.
+         */
         public static void write(Path projectHome, ProjectIdentity identity) throws IOException {
+            write(projectHome, identity, Clock.SYSTEM);
+        }
+
+        public static void write(Path projectHome, ProjectIdentity identity, Clock clock) throws IOException {
             Files.createDirectories(projectHome);
+            Path own = identity.path();
+            List<Checkout> merged = new ArrayList<>();
+            for (Checkout c : read(projectHome).map(IdentityFile::checkouts).orElse(List.of())) {
+                if (c.path().equals(own) || !c.live()) continue;
+                merged.add(c);
+            }
+            merged.add(new Checkout(own, clock.instant()));
             StringBuilder b = new StringBuilder();
             b.append("id = ").append(MinimalToml.quote(identity.id())).append('\n');
             b.append("coord = ").append(MinimalToml.quote(identity.coord())).append('\n');
-            b.append("path = ")
-                    .append(MinimalToml.quote(identity.path().toString()))
-                    .append('\n');
             b.append("source = ")
                     .append(MinimalToml.quote(identity.source().name().toLowerCase(Locale.ROOT)))
                     .append('\n');
@@ -483,7 +582,32 @@ public record ProjectIdentity(
                         .append(MinimalToml.quote(identity.gitRelPath()))
                         .append('\n');
             }
+            for (Checkout c : sortedByPath(merged)) {
+                b.append("\n[[checkout]]\n");
+                b.append("path = ")
+                        .append(MinimalToml.quote(c.path().toString()))
+                        .append('\n');
+                if (c.lastBuilt() != null) {
+                    b.append("last-built = ")
+                            .append(MinimalToml.quote(c.lastBuilt().toString()))
+                            .append('\n');
+                }
+            }
             AtomicWrites.replace(projectHome.resolve(ProjectBuilds.IDENTITY), b.toString());
+        }
+
+        private static List<Checkout> sortedByPath(List<Checkout> checkouts) {
+            return checkouts.stream()
+                    .sorted(Comparator.comparing(c -> c.path().toString()))
+                    .toList();
+        }
+
+        private static @Nullable Instant parseInstant(String v) {
+            try {
+                return Instant.parse(v);
+            } catch (RuntimeException notAnInstant) {
+                return null;
+            }
         }
     }
 }

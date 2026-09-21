@@ -22,6 +22,16 @@ final class JournalLineage {
     /** How many earlier runs of a project the lookup walks before giving up. */
     static final int LOOKBACK = 50;
 
+    /** True when two records name one checkout directory; a record without one matches nothing. */
+    static boolean sameCheckout(String a, String b) {
+        if (a == null || a.isBlank() || b == null || b.isBlank()) return false;
+        try {
+            return ProjectBuilds.sameCheckout(Path.of(a), Path.of(b));
+        } catch (RuntimeException notPaths) {
+            return a.equals(b);
+        }
+    }
+
     /** An earlier run and the directory its artifacts sit in. */
     public record Previous(BuildRecord record, Path dir) {}
 
@@ -50,10 +60,15 @@ final class JournalLineage {
         return Optional.empty();
     }
 
-    /** {@code earlier} is a finished build-like run from {@code current}'s origin that ended before it began. */
+    /**
+     * {@code earlier} is a finished build-like run of {@code current}'s checkout from its origin
+     * that ended before it began. Another worktree of the same id is another trail: its files and
+     * tests are not what this run changed.
+     */
     static boolean precedes(BuildRecord earlier, BuildRecord current) {
         return Objects.equals(earlier.trigger(), current.trigger())
                 && Objects.equals(earlier.session(), current.session())
+                && sameCheckout(earlier.dir(), current.dir())
                 && !earlier.running()
                 && BuildHistoryKinds.isBuildLike(earlier.kind())
                 && earlier.finishedAt() > 0
