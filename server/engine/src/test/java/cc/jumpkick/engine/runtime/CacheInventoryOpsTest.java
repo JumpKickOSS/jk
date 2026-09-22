@@ -29,8 +29,8 @@ class CacheInventoryOpsTest {
     @Test
     void usage_of_empty_cache_is_zero(@TempDir Path cache) throws Exception {
         Files.createDirectories(cache);
-        CacheInventoryAck ack =
-                CacheInventoryOps.run(new CacheInventoryOps.Request("usage", cache, null, List.of(), List.of(), false));
+        CacheInventoryAck ack = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("usage", cache, null, null, List.of(), List.of(), false));
         assertThat(ack.error()).isNull();
         assertThat(ack.query()).isEqualTo("usage");
         assertThat(ack.totalFiles()).isGreaterThanOrEqualTo(0);
@@ -50,7 +50,7 @@ class CacheInventoryOpsTest {
             Path jar = installWorker(store, RepoArtifactResolver.JK_LOCAL, PluginJar.IMAGE_BUILDER, JkVersion.VERSION);
 
             CacheInventoryAck ack = CacheInventoryOps.run(
-                    new CacheInventoryOps.Request("workers", null, store, List.of(), List.of(), false));
+                    new CacheInventoryOps.Request("workers", null, store, null, List.of(), List.of(), false));
 
             assertThat(ack.error()).isNull();
             String row = ack.lines().stream()
@@ -89,7 +89,7 @@ class CacheInventoryOpsTest {
         Files.writeString(library, "library");
 
         CacheInventoryAck dry = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("drop-workers", null, store, List.of(), List.of(), true));
+                new CacheInventoryOps.Request("drop-workers", null, store, null, List.of(), List.of(), true));
         assertThat(dry.lines())
                 .containsExactlyInAnyOrder(
                         "jk-image-builder|" + JkVersion.VERSION + "|jk-local", "jk-image-builder|0.1.0|jumpkick");
@@ -98,7 +98,7 @@ class CacheInventoryOpsTest {
         assertThat(older).exists();
 
         CacheInventoryAck dropped = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("drop-workers", null, store, List.of(), List.of(), false));
+                new CacheInventoryOps.Request("drop-workers", null, store, null, List.of(), List.of(), false));
         assertThat(dropped.files()).isEqualTo(4);
         assertThat(store.resolve("repos/jk-local/cc/jumpkick/jk-image-builder"))
                 .as("the whole artifact directory")
@@ -127,7 +127,7 @@ class CacheInventoryOpsTest {
             }
 
             CacheInventoryAck ack = CacheInventoryOps.run(
-                    new CacheInventoryOps.Request("workers", null, store, List.of(), List.of(), false));
+                    new CacheInventoryOps.Request("workers", null, store, null, List.of(), List.of(), false));
 
             String row = ack.lines().stream()
                     .filter(l -> l.startsWith("jk-image-builder|"))
@@ -171,11 +171,11 @@ class CacheInventoryOpsTest {
         Files.createDirectories(store);
         Files.writeString(child, "abc");
         CacheInventoryAck dry = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), true));
+                new CacheInventoryOps.Request("wipe-store", null, store, null, List.of(), List.of(), true));
         assertThat(dry.files()).isEqualTo(1);
         assertThat(Files.exists(child)).isTrue();
         CacheInventoryAck wipe = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), false));
+                new CacheInventoryOps.Request("wipe-store", null, store, null, List.of(), List.of(), false));
         assertThat(wipe.files()).isEqualTo(1);
         assertThat(Files.exists(child)).isFalse();
     }
@@ -189,7 +189,7 @@ class CacheInventoryOpsTest {
         Files.writeString(tool, "plugin");
 
         CacheInventoryAck wipe = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), false));
+                new CacheInventoryOps.Request("wipe-store", null, store, null, List.of(), List.of(), false));
 
         assertThat(wipe.files()).isEqualTo(1);
         assertThat(store).doesNotExist();
@@ -202,7 +202,7 @@ class CacheInventoryOpsTest {
         Files.writeString(store.resolve("blob"), "abc");
 
         CacheInventoryAck dry = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), true));
+                new CacheInventoryOps.Request("wipe-store", null, store, null, List.of(), List.of(), true));
 
         assertThat(dry.files()).isEqualTo(1);
         assertThat(store).isDirectory();
@@ -219,14 +219,14 @@ class CacheInventoryOpsTest {
         Files.createLink(repo, cas);
 
         CacheInventoryAck dry = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), true));
+                new CacheInventoryOps.Request("wipe-store", null, store, null, List.of(), List.of(), true));
         assertThat(dry.files()).isEqualTo(2);
         assertThat(dry.bytes())
                 .as("unique inode bytes, not sum of hard-link sizes")
                 .isEqualTo(payload.length);
 
         CacheInventoryAck wipe = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), false));
+                new CacheInventoryOps.Request("wipe-store", null, store, null, List.of(), List.of(), false));
         assertThat(wipe.files()).isEqualTo(2);
         assertThat(wipe.bytes()).isEqualTo(payload.length);
         assertThat(cas).doesNotExist();
@@ -239,11 +239,14 @@ class CacheInventoryOpsTest {
         // JK_STORE_DIR from ITS environment and sends it in the request.
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Path store = Files.createDirectories(tmp.resolve("client-store"));
+        // The client's m2, sent like the store. Left null this walked whichever repo the process
+        // could see — the gate's shared test-m2 under a sandbox — for one informational row.
+        Path m2 = Files.createDirectories(tmp.resolve("client-m2"));
         Path blob = Files.createDirectories(store.resolve("sha256/ab")).resolve("cd");
         Files.write(blob, new byte[] {'P', 'K', 3, 4, 0, 0, 0, 0});
 
         CacheInventoryAck ack = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("store-usage", cache, store, List.of(), List.of(), false));
+                new CacheInventoryOps.Request("store-usage", cache, store, m2, List.of(), List.of(), false));
 
         assertThat(ack.error()).isNull();
         assertThat(ack.totalFiles()).isEqualTo(1);
@@ -262,8 +265,8 @@ class CacheInventoryOpsTest {
         Files.writeString(keys.resolve("0-unbucketed"), "TASK custom-step@abc\nOUTPUT " + sha + "\n");
         Files.writeString(keys.resolve("1-jar"), "TASK package-jar@abc\nOUTPUT " + sha + "\n");
 
-        CacheInventoryAck ack =
-                CacheInventoryOps.run(new CacheInventoryOps.Request("usage", cache, null, List.of(), List.of(), false));
+        CacheInventoryAck ack = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("usage", cache, null, null, List.of(), List.of(), false));
 
         assertThat(ack.error()).isNull();
         assertThat(ack.stats()).anyMatch(s -> s.startsWith("normalJars|1|"));
@@ -277,7 +280,7 @@ class CacheInventoryOpsTest {
         m2Artifact(store, "central", "org/example/bar/2.0/bar-2.0.jar");
 
         CacheInventoryAck ack = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("repo-search", cache, store, List.of("FOO"), List.of(), false));
+                new CacheInventoryOps.Request("repo-search", cache, store, null, List.of("FOO"), List.of(), false));
 
         assertThat(ack.error()).isNull();
         assertThat(ack.entries()).containsExactly("org.example|foo|1.0");
@@ -300,6 +303,7 @@ class CacheInventoryOpsTest {
                 "repo-refresh",
                 cache,
                 store,
+                null,
                 List.of(),
                 List.of("org.example:foo:1.0", "org.example:gone:9.9"),
                 false));
@@ -317,13 +321,14 @@ class CacheInventoryOpsTest {
     void store_usage_counts_hardlinked_blobs_once(@TempDir Path tmp) throws Exception {
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Path store = tmp.resolve("store");
+        Path m2 = Files.createDirectories(tmp.resolve("client-m2"));
         org.junit.jupiter.api.Assumptions.assumeTrue(probeHardLink(store), "hard links required");
         Path original = Files.createDirectories(store.resolve("sha256/ab")).resolve("cd");
         Files.write(original, new byte[] {'P', 'K', 3, 4, 1, 2, 3, 4, 5, 6});
         Files.createLink(store.resolve("sha256/ab/alias"), original);
 
         CacheInventoryAck ack = CacheInventoryOps.run(
-                new CacheInventoryOps.Request("store-usage", cache, store, List.of(), List.of(), false));
+                new CacheInventoryOps.Request("store-usage", cache, store, m2, List.of(), List.of(), false));
 
         assertThat(ack.error()).isNull();
         assertThat(ack.totalFiles()).isEqualTo(2);
@@ -370,8 +375,8 @@ class CacheInventoryOpsTest {
         Files.createDirectories(store.resolve("repos/legacy-name/g"));
         Files.createDirectories(store.resolve("repos/jk-local"));
 
-        CacheInventoryAck ack =
-                CacheInventoryOps.run(new CacheInventoryOps.Request("repos", null, store, List.of(), List.of(), false));
+        CacheInventoryAck ack = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("repos", null, store, null, List.of(), List.of(), false));
 
         assertThat(ack.error()).isNull();
         String id = RepoIdentity.storeId(URI.create("https://nexus.acme/maven/"));
@@ -384,8 +389,8 @@ class CacheInventoryOpsTest {
 
     @Test
     void unknown_query_is_an_error() throws Exception {
-        CacheInventoryAck ack =
-                CacheInventoryOps.run(new CacheInventoryOps.Request("nope", null, null, List.of(), List.of(), false));
+        CacheInventoryAck ack = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("nope", null, null, null, List.of(), List.of(), false));
         assertThat(ack.error()).contains("unknown");
     }
 }

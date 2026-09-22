@@ -53,10 +53,16 @@ public final class CacheInventoryOps {
 
     private CacheInventoryOps() {}
 
+    /**
+     * {@code m2} is the caller's Maven local repository, sent by the client like {@code store}
+     * is. Null falls back to this process's own, which is what a test or a probe with no client
+     * behind it wants.
+     */
     public record Request(
             @Nullable String query,
             @Nullable Path cache,
             @Nullable Path store,
+            @Nullable Path m2,
             List<String> terms,
             List<String> coords,
             boolean dryRun) {}
@@ -71,7 +77,7 @@ public final class CacheInventoryOps {
         Path store = req.store() != null ? req.store() : JkStores.store();
         return switch (query) {
             case "usage" -> cacheUsage(cache);
-            case "store-usage" -> storeUsage(store);
+            case "store-usage" -> storeUsage(store, req.m2());
             case "repo-search" -> repoSearch(store, req.terms() == null ? List.of() : req.terms());
             case "repo-refresh" -> repoRefresh(store, req.coords() == null ? List.of() : req.coords());
             case "wipe-store" -> wipeStore(store, req.dryRun());
@@ -196,57 +202,60 @@ public final class CacheInventoryOps {
         return new DiskUsage.Stats(files, bytes);
     }
 
-    private static CacheInventoryAck storeUsage(Path storeRoot) throws IOException {
+    /**
+     * {@code m2} is the caller's Maven local repository — the client sends it, as it sends the
+     * store. Resolving it here instead walked whichever repo this process could see: under a test
+     * sandbox that is the gate's shared 342 MB {@code test-m2}, which cost two cases of
+     * {@code CacheInventoryOpsTest} over five seconds each to fill in one informational row that
+     * the totals do not even include.
+     */
+    private static CacheInventoryAck storeUsage(Path storeRoot, @Nullable Path m2) throws IOException {
         Path storeCas = storeRoot.resolve("sha256");
         Path lib = storeRoot.resolve("lib");
         Path repos = storeRoot.resolve("repos");
 
         Set<Object> seen = new HashSet<>();
         DiskUsage.SameFileKeys sameFile = new DiskUsage.SameFileKeys();
-        long jarFiles = 0, jarBytes = 0;
-        long execFiles = 0, execBytes = 0;
-        long ociFiles = 0, ociBytes = 0;
+        // {jarFiles, jarBytes, execFiles, execBytes, ociFiles, ociBytes} — a lambda cannot assign
+        // a local, and the alternative is six holders.
+        long[] tally = new long[6];
 
-        if (Files.isDirectory(storeCas)) {
-            try (var walk = Files.walk(storeCas)) {
-                for (Path p : (Iterable<Path>) walk::iterator) {
-                    BasicFileAttributes attrs;
-                    try {
-                        attrs = Files.readAttributes(p, BasicFileAttributes.class);
-                    } catch (IOException unreadable) {
-                        continue;
-                    }
-                    if (!attrs.isRegularFile()) continue;
-                    Object key = identityKey(p, attrs, sameFile);
-                    long size = seen.add(key) ? attrs.size() : 0L;
-                    switch (sniffArtifactKind(p)) {
-                        case EXECUTABLE -> {
-                            execFiles++;
-                            execBytes += size;
-                        }
-                        case OCI -> {
-                            ociFiles++;
-                            ociBytes += size;
-                        }
-                        case JAR, OTHER -> {
-                            jarFiles++;
-                            jarBytes += size;
-                        }
-                    }
+        // Through PathUtil: the walk already read each entry's attributes, and asking again per
+        // entry is what guard G45 is about. It also yields its carrier periodically, which a walk
+        // of a store this size on a virtual thread owes the rest of the process.
+        PathUtil.forEachRegularFile(storeCas, (file, attrs) -> {
+            Object key = identityKey(file, attrs, sameFile);
+            long size = seen.add(key) ? attrs.size() : 0L;
+            switch (sniffArtifactKind(file)) {
+                case EXECUTABLE -> {
+                    tally[2]++;
+                    tally[3] += size;
+                }
+                case OCI -> {
+                    tally[4]++;
+                    tally[5] += size;
+                }
+                case JAR, OTHER -> {
+                    tally[0]++;
+                    tally[1] += size;
                 }
             }
-        }
+        });
 
         Stat reposExtra = walkExclusiveAdding(repos, seen, sameFile);
-        jarFiles += reposExtra.files;
-        jarBytes += reposExtra.bytes;
+        long jarFiles = tally[0] + reposExtra.files;
+        long jarBytes = tally[1] + reposExtra.bytes;
+        long execFiles = tally[2];
+        long execBytes = tally[3];
+        long ociFiles = tally[4];
+        long ociBytes = tally[5];
         // One sameFile across all three walks, or a repos link to a CAS blob counts twice.
         Stat workers = walkExclusiveAdding(lib, seen, sameFile);
         long totalFiles = jarFiles + execFiles + ociFiles + workers.files;
         long totalBytes = jarBytes + execBytes + ociBytes + workers.bytes;
         DiskUsage.Stats mavenLocal;
         try {
-            mavenLocal = DiskUsage.of(M2Dirs.localRepository());
+            mavenLocal = DiskUsage.of(m2 != null ? m2 : M2Dirs.localRepository());
         } catch (Exception e) {
             mavenLocal = new DiskUsage.Stats(0, 0);
         }
