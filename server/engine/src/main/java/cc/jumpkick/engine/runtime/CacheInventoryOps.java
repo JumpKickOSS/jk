@@ -30,6 +30,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
+import cc.jumpkick.util.TestHomes;
 import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
@@ -259,12 +260,22 @@ public final class CacheInventoryOps {
         } catch (Exception e) {
             mavenLocal = new DiskUsage.Stats(0, 0);
         }
+        // The test sandboxes, beside the Maven repo and for the same reason: neither is budgeted,
+        // both are large, and a developer had no way to see either grow. Walked because the caller
+        // asked what the disk holds; an action that does not touch a tier must not walk it.
+        DiskUsage.Stats sandboxes;
+        try {
+            sandboxes = DiskUsage.of(TestHomes.root());
+        } catch (Exception e) {
+            sandboxes = new DiskUsage.Stats(0, 0);
+        }
         List<String> stats = List.of(
                 pack("jars", jarFiles, jarBytes),
                 pack("executables", execFiles, execBytes),
                 pack("oci", ociFiles, ociBytes),
                 pack("workers", workers.files, workers.bytes),
-                pack("maven-local", mavenLocal.files(), mavenLocal.bytes()));
+                pack("maven-local", mavenLocal.files(), mavenLocal.bytes()),
+                pack("test-homes", sandboxes.files(), sandboxes.bytes()));
         return CacheInventoryAck.usage("store-usage", stats, totalFiles, totalBytes);
     }
 
