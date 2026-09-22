@@ -147,12 +147,15 @@ class JobWorkersTest {
             long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
             assertThat(killed).isEqualTo(1);
             assertThat(p.isAlive()).isFalse();
-            // LIVENESS, not performance: the grace asked for above is 300ms, so 3s is 10x it.
-            // What this can catch is a shutdown that ignores its grace entirely; what it must not
-            // become is a measurement of how fast this machine forks and reaps.
+            // LIVENESS, not performance. Size the bound against the failure mode, not against the
+            // grace: this catches a shutdown that ignores its grace and waits out the child's own
+            // 120s sleep, and any bound well under that catches it just as well. Ten times the
+            // grace was the tighter choice and it measured the machine instead — forking and
+            // reaping a child under a full parallel suite outruns 3s on a loaded Windows box,
+            // which is the thing the line above says this must not become.
             assertThat(ms)
                     .as("honoured the 300ms grace rather than waiting out the child's own 120s sleep")
-                    .isLessThan(3_000L);
+                    .isLessThan(30_000L);
             assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
         } finally {
             if (p.isAlive()) p.destroyForcibly();

@@ -55,9 +55,23 @@ public final class TierPartition {
         }
     }
 
-    /** The tiers a manifest declares and the vocabulary they own. */
-    public record Table(List<Tier> tiers, List<String> vocabulary) {
-        public static final Table EMPTY = new Table(List.of(), List.of());
+    /**
+     * The tiers a manifest declares, the vocabulary they own, and the tags that are scheduling
+     * rather than routing.
+     *
+     * @param scheduling the root's {@code [test] serial-tags}. A tag there says <em>how</em> a
+     *     class is run — alone, off the sharded pool — not <em>which tier</em> runs it, so it is
+     *     exempt from the ownership arm the way {@link #FIXTURE_TAGS} is. The routing arms still
+     *     see the class's other tags; a class whose only tag is a scheduling one routes as an
+     *     untagged test does, into the fast tier, which is what it is — a fast-tier test that
+     *     happens to need the pool to itself.
+     */
+    public record Table(List<Tier> tiers, List<String> vocabulary, List<String> scheduling) {
+        public static final Table EMPTY = new Table(List.of(), List.of(), List.of());
+
+        public Table(List<Tier> tiers, List<String> vocabulary) {
+            this(tiers, vocabulary, List.of());
+        }
 
         public List<String> tiersFor(Set<String> tags) {
             List<String> out = new ArrayList<>();
@@ -72,8 +86,10 @@ public final class TierPartition {
         if (!Files.isRegularFile(manifest)) return Table.EMPTY;
         List<Tier> tiers = new ArrayList<>();
         Set<String> vocabulary = new TreeSet<>();
+        Set<String> scheduling = new TreeSet<>();
         try {
             JkBuildParser.TestTomlTags fast = JkBuildParser.parseTestTags(manifest);
+            scheduling.addAll(JkBuildParser.parse(manifest).build().testSerialTags());
             tiers.add(new Tier(
                     FAST_TIER, new LinkedHashSet<>(fast.includeTags()), new LinkedHashSet<>(fast.excludeTags())));
             JkBuild build = JkBuildParser.parse(manifest);
@@ -96,7 +112,7 @@ public final class TierPartition {
             vocabulary.addAll(t.include());
             vocabulary.addAll(t.exclude());
         }
-        return new Table(tiers, List.copyOf(vocabulary));
+        return new Table(tiers, List.copyOf(vocabulary), List.copyOf(scheduling));
     }
 
     /** Arm 1, totality: every tag combination is run by exactly one tier. */
@@ -174,7 +190,7 @@ public final class TierPartition {
             Table table, Set<String> tags, String where, List<String> orphans, Set<String> unowned) {
         Set<String> routing = new TreeSet<>();
         for (String t : tags) {
-            if (FIXTURE_TAGS.containsKey(t)) continue;
+            if (FIXTURE_TAGS.containsKey(t) || table.scheduling().contains(t)) continue;
             routing.add(t);
             if (!table.vocabulary().contains(t)) unowned.add(t);
         }
