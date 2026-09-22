@@ -24,6 +24,14 @@ import org.jspecify.annotations.Nullable;
  * fails instead, naming them. A plain project (no {@code [workspace]} block) is never judged here,
  * and neither is a run that asked for no tests ({@code --skip-tests}, scripts only) or one whose
  * {@code --class} patterns are judged by {@link cc.jumpkick.runtime.TestClassMatch}.
+ *
+ * <p>Nor is a run that named a tier. What this verdict catches is a project whose shape is wrong —
+ * it has no tests at all — and that is a standing defect. A {@code --profile} or {@code
+ * --include-tags} run asks for one slice of the suites, and a slice with nothing in it is a fact
+ * about the request: narrowing the pre-merge profile to one module ({@code -m <module> --profile
+ * integration}) is the documented loop, and most modules carry no integration tier. The default
+ * {@code [test]} selection excludes tags rather than including any, so a plain {@code jk test}
+ * over a workspace with no test sources still fails here.
  */
 @NullMarked
 final class NoTestsRan {
@@ -47,7 +55,8 @@ final class NoTestsRan {
             List<BuildGraph.BuildUnit> order) {
         if (!request.testOnly() || request.skipTests() || entry.workspace() == null) return null;
         if (session.testSelection().scriptsOnly()
-                || !session.testSelection().classes().isEmpty()) return null;
+                || !session.testSelection().classes().isEmpty()
+                || !session.testSelection().includeTags().isEmpty()) return null;
         for (BuildPlan plan : plans) {
             TestSummary result = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
             if (result != null && result.total() > 0) return null;
