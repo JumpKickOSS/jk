@@ -429,6 +429,44 @@ class TestHomesTest {
         assertThat(live).isDirectory();
     }
 
+    /**
+     * The per-slot ceiling is the answer to the interaction that let the busiest sandboxes grow
+     * unchecked: the root cap exempts a slot stamped today, so a module being worked on daily was
+     * never subject to it while the root stayed under its own budget. A slot over the ceiling goes
+     * however fresh its stamp — unless a live launch is reading it.
+     */
+    @Test
+    void a_slot_over_the_per_slot_ceiling_goes_however_recently_it_was_used(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path hoarder = slotWithBytes(root, "aaaaaaaaaaaa", 4096);
+        Path modest = slotWithBytes(root, "bbbbbbbbbbbb", 64);
+
+        // Both stamped now, so the root cap's hold window would spare either of them.
+        long ceiling = 1024;
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), TestHomes.KEEP_BYTES, ceiling)
+                        .removed())
+                .isEqualTo(1);
+        assertThat(hoarder).doesNotExist();
+        assertThat(modest).isDirectory();
+    }
+
+    /** A live launch keeps its slot even past the ceiling: its forks are still reading those jars. */
+    @Test
+    void a_held_slot_is_kept_past_the_per_slot_ceiling(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path running = slotWithBytes(root, "aaaaaaaaaaaa", 4096);
+
+        try (TestHomes.Hold held = TestHomes.hold(running)) {
+            assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), TestHomes.KEEP_BYTES, 1024)
+                            .removed())
+                    .isZero();
+            assertThat(running).isDirectory();
+        }
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), TestHomes.KEEP_BYTES, 1024)
+                        .removed())
+                .isEqualTo(1);
+    }
+
     private static Path slotWithBytes(Path root, String key, int bytes) throws Exception {
         Path slot = Files.createDirectories(root.resolve(key));
         Files.write(Files.createDirectories(slot.resolve("home/store")).resolve("blob"), new byte[bytes]);
