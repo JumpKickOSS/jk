@@ -155,8 +155,11 @@ public final class ActionCache {
         Path key = keysDir().resolve(actionKey);
         String content;
         try {
-            content = Files.readString(key);
+            content = AtomicWrites.readString(key);
         } catch (NoSuchFileException absent) {
+            return Optional.empty();
+        } catch (IOException denied) {
+            if (!deniedByAConcurrentReplace(denied)) throw denied;
             return Optional.empty();
         }
         ActionRecord record;
@@ -215,11 +218,33 @@ public final class ActionCache {
     public Optional<ActionRecord> lastFor(String taskId) throws IOException {
         String actionKey;
         try {
-            actionKey = Files.readString(tasksDir().resolve(taskId)).trim();
+            actionKey = AtomicWrites.readString(tasksDir().resolve(taskId)).trim();
         } catch (NoSuchFileException absent) {
+            return Optional.empty();
+        } catch (IOException denied) {
+            if (!deniedByAConcurrentReplace(denied)) throw denied;
             return Optional.empty();
         }
         return lookup(actionKey);
+    }
+
+    /**
+     * Whether {@code e} is Windows refusing a read of a name a concurrent store is replacing,
+     * after {@link AtomicWrites#readString} has already spent its retry budget on it.
+     *
+     * <p>True makes the lookup a miss. That is always safe and never a wrong hit — a miss costs
+     * the caller a re-run of an action whose record it could not read — where throwing costs the
+     * build a step for a race it did not cause. It is the read-side mirror of the store's own
+     * decision not to fail a step whose outputs are already in the CAS.
+     *
+     * <p>Warned rather than debugged, for the same reason the store side warns: with the budget
+     * {@link AtomicWrites} uses, reaching here means the contention outran a measurement that saw
+     * none, and a cache quietly missing is the kind of thing that reads as "jk got slower".
+     */
+    private static boolean deniedByAConcurrentReplace(IOException e) {
+        if (!Os.isWindows() || !AtomicWrites.isTransientWindowsLock(e)) return false;
+        Log.warn("jk: action-cache entry not read — a writer held the name", "path", String.valueOf(e.getMessage()));
+        return true;
     }
 
     /**
