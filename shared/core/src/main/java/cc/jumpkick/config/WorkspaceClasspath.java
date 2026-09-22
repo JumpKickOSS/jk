@@ -4,6 +4,8 @@ package cc.jumpkick.config;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
@@ -135,7 +137,8 @@ public final class WorkspaceClasspath {
         Map<String, Path> siblingTestClassesByModule = sib.testClassesByModule();
         Map<String, Path> siblingTestResourcesByModule = sib.testResourcesByModule();
         Map<String, Path> siblingFixturesByModule = sib.fixturesByModule();
-        Closure closure = workspaceClosure(project, scopes, sib);
+        Closure closure =
+                substitutedMembers(workspace.dir(), project, scopes, workspaceClosure(project, scopes, sib), sib);
         LinkedHashSet<String> visited = closure.visited();
         Set<String> testsKinds = closure.testsKinds();
         Set<String> fixturesKinds = closure.fixturesKinds();
@@ -243,7 +246,9 @@ public final class WorkspaceClasspath {
                 workspace.manifest(),
                 projectDir.toAbsolutePath().normalize());
         Map<Path, JkBuild> out = new LinkedHashMap<>();
-        for (String coord : workspaceClosure(project, scopes, sib).visited()) {
+        for (String coord : substitutedMembers(
+                        workspace.dir(), project, scopes, workspaceClosure(project, scopes, sib), sib)
+                .visited()) {
             Path dir = sib.dirByModule().get(coord);
             JkBuild manifest = sib.manifestByCoord().get(coord);
             if (dir != null && manifest != null) out.put(dir, manifest);
@@ -399,6 +404,72 @@ public final class WorkspaceClasspath {
             }
         }
         return new Closure(visited, testsKinds, fixturesKinds);
+    }
+
+    /**
+     * A published POM edge onto a workspace coordinate is not a lock row. The parent's dep list
+     * still names the member, and that member — plus the closure its own manifest declares — joins
+     * the classpath the same way a {@code workspace = true} edge would.
+     */
+    private static Closure substitutedMembers(
+            Path root, JkBuild project, Set<Scope> scopes, Closure closure, Siblings sib) {
+        Path lockFile = LockPaths.lockFile(root);
+        if (!Files.isRegularFile(lockFile)) return closure;
+        Lockfile lock;
+        try {
+            lock = LockfileReader.read(lockFile);
+        } catch (IOException | RuntimeException unreadable) {
+            return closure;
+        }
+        Map<String, Lockfile.Artifact> byName = new HashMap<>();
+        for (Lockfile.Artifact row : lock.artifacts()) {
+            byName.put(row.name(), row);
+            int colon = row.name().indexOf(':');
+            int second = colon < 0 ? -1 : row.name().indexOf(':', colon + 1);
+            if (second > 0) byName.putIfAbsent(row.name().substring(0, second), row);
+        }
+        LinkedHashSet<String> visited = new LinkedHashSet<>(closure.visited());
+        Queue<String> artifacts = new ArrayDeque<>();
+        Set<String> seenArtifacts = new HashSet<>();
+        for (Scope scope : scopes) {
+            for (Dependency dep : project.dependencies().of(scope)) {
+                if (dep.isWorkspace() || dep.isGit() || dep.isPath()) continue;
+                if (seenArtifacts.add(dep.module())) artifacts.add(dep.module());
+            }
+        }
+        Queue<String> members = new ArrayDeque<>();
+        while (!artifacts.isEmpty()) {
+            Lockfile.Artifact row = byName.get(artifacts.poll());
+            if (row == null) continue;
+            for (String depRef : row.deps()) {
+                String child = depRef;
+                int at = child.indexOf('@');
+                if (at >= 0) child = child.substring(0, at);
+                int colon = child.indexOf(':');
+                int second = colon < 0 ? -1 : child.indexOf(':', colon + 1);
+                String ga = second > 0 ? child.substring(0, second) : child;
+                if (sib.jarByModule().containsKey(ga)) {
+                    if (visited.add(ga)) members.add(ga);
+                    continue;
+                }
+                if (seenArtifacts.add(child)) artifacts.add(child);
+                if (!ga.equals(child) && seenArtifacts.add(ga)) artifacts.add(ga);
+            }
+        }
+        while (!members.isEmpty()) {
+            String coord = members.poll();
+            JkBuild sibBuild = sib.manifestByCoord().get(coord);
+            if (sibBuild == null || sib.relocating().contains(coord)) continue;
+            for (Scope scope : SIBLING_MODULE_SCOPES) {
+                for (Dependency dep : sibBuild.dependencies().of(scope)) {
+                    if (dep.optional()) continue;
+                    String depModule = resolveWorkspaceRef(dep.module(), sib.coordByName());
+                    if (sib.jarByModule().containsKey(depModule) && visited.add(depModule)) members.add(depModule);
+                }
+            }
+        }
+        if (visited.equals(closure.visited())) return closure;
+        return new Closure(visited, closure.testsKinds(), closure.fixturesKinds());
     }
 
     private static void addIfPresent(

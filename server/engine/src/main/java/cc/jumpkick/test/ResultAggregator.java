@@ -10,6 +10,7 @@ import static cc.jumpkick.test.TestEventFields.xmlName;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
@@ -43,6 +44,9 @@ final class ResultAggregator {
     private long succeeded;
     private long failed;
     private long skipped;
+    /** Tests {@code discovery_total} announced, or {@code -1} when that event never arrived. */
+    private int discoveredTests = -1;
+
     private final List<TestFailureInfo> failures = new ArrayList<>();
     // Tests whose `dynamic_registered` event we observed at execute-time
     // — i.e., @ParameterizedTest / @TestFactory / @TestTemplate /
@@ -123,8 +127,11 @@ final class ResultAggregator {
         String event = Jsonl.str(json, "event");
         if (event == null) return;
         switch (event) {
-            case "discovery_total" ->
-                listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
+            case "discovery_total" -> {
+                int tests = Jsonl.intValue(json, "tests", 0);
+                discoveredTests = tests;
+                listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), tests);
+            }
             case "dynamic_registered" -> {
                 if ("TEST".equals(Jsonl.str(json, "type"))) {
                     String uid = identityKey(json);
@@ -337,6 +344,15 @@ final class ResultAggregator {
         if (total == 0 && exitCode != 0) {
             throw TestLauncherFailure.runner(moduleLabel, exitCode, crashOutput == null ? "" : crashOutput, command);
         }
+        if (exitCode != 0 && failed == 0 && !cancelAfterEveryTest(total)) {
+            // A killed or crashed worker can have already reported passes. Those passes are not
+            // the suite. Counting them green would stamp the run and skip it next build. A cancel
+            // that arrives after every discovered test was reported did finish: that one stays green.
+            failed++;
+            total++;
+            failures.add(
+                    new TestFailureInfo(moduleLabel, "", "", "(test run)", "", "worker exited " + exitCode, "", 0));
+        }
         return new TestSummary(
                 total,
                 succeeded,
@@ -345,6 +361,11 @@ final class ResultAggregator {
                 executedClasses.size(),
                 List.copyOf(failures),
                 Map.copyOf(classWallMs));
+    }
+
+    /** True when cancel arrived only after discovery's tests had all been reported. */
+    private boolean cancelAfterEveryTest(long reported) {
+        return SessionCancel.cancelled() && discoveredTests > 0 && reported >= discoveredTests;
     }
 
     /** Snapshot of just the counters — used by the parallel-merge path. */

@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -299,10 +300,11 @@ public final class ActionCachePrune {
         /** Bytes freed by taking {@code entry}, or {@code 0} if the grace window protects it. */
         long evict(Entry entry) throws IOException {
             if (entry.deleted()) return 0L;
-            if (now - entry.mtime() < grace) return 0L;
+            long live = liveMtime(keysDir.resolve(entry.actionKey()), entry.mtime());
+            if (now - live < grace) return 0L;
+            if (!dryRun && !deleteKey(keysDir, tasksDir, entry.actionKey(), entry.taskId(), entry.superseded(), grace))
+                return 0L;
             entry.markDeleted();
-
-            if (!dryRun) deleteKey(keysDir, tasksDir, entry.actionKey(), entry.taskId());
             deletedKeys++;
             long bytes = entry.bytes();
 
@@ -576,26 +578,55 @@ public final class ActionCachePrune {
         return (int) removed.files();
     }
 
-    /** Unlink one entry's on-disk footprint: key record, task pointer, generation-list line. */
-    private static void deleteKey(Path keysDir, Path tasksDir, String actionKey, String taskId) throws IOException {
-        Files.deleteIfExists(keysDir.resolve(actionKey));
-        Path pointer = tasksDir.resolve(taskId);
-        if (Files.isRegularFile(pointer)) {
-            // Deliberately racy compare-and-delete: POSIX has no atomic "delete if contents match",
-            // and losing to a concurrent store only costs a re-run of one task.
-            String current = Files.readString(pointer, StandardCharsets.UTF_8).trim();
-            if (actionKey.equals(current)) Files.deleteIfExists(pointer);
-        }
+    /**
+     * Unlink one entry under the generation lock, after re-reading the key and its pointer.
+     * A key {@code stampUsed} or replaced inside the grace window stays, and so does a pointer that
+     * was republished onto a key the scan had classified as superseded. A cold key the budget
+     * chose — the pointer still names it, and the scan already knew that — is removed with its
+     * pointer. Returns false when the re-read says a concurrent store won.
+     */
+    static boolean deleteKey(
+            Path keysDir, Path tasksDir, String actionKey, String taskId, boolean superseded, long grace)
+            throws IOException {
+        Path keyFile = keysDir.resolve(actionKey);
         Path gens = HeavyActionPolicy.gensFile(tasksDir, taskId);
-        if (!Files.isRegularFile(gens)) return;
-        // Under the list's lock, like the store side: a second engine sharing this cache root holds
-        // neither the cache gate nor .prune.lock, so an unlocked fold here would lose its line.
+        boolean[] removed = {false};
         FileLocks.withLock(HeavyActionPolicy.gensLock(gens), () -> {
-            List<HeavyActionPolicy.Generation> kept = new ArrayList<>();
-            for (HeavyActionPolicy.Generation g : HeavyActionPolicy.readGenerations(gens)) {
-                if (!g.key().equals(actionKey)) kept.add(g);
+            if (Files.isRegularFile(keyFile)) {
+                long live = Files.getLastModifiedTime(keyFile).toMillis();
+                if (Clock.SYSTEM.millis() - live < grace) return;
             }
-            HeavyActionPolicy.writeGenerations(gens, kept);
+            Path pointer = tasksDir.resolve(taskId);
+            boolean named = false;
+            if (Files.isRegularFile(pointer)) {
+                String current =
+                        Files.readString(pointer, StandardCharsets.UTF_8).trim();
+                named = actionKey.equals(current);
+            }
+            // The scan saw a dead key. A store that has since aimed the pointer at it republished it.
+            if (superseded && named) return;
+            if (Files.isRegularFile(gens)) {
+                List<HeavyActionPolicy.Generation> kept = new ArrayList<>();
+                for (HeavyActionPolicy.Generation g : HeavyActionPolicy.readGenerations(gens)) {
+                    if (!g.key().equals(actionKey)) kept.add(g);
+                }
+                HeavyActionPolicy.writeGenerations(gens, kept);
+            }
+            Files.deleteIfExists(keyFile);
+            if (named) Files.deleteIfExists(pointer);
+            removed[0] = true;
         });
+        return removed[0];
+    }
+
+    /** The key file's mtime when it is still there, otherwise the mtime captured at scan time. */
+    private static long liveMtime(Path keyFile, long scanned) {
+        try {
+            if (Files.isRegularFile(keyFile))
+                return Files.getLastModifiedTime(keyFile).toMillis();
+        } catch (IOException ignored) {
+            // keep the scan-time mtime
+        }
+        return scanned;
     }
 }

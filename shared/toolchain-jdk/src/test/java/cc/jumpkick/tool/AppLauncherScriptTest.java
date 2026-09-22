@@ -2,7 +2,9 @@
 package cc.jumpkick.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.Coordinate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -37,6 +39,27 @@ class AppLauncherScriptTest {
     void a_jdk_with_no_release_file_is_read_as_current() {
         assertThat(AppLauncher.featureVersion(tmp.resolve("missing"))).isZero();
         assertThat(AppLauncher.jvmFlags(tmp.resolve("missing"))).startsWith(AppLauncher.NATIVE_ACCESS_FLAG);
+    }
+
+    @Test
+    void a_main_class_that_is_not_a_binary_name_is_not_written_into_a_script() throws Exception {
+        Path jdk = jdk("25");
+        assertThatThrownBy(() -> AppLauncher.renderScript(jdk, "com.example.App & calc.exe", List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        String script = AppLauncher.renderScript(jdk, "com.example.App", List.of(tmp.resolve("a.jar")));
+        assertThat(script).contains("com.example.App");
+        assertThat(script).doesNotContain("&");
+
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Path envs = Files.createDirectories(tmp.resolve("envs"));
+        ToolEnv bad =
+                new ToolEnv("tool", Coordinate.of("com.example", "tool", "1"), "com.example.App & calc.exe", List.of());
+        assertThatThrownBy(() -> ToolLauncher.install(envs, bin, jdk, bad))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(Files.list(bin)).isEmpty();
+        ToolEnv good = new ToolEnv("tool", Coordinate.of("com.example", "tool", "1"), "com.example.App", List.of());
+        Path launcher = ToolLauncher.install(envs, bin, jdk, good);
+        assertThat(Files.readString(launcher)).contains("com.example.App").doesNotContain("&");
     }
 
     @Test

@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Catalog of the build-tool distributions installed under {@code $JK_STORE_DIR/tools/}. Layout:
@@ -45,9 +47,37 @@ public final class ToolRegistry {
         return toolsRoot;
     }
 
+    /**
+     * Why {@code version} cannot name a directory under the tools root, or null when it is one
+     * path segment ({@code 3.9.16}, {@code wrapper}). A version is never a relative path.
+     */
+    public static @Nullable String invalidVersion(@Nullable String version) {
+        if (version == null || version.isBlank()) return "tool version is empty";
+        String v = version.trim();
+        if (v.equals(".") || v.equals("..") || v.indexOf('/') >= 0 || v.indexOf('\\') >= 0 || v.indexOf(':') >= 0) {
+            return "tool version is not a single directory name: " + version;
+        }
+        try {
+            Path p = Path.of(v);
+            if (p.isAbsolute() || p.getNameCount() != 1) {
+                return "tool version is not a single directory name: " + version;
+            }
+        } catch (InvalidPathException e) {
+            return "tool version is not a single directory name: " + version;
+        }
+        return null;
+    }
+
+    /** {@link #invalidVersion} as an exception, for callers that are about to resolve a path. */
+    public static String requireVersion(String version) {
+        String why = invalidVersion(version);
+        if (why != null) throw new IllegalArgumentException(why);
+        return version.trim();
+    }
+
     /** Installation directory for a given tool+version, whether or not it exists. */
     public Path installDir(BuildTool tool, String version) {
-        return toolsRoot.resolve(tool.slug()).resolve(version);
+        return toolsRoot.resolve(tool.slug()).resolve(requireVersion(version));
     }
 
     /**
@@ -56,7 +86,7 @@ public final class ToolRegistry {
      * so it survives a purge of that directory and the next download is verified against it.
      */
     public Path acceptedDigest(BuildTool tool, String version) {
-        return toolsRoot.resolve(tool.slug()).resolve(version + ".accepted.sha256");
+        return toolsRoot.resolve(tool.slug()).resolve(requireVersion(version) + ".accepted.sha256");
     }
 
     public Optional<InstalledTool> find(BuildTool tool, String version) {

@@ -321,22 +321,39 @@ public final class TaskForecaster {
     }
 
     /** Wait for every lane of a wave, re-raising the first failure as the serial walk would have. */
-    private static void joinWave(List<Future<?>> pending) {
+    static void joinWave(List<Future<?>> pending) {
         RuntimeException failure = null;
         for (Future<?> f : pending) {
             try {
                 f.get();
             } catch (InterruptedException e) {
+                cancelWave(pending);
                 Thread.currentThread().interrupt();
                 throw new CancellationException("forecast interrupted");
+            } catch (CancellationException e) {
+                // A future completed by cancel throws this directly, not wrapped.
+                cancelWave(pending);
+                throw e;
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause() == null ? e : e.getCause();
                 if (cause instanceof Error error) throw error;
+                if (cause instanceof CancellationException cancelled) {
+                    cancelWave(pending);
+                    throw cancelled;
+                }
                 if (failure != null) continue;
                 failure = cause instanceof RuntimeException runtime ? runtime : new IllegalStateException(cause);
             }
         }
+        if (failure instanceof CancellationException cancelled) {
+            cancelWave(pending);
+            throw cancelled;
+        }
         if (failure != null) throw failure;
+    }
+
+    private static void cancelWave(List<Future<?>> pending) {
+        for (Future<?> rest : pending) rest.cancel(true);
     }
 
     /**

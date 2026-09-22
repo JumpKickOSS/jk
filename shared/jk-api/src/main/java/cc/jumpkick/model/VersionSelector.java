@@ -65,7 +65,15 @@ public sealed interface VersionSelector {
             if ("snapshot".equalsIgnoreCase(inner)) return new Snapshot(spec);
             return new Tilde(spec, inner);
         }
-        if (trimmed.startsWith(">") || trimmed.startsWith("<") || trimmed.contains(",")) {
+        if (trimmed.startsWith("[") && trimmed.endsWith("]") && !trimmed.contains(",")) {
+            String inner = trimmed.substring(1, trimmed.length() - 1).trim();
+            if (!inner.isEmpty()) return new Exact(spec, inner);
+        }
+        if (trimmed.startsWith(">")
+                || trimmed.startsWith("<")
+                || trimmed.startsWith("[")
+                || trimmed.startsWith("(")
+                || trimmed.contains(",")) {
             return new Range(spec);
         }
         if (trimmed.startsWith("=")) {

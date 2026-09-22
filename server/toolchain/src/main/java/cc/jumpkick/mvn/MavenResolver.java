@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
+import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.compat.WrapperDistribution;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.version.Versions;
@@ -60,7 +61,7 @@ public final class MavenResolver {
 
     /** The distribution for an explicit Maven version; blank means {@link #DEFAULT_VERSION}. */
     public static ToolDistribution distributionFor(@Nullable String version) {
-        String v = version == null || version.isBlank() ? DEFAULT_VERSION : version.trim();
+        String v = version == null || version.isBlank() ? DEFAULT_VERSION : ToolRegistry.requireVersion(version);
         URI uri = URI.create(DEFAULT_BASE + v + "/apache-maven-" + v + "-bin.zip");
         return new ToolDistribution(BuildTool.MAVEN, v, uri, "zip");
     }
@@ -75,6 +76,9 @@ public final class MavenResolver {
         URI uri = WrapperDistribution.secureUrl(url, file);
         String archiveType = url.endsWith(".tar.gz") ? "tar.gz" : "zip";
         String version = parseVersion(uri).orElse("wrapper");
+        if (ToolRegistry.invalidVersion(version) != null) {
+            throw new IOException("wrapper distribution version is not a single directory name: " + version);
+        }
         String sha256 = props.getProperty("distributionSha256Sum");
         return new ToolDistribution(
                 BuildTool.MAVEN, version, uri, archiveType, sha256 == null || sha256.isBlank() ? null : sha256.trim());

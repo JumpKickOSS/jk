@@ -678,13 +678,15 @@ final class PlannerGuards {
         Optional<ActionCache.ActionRecord> verdict = useCache ? cache.lookup(key) : Optional.empty();
         if (verdict.isPresent()) {
             // The lane's summary and observations ride the verdict, so a checkout that never ran
-            // the lane still has the evidence the tree lane's no-bite judgement reads.
-            if (!verdict.get().outputs().isEmpty()) {
-                cache.restoreArtifacts(verdict.get(), RuleSummaries.dir(g.root()));
+            // the lane still has the evidence the tree lane's no-bite judgement reads. A restore
+            // that fails is a miss: the key would otherwise stay a permanent green with no evidence.
+            boolean restored = verdict.get().outputs().isEmpty()
+                    || cache.restoreArtifacts(verdict.get(), RuleSummaries.dir(g.root()));
+            if (restored) {
+                ctx.label(rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)");
+                ctx.cached();
+                return;
             }
-            ctx.label(rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)");
-            ctx.cached();
-            return;
         }
         if (noClasses) {
             ctx.label("no classes · nothing to examine");

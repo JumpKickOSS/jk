@@ -17,6 +17,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.Sleepers;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.transcript.SessionStartLine;
@@ -472,15 +473,18 @@ class JobEnvelopeTest {
      * and the project fingerprint released so the next same-project build is not refused.
      */
     @Test
-    void a_cancelled_detached_job_whose_body_ignores_interrupts_is_settled_within_the_grace() throws Exception {
+    void a_cancelled_detached_job_whose_body_ignores_interrupts_is_settled_within_the_grace(@TempDir Path dir)
+            throws Exception {
+        Path checkout = Files.createDirectories(dir.resolve("proj"));
+        String project = checkout.toString().replace('\\', '/');
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        host.accumulator = new BuildAccumulator("build", project, null, "web");
         JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 100L, 0L));
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
 
         long jid = env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                "{\"type\":\"build-request\",\"dir\":\"" + project + "\"}",
                 JobRequest.workspace("build", "jk-test-", (line, tok, w) -> {
                     started.countDown();
                     // The shape of a body parked in a non-interruptible section: the interrupt
@@ -505,10 +509,19 @@ class JobEnvelopeTest {
 
             Await.until(Duration.ofSeconds(5), () -> host.journalWritten, () -> "the detached joiner never settled");
             assertThat(host.journalCancelled).isTrue();
-            assertThat(host.inFlight.get(jid))
-                    .as("the fingerprint is released although the body is still wedged")
-                    .isEmpty();
             assertThat(host.events).anyMatch(e -> e.contains("request-finish") && e.contains("\"cancelled\":true"));
+            assertThat(host.inFlight.get(jid))
+                    .as("the checkout slot stays held while the body is still in its finally")
+                    .isPresent();
+            assertThat(FileLocks.tryHold(BuildSlot.lockFile(checkout)))
+                    .as("a second admit of this checkout is refused")
+                    .isInstanceOf(FileLocks.Held.class);
+            release.countDown();
+            Await.until(
+                    Duration.ofSeconds(5), () -> host.inFlight.get(jid).isEmpty(), () -> "the runner never released");
+            FileLocks.Probe free = FileLocks.tryHold(BuildSlot.lockFile(checkout));
+            assertThat(free).isInstanceOf(FileLocks.Hold.class);
+            ((FileLocks.Hold) free).close();
         } finally {
             release.countDown();
         }

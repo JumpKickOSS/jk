@@ -148,7 +148,7 @@ public final class ToolLauncher {
         cmd.addAll(jvmArgs);
         cmd.add("-cp");
         cmd.add(Classpaths.join(env.classpath()));
-        cmd.add(env.mainClass());
+        cmd.add(mainClass(env.mainClass()));
         cmd.addAll(args);
         return new ProcessBuilder(cmd).inheritIO().start().waitFor();
     }
@@ -172,7 +172,7 @@ public final class ToolLauncher {
             sb.append("  ").append(shellQuote(a)).append(" \\\n");
         }
         sb.append("  -cp ").append(shellQuote(Classpaths.join(env.classpath()))).append(" \\\n");
-        sb.append("  ").append(env.mainClass()).append(" \"$@\"\n");
+        sb.append("  ").append(shellQuote(mainClass(env.mainClass()))).append(" \"$@\"\n");
         return sb.toString();
     }
 
@@ -189,7 +189,7 @@ public final class ToolLauncher {
             sb.append(" \"").append(a).append('"');
         }
         sb.append(" -cp \"").append(Classpaths.join(env.classpath())).append("\" ");
-        sb.append(env.mainClass()).append(" %*\r\n");
+        sb.append('"').append(mainClass(env.mainClass())).append("\" %*\r\n");
         return sb.toString();
     }
 
@@ -234,6 +234,12 @@ public final class ToolLauncher {
 
     private static String jsonString(String s) {
         return Jsonl.quote(s);
+    }
+
+    /** A Java binary name, or the kotlin-script sentinel this launcher does not exec as a class. */
+    private static String mainClass(String mainClass) {
+        if ("kotlin-script".equals(mainClass)) return mainClass;
+        return JavaMain.require(mainClass);
     }
 
     private static String shellQuote(String value) {

@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
@@ -541,5 +544,63 @@ class WorkspaceClasspathTest {
         assertThat(runtime.siblingClosureJars())
                 .as("the jar never rides into the consumer's package or run")
                 .isEmpty();
+    }
+
+    /**
+     * A published coordinate in the lock names a workspace member. The member's classes and the
+     * dependencies its own manifest locked join the consumer; the published artifact does not.
+     */
+    @Test
+    void a_lock_edge_onto_a_member_puts_that_member_on_the_compile_classpath(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        module(root, "lib", """
+                [dependencies]
+                leaf = "com.foo:leaf:1.0"
+                """);
+        module(root, "app", """
+                [dependencies]
+                middle = "com.foo:middle:1.0"
+                """);
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "test",
+                        "pubgrub-v1",
+                        List.of(
+                                new Lockfile.Artifact(
+                                        "com.foo:middle:jar:",
+                                        "1.0",
+                                        "central",
+                                        null,
+                                        null,
+                                        List.of(Scope.MAIN),
+                                        List.of("com.ex:lib@0.1.0")),
+                                new Lockfile.Artifact(
+                                        "com.foo:leaf:jar:",
+                                        "1.0",
+                                        "central",
+                                        null,
+                                        null,
+                                        List.of(Scope.MAIN),
+                                        List.of()))),
+                root.resolve("jk-lock.toml"));
+        JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
+        var result = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.MAIN));
+        assertThat(result.siblingCoords()).containsExactly("com.ex:lib");
+        assertThat(result.siblingClosureClasses())
+                .anyMatch(p -> p.toString().replace('\\', '/').contains("/lib/"));
+        assertThat(result.siblingLocks()).singleElement().satisfies(lock -> assertThat(
+                        lock.build().dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .contains("com.foo:leaf"));
+        assertThat(result.siblingCoords()).doesNotContain("com.foo:published-only");
     }
 }

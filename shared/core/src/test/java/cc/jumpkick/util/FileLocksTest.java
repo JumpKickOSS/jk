@@ -63,6 +63,21 @@ class FileLocksTest {
         assertThat(probeFromAnotherProcess(lock)).isEqualTo("free");
     }
 
+    /** Describing the holder must not open a second channel: that close drops the POSIX lock. */
+    @Test
+    void describing_the_holder_keeps_the_os_lock(@TempDir Path dir) throws Exception {
+        Path lock = dir.resolve("build.lock");
+        FileLocks.Hold hold = (FileLocks.Hold) FileLocks.tryHold(lock);
+        hold.write("pid=1\nbuild=7\n");
+        try {
+            assertThat(FileLocks.describeHolder(lock)).contains("build=7");
+            assertThat(probeFromAnotherProcess(lock)).isEqualTo("held");
+        } finally {
+            hold.close();
+        }
+        assertThat(probeFromAnotherProcess(lock)).isEqualTo("free");
+    }
+
     /** A hold and a fold on one file from one JVM share the channel: the fold runs under the hold. */
     @Test
     void with_lock_runs_under_this_jvms_own_hold(@TempDir Path dir) throws Exception {
