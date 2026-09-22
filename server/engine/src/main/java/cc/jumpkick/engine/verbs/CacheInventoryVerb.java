@@ -52,10 +52,12 @@ public final class CacheInventoryVerb implements HostedVerb {
                 String query = wire.query();
                 String cache = wire.cache();
                 String store = wire.store();
+                String m2 = wire.m2();
                 CacheInventoryOps.Request req = new CacheInventoryOps.Request(
                         query,
                         cache == null || cache.isBlank() ? null : Path.of(cache),
                         store == null || store.isBlank() ? null : Path.of(store),
+                        m2 == null || m2.isBlank() ? null : Path.of(m2),
                         wire.terms(),
                         wire.coords(),
                         wire.dryRun());

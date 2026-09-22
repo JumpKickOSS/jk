@@ -5,6 +5,7 @@ import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import cc.jumpkick.wire.protocol.CacheInventoryRequest;
@@ -190,6 +191,9 @@ final class EngineReads {
                                 query,
                                 cache == null ? "" : cache.toString(),
                                 store == null ? "" : store.toString(),
+                                // The client's Maven local repo, for the same reason it sends its
+                                // store: it is the tree this machine's `jk cache` reports on.
+                                M2Dirs.localRepository().toString(),
                                 terms,
                                 coords,
                                 dryRun)
