@@ -170,6 +170,42 @@ class TierPartitionTest {
                 .contains("p.BothTest#d @Tag[network, slow] — no tier runs it"));
     }
 
+    /**
+     * A {@code [test] serial-tags} entry says how a class is scheduled, not which tier runs it, so
+     * the ownership arm lets it through — while a tag that is simply unknown still fails.
+     */
+    @Test
+    void a_declared_scheduling_tag_is_not_a_routing_tag(@TempDir Path root) throws Exception {
+        TierPartition.Table t = table(root, """
+                [test]
+                exclude-tags = ["slow"]
+                serial-tags = ["serial"]
+
+                [profiles.slow]
+                include-tags = ["slow"]
+                """);
+        assertThat(t.scheduling()).containsExactly("serial");
+        assertThat(t.vocabulary())
+                .as("a scheduling tag is not part of the tier vocabulary")
+                .containsExactly("slow");
+
+        ClassFacts alone = tagged("HogTest", new String[] {"slow", "serial"}, Map.of());
+        assertThat(TierPartition.tagFaults(t, index(alone), "m"))
+                .as("`serial` beside a tier tag routes on the tier tag")
+                .isEmpty();
+
+        ClassFacts fastAndSerial = tagged("FastHogTest", new String[] {"serial"}, Map.of());
+        assertThat(TierPartition.tagFaults(t, index(fastAndSerial), "m"))
+                .as("scheduling alone routes as untagged does, into the fast tier")
+                .isEmpty();
+
+        ClassFacts undeclared = tagged("TypoTest", new String[] {"seriall"}, Map.of());
+        assertThat(TierPartition.tagFaults(t, index(undeclared), "m"))
+                .as("a tag that is neither a tier nor a declared scheduling tag is still unowned")
+                .singleElement()
+                .satisfies(f -> assertThat(f.observed()).contains("[seriall]"));
+    }
+
     @Test
     void a_rule_may_not_take_a_validation_code(@TempDir Path root) throws Exception {
         Files.writeString(

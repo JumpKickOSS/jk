@@ -126,7 +126,7 @@ public final class NativeVerb implements HostedVerb {
         }
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(entryDir, entry);
         Map<Path, JkBuild> ordered = new LinkedHashMap<>();
-        for (Path dir : BuildGraph.orderModules(modules)) ordered.put(dir, modules.get(dir));
+        for (Path dir : BuildGraph.orderModules(entryDir, modules)) ordered.put(dir, modules.get(dir));
         return ordered;
     }
 

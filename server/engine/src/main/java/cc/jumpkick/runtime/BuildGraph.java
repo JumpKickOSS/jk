@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import java.io.IOException;
@@ -176,6 +177,14 @@ public final class BuildGraph {
         return ModuleOrder.orderModules(modulesByDir);
     }
 
+    /**
+     * As {@link #orderModules(Map)} for a caller that knows the workspace root, so the order also
+     * carries the members a published POM edge substitutes.
+     */
+    public static List<Path> orderModules(Path root, Map<Path, JkBuild> modulesByDir) {
+        return ModuleOrder.orderModules(root, modulesByDir);
+    }
+
     /** See {@link cc.jumpkick.config.ModuleOrder#modulePrereqs} — the one shared edge computation. */
     private static Set<Path> modulePrereqs(
             Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
@@ -242,7 +251,7 @@ public final class BuildGraph {
             }
             for (var e : modules.entrySet()) {
                 Path moduleDir = canonical(e.getKey());
-                addModuleEdges(moduleDir, e.getValue(), dirByCoord, dirByName);
+                addModuleEdges(rootDir, moduleDir, e.getValue(), dirByCoord, dirByName);
             }
             // The root is a first-class unit whose inter-unit deps are explicit
             // (Cargo/uv style), so its edges come from its declared workspace deps
@@ -250,7 +259,7 @@ public final class BuildGraph {
             // or neither. dirByName/dirByCoord already include the root (added above),
             // so member->root deps resolve to an edge here too.
             if (rootBuildable) {
-                addModuleEdges(rootDir, root, dirByCoord, dirByName);
+                addModuleEdges(rootDir, rootDir, root, dirByCoord, dirByName);
             }
             // `after-build` means after every member, so the sourceless root depends on all of
             // them. A root that builds nothing publishes nothing, so no member can depend back on
@@ -262,14 +271,22 @@ public final class BuildGraph {
             }
         }
 
+        /** Every scope: the default workspace build-order edge set. */
+        private static final List<Scope> ALL_SCOPES = List.of(Scope.values());
+
         /**
          * Sibling-dep + {@code [build].order-after} prereq edges. Delegates edge resolution to the
          * shared {@link BuildGraph#modulePrereqs} so the graph and {@link BuildGraph#orderModules}
          * stay in lock-step.
          */
         private void addModuleEdges(
-                Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
+                Path rootDir, Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
             for (Path prereq : modulePrereqs(moduleDir, m, dirByCoord, dirByName)) {
+                addEdge(moduleDir, prereq);
+            }
+            // A published POM edge onto a member puts that member's output on this module's
+            // classpath without any declared dependency naming it; the wave has to know.
+            for (Path prereq : ModuleOrder.substitutedPrereqs(rootDir, moduleDir, m, ALL_SCOPES, dirByCoord)) {
                 addEdge(moduleDir, prereq);
             }
         }

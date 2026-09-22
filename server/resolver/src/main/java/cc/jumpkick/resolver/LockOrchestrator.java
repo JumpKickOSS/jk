@@ -23,7 +23,7 @@ import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -69,8 +69,8 @@ public final class LockOrchestrator {
     /** The workspace members behind a merged manifest, each with its own effective manifest. */
     private List<Member> members = List.of();
 
-    /** The {@code group:artifact} coordinates the workspace builds: its members' and the root's own. */
-    private Set<String> workspaceModules = Set.of();
+    /** The {@code group:artifact} coordinates the workspace builds, each at its member's version. */
+    private Map<String, String> workspaceModules = Map.of();
 
     /** URL → the repository a dependency POM declared during {@link #lock}, with the policy the POM wrote. */
     private final Map<String, Pom.Repository> declaredRepositories = new ConcurrentHashMap<>();
@@ -529,11 +529,19 @@ public final class LockOrchestrator {
      * group:name} and, for a workspace root, the root's own. A standalone project builds one
      * coordinate, its own.
      */
-    private Set<String> workspaceModules(JkBuild project) {
-        Set<String> out = new LinkedHashSet<>();
-        for (Member member : members) out.add(coordinateOf(member.manifest()));
-        if (project.isWorkspaceRoot() || members.isEmpty()) out.add(coordinateOf(project));
-        return Set.copyOf(out);
+    private Map<String, String> workspaceModules(JkBuild project) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Member member : members) out.put(coordinateOf(member.manifest()), versionOf(member.manifest()));
+        if (project.isWorkspaceRoot() || members.isEmpty()) {
+            out.putIfAbsent(coordinateOf(project), versionOf(project));
+        }
+        return Map.copyOf(out);
+    }
+
+    /** The member's own version, which is what stands in for whatever a POM edge asked for. */
+    private static String versionOf(JkBuild manifest) {
+        String version = manifest.project().version();
+        return version == null || version.isBlank() ? "0.0.0" : version;
     }
 
     private static String coordinateOf(JkBuild manifest) {

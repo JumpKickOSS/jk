@@ -73,6 +73,19 @@ class LockOrchestratorWorkspaceSubstitutionTest {
                 """);
         upstream.jar("com.example", "lib", "1.0");
         upstream.leaf("com.foo", "published-only", "1.0");
+        // A second publisher asking for the same member coordinate at a different version.
+        upstream.metadata("com.foo", "other", "1.0");
+        upstream.pom("com.foo", "other", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>other</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.example</groupId><artifactId>lib</artifactId><version>2.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("com.foo", "other", "1.0");
     }
 
     /**
@@ -172,6 +185,28 @@ class LockOrchestratorWorkspaceSubstitutionTest {
     private RepoGroup repoGroup(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
         return RepoGroup.of(new MavenRepo("local", http.base(), new Http(), cas));
+    }
+
+    /**
+     * Two published POMs asking for the member at different versions. The member answers both, so
+     * neither edge constrains it: a coordinate the lock never carries a row for must not surface
+     * as a version conflict the user has no way to resolve.
+     */
+    @Test
+    void two_pom_edges_at_different_versions_onto_one_member_do_not_conflict(@TempDir Path tempDir) throws Exception {
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        Dependency other = new Dependency("com.foo:other", VersionSelector.parse("=1.0"));
+        JkBuild lib = manifest("lib", Map.of());
+        JkBuild app = manifest("app", Map.of(Scope.MAIN, List.of(Dependency.workspace("lib"), middle, other)));
+        List<String> notes = new ArrayList<>();
+
+        Lockfile lock = lockWorkspace(tempDir, List.of(lib, app), notes);
+
+        assertThat(lock.artifacts())
+                .extracting(Lockfile.Artifact::packageKey)
+                .contains("com.foo:middle:jar:", "com.foo:other:jar:")
+                .doesNotContain("com.example:lib:jar:");
+        assertThat(notes).anySatisfy(line -> assertThat(line).contains("com.example:lib, which this workspace builds"));
     }
 
     private static JkBuild manifest(String name, Map<Scope, List<Dependency>> byScope) {

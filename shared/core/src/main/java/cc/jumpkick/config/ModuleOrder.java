@@ -29,6 +29,14 @@ public final class ModuleOrder {
      * declaration order so the build still tries to make progress.
      */
     public static List<Path> orderModules(Map<Path, JkBuild> modulesByDir) {
+        return orderModules(null, modulesByDir);
+    }
+
+    /**
+     * As {@link #orderModules(Map)}, also drawing the edges a published POM edge onto a member
+     * implies. {@code root} is the workspace root whose lock records them; null skips that read.
+     */
+    public static List<Path> orderModules(@Nullable Path root, Map<Path, JkBuild> modulesByDir) {
         Map<String, Path> dirByCoord = new LinkedHashMap<>();
         Map<String, Path> dirByName = new LinkedHashMap<>(); // for workspace: references
         for (var e : modulesByDir.entrySet()) {
@@ -37,7 +45,9 @@ public final class ModuleOrder {
         }
         Map<Path, Set<Path>> edges = new LinkedHashMap<>();
         for (var e : modulesByDir.entrySet()) {
-            edges.put(e.getKey(), modulePrereqs(e.getKey(), e.getValue(), dirByCoord, dirByName));
+            Set<Path> prereqs = new LinkedHashSet<>(modulePrereqs(e.getKey(), e.getValue(), dirByCoord, dirByName));
+            prereqs.addAll(substitutedPrereqs(root, e.getKey(), e.getValue(), List.of(Scope.values()), dirByCoord));
+            edges.put(e.getKey(), prereqs);
         }
         List<Path> sorted = new ArrayList<>(kahnSort(modulesByDir.keySet(), edges));
         if (sorted.size() != modulesByDir.size()) {
@@ -69,6 +79,22 @@ public final class ModuleOrder {
             hit = coordinate != null ? byCoord.get(coordinate) : byName.get(d.workspaceName());
         }
         return hit;
+    }
+
+    /**
+     * Prereq dirs for the members {@code m} reaches only through a published POM edge. The
+     * resolver serves that edge from the member, so the member's output is on this module's
+     * classpath and has to be built first — nothing in {@code m}'s own dependencies says so.
+     */
+    public static Set<Path> substitutedPrereqs(
+            @Nullable Path root, Path moduleDir, JkBuild m, Collection<Scope> scopes, Map<String, Path> dirByCoord) {
+        if (root == null) return Set.of();
+        Set<Path> out = new LinkedHashSet<>();
+        for (String member : PomSubstitution.membersBehindPublishedEdges(root, m, scopes, dirByCoord.keySet())) {
+            Path dir = dirByCoord.get(member);
+            if (dir != null && !dir.equals(moduleDir)) out.add(dir);
+        }
+        return out;
     }
 
     /**
