@@ -463,6 +463,28 @@ class ActionCachePruneTest {
     }
 
     @Test
+    void a_task_with_no_generation_list_leaves_no_lock_behind(@TempDir Path root) throws Exception {
+        Path keys = root.resolve("actions/keys");
+        Path tasks = root.resolve("actions/tasks");
+        Files.createDirectories(keys);
+        Files.createDirectories(tasks);
+        Path keyFile = keys.resolve("key-plain");
+        Files.writeString(keyFile, "KEY key-plain\n");
+        backdate(keyFile, OLD);
+        Files.writeString(tasks.resolve("compile-main@a"), "key-plain");
+
+        assertThat(ActionCachePrune.deleteKey(keys, tasks, "key-plain", "compile-main@a", false, FRESH))
+                .isTrue();
+        assertThat(keyFile).doesNotExist();
+        assertThat(tasks.resolve("compile-main@a")).doesNotExist();
+        // The pass shrinks the tasks directory; it must not seed it with a lock for a list that
+        // does not exist and a store side that never takes one.
+        try (var listing = Files.list(tasks)) {
+            assertThat(listing).isEmpty();
+        }
+    }
+
+    @Test
     void a_key_that_is_still_dead_is_unlinked_only_after_the_pointer_is_reread(@TempDir Path root) throws Exception {
         Path keys = root.resolve("actions/keys");
         Path tasks = root.resolve("actions/tasks");

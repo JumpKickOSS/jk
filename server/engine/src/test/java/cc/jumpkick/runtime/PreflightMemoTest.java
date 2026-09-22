@@ -674,7 +674,7 @@ class PreflightMemoTest {
     }
 
     @Test
-    void a_member_rules_edit_dirties_only_that_module(@TempDir Path tmp) throws Exception {
+    void a_member_rules_edit_dirties_that_module_and_the_root_lane(@TempDir Path tmp) throws Exception {
         writeWorkspace(tmp);
         Files.writeString(tmp.resolve("jk-guards.toml"), "# root\n");
         Files.writeString(tmp.resolve("a/jk-guards.toml"), "member = \"a\"\n");
@@ -691,7 +691,11 @@ class PreflightMemoTest {
         Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
         assertThat(hit).isPresent();
         Path a = moduleDir(graph, "a");
-        assertThat(hit.get().dirty()).containsExactly(a);
+        Path b = moduleDir(graph, "b");
+        // The root's lanes load the merged set, so a member's edit reaches them too. b's do not.
+        assertThat(hit.get().dirty())
+                .containsExactlyInAnyOrder(a, tmp.toAbsolutePath().normalize())
+                .doesNotContain(b);
     }
 
     @Test

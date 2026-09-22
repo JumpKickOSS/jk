@@ -11,7 +11,6 @@ import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
-import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
@@ -281,8 +280,8 @@ public final class PomImporter {
                 mapDependencies(em, report, processorPaths.all(), hoisted, platformSupplied, bomSupplied);
         mapProcessorPaths(processorPaths, byScope, report);
         ProfileMapping.Mapped profiles = ProfileMapping.map(em, report, profileBoms(resolver, report));
-        Map<String, String> renamedHandles = addOptionalDeps(byScope, profiles.optionalDeps());
-        Features profileFeatures = renameFeatureHandles(profiles.features(), renamedHandles);
+        var renamedHandles = OptionalProfileDeps.add(byScope, profiles.optionalDeps(), profiles.optionalDepFeatures());
+        Features profileFeatures = OptionalProfileDeps.renameHandles(profiles.features(), renamedHandles);
         List<Repository> repositories = new ArrayList<>(em.model().getRepositories());
         repositories.addAll(profiles.repositories());
         List<RepositorySpec> repos = withSettingsRepositories(mapRepositories(repositories, report), settings);
@@ -812,61 +811,6 @@ public final class PomImporter {
             }
             byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(DependencyMapping.toDependency(path));
         }
-    }
-
-    /**
-     * The optional deps inactive profiles contribute, after the POM's own handles are settled: a
-     * handle already taken in the scope gets a numeric suffix, the same rule as
-     * {@link #uniquifyHandles}, so the feature's list still names what was written. A profile
-     * dependency with no version of its own that names a coordinate the POM already declares is
-     * Maven's merge of the two — the profile's row over the declared one, the version kept — so it
-     * takes the declared version rather than {@code unresolved}.
-     */
-    private static Map<String, String> addOptionalDeps(
-            Map<Scope, List<Dependency>> byScope, Map<Scope, List<Dependency>> optional) {
-        Map<String, String> renamed = new LinkedHashMap<>();
-        List<Dependency> declared = new ArrayList<>();
-        byScope.values().forEach(declared::addAll);
-        for (Map.Entry<Scope, List<Dependency>> e : optional.entrySet()) {
-            List<Dependency> deps = byScope.computeIfAbsent(e.getKey(), s -> new ArrayList<>());
-            Set<String> seen = new HashSet<>();
-            for (Dependency d : deps) seen.add(d.library());
-            for (Dependency d : e.getValue()) {
-                String handle = d.library();
-                for (int n = 2; !seen.add(handle); n++) handle = d.library() + "-" + n;
-                if (!handle.equals(d.library())) renamed.put(d.library(), handle);
-                deps.add(declaredVersion(d, declared).withLibrary(handle).withOptional(true));
-            }
-        }
-        return renamed;
-    }
-
-    /** A renamed optional handle is the one the feature lists, so the feature still gates that row. */
-    private static Features renameFeatureHandles(Features features, Map<String, String> renamed) {
-        if (renamed.isEmpty() || features == null) return features;
-        Map<String, Feature> byName = new LinkedHashMap<>();
-        for (var entry : features.byName().entrySet()) {
-            Feature feature = entry.getValue();
-            List<String> deps = new ArrayList<>();
-            for (String dep : feature.deps()) deps.add(renamed.getOrDefault(dep, dep));
-            byName.put(entry.getKey(), new Feature(feature.name(), deps, feature.features()));
-        }
-        return new Features(byName, features.defaults());
-    }
-
-    /** {@code d} at the version of the declared dependency naming its coordinate, when {@code d} has none. */
-    private static Dependency declaredVersion(Dependency d, List<Dependency> declared) {
-        if (!DependencyMapping.UNRESOLVED.equals(d.version().raw())) return d;
-        for (Dependency existing : declared) {
-            if (existing.group().equals(d.group())
-                    && existing.module().equals(d.module())
-                    && existing.kind() == d.kind()
-                    && Objects.equals(existing.classifier(), d.classifier())
-                    && !DependencyMapping.UNRESOLVED.equals(existing.version().raw())) {
-                return d.withVersion(existing.version());
-            }
-        }
-        return d;
     }
 
     /**

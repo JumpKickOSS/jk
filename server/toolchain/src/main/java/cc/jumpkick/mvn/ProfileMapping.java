@@ -38,6 +38,7 @@ final class ProfileMapping {
     /** What the inactive profiles contribute to the build. */
     record Mapped(
             Map<Scope, List<Dependency>> optionalDeps,
+            Map<Scope, List<String>> optionalDepFeatures,
             Features features,
             List<CompilerProfile> profiles,
             List<Repository> repositories) {}
@@ -63,6 +64,14 @@ final class ProfileMapping {
     private final ImportReport.Builder report;
     private final BomTables boms;
     private final Map<Scope, List<Dependency>> optionalDeps = new EnumMap<>(Scope.class);
+
+    /**
+     * The feature id behind each entry of {@link #optionalDeps}, index for index. Two profiles can
+     * contribute the same {@code artifactId}, and only this says which feature owns which row once
+     * the handles are uniquified.
+     */
+    private final Map<Scope, List<String>> optionalDepFeatures = new EnumMap<>(Scope.class);
+
     private final Map<String, Feature> features = new LinkedHashMap<>();
     private final List<CompilerProfile> profiles = new ArrayList<>();
     private final List<Repository> repositories = new ArrayList<>();
@@ -89,6 +98,7 @@ final class ProfileMapping {
         }
         return new Mapped(
                 mapping.optionalDeps,
+                mapping.optionalDepFeatures,
                 new Features(mapping.features, List.of()),
                 mapping.profiles,
                 mapping.repositories);
@@ -172,6 +182,7 @@ final class ProfileMapping {
             Scope scope = DependencyMapping.scope(dep.scope());
             if (d.isTestsKind() && scope != Scope.TEST && scope != Scope.TEST_DEV) scope = Scope.TEST;
             optionalDeps.computeIfAbsent(scope, s -> new ArrayList<>()).add(d);
+            optionalDepFeatures.computeIfAbsent(scope, s -> new ArrayList<>()).add(id);
             handles.add(d.library());
         }
         features.put(id, new Feature(id, handles, List.of()));
