@@ -62,6 +62,50 @@ class PomProfileImportTest {
     }
 
     @Test
+    void two_profiles_colliding_on_one_handle_each_list_their_own(@TempDir Path tempDir) throws Exception {
+        Path pom = tempDir.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId><artifactId>app</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.acme</groupId><artifactId>widget</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                  <profiles>
+                    <profile>
+                      <id>alpha</id>
+                      <dependencies>
+                        <dependency>
+                          <groupId>org.one</groupId><artifactId>widget</artifactId><version>2.0</version>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                    <profile>
+                      <id>beta</id>
+                      <dependencies>
+                        <dependency>
+                          <groupId>org.two</groupId><artifactId>widget</artifactId><version>3.0</version>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                  </profiles>
+                </project>
+                """, StandardCharsets.UTF_8);
+        JkBuild build = TestImporters.offline(tempDir).importFrom(pom).jkBuild();
+
+        // Each feature names the row it contributed; neither is left naming the other's.
+        assertThat(requireNonNull(build.features().byName().get("alpha")).deps())
+                .containsExactly("widget-2");
+        assertThat(requireNonNull(build.features().byName().get("beta")).deps()).containsExactly("widget-3");
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .filteredOn(Dependency::optional)
+                .extracting(Dependency::library)
+                .containsExactly("widget-2", "widget-3");
+    }
+
+    @Test
     void each_payload_kind_lands_in_its_own_place(@TempDir Path tempDir) throws Exception {
         Path pom = tempDir.resolve("pom.xml");
         Files.writeString(pom, TestImporters.fixture("profiles", "payloads-pom.xml"), StandardCharsets.UTF_8);

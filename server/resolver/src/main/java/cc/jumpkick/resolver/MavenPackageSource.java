@@ -153,11 +153,11 @@ public final class MavenPackageSource implements PackageSource {
     /** {@code group:artifact} → pattern → the {@code jk.toml:<handle>} entries that exclude it under the module. */
     private Map<String, Map<String, Set<String>>> managedExclusions = Map.of();
 
-    /** The {@code group:artifact} coordinates the workspace builds; see {@link #setWorkspaceModules}. */
-    private Set<String> workspaceModules = Set.of();
-
-    /** Versions a workspace coordinate was asked for at, recorded as the POM edge is read. */
-    private final Map<String, Set<String>> workspacePinned = new ConcurrentHashMap<>();
+    /**
+     * The {@code group:artifact} coordinates the workspace builds, each at the version its own
+     * manifest declares; see {@link #setWorkspaceModules}.
+     */
+    private Map<String, String> workspaceModules = Map.of();
 
     /** Per workspace coordinate a POM edge asked for, the sentence naming the first such edge. */
     private final Map<String, String> workspaceSubstitutionNotes = new ConcurrentHashMap<>();
@@ -300,14 +300,19 @@ public final class MavenPackageSource implements PackageSource {
      * artifact of the same coordinate: the edge is not followed, no row is locked for it, and the
      * member's output is what every classpath carries. Set before the first expansion; the raw
      * edge cache is built under it.
+     *
+     * @param memberVersions {@code group:artifact} → the version that member's manifest declares.
+     *     That version, not the one a POM asked for, is the single one {@link #versions} serves:
+     *     the member stands in whatever the edge wanted, so two POMs naming it at different
+     *     versions must not read as two pins that cannot both hold.
      */
-    public void setWorkspaceModules(Set<String> gaKeys) {
-        this.workspaceModules = Set.copyOf(Objects.requireNonNull(gaKeys, "gaKeys"));
+    public void setWorkspaceModules(Map<String, String> memberVersions) {
+        this.workspaceModules = Map.copyOf(Objects.requireNonNull(memberVersions, "memberVersions"));
     }
 
     /** Coordinates this workspace builds, so a POM edge onto one is the member and not a row. */
     public Set<String> workspaceModules() {
-        return workspaceModules;
+        return workspaceModules.keySet();
     }
 
     /**
@@ -538,11 +543,10 @@ public final class MavenPackageSource implements PackageSource {
 
     @Override
     public List<String> versions(String pkg) throws IOException, InterruptedException {
-        String ga = PackageId.parse(pkg).ga();
-        if (workspaceModules.contains(ga)) {
-            Set<String> pinned = workspacePinned.get(ga);
-            return pinned == null || pinned.isEmpty() ? List.of() : List.copyOf(pinned);
-        }
+        String memberVersion = workspaceModules.get(PackageId.parse(pkg).ga());
+        // One catalog entry, the member's own version: the edge onto it carries no constraint, so
+        // this is what every POM that asked for the coordinate selects, in any order, every run.
+        if (memberVersion != null) return List.of(memberVersion);
         Set<String> wanted = wantedVersions(pkg);
         dropStaleCandidates(pkg, wanted);
         List<String> cached = versionCache.get(pkg);
@@ -739,7 +743,7 @@ public final class MavenPackageSource implements PackageSource {
 
     @Override
     public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
-        if (workspaceModules.contains(PackageId.parse(pkg).ga())) return List.of();
+        if (workspaceModules.containsKey(PackageId.parse(pkg).ga())) return List.of();
         long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
         Map<String, Set<String>> view = exclusions.viewFor(pkg);
         Set<String> excl = view.keySet();
@@ -806,6 +810,10 @@ public final class MavenPackageSource implements PackageSource {
         List<RawEdge> hit = rawDepsCache.get(key);
         if (hit != null) return hit;
 
+        // The member stands in for this coordinate, and no repository publishes it at the
+        // member's own version. It contributes no edges, so there is no POM to read.
+        if (workspaceModules.containsKey(PackageId.parse(pkg).ga())) return List.of();
+
         Coordinate coord = withVersion(pkg, version);
         EffectivePom pom;
         try {
@@ -856,17 +864,17 @@ public final class MavenPackageSource implements PackageSource {
             String scope = dep.scope();
             if (scope != null && !scope.isEmpty() && !FOLLOWED_SCOPES.contains(scope)) continue;
             if (dep.version() == null || dep.version().isBlank()) continue;
-            if (workspaceModules.contains(dep.module())) {
-                String memberVersion = dep.version().trim();
-                workspacePinned
-                        .computeIfAbsent(dep.module(), k -> ConcurrentHashMap.newKeySet())
-                        .add(memberVersion);
+            String memberVersion = workspaceModules.get(dep.module());
+            if (memberVersion != null) {
                 workspaceSubstitutionNotes.putIfAbsent(
                         dep.module(),
                         PackageId.parse(pkg).ga() + " " + version + " depends on " + dep.module()
                                 + ", which this workspace builds: the member stands in for the published artifact"
                                 + " on every classpath, so no row is locked for it");
-                out.add(new RawEdge(packageKey(dep), VersionSet.exact(memberVersion), Set.of(), memberVersion));
+                // Unconstrained on purpose. The member answers the edge whatever version it named,
+                // so two POMs asking for different versions are not a conflict to report about a
+                // coordinate that never reaches the lock.
+                out.add(new RawEdge(packageKey(dep), VersionSet.ALL, Set.of(), memberVersion));
                 continue;
             }
             String depPkg = packageKey(dep);
@@ -1036,9 +1044,11 @@ public final class MavenPackageSource implements PackageSource {
             VersionSet range = VersionSelectors.constraintFromPomVersion(trimmed);
             if (bomPin != null) {
                 if (platformPolicy == PlatformPolicy.FLOOR) {
-                    // The pin lifts the range; it does not replace it. A pin below the range stays
-                    // outside, and a pin above it leaves nothing the edge can select.
-                    return range.intersect(VersionSet.atLeast(bomPin, true));
+                    // The pin lifts the range; it does not replace it. A pin inside or below the
+                    // range leaves the range's own ceiling in force. A pin above that ceiling
+                    // lifts past it, as it does for a bare edge: FLOOR never clamps.
+                    VersionSet lifted = range.intersect(VersionSet.atLeast(bomPin, true));
+                    return lifted.isEmpty() ? VersionSet.atLeast(bomPin, true) : lifted;
                 }
                 return VersionSet.exact(bomPin);
             }
@@ -1178,6 +1188,8 @@ public final class MavenPackageSource implements PackageSource {
             // A constraint brings nothing in; there is no next decide to warm for it.
             if (!dep.positive()) continue;
             String pkg = dep.pkg();
+            // The workspace answers this coordinate; no repository publishes the member's version.
+            if (workspaceModules.containsKey(PackageId.parse(pkg).ga())) continue;
             Optional<String> exact = dep.versions().asExactSingleton();
             budget--;
             submitPrefetch(() -> {
