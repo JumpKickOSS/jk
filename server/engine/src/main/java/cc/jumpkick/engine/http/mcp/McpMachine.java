@@ -324,7 +324,7 @@ public final class McpMachine {
     static Map<String, Object> diskAction(
             String action, boolean confirm, Path cache, @Nullable ReentrantReadWriteLock cacheGate) {
         if (action == null || action.isBlank() || "usage".equals(action)) return diskUsage(null);
-        Map<String, Object> preview = diskUsageOf(cache);
+        Map<String, Object> preview = cacheUsageOf(cache);
         if ("clean".equals(action) || "nuke".equals(action)) {
             if (!confirm) {
                 preview.put("preview", true);
@@ -357,7 +357,7 @@ public final class McpMachine {
                     preview.put("error", "cache is busy (build in flight or another prune) — retry when idle");
                     return preview;
                 }
-                Map<String, Object> after = diskUsageOf(cache);
+                Map<String, Object> after = cacheUsageOf(cache);
                 preview.put("cacheBytesAfter", after.get("cacheBytes"));
                 return preview;
             } catch (Exception e) {
@@ -369,16 +369,23 @@ public final class McpMachine {
         return preview;
     }
 
-    static Map<String, Object> diskUsageOf(Path cache) {
+    /**
+     * Cache-tier bytes under {@code cache}, for the mutating actions.
+     *
+     * <p>{@code clean} and {@code nuke} act on this tier and on nothing else — the reply says as
+     * much — so this prices that tier and leaves the artifact store alone. The store's size is a
+     * {@link #diskUsage} concern, where it comes off the memoized {@link CacheSnapshot} instead of
+     * a fresh walk. Walking it here cost every preview a full pass over a tree that grows without
+     * an upper bound: four cases of {@code McpMachineMutateTest} spent 145 s between them against
+     * a 404 MB store, and 0.3 s once it was small.
+     */
+    static Map<String, Object> cacheUsageOf(Path cache) {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
-            Path store = JkDirs.store();
-            DiskUsage.Stats cs = DiskUsage.of(cache);
-            DiskUsage.Stats ss = DiskUsage.of(store);
             m.put("cacheDir", cache.toString());
-            m.put("cacheBytes", cs.bytes());
-            m.put("storeDir", store.toString());
-            m.put("storeBytes", ss.bytes());
+            m.put("cacheBytes", DiskUsage.of(cache).bytes());
+            // The path, not its size: naming the tier an action does not touch is the useful half.
+            m.put("storeDir", JkDirs.store().toString());
         } catch (Exception e) {
             m.put("error", Errors.text(e));
         }

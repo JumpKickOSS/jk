@@ -35,6 +35,28 @@ class McpMachineMutateTest {
         assertThat(leftover).doesNotExist();
     }
 
+    /**
+     * A cache action prices the tier it touches and nothing else. {@code clean} and {@code nuke}
+     * leave the artifact store alone, so reporting its size here bought a full walk of a tree with
+     * no upper bound on every call, preview included. The store's path still rides along: naming
+     * the tier an action does not touch is the useful half. {@code usage} still reports
+     * {@code storeBytes}, off the memoized snapshot — see {@code McpDiskTest}.
+     */
+    @Test
+    void disk_actions_price_the_cache_tier_and_never_walk_the_store(@TempDir Path cache) throws Exception {
+        seed(cache.resolve("actions/keys/task1"));
+        for (Map<String, Object> reply : List.of(
+                McpMachine.diskAction("nuke", false, cache, null),
+                McpMachine.diskAction("clean", false, cache, null),
+                McpMachine.diskAction("clean", true, cache, null))) {
+            assertThat(reply).containsKey("cacheBytes").containsKey("storeDir");
+            assertThat(reply)
+                    .as("storeBytes is the store walk, and nothing here touches the store")
+                    .doesNotContainKey("storeBytes");
+            assertThat(reply.get("error")).isNull();
+        }
+    }
+
     @Test
     void disk_clean_without_confirm_is_preview(@TempDir Path cache) {
         Map<String, Object> preview = McpMachine.diskAction("clean", false, cache, null);
