@@ -123,6 +123,19 @@ class WorkspaceLifecyclePhasesTest {
         assertThat(NoTestsRan.verdict(test, root, classes, plans, outcomes, order))
                 .as("--class patterns have their own verdict")
                 .isNull();
+
+        // `jk test --profile integration -m <module>` over modules with no integration tier: the
+        // slice the request asked for is empty, which is not a workspace without tests.
+        Session tier =
+                session.withTestSelection(TestSelection.of(List.of(), false, List.of("integration"), List.of(), true));
+        assertThat(NoTestsRan.verdict(test, root, tier, plans, outcomes, order))
+                .as("a run that named a tier is judged by that tier, not by the workspace's shape")
+                .isNull();
+        Session excludeOnly =
+                session.withTestSelection(TestSelection.of(List.of(), false, List.of(), List.of("slow"), true));
+        assertThat(NoTestsRan.verdict(test, root, excludeOnly, plans, outcomes, order))
+                .as("the default selection excludes tags and includes none, so it is still judged")
+                .isEqualTo("no tests ran: none of the 2 modules has a test suite (example:api, example:app)");
     }
 
     @Test

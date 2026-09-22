@@ -461,7 +461,8 @@ public final class TestCommand implements CliCommand {
         }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         var tails = new WorkspaceRunView.Tails(
-                (r, planned) -> workspaceTestSuccessTail(r, planned, run.servedFromCache(), elapsedMs),
+                (r, planned) ->
+                        workspaceTestSuccessTail(r, planned, run.servedFromCache(), run.modulesWithSuite(), elapsedMs),
                 r -> workspaceTestFailureTail(r, elapsedMs));
         return run.settleLive(view, agg, result, elapsedMs, tails, settled -> {});
     }
@@ -488,7 +489,9 @@ public final class TestCommand implements CliCommand {
         if (result.success()) {
             if (!json) {
                 CommandWedge.printOk(
-                        "Test", workspaceTestSuccessTail(result, run.planned(), run.servedFromCache(), ms));
+                        "Test",
+                        workspaceTestSuccessTail(
+                                result, run.planned(), run.servedFromCache(), run.modulesWithSuite(), ms));
             }
             return 0;
         }
@@ -551,10 +554,16 @@ public final class TestCommand implements CliCommand {
      * modules' suites were served from the action cache — {@code , K served from cache} or {@code
      * , all served from cache} — when any was, so a line over an unchanged tree reads as a replay
      * and not as a run.
+     *
+     * <p>{@code withSuite} is how many of those modules ran a suite or replayed one. Zero of them
+     * is a green run that tested nothing — {@code --profile <tier>} over modules that carry no
+     * such tier — and saying "tests passed" there reads as a passing suite to a person and to an
+     * agent alike.
      */
-    static String workspaceTestSuccessTail(WorkspaceResult result, int planned, int served, long elapsedMs) {
+    static String workspaceTestSuccessTail(
+            WorkspaceResult result, int planned, int served, int withSuite, long elapsedMs) {
         int n = result.modules() == null ? 0 : result.modules().size();
-        if (n == 0 || planned == 0) {
+        if (n == 0 || planned == 0 || withSuite == 0) {
             return "No tests to run";
         }
         String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
