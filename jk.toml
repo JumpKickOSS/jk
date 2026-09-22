@@ -91,11 +91,6 @@ modules = [
 # ---------------------------------------------------------------------------
 [test]
 exclude-tags = ["integration", "slow", "network", "bench"]
-# Scheduling, not a tier: `serial` says a class must not share the sharded worker pool, which is
-# a different question from which tier runs it. Declared here so the tiers validation knows the
-# word is deliberate rather than a mis-spelled tier tag; a module opts in with its own
-# `[test] serial-tags`, and a serial class still needs a tier tag like any other test.
-serial-tags = ["serial"]
 
 # Part of the documented pre-merge bar, alongside the fast tier.
 [profiles.integration]

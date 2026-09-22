@@ -96,9 +96,6 @@ test-plugin-jars = [
 # Normal `jk test` should finish in 5 min or less.
 # Run everything (all suites, tags included) with `jk build --all` / `jk test --all`.
 exclude-tags = ["integration", "slow", "bench", "network"]
-# A test that saturates the machine to prove something about scheduling is not slow itself — it
-# makes its neighbours slow. These leave the shards and run last, on one worker, alone.
-serial-tags = ["serial"]
 env = [
   # In-process engines under test share this module's sandbox JK_HOME store, and the resident
   # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible

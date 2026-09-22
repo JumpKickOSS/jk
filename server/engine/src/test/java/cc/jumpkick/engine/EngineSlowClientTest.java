@@ -30,12 +30,10 @@ import org.junit.jupiter.api.Timeout;
  * whose every carrier is busy stands between a fresh client and its reply.
  *
  * <p>Proving the carrier half of that means pinning every carrier of the virtual-thread
- * scheduler, so this class saturates the machine by construction. Tagged {@code serial} for that:
- * sharded beside the rest of the suite it starved {@code JobWorkersTest}'s liveness bound into
- * failing, so it leaves the pool and runs last, alone.
+ * scheduler, so this class saturates the machine while it runs and shares the sharded worker
+ * pool with whatever else the suite is running. That is why {@link #ANSWERED} is generous.
  */
 @Tag("integration")
-@Tag("serial")
 class EngineSlowClientTest extends EngineServerHarness {
 
     private static final int FLOODERS = 8;
