@@ -258,7 +258,7 @@ public final class PreflightMemo {
                     // The whole memo misses so the forecast walks dependents, not just this module.
                     return miss("fingerprint", "module", rel, "stored", row.fp(), "now", known.hex());
                 }
-                String logic = MemoInputs.logicToken(dir);
+                String logic = MemoInputs.logicToken(dir, root);
                 if (logic == null) return miss("unreadable-logic", "module", rel);
                 seen.add(rel);
                 fps.put(dir, row.fp());
@@ -392,7 +392,7 @@ public final class PreflightMemo {
                     Log.debug("storeDirty: not stored, no fingerprint for a unit", "unit", dir);
                     return;
                 }
-                String logic = MemoInputs.logicToken(dir);
+                String logic = MemoInputs.logicToken(dir, root);
                 if (logic == null) {
                     Log.debug("storeDirty: not stored, logic inputs unreadable", "unit", dir);
                     return;

@@ -579,44 +579,67 @@ public final class ActionCachePrune {
     }
 
     /**
-     * Unlink one entry under the generation lock, after re-reading the key and its pointer.
-     * A key {@code stampUsed} or replaced inside the grace window stays, and so does a pointer that
-     * was republished onto a key the scan had classified as superseded. A cold key the budget
-     * chose — the pointer still names it, and the scan already knew that — is removed with its
-     * pointer. Returns false when the re-read says a concurrent store won.
+     * Unlink one entry after re-reading the key and its pointer. A key {@code stampUsed} or
+     * replaced inside the grace window stays, and so does a pointer that was republished onto a
+     * key the scan had classified as superseded. A cold key the budget chose — the pointer still
+     * names it, and the scan already knew that — is removed with its pointer. Returns false when
+     * the re-read says a concurrent store won.
+     *
+     * <p>The generation lock is taken only for a task that has a generation list. That is the lock
+     * the store side takes, and only for those tasks; taking it for every key would create a
+     * {@code <taskId>.gens.lock} beside every pointer this pass removes, in the directory the
+     * pass exists to shrink.
      */
     static boolean deleteKey(
             Path keysDir, Path tasksDir, String actionKey, String taskId, boolean superseded, long grace)
             throws IOException {
         Path keyFile = keysDir.resolve(actionKey);
         Path gens = HeavyActionPolicy.gensFile(tasksDir, taskId);
+        if (!Files.isRegularFile(gens)) {
+            return unlinkDeadKey(keyFile, tasksDir, actionKey, taskId, null, superseded, grace);
+        }
         boolean[] removed = {false};
-        FileLocks.withLock(HeavyActionPolicy.gensLock(gens), () -> {
-            if (Files.isRegularFile(keyFile)) {
-                long live = Files.getLastModifiedTime(keyFile).toMillis();
-                if (Clock.SYSTEM.millis() - live < grace) return;
-            }
-            Path pointer = tasksDir.resolve(taskId);
-            boolean named = false;
-            if (Files.isRegularFile(pointer)) {
-                String current =
-                        Files.readString(pointer, StandardCharsets.UTF_8).trim();
-                named = actionKey.equals(current);
-            }
-            // The scan saw a dead key. A store that has since aimed the pointer at it republished it.
-            if (superseded && named) return;
-            if (Files.isRegularFile(gens)) {
-                List<HeavyActionPolicy.Generation> kept = new ArrayList<>();
-                for (HeavyActionPolicy.Generation g : HeavyActionPolicy.readGenerations(gens)) {
-                    if (!g.key().equals(actionKey)) kept.add(g);
-                }
-                HeavyActionPolicy.writeGenerations(gens, kept);
-            }
-            Files.deleteIfExists(keyFile);
-            if (named) Files.deleteIfExists(pointer);
-            removed[0] = true;
-        });
+        FileLocks.withLock(
+                HeavyActionPolicy.gensLock(gens),
+                () -> removed[0] = unlinkDeadKey(keyFile, tasksDir, actionKey, taskId, gens, superseded, grace));
         return removed[0];
+    }
+
+    /**
+     * The re-read and the unlink itself; run under {@link HeavyActionPolicy#gensLock} when
+     * {@code gens} is non-null. False leaves everything in place.
+     */
+    private static boolean unlinkDeadKey(
+            Path keyFile,
+            Path tasksDir,
+            String actionKey,
+            String taskId,
+            @Nullable Path gens,
+            boolean superseded,
+            long grace)
+            throws IOException {
+        if (Files.isRegularFile(keyFile)) {
+            long live = Files.getLastModifiedTime(keyFile).toMillis();
+            if (Clock.SYSTEM.millis() - live < grace) return false;
+        }
+        Path pointer = tasksDir.resolve(taskId);
+        boolean named = false;
+        if (Files.isRegularFile(pointer)) {
+            String current = Files.readString(pointer, StandardCharsets.UTF_8).trim();
+            named = actionKey.equals(current);
+        }
+        // The scan saw a dead key. A store that has since aimed the pointer at it republished it.
+        if (superseded && named) return false;
+        if (gens != null && Files.isRegularFile(gens)) {
+            List<HeavyActionPolicy.Generation> kept = new ArrayList<>();
+            for (HeavyActionPolicy.Generation g : HeavyActionPolicy.readGenerations(gens)) {
+                if (!g.key().equals(actionKey)) kept.add(g);
+            }
+            HeavyActionPolicy.writeGenerations(gens, kept);
+        }
+        Files.deleteIfExists(keyFile);
+        if (named) Files.deleteIfExists(pointer);
+        return true;
     }
 
     /** The key file's mtime when it is still there, otherwise the mtime captured at scan time. */

@@ -16,6 +16,8 @@ import cc.jumpkick.guard.eval.GuardThrash;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.schema.Kind;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -109,6 +111,35 @@ class GuardLaneE2eTest {
         assertThat(status(third, TaskNames.GUARD))
                 .as("verdict hit on unchanged facts, rules and baseline")
                 .isEqualTo(TaskStatus.SKIPPED);
+    }
+
+    /**
+     * A verdict whose evidence will not come back is a miss. The record outlives its blobs — a
+     * prune, a half-copied restore — and a lane that took the hit anyway would report clean
+     * without evaluating, and leave the tree lane's no-bite judgement nothing to read.
+     */
+    @Test
+    void a_verdict_whose_evidence_will_not_restore_runs_the_lane(@TempDir Path tmp) throws Exception {
+        Path project = scaffold(tmp);
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        GuardThrash.reset();
+
+        assertThat(build(project, cache).success()).isTrue();
+        BuildPlanResult cached = build(project, cache);
+        assertThat(status(cached, TaskNames.GUARD))
+                .as("verdict hit on unchanged facts, rules and baseline")
+                .isEqualTo(TaskStatus.SKIPPED);
+
+        // Drop the output blobs, keeping the key records: the lane's verdict still looks up, and
+        // its evidence no longer restores.
+        PathUtil.deleteRecursivelyOrThrow(CacheTree.CACHE_CAS.under(cache));
+        PathUtil.deleteRecursivelyOrThrow(project.resolve("target/jk-guards"));
+
+        BuildPlanResult afterLoss = build(project, cache);
+        assertThat(status(afterLoss, TaskNames.GUARD))
+                .as("the evidence did not come back, so the rules run")
+                .isNotEqualTo(TaskStatus.SKIPPED);
+        assertThat(afterLoss.success()).isTrue();
     }
 
     @Test

@@ -32,26 +32,26 @@ class TestCommandTailTest {
 
     @Test
     void a_run_that_served_nothing_reads_as_before() {
-        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(3), 3, 0, 1200));
+        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(3), 3, 0, 3, 1200));
         assertThat(t).startsWith("Tests passed for 3 modules");
         assertThat(t).doesNotContain("served");
     }
 
     @Test
     void a_partly_served_run_names_the_count() {
-        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(49), 49, 47, 4600));
+        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(49), 49, 47, 49, 4600));
         assertThat(t).contains("49 modules, 47 served from cache");
     }
 
     @Test
     void a_wholly_served_run_says_so() {
-        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(4), 4, 4, 300));
+        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(4), 4, 4, 4, 300));
         assertThat(t).contains("4 modules, all served from cache");
     }
 
     @Test
     void one_module_served() {
-        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(1), 1, 1, 30));
+        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(1), 1, 1, 1, 30));
         assertThat(t).startsWith("Tests passed, served from cache");
     }
 
@@ -66,6 +66,42 @@ class TestCommandTailTest {
                 .isEqualTo("Passed 12 tests");
         assertThat(TestAnsi.strip(TestCommand.testSummary(new TestSummary(0, 0, 0, 0, List.of()), result, true)))
                 .isEqualTo("No tests");
+    }
+
+    /**
+     * `jk test --profile <tier>` over modules that carry no such tier: every module finished, none
+     * had a suite. Green, but not a passing suite — the line must not claim one.
+     */
+    @Test
+    void a_run_where_no_module_had_a_suite_says_there_was_nothing_to_run() {
+        assertThat(TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(5), 5, 0, 0, 900)))
+                .isEqualTo("No tests to run");
+    }
+
+    @Test
+    void the_tally_separates_the_suites_that_ran_from_the_ones_served() {
+        ServedTally replayed = new ServedTally();
+        replayed.label(TaskNames.RUN_TESTS, TaskNames.TESTS_UP_TO_DATE);
+        replayed.stepFinish(TaskNames.RUN_TESTS, null, TaskStatus.SKIPPED, Duration.ZERO, Duration.ZERO);
+        assertThat(replayed.withSuite()).as("a replayed suite is a suite").isEqualTo(1);
+
+        ServedTally ran = new ServedTally();
+        ran.stepFinish(TaskNames.RUN_TESTS, null, TaskStatus.SUCCESS, Duration.ZERO, Duration.ZERO);
+        assertThat(ran.withSuite()).isEqualTo(1);
+        assertThat(ran.served()).isZero();
+
+        ServedTally none = new ServedTally();
+        none.label(TaskNames.RUN_TESTS, "no tests");
+        none.stepFinish(TaskNames.RUN_TESTS, null, TaskStatus.SKIPPED, Duration.ZERO, Duration.ZERO);
+        assertThat(none.withSuite())
+                .as("a skip that replayed nothing ran nothing")
+                .isZero();
+
+        ServedTally absent = new ServedTally();
+        absent.stepFinish(TaskNames.COMPILE_MAIN, null, TaskStatus.SUCCESS, Duration.ZERO, Duration.ZERO);
+        assertThat(absent.withSuite())
+                .as("a module with no run-tests step at all")
+                .isZero();
     }
 
     @Test

@@ -116,6 +116,18 @@ class MavenPackageSourceConstraintTest {
     }
 
     @Test
+    void floor_lifts_past_a_range_whose_ceiling_is_below_the_pin(@TempDir Path tmp) {
+        // AndroidX writes `[1.4.0]` as an exact requirement. Under FLOOR a BOM that pins the GA
+        // higher lifts the edge, as it does for a bare version; clamping to the bracket would
+        // leave the package with nothing to select.
+        MavenPackageSource floor = source(tmp, Map.of("com.foo:widget", "1.5.0"), PlatformPolicy.FLOOR);
+        VersionSet lifted = floor.constraintForManagedEdge("com.foo:widget:jar:", "[1.4.0]");
+        assertThat(lifted.isEmpty()).isFalse();
+        assertThat(lifted.contains("1.5.0")).isTrue();
+        assertThat(lifted.contains("1.4.0")).isFalse();
+    }
+
+    @Test
     void floor_policy_bom_pin_is_at_least_not_exact(@TempDir Path tmp) {
         MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.0.0"), PlatformPolicy.FLOOR);
         VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "1.0.0");
