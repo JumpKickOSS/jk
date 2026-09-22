@@ -1,6 +1,6 @@
 group = "cc.jumpkick"
 name = "jk"
-version = "0.13.8"
+version = "0.13.9"
 description = "JumpKick: The best damn build system for the JVM"
 java = 25
 
