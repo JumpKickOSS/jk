@@ -200,7 +200,7 @@ public final class PubGrubResolver implements Resolver {
         for (Map.Entry<String, String> e : decisions.entrySet()) {
             Set<String> deps = new LinkedHashSet<>();
             Map<String, String> declared = new LinkedHashMap<>();
-            if (pomBuilder != null) {
+            if (pomBuilder != null && !builtByWorkspace(e.getKey())) {
                 // Mirror MavenPackageSource's KMP rewrite: the dep edges must show the
                 // GMM-selected platform artifact, not the POM's platform fallback. A rewritten
                 // edge is still a POM edge, so it follows the same rule as the loop below.
@@ -313,5 +313,15 @@ public final class PubGrubResolver implements Resolver {
      */
     private EffectivePomBuilder builderFor(String pkg, EffectivePomBuilder fallback) {
         return source instanceof MavenPackageSource maven ? maven.pomBuilderFor(pkg) : fallback;
+    }
+
+    /**
+     * Whether the workspace builds {@code pkg}. Such a package sits in the decisions at the
+     * member's own version so parents can name it, but no repository publishes that coordinate:
+     * reading its POM for edges would ask for a file that does not exist.
+     */
+    private boolean builtByWorkspace(String pkg) {
+        if (!(source instanceof MavenPackageSource maven)) return false;
+        return maven.workspaceModules().contains(PackageId.parse(pkg).ga());
     }
 }
