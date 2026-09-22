@@ -549,6 +549,32 @@ class ActionCacheTest {
         }
     }
 
+    /**
+     * Windows denies a read of a name a {@code REPLACE_EXISTING} is landing on, the mirror of
+     * denying the replace while a reader holds it. A lookup that cannot read its key is a miss —
+     * the caller re-runs the action — and never a failure of the step that asked, which is what
+     * a propagated {@link AccessDeniedException} made it. A directory standing in for the key
+     * file is the denial this platform can be made to produce on demand; the race produces the
+     * same exception from the same call.
+     */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void a_key_the_platform_denies_reads_as_a_miss_not_a_failure(@TempDir Path tempDir) throws Exception {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path keys = tempDir.resolve("actions").resolve("keys");
+        Files.createDirectories(keys.resolve("denied"));
+        Files.createDirectories(tempDir.resolve("actions").resolve("tasks"));
+        Files.createDirectories(tempDir.resolve("actions").resolve("tasks").resolve("t-denied"));
+
+        assertThat(cache.lookup("denied"))
+                .as("a key that will not open is a miss")
+                .isEmpty();
+        assertThat(cache.lastFor("t-denied"))
+                .as("the pointer read behind lastFor answers the same way")
+                .isEmpty();
+    }
+
     /** On POSIX a denied publish is a permissions fault, and stays loud rather than losing an entry quietly. */
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
