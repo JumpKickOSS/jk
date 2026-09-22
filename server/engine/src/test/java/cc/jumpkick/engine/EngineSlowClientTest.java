@@ -28,12 +28,28 @@ import org.junit.jupiter.api.Timeout;
  * status are answered on the connection's own platform thread and written by the stream's own
  * writer thread, so neither a client that never drains its socket nor a virtual-thread scheduler
  * whose every carrier is busy stands between a fresh client and its reply.
+ *
+ * <p>Proving the carrier half of that means pinning every carrier of the virtual-thread
+ * scheduler, so this class saturates the machine by construction. Tagged {@code serial} for that:
+ * sharded beside the rest of the suite it starved {@code JobWorkersTest}'s liveness bound into
+ * failing, so it leaves the pool and runs last, alone.
  */
 @Tag("integration")
+@Tag("serial")
 class EngineSlowClientTest extends EngineServerHarness {
 
     private static final int FLOODERS = 8;
     private static final int REQUESTS_EACH = 2_000;
+
+    /**
+     * LIVENESS, not latency. Every carrier is pinned by a spinner that only stops in the finally,
+     * so a reply that the flooders or the scheduler can block does not arrive late — it does not
+     * arrive at all, and {@link Timeout} is what ends the test then. Any bound between "at once"
+     * and that timeout catches the same defect, and a tight one only measures how much CPU the
+     * probe won on the day: at one second this failed under the suite's own parallelism and
+     * passed run alone. Generous on purpose.
+     */
+    private static final Duration ANSWERED = Duration.ofSeconds(20);
 
     @Test
     @Timeout(60)
@@ -77,11 +93,10 @@ class EngineSlowClientTest extends EngineServerHarness {
             }
 
             try (Client probe = new Client(EnginePaths.activeSocket(p))) {
-                String ack = within(Duration.ofSeconds(1), "hello", () -> probe.send(ProtoLifecycle.hello("1.0")));
+                String ack = within(ANSWERED, "hello", () -> probe.send(ProtoLifecycle.hello("1.0")));
                 assertThat(EngineProtocol.typeOf(ack)).isEqualTo(EngineProtocol.HELLO_ACK);
                 for (int i = 0; i < 5; i++) {
-                    String status =
-                            within(Duration.ofSeconds(1), "status", () -> probe.send(ProtoLifecycle.statusRequest()));
+                    String status = within(ANSWERED, "status", () -> probe.send(ProtoLifecycle.statusRequest()));
                     assertThat(EngineProtocol.typeOf(status)).isEqualTo(EngineProtocol.STATUS_ACK);
                 }
             }
