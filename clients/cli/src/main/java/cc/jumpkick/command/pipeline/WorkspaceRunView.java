@@ -111,6 +111,7 @@ final class WorkspaceRunView {
     private final AtomicInteger completed = new AtomicInteger();
     private final AtomicInteger planned = new AtomicInteger();
     private final AtomicInteger served = new AtomicInteger();
+    private final AtomicInteger withSuite = new AtomicInteger();
 
     /**
      * @param session transcript to mirror module events into, or null when the verb keeps none
@@ -139,6 +140,11 @@ final class WorkspaceRunView {
     /** Modules whose test suite was served from the action cache — its green marker replayed instead of a run. */
     int servedFromCache() {
         return served.get();
+    }
+
+    /** Modules that ran a suite or replayed one; zero means the run tested nothing. */
+    int modulesWithSuite() {
+        return withSuite.get();
     }
 
     /** Buffered module output in completion order, painted. Empty for non-buffered chrome. */
@@ -485,7 +491,7 @@ final class WorkspaceRunView {
 
     /** {@code lis} with this module's served-from-cache tally beside it; see {@link #servedFromCache()}. */
     private BuildPlanListener counting(BuildPlanListener lis) {
-        return CompositeBuildPlanListener.of(lis, new ServedTally(served));
+        return CompositeBuildPlanListener.of(lis, new ServedTally(served, withSuite));
     }
 
     /**
