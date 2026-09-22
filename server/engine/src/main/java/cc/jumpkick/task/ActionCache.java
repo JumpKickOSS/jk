@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.JkThreads;
@@ -13,6 +14,7 @@ import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -429,12 +431,30 @@ public final class ActionCache {
         ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
-        AtomicWrites.replace(keysDir().resolve(key), render(record));
-        Path pointer = tasksDir().resolve(task);
-        if (HeavyActionPolicy.generations(task) == Integer.MAX_VALUE || outputRoot == null) {
-            AtomicWrites.replace(pointer, key); // not Class-C: no generation list to agree with
-        } else {
-            trimGenerations(task, key, outputRoot, () -> AtomicWrites.replace(pointer, key));
+        try {
+            AtomicWrites.replace(keysDir().resolve(key), render(record));
+            Path pointer = tasksDir().resolve(task);
+            if (HeavyActionPolicy.generations(task) == Integer.MAX_VALUE || outputRoot == null) {
+                AtomicWrites.replace(pointer, key); // not Class-C: no generation list to agree with
+            } else {
+                trimGenerations(task, key, outputRoot, () -> AtomicWrites.replace(pointer, key));
+            }
+        } catch (AccessDeniedException denied) {
+            // POSIX EACCES is a permissions problem and stays loud: waiting cannot clear it and
+            // hiding it would leave a cache that silently never stores. Only Windows denies a
+            // replace for a reason that passes.
+            if (!Os.isWindows()) throw denied;
+            // A reader held one of these names for longer than AtomicWrites was willing to retry.
+            // Publishing the record is what makes the next build skip this action, so failing to
+            // publish costs that build a rebuild — and throwing here would cost THIS build a step
+            // that has already succeeded and whose outputs are already in the CAS. The record is
+            // returned either way; it describes what was produced, not what is on disk. Either
+            // half landing on its own is a miss, never a wrong hit: a key with no pointer is found
+            // by key, and a pointer naming a key that is not there reads as empty in lookup.
+            // Warn rather than debug: with the retry budget AtomicWrites now uses, a measured
+            // eight writers against two looping readers lost none, so reaching here at all is
+            // worth seeing.
+            Log.warn("jk: action-cache record not published — a reader held the name", "key", key, "task", task);
         }
         return record;
     }

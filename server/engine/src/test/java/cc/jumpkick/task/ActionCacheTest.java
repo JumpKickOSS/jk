@@ -4,13 +4,16 @@ package cc.jumpkick.task;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -507,6 +510,61 @@ class ActionCacheTest {
     private static void storeImage(ActionCache cache, String task, String key, Path base) throws IOException {
         Path artifact = Files.writeString(base.resolve("app.tar"), "image " + key);
         cache.storeArtifacts(task, key, Map.of(), base, List.of(artifact));
+    }
+
+    /**
+     * A record this build could not publish costs the next build a rebuild, not this build a
+     * failure. Windows denies a replace while any handle has the target open — even one opened
+     * with {@code FILE_SHARE_DELETE} — so a concurrent {@code lookup} of the same key can outlast
+     * what {@link cc.jumpkick.util.AtomicWrites} is willing to retry. The step has already
+     * succeeded and its outputs are already in the CAS by then; throwing would discard both.
+     *
+     * <p>Reached here through an unwritable keys directory and a spoofed {@code os.name}, the way
+     * {@code AtomicWritesTest} reaches the Windows retry from a POSIX host: a real denial by a
+     * live reader cannot be produced to order. POSIX keeps its own denial loud — see the case
+     * below — because there a denial is a permissions fault that waiting cannot clear.
+     */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void a_record_that_cannot_be_published_on_windows_is_returned_rather_than_thrown(@TempDir Path tempDir)
+            throws Exception {
+        ActionCache cache = new ActionCache(new Cas(tempDir.resolve("cas")), tempDir.resolve("actions"));
+        Path keys = Files.createDirectories(ActionTree.KEYS.under(tempDir.resolve("actions")));
+        String realOs = System.getProperty("os.name");
+        Files.setPosixFilePermissions(keys, PosixFilePermissions.fromString("r-xr-xr-x"));
+        try {
+            assumeFalse(Files.isWritable(keys), "running as root — the mode bits deny nothing");
+            System.setProperty("os.name", "Windows 11");
+
+            ActionCache.ActionRecord record =
+                    cache.storeWithOutputs("compile-main", "k0", Map.of("s", "1"), Map.of("a.class", "deadbeef"));
+
+            assertThat(record.actionKey()).isEqualTo("k0");
+            assertThat(record.outputs()).containsEntry("a.class", "deadbeef");
+            assertThat(keys.resolve("k0")).as("nothing published").doesNotExist();
+        } finally {
+            if (realOs == null) System.clearProperty("os.name");
+            else System.setProperty("os.name", realOs);
+            Files.setPosixFilePermissions(keys, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+    }
+
+    /** On POSIX a denied publish is a permissions fault, and stays loud rather than losing an entry quietly. */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void a_record_that_cannot_be_published_on_posix_still_throws(@TempDir Path tempDir) throws Exception {
+        ActionCache cache = new ActionCache(new Cas(tempDir.resolve("cas")), tempDir.resolve("actions"));
+        Path keys = Files.createDirectories(ActionTree.KEYS.under(tempDir.resolve("actions")));
+        Files.setPosixFilePermissions(keys, PosixFilePermissions.fromString("r-xr-xr-x"));
+        try {
+            assumeFalse(Files.isWritable(keys), "running as root — the mode bits deny nothing");
+
+            assertThatThrownBy(() ->
+                            cache.storeWithOutputs("compile-main", "k0", Map.of("s", "1"), Map.of("a.class", "dead")))
+                    .isInstanceOf(AccessDeniedException.class);
+        } finally {
+            Files.setPosixFilePermissions(keys, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
     }
 
     @Test
