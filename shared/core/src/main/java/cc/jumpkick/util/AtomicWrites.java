@@ -49,10 +49,33 @@ import java.util.function.IntConsumer;
 public final class AtomicWrites {
 
     /**
-     * Attempts before a denied replace is final. Windows briefly denies REPLACE while another handle
-     * still has the target open; the back-off grows 5&nbsp;ms per attempt, so seven waits is ~140 ms.
+     * Attempts before a denied replace is final.
+     *
+     * <p>Windows denies a REPLACE while any handle has the target open, and {@code
+     * FILE_SHARE_DELETE} does not help: the JDK opens both its read path and its
+     * set-last-modified path with that flag, and the replace is denied all the same. Measured on
+     * NTFS against one thread reading the target in a loop, <b>78% of replace attempts are
+     * denied</b>.
+     *
+     * <p>What clears it is a gap between the reader's opens, so the number that matters is how
+     * many times this looks rather than how long it waits. Same measurement, eight writers against
+     * two looping readers, share of stores that ran out of attempts:
+     *
+     * <pre>
+     *    8 attempts, 20 ms apart  (160 ms)   11.17%
+     *    8 attempts, 60 ms apart  (480 ms)   12.57%   — three times the wait, no better
+     *   16 attempts, 20 ms apart  (320 ms)    0.37%
+     *   32 attempts, 20 ms apart  (640 ms)    0.00%
+     * </pre>
+     *
+     * So: poll often, and enough times. The wait is capped rather than growing without bound for
+     * the same reason — a long sleep spends the window it is waiting for. The common case pays
+     * nothing (an uncontended replace never retries) and a contended one averaged 67 ms.
      */
-    private static final int MOVE_ATTEMPTS = 8;
+    private static final int MOVE_ATTEMPTS = 32;
+
+    /** Ceiling on the pause between attempts; see {@link #MOVE_ATTEMPTS} for why it is not unbounded. */
+    private static final long MOVE_BACKOFF_CAP_MILLIS = 20;
 
     private AtomicWrites() {}
 
@@ -192,8 +215,10 @@ public final class AtomicWrites {
      * Move a fully-written temp file over {@code target} atomically ({@code REPLACE_EXISTING}
      * fallback). The temp file must live in {@code target}'s directory.
      *
-     * <p>On Windows only, a denied replace is retried for up to ~140&nbsp;ms: another handle on the
-     * target makes the rename fail until it closes. A POSIX denial throws on the first attempt.
+     * <p>On Windows only, a denied replace is retried — see {@link #MOVE_ATTEMPTS} for the budget
+     * and the measurement behind it: another handle on the target makes the rename fail until it
+     * closes, whatever sharing that handle was opened with. A POSIX denial throws on the first
+     * attempt.
      * Do not rename the target aside to dodge a lock — that leaves a name gap concurrent readers
      * observe as {@code NoSuchFileException}, which breaks the atomicity this class promises.
      */
@@ -255,7 +280,9 @@ public final class AtomicWrites {
 
     private static void sleepBriefly(int attempt) {
         try {
-            Thread.sleep(5L * attempt);
+            // Short and then flat: the first attempts are cheap for a replace that is merely
+            // unlucky, and the rest poll at a steady rate for one that is up against a reader.
+            Thread.sleep(Math.min(5L * attempt, MOVE_BACKOFF_CAP_MILLIS));
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         }
