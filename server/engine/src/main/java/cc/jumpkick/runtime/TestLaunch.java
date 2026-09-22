@@ -14,6 +14,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -387,6 +388,13 @@ final class TestLaunch {
         } catch (IOException e) {
             ctx.error("test", Errors.text(e));
             throw e;
+        } finally {
+            // The forks have exited, so every fixture workspace they stood up is gone and so is
+            // the slot each took inside the sandbox. Collect them here rather than leaving them
+            // for whatever launches into that nested root next, which may be the next integration
+            // run or nothing at all.
+            int gone = TestHomes.reapNow(TestHomes.nestedRoot(in.dir()));
+            if (gone > 0) Log.debug("test: reaped nested sandbox slots", "slots", gone);
         }
     }
 

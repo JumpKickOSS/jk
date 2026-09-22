@@ -392,6 +392,43 @@ class TestHomesTest {
                 .orElseThrow();
     }
 
+    /**
+     * What a suite's teardown relies on: the slots of fixture workspaces that no longer exist go
+     * now, rather than waiting for something to launch into that root again. A slot whose module
+     * is still there stays, and so does one a live launch holds — a nested root is shared with
+     * whatever else the sandbox is running.
+     */
+    @Test
+    void reap_now_takes_the_slots_of_modules_that_are_gone_and_leaves_the_rest(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("nested-homes"));
+        Path liveModule = Files.createDirectories(tmp.resolve("fixture-still-here"));
+        Path goneModule = Files.createDirectories(tmp.resolve("fixture-torn-down"));
+        Path heldModule = Files.createDirectories(tmp.resolve("fixture-still-running"));
+
+        Path live = slotWithBytes(root, "aaaaaaaaaaaa", 64);
+        TestHomes.stamp(live, liveModule);
+        Path dead = slotWithBytes(root, "bbbbbbbbbbbb", 64);
+        TestHomes.stamp(dead, goneModule);
+        Path heldDead = slotWithBytes(root, "cccccccccccc", 64);
+        TestHomes.stamp(heldDead, heldModule);
+
+        // Teardown: the fixture directories are removed when the forks exit.
+        Files.delete(goneModule);
+        Files.delete(heldModule);
+
+        try (TestHomes.Hold held = TestHomes.hold(heldDead)) {
+            assertThat(TestHomes.reapNow(root)).isEqualTo(1);
+            assertThat(dead).doesNotExist();
+            assertThat(live).as("its module is still on disk").isDirectory();
+            assertThat(heldDead).as("a live launch is reading it").isDirectory();
+        }
+        assertThat(TestHomes.reapNow(root))
+                .as("reclaimable once the hold is released")
+                .isEqualTo(1);
+        assertThat(heldDead).doesNotExist();
+        assertThat(live).isDirectory();
+    }
+
     private static Path slotWithBytes(Path root, String key, int bytes) throws Exception {
         Path slot = Files.createDirectories(root.resolve(key));
         Files.write(Files.createDirectories(slot.resolve("home/store")).resolve("blob"), new byte[bytes]);
