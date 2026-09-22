@@ -192,6 +192,35 @@ class PubGrubSolverTest {
         assertThat(solution).containsEntry("leaf", "20.9");
     }
 
+    /** An open lower bound has no ceiling, so the widen cap still trims and the newest wins. */
+    @Test
+    void an_open_lower_bound_still_selects_the_newest_release() throws Exception {
+        InMemoryPackageSource.Builder builder = InMemoryPackageSource.builder();
+        for (int n = 80; n >= 21; n--) builder.version("leaf", n + ".0");
+        builder.version("leaf", "20.0");
+        InMemoryPackageSource full = builder.build();
+        PackageSource capped = new PackageSource() {
+            @Override
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
+                List<String> all = full.versions(pkg);
+                return all.size() <= 4 ? all : all.subList(0, 4);
+            }
+
+            @Override
+            public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+                return full.versions(pkg);
+            }
+
+            @Override
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+                return full.dependencies(pkg, version);
+            }
+        };
+        Map<String, String> solution = new PubGrubSolver(capped)
+                .solve("root", "1.0", List.of(Term.positive("leaf", VersionSet.atLeast("20.0", true))));
+        assertThat(solution).containsEntry("leaf", "80.0");
+    }
+
     private static PackageSource counting(
             PackageSource inner, AtomicInteger versionsCalls, @Nullable Map<String, String> preferredOrNull) {
         return new PackageSource() {

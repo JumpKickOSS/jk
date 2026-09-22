@@ -4,8 +4,6 @@ package cc.jumpkick.config;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
@@ -413,48 +411,13 @@ public final class WorkspaceClasspath {
      */
     private static Closure substitutedMembers(
             Path root, JkBuild project, Set<Scope> scopes, Closure closure, Siblings sib) {
-        Path lockFile = LockPaths.lockFile(root);
-        if (!Files.isRegularFile(lockFile)) return closure;
-        Lockfile lock;
-        try {
-            lock = LockfileReader.read(lockFile);
-        } catch (IOException | RuntimeException unreadable) {
-            return closure;
-        }
-        Map<String, Lockfile.Artifact> byName = new HashMap<>();
-        for (Lockfile.Artifact row : lock.artifacts()) {
-            byName.put(row.name(), row);
-            int colon = row.name().indexOf(':');
-            int second = colon < 0 ? -1 : row.name().indexOf(':', colon + 1);
-            if (second > 0) byName.putIfAbsent(row.name().substring(0, second), row);
-        }
+        Set<String> behind = PomSubstitution.membersBehindPublishedEdges(
+                root, project, scopes, sib.jarByModule().keySet());
+        if (behind.isEmpty()) return closure;
         LinkedHashSet<String> visited = new LinkedHashSet<>(closure.visited());
-        Queue<String> artifacts = new ArrayDeque<>();
-        Set<String> seenArtifacts = new HashSet<>();
-        for (Scope scope : scopes) {
-            for (Dependency dep : project.dependencies().of(scope)) {
-                if (dep.isWorkspace() || dep.isGit() || dep.isPath()) continue;
-                if (seenArtifacts.add(dep.module())) artifacts.add(dep.module());
-            }
-        }
         Queue<String> members = new ArrayDeque<>();
-        while (!artifacts.isEmpty()) {
-            Lockfile.Artifact row = byName.get(artifacts.poll());
-            if (row == null) continue;
-            for (String depRef : row.deps()) {
-                String child = depRef;
-                int at = child.indexOf('@');
-                if (at >= 0) child = child.substring(0, at);
-                int colon = child.indexOf(':');
-                int second = colon < 0 ? -1 : child.indexOf(':', colon + 1);
-                String ga = second > 0 ? child.substring(0, second) : child;
-                if (sib.jarByModule().containsKey(ga)) {
-                    if (visited.add(ga)) members.add(ga);
-                    continue;
-                }
-                if (seenArtifacts.add(child)) artifacts.add(child);
-                if (!ga.equals(child) && seenArtifacts.add(ga)) artifacts.add(ga);
-            }
+        for (String member : behind) {
+            if (visited.add(member)) members.add(member);
         }
         while (!members.isEmpty()) {
             String coord = members.poll();

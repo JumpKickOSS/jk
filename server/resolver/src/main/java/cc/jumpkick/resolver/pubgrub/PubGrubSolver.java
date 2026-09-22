@@ -808,7 +808,9 @@ public class PubGrubSolver {
         positive.asExactSingleton().ifPresent(named::add);
         // A range is not an exact pin and records no declared version. Keeping only the newest
         // slice drops every release the range still allows once the catalog is longer than the cap.
-        boolean bounded = !positive.isAll();
+        // Only a set with a ceiling earns that: an open `>= x` — the ordinary highest-wins fill —
+        // admits nearly the whole catalog, and keeping all of it is the cap not firing at all.
+        boolean bounded = positive.hasUpperBound();
         List<String> kept = new ArrayList<>(versions.subList(0, MAX_EXPANDED_VERSIONS));
         for (String v : versions.subList(MAX_EXPANDED_VERSIONS, versions.size())) {
             if (named.contains(v) || (bounded && positive.contains(v))) kept.add(v);

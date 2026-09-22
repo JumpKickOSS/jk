@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.rules;
 
+import cc.jumpkick.config.FileContentStamp;
 import cc.jumpkick.guard.rules.LoadError.Severity;
 import cc.jumpkick.guard.schema.ExtractorVocabulary;
 import cc.jumpkick.guard.schema.GeneratedMarkers;
@@ -177,14 +178,13 @@ public final class GuardRules {
 
     private static void stamp(StringBuilder sb, Path file) {
         sb.append(file.getFileName()).append(':');
-        try {
-            if (Files.isRegularFile(file)) {
-                sb.append(Hashing.sha256Hex(Files.readAllBytes(file)));
-            } else {
-                sb.append("absent");
-            }
-        } catch (IOException e) {
-            sb.append("?");
+        if (!Files.isRegularFile(file)) {
+            sb.append("absent");
+        } else {
+            // Content, not size and mtime: a same-length edit has to move the stamp. Memoized on
+            // stat identity, so this is one stat per file once the file has settled.
+            String hash = FileContentStamp.of(file);
+            sb.append(hash == null ? "?" : hash);
         }
         sb.append(';');
     }
