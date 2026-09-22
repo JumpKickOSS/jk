@@ -20,6 +20,7 @@ repo), [AGENTS.md](../AGENTS.md) (protocol for agents contributing here).
 
 - **Using JumpKick:** `jk manual` (CLI) prints the agent/human playbook. The website map is
   [user/manual.md](user/manual.md).
+- **Against Maven and Gradle:** [user/comparison.md](user/comparison.md).
 - **Coding agents (one recipe):** [user/troubleshooting.md](user/troubleshooting.md) — fix a
   failing build (`jk results` or MCP `jk_results`).
 - **Contributing to JumpKick:** [contributors/README.md](contributors/README.md).
