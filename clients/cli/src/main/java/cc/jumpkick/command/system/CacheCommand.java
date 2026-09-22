@@ -177,7 +177,8 @@ public final class CacheCommand extends GroupCommand {
                 statFromAck(ack, "executables"),
                 statFromAck(ack, "oci"),
                 statFromAck(ack, "workers"),
-                statFromAck(ack, "maven-local"));
+                statFromAck(ack, "maven-local"),
+                statFromAck(ack, "test-homes"));
     }
 
     private static Stats statFromAck(CacheInventoryAck ack, String name) {
@@ -208,9 +209,10 @@ public final class CacheCommand extends GroupCommand {
     record SectionStats(Stats cacheCas, Stats actionKeys, Stats root) {}
 
     /** Rows for {@code jk storage usage} (store-tier only). */
-    public record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers, Stats mavenLocal) {
+    public record StoreUsageStats(
+            Stats jars, Stats executables, Stats oci, Stats workers, Stats mavenLocal, Stats testHomes) {
         StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
-            this(jars, executables, oci, workers, new Stats(0, 0));
+            this(jars, executables, oci, workers, new Stats(0, 0), new Stats(0, 0));
         }
 
         long totalFiles() {
@@ -739,6 +741,12 @@ public final class CacheCommand extends GroupCommand {
         out.add("  Maven local (not budgeted): "
                 + Theme.colorize(
                         fmtCount(s.mavenLocal().files) + " files · " + fmtSize(s.mavenLocal().bytes), t.normalGray()));
+        // Named here because it is the one large tree no command used to show: a module's sandbox
+        // is warm on purpose, and a developer could not see one having grown until it cost minutes.
+        out.add("  Test sandboxes (not budgeted): "
+                + Theme.colorize(
+                        fmtCount(s.testHomes().files) + " files · " + fmtSize(s.testHomes().bytes), t.normalGray())
+                + Theme.colorize("  (jk clean drops this module's)", t.normalGray()));
         return out;
     }
 

@@ -74,6 +74,23 @@ public final class TestHomes {
     /** Bytes the root may hold before the least recently used slots go. */
     static final long KEEP_BYTES = 2L << 30;
 
+    /**
+     * Bytes one slot may hold on its own — half the root's budget, so no single module's sandbox
+     * can crowd out every other.
+     *
+     * <p>Unlike the root cap this is not subject to {@link #HOLD_HOURS}. The two rules together
+     * were why the busiest sandboxes were the ones retention could never reach: the root cap
+     * exempts a slot stamped today, which is precisely the slot of the module being worked on, and
+     * a root under its own cap gave no pass a reason to fire. {@code clients/cli} reached 1025 MB
+     * and {@code server/engine} 668 MB that way while the root sat at 1.7 GB.
+     *
+     * <p>Well clear of a legitimate working set: an integration pass over {@code server/engine}
+     * leaves about 500 MB, which is load-bearing — discarding it costs roughly 9% of the run. This
+     * is a backstop against a slot that has stopped making sense, not a trim of the warmth. A live
+     * launch still holds its slot against it.
+     */
+    static final long SLOT_KEEP_BYTES = KEEP_BYTES / 2;
+
     /** A slot stamped this recently is held: a gate that launched it may still be running. */
     static final int HOLD_HOURS = 24;
 
@@ -366,6 +383,14 @@ public final class TestHomes {
      * another process still has open is left for the run after this one.
      */
     static Pass reapStale(Path root, long nowMillis, long capBytes) {
+        return reapStale(root, nowMillis, capBytes, SLOT_KEEP_BYTES);
+    }
+
+    /**
+     * {@link #reapStale(Path, long, long)} with both budgets supplied, so a test settles them
+     * rather than arranging a sandbox of the production size.
+     */
+    static Pass reapStale(Path root, long nowMillis, long capBytes, long slotCapBytes) {
         long cutoff = nowMillis - KEEP_DAYS * 24L * 60 * 60 * 1000;
         long held = nowMillis - HOLD_HOURS * 60L * 60 * 1000;
         int removed = 0;
@@ -394,6 +419,16 @@ public final class TestHomes {
         } catch (IOException | RuntimeException e) {
             // The reap is hygiene, never the reason a build fails.
             Log.debug("reapStale: The reap is hygiene, never the reason a build fails", e);
+        }
+        // A slot over the per-slot ceiling goes first, and goes whatever its stamp says: the
+        // hold window that protects a recently used slot from the root cap is the very thing that
+        // let the two busiest sandboxes grow unchecked. A live launch still keeps its own.
+        for (Slot slot : List.copyOf(fresh)) {
+            if (slot.bytes() <= slotCapBytes || slot.held()) continue;
+            if (delete(slot.dir())) {
+                removed++;
+                fresh.remove(slot);
+            }
         }
         for (Slot slot : fresh) total += slot.bytes();
         // Oldest first: the stamp is rewritten on every use, so it is a real use clock.
