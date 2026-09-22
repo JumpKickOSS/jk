@@ -8,10 +8,10 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.13.8`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.13.8`** | Next public release cut from that line |
-| Prior | **`0.13.7`** — previous tagged release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.13.8`, `0.14.0`, … |
+| **`0.13.9`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.13.9`** | Next public release cut from that line |
+| Prior | **`0.13.8`** — previous tagged release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.13.9`, `0.14.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -25,6 +25,41 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.13.9
+
+- **Two checkouts of one project share a machine.** Worktrees share the action cache and the
+  artifact store without evicting or corrupting each other: keys and task pointers no longer name
+  the checkout, compiler argv enters a key as portable paths, and heavy-artifact generations are
+  counted per checkout rather than by flips of a pointer every checkout shares. A build holds a
+  slot on its checkout, so a second build — or a `jk clean` — is refused by build number instead
+  of racing the tree, and `jk history` and the dashboard answer per checkout.
+- **`jk outdated` is a report you can read.** One row per coordinate by default, a progress row
+  while the engine reads repositories, only the rows an update would move (the rest are counted),
+  a table that fits a 100-column terminal, and `target/jk-outdated-dependencies.md` written on
+  every run — from the CLI and from MCP.
+- **`jk clean` shows its work and refuses what it must not remove.** A live row while it deletes,
+  trees taken off disk on a pool, a checkout a build holds left alone with the holder's build
+  number, and a Windows junction never entered — a delete that follows one hollows its target.
+- **A workspace member answers for its own coordinate.** A published POM edge onto a coordinate
+  this workspace builds is served by the member, on the classpath and in the build order, with no
+  row locked for it. Under a platform `FLOOR` a BOM pin lifts a Maven range rather than clamping
+  it, a caret or range below the newest 48 releases resolves, and `jk import` writes Maven's
+  `[1.2.3]` as the exact pin it is.
+- **The cache check is faster, and answers for more.** The forecast walks a wave of independent
+  modules at a time and reads each classpath entry once, and `jk install` reads the same dirty
+  memo a build does. That memo now notices a JDK point release, a member's `jk-guards.toml`,
+  build-logic script bytes and a root anchor's checkout scope, so "nothing to do" means it.
+- **AOT is the user's to ask for.** The engine-side Leyden substrate is gone. `jk build
+  --aot-cache`, `[image]` and `[train]` stay exactly as they were, and each worker keeps one
+  startup cache keyed to the JDK jk itself runs on.
+- **Windows.** An action-cache store no longer loses its record to a concurrent reader, and a
+  lookup no longer fails the build when a store is replacing the name it is reading. A tool
+  version, a URL cache name and a generated launcher's main class are each confined to what they
+  are — one path segment, one path segment, one Java binary name.
+- **A release is cut by publishing a GitHub Release.** The tag and the published release drive
+  the build, signing and publish for linux-x86_64, macos-aarch64 and windows-x86_64; nothing
+  reaches the bucket, the pointer or the installers from a developer machine.
 
 ### 0.13.8
 
@@ -246,8 +281,8 @@ it, and the workflow does the rest. Nothing reaches the bucket, the pointer, the
 the release page from a developer machine.
 
 ```bash
-git tag v0.13.8 && git push origin v0.13.8
-gh release create v0.13.8 --title "jk 0.13.8" --notes "building"   # the body is replaced by CI
+git tag v0.13.9 && git push origin v0.13.9
+gh release create v0.13.9 --title "jk 0.13.9" --notes "building"   # the body is replaced by CI
 gh run watch                                                         # ~30 min across the matrix
 ```
 
@@ -263,7 +298,7 @@ that holds the signing key would be a signed release someone else cut. The
 under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow-lint job, and
 `.github/dependabot.yml` moves the pins weekly.
 
-1. Publish a GitHub Release for tag `v0.13.8`. The version must equal `JkVersion` without the
+1. Publish a GitHub Release for tag `v0.13.9`. The version must equal `JkVersion` without the
    `v`; `scripts/release-version.sh` refuses any other tag before anything is built.
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
