@@ -177,6 +177,14 @@ public final class BuildGraph {
         return ModuleOrder.orderModules(modulesByDir);
     }
 
+    /**
+     * As {@link #orderModules(Map)} for a caller that knows the workspace root, so the order also
+     * carries the members a published POM edge substitutes.
+     */
+    public static List<Path> orderModules(Path root, Map<Path, JkBuild> modulesByDir) {
+        return ModuleOrder.orderModules(root, modulesByDir);
+    }
+
     /** See {@link cc.jumpkick.config.ModuleOrder#modulePrereqs} — the one shared edge computation. */
     private static Set<Path> modulePrereqs(
             Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
