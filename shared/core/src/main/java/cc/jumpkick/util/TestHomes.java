@@ -168,6 +168,30 @@ public final class TestHomes {
     }
 
     /**
+     * Reap the slots of {@code root} now, whatever the last pass said, and answer how many went.
+     *
+     * <p>For a root a run is finished with rather than one it is about to launch into. A suite's
+     * fixture workspaces each take a slot inside the sandbox — a nested {@code test-homes} under
+     * the module's own — and every one of them is dead the moment the fixture's temp directory is
+     * removed at teardown. {@link #reapIfDue} would leave them until something launched into that
+     * nested root again, which for an integration tier means the next run: 21 slots and about
+     * 78 MB parked until then, or for ever if the tier is not run again.
+     *
+     * <p>Costs a listing and a stat per slot. A dead slot is deleted without being sized, and a
+     * slot a concurrent launch holds is left alone, both by {@link #reapStale}.
+     */
+    public static int reapNow(Path root) {
+        Pass pass = reapStale(root, Clock.SYSTEM.millis(), KEEP_BYTES);
+        PASSES.put(root, pass);
+        return pass.removed();
+    }
+
+    /** The nested {@code test-homes} root a sandboxed suite's own fixtures take their slots in. */
+    public static Path nestedRoot(Path moduleDir) {
+        return slotFor(moduleDir).resolve("home").resolve(DIR);
+    }
+
+    /**
      * Reap {@code root} unless its last pass, within {@link #REAP_EVERY_MILLIS}, was quiet: the
      * listing and sizing of every slot is what a launch on a busy machine is spared. A pass that
      * removed something, or left the root over the cap, is followed by a full pass at the next
