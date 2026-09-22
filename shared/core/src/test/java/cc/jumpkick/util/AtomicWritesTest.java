@@ -261,6 +261,71 @@ class AtomicWritesTest {
     }
 
     /** Runs a move that must fail, returning the exception so the caller can time the call alone. */
+    @Test
+    void read_string_does_not_retry_a_missing_file(@TempDir Path dir) {
+        List<Integer> backOffs = countBackOffs();
+
+        assertThatIOException()
+                .isThrownBy(() -> AtomicWrites.readString(dir.resolve("never-written")))
+                .isInstanceOf(NoSuchFileException.class);
+        // A name that is gone is gone; only the caller knows whether that is a miss or a fault.
+        assertThat(backOffs).as("waited for a file that will not appear").isEmpty();
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void read_string_does_not_retry_a_posix_permission_denial(@TempDir Path dir) throws IOException {
+        Path unreadable = Files.writeString(dir.resolve("secret"), "x");
+        Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("---------"));
+        assumeFalse(Files.isReadable(unreadable), "running as root — the mode bits deny nothing");
+
+        List<Integer> backOffs = countBackOffs();
+        IOException thrown = denyRead(unreadable);
+
+        assertThat(thrown).isInstanceOf(AccessDeniedException.class);
+        assertThat(backOffs)
+                .as("EACCES is permanent for a read as it is for a move")
+                .isEmpty();
+    }
+
+    /**
+     * As with the move, the Windows retry is gated on a live {@code os.name} read, so a spoofed
+     * host is the only way to reach it from Linux. It proves the gate, not that Windows recovers.
+     */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void read_string_retries_when_the_host_reports_windows(@TempDir Path dir) throws IOException {
+        Path unreadable = Files.writeString(dir.resolve("secret"), "x");
+        Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("---------"));
+        String realOs = System.getProperty("os.name");
+        try {
+            assumeFalse(Files.isReadable(unreadable), "running as root — the mode bits deny nothing");
+            System.setProperty("os.name", "Windows 11");
+
+            List<Integer> backOffs = countBackOffs();
+            IOException thrown = denyRead(unreadable);
+
+            assertThat(thrown).isInstanceOf(AccessDeniedException.class);
+            assertThat(backOffs)
+                    .as("a denied read spends the same budget the denied move does")
+                    .hasSize(31)
+                    .startsWith(1, 2, 3)
+                    .endsWith(31);
+        } finally {
+            if (realOs == null) System.clearProperty("os.name");
+            else System.setProperty("os.name", realOs);
+        }
+    }
+
+    private static @Nullable IOException denyRead(Path target) {
+        try {
+            AtomicWrites.readString(target);
+            return null;
+        } catch (IOException e) {
+            return e;
+        }
+    }
+
     private static @Nullable IOException denyMove(Path tmp, Path target) {
         try {
             AtomicWrites.moveInto(tmp, target);

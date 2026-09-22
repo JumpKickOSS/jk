@@ -243,12 +243,38 @@ public final class AtomicWrites {
     }
 
     /**
+     * Read {@code target} as UTF-8, retrying a Windows denial the way {@link #moveInto} does.
+     *
+     * <p>The mirror of the replace race, and the reason it needs the same treatment: Windows
+     * denies a replace while a reader holds the target, and it denies a reader that opens the
+     * target while a replace is landing on it. A caller that reads a name {@link #replace} writes
+     * therefore has to expect a denial it did nothing to cause. Same attempt budget and the same
+     * back-off — see {@link #MOVE_ATTEMPTS} for the measurement.
+     *
+     * <p>A POSIX denial throws on the first attempt, as it does for the move: {@code EACCES} is a
+     * permissions problem that waiting cannot clear. {@link java.nio.file.NoSuchFileException} is
+     * not retried either — a name that is gone is gone, and what that means is the caller's to
+     * decide.
+     */
+    public static String readString(Path target) throws IOException {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return Files.readString(target);
+            } catch (IOException e) {
+                if (!Os.isWindows() || !isTransientWindowsLock(e)) throw e;
+                if (attempt == MOVE_ATTEMPTS) throw e;
+                backOff.accept(attempt);
+            }
+        }
+    }
+
+    /**
      * Windows denials that clear when a handle closes. {@link AccessDeniedException} is
      * {@code ERROR_ACCESS_DENIED}; a bare {@link FileSystemException} is
      * {@code ERROR_SHARING_VIOLATION}. Typed subclasses ({@link java.nio.file.NoSuchFileException},
      * …) are permanent and must not retry.
      */
-    static boolean isTransientWindowsLock(IOException e) {
+    public static boolean isTransientWindowsLock(IOException e) {
         return e instanceof AccessDeniedException || e.getClass() == FileSystemException.class;
     }
 
