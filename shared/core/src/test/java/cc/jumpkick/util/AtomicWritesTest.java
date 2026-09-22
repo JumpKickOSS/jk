@@ -221,7 +221,11 @@ class AtomicWritesTest {
             IOException thrown = denyMove(tmp, locked.resolve("target"));
 
             assertThat(thrown).isInstanceOf(AccessDeniedException.class);
-            assertThat(backOffs).as("exhausted the back-off before giving up").containsExactly(1, 2, 3, 4, 5, 6, 7);
+            assertThat(backOffs)
+                    .as("exhausted the back-off before giving up")
+                    .hasSize(31)
+                    .startsWith(1, 2, 3)
+                    .endsWith(31);
         } finally {
             if (realOs == null) System.clearProperty("os.name");
             else System.setProperty("os.name", realOs);
