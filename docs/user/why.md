@@ -351,6 +351,7 @@ build enforces it, and an agent reads the rule instead of a reviewer re-typing i
 
 ## Related
 
+- [Comparison](comparison.md) — feature matrix against Maven and Gradle
 - [The 1.0 plan](../contributors/plan-1.0.md) — the inner-loop priorities this page depends on
 - [Manual](manual.md)
 - [Getting started](getting-started.md)

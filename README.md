@@ -107,7 +107,8 @@ program.” Agents should not write Kotlin DSL to add Jackson.
 **Speed (honest):** competitive with modern Gradle on warm builds; the jk / Gradle / Maven
 table — walls and peak memory on one public Spring Boot project — is in
 [docs/user/performance.md](docs/user/performance.md). Lead with *repeated* local and agent cycles
-(RSS + cache + structured retries), not a one-shot CI bake-off.
+(RSS + cache + structured retries), not a one-shot CI bake-off. The feature matrix, including
+where JumpKick loses, is in [docs/user/comparison.md](docs/user/comparison.md).
 
 ### Stay on the newest versions
 
