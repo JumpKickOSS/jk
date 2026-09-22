@@ -17,6 +17,18 @@ import org.junit.jupiter.api.io.TempDir;
 class MavenResolverTest {
 
     @Test
+    void a_wrapper_version_that_is_not_one_segment_fails_before_any_install(@TempDir Path dir) throws Exception {
+        Path props = dir.resolve("maven-wrapper.properties");
+        Files.writeString(props, "distributionUrl=https://example.com/apache-maven-..%5C..%5Coutside-bin.zip\n");
+        Path sentinel = dir.resolve("outside");
+        Files.writeString(sentinel, "keep");
+        assertThatThrownBy(() -> MavenResolver.fromWrapperProperties(props)).isInstanceOf(IOException.class);
+        assertThat(Files.readString(sentinel)).isEqualTo("keep");
+        assertThatThrownBy(() -> MavenResolver.distributionFor("..")).isInstanceOf(IllegalArgumentException.class);
+        assertThat(MavenResolver.distributionFor("3.9.9").version()).isEqualTo("3.9.9");
+    }
+
+    @Test
     void the_default_distribution_is_verified_against_the_sha512_central_publishes_then_the_sha1() {
         ToolDistribution dist = MavenResolver.defaultDistribution();
         assertThat(dist.sha256()).isNull();

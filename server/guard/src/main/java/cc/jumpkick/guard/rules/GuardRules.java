@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -180,8 +179,7 @@ public final class GuardRules {
         sb.append(file.getFileName()).append(':');
         try {
             if (Files.isRegularFile(file)) {
-                BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
-                sb.append(a.size()).append(':').append(a.lastModifiedTime().toMillis());
+                sb.append(Hashing.sha256Hex(Files.readAllBytes(file)));
             } else {
                 sb.append("absent");
             }

@@ -8,6 +8,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.PreflightMemo;
@@ -26,6 +27,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -241,11 +243,30 @@ public final class BuildForecasting {
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
                 Set<Path> memoDirty = new HashSet<>(memo.get().dirty());
                 withStaleOutputs(graph, entryDir, memo.get().fingerprints(), memoDirty);
+                Set<Path> inputDirty = Set.copyOf(memoDirty);
                 if (t == WorkspaceTarget.INSTALL) {
                     withPendingInstalls(graph, terminalDirs, cache, m2Dir, memoDirty);
                 }
+                List<TaskForecast.Module> shelf = List.of();
+                if (t == WorkspaceTarget.INSTALL
+                        && inputDirty.isEmpty()
+                        && memo.get().restoreNeeded().isEmpty()) {
+                    shelf = new ArrayList<>();
+                    for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
+                        if (!memoDirty.contains(unit.dir())) continue;
+                        shelf.add(new TaskForecast.Module(
+                                unit.dir(),
+                                unit.coord(),
+                                List.of(new TaskForecast.Task(
+                                        TaskNames.CACHE_INSTALL, TaskForecast.Status.RUN, "shelve", null)),
+                                0,
+                                0,
+                                true,
+                                false));
+                    }
+                }
                 return new Preflight(
-                        memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
+                        memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), shelf);
             }
             PreflightMemo.Snapshot snapshot = PreflightMemo.snapshotFingerprints(graph, skipTests);
             fps = snapshot.fingerprints();
@@ -302,8 +323,11 @@ public final class BuildForecasting {
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, dirty, fps);
             }
             return new Preflight(dirty, restoreNeeded, fps, modules, reasons);
+        } catch (CancellationException cancelled) {
+            throw cancelled;
         } catch (RuntimeException e) {
-            return new Preflight(all, Set.of(), fps, List.of());
+            Log.warn("jk: forecast failed — the build will not treat every module as dirty", e);
+            throw e;
         }
     }
 

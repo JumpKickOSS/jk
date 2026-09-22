@@ -11,6 +11,8 @@ import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.Feature;
+import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
@@ -279,7 +281,8 @@ public final class PomImporter {
                 mapDependencies(em, report, processorPaths.all(), hoisted, platformSupplied, bomSupplied);
         mapProcessorPaths(processorPaths, byScope, report);
         ProfileMapping.Mapped profiles = ProfileMapping.map(em, report, profileBoms(resolver, report));
-        addOptionalDeps(byScope, profiles.optionalDeps());
+        Map<String, String> renamedHandles = addOptionalDeps(byScope, profiles.optionalDeps());
+        Features profileFeatures = renameFeatureHandles(profiles.features(), renamedHandles);
         List<Repository> repositories = new ArrayList<>(em.model().getRepositories());
         repositories.addAll(profiles.repositories());
         List<RepositorySpec> repos = withSettingsRepositories(mapRepositories(repositories, report), settings);
@@ -299,7 +302,7 @@ public final class PomImporter {
         JkBuild.Builder builder = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .repositories(repos)
-                .features(profiles.features())
+                .features(profileFeatures)
                 .profiles(toProfiles(profiles.profiles()))
                 .application(application)
                 .library(library)
@@ -819,7 +822,9 @@ public final class PomImporter {
      * Maven's merge of the two — the profile's row over the declared one, the version kept — so it
      * takes the declared version rather than {@code unresolved}.
      */
-    private static void addOptionalDeps(Map<Scope, List<Dependency>> byScope, Map<Scope, List<Dependency>> optional) {
+    private static Map<String, String> addOptionalDeps(
+            Map<Scope, List<Dependency>> byScope, Map<Scope, List<Dependency>> optional) {
+        Map<String, String> renamed = new LinkedHashMap<>();
         List<Dependency> declared = new ArrayList<>();
         byScope.values().forEach(declared::addAll);
         for (Map.Entry<Scope, List<Dependency>> e : optional.entrySet()) {
@@ -829,9 +834,24 @@ public final class PomImporter {
             for (Dependency d : e.getValue()) {
                 String handle = d.library();
                 for (int n = 2; !seen.add(handle); n++) handle = d.library() + "-" + n;
+                if (!handle.equals(d.library())) renamed.put(d.library(), handle);
                 deps.add(declaredVersion(d, declared).withLibrary(handle).withOptional(true));
             }
         }
+        return renamed;
+    }
+
+    /** A renamed optional handle is the one the feature lists, so the feature still gates that row. */
+    private static Features renameFeatureHandles(Features features, Map<String, String> renamed) {
+        if (renamed.isEmpty() || features == null) return features;
+        Map<String, Feature> byName = new LinkedHashMap<>();
+        for (var entry : features.byName().entrySet()) {
+            Feature feature = entry.getValue();
+            List<String> deps = new ArrayList<>();
+            for (String dep : feature.deps()) deps.add(renamed.getOrDefault(dep, dep));
+            byName.put(entry.getKey(), new Feature(feature.name(), deps, feature.features()));
+        }
+        return new Features(byName, features.defaults());
     }
 
     /** {@code d} at the version of the declared dependency naming its coordinate, when {@code d} has none. */

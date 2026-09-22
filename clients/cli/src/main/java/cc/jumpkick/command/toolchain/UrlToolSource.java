@@ -85,7 +85,11 @@ final class UrlToolSource {
         byte[] body = get(http, uri);
         String name = fileName(uri, body);
         Files.createDirectories(dir);
-        Path file = dir.resolve(name);
+        Path root = dir.toAbsolutePath().normalize();
+        Path file = root.resolve(name).normalize();
+        if (!file.startsWith(root)) {
+            throw new IOException("remote script name escapes its cache directory: " + name);
+        }
         Files.write(file, body);
 
         // A source script's //SOURCES and //FILES are relative to the script — mirror them
@@ -180,17 +184,29 @@ final class UrlToolSource {
         return response.body();
     }
 
-    /** The cache file name: the URL's last path segment, extension sniffed when it has none. */
-    private static String fileName(URI uri, byte[] body) {
+    /** The cache file name: one path segment, extension sniffed when it has none. */
+    private static String fileName(URI uri, byte[] body) throws IOException {
         String path = uri.getPath() == null ? "" : uri.getPath();
         String name = path.substring(path.lastIndexOf('/') + 1);
         if (name.isBlank()) name = "script";
+        else if (!isSingleSegment(name)) {
+            throw new IOException("remote script name escapes its cache directory: " + name);
+        }
         if (isRunnable(name)) return name;
         // No runnable extension (gist /raw, shorteners): sniff the payload.
         if (body.length >= 2 && body[0] == 'P' && body[1] == 'K') return name + ".jar";
         String text = new String(body, 0, Math.min(body.length, 8192), StandardCharsets.UTF_8);
         if (text.contains("fun main(") || text.contains("@file:")) return name + ".kt";
         return name + ".java";
+    }
+
+    /** One directory entry: not {@code .}, {@code ..}, or a name that still contains a separator. */
+    private static boolean isSingleSegment(String name) {
+        return !name.isBlank()
+                && !name.equals(".")
+                && !name.equals("..")
+                && name.indexOf('/') < 0
+                && name.indexOf('\\') < 0;
     }
 
     private static boolean isRunnable(String name) {

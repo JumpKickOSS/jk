@@ -101,6 +101,21 @@ class MavenPackageSourceConstraintTest {
     }
 
     @Test
+    void floor_keeps_a_maven_range_and_enforced_stays_exact(@TempDir Path tmp) {
+        MavenPackageSource floor = source(tmp, Map.of("com.foo:widget", "1.0.0"), PlatformPolicy.FLOOR);
+        VersionSet ranged = floor.constraintForManagedEdge("com.foo:widget:jar:", "[2.17.1,3.0)");
+        assertThat(ranged.contains("1.0.0")).isFalse();
+        assertThat(ranged.contains("2.17.1")).isTrue();
+        assertThat(ranged.contains("2.99.0")).isTrue();
+        assertThat(ranged.contains("3.0.0")).isFalse();
+
+        MavenPackageSource enforced = source(tmp, Map.of("com.foo:widget", "1.0.0"));
+        assertThat(enforced.constraintForManagedEdge("com.foo:widget:jar:", "[2.17.1,3.0)")
+                        .asExactSingleton())
+                .contains("1.0.0");
+    }
+
+    @Test
     void floor_policy_bom_pin_is_at_least_not_exact(@TempDir Path tmp) {
         MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.0.0"), PlatformPolicy.FLOOR);
         VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "1.0.0");

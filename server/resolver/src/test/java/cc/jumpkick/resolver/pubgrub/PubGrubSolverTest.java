@@ -162,6 +162,36 @@ class PubGrubSolverTest {
         assertThat(solution).containsEntry("leaf", "1.0");
     }
 
+    /** A range below the newest 48 releases is still selectable after the widen cap. */
+    @Test
+    void a_range_below_the_newest_forty_eight_releases_still_resolves() throws Exception {
+        InMemoryPackageSource.Builder builder = InMemoryPackageSource.builder();
+        for (int n = 80; n >= 21; n--) builder.version("leaf", n + ".0");
+        builder.version("leaf", "20.9");
+        builder.version("leaf", "20.0");
+        InMemoryPackageSource full = builder.build();
+        PackageSource capped = new PackageSource() {
+            @Override
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
+                List<String> all = full.versions(pkg);
+                return all.size() <= 4 ? all : all.subList(0, 4);
+            }
+
+            @Override
+            public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+                return full.versions(pkg);
+            }
+
+            @Override
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+                return full.dependencies(pkg, version);
+            }
+        };
+        Map<String, String> solution = new PubGrubSolver(capped)
+                .solve("root", "1.0", List.of(Term.positive("leaf", VersionSet.between("20.0", true, "21.0", false))));
+        assertThat(solution).containsEntry("leaf", "20.9");
+    }
+
     private static PackageSource counting(
             PackageSource inner, AtomicInteger versionsCalls, @Nullable Map<String, String> preferredOrNull) {
         return new PackageSource() {

@@ -156,6 +156,9 @@ public final class MavenPackageSource implements PackageSource {
     /** The {@code group:artifact} coordinates the workspace builds; see {@link #setWorkspaceModules}. */
     private Set<String> workspaceModules = Set.of();
 
+    /** Versions a workspace coordinate was asked for at, recorded as the POM edge is read. */
+    private final Map<String, Set<String>> workspacePinned = new ConcurrentHashMap<>();
+
     /** Per workspace coordinate a POM edge asked for, the sentence naming the first such edge. */
     private final Map<String, String> workspaceSubstitutionNotes = new ConcurrentHashMap<>();
 
@@ -300,6 +303,11 @@ public final class MavenPackageSource implements PackageSource {
      */
     public void setWorkspaceModules(Set<String> gaKeys) {
         this.workspaceModules = Set.copyOf(Objects.requireNonNull(gaKeys, "gaKeys"));
+    }
+
+    /** Coordinates this workspace builds, so a POM edge onto one is the member and not a row. */
+    public Set<String> workspaceModules() {
+        return workspaceModules;
     }
 
     /**
@@ -530,6 +538,11 @@ public final class MavenPackageSource implements PackageSource {
 
     @Override
     public List<String> versions(String pkg) throws IOException, InterruptedException {
+        String ga = PackageId.parse(pkg).ga();
+        if (workspaceModules.contains(ga)) {
+            Set<String> pinned = workspacePinned.get(ga);
+            return pinned == null || pinned.isEmpty() ? List.of() : List.copyOf(pinned);
+        }
         Set<String> wanted = wantedVersions(pkg);
         dropStaleCandidates(pkg, wanted);
         List<String> cached = versionCache.get(pkg);
@@ -726,6 +739,7 @@ public final class MavenPackageSource implements PackageSource {
 
     @Override
     public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+        if (workspaceModules.contains(PackageId.parse(pkg).ga())) return List.of();
         long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
         Map<String, Set<String>> view = exclusions.viewFor(pkg);
         Set<String> excl = view.keySet();
@@ -841,15 +855,20 @@ public final class MavenPackageSource implements PackageSource {
             if (kmpDropped.contains(dep.module())) continue;
             String scope = dep.scope();
             if (scope != null && !scope.isEmpty() && !FOLLOWED_SCOPES.contains(scope)) continue;
+            if (dep.version() == null || dep.version().isBlank()) continue;
             if (workspaceModules.contains(dep.module())) {
+                String memberVersion = dep.version().trim();
+                workspacePinned
+                        .computeIfAbsent(dep.module(), k -> ConcurrentHashMap.newKeySet())
+                        .add(memberVersion);
                 workspaceSubstitutionNotes.putIfAbsent(
                         dep.module(),
                         PackageId.parse(pkg).ga() + " " + version + " depends on " + dep.module()
                                 + ", which this workspace builds: the member stands in for the published artifact"
                                 + " on every classpath, so no row is locked for it");
+                out.add(new RawEdge(packageKey(dep), VersionSet.exact(memberVersion), Set.of(), memberVersion));
                 continue;
             }
-            if (dep.version() == null || dep.version().isBlank()) continue;
             String depPkg = packageKey(dep);
             String hostExpression = pom.hostClassified().get(dep.module());
             if (hostExpression != null) {
@@ -1014,13 +1033,16 @@ public final class MavenPackageSource implements PackageSource {
         // every `[x.y.z]` edge and PubGrub cannot align adaptive/suite (NIA). FLOOR keeps the
         // range as a floor at max(bomPin, range).
         if (VersionSelectors.looksLikeMavenRange(trimmed)) {
+            VersionSet range = VersionSelectors.constraintFromPomVersion(trimmed);
             if (bomPin != null) {
                 if (platformPolicy == PlatformPolicy.FLOOR) {
-                    return VersionSet.atLeast(bomPin, true);
+                    // The pin lifts the range; it does not replace it. A pin below the range stays
+                    // outside, and a pin above it leaves nothing the edge can select.
+                    return range.intersect(VersionSet.atLeast(bomPin, true));
                 }
                 return VersionSet.exact(bomPin);
             }
-            return VersionSelectors.constraintFromPomVersion(trimmed);
+            return range;
         }
 
         // Platform map entry.

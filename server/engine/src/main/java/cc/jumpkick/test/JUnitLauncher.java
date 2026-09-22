@@ -624,7 +624,10 @@ public final class JUnitLauncher {
             classes = discovery.classes();
         }
         if (classes.isEmpty()) {
-            return new TestSummary(0, 0, 0, 0, List.of());
+            // A plan whose tests are not under a class (features, scripts) has an empty class
+            // list. Running nothing and stamping "no tests" skips those tests on the next build.
+            // The one-shot path executes that plan whole.
+            return runSingle(javaHome, classpath, testClassesDir, listener, testResultsDir);
         }
 
         // [test] serial-tags partition (class-level): classes bearing a serial tag leave the

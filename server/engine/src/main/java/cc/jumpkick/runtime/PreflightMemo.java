@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
@@ -228,7 +229,8 @@ public final class PreflightMemo {
             Optional<MemoFile> parsed = MemoFile.parse(lines);
             if (parsed.isEmpty()) return Optional.empty();
             MemoFile memo = parsed.get();
-            if (headerMisses(memo, skipTests, profile)) return Optional.empty();
+            String wantJdk = MemoInputs.jdkReleaseToken(entryDir, graph);
+            if (headerMisses(memo, skipTests, profile, wantJdk)) return Optional.empty();
             Map<String, MemoRow> rows = memo.rows();
 
             Path root = entryDir.toAbsolutePath().normalize();
@@ -252,11 +254,18 @@ public final class PreflightMemo {
                     return miss("unreadable-input", "module", rel, "cause", now);
                 }
                 if (!row.fp().equals(known.hex())) {
+                    // A source, manifest, or root-guard change can move a downstream classpath.
+                    // The whole memo misses so the forecast walks dependents, not just this module.
                     return miss("fingerprint", "module", rel, "stored", row.fp(), "now", known.hex());
                 }
+                String logic = MemoInputs.logicToken(dir);
+                if (logic == null) return miss("unreadable-logic", "module", rel);
                 seen.add(rel);
                 fps.put(dir, row.fp());
-                if (row.dirty()) {
+                if (!logic.equals(row.logic()) || row.dirty() || logicAlways(dir)) {
+                    // Scripts, member rules, and a root anchor's checkout scope schedule this
+                    // module alone. A build-logic step is bookkeeping, so the dirty bit is what
+                    // puts the anchor on the plan.
                     dirty.add(dir);
                 } else if (ModuleOutputs.packageOutputsMissing(root, dir, u.manifest(), actionCache)
                         || (!skipTests
@@ -365,7 +374,13 @@ public final class PreflightMemo {
             sb.append("skipTests=").append(skipTests ? "1" : "0").append('\n');
             sb.append("fpMode=").append(fingerprintMode()).append('\n');
             sb.append("profile=").append(profileHeader(profile)).append('\n');
+            String jdk = MemoInputs.jdkReleaseToken(entryDir, graph);
+            if (jdk == null) {
+                Log.debug("storeDirty: not stored, the resolved JDK could not be read");
+                return;
+            }
             sb.append("selection=").append(selectionHeader()).append('\n');
+            sb.append("jdkRelease=").append(jdk).append('\n');
             Set<Path> dirtyNorm = new LinkedHashSet<>();
             for (Path d : dirty) dirtyNorm.add(d.toAbsolutePath().normalize());
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
@@ -377,11 +392,18 @@ public final class PreflightMemo {
                     Log.debug("storeDirty: not stored, no fingerprint for a unit", "unit", dir);
                     return;
                 }
+                String logic = MemoInputs.logicToken(dir);
+                if (logic == null) {
+                    Log.debug("storeDirty: not stored, logic inputs unreadable", "unit", dir);
+                    return;
+                }
                 sb.append(relKey(root, dir))
                         .append('\t')
                         .append(fp)
                         .append('\t')
                         .append(dirtyNorm.contains(dir) ? "1" : "0")
+                        .append('\t')
+                        .append(logic)
                         .append('\n');
             }
             String body = sb.toString();
@@ -592,6 +614,8 @@ public final class PreflightMemo {
             // too, or a root that grows src/ keeps hitting a graph memo without a root unit.
             feed(md, "entry");
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
+            feed(md, "logic=" + (BuildLogicToml.resolve(root).isPresent() ? "1" : "0"));
+            feedFile(md, GuardsPresence.rulesFile(root));
             feedFile(md, ManifestPaths.manifestIn(root));
             Path rootLock = LockPaths.lockFile(root).toAbsolutePath().normalize();
             feedFile(md, rootLock);
@@ -913,7 +937,7 @@ public final class PreflightMemo {
      * workspace feeds the one root lock, and reading a monorepo-sized lock once per module scaled
      * the preflight by modules × lock size.
      */
-    private static void feedFile(MessageDigest md, Path file) throws IOException {
+    static void feedFile(MessageDigest md, Path file) throws IOException {
         if (!Files.isRegularFile(file)) {
             feed(md, "missing");
             return;
@@ -925,7 +949,7 @@ public final class PreflightMemo {
         }
     }
 
-    private static void feed(MessageDigest md, String s) {
+    static void feed(MessageDigest md, String s) {
         md.update(s.getBytes(StandardCharsets.UTF_8));
         md.update((byte) 0);
     }
@@ -946,7 +970,7 @@ public final class PreflightMemo {
     private record MemoFile(Map<String, String> header, Map<String, MemoRow> rows) {
 
         private static final List<String> HEADER_KEYS =
-                List.of("cacheKeyVersion", "producer", "skipTests", "fpMode", "profile", "selection");
+                List.of("cacheKeyVersion", "producer", "skipTests", "fpMode", "profile", "selection", "jdkRelease");
 
         /** Empty when a row is malformed; the caller has already checked the schema line. */
         static Optional<MemoFile> parse(List<String> lines) {
@@ -959,9 +983,10 @@ public final class PreflightMemo {
                     header.put(key, line.substring(key.length() + 1));
                     continue;
                 }
-                String[] parts = line.split("\t", 3);
-                if (parts.length != 3) return Optional.empty();
-                rows.put(parts[0], new MemoRow(parts[1], "1".equals(parts[2])));
+                String[] parts = line.split("\t", 4);
+                if (parts.length < 3) return Optional.empty();
+                String logic = parts.length >= 4 ? parts[3] : "";
+                rows.put(parts[0], new MemoRow(parts[1], "1".equals(parts[2]), logic));
             }
             return Optional.of(new MemoFile(header, rows));
         }
@@ -985,7 +1010,8 @@ public final class PreflightMemo {
      * selection — and notes the miss. Packaging, plugin and guard action keys name the producing
      * engine, so a memo certified under another engine must not skip the walk that re-keys them.
      */
-    private static boolean headerMisses(MemoFile memo, boolean skipTests, @Nullable String profile) {
+    private static boolean headerMisses(
+            MemoFile memo, boolean skipTests, @Nullable String profile, @Nullable String wantJdk) {
         String wantVersion = BuildIdentity.cacheKeyVersion();
         String wantProducer = BuildIdentity.buildId();
         String wantSkip = skipTests ? "1" : "0";
@@ -1027,10 +1053,29 @@ public final class PreflightMemo {
             miss("selection", "want", wantSelection, "got", gotSelection);
             return true;
         }
+        String gotJdk = memo.got("jdkRelease");
+        if (wantJdk == null || gotJdk == null || !wantJdk.equals(gotJdk)) {
+            miss("jdk", "want", String.valueOf(wantJdk), "got", String.valueOf(gotJdk));
+            return true;
+        }
         return false;
     }
 
-    private record MemoRow(String fp, boolean dirty) {}
+    /** True when a build-logic script in this module asks to run on every build. */
+    private static boolean logicAlways(Path moduleDir) {
+        try {
+            for (Path dir : List.of(moduleDir.resolve("jk"), moduleDir.resolve(".jk"))) {
+                for (BuildLogicScripts.ScriptTask task : BuildLogicScripts.discover(dir)) {
+                    if (task.always()) return true;
+                }
+            }
+        } catch (IOException ignored) {
+            return true;
+        }
+        return false;
+    }
+
+    private record MemoRow(String fp, boolean dirty, String logic) {}
 
     private record UnitLine(String rel, String coord, String origin) {}
 }

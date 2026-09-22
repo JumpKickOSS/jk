@@ -430,6 +430,57 @@ class ActionCachePruneTest {
                 ActionCachePrune.Policy.INCREMENTAL_WINDOW);
     }
 
+    @Test
+    void a_key_republished_inside_the_grace_window_is_not_unlinked(@TempDir Path root) throws Exception {
+        Path keys = root.resolve("actions/keys");
+        Path tasks = root.resolve("actions/tasks");
+        Files.createDirectories(keys);
+        Files.createDirectories(tasks);
+        Path keyFile = keys.resolve("key-fresh");
+        Files.writeString(keyFile, "TASK compile-main@a\nKEY key-fresh\n");
+        Files.writeString(tasks.resolve("compile-main@a"), "key-old");
+        long grace = Duration.ofHours(1).toMillis();
+        assertThat(ActionCachePrune.deleteKey(keys, tasks, "key-fresh", "compile-main@a", true, grace))
+                .isFalse();
+        assertThat(keyFile).exists();
+        assertThat(Files.readString(tasks.resolve("compile-main@a"))).isEqualTo("key-old");
+    }
+
+    @Test
+    void a_superseded_key_the_pointer_has_since_named_is_kept(@TempDir Path root) throws Exception {
+        Path keys = root.resolve("actions/keys");
+        Path tasks = root.resolve("actions/tasks");
+        Files.createDirectories(keys);
+        Files.createDirectories(tasks);
+        Path keyFile = keys.resolve("key-back");
+        Files.writeString(keyFile, "KEY key-back\n");
+        backdate(keyFile, OLD);
+        Files.writeString(tasks.resolve("compile-main@a"), "key-back");
+        assertThat(ActionCachePrune.deleteKey(keys, tasks, "key-back", "compile-main@a", true, FRESH))
+                .isFalse();
+        assertThat(keyFile).exists();
+        assertThat(Files.readString(tasks.resolve("compile-main@a"))).isEqualTo("key-back");
+    }
+
+    @Test
+    void a_key_that_is_still_dead_is_unlinked_only_after_the_pointer_is_reread(@TempDir Path root) throws Exception {
+        Path keys = root.resolve("actions/keys");
+        Path tasks = root.resolve("actions/tasks");
+        Files.createDirectories(keys);
+        Files.createDirectories(tasks);
+        Path keyFile = keys.resolve("key-dead");
+        Files.writeString(keyFile, "KEY key-dead\n");
+        backdate(keyFile, OLD);
+        Files.writeString(tasks.resolve("compile-main@a"), "key-other");
+        Path gens = HeavyActionPolicy.gensFile(tasks, "compile-main@a");
+        Files.createDirectories(gens.getParent());
+        Files.writeString(gens, "checkout key-dead\ncheckout key-other\n");
+        assertThat(ActionCachePrune.deleteKey(keys, tasks, "key-dead", "compile-main@a", true, FRESH))
+                .isTrue();
+        assertThat(keyFile).doesNotExist();
+        assertThat(Files.readString(gens)).doesNotContain("key-dead").contains("key-other");
+    }
+
     /** Store {@code size} identical bytes and backdate the blob by {@code ageMillis}. */
     private static String blob(Cas cas, int size, char fill, long ageMillis) throws IOException {
         byte[] payload = new byte[size];

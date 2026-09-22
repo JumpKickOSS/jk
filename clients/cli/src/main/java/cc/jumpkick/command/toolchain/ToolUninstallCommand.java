@@ -105,8 +105,9 @@ public final class ToolUninstallCommand implements CliCommand {
         Optional<BuildTool> tool = BuildTool.bySlug(target.substring(0, colon));
         if (tool.isEmpty()) return null;
         String version = target.substring(colon + 1);
-        if (version.isBlank()) {
-            CommandWedge.printFail("Uninstall", "no version after ':' in '" + target + "'");
+        String bad = ToolRegistry.invalidVersion(version);
+        if (bad != null) {
+            CommandWedge.printFail("Uninstall", bad);
             return Exit.USAGE;
         }
         ToolRegistry registry = new ToolRegistry(JkDirs.tools());

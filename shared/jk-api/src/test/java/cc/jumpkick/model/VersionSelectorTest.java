@@ -80,6 +80,14 @@ class VersionSelectorTest {
     }
 
     @Test
+    void a_maven_exact_bracket_is_an_exact_version() {
+        VersionSelector exact = VersionSelector.parse("[1.2.3]");
+        assertThat(exact).isInstanceOf(VersionSelector.Exact.class);
+        assertThat(((VersionSelector.Exact) exact).version()).isEqualTo("1.2.3");
+        assertThat(VersionSelector.parse("[1.0,2.0)")).isInstanceOf(VersionSelector.Range.class);
+    }
+
+    @Test
     void caret_or_tilde_of_latest_is_latest() {
         // Plugin packager coords are `^${config.version}`; when the table is `latest` that
         // interpolates to `^latest`, which must mean latest, not a caret of the word.

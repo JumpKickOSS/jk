@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
@@ -431,6 +432,35 @@ class JUnitLauncherAggregatorTest {
             assertThat(f.className()).isEqualTo("FooTest");
             assertThat(f.stack()).contains("ExceptionInInitializerError");
         });
+    }
+
+    @Test
+    void a_non_zero_exit_after_a_pass_is_not_green() {
+        var agg = new ResultAggregator();
+        agg.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        var result = agg.toResult(137);
+        assertThat(result.allPassed()).isFalse();
+        assertThat(result.failed()).isEqualTo(1);
+    }
+
+    @Test
+    void a_finished_run_and_a_cancel_after_every_test_stay_green() {
+        var finished = new ResultAggregator();
+        finished.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        assertThat(finished.toResult(0).allPassed()).isTrue();
+        assertThat(finished.toResult(0).failed()).isZero();
+
+        SessionCancel.bind(() -> true);
+        try {
+            var cancelled = new ResultAggregator();
+            cancelled.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":1}");
+            cancelled.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+            var result = cancelled.toResult(137);
+            assertThat(result.allPassed()).isTrue();
+            assertThat(result.failed()).isZero();
+        } finally {
+            SessionCancel.bind(null);
+        }
     }
 
     @Test

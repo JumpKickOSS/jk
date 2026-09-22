@@ -6,8 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,5 +76,39 @@ class BuildForecastingTargetMemoTest {
         // IMAGE behaves like NATIVE.
         var img = BuildForecasting.forecastWithFingerprints(graph, cache, false, tmp, WorkspaceTarget.IMAGE);
         assertThat(img.dirty()).isNotEmpty();
+    }
+
+    @Test
+    void an_install_memo_hit_with_jars_present_is_shelf_only(@TempDir Path tmp) throws Exception {
+        BuildGraph.Result graph = writeProjectAndResolve(tmp);
+        BuildGraph.BuildUnit unit = graph.topoOrder().getFirst();
+        JkBuild project = unit.manifest();
+        BuildLayout layout = BuildLayout.of(tmp, unit.dir(), project);
+        Files.createDirectories(layout.classesDir());
+        Files.writeString(layout.classesDir().resolve("App.class"), "class");
+        Files.createDirectories(layout.mainJar().getParent());
+        Files.write(layout.mainJar(), new byte[] {1, 2, 3});
+        var fps = PreflightMemo.snapshotFingerprints(graph, false);
+        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
+
+        var install = BuildForecasting.forecastWithFingerprints(
+                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
+        assertThat(install.modules()).isNotEmpty().allMatch(TaskForecast.Module::shelfOnly);
+        assertThat(install.modules().getFirst().steps())
+                .extracting(TaskForecast.Task::name)
+                .containsExactly(TaskNames.CACHE_INSTALL);
+
+        Files.delete(layout.mainJar());
+        var missing = BuildForecasting.forecastWithFingerprints(
+                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
+        assertThat(missing.modules()).noneMatch(TaskForecast.Module::shelfOnly);
+        assertThat(missing.restoreNeeded()).isNotEmpty();
+
+        Files.write(layout.mainJar(), new byte[] {1, 2, 3});
+        Files.writeString(tmp.resolve("src/main/java/App.java"), "class App { int changed; }\n");
+        var edited = BuildForecasting.forecastWithFingerprints(
+                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
+        assertThat(edited.dirty()).isNotEmpty();
+        assertThat(edited.modules()).noneMatch(TaskForecast.Module::shelfOnly);
     }
 }
