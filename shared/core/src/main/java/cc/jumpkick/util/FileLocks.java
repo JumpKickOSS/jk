@@ -123,10 +123,57 @@ public final class FileLocks {
         }
     }
 
-    /** The holder's description written by {@link Hold#write}, or empty when there is none. */
+    /**
+     * The holder's description written by {@link Hold#write}, or empty when there is none.
+     *
+     * <p>When this JVM already has the file's channel open, the bytes are read from that channel.
+     * Opening a second descriptor and closing it would drop every POSIX lock this process holds
+     * on the file, including the hold that is being described.
+     */
     public static String describeHolder(Path lockFile) {
+        Entry held = openEntry(lockFile);
+        if (held != null) {
+            held.jvm.lock();
+            try {
+                FileChannel open = held.channel;
+                if (open != null && open.isOpen()) return readDescription(open);
+            } finally {
+                held.jvm.unlock();
+            }
+        }
         try {
             return Files.readString(lockFile, StandardCharsets.UTF_8);
+        } catch (IOException unreadable) {
+            return "";
+        }
+    }
+
+    /** The entry this JVM already opened for {@code lockFile}, or null. */
+    private static @Nullable Entry openEntry(Path lockFile) {
+        Path key = lockFile.toAbsolutePath().normalize();
+        Entry direct = ENTRIES.get(key);
+        if (direct != null && direct.channel != null) return direct;
+        try {
+            if (Files.exists(key)) {
+                Entry real = ENTRIES.get(key.toRealPath());
+                if (real != null) return real;
+            }
+        } catch (IOException ignored) {
+            // fall through to the spelling key
+        }
+        return direct;
+    }
+
+    /** Description bytes at offset 0. The lock itself sits past the end of the file. */
+    private static String readDescription(FileChannel channel) {
+        try {
+            long size = channel.size();
+            if (size <= 0) return "";
+            int n = (int) Math.min(size, 64 * 1024);
+            ByteBuffer buf = ByteBuffer.allocate(n);
+            int read = channel.read(buf, 0);
+            if (read <= 0) return "";
+            return new String(buf.array(), 0, read, StandardCharsets.UTF_8);
         } catch (IOException unreadable) {
             return "";
         }

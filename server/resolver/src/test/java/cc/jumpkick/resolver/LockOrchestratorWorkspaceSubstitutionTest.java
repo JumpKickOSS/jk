@@ -98,6 +98,35 @@ class LockOrchestratorWorkspaceSubstitutionTest {
                 .contains("no row is locked for it"));
     }
 
+    /**
+     * {@code app} depends only on published {@code middle}. {@code middle}'s POM asks for the
+     * published {@code com.example:lib}, which this workspace builds, so the lock has no published
+     * lib row and none of the dependencies only that published POM declared.
+     */
+    @Test
+    void a_transitive_pom_edge_onto_a_member_locks_neither_the_member_nor_its_published_deps(@TempDir Path tempDir)
+            throws Exception {
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        Dependency own = new Dependency("com.foo:leaf", VersionSelector.parse("=1.0"));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(own)));
+        JkBuild app = manifest("app", Map.of(Scope.MAIN, List.of(middle)));
+        List<String> notes = new ArrayList<>();
+
+        Lockfile lock = lockWorkspace(tempDir, List.of(lib, app), notes);
+
+        assertThat(lock.artifacts())
+                .extracting(Lockfile.Artifact::packageKey)
+                .contains("com.foo:middle:jar:", "com.foo:leaf:jar:")
+                .doesNotContain("com.example:lib:jar:", "com.foo:published-only:jar:");
+        assertThat(notes).anySatisfy(line -> assertThat(line)
+                .startsWith("com.foo:middle 1.0 depends on com.example:lib, which this workspace builds"));
+        assertThat(lock.artifacts().stream()
+                        .filter(a -> a.packageKey().equals("com.foo:middle:jar:"))
+                        .flatMap(a -> a.deps().stream())
+                        .anyMatch(dep -> dep.startsWith("com.example:lib")))
+                .isTrue();
+    }
+
     /** A standalone project serves its own coordinate the same way: a dependency that depends back on it locks no row for it. */
     @Test
     void a_standalone_project_is_its_own_coordinate(@TempDir Path tempDir) throws Exception {

@@ -29,6 +29,39 @@ import org.junit.jupiter.api.io.TempDir;
 class PomProfileImportTest {
 
     @Test
+    void a_colliding_profile_handle_is_the_one_the_feature_lists(@TempDir Path tempDir) throws Exception {
+        Path pom = tempDir.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId><artifactId>app</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.acme</groupId><artifactId>widget</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                  <profiles>
+                    <profile>
+                      <id>extra</id>
+                      <dependencies>
+                        <dependency>
+                          <groupId>org.other</groupId><artifactId>widget</artifactId><version>2.0</version>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                  </profiles>
+                </project>
+                """, StandardCharsets.UTF_8);
+        JkBuild build = TestImporters.offline(tempDir).importFrom(pom).jkBuild();
+        assertThat(requireNonNull(build.features().byName().get("extra")).deps())
+                .containsExactly("widget-2");
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .filteredOn(Dependency::optional)
+                .extracting(Dependency::library)
+                .containsExactly("widget-2");
+    }
+
+    @Test
     void each_payload_kind_lands_in_its_own_place(@TempDir Path tempDir) throws Exception {
         Path pom = tempDir.resolve("pom.xml");
         Files.writeString(pom, TestImporters.fixture("profiles", "payloads-pom.xml"), StandardCharsets.UTF_8);

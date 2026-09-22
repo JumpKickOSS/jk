@@ -640,16 +640,19 @@ public final class EngineServer implements AutoCloseable {
      * running. {@code exitNow} also marks the process as shutting down (idle, or force).
      */
     private void yieldListeners(boolean exitNow) {
-        if (!exitNow) {
-            enterDrain();
-            return;
-        }
+        boolean drain;
         synchronized (lifecycleLock) {
-            shuttingDown = true;
-            closeServerChannelQuietly();
-            lifecycleLock.notifyAll();
+            // Re-read under the lock. The watchdog's count is from before this call, and a plan
+            // can claim its slot in that gap. A non-zero count drains; shutdown is only the idle case.
+            drain = !exitNow || activeBuildPlans.get() > 0;
+            if (!drain) {
+                shuttingDown = true;
+                closeServerChannelQuietly();
+                lifecycleLock.notifyAll();
+            }
         }
-        http.stopNow();
+        if (drain) enterDrain();
+        else http.stopNow();
     }
 
     /** Test seam: one watchdog decision on the calling thread. */
@@ -685,6 +688,21 @@ public final class EngineServer implements AutoCloseable {
     void releasePlanSlotForTests() {
         noteBuildPlanFinished();
         idle.maybeIdleBoundary();
+    }
+
+    /**
+     * Test seam: the displacement yield. {@code exitNow} is the idle observation the watchdog
+     * made before this call; the yield re-reads the live plan count under the lock.
+     */
+    void yieldListenersForTests(boolean exitNow) {
+        yieldListeners(exitNow);
+    }
+
+    /** Test seam: {@link #awaitDrainComplete} would still be waiting on a plan slot. */
+    boolean drainWaitingForTests() {
+        synchronized (lifecycleLock) {
+            return draining && !shuttingDown && activeBuildPlans.get() > 0;
+        }
     }
 
     private void closeServerChannelQuietly() {

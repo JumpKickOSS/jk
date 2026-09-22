@@ -609,8 +609,13 @@ public final class JobEnvelope {
             // Belts: any leftover workers die now (grace 0 — request is ending).
             JobWorkers.shutdownForRequest(eventRequestId, 0L);
             JobWorkers.clear(eventRequestId);
-            // Idempotent: runner finally usually released already; covers admit-without-run paths.
-            host.inFlight().release(eventRequestId);
+            // The runner finally releases the checkout slot after the body returns. Releasing it
+            // here while that thread is still in the body admits the next build onto the same tree.
+            // A runner that never started, or that died without counting down, still has to be released.
+            Thread runner = runnerRef.get();
+            if (done.getCount() == 0 || runner == null || !runner.isAlive()) {
+                host.inFlight().release(eventRequestId);
+            }
             admission.release(eventRequestId);
             settlement.settle(
                     eventRequestId,

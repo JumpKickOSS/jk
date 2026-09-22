@@ -58,6 +58,25 @@ class EngineServerDrainTest {
     }
 
     /**
+     * The watchdog observes zero, then a plan claims its slot before the yield returns. The yield
+     * re-reads the count, so that plan is drained and the wait does not finish while it is held.
+     */
+    @Test
+    void a_plan_claimed_after_an_idle_observation_is_drained() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        assertThat(server.claimPlanSlotForTests()).isTrue();
+        server.yieldListenersForTests(true);
+        assertThat(server.drainStartedForTests()).isTrue();
+        assertThat(server.drainWaitingForTests())
+                .as("awaitDrainComplete stays in its wait while the slot is held")
+                .isTrue();
+        server.releasePlanSlotForTests();
+        assertThat(server.drainWaitingForTests()).isFalse();
+        server.close();
+    }
+
+    /**
      * The displacement watchdog must enter drain on its own — a predecessor whose socket read
      * raced never receives the successor's SHUTDOWN line, so the repointed endpoint is the only
      * signal it gets.

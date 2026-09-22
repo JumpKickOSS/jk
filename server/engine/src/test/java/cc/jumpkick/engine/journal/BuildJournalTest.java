@@ -337,6 +337,30 @@ class BuildJournalTest {
      * 130 — {@code 128 + SIGINT} — so `jk history` reported a crashed machine as "the user pressed
      * Ctrl-C". 70 is {@code Exit.SOFTWARE}, spelled here as the literal a reader of the record sees.
      */
+    @Test
+    void two_non_build_rows_in_one_millisecond_abandon_independently() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        long started = 1_700_000_000_000L;
+        String lock = requireNonNull(
+                j.begin(BuildRecord.running(0, "lock", "/proj", "g:a", null, started, "9.9", "cli", null, 11L)));
+        String format = requireNonNull(
+                j.begin(BuildRecord.running(0, "format", "/proj", "g:a", null, started, "9.9", "cli", null, 22L)));
+        assertThat(lock).isNotEqualTo(format);
+        assertThat(j.get(lock).orElseThrow().startedAt())
+                .isEqualTo(j.get(format).orElseThrow().startedAt());
+
+        assertThat(j.abandonStaleRunning("9.9", owner -> false).abandoned()).isEqualTo(2);
+        assertThat(j.get(lock).orElseThrow().running()).isFalse();
+        assertThat(j.get(format).orElseThrow().running()).isFalse();
+
+        String lockRecord = Files.readString(j.runDir(lock).orElseThrow().resolve("record.json"));
+        String formatRecord = Files.readString(j.runDir(format).orElseThrow().resolve("record.json"));
+        assertThat(lockRecord).contains("\"kind\": \"lock\"").doesNotContain("\"kind\": \"format\"");
+        assertThat(formatRecord).contains("\"kind\": \"format\"").doesNotContain("\"kind\": \"lock\"");
+        assertThat(lockRecord).contains("\"requestId\": 11").doesNotContain("\"requestId\": 22");
+        assertThat(formatRecord).contains("\"requestId\": 22").doesNotContain("\"requestId\": 11");
+    }
+
     /** A lock or format row has no build number; the sweep still finds its directory by record id. */
     @Test
     void a_running_row_without_a_build_number_is_abandoned_with_its_engine() {

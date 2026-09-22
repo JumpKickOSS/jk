@@ -175,7 +175,9 @@ public final class BuildJournal {
                 Files.createDirectory(tmp);
             }
             try {
-                BuildRecord withIds = withId(record.withBuildNumber(n), timestamp);
+                // Non-build rows share a millisecond timestamp. The directory name is unique
+                // (pid and request id), so that is the id the sweep looks up.
+                BuildRecord withIds = withId(record.withBuildNumber(n), n > 0 ? timestamp : dirName);
                 Files.writeString(tmp.resolve(RECORD), Json.write(withIds), StandardCharsets.UTF_8);
                 if (record.dir() != null && !record.dir().isBlank()) {
                     // One line a reader scanning for a checkout's run takes before the record.

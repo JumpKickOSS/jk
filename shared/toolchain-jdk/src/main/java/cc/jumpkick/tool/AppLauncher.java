@@ -152,7 +152,7 @@ public final class AppLauncher {
                 + "-cp "
                 + shellQuote(Classpaths.join(cp))
                 + " "
-                + mainClass
+                + shellQuote(JavaMain.require(mainClass))
                 + " \"$@\"\n";
     }
 
@@ -163,9 +163,9 @@ public final class AppLauncher {
                 + jvmFlags(javaHome)
                 + "-cp \""
                 + Classpaths.join(cp)
-                + "\" "
-                + mainClass
-                + " %*\r\n";
+                + "\" \""
+                + JavaMain.require(mainClass)
+                + "\" %*\r\n";
     }
 
     private static String shellQuote(String value) {

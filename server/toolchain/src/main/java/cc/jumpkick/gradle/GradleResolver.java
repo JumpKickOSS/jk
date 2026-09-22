@@ -3,6 +3,7 @@ package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
+import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.compat.WrapperDistribution;
 import java.io.IOException;
 import java.net.URI;
@@ -42,7 +43,7 @@ public final class GradleResolver {
 
     /** The distribution for an explicit Gradle version; blank means {@link #DEFAULT_VERSION}. */
     public static ToolDistribution distributionFor(@Nullable String version) {
-        String v = version == null || version.isBlank() ? DEFAULT_VERSION : version.trim();
+        String v = version == null || version.isBlank() ? DEFAULT_VERSION : ToolRegistry.requireVersion(version);
         URI uri = URI.create(DEFAULT_BASE + "gradle-" + v + "-bin.zip");
         return new ToolDistribution(BuildTool.GRADLE, v, uri, "zip");
     }
@@ -56,6 +57,9 @@ public final class GradleResolver {
         if (url == null || url.isBlank()) return null;
         URI uri = WrapperDistribution.secureUrl(url, file);
         String version = parseVersion(uri).orElse("wrapper");
+        if (ToolRegistry.invalidVersion(version) != null) {
+            throw new IOException("wrapper distribution version is not a single directory name: " + version);
+        }
         String sha256 = props.getProperty("distributionSha256Sum");
         return new ToolDistribution(
                 BuildTool.GRADLE, version, uri, "zip", sha256 == null || sha256.isBlank() ? null : sha256.trim());

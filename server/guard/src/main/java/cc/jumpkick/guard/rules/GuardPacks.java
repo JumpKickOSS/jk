@@ -52,7 +52,7 @@ public final class GuardPacks {
      * on a large workspace is the single most expensive thing in the cache check and the engine's
      * biggest allocator during it.
      */
-    private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> DECLARED = StampedMemo.bounded(64);
+    private static final StampedMemo<Path, String, List<String>> DECLARED = StampedMemo.bounded(64);
 
     private GuardPacks() {}
 
@@ -93,16 +93,17 @@ public final class GuardPacks {
     /** The {@code [guards] extends} coordinates of the root rules file, as written (unparsed). */
     public static List<String> declared(Path root) throws IOException {
         Path file = GuardsPresence.rulesFile(root);
-        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
-        if (stamp == null || !Files.isRegularFile(file)) return List.of();
+        if (!Files.isRegularFile(file)) return List.of();
+        String text;
         try {
-            return DECLARED.get(file, stamp, () -> {
-                try {
-                    return declared(Files.readString(file, StandardCharsets.UTF_8));
-                } catch (IOException unreadable) {
-                    throw new UncheckedIOException(unreadable);
-                }
-            });
+            text = Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException unreadable) {
+            throw unreadable;
+        }
+        String hash = Hashing.sha256Hex(text);
+        try {
+            String body = text;
+            return DECLARED.get(file, hash, () -> declared(body));
         } catch (UncheckedIOException unreadable) {
             throw unreadable.getCause();
         }

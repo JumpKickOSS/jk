@@ -803,11 +803,15 @@ public class PubGrubSolver {
      */
     private List<String> capExpanded(String pkg, List<String> versions) {
         if (versions.size() <= MAX_EXPANDED_VERSIONS) return versions;
+        VersionSet positive = solution.positiveSet(pkg);
         Set<String> named = new LinkedHashSet<>(source.declaredVersions(pkg));
-        solution.positiveSet(pkg).asExactSingleton().ifPresent(named::add);
+        positive.asExactSingleton().ifPresent(named::add);
+        // A range is not an exact pin and records no declared version. Keeping only the newest
+        // slice drops every release the range still allows once the catalog is longer than the cap.
+        boolean bounded = !positive.isAll();
         List<String> kept = new ArrayList<>(versions.subList(0, MAX_EXPANDED_VERSIONS));
         for (String v : versions.subList(MAX_EXPANDED_VERSIONS, versions.size())) {
-            if (named.contains(v)) kept.add(v);
+            if (named.contains(v) || (bounded && positive.contains(v))) kept.add(v);
         }
         return List.copyOf(kept);
     }

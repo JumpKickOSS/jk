@@ -12,6 +12,9 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.BuildIdentity;
@@ -625,6 +628,160 @@ class PreflightMemoTest {
         }
     }
 
+    @Test
+    void rewriting_the_resolved_jdk_release_file_misses_the_memo(@TempDir Path tmp) throws Exception {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home = jdks.resolve("temurin-99.0.1");
+        Files.createDirectories(home.resolve("bin"));
+        Files.writeString(JdkFingerprint.java(home), "#!/fake");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake");
+        Path release = home.resolve("release");
+        Files.writeString(release, "JAVA_VERSION=\"99.0.1\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        JdkOwnership.mark(home);
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+                jdk = "temurin-99"
+                java = 25
+                """);
+        Files.createDirectories(project.resolve("src/main/java"));
+        Files.writeString(project.resolve("src/main/java/App.java"), "class App {}\n");
+        Files.writeString(project.resolve("jk-lock.toml"), """
+                version = 1
+                generated-by = "test"
+                resolution-algorithm = "pubgrub-v1"
+                """);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(project, JkBuildParser.parse(Files.readString(project.resolve("jk.toml"))));
+        Session session = Session.defaults().withVariant("", Map.of("JK_JDKS_DIR", jdks.toString()));
+        JdkEnsure.resetSharedRegistries();
+        try {
+            SessionContext.runWhere(session, () -> {
+                storeDirty(project, graph, Set.of());
+                assertThat(PreflightMemo.tryLoadDirty(project, graph, false))
+                        .as("an unchanged release file still hits")
+                        .isPresent();
+            });
+            Files.writeString(release, "JAVA_VERSION=\"99.0.2\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+            SessionContext.runWhere(session, () -> assertThat(PreflightMemo.tryLoadDirty(project, graph, false))
+                    .as("the compile key hashes this release file, so the memo must miss")
+                    .isEmpty());
+        } finally {
+            JdkEnsure.resetSharedRegistries();
+        }
+    }
+
+    @Test
+    void a_member_rules_edit_dirties_only_that_module(@TempDir Path tmp) throws Exception {
+        writeWorkspace(tmp);
+        Files.writeString(tmp.resolve("jk-guards.toml"), "# root\n");
+        Files.writeString(tmp.resolve("a/jk-guards.toml"), "member = \"a\"\n");
+        Files.writeString(tmp.resolve("b/jk-guards.toml"), "member = \"b\"\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false))
+                .get()
+                .extracting("dirty")
+                .isEqualTo(Set.of());
+
+        Files.writeString(tmp.resolve("a/jk-guards.toml"), "member = \"edited\"\n");
+        Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
+        assertThat(hit).isPresent();
+        Path a = moduleDir(graph, "a");
+        assertThat(hit.get().dirty()).containsExactly(a);
+    }
+
+    @Test
+    void editing_a_module_script_dirties_that_module(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Path script = tmp.resolve("jk/before-compile.kts");
+        Files.createDirectories(script.getParent());
+        Files.writeString(script, "println(1)\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false))
+                .get()
+                .extracting("dirty")
+                .isEqualTo(Set.of());
+
+        Files.writeString(script, "println(2)\n");
+        Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
+        assertThat(hit).isPresent();
+        assertThat(hit.get().dirty())
+                .containsExactly(
+                        graph.topoOrder().getFirst().dir().toAbsolutePath().normalize());
+    }
+
+    @Test
+    void an_always_script_stays_dirty_when_sources_match(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Path script = tmp.resolve("jk/before-compile.kts");
+        Files.createDirectories(script.getParent());
+        Files.writeString(script, "// jk: always\nprintln(1)\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+
+        Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
+        assertThat(hit).isPresent();
+        assertThat(hit.get().dirty())
+                .containsExactly(
+                        graph.topoOrder().getFirst().dir().toAbsolutePath().normalize());
+    }
+
+    @Test
+    void editing_a_non_source_file_dirties_a_root_anchor(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Path script = tmp.resolve("jk/after-build.kts");
+        Files.createDirectories(script.getParent());
+        Files.writeString(script, "println(1)\n");
+        Path readme = tmp.resolve("README.md");
+        Files.writeString(readme, "one\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false))
+                .get()
+                .extracting("dirty")
+                .isEqualTo(Set.of());
+
+        Files.writeString(readme, "two\n");
+        Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
+        assertThat(hit).isPresent();
+        assertThat(hit.get().dirty())
+                .containsExactly(
+                        graph.topoOrder().getFirst().dir().toAbsolutePath().normalize());
+    }
+
+    @Test
+    void tryLoadGraph_misses_when_logic_or_guards_appear_or_leave(@TempDir Path tmp) throws Exception {
+        writeWorkspace(tmp);
+        var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
+        BuildGraph.Result full = BuildGraph.resolve(tmp, entry);
+        PreflightMemo.storeGraph(tmp, full);
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
+
+        Files.createDirectories(tmp.resolve("jk"));
+        Files.writeString(tmp.resolve("jk/after-build.kts"), "println(1)\n");
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
+
+        PreflightMemo.storeGraph(tmp, BuildGraph.resolve(tmp, entry));
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
+        Files.writeString(tmp.resolve("jk-guards.toml"), "# rules\n");
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
+
+        PreflightMemo.storeGraph(tmp, BuildGraph.resolve(tmp, entry));
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
+        Files.delete(tmp.resolve("jk-guards.toml"));
+        Files.delete(tmp.resolve("jk/after-build.kts"));
+        Files.delete(tmp.resolve("jk"));
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
+    }
+
     /** SIMPLE Mill-like fixture (layout=simple, no Maven src/main tree). */
     private static void writeSimpleProject(Path dir) throws Exception {
         Files.createDirectories(dir.resolve("src"));
@@ -691,6 +848,14 @@ class PreflightMemoTest {
             InputTrees.finishJob();
             IoLedger.close();
         }
+    }
+
+    private static Path moduleDir(BuildGraph.Result graph, String name) {
+        return graph.topoOrder().stream()
+                .map(u -> u.dir().toAbsolutePath().normalize())
+                .filter(dir -> dir.getFileName().toString().equals(name))
+                .findFirst()
+                .orElseThrow();
     }
 
     private static void writeProject(Path dir) throws Exception {

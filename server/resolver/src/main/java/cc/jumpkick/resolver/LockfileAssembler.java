@@ -44,6 +44,7 @@ final class LockfileAssembler {
     private final EffectivePomBuilder pomBuilder;
     private final PlatformConstraints constraints;
     private final Map<String, List<String>> activatedFeatures;
+    private Set<String> workspaceModules = Set.of();
 
     /**
      * @param reposFor the group a package's artifact is fetched from: {@code repos} plus the
@@ -64,6 +65,11 @@ final class LockfileAssembler {
         this.pomBuilder = pomBuilder;
         this.constraints = constraints;
         this.activatedFeatures = activatedFeatures;
+    }
+
+    /** Packages the workspace builds: present in the graph so parents name them, never a lock row. */
+    void workspaceModules(Set<String> gas) {
+        this.workspaceModules = gas == null ? Set.of() : Set.copyOf(gas);
     }
 
     /** Rows in declaration order: Maven rows first, then the file dependencies. */
@@ -90,6 +96,7 @@ final class LockfileAssembler {
         mergeGraph(solved.main(), mainTags, Scope.MAIN, tagsByKey, modByKey);
         mergeGraph(solved.test(), testTags, Scope.TEST, tagsByKey, modByKey);
         mergeGraph(solved.processor(), processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
+        modByKey.keySet().removeIf(this::builtByWorkspace);
 
         ArtifactMaterializer materializer =
                 new ArtifactMaterializer((mod, tags, abort) -> toArtifact(mod, tags, fallbackSource, abort), progress);
@@ -165,6 +172,14 @@ final class LockfileAssembler {
             }
         }
         return tagsByModule;
+    }
+
+    private boolean builtByWorkspace(String pkg) {
+        try {
+            return workspaceModules.contains(PackageId.parse(pkg).ga());
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private Lockfile.Artifact toArtifact(
