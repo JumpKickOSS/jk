@@ -33,10 +33,11 @@ import org.junit.jupiter.api.io.TempDir;
  * names (the running jk's, with a note, when it names none), and the fork classpath is made of
  * them.
  *
- * <p>The declared repository is a file tree this test publishes, with stand-ins for
- * {@code jk-plugin-sdk} and {@code jk-host} at the running jk's version; the first-party repository
- * jk ships with is consulted too and wins when it serves the release. Either way the fetch lands in
- * the ambient store, the same store {@link PluginSdkFloor#classpath} reads.
+ * <p>{@code cc.jumpkick} resolves from the {@code jumpkick} repository alone, so the consumer
+ * declares a file tree this test publishes <em>as</em> {@code jumpkick}, with stand-ins for {@code
+ * jk-plugin-sdk} and {@code jk-host}: nothing reaches the public first-party repository, which need
+ * not have published the running jk yet. The fetch lands in the ambient store, the same store {@link
+ * PluginSdkFloor#classpath} reads.
  */
 @Tag("integration")
 class PluginSdkFloorTest {
@@ -60,7 +61,7 @@ class PluginSdkFloorTest {
             assertThat(row.version()).isEqualTo(JkVersion.VERSION);
             assertThat(row.scopes()).containsExactly(Scope.PLUGIN);
             assertThat(row.pinnedBy()).isEqualTo("plugin:path:hello");
-            assertThat(row.source()).as("names the repository it came from").contains("+");
+            assertThat(row.source()).as("names the stand-in it came from").startsWith("jumpkick+file:");
             assertThat(row.checksum()).startsWith("sha256:");
         });
         assertThat(notes).singleElement().asString().contains("path:hello").contains(JkVersion.VERSION);
@@ -91,9 +92,7 @@ class PluginSdkFloorTest {
         assertThat(PluginSdkFloor.version(manifest)).isEqualTo(declared);
         assertThat(PluginSdkFloor.version(null)).isEqualTo(JkVersion.VERSION);
 
-        // First-party coordinates route to the JumpKick repository alone, so the test's file
-        // repository stands in for it the way `jk lock --repo-url` does.
-        RepoGroup repos = RepoGroupBuilder.buildFor(build, repo.toUri(), JkStores.storeCas());
+        RepoGroup repos = RepoGroupBuilder.buildFor(build, null, JkStores.storeCas());
         List<String> notes = new ArrayList<>();
         List<Lockfile.Artifact> rows = PluginSdkFloor.rows(repos, decl, manifest, notes::add);
 
@@ -108,7 +107,7 @@ class PluginSdkFloorTest {
         assertThat(notes).as("a declared SDK version needs no note").isEmpty();
     }
 
-    /** A consumer pinning {@code hello.jar} by path, with {@code repo} as its one declared repository. */
+    /** A consumer pinning {@code hello.jar} by path, with {@code repo} standing in for {@code jumpkick}. */
     private static JkBuild consumer(Path project, Path repo) throws Exception {
         Files.createDirectories(project);
         Path pluginJar = jar(project.resolve("hello.jar"), "hello-plugin");
@@ -122,8 +121,9 @@ class PluginSdkFloorTest {
                 integration = false
                 install = false
 
-                [repositories]
-                local = "%s"
+                [repositories.jumpkick]
+                url    = "%s"
+                groups = ["cc.jumpkick", "cc.jumpkick.*"]
 
                 [plugins]
                 hello = { path = "hello.jar", sha256 = "%s" }
