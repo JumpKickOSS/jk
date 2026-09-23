@@ -79,6 +79,11 @@ string — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update`
 metadata and refreshes the recorded toolchain ([below](#toolchain-pins)). MCP has the same verb
 with a preview: [`jk_update`](mcp.md#tools).
 
+Each moved pin prints as it is written (`guava  31.0-jre → 31.1-jre`). Once the relock lands, every
+other lock package it changed prints the same way — a transitive dependency that moved, `new → 1.2`
+for one it added, `1.0 → removed` for one it dropped — then the summary, `Analyzed 17 dependencies,
+2 were updated in jk-lock.toml`.
+
 An update never moves a package backwards. `jk update` and `jk lock -F` treat every version the old
 lock holds as a floor: a transitive dependency stays where it was even when the POMs that pull it
 in name an older release, and moves up when one of them asks for a newer one. Only a constraint

@@ -18,7 +18,8 @@ public final class UpdateTool implements McpTool {
                 "jk_update",
                 "Move declared exact pins in jk.toml to the newest stable on the same major (major=true"
                         + " crosses) and relock — same as jk update. apply=false (default) only previews"
-                        + " the rewrites; apply=true writes jk.toml and jk-lock.toml.",
+                        + " the rewrites; apply=true writes jk.toml and jk-lock.toml and lists every lock"
+                        + " package the relock added, removed or moved under lock.changes.",
                 McpSchemas.object(Map.of(
                         "dir",
                         McpSchemas.string(McpSchemas.WORKSPACE_ROOT),
@@ -35,6 +36,10 @@ public final class UpdateTool implements McpTool {
         boolean apply = in.flag("apply");
         Map<String, Object> data = McpUpdate.run(in.requiredDir(), in.strings("deps"), in.flag("major"), apply);
         Object moved = data.get("rewrites") instanceof List<?> l ? Integer.valueOf(l.size()) : data.get("error");
-        return in.ok(McpEnvelope.of("update", data), (apply ? "update applied " : "update preview ") + moved);
+        String relocked = data.get("lock") instanceof Map<?, ?> lock && lock.get("updated") != null
+                ? ", " + lock.get("updated") + " lock packages changed"
+                : "";
+        return in.ok(
+                McpEnvelope.of("update", data), (apply ? "update applied " : "update preview ") + moved + relocked);
     }
 }

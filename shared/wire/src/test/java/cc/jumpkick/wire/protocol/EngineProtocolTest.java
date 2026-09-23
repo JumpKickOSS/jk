@@ -333,6 +333,17 @@ class EngineProtocolTest {
     }
 
     @Test
+    void update_change_event_round_trips_a_move_an_addition_and_a_member_row() {
+        String moved = ProtoEvents.updateChange("/work", "com.acme:jackson", "2.18.0", "2.18.2", List.of());
+        assertThat(EngineProtocol.typeOf(moved)).isEqualTo(EngineProtocol.UPDATE_CHANGE);
+        assertThat(UpdateChangeEvent.decode(moved))
+                .isEqualTo(new UpdateChangeEvent("/work", "com.acme:jackson", "2.18.0", "2.18.2", List.of()));
+        String added = ProtoEvents.updateChange("/work", "com.acme:new", null, "1.0", List.of("api", "web"));
+        assertThat(UpdateChangeEvent.decode(added))
+                .isEqualTo(new UpdateChangeEvent("/work", "com.acme:new", null, "1.0", List.of("api", "web")));
+    }
+
+    @Test
     void sync_request_round_trips_all_fields() {
         String json =
                 new SyncRequest("/work", "/cache", "/jdks", "http://repo", true, false, true, true, false).encode();

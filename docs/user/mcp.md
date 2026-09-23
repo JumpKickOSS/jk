@@ -101,7 +101,7 @@ The whole registry:
 | **`jk_explain`** | Forecast next build |
 | **`jk_affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |
 | **`jk_outdated`** | Declared deps an update would move (read-only; Current / Compatible / Latest); `all=true` lists every row, `checked` counts them, `file` is the `target/jk-outdated-dependencies.md` it wrote |
-| **`jk_update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes and relocks. Same renderer as `jk add` |
+| **`jk_update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes, relocks, and lists every lock package the relock added, removed or moved under `lock.changes` (`coordinate`, `from`, `to`; `from`/`to` null when added/removed), with the count in `lock.updated`. Same renderer as `jk add` |
 | **`jk_deps`** | Preview/apply surgical dependency add/remove (`apply` defaults **false**) |
 | **`jk_workspace`** | Preview/apply workspace member add/remove |
 | **`jk_manifest`** | Set whitelisted `jk.toml` keys (`java=N` is language level, not `jdk=`) |

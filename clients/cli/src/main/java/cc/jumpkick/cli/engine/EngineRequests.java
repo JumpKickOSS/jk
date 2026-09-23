@@ -379,6 +379,14 @@ public final class EngineRequests {
          * in {@code table}, {@code from} → {@code to}); fires before that module's plan starts.
          */
         default void onRewrite(String dir, String table, String handle, String module, String from, String to) {}
+
+        /**
+         * One package {@code jk update}'s relock changed in the lockfile under {@code dir}: {@code
+         * from} null when added, {@code to} null when removed, {@code members} the workspace members
+         * a member-override row serves. Fires before that module's {@link #onModuleFinish}.
+         */
+        default void onChange(
+                String dir, String coordinate, @Nullable String from, @Nullable String to, List<String> members) {}
     }
 
     /**
