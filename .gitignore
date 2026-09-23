@@ -2,10 +2,10 @@
 target/
 .jk/selective-plan.json
 
-# --- Gradle (the bootstrap build system, and the IntelliJ plugin's) ---
+# --- Gradle (the IntelliJ plugin's own build) ---
 .gradle/
 
-# --- Gradle's build/ outputs; every jk script writes under target/ ---
+# --- script outputs (build/release, build/dogfood-wall, build/dist of a bench fixture) ---
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
@@ -19,8 +19,7 @@ build/
 hs_err_pid*
 replay_pid*
 
-# Keep the Gradle wrapper jars tracked (overrides *.jar above).
-!gradle/wrapper/gradle-wrapper.jar
+# The IntelliJ client's own Gradle wrapper jar stays tracked (overrides *.jar above).
 !clients/intellij/gradle/wrapper/gradle-wrapper.jar
 
 # --- VS Code extension packaging ---

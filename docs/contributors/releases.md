@@ -343,17 +343,11 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 
 ### Platforms without a hosted client
 
-jumpkick.build serves two native clients, **linux-x86_64** and **windows-x86_64**, beside the
-engine jar and the JVM client. Linux aarch64 and macOS (both architectures) have no hosted
-native client. The installers put the JVM client on such a host, which is how the macos-aarch64
-release row bootstraps and then builds that platform's native client; linux-aarch64 and
-macos-x86_64 have no runner in the matrix, so no release ships a client for them.
-
-A contributor on one of those hosts builds the first jk with the Gradle bootstrap —
-`./gradlew dist installLocal` then `./install.sh build/dist/jk`, which
-`scripts/bootstrap-from-gradle.sh` runs in that order ([self-host](self-host.md#bootstrap)) — and
-the checkout's own jk takes over from there. Gradle builds nothing CI judges; jk is the gate and
-the release builder.
+jumpkick.build serves native clients for **linux-x86_64**, **linux-aarch64**, **macos-aarch64** and
+**windows-x86_64**, beside the engine jar and the JVM client. linux-aarch64 has no runner in the
+matrix, so its client is built by hand for each release; macOS on Intel has no native client. The
+installers put the JVM client on such a host, and a contributor there builds the tree with it and
+lets the checkout's own jk take over ([self-host](self-host.md#bootstrap)).
 
 Users on those hosts — and on every host no native client will ever be built for — install the
 **JVM client** instead: `jk-<version>.jar` is the CLI module's assembly (`[application] assembly =
