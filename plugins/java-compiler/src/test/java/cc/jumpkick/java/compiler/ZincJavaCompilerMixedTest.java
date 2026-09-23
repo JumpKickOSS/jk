@@ -31,6 +31,30 @@ class ZincJavaCompilerMixedTest {
     }
 
     @Test
+    void an_analysis_off_marker_does_not_hand_scala_sources_to_javac(@TempDir Path dir) throws Exception {
+        // The marker is the Java-only fallback; javac alone cannot compile a .scala file.
+        Project p = new Project(dir);
+        p.write("Hello.scala", "object Hello { def greet: String = \"hi\" }\n");
+        Files.createDirectories(p.workdir);
+        ZincWorkdir.of(p.workdir).markAnalysisOff("java.security.acl.Group", ZincWorkdir.classpathDigest(p.compileCp));
+        ZincJavaCompiler.Result r = p.compileMixed();
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(p.classFile("Hello.class")).isRegularFile();
+    }
+
+    @Test
+    void a_linkage_error_in_a_mixed_compile_is_reported_not_handed_to_javac(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("Hello.scala", "object Hello { def greet: String = \"hi\" }\n");
+        List<Path> broken = p.compilerCp.stream()
+                .filter(j -> !j.getFileName().toString().startsWith("tasty-core"))
+                .toList();
+        ZincJavaCompiler.Result r = p.compileMixed(p.compileCp, broken);
+        assertThat(r.success()).isFalse();
+        assertThat(r.diagnostics().toString()).contains("failed to link").doesNotContain("not of SOURCE kind");
+    }
+
+    @Test
     void stdlib_comes_from_the_compiler_closure_when_compile_cp_is_empty(@TempDir Path dir) throws Exception {
         Project p = new Project(dir);
         p.write("Hello.scala", "object Hello { def greet: String = \"hi\" }\n");
@@ -170,6 +194,11 @@ class ZincJavaCompilerMixedTest {
         }
 
         ZincJavaCompiler.Result compileMixed(List<Path> compileClasspath) throws IOException {
+            return compileMixed(compileClasspath, compilerCp);
+        }
+
+        ZincJavaCompiler.Result compileMixed(List<Path> compileClasspath, List<Path> compilerClasspath)
+                throws IOException {
             List<Path> sources;
             try (var walk = Files.walk(src)) {
                 sources = walk.filter(Files::isRegularFile)
@@ -182,7 +211,7 @@ class ZincJavaCompilerMixedTest {
             return ZincJavaCompiler.compileMixed(
                     new JavaCompileJob(sources, compileClasspath, classes, workdir, null, 25, List.of(), List.of()),
                     "3.8.4",
-                    compilerCp,
+                    compilerClasspath,
                     null,
                     null,
                     null);

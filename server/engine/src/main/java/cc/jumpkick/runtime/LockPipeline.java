@@ -77,6 +77,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -325,7 +326,7 @@ public final class LockPipeline {
                 resolveToolVersions(keepPins ? existing : null, pathPrep.repos(), progress, observer);
         orchestrator.withToolVersions(tools);
         phases.begin(ResolveProfile::phaseResolve);
-        Lockfile lock = solve(orchestrator, pathPrep.project(), keepPins ? existing : null, observer);
+        Lockfile lock = solve(orchestrator, pathPrep.project(), existing, observer);
 
         phases.begin(ResolveProfile::phasePost);
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
@@ -355,28 +356,30 @@ public final class LockPipeline {
     }
 
     private Lockfile solve(
-            LockOrchestrator orchestrator, JkBuild project, @Nullable Lockfile pins, ResolveObserver observer)
+            LockOrchestrator orchestrator, JkBuild project, @Nullable Lockfile existing, ResolveObserver observer)
             throws Exception {
-        Lockfile lock = resolveGraph(orchestrator, project, pins, observer);
+        Lockfile lock = resolveGraph(orchestrator, project, existing, observer);
         return policy.sources() ? orchestrator.attachSources(lock) : lock;
     }
 
     private Lockfile resolveGraph(
-            LockOrchestrator orchestrator, JkBuild project, @Nullable Lockfile pins, ResolveObserver observer)
+            LockOrchestrator orchestrator, JkBuild project, @Nullable Lockfile existing, ResolveObserver observer)
             throws Exception {
-        if (pins != null) {
+        if (policy.keepPins() && existing != null) {
             // Keep-pins pass: soft-prefer the existing pins; the metadata TTL is fine (pins win).
-            return orchestrator.lockConservative(project, pins, jkVersion, features, withDefaults, observer);
+            return orchestrator.lockConservative(project, existing, jkVersion, features, withDefaults, observer);
         }
+        // A float moves forward: the lock it replaces is a floor, never a preference.
+        Callable<Lockfile> floating =
+                () -> orchestrator.lockFloating(project, existing, jkVersion, features, withDefaults, observer);
         if (policy.forceRevalidate()) {
             // Float-to-latest needs current indexes; revalidate past the TTL (conditional GET).
-            return MavenMetadataCache.withForceRevalidate(
-                    () -> orchestrator.lock(project, jkVersion, features, withDefaults, observer));
+            return MavenMetadataCache.withForceRevalidate(floating);
         }
         // Local maven-metadata within TTL first (default 24h) — do not force-revalidate every
         // lock (conditional GETs still 429 Central on large graphs). Fresh indexes: jk update,
         // or -F / --force (Session force → MavenMetadataCache).
-        return orchestrator.lock(project, jkVersion, features, withDefaults, observer);
+        return floating.call();
     }
 
     /**

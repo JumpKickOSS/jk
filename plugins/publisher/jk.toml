@@ -5,8 +5,8 @@ description = "JumpKick's Maven publish plugin"
 jk-core.workspace = true
 jk-client-io.workspace = true
 jk-plugin-sdk.workspace = true
-bcpg-jdk18on = "1.85"
-sigstore-java = "2.2.0"
+bcpg-jdk18on = "1.86"
+sigstore-java = "2.3.0"
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }

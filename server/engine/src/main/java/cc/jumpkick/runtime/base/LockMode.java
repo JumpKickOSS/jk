@@ -19,13 +19,14 @@ public sealed interface LockMode {
     record Keep(boolean sources) implements LockMode {}
 
     /**
-     * {@code jk lock -F}: float to the latest compatible versions. {@code sources} is as in {@link
-     * Keep}.
+     * {@code jk lock -F}: float to the latest compatible versions, never below what the lock on disk
+     * holds unless a constraint rules that version out. {@code sources} is as in {@link Keep}.
      */
     record Latest(boolean sources) implements LockMode {}
 
     /**
-     * {@code jk update}: float everything, ignoring the maven-metadata TTL. {@code
+     * {@code jk update}: float everything, ignoring the maven-metadata TTL, with the same floor as
+     * {@link Latest}. {@code
      * platformOverride} is the CLI {@code --platform} ({@code enforced}|{@code floor}), or null to
      * take the project's {@code [resolve] platform}.
      */

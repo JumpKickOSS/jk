@@ -24,7 +24,7 @@ the root lock. Never write per-module lockfiles.
 | Command | Role |
 |---------|------|
 | `jk lock` | Resolve and write the lock, keeping every version it already holds; only what a changed constraint rules out moves. Metadata warm within 24h TTL (local first) |
-| `jk lock -F` | The same resolve, but every opt-in selector (`^`, `~`, range, `latest`) takes the newest version it allows; exact pins do not move. Revalidates metadata past the TTL |
+| `jk lock -F` | The same resolve, but every opt-in selector (`^`, `~`, range, `latest`) takes the newest version it allows; exact pins do not move and nothing drops below the old lock. Revalidates metadata past the TTL |
 | `jk sync` | Materialize cache; `--offline-prepare` for offline CI; `--sources` fetches every library's `-sources.jar` for the IDE |
 | `jk outdated` | Current / Compatible / Latest table (exit 0 always on success) |
 | `jk update` | Rewrite declared pins in `jk.toml` to the newest stable on the same major, then relock — [below](#jk-update) |
@@ -78,6 +78,12 @@ manifest keeps its spelling — a catalog one-liner stays a one-liner, a GAV str
 string — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update` also revalidates
 metadata and refreshes the recorded toolchain ([below](#toolchain-pins)). MCP has the same verb
 with a preview: [`jk_update`](mcp.md#tools).
+
+An update never moves a package backwards. `jk update` and `jk lock -F` treat every version the old
+lock holds as a floor: a transitive dependency stays where it was even when the POMs that pull it
+in name an older release, and moves up when one of them asks for a newer one. Only a constraint
+that rules the old version out lowers it: an exact pin you wrote lower, a range's ceiling, or a
+platform BOM that manages the package down.
 
 ## `jk outdated`
 

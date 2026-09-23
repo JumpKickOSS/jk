@@ -4,7 +4,7 @@ description = "JumpKick's Android packaging plugin"
 [dependencies]
 jk-plugin-sdk.workspace = true
 jk-client-io.workspace = true
-apksig = "9.4.0"
+apksig = "9.4.1"
 asm = "9.10.1"
 
 [processor-dependencies]

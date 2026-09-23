@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -28,14 +29,17 @@ public final class InMemoryPackageSource implements PackageSource {
     private final Map<String, List<String>> versionsByPackage;
     private final Map<String, List<Term>> depsByCoord;
     private final Map<String, Set<String>> declaredByPackage;
+    private final Map<String, String> floorByPackage;
 
     private InMemoryPackageSource(
             Map<String, List<String>> versionsByPackage,
             Map<String, List<Term>> depsByCoord,
-            Map<String, Set<String>> declaredByPackage) {
+            Map<String, Set<String>> declaredByPackage,
+            Map<String, String> floorByPackage) {
         this.versionsByPackage = Map.copyOf(versionsByPackage);
         this.depsByCoord = Map.copyOf(depsByCoord);
         this.declaredByPackage = Map.copyOf(declaredByPackage);
+        this.floorByPackage = Map.copyOf(floorByPackage);
     }
 
     @Override
@@ -60,6 +64,11 @@ public final class InMemoryPackageSource implements PackageSource {
         return declaredByPackage.getOrDefault(pkg, Set.of());
     }
 
+    @Override
+    public Optional<String> floorVersion(String pkg) {
+        return Optional.ofNullable(floorByPackage.get(pkg));
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -72,6 +81,7 @@ public final class InMemoryPackageSource implements PackageSource {
         private final Map<String, List<String>> versionsByPackage = new HashMap<>();
         private final Map<String, List<Term>> depsByCoord = new HashMap<>();
         private final Map<String, Set<String>> declaredByPackage = new HashMap<>();
+        private final Map<String, String> floorByPackage = new HashMap<>();
 
         public Builder version(String pkg, String version) {
             return version(pkg, version, deps -> {});
@@ -87,6 +97,12 @@ public final class InMemoryPackageSource implements PackageSource {
             return this;
         }
 
+        /** The version a prior lock held for {@code pkg}; see {@link PackageSource#floorVersion}. */
+        public Builder floor(String pkg, String version) {
+            floorByPackage.put(Objects.requireNonNull(pkg, "pkg"), Objects.requireNonNull(version, "version"));
+            return this;
+        }
+
         public InMemoryPackageSource build() {
             // Sort each version list highest-first to match the PackageSource contract.
             Map<String, List<String>> sorted = new HashMap<>();
@@ -97,7 +113,7 @@ public final class InMemoryPackageSource implements PackageSource {
             });
             Map<String, Set<String>> declared = new HashMap<>();
             declaredByPackage.forEach((pkg, set) -> declared.put(pkg, Set.copyOf(set)));
-            return new InMemoryPackageSource(sorted, depsByCoord, declared);
+            return new InMemoryPackageSource(sorted, depsByCoord, declared, floorByPackage);
         }
     }
 
