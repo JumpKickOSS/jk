@@ -40,7 +40,7 @@ public final class CacheRoots {
         if (Files.isDirectory(toolsDir.resolve("envs"))) {
             scanTextFilesRecursively(toolsDir.resolve("envs"), cas, refs);
         }
-        // repos/jk-local is a PUBLISH DESTINATION (installLocal / jk publish local), not a derived
+        // repos/jk-local is a PUBLISH DESTINATION (jk install / jk publish local), not a derived
         // cache: a freshly published worker is legitimately unreferenced by any action until the
         // first build consumes it. Its .jk memos are roots so a leftover store-CAS copy of those
         // bytes is not swept. Maven-layout files themselves are never deleted by CAS sweep.

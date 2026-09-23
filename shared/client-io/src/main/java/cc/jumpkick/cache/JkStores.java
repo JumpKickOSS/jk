@@ -11,7 +11,7 @@ import java.nio.file.Path;
  *
  * {@link #store()} / {@link #storeCas()} — under {@link JkDirs#store()} ({@code
  * ~/.jk/store} by default). Holds network-fetched deps, {@code repos/&lt;name&gt;/}
- * Maven-layout views, installLocal publishes, worker jars, {@link JkDirs#libraryRegistry()},
+ * Maven-layout views, jk install publishes, worker jars, {@link JkDirs#libraryRegistry()},
  * {@link JkDirs#templates()}, and other cross-project immutable bytes. Pointing {@code
  * JK_CACHE_DIR} at a fresh directory must <em>not</em> move this root (or
  * tests and cold CI would re-hit Maven Central).
