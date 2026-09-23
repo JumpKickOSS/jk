@@ -77,11 +77,14 @@ class ThirdPartyPluginExampleTest {
         assertThat(Files.readString(plugin.resolve("src/main/resources/jk-plugin.toml")))
                 .as("the manifest names the same SDK release the code compiles against")
                 .contains("sdk       = \"" + VERSION + "\"");
-        // The SDK comes from the repository the release step wrote; the test launcher jk adds to
-        // every test graph still comes from Central, so the repository is declared beside it.
+        // The SDK comes from the repository the release step wrote. cc.jumpkick resolves from the
+        // jumpkick repository alone, so that repository stands in for it; the test launcher jk adds
+        // to every test graph still comes from Central.
         Files.writeString(
                 plugin.resolve("jk.toml"),
-                Files.readString(plugin.resolve("jk.toml")) + "\n[repositories]\nsdk-repo = \"" + repoUrl + "\"\n");
+                Files.readString(plugin.resolve("jk.toml"))
+                        + "\n[repositories.jumpkick]\nurl = \"" + repoUrl + "\"\n"
+                        + "groups = [\"cc.jumpkick\", \"cc.jumpkick.*\"]\n");
         int[] lockExit = new int[1];
         String lockOut = Capture.stdout(() -> lockExit[0] = run("lock", "--no-ansi", "-C", plugin.toString()));
         assertThat(lockExit[0]).as(lockOut).isEqualTo(0);
@@ -119,9 +122,11 @@ class ThirdPartyPluginExampleTest {
                 java    = 25
 
                 # The plugin forks with the SDK floor it compiled against, resolved from this
-                # module's repositories at lock time — the same file repository the plugin used.
-                [repositories]
-                sdk-repo = "%s"
+                # module's repositories at lock time — the same file repository the plugin used,
+                # standing in for jumpkick.
+                [repositories.jumpkick]
+                url    = "%s"
+                groups = ["cc.jumpkick", "cc.jumpkick.*"]
 
                 [plugins]
                 hello = { path = "%s", sha256 = "%s" }
