@@ -9,8 +9,10 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
+import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.GenerateOps;
 import cc.jumpkick.runtime.base.GraphOps;
 import cc.jumpkick.runtime.workspace.ExplainReport;
@@ -44,7 +46,8 @@ public final class McpReads {
 
     public static Map<String, Object> why(String dir, @Nullable String query) {
         Path root = PathUtil.resolveUserPath(dir);
-        return GraphOps.why(root, query).toStructured();
+        return GraphOps.why(root, query, FeatureSelection.DEFAULTS, RepoGroupBuilder::buildFor)
+                .toStructured();
     }
 
     /**
