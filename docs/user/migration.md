@@ -143,9 +143,9 @@ workspace lock reads the root's), so the lock resolves a pinned module the way M
 did: the project's pin is the version, and a transitive POM's range on that module — a plain
 version or an open floor such as `[2.0.18,)`, declared by a dependency of the same module or of
 any sibling — is reported, not enforced. `cryptofs 2.10.0` declares `jakarta.inject-api 2.0.1.MR`;
-the POM's own `2.0.1` wins, the lock edge reads `jakarta.inject-api@2.0.1 <- 2.0.1.MR`, and
-`jk lock` prints one warning per overridden range so the divergence from what the library asked for
-is on record. A `jk.toml` written by hand keeps the default, `pins = "exact"`, under which the same
+the POM's own `2.0.1` wins, the lock pins `jakarta.inject-api@2.0.1`, and `jk lock` prints one
+warning per overridden range so the divergence from what the library asked for is on record;
+`jk why jakarta.inject-api` shows the `2.0.1.MR` beside the step that asked for it. A `jk.toml` written by hand keeps the default, `pins = "exact"`, under which the same
 shape is a conflict PubGrub refuses with its explanation; delete the `[resolve]` line to get that
 strictness back on an imported project. The alternative — importing direct versions as `>=` floors
 so highest-wins lifts them — would float every imported project past the versions Maven built

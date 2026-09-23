@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -11,8 +12,10 @@ import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.DependencyTree;
 import cc.jumpkick.resolver.DependencyTreeStyle;
+import cc.jumpkick.resolver.EdgeSelectors;
 import cc.jumpkick.resolver.LockGraph;
 import cc.jumpkick.resolver.Provenance;
 import cc.jumpkick.wire.protocol.WhyReport;
@@ -20,7 +23,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -47,18 +50,20 @@ public final class GraphOps {
                 project, lock, dir, maxDepth, DependencyTreeStyle.Styling.markers(), flatten, scopes, stack, selection);
     }
 
-    /** As {@link #why(Path, String, FeatureSelection)} under the default features. */
-    public static WhyReport why(Path dir, @Nullable String query) {
-        return why(dir, query, FeatureSelection.DEFAULTS);
-    }
-
-    public static WhyReport why(Path dir, @Nullable String query, FeatureSelection selection) {
+    /**
+     * The provenance of every lock row matching {@code query}. {@code repositories} builds the
+     * project's repository group, through which each step's parent POM is read for the selector it
+     * declared.
+     */
+    public static WhyReport why(
+            Path dir, @Nullable String query, FeatureSelection selection, Function<JkBuild, RepoGroup> repositories) {
         try {
             JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
             // One LockGraph per request: a fuzzy query with many matches must not rebuild the
             // whole reverse adjacency per match.
             LockGraph graph = LockGraph.of(project, lock, dir, selection);
+            EdgeSelectors edgeSelectors = edgeSelectors(project, lock, repositories);
             List<Lockfile.Artifact> matches = lock.artifacts().stream()
                     .filter(p -> matchesQuery(p.name(), query))
                     .toList();
@@ -89,9 +94,8 @@ public final class GraphOps {
                     }
                     paths.add(String.join(">", steps));
                     roots.add(path.rootUnit() == null ? "" : path.rootUnit());
-                    selectors.add(path.steps().stream()
-                            .map(s -> s.declared() == null ? "" : s.declared())
-                            .collect(Collectors.joining(WhyReport.STEP_SELECTOR_SEPARATOR)));
+                    selectors.add(String.join(
+                            WhyReport.STEP_SELECTOR_SEPARATOR, stepSelectors(path, target, graph, edgeSelectors)));
                 }
             }
             return new WhyReport(
@@ -110,14 +114,50 @@ public final class GraphOps {
         }
     }
 
+    /**
+     * What each step of {@code path} was declared with: the manifest's selector for the root, the
+     * previous step's POM edge after; {@code ""} where neither says. The last step is {@code target}
+     * itself, so a partition row's own edge is the one read.
+     */
+    private static List<String> stepSelectors(
+            Provenance.Path path, Lockfile.Artifact target, LockGraph graph, @Nullable EdgeSelectors edges) {
+        List<Provenance.Task> steps = path.steps();
+        List<String> out = new ArrayList<>(steps.size());
+        for (int k = 0; k < steps.size(); k++) {
+            String selector = null;
+            if (k == 0) {
+                selector = graph.rootSelector(steps.get(k).module());
+            } else if (edges != null) {
+                Lockfile.Artifact parent = graph.artifact(steps.get(k - 1).module());
+                Lockfile.Artifact child = k == steps.size() - 1
+                        ? target
+                        : graph.artifact(steps.get(k).module());
+                if (parent != null && child != null) selector = edges.declared(parent, child);
+            }
+            out.add(selector == null ? "" : selector);
+        }
+        return out;
+    }
+
+    /** The POM reader for {@code lock}'s edges, or null when the project's repositories cannot be built. */
+    private static @Nullable EdgeSelectors edgeSelectors(
+            JkBuild project, Lockfile lock, Function<JkBuild, RepoGroup> repositories) {
+        try {
+            return new EdgeSelectors(repositories.apply(project), lock);
+        } catch (RuntimeException e) {
+            Log.debug("jk why: repositories unavailable, steps print without their selectors", e);
+            return null;
+        }
+    }
+
     /** Every {@code excluded-by} line in the lock whose pruned child matches {@code query}, as wire fields. */
     private static List<String> prunedEdges(Lockfile lock, @Nullable String query) {
         List<String> out = new ArrayList<>();
         for (Lockfile.Artifact row : lock.artifacts()) {
             for (String line : row.excludedBy()) {
-                int sep = line.indexOf(Lockfile.DECLARED_SEPARATOR);
+                int sep = line.indexOf(Lockfile.EXCLUSION_ORIGIN_SEPARATOR);
                 String child = sep < 0 ? line : line.substring(0, sep);
-                String origin = sep < 0 ? "" : line.substring(sep + Lockfile.DECLARED_SEPARATOR.length());
+                String origin = sep < 0 ? "" : line.substring(sep + Lockfile.EXCLUSION_ORIGIN_SEPARATOR.length());
                 if (!matchesQuery(child, query)) continue;
                 out.add(String.join(
                         WhyReport.EXCLUSION_FIELD_SEPARATOR,

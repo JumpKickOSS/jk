@@ -118,9 +118,7 @@ class FamilyLinesTest {
                 "sha256:0000",
                 null,
                 List.of(Scope.MAIN),
-                List.of(deps).stream()
-                        .map(d -> d + Lockfile.DECLARED_SEPARATOR + "1")
-                        .toList());
+                List.of(deps));
     }
 
     private static Dependency dep(String module) {

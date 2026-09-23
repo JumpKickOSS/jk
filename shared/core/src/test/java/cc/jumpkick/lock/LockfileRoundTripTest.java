@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.model.Scope;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
@@ -134,10 +133,9 @@ class LockfileRoundTripTest {
         assertThat(parsed.artifacts().getFirst().deps()).containsExactly("com.example:dep@2.0.0");
     }
 
-    /** An edge line says what was picked and, after {@code <-}, what the parent asked for. */
+    /** An edge line is the picked package at its picked version and nothing else. */
     @Test
-    void an_edge_carries_the_selector_that_produced_its_version() {
-        String ref = "com.example:dep:jar:@2.0.0";
+    void an_edge_is_the_picked_version_alone() {
         Lockfile original = new Lockfile(
                 Lockfile.CURRENT_VERSION,
                 "jk 0.13.3",
@@ -149,22 +147,37 @@ class LockfileRoundTripTest {
                         "sha256:0123abcd",
                         null,
                         List.of(Scope.MAIN),
-                        List.of(ref, "com.example:other:jar:@1.0"),
-                        null,
-                        null,
-                        null,
-                        Map.of(ref, "[2.0,3.0)"))));
+                        List.of("com.example:other:jar:@1.0", "com.example:dep:jar:@2.0.0"))));
 
         String rendered = LockfileWriter.render(original);
         assertThat(rendered)
-                .contains("\"com.example:dep:jar:@2.0.0 <- [2.0,3.0)\",")
-                .contains("\"com.example:other:jar:@1.0\",");
+                .contains("deps = [\n  \"com.example:dep:jar:@2.0.0\",\n  \"com.example:other:jar:@1.0\",\n]")
+                .doesNotContain("<-");
 
         Lockfile.Artifact parsed = LockfileReader.parse(rendered).artifacts().getFirst();
-        assertThat(parsed.deps()).containsExactly(ref, "com.example:other:jar:@1.0");
-        assertThat(parsed.declaredFor(ref)).isEqualTo("[2.0,3.0)");
-        assertThat(parsed.declaredFor("com.example:other:jar:@1.0")).isNull();
-        assertThat(parsed.declared()).isEqualTo(original.artifacts().getFirst().declared());
+        assertThat(parsed.deps()).containsExactly("com.example:dep:jar:@2.0.0", "com.example:other:jar:@1.0");
+    }
+
+    /** A deps entry is one {@code module@version} token; anything with a space in it is not this format. */
+    @Test
+    void a_deps_entry_that_is_not_module_at_version_is_refused() {
+        String lock = LockfileWriter.render(new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "jk 0.13.3",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        List.of(new Lockfile.Artifact(
+                                "com.example:widget:jar:",
+                                "1.2.3",
+                                "central+https://repo.maven.apache.org/maven2/",
+                                "sha256:0123abcd",
+                                null,
+                                List.of("com.example:dep:jar:@2.0.0")))))
+                .replace("\"com.example:dep:jar:@2.0.0\"", "\"com.example:dep:jar:@2.0.0 <- [2.0,3.0)\"");
+
+        assertThatThrownBy(() -> LockfileReader.parse(lock))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("com.example:dep:jar:@2.0.0 <- [2.0,3.0)")
+                .hasMessageContaining("jk lock");
     }
 
     @Test
@@ -184,7 +197,6 @@ class LockfileRoundTripTest {
                         null,
                         null,
                         null,
-                        Map.of(),
                         List.of("com.example:noise <- jk.toml:widget", "com.acme:util <- com.example:widget@1.2.3"))));
 
         String rendered = LockfileWriter.render(original);
