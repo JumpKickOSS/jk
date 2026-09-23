@@ -159,19 +159,48 @@ if (!Files.isDirectory(target)) {
         return if (Files.isRegularFile(jar)) jar else null
     }
 
-    // The native client is named by [native].name, and carries .exe on Windows.
-    val client: Path? = listOf("jk", "jk.exe")
-        .map { target.resolve(it) }
-        .firstOrNull { Files.isRegularFile(it) }
+    // The native client is named by [native].name, and carries .exe on Windows. This platform's
+    // name only: two hosts that share a checkout share its target/, and a WSL build against
+    // /mnt/c leaves a Linux ELF at target/jk. Taking the first name that exists shipped that ELF
+    // from Windows builds and left target/dist/jk.exe frozen at an older version.
+    val clientName = if (System.getProperty("os.name").startsWith("Windows", true)) "jk.exe" else "jk"
+    val client: Path? = target.resolve(clientName).takeIf { Files.isRegularFile(it) }
+
+    /**
+     * What `--version` prints, or null when the binary will not run — a client built for another
+     * platform among them. The version is the check that catches every cause of a wrong client,
+     * not only the foreign-binary one that prompted it.
+     */
+    fun clientVersion(binary: Path): String? = try {
+        val p = ProcessBuilder(binary.toString(), "--version")
+            .redirectErrorStream(true)
+            .start()
+        val out = p.inputStream.bufferedReader().readText().trim()
+        if (!p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) {
+            p.destroyForcibly()
+            null
+        } else if (p.exitValue() != 0) null else out.removePrefix("jk").trim()
+    } catch (e: Exception) {
+        null
+    }
 
     val version = declaredVersion()
     val engine = version?.let { assembly(it) }
+    val clientSays = client?.let { clientVersion(it) }
     when {
         version == null -> println("jk dist: no version in jk.toml — skipped")
         client == null ->
             // A module-scoped or non-native build produced no client; the last dist stays as it is
             // rather than being half-rewritten with a stale binary.
-            println("jk dist: no native client in target/ — skipped")
+            println("jk dist: no native client at target/$clientName — skipped")
+        clientSays != version ->
+            // Same rule as the branch above, for a client that is there but is not this build's:
+            // a stale binary, or one another platform's build left behind. Loud, because the
+            // layout it would go into is what a release is assembled from.
+            println(
+                "jk dist: target/$clientName says ${clientSays ?: "nothing runnable"}, not $version"
+                    + " — skipped; delete it and rebuild"
+            )
         engine == null -> println("jk dist: no jk-engine-$version-all.jar in target/ — skipped")
         else -> {
             val engineJar = engine.first
