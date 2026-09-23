@@ -36,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -159,9 +160,13 @@ public final class UpdateCommand implements CliCommand {
     private int runHosted(Path dir, Path cache) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
+            private final List<Moved> rewritten = new ArrayList<>();
+            private final List<Moved> changed = new ArrayList<>();
+
             @Override
             public void onRewrite(
                     String moduleDir, String table, String handle, String module, String from, String to) {
+                rewritten.add(new Moved(module, from, to, List.of()));
                 if (!global.outputIsJson()) printRewrite(Path.of(moduleDir), table, handle, from, to, dir);
             }
 
@@ -172,15 +177,29 @@ public final class UpdateCommand implements CliCommand {
             }
 
             @Override
+            public void onChange(
+                    String moduleDir,
+                    String coordinate,
+                    @Nullable String from,
+                    @Nullable String to,
+                    List<String> members) {
+                changed.add(new Moved(coordinate, from, to, members));
+            }
+
+            @Override
             public void onModuleFinish(
                     @Nullable String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 if (result.success() && !global.outputIsJson()) {
+                    for (Moved m : changed) {
+                        if (rewritten.stream().noneMatch(m::sameMoveAs)) printChange(m);
+                    }
                     printUpdatedLine(
                             LockPaths.lockFile(Path.of(moduleDir)),
                             counts.packages(),
                             counts.changed(),
                             global.workingDir());
                 }
+                changed.clear();
             }
         };
 
@@ -233,6 +252,41 @@ public final class UpdateCommand implements CliCommand {
         CliOutput.out(RichText.parse("  [dim]" + RichText.escape(where) + "[/][bold]" + RichText.escape(handle)
                         + "[/]  " + RichText.escape(from) + " → [yellow]" + RichText.escape(to) + "[/]" + tableTag)
                 .render());
+    }
+
+    /**
+     * A package whose locked version changed ({@code from} null when added, {@code to} null when
+     * removed), or a declared pin the manifest phase moved; {@code members} name the workspace
+     * members a member-override lock row serves.
+     */
+    record Moved(
+            String coordinate,
+            @Nullable String from,
+            @Nullable String to,
+            List<String> members) {
+
+        /** True when a pin line already showed this move: same versions, same {@code group:artifact}. */
+        boolean sameMoveAs(Moved pin) {
+            return Objects.equals(from, pin.from)
+                    && Objects.equals(to, pin.to)
+                    && (coordinate.equals(pin.coordinate)
+                            || coordinate.startsWith(pin.coordinate + ":")
+                            || coordinate.startsWith(pin.coordinate + "!"));
+        }
+    }
+
+    /**
+     * One package the relock changed: {@code   g:a  1.0 → 1.1}, {@code new → 1.1} when added,
+     * {@code 1.0 → removed} when dropped; a member-override row names its members.
+     */
+    static void printChange(Moved m) {
+        String from = m.from() == null ? "[dim]new[/]" : RichText.escape(m.from());
+        String to = m.to() == null ? "[dim]removed[/]" : "[yellow]" + RichText.escape(m.to()) + "[/]";
+        String members =
+                m.members().isEmpty() ? "" : "  [dim](" + RichText.escape(String.join(", ", m.members())) + ")[/]";
+        CliOutput.out(
+                RichText.parse("  [bold]" + RichText.escape(m.coordinate()) + "[/]  " + from + " → " + to + members)
+                        .render());
     }
 
     /**

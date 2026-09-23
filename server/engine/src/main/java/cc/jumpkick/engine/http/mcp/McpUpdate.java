@@ -5,6 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.lock.LockDiff;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -23,8 +24,8 @@ import java.util.Map;
 
 /**
  * {@code jk_update}'s body: the pin rewrites {@link ManifestUpdates} plans for {@code dir}, and with
- * {@code apply} the written manifests plus the {@link LockMode.Update} relock — the same phases the
- * hosted {@code jk update} runs, answered synchronously.
+ * {@code apply} the written manifests plus the {@link LockMode.Update} relock and every lock package
+ * it changed — the same phases the hosted {@code jk update} runs, answered synchronously.
  */
 public final class McpUpdate {
 
@@ -52,6 +53,7 @@ public final class McpUpdate {
                         out.put("applied", false);
                         return null;
                     }
+                    Lockfile before = LockDiff.current(lockDir);
                     ManifestUpdates.apply(plan);
                     out.put("applied", true);
                     LockPlans.LockScope relockScope = plan.isEmpty() ? scope : LockPlans.lockScope(root);
@@ -73,6 +75,11 @@ public final class McpUpdate {
                     lock.put(
                             "packages",
                             written == null ? -1 : written.artifacts().size());
+                    if (written != null) {
+                        List<LockDiff.Change> changes = LockDiff.between(before, written);
+                        lock.put("updated", changes.size());
+                        lock.put("changes", changes(changes));
+                    }
                     List<String> errors = new ArrayList<>();
                     for (BuildPlanResult.Diagnostic d : result.errors()) {
                         if (d.message() != null) errors.add(d.message());
@@ -100,6 +107,20 @@ public final class McpUpdate {
             row.put("coordinate", r.module());
             row.put("from", r.from());
             row.put("to", r.to());
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    /** One row per changed lock package; {@code from}/{@code to} null when added/removed. */
+    private static List<Map<String, Object>> changes(List<LockDiff.Change> changes) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (LockDiff.Change c : changes) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("coordinate", c.coordinate());
+            row.put("from", c.from());
+            row.put("to", c.to());
+            if (!c.members().isEmpty()) row.put("members", c.members());
             rows.add(row);
         }
         return rows;

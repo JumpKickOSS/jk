@@ -335,6 +335,11 @@ public final class ProtoEvents {
         return new UpdateRewriteEvent(dir, table, handle, module, from, to).encode();
     }
 
+    public static String updateChange(
+            String dir, String coordinate, @Nullable String from, @Nullable String to, List<String> members) {
+        return new UpdateChangeEvent(dir, coordinate, from, to, members).encode();
+    }
+
     public static String auditFinding(String dir, AuditReport.Finding finding) {
         return AuditFindingEvent.of(dir, finding).encode();
     }

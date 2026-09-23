@@ -23,6 +23,7 @@ import cc.jumpkick.wire.protocol.OutdatedRequest;
 import cc.jumpkick.wire.protocol.PlanFinishLockEvent;
 import cc.jumpkick.wire.protocol.PlanFinishSyncEvent;
 import cc.jumpkick.wire.protocol.SyncRequest;
+import cc.jumpkick.wire.protocol.UpdateChangeEvent;
 import cc.jumpkick.wire.protocol.UpdateRequest;
 import cc.jumpkick.wire.protocol.UpdateRewriteEvent;
 import java.io.BufferedReader;
@@ -289,6 +290,10 @@ final class EngineResolveAdapter {
                         case EngineProtocol.UPDATE_REWRITE -> {
                             UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);
                             handler.onRewrite(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to());
+                        }
+                        case EngineProtocol.UPDATE_CHANGE -> {
+                            UpdateChangeEvent e = UpdateChangeEvent.decode(line);
+                            handler.onChange(e.dir(), e.coordinate(), e.from(), e.to(), e.members());
                         }
                         case EngineProtocol.BUILDPLAN_FINISH -> {
                             PlanFinishLockEvent e = PlanFinishLockEvent.decode(line);
