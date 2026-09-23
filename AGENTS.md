@@ -142,9 +142,10 @@ Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIB
 - Protocol: that repo’s [`AGENTS.md`](https://github.com/JumpKickOSS/kanartist/blob/main/AGENTS.md).
 - Tickets: `projects/jk/tickets/JK-NNNN-*.md` (status lives on the ticket file; board views are generated).
 - Sibling checkout assumed: `../kanartist` next to this repo (or set `KANARTIST_WORKSPACE_ROOT`).
-- **Preempt:** JK-1923 (Code as Art / Typed Envelope) and its children are **P0**. Do not
-  claim unrelated tickets until that epic is `done`. Spec: [docs/contributors/code-as-art.md](docs/contributors/code-as-art.md).
-  Baseline tag: `pre-code-as-art`.
+- **Priority lives on the board, not here.** `ka next` returns ready, unblocked tickets in
+  priority order, and a P0 there outranks everything. Read a ticket's `status` and `priority`
+  from its file before trusting any claim that it blocks other work. Do not restate board
+  priorities or preemptions in this file; they go stale the day the ticket closes.
 
 ### Claim and ship a ticket
 
