@@ -194,7 +194,8 @@ public final class LockOrchestrator {
             boolean withDefaults,
             ResolveObserver observer)
             throws IOException, InterruptedException {
-        return lock(project, jkVersion, featuresRequested, withDefaults, observer, Map.of());
+        return lock(
+                project, jkVersion, featuresRequested, withDefaults, observer, PriorVersions.NONE, PriorVersions.NONE);
     }
 
     /**
@@ -212,48 +213,88 @@ public final class LockOrchestrator {
             boolean withDefaults,
             ResolveObserver observer)
             throws IOException, InterruptedException {
-        Map<String, String> prefs = new HashMap<>();
-        Map<String, Map<String, String>> memberPrefs = new HashMap<>();
-        for (Lockfile.Artifact pkg : existing.artifacts()) {
-            String key = pkg.packageKey();
-            String ga = PackageId.isMavenPackageKey(pkg.name())
-                    ? PackageId.parse(pkg.name()).ga()
-                    : pkg.name();
-            if (pkg.isPartition()) {
-                for (String member : pkg.members()) {
-                    Map<String, String> mine = memberPrefs.computeIfAbsent(member, k -> new HashMap<>());
-                    mine.put(key, pkg.version());
-                    mine.put(ga, pkg.version());
-                }
-                continue;
-            }
-            // Prefer main-scoped rows over test-only / processor-only duals.
-            boolean specializedOnly = pkg.scopes().stream()
-                            .allMatch(s -> s == Scope.PROCESSOR
-                                    || s == Scope.TEST_PROCESSOR
-                                    || s == Scope.TEST
-                                    || s == Scope.TEST_DEV)
-                    && pkg.scopes().stream().noneMatch(LockRoots.MAIN_SCOPES::contains);
-            if (specializedOnly) {
-                prefs.putIfAbsent(key, pkg.version());
-                prefs.putIfAbsent(ga, pkg.version());
-            } else {
-                prefs.put(key, pkg.version());
-                prefs.put(ga, pkg.version());
-            }
-        }
-        return lock(project, jkVersion, featuresRequested, withDefaults, observer, prefs, memberPrefs);
+        return lock(
+                project,
+                jkVersion,
+                featuresRequested,
+                withDefaults,
+                observer,
+                PriorVersions.of(existing),
+                PriorVersions.NONE);
     }
 
-    private Lockfile lock(
+    /**
+     * Floating re-lock: same as {@link #lock}, but no package resolves below the version {@code
+     * existing} held for it unless a constraint rules that version out (an exact pin, a range's
+     * ceiling, a platform BOM). A package the old lock did not carry resolves as in {@link #lock}.
+     */
+    public Lockfile lockFloating(
             JkBuild project,
+            @Nullable Lockfile existing,
             String jkVersion,
             Collection<String> featuresRequested,
             boolean withDefaults,
-            ResolveObserver observer,
-            Map<String, String> lockedVersionPrefs)
+            ResolveObserver observer)
             throws IOException, InterruptedException {
-        return lock(project, jkVersion, featuresRequested, withDefaults, observer, lockedVersionPrefs, Map.of());
+        return lock(
+                project,
+                jkVersion,
+                featuresRequested,
+                withDefaults,
+                observer,
+                PriorVersions.NONE,
+                existing == null ? PriorVersions.NONE : PriorVersions.of(existing));
+    }
+
+    /**
+     * The versions a prior lock held: {@code shared} by package key and by {@code group:artifact},
+     * a main-scoped row winning over a test- or processor-only one, and {@code members} from the
+     * partition rows, per member path.
+     */
+    private record PriorVersions(Map<String, String> shared, Map<String, Map<String, String>> members) {
+        static final PriorVersions NONE = new PriorVersions(Map.of(), Map.of());
+
+        static PriorVersions of(Lockfile lock) {
+            Map<String, String> shared = new HashMap<>();
+            Map<String, Map<String, String>> members = new HashMap<>();
+            for (Lockfile.Artifact pkg : lock.artifacts()) {
+                String key = pkg.packageKey();
+                String ga = PackageId.isMavenPackageKey(pkg.name())
+                        ? PackageId.parse(pkg.name()).ga()
+                        : pkg.name();
+                if (pkg.isPartition()) {
+                    for (String member : pkg.members()) {
+                        Map<String, String> mine = members.computeIfAbsent(member, k -> new HashMap<>());
+                        mine.put(key, pkg.version());
+                        mine.put(ga, pkg.version());
+                    }
+                    continue;
+                }
+                boolean specializedOnly = pkg.scopes().stream()
+                                .allMatch(s -> s == Scope.PROCESSOR
+                                        || s == Scope.TEST_PROCESSOR
+                                        || s == Scope.TEST
+                                        || s == Scope.TEST_DEV)
+                        && pkg.scopes().stream().noneMatch(LockRoots.MAIN_SCOPES::contains);
+                if (specializedOnly) {
+                    shared.putIfAbsent(key, pkg.version());
+                    shared.putIfAbsent(ga, pkg.version());
+                } else {
+                    shared.put(key, pkg.version());
+                    shared.put(ga, pkg.version());
+                }
+            }
+            return new PriorVersions(shared, members);
+        }
+
+        /** What one member's own solve reads: the shared versions under that member's partition rows. */
+        Map<String, String> forMember(String member) {
+            Map<String, String> mine = members.get(member);
+            if (mine == null) return shared;
+            Map<String, String> out = new HashMap<>(shared);
+            out.putAll(mine);
+            return out;
+        }
     }
 
     private Lockfile lock(
@@ -262,8 +303,8 @@ public final class LockOrchestrator {
             Collection<String> featuresRequested,
             boolean withDefaults,
             ResolveObserver observer,
-            Map<String, String> lockedVersionPrefs,
-            Map<String, Map<String, String>> memberPrefs)
+            PriorVersions prefs,
+            PriorVersions floors)
             throws IOException, InterruptedException {
         LockProgress progress = new LockProgress(observer, timings);
         workspaceModules = workspaceModules(project);
@@ -278,7 +319,8 @@ public final class LockOrchestrator {
                 project,
                 declaredFeatures(project, featuresRequested),
                 withDefaults,
-                lockedVersionPrefs,
+                prefs.shared(),
+                floors.shared(),
                 progress,
                 observer,
                 pomBuilder,
@@ -296,14 +338,22 @@ public final class LockOrchestrator {
             for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
         }
         if (!members.isEmpty()) {
-            MemberPartitions.MemberSolver solver = (manifest, features, prefs, own) -> {
+            MemberPartitions.MemberSolver solver = (member, manifest, features, memberPrefs, own) -> {
                 // A member solved on its own: its rows, assembled against its own platform table.
                 LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
                 ResolveProfile.Phases steps = ResolveProfile.phases();
                 steps.begin(ResolveProfile::memberSolve);
                 try {
                     Solve solve = solveManifest(
-                            manifest, features, withDefaults, prefs, silent, ResolveObserver.NOOP, pomBuilder, own);
+                            manifest,
+                            features,
+                            withDefaults,
+                            memberPrefs,
+                            floors.forMember(member),
+                            silent,
+                            ResolveObserver.NOOP,
+                            pomBuilder,
+                            own);
                     steps.begin(ResolveProfile::memberAssemble);
                     silent.materializePhase(0);
                     return assemble(solve, manifest, jkVersion, silent, pomBuilder);
@@ -316,7 +366,7 @@ public final class LockOrchestrator {
             ResolveProfile.Phases pass = ResolveProfile.phases();
             pass.begin(ResolveProfile::phasePartition);
             try {
-                lockfile = partitions.apply(lockfile, members, memberPrefs, solver, observer);
+                lockfile = partitions.apply(lockfile, members, prefs.members(), solver, observer);
             } finally {
                 pass.end();
             }
@@ -476,6 +526,7 @@ public final class LockOrchestrator {
             Collection<String> featuresRequested,
             boolean withDefaults,
             Map<String, String> prefs,
+            Map<String, String> floors,
             LockProgress progress,
             ResolveObserver observer,
             EffectivePomBuilder pomBuilder,
@@ -509,6 +560,7 @@ public final class LockOrchestrator {
         if (sharedSource != null) {
             sharedSource.setManagedExclusions(constraints.managedExclusions());
             sharedSource.setWorkspaceModules(workspaceModules);
+            sharedSource.setFloorVersions(floors);
         }
 
         progress.graphPhase(roots.declaredCount());

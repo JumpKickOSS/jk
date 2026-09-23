@@ -51,12 +51,17 @@ import java.util.TreeSet;
 final class MemberPartitions {
 
     /**
-     * Solves one member's effective manifest under the requested features it declares, the given
-     * soft preferences and its own platform table, and assembles its rows.
+     * Solves one member's effective manifest ({@code member} is its workspace path) under the
+     * requested features it declares, the given soft preferences and its own platform table, and
+     * assembles its rows.
      */
     interface MemberSolver {
         Lockfile solve(
-                JkBuild manifest, Collection<String> features, Map<String, String> prefs, PlatformConstraints own)
+                String member,
+                JkBuild manifest,
+                Collection<String> features,
+                Map<String, String> prefs,
+                PlatformConstraints own)
                 throws IOException, InterruptedException;
     }
 
@@ -134,7 +139,7 @@ final class MemberPartitions {
             Map<String, String> prefs =
                     prefsFor(flaggedMember.flagged(), memberPrefs.getOrDefault(member.path(), Map.of()));
             // The table read to flag the member is the table its solve runs under.
-            Lockfile mine = solver.solve(manifest, featuresFor(manifest), prefs, own);
+            Lockfile mine = solver.solve(member.path(), manifest, featuresFor(manifest), prefs, own);
             Map<String, String> differing = new TreeMap<>();
             Map<String, Set<String>> pruned = new HashMap<>();
             // The BOM or entry of the member's own table that pins each differing row's version, by
