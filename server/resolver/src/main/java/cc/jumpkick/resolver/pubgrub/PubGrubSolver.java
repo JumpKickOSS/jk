@@ -583,7 +583,7 @@ public class PubGrubSolver {
         }
         // A version an edge named is a candidate whatever the catalogs list, in every mode: a
         // release the catalog omits is what an edge naming it outright is for.
-        if (!lazyUniverses.contains(pkg)) admitDeclared(pkg, source.declaredVersions(pkg));
+        if (!lazyUniverses.contains(pkg)) admitDeclared(pkg, candidatesNamedFor(pkg));
         Set<String> declared = steeringDeclarations(pkg);
 
         String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg, declared);
@@ -663,16 +663,36 @@ public class PubGrubSolver {
      * in its constraint) and no lock/BOM pin is still in play. Empty otherwise, which leaves the
      * highest allowed release as the pick. The declared versions are candidates either way; this
      * only says whether the pick steers to one.
+     *
+     * <p>A floor the constraint allows replaces every declared version below it, so the pick is the
+     * higher of the floor and the highest declared version.
      */
     private Set<String> steeringDeclarations(String pkg) {
         if (floatingRoots.contains(pkg)) return Set.of();
         if (lazyUniverses.contains(pkg)) return Set.of();
-        if (solution.constraint(pkg).hasUpperBound()) return Set.of();
-        Set<String> declared = source.declaredVersions(pkg);
-        if (declared.isEmpty()) return Set.of();
+        VersionSet constraint = solution.constraint(pkg);
+        if (constraint.hasUpperBound()) return Set.of();
         Optional<String> preferred = source.preferredVersion(pkg);
-        if (preferred.isPresent() && solution.constraint(pkg).contains(preferred.get())) return Set.of();
-        return declared;
+        if (preferred.isPresent() && constraint.contains(preferred.get())) return Set.of();
+        Set<String> declared = source.declaredVersions(pkg);
+        Optional<String> floor = source.floorVersion(pkg).filter(constraint::contains);
+        if (floor.isEmpty()) return declared;
+        Set<String> steer = new LinkedHashSet<>();
+        steer.add(floor.get());
+        for (String v : declared) {
+            if (Versions.compare(v, floor.get()) > 0) steer.add(v);
+        }
+        return steer;
+    }
+
+    /** The declared versions of {@code pkg} plus its floor: each must be a candidate to be steered to. */
+    private Set<String> candidatesNamedFor(String pkg) {
+        Set<String> declared = source.declaredVersions(pkg);
+        Optional<String> floor = source.floorVersion(pkg);
+        if (floor.isEmpty() || declared.contains(floor.get())) return declared;
+        Set<String> named = new LinkedHashSet<>(declared);
+        named.add(floor.get());
+        return named;
     }
 
     /**

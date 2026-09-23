@@ -91,6 +91,9 @@ public final class MavenPackageSource implements PackageSource {
     /** Locked versions from a prior lock file — preferred but NOT hard-pinned. Mutable so one shared source can update prefs across main/test/processor solves. */
     private volatile Map<String, String> lockedVersionPrefs;
 
+    /** Versions the lock a floating pass replaces held, keyed like {@link #lockedVersionPrefs}; see {@link #floorVersion}. */
+    private volatile Map<String, String> floorVersions = Map.of();
+
     /**
      * GA keys the manifest asked for with the {@code snapshot} selector — the one opt-in that wants
      * pre-releases. Mutable for the same reason as {@link #lockedVersionPrefs}.
@@ -330,6 +333,11 @@ public final class MavenPackageSource implements PackageSource {
         this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(prefs, "prefs"));
     }
 
+    /** The prior lock's versions a floating pass must not go below, by package key and by {@code group:artifact}. */
+    public void setFloorVersions(Map<String, String> floors) {
+        this.floorVersions = Map.copyOf(Objects.requireNonNull(floors, "floors"));
+    }
+
     /**
      * Declare which packages were requested with {@code snapshot}, keyed by {@code group:artifact}.
      *
@@ -524,6 +532,12 @@ public final class MavenPackageSource implements PackageSource {
         String bom = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(pkg));
         if (bom != null) return Optional.of(bom);
         return Optional.empty();
+    }
+
+    @Override
+    public Optional<String> floorVersion(String pkg) {
+        return Optional.ofNullable(firstNonBlank(
+                floorVersions.get(pkg), floorVersions.get(PackageId.parse(pkg).ga())));
     }
 
     private static @Nullable String firstNonBlank(@Nullable String a, @Nullable String b) {

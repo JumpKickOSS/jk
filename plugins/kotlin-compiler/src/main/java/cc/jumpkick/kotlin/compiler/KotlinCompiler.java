@@ -33,7 +33,6 @@ import org.jetbrains.kotlin.buildtools.api.ExecutionPolicy;
 import org.jetbrains.kotlin.buildtools.api.KotlinToolchains;
 import org.jetbrains.kotlin.buildtools.api.SourcesChanges;
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmPlatformToolchain;
-import org.jetbrains.kotlin.buildtools.api.jvm.JvmSnapshotBasedIncrementalCompilationConfiguration;
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmSnapshotBasedIncrementalCompilationConfiguration.Builder;
 import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmClasspathSnapshottingOperation;
 import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperation;
@@ -175,7 +174,6 @@ public final class KotlinCompiler implements Plugin {
                         : List.of();
                 Builder ic = op.snapshotBasedIcConfigurationBuilder(
                         workingDir.toPath(), SourcesChanges.ToBeCalculated.INSTANCE, depSnapshots);
-                ic.set(JvmSnapshotBasedIncrementalCompilationConfiguration.USE_FIR_RUNNER, Boolean.TRUE);
                 op.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, ic.build());
             }
 
