@@ -120,7 +120,7 @@ if (-not [IO.Path]::IsPathRooted($JkHome)) { Die "JK_HOME must be an absolute pa
 $InstallDir = Join-Path $JkHome "bin"
 
 $ReleasesUrl = if ($env:JK_RELEASES_URL) { $env:JK_RELEASES_URL.TrimEnd("/") } else { "https://jumpkick.build/releases" }
-$ReleaseRsaModulus = "rqF4qTQyhVx8JWBv4+MTZbpwqu7G2luUCqcxIsViJ+0OsLGRe5LpnlL26coWX8QYlF/1nx7ZA42tQWXLFtWAwbNeIEpFRYqEM5ikpHoWkXq1rlgCjR35QSkvn22dndFBwbZ1tQUhbuvIDq6qnymKwsbOXBbbTqWDCRRflo/XtQ1K0kQMlDJ49/iz1v0e0druyhC2XtxXNfEq04UOfO+scwKt2dIry7K2F4Rxx9NTEhX1RqC55YcUy/amK2r6bor0tsZcfkvjeQoIDP/EceNahJtJOWo4mY3MO3LGfIDcI8f1drPbHjV7hfiFZHzf91nqi+VSWRLd3IMGEY7NHy+4pXE7RYLPT5QjAznM+eZIb88NldXIjMiCJRujT9QbhN54yseUKwmZ1i+5EjFWIXg9tb41+RP7A2XQsikl0XS/dtuZC6rMNCe2YBvOhyGcSR51niEdY503RXsJW4aTQNma5JkdkraEuMVN5SC/8R17hNHWx6RS/H/3e32HXe3ycC9f"
+$ReleaseRsaModulus = "2t27ZGJXSS9btuDOBzZN04fq8qcp9Ej/tNbmCpCo10Y6wjcQQY8sJfva4zqvhdZNZz/OEYvwePuZIkTVwmrCOU5jKHeHpP/9m9gYTx7DKr7o5koU/26UOi8kII2LfgU7J5iaYkVR3jUX54lGfXJbNJo2VY7aFRPojW+aCBAI7O0GbQ2h60HK12ltdIk3yomWbBpEYs7XTCScU+jAz2RKpznX966Ue9Obhw5r1/hDITBLbCSEChjsVXwx1343k17xXVgreO8X+gwrwBDw9MwSIpGg5LwJ7enLpW6ua8sfLRnjhyyeBJ+RMrc30KVHfPsgYuSvlF1iCcokM8JJBOK7XGKQSszUn2D/fPC5xjOmDT/4K6c0GnSmybSfzL6zUa5ShIkuiq4eix+WfJ7PGl77vqxQUT4/nURMsFVQJ+Qe9+7pegXbW9/oLZ01/+6AKuZaf7qyMN89p3nGJiOTgACOygY8YEc/Xl3Ue4zxgbu/dR+S3P8dATD2iBhGs6AHR8OP"
 $ReleaseRsaExponent = "AQAB"
 # The release this installer ships with. A signed latest-release pointer naming anything older is
 # a rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
