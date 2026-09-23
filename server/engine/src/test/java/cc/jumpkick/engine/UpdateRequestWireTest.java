@@ -16,6 +16,7 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.LockRequest;
 import cc.jumpkick.wire.protocol.OutdatedReport;
+import cc.jumpkick.wire.protocol.UpdateChangeEvent;
 import cc.jumpkick.wire.protocol.UpdateRequest;
 import cc.jumpkick.wire.protocol.UpdateRewriteEvent;
 import java.io.IOException;
@@ -146,6 +147,14 @@ class UpdateRequestWireTest extends EngineServerHarness {
                     .contains("other = \"com.acme:other:1.1.0\"");
             assertThat(locked(project, "com.acme:jackson")).isEqualTo("3.0.0");
             assertThat(locked(project, "com.acme:other")).isEqualTo("1.1.0");
+            assertThat(crossed.changes)
+                    .extracting(e -> e.coordinate(), e -> e.from(), e -> e.to())
+                    .containsExactly(
+                            tuple("com.acme:jackson", "2.18.2", "3.0.0"), tuple("com.acme:other", "1.0.0", "1.1.0"));
+            assertThat(Jsonl.longValue(crossed.planFinish, "lockChanged", -1)).isEqualTo(2);
+
+            // A keep-pins lock streams no changes.
+            assertThat(drive(p, lock(project, cache, false)).changes).isEmpty();
         } finally {
             server.close();
             serverThread.join(5_000);
@@ -190,7 +199,10 @@ class UpdateRequestWireTest extends EngineServerHarness {
 
     /** Everything a lock/update conversation ends with. */
     private record Outcome(
-            List<UpdateRewriteEvent> rewrites, @Nullable String planFinish, String lockFinish) {
+            List<UpdateRewriteEvent> rewrites,
+            List<UpdateChangeEvent> changes,
+            @Nullable String planFinish,
+            String lockFinish) {
         boolean success() {
             return Jsonl.bool(lockFinish, "success", false) && Jsonl.intValue(lockFinish, "exitCode", -1) == 0;
         }
@@ -199,6 +211,7 @@ class UpdateRequestWireTest extends EngineServerHarness {
     /** Drive one request to its {@code lock-finish}, collecting the pin moves it streamed. */
     private static Outcome drive(EnginePaths.Paths p, String request) throws IOException {
         List<UpdateRewriteEvent> rewrites = new ArrayList<>();
+        List<UpdateChangeEvent> changes = new ArrayList<>();
         String planFinish = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             c.sendLine(request);
@@ -207,9 +220,15 @@ class UpdateRequestWireTest extends EngineServerHarness {
                 String type = requireNonNull(EngineProtocol.typeOf(line), line);
                 switch (type) {
                     case EngineProtocol.UPDATE_REWRITE -> rewrites.add(UpdateRewriteEvent.decode(line));
+                    case EngineProtocol.UPDATE_CHANGE -> {
+                        assertThat(planFinish)
+                                .as("changes precede the plan finish")
+                                .isNull();
+                        changes.add(UpdateChangeEvent.decode(line));
+                    }
                     case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
                     case EngineProtocol.LOCK_FINISH -> {
-                        return new Outcome(rewrites, planFinish, line);
+                        return new Outcome(rewrites, changes, planFinish, line);
                     }
                     case EngineProtocol.ERROR -> throw new IOException("request failed: " + line);
                     default -> {

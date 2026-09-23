@@ -83,6 +83,17 @@ class McpUpdateTest {
         assertThat(lock.get("success")).isEqualTo(true);
         assertThat(locked(dir, "com.acme:jackson")).isEqualTo("2.18.2");
         assertThat(locked(dir, "com.acme:other")).isEqualTo("1.0.0");
+        assertThat(rows(lock, "changes"))
+                .as("the first lock adds every package")
+                .allSatisfy(r -> assertThat(r.get("from")).isNull());
+
+        Map<String, Object> other = McpUpdate.run(dir.toString(), List.of("other"), false, true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> relock = (Map<String, Object>) requireNonNull(other.get("lock"));
+        assertThat(relock.get("updated")).isEqualTo(1);
+        assertThat(rows(relock, "changes"))
+                .extracting(r -> r.get("coordinate"), r -> r.get("from"), r -> r.get("to"))
+                .containsExactly(tuple("com.acme:other", "1.0.0", "1.1.0"));
 
         Map<String, Object> major = McpUpdate.run(dir.toString(), List.of("jackson"), true, false);
         assertThat(rows(major, "rewrites")).extracting(r -> r.get("to")).containsExactly("3.0.0");
