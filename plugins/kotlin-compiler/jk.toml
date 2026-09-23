@@ -5,8 +5,8 @@ description = "JumpKick's Kotlin compiler plugin"
 jk-plugin-sdk.workspace = true
 
 [provided-dependencies]
-kotlin-build-tools-api = "2.4.10"
-kotlin-stdlib = "2.4.10"
+kotlin-build-tools-api = "2.4.20"
+kotlin-stdlib = "2.4.20"
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
@@ -31,7 +31,7 @@ options = [
 ]
 
 [test-dependencies]
-kotlin-build-tools-api = "2.4.10"
-kotlin-stdlib = "2.4.10"
+kotlin-build-tools-api = "2.4.20"
+kotlin-stdlib = "2.4.20"
 assertj-core = "3.27.7"
 junit-jupiter = "6.1.3"
