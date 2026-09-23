@@ -7,4 +7,4 @@ description = "A jk plugin that owns the [hello] table"
 java = 25
 
 [dependencies]
-jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.13.8"
+jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.13.9"
