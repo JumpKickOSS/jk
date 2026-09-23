@@ -269,7 +269,6 @@ final class LockfileAssembler {
                 pinnedBy,
                 null,
                 null,
-                mod.declared(),
                 mod.excluded());
     }
 

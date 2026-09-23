@@ -89,12 +89,10 @@ final class FamilyLines {
         return out;
     }
 
-    /** The package key of a {@code deps} edge: {@code g:a:jar:@1.0 <- 1.0} names {@code g:a:jar:}. */
+    /** The package key of a {@code deps} edge: {@code g:a:jar:@1.0} names {@code g:a:jar:}. */
     private static String edgeKey(String edge) {
-        int declared = edge.indexOf(Lockfile.DECLARED_SEPARATOR);
-        String ref = declared < 0 ? edge : edge.substring(0, declared);
-        int at = ref.lastIndexOf('@');
-        String key = at < 0 ? ref : ref.substring(0, at);
+        int at = edge.lastIndexOf('@');
+        String key = at < 0 ? edge : edge.substring(0, at);
         return PackageId.isMavenPackageKey(key) ? PackageId.parse(key).key() : key;
     }
 

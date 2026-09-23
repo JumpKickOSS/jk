@@ -319,21 +319,21 @@ digest at every version.
 ## What an edge records
 
 Every `[[artifact]]` row lists the edges its POM contributes to the graph. An edge names the
-package the solve picked and, after `<-`, the selector the parent declared for it:
+package the solve picked, at the version it picked, and nothing else:
 
 ```toml
 deps = [
-  "org.jetbrains:annotations:jar:@13.0 <- 13.0",
-  "org.slf4j:slf4j-api:jar:@2.0.17 <- [2.0,3.0)",
+  "org.jetbrains:annotations:jar:@13.0",
+  "org.slf4j:slf4j-api:jar:@2.0.17",
 ]
 ```
 
-Two versions on one line is the point: when a transitive lands somewhere surprising, the lock
-itself says which declaration produced it, without re-reading any POM. `jk why <coord>` walks
-these edges and prints each step with `(declared <selector> by <parent>)` beside the resolved
-version — the parent is `jk.toml` for a declared root and the previous step otherwise. An edge
-the lock does not carry a selector for is written without the `<-` part. A POM edge written as
-Maven's `LATEST` or `RELEASE` records that word (`<- LATEST`) beside the number the solve pinned.
+One version per edge is the point: the lock states what is locked. What each parent asked for —
+a plain version, a Maven range, or Maven's `LATEST` / `RELEASE` — is not lock content; it lives in
+the parent's POM, which the store holds from the resolve that wrote the lock. `jk why <coord>`
+walks these edges and prints each step with `(declared <selector> by <parent>)` beside the resolved
+version, reading the selector from the manifest for a declared root and from the previous step's
+POM otherwise. A step whose POM cannot be read is printed without the clause.
 
 A row whose version a pin source decided carries `pinned-by`: the BOM as `group:artifact:version`
 for a `[platform-dependencies]` entry, or `jk.toml:<handle>` for a
@@ -345,14 +345,14 @@ first member's in `[workspace] modules` order whose graph reaches the row — so
 pinned the version for every member that reads it, and `jk why` says it again.
 
 Under `[resolve] pins = "nearest"` (what `jk import` writes for a Maven POM) the picked version can
-sit below the declared one: `jakarta.inject-api:jar:@2.0.1 <- 2.0.1.MR` says the project pinned
-`2.0.1` and the parent's floor of `2.0.1.MR` gave way to it, as a transitive's version gives way to
-a direct dependency's under Maven. `jk lock` prints one note per pinned module, naming the pin,
-how many dependencies it overrode and what each asked for. A floor written as an open range
-(`[2.0.18,)`) gives way the same way and is recorded the same way (`<- [2.0.18,)`). A workspace
-resolves under its root's `[resolve]` table, and a pin any member declares is the version for the
-whole lock, whichever member brought in the transitive that asked for more. Under the default
-`pins = "exact"` that shape is a conflict the lock refuses instead; see
+sit below the declared one: the project pinned `jakarta.inject-api` at `2.0.1` and a parent's floor
+of `2.0.1.MR` gave way to it, as a transitive's version gives way to a direct dependency's under
+Maven. The lock carries the pinned `2.0.1`; `jk lock` prints one note per pinned module, naming the
+pin, how many dependencies it overrode and what each asked for, and `jk why` shows the floor beside
+the step that declared it. A floor written as an open range (`[2.0.18,)`) gives way the same way.
+A workspace resolves under its root's `[resolve]` table, and a pin any member declares is the
+version for the whole lock, whichever member brought in the transitive that asked for more. Under
+the default `pins = "exact"` that shape is a conflict the lock refuses instead; see
 [Dependencies](dependencies.md#coordinates).
 
 A test-scope exact pin on a module the main graph resolves at another version gives way to main's:

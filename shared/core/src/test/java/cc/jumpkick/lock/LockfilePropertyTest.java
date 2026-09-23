@@ -6,9 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import cc.jumpkick.model.Scope;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
@@ -44,25 +42,11 @@ class LockfilePropertyTest {
                 Arbitraries.of("platform:org.acme:bom", "lock", "manifest").injectNull(0.5);
         Arbitrary<@Nullable String> path =
                 Arbitraries.of("libs/a.jar", "../sibling/target/x.jar").injectNull(0.7);
-        Arbitrary<@Nullable String> selector = Arbitraries.of("^1.0", "~1.0", "=2.3.4", "[1.0,2.0)", ">=1.0", "1.0")
-                .injectNull(0.4);
         // Combinators keeps the source shallow: nested flatMap lambdas make palantir-java-format's
         // break search explode (minutes of CPU on this one file during `jk format`).
         return Combinators.combine(ga, version, source, sha.injectNull(0.2), scopes, deps, pinnedBy, path)
-                .flatAs((n, v, s, c, sc, d, p, pa) -> Combinators.combine(
-                                sha.injectNull(0.7), selector.list().ofSize(d.size()))
-                        .as((src, sels) -> new Lockfile.Artifact(
-                                n, v, s, c, pa, new ArrayList<>(sc), d, p, null, src, declared(d, sels))));
-    }
-
-    /** One declared selector per edge that has one; a repeated edge ref keeps its last selector. */
-    private static Map<String, String> declared(List<String> deps, List<@Nullable String> selectors) {
-        Map<String, String> out = new LinkedHashMap<>();
-        for (int i = 0; i < deps.size(); i++) {
-            String sel = selectors.get(i);
-            if (sel != null) out.put(deps.get(i), sel);
-        }
-        return out;
+                .flatAs((n, v, s, c, sc, d, p, pa) -> sha.injectNull(0.7)
+                        .map(src -> new Lockfile.Artifact(n, v, s, c, pa, new ArrayList<>(sc), d, p, null, src)));
     }
 
     @Provide
@@ -128,7 +112,6 @@ class LockfilePropertyTest {
             assertThat(got.checksum()).isEqualTo(want.checksum());
             assertThat(got.scopes()).containsExactlyInAnyOrderElementsOf(want.scopes());
             assertThat(got.deps()).containsExactlyInAnyOrderElementsOf(want.deps()); // the writer sorts deps
-            assertThat(got.declared()).isEqualTo(want.declared());
         }
         assertThat(parsed.jkMin()).isEqualTo(lock.jkMin() == null ? LockfileWriter.FORMAT_FLOOR : lock.jkMin());
         assertThat(parsed.kotlin()).isEqualTo(lock.kotlin());

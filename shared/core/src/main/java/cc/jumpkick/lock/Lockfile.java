@@ -596,12 +596,10 @@ public record Lockfile(
     }
 
     /**
-     * Separates an edge's {@code module@version} ref from the selector that produced it inside a
-     * {@code deps} line: {@code "g:a:jar:@2.21 <- ^2.0"}. A ref never contains a space and a
-     * selector never contains this token, so the split is exact; a line without it is an edge
-     * whose declaration the lock does not carry.
+     * Separates the pruned coordinate from the exclusion that pruned it inside an {@code
+     * excluded-by} line: {@code "g:a <- jk.toml:widgets"}.
      */
-    public static final String DECLARED_SEPARATOR = " <- ";
+    public static final String EXCLUSION_ORIGIN_SEPARATOR = " <- ";
 
     public record Artifact(
             String name,
@@ -621,12 +619,6 @@ public record Lockfile(
             @Nullable GitInfo git,
             /** SHA-256 of the {@code -sources.jar}, or {@code null} when not published. */
             @Nullable String sourcesChecksum,
-            /**
-             * The selector this row's POM (or manifest) declared for each edge in {@link #deps},
-             * keyed by the edge's {@code module@version} ref — the version that was asked for, beside
-             * the one the solve picked. An edge with no entry declared nothing the lock knows of.
-             */
-            Map<String, String> declared,
             /**
              * The edges an exclusion pruned from this row's POM, one {@code group:artifact <- origin}
              * line each ({@code jk.toml:<handle>} for a manifest exclusion, {@code g:a@version} for a
@@ -651,7 +643,6 @@ public record Lockfile(
             set.addAll(scopes);
             scopes = new ArrayList<>(set);
             deps = List.copyOf(deps);
-            declared = declared == null || declared.isEmpty() ? Map.of() : Map.copyOf(declared);
             excludedBy = excludedBy == null || excludedBy.isEmpty() ? List.of() : List.copyOf(excludedBy);
             members = members == null || members.isEmpty()
                     ? List.of()
@@ -670,7 +661,6 @@ public record Lockfile(
                 @Nullable String pinnedBy,
                 @Nullable GitInfo git,
                 @Nullable String sourcesChecksum,
-                Map<String, String> declared,
                 List<String> excludedBy) {
             this(
                     name,
@@ -683,7 +673,6 @@ public record Lockfile(
                     pinnedBy,
                     git,
                     sourcesChecksum,
-                    declared,
                     excludedBy,
                     List.of());
         }
@@ -699,8 +688,7 @@ public record Lockfile(
                 List<String> deps,
                 @Nullable String pinnedBy,
                 @Nullable GitInfo git,
-                @Nullable String sourcesChecksum,
-                Map<String, String> declared) {
+                @Nullable String sourcesChecksum) {
             this(
                     name,
                     version,
@@ -712,7 +700,6 @@ public record Lockfile(
                     pinnedBy,
                     git,
                     sourcesChecksum,
-                    declared,
                     List.of(),
                     List.of());
         }
@@ -730,7 +717,6 @@ public record Lockfile(
                     pinnedBy,
                     git,
                     sourcesChecksum,
-                    declared,
                     excludedBy,
                     members);
         }
@@ -748,7 +734,6 @@ public record Lockfile(
                     pinnedBy,
                     git,
                     sourcesChecksum,
-                    declared,
                     excludedBy,
                     members);
         }
@@ -766,7 +751,6 @@ public record Lockfile(
                     pinnedBy,
                     git,
                     sourcesChecksum,
-                    declared,
                     excludedBy,
                     members);
         }
@@ -784,7 +768,6 @@ public record Lockfile(
                     pinnedBy,
                     git,
                     sourcesChecksum,
-                    declared,
                     excludedBy,
                     members);
         }
@@ -802,7 +785,6 @@ public record Lockfile(
                     pinnedBy,
                     git,
                     sourcesChecksum,
-                    declared,
                     excludedBy,
                     members);
         }
@@ -810,26 +792,6 @@ public record Lockfile(
         /** True when this row is one member partition of its coordinate rather than the workspace's row. */
         public boolean isPartition() {
             return !members.isEmpty();
-        }
-
-        /** Every edge without a declared selector. */
-        public Artifact(
-                String name,
-                String version,
-                String source,
-                @Nullable String checksum,
-                @Nullable String path,
-                List<Scope> scopes,
-                List<String> deps,
-                @Nullable String pinnedBy,
-                @Nullable GitInfo git,
-                @Nullable String sourcesChecksum) {
-            this(name, version, source, checksum, path, scopes, deps, pinnedBy, git, sourcesChecksum, Map.of());
-        }
-
-        /** The selector declared for the edge {@code depRef} ({@code module@version}), or null. */
-        public @Nullable String declaredFor(String depRef) {
-            return declared.get(depRef);
         }
 
         /** Without sources checksum (the common case). */
@@ -843,7 +805,7 @@ public record Lockfile(
                 List<String> deps,
                 @Nullable String pinnedBy,
                 @Nullable GitInfo git) {
-            this(name, version, source, checksum, path, scopes, deps, pinnedBy, git, null, Map.of());
+            this(name, version, source, checksum, path, scopes, deps, pinnedBy, git, null);
         }
 
         /** Without git provenance — the common Maven-coordinate case. */
@@ -856,7 +818,7 @@ public record Lockfile(
                 List<Scope> scopes,
                 List<String> deps,
                 @Nullable String pinnedBy) {
-            this(name, version, source, checksum, path, scopes, deps, pinnedBy, null, null, Map.of());
+            this(name, version, source, checksum, path, scopes, deps, pinnedBy, null, null);
         }
 
         /** Without {@code pinnedBy}. */
@@ -868,7 +830,7 @@ public record Lockfile(
                 @Nullable String path,
                 List<Scope> scopes,
                 List<String> deps) {
-            this(name, version, source, checksum, path, scopes, deps, null, null, null, Map.of());
+            this(name, version, source, checksum, path, scopes, deps, null, null, null);
         }
 
         /** Convenience constructor for callers that don't care about scopes (defaults to MAIN). */
@@ -879,7 +841,7 @@ public record Lockfile(
                 @Nullable String checksum,
                 @Nullable String path,
                 List<String> deps) {
-            this(name, version, source, checksum, path, List.of(Scope.MAIN), deps, null, null, null, Map.of());
+            this(name, version, source, checksum, path, List.of(Scope.MAIN), deps, null, null, null);
         }
 
         public boolean inAnyScope(Set<Scope> include) {
