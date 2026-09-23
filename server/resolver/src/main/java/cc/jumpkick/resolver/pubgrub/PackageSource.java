@@ -51,6 +51,15 @@ public interface PackageSource {
     }
 
     /**
+     * The version the lock a floating pass replaces held for {@code pkg}. Wherever the constraints
+     * allow it, the solver picks no version below it: a declared version under the floor steers to
+     * the floor instead. Default: no floor.
+     */
+    default Optional<String> floorVersion(String pkg) {
+        return Optional.empty();
+    }
+
+    /**
      * Why the candidate list of {@code pkg} lacks what was asked of it, when the source knows: one
      * sentence per reason, rendered under the refusal. A snapshot asked of repositories that serve
      * releases only is the shape this exists for. Default: nothing to add.

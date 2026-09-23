@@ -537,6 +537,50 @@ class PubGrubSolverTest {
         assertThat(solution).containsEntry("annotations", "26.1.0");
     }
 
+    @Test
+    void a_floor_above_every_declared_version_is_the_pick() throws Exception {
+        // The old lock held util at 2.0.8 while every edge names 2.0.0: a floating pass keeps 2.0.8
+        // and does not reach for 2.0.12, which nothing asked for either.
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("util", "2.0.0")
+                .version("util", "2.0.8")
+                .version("util", "2.0.12")
+                .version("zinc", "2.0.4", d -> d.requirePlain("util", "2.0.0"))
+                .floor("util", "2.0.8")
+                .build();
+        Map<String, String> solution =
+                new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("zinc", VersionSet.exact("2.0.4"))));
+        assertThat(solution).containsEntry("util", "2.0.8");
+    }
+
+    @Test
+    void a_declared_version_above_the_floor_is_still_the_pick() throws Exception {
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("annotations", "13.0")
+                .version("annotations", "23.0.0")
+                .version("annotations", "26.1.0")
+                .version("coroutines", "1.11", d -> d.requirePlain("annotations", "23.0.0"))
+                .floor("annotations", "13.0")
+                .build();
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("coroutines", VersionSet.exact("1.11"))));
+        assertThat(solution).containsEntry("annotations", "23.0.0");
+    }
+
+    @Test
+    void an_exact_constraint_below_the_floor_wins_over_it() throws Exception {
+        // A platform pin arrives as an exact constraint; a floor it rules out has no say.
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("widget", "1.0")
+                .version("widget", "2.0")
+                .version("lib", "1.0", d -> d.require("widget", VersionSet.exact("1.0")))
+                .floor("widget", "2.0")
+                .build();
+        Map<String, String> solution =
+                new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("lib", VersionSet.exact("1.0"))));
+        assertThat(solution).containsEntry("widget", "1.0");
+    }
+
     /** Wrap a source with a soft-prefer pin for one package. */
     private static PackageSource preferring(PackageSource delegate, String pkg, String version) {
         return new PackageSource() {

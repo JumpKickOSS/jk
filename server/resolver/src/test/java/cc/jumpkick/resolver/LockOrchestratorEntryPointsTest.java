@@ -37,7 +37,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The entry points and user-facing sentences of {@link LockOrchestrator} that no other suite reaches:
- * the keep-pins re-lock, the sources pass, the two diagnostics pinned in full, and the
+ * the keep-pins and floating re-locks, the sources pass, the two diagnostics pinned in full, and the
  * materializer's first-failure-wins contract.
  */
 class LockOrchestratorEntryPointsTest {
@@ -87,6 +87,75 @@ class LockOrchestratorEntryPointsTest {
 
         assertThat(version(floated, "com.foo:lib:jar:")).isEqualTo("1.1");
         assertThat(version(kept, "com.foo:lib:jar:")).isEqualTo("1.0");
+    }
+
+    /**
+     * A floating re-lock never moves a package below the version the replaced lock held: zinc's POM
+     * names util 2.0.0, which is what a lock with no history takes, but the old lock's 2.0.8 stays.
+     * A platform BOM that manages util lower still has the last word.
+     */
+    @Test
+    void lock_floating_keeps_the_old_locked_version_as_a_floor_under_a_lower_declared_one(@TempDir Path dir)
+            throws Exception {
+        upstream.metadata("com.foo", "util", "2.0.0", "2.0.8", "2.0.12");
+        for (String v : List.of("2.0.0", "2.0.8", "2.0.12")) {
+            upstream.pom("com.foo", "util", v, MavenStub.emptyPom("com.foo", "util", v));
+        }
+        upstream.metadata("com.foo", "zinc", "2.0.4")
+                .pom("com.foo", "zinc", "2.0.4", """
+                        <project>
+                          <groupId>com.foo</groupId><artifactId>zinc</artifactId><version>2.0.4</version>
+                          <dependencies>
+                            <dependency><groupId>com.foo</groupId><artifactId>util</artifactId><version>2.0.0</version></dependency>
+                          </dependencies>
+                        </project>
+                        """)
+                .pom(
+                        "org.example",
+                        "bom",
+                        "1.0",
+                        MavenStub.bom("org.example", "bom", "1.0", List.of("com.foo:util:2.0.0")));
+        Dependency zinc = new Dependency("com.foo:zinc", VersionSelector.parse("=2.0.4"));
+        JkBuild project = project(Map.of(Scope.MAIN, List.of(zinc)));
+        String source = "maven-stub+" + http.base() + "/";
+        Lockfile existing = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk test",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(
+                        new Lockfile.Artifact(
+                                "com.foo:util:jar:",
+                                "2.0.8",
+                                source,
+                                "sha256:0",
+                                null,
+                                List.of(Scope.MAIN),
+                                List.of(),
+                                null),
+                        new Lockfile.Artifact(
+                                "com.foo:zinc:jar:",
+                                "2.0.4",
+                                source,
+                                "sha256:0",
+                                null,
+                                List.of(Scope.MAIN),
+                                List.of(),
+                                null)));
+
+        Lockfile fresh = new LockOrchestrator(repos(dir.resolve("fresh"))).lock(project, "test");
+        Lockfile floated = new LockOrchestrator(repos(dir.resolve("floated")))
+                .lockFloating(project, existing, "test", List.of(), true, ResolveObserver.NOOP);
+        JkBuild managed = project(Map.of(
+                Scope.PLATFORM,
+                List.of(Dependency.of("bom", "org.example:bom", VersionSelector.parse("=1.0"))),
+                Scope.MAIN,
+                List.of(zinc)));
+        Lockfile underBom = new LockOrchestrator(repos(dir.resolve("bom")))
+                .lockFloating(managed, existing, "test", List.of(), true, ResolveObserver.NOOP);
+
+        assertThat(version(fresh, "com.foo:util:jar:")).isEqualTo("2.0.0");
+        assertThat(version(floated, "com.foo:util:jar:")).isEqualTo("2.0.8");
+        assertThat(version(underBom, "com.foo:util:jar:")).isEqualTo("2.0.0");
     }
 
     /**
