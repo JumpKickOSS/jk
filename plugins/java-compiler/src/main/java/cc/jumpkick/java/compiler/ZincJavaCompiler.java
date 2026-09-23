@@ -201,6 +201,19 @@ public final class ZincJavaCompiler {
                 GeneratedProvenance.of(workdir).ownedClassFiles(sourceOutput, classOutput));
     }
 
+    /** A mixed compile that died on a {@link LinkageError}: the error itself, with what javac already said. */
+    private static Result mixedLinkageFailure(CollectingReporter reporter, LinkageError e) {
+        List<Diag> diags = new ArrayList<>(reporter.diagnostics());
+        diags.add(new Diag(
+                "ERROR",
+                null,
+                0,
+                0,
+                "the mixed Java and Scala compile failed to link: " + Errors.text(e)
+                        + " — check that the Scala compiler, its sbt bridge and the Zinc runtime agree on versions"));
+        return new Result(false, diags, List.of());
+    }
+
     private static Result compile(JavaCompileJob job, @Nullable MixedScala mixed) {
         List<Path> sources = job.sources();
         List<Path> classpath = job.classpath();
@@ -245,7 +258,7 @@ public final class ZincJavaCompiler {
             // The analysis-off marker is keyed by the classpath: the entry whose supertype the
             // analysis could not load may have changed, and then the analysis is tried again.
             String classpathDigest = ZincWorkdir.classpathDigest(classpath);
-            Optional<String> analysisOff = zinced.analysisOff(classpathDigest);
+            Optional<String> analysisOff = mixed == null ? zinced.analysisOff(classpathDigest) : Optional.empty();
             if (analysisOff.isPresent()) {
                 return AnalysisOffCompile.run(
                         javac, sourceFiles, javacOpts, cp, classOutput, reporter, analysisOff.get());
@@ -298,6 +311,8 @@ public final class ZincJavaCompiler {
                 if (reporter.hasErrors()) {
                     return new Result(false, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
                 }
+                // javac alone cannot compile Scala sources, so a mixed compile has no fallback.
+                if (mixed != null) return mixedLinkageFailure(reporter, e);
                 String missing = AnalysisOffCompile.missingType(e);
                 zinced.markAnalysisOff(missing, classpathDigest);
                 return AnalysisOffCompile.run(javac, sourceFiles, javacOpts, cp, classOutput, reporter, missing);

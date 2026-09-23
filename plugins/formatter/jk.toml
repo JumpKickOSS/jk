@@ -3,9 +3,9 @@ description = "JumpKick's source code formatter plugin"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
-spotless-lib = "4.10.1"
-slf4j-api = "2.0.18"
-slf4j-nop = "2.0.18"
+spotless-lib = "4.10.2"
+slf4j-api = "2.0.20"
+slf4j-nop = "2.0.20"
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
