@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Timeout;
 /**
  * Fat-jar size against Gradle Shadow and Maven Shade, over the fixture apps in {@code
  * bench/jar-size/}. Each fixture is copied out of the tree three times and packaged by the installed
- * {@code jk}, by the repo's Gradle wrapper with the fixture's Shadow build, and by Maven with the
+ * {@code jk}, by Gradle with the fixture's Shadow build, and by Maven with the
  * fixture's Shade build, all over the versions the fixture pins. The report prints, per tool, the
  * jar bytes, entry counts, compressed payload, extra-field bytes, the STORED/DEFLATE split and the
  * entry-name set difference both ways, then attributes every byte of the jk-minus-tool delta to a
@@ -50,7 +50,8 @@ import org.junit.jupiter.api.Timeout;
  * </pre>
  *
  * <p>Needs {@code jk} on {@code PATH} and Maven Central. {@code mvn} is used from {@code PATH} when
- * present; otherwise a Maven distribution is fetched once into the work directory. Fixture copies
+ * present; otherwise a Maven distribution is fetched once into the work directory. Gradle is always
+ * the {@link #GRADLE_VERSION} distribution, fetched the same way. Fixture copies
  * and tool output live under {@code java.io.tmpdir/jar-size-bench}.
  */
 @Tag("bench")
@@ -61,6 +62,7 @@ class JarSizeBenchTest {
     static final double GAP_CEILING = 0.01;
 
     private static final String MAVEN_VERSION = "3.9.16";
+    private static final String GRADLE_VERSION = "9.7.0";
     private static final String FIXTURE_VERSION = "0.1.0";
 
     /** A fixture under {@code bench/jar-size/}; {@code boot} fixtures also produce a Boot jar. */
@@ -91,10 +93,9 @@ class JarSizeBenchTest {
     private void run(Fixture fx) throws Exception {
         Path jk = onPath(Os.isWindows() ? List.of("jk.exe", "jk.bat", "jk") : List.of("jk"));
         assumeTrue(jk != null, "the installed jk must be on PATH");
-        Path root = RepoRoot.find(JarSizeBenchTest.class);
         Path fixture = RepoRoot.dir(JarSizeBenchTest.class, "bench/jar-size/" + fx.name());
         Path work = Path.of(System.getProperty("java.io.tmpdir")).resolve("jar-size-bench");
-        Path gradlew = root.resolve(Os.isWindows() ? "gradlew.bat" : "gradlew");
+        Path gradle = gradle(work.resolve("tools"));
         Path mvn = maven(work.resolve("tools"));
 
         Path jkDir = fresh(fixture, work.resolve(fx.name()).resolve("jk"));
@@ -103,7 +104,7 @@ class JarSizeBenchTest {
 
         exec(jkDir, jk.toString(), "build", "--no-ansi");
         List<String> gradleArgs = new ArrayList<>(
-                List.of(gradlew.toString(), "-p", gradleDir.toString(), "--no-daemon", "-q", "--console=plain"));
+                List.of(gradle.toString(), "-p", gradleDir.toString(), "--no-daemon", "-q", "--console=plain"));
         if (fx.boot()) gradleArgs.add("bootJar");
         gradleArgs.add("shadowJar");
         exec(gradleDir, gradleArgs.toArray(String[]::new));
@@ -115,7 +116,7 @@ class JarSizeBenchTest {
                 JarAnatomy.read(gradleDir.resolve("build/libs").resolve(v + "-all.jar"));
         JarAnatomy.Archive shade = JarAnatomy.read(mavenDir.resolve("target").resolve(v + "-shaded.jar"));
 
-        Versions versions = Versions.of(fixture, jk, gradlew, mvn);
+        Versions versions = Versions.of(fixture, jk, mvn);
         System.out.println();
         System.out.println("## " + fx.name() + "  (" + versions + ")");
         System.out.println();
@@ -279,13 +280,12 @@ class JarSizeBenchTest {
     /** The tool versions a run compares, read from the fixture's own build files and the tools. */
     record Versions(String jk, String gradle, String maven, String shadow, String shade, String boot, String kotlin) {
 
-        static Versions of(Path fixture, Path jk, Path gradlew, Path mvn) throws IOException {
+        static Versions of(Path fixture, Path jk, Path mvn) throws IOException {
             String gradleBuild = Files.readString(fixture.resolve("build.gradle.kts"));
             String pom = Files.readString(fixture.resolve("pom.xml"));
-            String wrapper = Files.readString(gradlew.resolveSibling("gradle/wrapper/gradle-wrapper.properties"));
             return new Versions(
                     firstLine(jk.toString(), "--version"),
-                    find(wrapper, "gradle-([0-9.]+)-bin\\.zip"),
+                    GRADLE_VERSION,
                     firstLine(mvn.toString(), "--version"),
                     find(gradleBuild, "id\\(\"com\\.gradleup\\.shadow\"\\) version \"([^\"]+)\""),
                     find(pom, "maven-shade-plugin</artifactId>\\s*<version>([^<]+)<"),
@@ -327,15 +327,30 @@ class JarSizeBenchTest {
     private static Path maven(Path tools) throws Exception {
         Path onPath = onPath(Os.isWindows() ? List.of("mvn.cmd", "mvn") : List.of("mvn"));
         if (onPath != null) return onPath;
-        Path home = tools.resolve("apache-maven-" + MAVEN_VERSION);
-        Path mvn = home.resolve("bin").resolve(Os.isWindows() ? "mvn.cmd" : "mvn");
-        if (Files.isRegularFile(mvn)) return mvn;
+        String name = "apache-maven-" + MAVEN_VERSION;
+        return distribution(
+                tools,
+                URI.create(RepositorySpec.MAVEN_CENTRAL.url() + "org/apache/maven/apache-maven/" + MAVEN_VERSION + "/"
+                        + name + "-bin.zip"),
+                tools.resolve(name).resolve("bin").resolve(Os.isWindows() ? "mvn.cmd" : "mvn"));
+    }
+
+    private static Path gradle(Path tools) throws Exception {
+        String name = "gradle-" + GRADLE_VERSION;
+        return distribution(
+                tools,
+                URI.create("https://services.gradle.org/distributions/" + name + "-bin.zip"),
+                tools.resolve(name).resolve("bin").resolve(Os.isWindows() ? "gradle.bat" : "gradle"));
+    }
+
+    /** {@code launcher}, unpacking the zip at {@code uri} into {@code tools} first when it is absent. */
+    private static Path distribution(Path tools, URI uri, Path launcher) throws Exception {
+        if (Files.isRegularFile(launcher)) return launcher;
         Files.createDirectories(tools);
-        String zipName = "apache-maven-" + MAVEN_VERSION + "-bin.zip";
-        URI uri = URI.create(
-                RepositorySpec.MAVEN_CENTRAL.url() + "org/apache/maven/apache-maven/" + MAVEN_VERSION + "/" + zipName);
-        Path zip = tools.resolve(zipName);
-        try (HttpClient client = HttpClient.newHttpClient()) {
+        Path zip = tools.resolve(Path.of(uri.getPath()).getFileName().toString());
+        try (HttpClient client = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build()) {
             HttpResponse<Path> response =
                     client.send(HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.ofFile(zip));
             assertEquals(200, response.statusCode(), "download " + uri);
@@ -353,9 +368,9 @@ class JarSizeBenchTest {
             }
         }
         if (!Os.isWindows()) {
-            Files.setPosixFilePermissions(mvn, EnumSet.allOf(PosixFilePermission.class));
+            Files.setPosixFilePermissions(launcher, EnumSet.allOf(PosixFilePermission.class));
         }
-        return mvn;
+        return launcher;
     }
 
     /** A clean copy of {@code fixture} at {@code target}, so the three tools never share an output dir. */

@@ -132,7 +132,7 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
     @Test
     void snapshot_versions_use_the_same_revalidation_headers() throws Exception {
         // -SNAPSHOT is not a distinct cache policy. The version string is only an ETag prefix;
-        // no-cache + stamp still revalidates after installLocal of the same snapshot line.
+        // no-cache + stamp still revalidates after jk install of the same snapshot line.
         HttpEngineServer snapshot = new HttpEngineServer(
                 httpConfig("127.0.0.1", 0, 16),
                 webRoot,

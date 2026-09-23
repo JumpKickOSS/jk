@@ -15,9 +15,7 @@ import org.jspecify.annotations.Nullable;
  * Source text as a lexer sees it, for tools that match patterns against code without parsing it:
  * the formatter's FQCN shortener, the file-size and FQCN ratchets, and every text-substrate guard.
  *
- * <p>One owner. Before this class the same character-at-a-time lexer existed three times (the
- * self-hosted gate script, buildSrc, the formatter) and each copy had learned a different edge
- * case. Every projection here is <b>length-preserving</b>: a blanked copy has the same length and
+ * <p>Every projection here is <b>length-preserving</b>: a blanked copy has the same length and
  * the same newline positions as the original, so an offset found in the projection is the offset
  * in the source.
  *
