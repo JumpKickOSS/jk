@@ -23,14 +23,11 @@ git config --global core.eol lf
 
 ## Toolchain
 
-Build with **JDK 25+**. Native `dist` needs a GraalVM-capable JDK (GraalVM CE is fine).
-Gradle comes from the wrapper (`gradle/wrapper/`). SDKMAN is optional; otherwise Gradle can
-provision a JDK via the foojay resolver on first use.
-
-The native client links against a GraalVM-capable JDK (`jk build` / `./gradlew dist` uses the one
-`--graal` / `GRAALVM_HOME` names, else an installed one). Java sources compile at **JDK 25**; the
-two JDK-17 libraries (`shared/host`, `shared/plugin-sdk`, `shared/guard-api`) say so in their
-manifests.
+Build with the released jk: `curl -fsSL https://jumpkick.build/install.sh | bash` installs the
+client, the engine and the JDK the engine runs on. The native client links against a GraalVM-capable
+JDK (`jk build` uses the one `--graal` / `GRAALVM_HOME` names, else an installed one). Java sources
+compile at **JDK 25**; the two JDK-17 libraries (`shared/host`, `shared/plugin-sdk`,
+`shared/guard-api`) say so in their manifests.
 
 Dashboard JS suites (`clients/web`, part of the fast tier) need **Node** at the version in
 [`.nvmrc`](.nvmrc). `nvm`, `fnm`, and `mise` all read that file:
@@ -51,29 +48,17 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 
 ## Building
 
-jumpkick.build hosts a Linux amd64 client today. On a machine with no hosted client (macOS,
-Windows, Linux aarch64), Gradle is the bootstrap that produces the first `jk` binary:
-
 ```bash
-./gradlew dist                                  # native client + engine jar → build/dist/
-./gradlew installLocal                          # engine jar + workers into ~/.jk
-./install.sh build/dist/jk                      # PATH client (Unix)
-# Windows native (needs unsigned PE runnable — SAC off, or a signed release):
-#   .\install.cmd build\dist\jk.exe
-# Windows thin client (supported; SAC-safe):
-#   .\gradlew :cli:installDist installLocal
-#   .\install.cmd clients\cli\build\install\jk\bin\jk.bat
-```
-
-`./scripts/bootstrap-from-gradle.sh` is the same sequence. Once `jk` is on PATH, dogfood with it:
-
-```bash
+curl -fsSL https://jumpkick.build/install.sh | bash   # the released jk, once per machine
 export PATH="$HOME/.jk/bin:$PATH"
 jk build --skip-tests        # every module; native client + engine jar → target/dist/
 jk install --skip-tests      # this checkout's client, engine and workers take over ~/.jk
 ```
 
-The long form is [self-host](docs/contributors/self-host.md#bootstrap).
+From then on the engine running your builds is the one you just compiled; the long form is
+[self-host](docs/contributors/self-host.md#bootstrap). `./install.sh target/dist/jk` installs the
+ship layout on a machine with no jk yet. A host with no native client gets the JVM client from the
+same installer ([releases](docs/contributors/releases.md#platforms-without-a-hosted-client)).
 
 ### Dependency locking
 
@@ -82,14 +67,6 @@ The long form is [self-host](docs/contributors/self-host.md#bootstrap).
 
 ```bash
 jk lock          # re-resolves and rewrites jk-lock.toml; commit it
-```
-
-Gradle's side of the same pins lives in `gradle/libs.versions.toml`, per-project `gradle.lockfile`
-and `gradle/verification-metadata.xml`. After a catalog edit:
-
-```bash
-./gradlew resolveAndLockAll --write-locks
-./gradlew --write-verification-metadata sha256 resolveAndLockAll
 ```
 
 A build that rewrites the committed lock is a drifted pin or a non-deterministic writer, and CI's

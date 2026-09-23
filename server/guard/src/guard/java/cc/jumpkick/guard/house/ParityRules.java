@@ -521,153 +521,33 @@ final class ParityRules {
     // ---- G106 --------------------------------------------------------------------------------
 
     private static final String JK_VERSION = "shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java";
-    private static final String CATALOG = "gradle/libs.versions.toml";
-    /** Where the bootstrap build's own scripts live; benches, docs and fixtures hold other trees' scripts. */
-    private static final List<String> BOOTSTRAP_ROOTS =
-            List.of("buildSrc/", "shared/", "server/", "clients/", "plugins/");
-
     private static final Pattern JK_VERSION_LITERAL = Pattern.compile("String VERSION\\s*=\\s*\"([^\"]+)\"");
-    private static final Pattern GRADLE_VERSION_PIN = Pattern.compile("^version\\s*=\\s*\"([^\"]+)\"");
-    private static final Pattern TOML_TABLE = Pattern.compile("^\\[+([a-z]+)]+\\s*$");
-    private static final Pattern CATALOG_VERSION = Pattern.compile("^([A-Za-z0-9_.-]+)\\s*=\\s*\"([^\"]+)\"");
-    private static final Pattern CATALOG_LIBRARY = Pattern.compile(
-            "^([A-Za-z0-9_.-]+)\\s*=\\s*\\{.*?\\bmodule\\s*=\\s*\"([^\"]+)\".*?\\bversion(\\.ref)?\\s*=\\s*\"([^\"]+)\"");
-    private static final Pattern LOCK_NAME = Pattern.compile("^name\\s*=\\s*\"([^\"]+)\"");
-
-    /** One `[libraries]` entry: its coordinate, and its version literal or the `[versions]` key it refers to. */
-    private record CatalogEntry(String module, boolean ref, String version, int line, String text) {}
 
     @Guard(
-            id = "gradle-bootstrap-parity",
+            id = "jk-version-parity",
             why =
-                    "the Gradle build is the bootstrap for a host with no hosted client and nothing CI judges, so its pins drift silently: a `version` pin or JkVersion.VERSION away from the root jk.toml is a first client that refuses the engine jar it just built, and a catalog version away from the lock is a bootstrap compiled against a library the gate never sees",
-            instead =
-                    "set a Gradle `version` from JkTreeVersion (buildSrc reads the root jk.toml), bump JkVersion.VERSION with jk.toml, and move the catalog entry to what jk-lock.toml resolves — the lock is the pin and the catalog follows it")
-    @Fixture("server/guard/fixtures/gradle-bootstrap-parity")
-    void gradleBootstrapParity(Text text, Violations v) {
+                    "the client bakes in JkVersion.VERSION and the build names its jars from the root jk.toml version, so a client built from a tree where they differ refuses the engine jar built beside it",
+            instead = "bump JkVersion.VERSION with the root jk.toml version, in the same change")
+    @Fixture("server/guard/fixtures/jk-version-parity")
+    void jkVersionParity(Text text, Violations v) {
         String manifest = textOrNull(text, MANIFEST);
         Matcher tree = manifest == null ? null : TREE_VERSION.matcher(manifest);
-        // A tree with no versioned root manifest states nothing for the bootstrap to follow.
-        if (tree == null || !tree.find()) {
+        String source = textOrNull(text, JK_VERSION);
+        // A tree without both files is not jk's own and states nothing to compare.
+        if (tree == null || !tree.find() || source == null) {
             v.population(0);
             return;
         }
-        String version = tree.group(1);
-        long examined = 1;
-        List<String> jkVersion = linesOrNull(text, JK_VERSION);
-        if (jkVersion != null) {
-            examined++;
-            for (int i = 0; i < jkVersion.size(); i++) {
-                Matcher m = JK_VERSION_LITERAL.matcher(jkVersion.get(i));
-                if (m.find() && !m.group(1).equals(version))
-                    v.add(
-                            new TextSite(JK_VERSION, i + 1, m.group()),
-                            "JkVersion.VERSION is " + m.group(1) + " and " + MANIFEST + " says " + version
-                                    + "; the client bakes in the first and the bootstrap names its jars from the second");
-            }
-        }
-        for (String script : text.files("**/*.gradle.kts")) {
-            if (!bootstrapScript(script)) continue;
-            List<String> lines = text.lines(script);
-            for (int i = 0; i < lines.size(); i++) {
-                Matcher m = GRADLE_VERSION_PIN.matcher(lines.get(i).strip());
-                if (!m.find()) continue;
-                examined++;
-                if (!m.group(1).equals(version))
-                    v.add(
-                            new TextSite(script, i + 1, m.group()),
-                            script + " pins version " + m.group(1) + " and the tree is " + version
-                                    + "; read it from JkTreeVersion.of(rootProject.projectDir)");
-            }
-        }
-        v.population(examined + catalogAgainstLock(text, v));
-    }
-
-    /** A script of the bootstrap build itself: at the root, or under a root the bootstrap compiles. */
-    private static boolean bootstrapScript(String path) {
-        if (path.contains("/fixtures/") || path.contains("/src/test/")) return false;
-        if (!path.contains("/")) return true;
-        for (String root : BOOTSTRAP_ROOTS) if (path.startsWith(root)) return true;
-        return false;
-    }
-
-    private static @Nullable List<String> linesOrNull(Text text, String path) {
-        try {
-            return text.lines(path);
-        } catch (RuntimeException absent) {
-            return null;
-        }
-    }
-
-    /** Every catalog library the lock also resolves is held to the lock's version; returns how many were compared. */
-    private static long catalogAgainstLock(Text text, Violations v) {
-        List<String> catalog = linesOrNull(text, CATALOG);
-        List<String> lock = linesOrNull(text, LOCK);
-        if (catalog == null || lock == null) return 0;
-        Map<String, String> versions = new LinkedHashMap<>();
-        List<CatalogEntry> entries = new ArrayList<>();
-        String table = "";
-        for (int i = 0; i < catalog.size(); i++) {
-            String line = catalog.get(i).strip();
-            Matcher header = TOML_TABLE.matcher(line);
-            if (header.find()) {
-                table = header.group(1);
-                continue;
-            }
-            if (table.equals("versions")) {
-                Matcher m = CATALOG_VERSION.matcher(line);
-                if (m.find()) versions.put(m.group(1), m.group(2));
-            } else if (table.equals("libraries")) {
-                Matcher m = CATALOG_LIBRARY.matcher(line);
-                if (m.find()) entries.add(new CatalogEntry(m.group(2), m.group(3) != null, m.group(4), i + 1, line));
-            }
-        }
-        Map<String, Set<String>> locked = lockedVersions(lock);
-        long shared = 0;
-        for (CatalogEntry e : entries) {
-            Set<String> resolved = locked.get(e.module());
-            if (resolved == null) continue;
-            shared++;
-            String pinned = e.ref() ? versions.get(e.version()) : e.version();
-            TextSite site = new TextSite(CATALOG, e.line(), e.text());
-            if (pinned == null)
+        List<String> lines = text.lines(JK_VERSION);
+        for (int i = 0; i < lines.size(); i++) {
+            Matcher m = JK_VERSION_LITERAL.matcher(lines.get(i));
+            if (m.find() && !m.group(1).equals(tree.group(1)))
                 v.add(
-                        site,
-                        e.module() + " refers to [versions] " + e.version() + ", which the catalog does not declare");
-            else if (!resolved.contains(pinned))
-                v.add(
-                        site,
-                        CATALOG + " pins " + e.module() + " at " + pinned + " and " + LOCK + " resolves "
-                                + String.join(", ", resolved) + "; the lock is the pin");
+                        new TextSite(JK_VERSION, i + 1, m.group()),
+                        "JkVersion.VERSION is " + m.group(1) + " and " + MANIFEST + " says " + tree.group(1)
+                                + "; the client bakes in the first and the build names its jars from the second");
         }
-        if (shared == 0)
-            throw new IllegalStateException(CATALOG + " and " + LOCK
-                    + " share no coordinate, so the catalog half of this guard compares nothing");
-        return shared;
-    }
-
-    /** `group:artifact` to every version the lock's `[[artifact]]` entries resolve it at. */
-    private static Map<String, Set<String>> lockedVersions(List<String> lock) {
-        Map<String, Set<String>> out = new TreeMap<>();
-        String artifact = null;
-        for (String raw : lock) {
-            String line = raw.strip();
-            if (line.startsWith("[")) {
-                artifact = line.equals("[[artifact]]") ? "" : null;
-                continue;
-            }
-            if (artifact == null) continue;
-            Matcher name = LOCK_NAME.matcher(line);
-            if (name.find()) {
-                String[] parts = name.group(1).split(":");
-                artifact = parts.length >= 2 ? parts[0] + ":" + parts[1] : null;
-                continue;
-            }
-            Matcher version = GRADLE_VERSION_PIN.matcher(line);
-            if (version.find() && !artifact.isEmpty())
-                out.computeIfAbsent(artifact, k -> new TreeSet<>()).add(version.group(1));
-        }
-        return out;
+        v.population(2);
     }
 
     // ---- G99 ---------------------------------------------------------------------------------

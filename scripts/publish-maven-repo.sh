@@ -161,7 +161,7 @@ while IFS= read -r -d '' pom; do
     [[ "$g" == cc.jumpkick* ]] || continue
     dep_jar="$STAGE/${g//.//}/$a/$v/$a-$v.jar"
     if [[ ! -f "$dep_jar" ]]; then
-      echo "publish-maven-repo: $art:$ver depends on $g:$a:$v, which this stage does not hold ($dep_jar) — the published worker could not start; install the closure (installLocal / jk install) before publishing" >&2
+      echo "publish-maven-repo: $art:$ver depends on $g:$a:$v, which this stage does not hold ($dep_jar) — the published worker could not start; install the closure (jk install) before publishing" >&2
       exit 2
     fi
   done <<<"$declared"

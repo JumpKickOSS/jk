@@ -1,15 +1,11 @@
 # Self-hosting JumpKick
 
-jk builds jk once a client exists. The root **`jk.toml`** is a workspace (members under `shared/`,
-`server/`, `clients/`, `plugins/*` and the rule packs under `server/guard/packs/`), `jk-lock.toml`
-at the root is the one lock, and jk's outputs land under `target/`. One gate, two build
-definitions: Gradle (`./gradlew`) is the bootstrap that produces the first native client and engine
-jar when this OS has no hosted client — jumpkick.build serves Linux and Windows on x86_64 and
-macOS on Apple silicon; elsewhere the installer's JVM client builds the tree, and Gradle is the
-path with no JDK 25 at hand — and it builds nothing CI judges.
-The IntelliJ plugin under `clients/intellij` and the VS Code extension under `clients/vscode`
-keep their own build tools because that is how those platforms ship plugins. The Gradle projects
-under `bench/jar-size/` are fixtures the fat-jar bench compares jk against.
+jk builds jk. The root **`jk.toml`** is a workspace (members under `shared/`, `server/`,
+`clients/`, `plugins/*` and the rule packs under `server/guard/packs/`), `jk-lock.toml` at the root
+is the one lock, and every output lands under `target/`. There is no second build definition in
+the tree: the IntelliJ plugin under `clients/intellij` and the VS Code extension under
+`clients/vscode` keep their own build tools because that is how those platforms ship plugins, and
+the Gradle projects under `bench/jar-size/` are fixtures the fat-jar bench compares jk against.
 
 ## The gate
 
@@ -91,8 +87,7 @@ within what that release reads. Two facts keep it there, each held by a guard on
 `jk guard`: **G86** (`lock-version-is-one`) holds that the lock's `version` is the frozen schema
 every hosted release reads, and **G105** (`bootstrap-pin-reads-tree`) that the lock's `jk-min`
 floor never exceeds the pin, with a tree fixture that proves it bites. A branch that changes a manifest key or the
-lock format so that the pinned release cannot read the tree has no hosted bootstrap — only the
-Gradle build, which produces a client and engine but runs no gate — so a format change ships as
+lock format so that the pinned release cannot read the tree has no bootstrap at all, so a format change ships as
 two releases, in this order:
 
 1. **Reader first.** A release whose engine reads the new format *and* the old one, while the
@@ -139,27 +134,7 @@ point a scratch run at your real `~/.jk`, and stop the scratch engine when you a
 
 ## Bootstrap
 
-On a machine with no hosted client (macOS, Windows, Linux aarch64), Gradle produces the first
-binary:
-
-```bash
-./gradlew dist installLocal
-./install.sh build/dist/jk          # Windows: .\install.cmd build\dist\jk.exe
-export PATH="$HOME/.jk/bin:$PATH"
-```
-
-`./scripts/bootstrap-from-gradle.sh` is that sequence. **G106** (`gradle-bootstrap-parity`) holds
-the bootstrap to the tree on every `jk guard`: every Gradle `version` and `JkVersion.VERSION` equal
-the root `jk.toml` version (buildSrc reads it through `JkTreeVersion`), and every
-`gradle/libs.versions.toml` library sits at the version `jk-lock.toml` resolves, so the first client
-Gradle produces starts the engine jar it built. The native client is preferred (self-heal,
-sub-50 ms). **Windows also supports the thin JVM client** (`:cli:installDist` → `jk.bat`): Smart
-App Control blocks unsigned `jk.exe`. `:engine:installLocal` runs the materialize through a client
-that reports the engine jar's own version — the `:cli:nativeCompile` binary first, then the thin
-launcher, then `build/dist/jk` — and fails, listing what it found, when none does.
-
-Where jumpkick.build already serves a client (Linux amd64), install the released jk and let it
-build the tree; the tree's own jk then takes over:
+Install the released jk and let it build the tree; the tree's own jk then takes over:
 
 ```bash
 curl -fsSL https://jumpkick.build/install.sh | bash   # or JK_VERSION="$(cat .jk/ci-bootstrap-version)" bash
@@ -175,9 +150,8 @@ engine running your builds is the one you just compiled ([Install jk with jk](#i
 The native client needs a GraalVM-capable JDK on the machine: `jk build` links it with the GraalVM
 `--graal` / `GRAALVM_HOME` names, else an installed one.
 
-A platform with no hosted native client (Linux aarch64, macOS on Intel) bootstraps through the
-installer's JVM client, or through Gradle as above;
-[releases](releases.md#platforms-without-a-hosted-client) says how the first hosted client for a
+A platform with no hosted native client (macOS on Intel) bootstraps through the installer's JVM
+client; [releases](releases.md#platforms-without-a-hosted-client) says how the first hosted client for a
 platform is produced.
 
 ### The JVM client
