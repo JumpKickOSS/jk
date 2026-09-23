@@ -105,7 +105,8 @@ class NearestPinsLockTest {
         assertThat(injectApi.version()).isEqualTo("2.0.1");
         Lockfile.Artifact cryptofs = row(lock, CRYPTOFS);
         assertThat(cryptofs.deps()).contains(INJECT_API + "@2.0.1");
-        assertThat(cryptofs.declaredFor(INJECT_API + "@2.0.1")).isEqualTo("2.0.1.MR");
+        assertThat(new EdgeSelectors(repoGroup(tempDir), lock).declared(cryptofs, injectApi))
+                .isEqualTo("2.0.1.MR");
         assertThat(overrides).hasSize(1);
         assertThat(overrides.getFirst())
                 .contains("jakarta.inject:jakarta.inject-api 2.0.1")
@@ -151,7 +152,8 @@ class NearestPinsLockTest {
         assertThat(row(lock, INJECT_API).version()).isEqualTo("2.0.1");
         Lockfile.Artifact shiro = row(lock, SHIRO_LANG);
         assertThat(shiro.deps()).contains(INJECT_API + "@2.0.1");
-        assertThat(shiro.declaredFor(INJECT_API + "@2.0.1")).isEqualTo("[2.0.1.MR,)");
+        assertThat(new EdgeSelectors(repoGroup(tempDir), lock).declared(shiro, row(lock, INJECT_API)))
+                .isEqualTo("[2.0.1.MR,)");
         assertThat(overrides).hasSize(1);
         assertThat(overrides.getFirst())
                 .contains("jakarta.inject:jakarta.inject-api 2.0.1")
@@ -219,7 +221,8 @@ class NearestPinsLockTest {
             assertThat(injectRows.getFirst().scopes()).as(policy.name()).contains(Scope.MAIN, Scope.TEST);
             Lockfile.Artifact cryptofs = row(lock, CRYPTOFS);
             assertThat(cryptofs.deps()).as(policy.name()).contains(INJECT_API + "@2.0.1");
-            assertThat(cryptofs.declaredFor(INJECT_API + "@2.0.1"))
+            assertThat(new EdgeSelectors(repoGroup(tempDir.resolve(policy.name())), lock)
+                            .declared(cryptofs, injectRows.getFirst()))
                     .as(policy.name())
                     .isEqualTo("2.0.1.MR");
             assertThat(overrides).as(policy.name()).hasSize(1);

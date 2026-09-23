@@ -182,7 +182,7 @@ Conflicts get PubGrub prose. With a BOM: [Platforms](platforms.md).
 Your own exact pin is one constraint among the transitives' by default: a pin below a floor some
 POM declares is a conflict, explained. `[resolve] pins = "nearest"` makes the pin the version
 instead, as a direct dependency's is under Maven's nearest-wins — the transitive's range on that
-module is recorded on the lock edge (`<- 2.0.1.MR`) and reported as a warning, not enforced.
+module is reported as a warning, not enforced, and `jk why` shows it beside the step that asked.
 `jk import` writes that line for a Maven POM so the imported project resolves as Maven resolved it;
 a transitive with no pin on it keeps the highest-declared rule either way.
 
@@ -195,8 +195,8 @@ classpath.
 A dependency POM that asks for Maven's `LATEST` or `RELEASE` metaversion gets what Maven reads from
 the repository's metadata: `RELEASE` is the newest release, `LATEST` the newest version of any
 kind — a snapshot too, from a repository whose [snapshot policy](#snapshots) is on. Both float
-within the solve only; the lock pins the number and the edge records `<- LATEST`, so `jk why`
-explains it. `jk import` writes a direct `LATEST` or `RELEASE` as the `latest` selector with a row.
+within the solve only; the lock pins the number, and `jk why` reads the `LATEST` back from the POM
+that wrote it. `jk import` writes a direct `LATEST` or `RELEASE` as the `latest` selector with a row.
 
 ### Managed versions
 
@@ -433,7 +433,8 @@ out for the rest.
 The root step's `by` names what declared it: `jk.toml` in a single project; in a workspace the
 units whose tables list it — each member as its `group:name`, and the root itself for its own
 `[platform-dependencies]` / `[managed-dependencies]` — the same units `jk tree` renders the root
-under. The selector rides the lock's edge lines; see [Lockfile](lockfile.md#what-an-edge-records).
+under. Every other step's selector is read from the previous step's POM in the store; the lock
+carries the picked version alone, see [Lockfile](lockfile.md#what-an-edge-records).
 
 `jk tree` prints a coordinate under each scope section at that section's version: a coordinate the
 lock holds at one version for main and another for test reads its main row under `[main]` and its

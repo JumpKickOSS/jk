@@ -65,7 +65,7 @@ class InstallPlansLockClosureTest {
                                 null,
                                 null,
                                 List.of(Scope.MAIN),
-                                List.of("com.acme:leaf:jar:@3.0 <- 1.0")),
+                                List.of("com.acme:leaf:jar:@3.0")),
                         new Lockfile.Artifact(
                                 "com.acme:leaf:jar:", "3.0", CENTRAL, null, null, List.of(Scope.MAIN), List.of()),
                         new Lockfile.Artifact(

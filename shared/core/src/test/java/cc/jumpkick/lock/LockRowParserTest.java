@@ -13,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -40,7 +39,6 @@ class LockRowParserTest {
                 "platform:org.acme:bom",
                 GIT,
                 "sha256:e5e31b195fcc7e9c5da4b191af3b0082ee616c13f61cbd79409ffa65e4dd5c47",
-                Map.of("org.acme:core@1.0", "^1.0"),
                 List.of("org.acme:legacy <- jk.toml:widgets"),
                 List.of("apps/one", "apps/two"));
         Lockfile.Artifact bare = new Lockfile.Artifact(
@@ -95,7 +93,6 @@ class LockRowParserTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(widgets.path()).isEqualTo("libs/widgets \"quoted\" \\ path.jar");
-        assertThat(widgets.declared()).containsEntry("org.acme:core@1.0", "^1.0");
         assertThat(widgets.members()).containsExactly("apps/one", "apps/two");
         assertThat(rows.modules().getFirst().java()).isEqualTo(21);
         assertThat(rows.modules().getFirst().m2integration()).isFalse();

@@ -225,9 +225,7 @@ public final class LockfileWriter {
                 deps.sort(Comparator.naturalOrder());
                 out.append("deps = [\n");
                 for (String dep : deps) {
-                    String declared = pkg.declaredFor(dep);
-                    String line = declared == null ? dep : dep + Lockfile.DECLARED_SEPARATOR + declared;
-                    out.append("  ").append(quote(line)).append(",\n");
+                    out.append("  ").append(quote(dep)).append(",\n");
                 }
                 out.append("]\n");
             }
