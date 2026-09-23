@@ -145,9 +145,9 @@ class ProtoEventsFrozenBytesTest {
         assertThat(ProtoEvents.planFinish("a/b", true, "up-to-date", -1, 0, 0, 0))
                 .isEqualTo(
                         "{\"type\":\"buildplan-finish\",\"kind\":\"build\",\"dir\":\"a/b\",\"success\":true,\"buildOutcome\":\"up-to-date\"}");
-        assertThat(ProtoEvents.planFinishLock("a/b", true, 210, 3, 2, 4, List.of("mirror")))
+        assertThat(ProtoEvents.planFinishLock("a/b", true, 210, 7, 3, 2, 4, List.of("mirror")))
                 .isEqualTo(
-                        "{\"type\":\"buildplan-finish\",\"kind\":\"lock\",\"dir\":\"a/b\",\"success\":true,\"lockPackages\":210,\"lockSources\":3,\"lockPlugins\":2,\"lockUnverified\":4,\"lockInsecure\":[\"mirror\"]}");
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"lock\",\"dir\":\"a/b\",\"success\":true,\"lockPackages\":210,\"lockChanged\":7,\"lockSources\":3,\"lockPlugins\":2,\"lockUnverified\":4,\"lockInsecure\":[\"mirror\"]}");
         assertThat(ProtoEvents.planFinishSync("a/b", true, 4, 206))
                 .isEqualTo(
                         "{\"type\":\"buildplan-finish\",\"kind\":\"sync\",\"dir\":\"a/b\",\"success\":true,\"syncFetched\":4,\"syncUpToDate\":206}");

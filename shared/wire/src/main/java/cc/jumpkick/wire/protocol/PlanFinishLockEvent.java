@@ -5,7 +5,8 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 
 /**
- * A lock/update module's terminal with its written-lockfile counts and what the run's downloads
+ * A lock/update module's terminal with its written-lockfile counts, how many of its packages the
+ * write added, removed or moved to another version ({@code changed}), and what the run's downloads
  * were checked against: {@code unverified} artifacts pinned without a published checksum under
  * {@code allow-unverified}, and the plaintext {@code http://} repositories asked (see {@link
  * EngineProtocol#BUILDPLAN_FINISH}).
@@ -14,6 +15,7 @@ public record PlanFinishLockEvent(
         String dir,
         boolean success,
         long packages,
+        long changed,
         long sources,
         long plugins,
         long unverified,
@@ -24,6 +26,7 @@ public record PlanFinishLockEvent(
                 .string("dir", dir)
                 .bool("success", success)
                 .number("lockPackages", packages)
+                .number("lockChanged", changed)
                 .number("lockSources", sources)
                 .number("lockPlugins", plugins)
                 .number("lockUnverified", unverified)
@@ -36,6 +39,7 @@ public record PlanFinishLockEvent(
                 Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.longValue(json, "lockPackages", 0),
+                Jsonl.longValue(json, "lockChanged", 0),
                 Jsonl.longValue(json, "lockSources", 0),
                 Jsonl.longValue(json, "lockPlugins", 0),
                 Jsonl.longValue(json, "lockUnverified", 0),

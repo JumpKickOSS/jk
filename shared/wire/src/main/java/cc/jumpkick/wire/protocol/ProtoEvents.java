@@ -298,11 +298,13 @@ public final class ProtoEvents {
             String dir,
             boolean success,
             long packages,
+            long changed,
             long sources,
             long plugins,
             long unverified,
             List<String> insecureRepos) {
-        return new PlanFinishLockEvent(dir, success, packages, sources, plugins, unverified, insecureRepos).encode();
+        return new PlanFinishLockEvent(dir, success, packages, changed, sources, plugins, unverified, insecureRepos)
+                .encode();
     }
 
     public static String planFinishSync(String dir, boolean success, long fetched, long upToDate) {
