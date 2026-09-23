@@ -1,4 +1,4 @@
-// Standalone IntelliJ plugin build. Not part of the root multi-project.
+// Standalone IntelliJ plugin build with its own wrapper and version catalog.
 pluginManagement {
     repositories {
         mavenCentral()
@@ -6,7 +6,3 @@ pluginManagement {
     }
 }
 rootProject.name = "jumpkick-intellij"
-
-dependencyResolutionManagement {
-    versionCatalogs { create("libs") { from(files("../../gradle/libs.versions.toml")) } }
-}

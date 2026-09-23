@@ -60,7 +60,7 @@ final class StaticContent {
     /**
      * {@code "jk-<version>-<mtime-hex>"}. Classpath assets always revalidate ({@code no-cache}) so
      * a new engine jar is visible on the next load; the stamp is the jar (or {@code /web/index.html})
-     * mtime so {@code installLocal} of the same version is not a perpetual 304 of the previous shell.
+     * mtime so {@code jk install} of the same version is not a perpetual 304 of the previous shell.
      */
     private final String classpathEtag;
 

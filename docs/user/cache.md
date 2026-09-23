@@ -70,7 +70,7 @@ delete reaches them.
 
 Every plugin with a code layer (`jk image`, the test runner, the compilers, …) runs in a forked
 worker whose classpath the engine rebuilds at launch from the worker's Maven POM — the jar's
-sibling under `repos/jk-local` (installed from a checkout by `jk install` / `installLocal`),
+sibling under `repos/jk-local` (installed from a checkout by `jk install`),
 else `repos/jumpkick` (fetched from jumpkick.build). Nothing about that classpath is persisted
 between builds: the engine memoises it for its own lifetime and otherwise walks the POM again,
 so the same store yields the same classpath every time.

@@ -1,9 +1,0 @@
-[versions]
-foo = "1.0"
-junit = "6.1.3"
-
-[libraries]
-foo   = { module = "org.example:foo",   version.ref = "foo-line" }
-bar   = { module = "org.example:bar",   version = "2.0" }
-junit = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
-only-gradle = { module = "org.example:gradle-only", version = "9.9" }

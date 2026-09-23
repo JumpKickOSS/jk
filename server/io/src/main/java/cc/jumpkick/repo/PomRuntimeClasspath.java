@@ -256,7 +256,7 @@ public final class PomRuntimeClasspath {
 
     /**
      * {@code repos/jk-local} plus the {@linkplain #workerRemotes built-in remotes}, CAS-rooted at
-     * {@code storeRoot}. Local is a priority repo so {@code installLocal} artifacts outrank
+     * {@code storeRoot}. Local is a priority repo so {@code jk install} artifacts outrank
      * exclusive remote bindings.
      */
     static RepoGroup storeRepos(Path storeRoot) {
