@@ -60,6 +60,11 @@ has nothing to say. This section is the one home for release highlights; there i
 - **A release is cut by publishing a GitHub Release.** The tag and the published release drive
   the build, signing and publish for linux-x86_64, macos-aarch64 and windows-x86_64; nothing
   reaches the bucket, the pointer or the installers from a developer machine.
+- **The release signing key has been rotated, so this one cannot be self-updated into.** Every
+  client verifies a release against the public key baked into it, and 0.13.8 and earlier carry
+  the previous one: `jk self update` to 0.13.9 fails its signature check by design. Reinstall
+  from [jumpkick.build](https://jumpkick.build) — the installers published with this release
+  carry the new key — and `jk self update` works again from 0.13.9 onward.
 
 ### 0.13.8
 
