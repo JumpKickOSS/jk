@@ -6,7 +6,9 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockFreshness;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -25,7 +27,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -95,6 +99,7 @@ final class LockCascade {
                 host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
                 return JobOutcome.ok();
             }
+            @Nullable Lockfile before = priorLock(lockDir);
             if (rewrite != null) {
                 try {
                     ManifestUpdates.Plan plan = ManifestUpdates.plan(lockDir, repoUrl, rewrite);
@@ -149,6 +154,7 @@ final class LockCascade {
                         dirTag,
                         result.success(),
                         lock != null ? lock.artifacts().size() : -1,
+                        lock != null ? changedPackages(before, lock) : -1,
                         lock != null
                                 ? lock.artifacts().stream()
                                         .filter(a -> a.sourcesChecksum() != null)
@@ -169,6 +175,41 @@ final class LockCascade {
         }
         host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
         return JobOutcome.ok();
+    }
+
+    /** The lockfile on disk before this run rewrites it, or {@code null} when absent or unreadable. */
+    private static @Nullable Lockfile priorLock(Path lockDir) {
+        Path file = LockPaths.lockFile(lockDir);
+        if (!Files.isRegularFile(file)) return null;
+        try {
+            return LockfileReader.read(file);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Packages {@code after} added, removed or moved to another version relative to {@code before}
+     * (every row when there was no prior lock). A row is keyed by coordinate plus the members it
+     * serves, so a member override counts on its own.
+     */
+    static long changedPackages(@Nullable Lockfile before, Lockfile after) {
+        Map<String, String> old = versionsByRow(before != null ? before.artifacts() : List.of());
+        Map<String, String> now = versionsByRow(after.artifacts());
+        long changed = 0;
+        for (var e : now.entrySet()) {
+            if (!e.getValue().equals(old.get(e.getKey()))) changed++;
+        }
+        for (String key : old.keySet()) {
+            if (!now.containsKey(key)) changed++;
+        }
+        return changed;
+    }
+
+    private static Map<String, String> versionsByRow(List<Lockfile.Artifact> rows) {
+        Map<String, String> byRow = new HashMap<>();
+        for (Lockfile.Artifact a : rows) byRow.put(a.name() + " " + a.members(), a.version());
+        return byRow;
     }
 
     /** One {@code update-rewrite} event per planned pin move. */
