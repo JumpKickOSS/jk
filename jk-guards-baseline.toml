@@ -1589,9 +1589,6 @@ population = { units = 4071 }
 [git-writes-are-pinned]
 population = { files = 2208 }
 
-[gradle-bootstrap-parity]
-population = { examined = 42 }
-
 [guard-kinds-doc]
 population = { examined = 18 }
 scope-reason = "the kinds table is now judged by a guard test, whose population unit is rows examined"

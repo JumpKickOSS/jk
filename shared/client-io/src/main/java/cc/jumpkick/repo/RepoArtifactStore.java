@@ -252,7 +252,7 @@ public final class RepoArtifactStore {
 
     /**
      * The stored artifact path if the Maven-layout file is present. A missing {@code .jk} memo is
-     * written from the file bytes when possible (installLocal / leftover {@code .sha256} trees).
+     * written from the file bytes when possible (jk install / leftover {@code .sha256} trees).
      */
     public Optional<Path> locate(String relativePath) {
         if (root == null) return Optional.empty();
