@@ -144,21 +144,6 @@ public final class LockGraph {
         return d == null ? null : d.units();
     }
 
-    /**
-     * The selector {@code parent}'s lock row declared for its edge to {@code child} (name, package
-     * key or GA), or null when the row has no such edge or the lock does not carry it.
-     */
-    public @Nullable String declaredSelector(String parent, String child) {
-        Lockfile.Artifact pkg = artifact(parent);
-        if (pkg == null) return null;
-        String childGa = ga(child);
-        for (String depRef : pkg.deps()) {
-            String module = stripVersion(depRef);
-            if (module.equals(child) || ga(module).equals(childGa)) return pkg.declaredFor(depRef);
-        }
-        return null;
-    }
-
     /** The lock row for {@code moduleOrGa} (name / package key / GA alias), or null. */
     public Lockfile.@Nullable Artifact artifact(String moduleOrGa) {
         Lockfile.Artifact pkg = byModule.get(moduleOrGa);

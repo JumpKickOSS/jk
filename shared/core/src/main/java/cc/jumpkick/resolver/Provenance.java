@@ -117,32 +117,26 @@ public final class Provenance {
     }
 
     private static Path singleStep(String module, LockGraph graph) {
-        return new Path(List.of(stepOf(module, null, graph)), graph.rootUnits(module));
+        return new Path(List.of(stepOf(module, graph)), graph.rootUnits(module));
     }
 
     private static Path reconstruct(String root, String target, Map<String, String> cameFrom, LockGraph graph) {
         List<Task> steps = new ArrayList<>();
         String cur = root;
-        steps.add(stepOf(cur, null, graph));
+        steps.add(stepOf(cur, graph));
         while (!cur.equals(target)) {
             String next = cameFrom.get(cur);
             if (next == null) break; // defensive
-            String parent = cur;
             cur = next;
-            steps.add(stepOf(cur, parent, graph));
+            steps.add(stepOf(cur, graph));
         }
         return new Path(steps, graph.rootUnits(root));
     }
 
-    /**
-     * One step: the module at its locked version, with the selector its parent declared for it —
-     * the manifest's for a root ({@code parent == null}), the parent row's edge otherwise.
-     */
-    private static Task stepOf(String module, @Nullable String parent, LockGraph graph) {
+    /** One step: the module at its locked version. */
+    private static Task stepOf(String module, LockGraph graph) {
         Lockfile.Artifact pkg = graph.artifact(module);
-        String version = pkg != null ? pkg.version() : "?";
-        String declared = parent == null ? graph.rootSelector(module) : graph.declaredSelector(parent, module);
-        return new Task(module, version, declared);
+        return new Task(module, pkg != null ? pkg.version() : "?");
     }
 
     /**
@@ -161,14 +155,6 @@ public final class Provenance {
         }
     }
 
-    /**
-     * One step of a path: the module, its locked version, and the selector the step before it
-     * declared ({@code null} when the lock or manifest does not say).
-     */
-    public record Task(
-            String module, String version, @Nullable String declared) {
-        public Task(String module, String version) {
-            this(module, version, null);
-        }
-    }
+    /** One step of a path: the module and its locked version. */
+    public record Task(String module, String version) {}
 }

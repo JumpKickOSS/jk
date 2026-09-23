@@ -90,8 +90,9 @@ class ManagedDependenciesLockTest {
             Lockfile.Artifact leaf = row(lock, LEAF);
             assertThat(leaf.version()).as(policy.name()).isEqualTo("1.0");
             assertThat(leaf.pinnedBy()).as(policy.name()).isEqualTo("jk.toml:leaf");
-            assertThat(row(lock, "com.foo:middle:jar:").declaredFor(LEAF + "@1.0"))
-                    .as("the edge still says what middle asked for")
+            assertThat(new EdgeSelectors(repoGroup(tempDir.resolve(policy.name())), lock)
+                            .declared(row(lock, "com.foo:middle:jar:"), leaf))
+                    .as("middle's POM still says what it asked for")
                     .isEqualTo("1.5");
             assertThat(lock.platformPins()).as("a manifest entry is not a BOM").doesNotContainKey("jk.toml");
         }

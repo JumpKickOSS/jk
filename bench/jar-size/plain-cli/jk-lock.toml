@@ -30,8 +30,8 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d0da14c12b16b5d54719aa172d83b542ff4abeb8b0fb7db476fde8ceece760ca"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22 <- 2.22",
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2 <- 2.22.2",
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
 ]
 
 [[artifact]]
@@ -55,11 +55,11 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:796d8e28ac64e83a47c4c5935a8fecc4682650a04bbdead738ef0f5a3a0e6c46"
 scopes   = ["main"]
 deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0 <- 2.50.0",
-  "com.google.guava:failureaccess:jar:@1.0.3 <- 1.0.3",
-  "com.google.guava:listenablefuture:jar:@9999.0-empty-to-avoid-conflict-with-guava <- 9999.0-empty-to-avoid-conflict-with-guava",
-  "com.google.j2objc:j2objc-annotations:jar:@3.1 <- 3.1",
-  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.1",
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.guava:failureaccess:jar:@1.0.3",
+  "com.google.guava:listenablefuture:jar:@9999.0-empty-to-avoid-conflict-with-guava",
+  "com.google.j2objc:j2objc-annotations:jar:@3.1",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -97,7 +97,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:58d2da30f058512a1e7f914e39241deca4dff5c27a085b4ed2faa9e7208067f6"
 scopes   = ["main"]
 deps = [
-  "org.apache.commons:commons-lang3:jar:@3.20.0 <- 3.20.0",
+  "org.apache.commons:commons-lang3:jar:@3.20.0",
 ]
 
 [[artifact]]
@@ -121,10 +121,10 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:555d6cf20fa1710884dd01b86cc5785397ba73e21ada2d4b784f5f1a14dcafc4"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
-  "org.junit.platform:junit-platform-commons:jar:@6.1.3 <- 6.1.3",
-  "org.opentest4j:opentest4j:jar:@1.3.0 <- 1.3.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
 
 [[artifact]]
@@ -134,10 +134,10 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:414559e78bbfa3bdb2eab009ac3ab1e22369ac31117c270a0bd666da115c5c6c"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.3",
-  "org.junit.platform:junit-platform-engine:jar:@6.1.3 <- 6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.3",
 ]
 
 [[artifact]]
@@ -147,9 +147,9 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:05c51cedba2c06a9770707391e006cee825876937dea580b94a265ce145d4939"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
 ]
 
 [[artifact]]
@@ -159,9 +159,9 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6b0a14075c74221de53047e363860b7d19fce802bebc152df2c35c4089c6c379"
 scopes   = ["test"]
 deps = [
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.3",
-  "org.junit.jupiter:junit-jupiter-engine:jar:@6.1.3 <- 6.1.3",
-  "org.junit.jupiter:junit-jupiter-params:jar:@6.1.3 <- 6.1.3",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
+  "org.junit.jupiter:junit-jupiter-engine:jar:@6.1.3",
+  "org.junit.jupiter:junit-jupiter-params:jar:@6.1.3",
 ]
 
 [[artifact]]
@@ -171,8 +171,8 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a4774ae923c109544034aeae7c762cf017fbcdd1342403ba90e0921984b608c3"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -182,10 +182,10 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:21ad7ad3a35beda16387979317be1833a72a71d812f9a66ee4b9a7bafb56334c"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
-  "org.junit.platform:junit-platform-commons:jar:@6.1.3 <- 6.1.3",
-  "org.opentest4j:opentest4j:jar:@1.3.0 <- 1.3.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
 
 [[artifact]]
@@ -195,9 +195,9 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:1dec64b1fc0b7c47a11302aa5b4d37d8160c041b396e27067709ce775601a7b6"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
-  "org.junit.platform:junit-platform-engine:jar:@6.1.3 <- 6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.3",
 ]
 
 [[artifact]]
@@ -221,7 +221,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:1d20cbfc8f97a719112a72c6d4c2323259d179a7478d1f694b54409d412bb731"
 scopes   = ["main"]
 deps = [
-  "org.slf4j:slf4j-api:jar:@2.0.19 <- 2.0.19",
+  "org.slf4j:slf4j-api:jar:@2.0.19",
 ]
 
 [[module]]
