@@ -21,25 +21,25 @@ class UpdateCommandSettleTest {
     }
 
     @Test
-    void printUpdatedLine_uses_update_wedge_with_package_count_in_lockfile() {
+    void printUpdatedLine_names_analyzed_and_changed_counts_in_lockfile() {
         String out = Capture.stdout(
-                () -> UpdateCommand.printUpdatedLine(Path.of("/tmp/proj/jk-lock.toml"), 233, Path.of("/tmp/proj")));
+                () -> UpdateCommand.printUpdatedLine(Path.of("/tmp/proj/jk-lock.toml"), 308, 12, Path.of("/tmp/proj")));
         String plain = TestAnsi.strip(out);
         assertThat(plain).contains("Update");
-        assertThat(plain).contains("Updated 233 packages in jk-lock.toml");
+        assertThat(plain).contains("Analyzed 308 dependencies, 12 were updated in jk-lock.toml");
         assertThat(plain).doesNotContain("Updated:");
         assertThat(plain).doesNotContain("›");
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
-            assertThat(out).contains(Theme.colorize("233", t.warning()));
+            assertThat(out).contains(Theme.colorize("12", t.warning()));
             assertThat(out).contains(Theme.colorize("jk-lock.toml", t.path()));
         }
     }
 
     @Test
-    void updatedTail_marks_count_yellow_and_lockfile_path() {
-        RichText tail = UpdateCommand.updatedTail(Path.of("/tmp/proj/jk-lock.toml"), 233, Path.of("/tmp/proj"));
-        assertThat(tail.plainText()).isEqualTo("Updated 233 packages in jk-lock.toml");
+    void updatedTail_marks_changed_count_yellow_and_lockfile_path() {
+        RichText tail = UpdateCommand.updatedTail(Path.of("/tmp/proj/jk-lock.toml"), 308, 233, Path.of("/tmp/proj"));
+        assertThat(tail.plainText()).isEqualTo("Analyzed 308 dependencies, 233 were updated in jk-lock.toml");
         if (Theme.active().isAnsi()) {
             String rendered = tail.render();
             Theme t = Theme.active();
@@ -49,9 +49,16 @@ class UpdateCommandSettleTest {
     }
 
     @Test
-    void printUpdatedLine_singular_package() {
-        String out = Capture.stdout(() -> UpdateCommand.printUpdatedLine(Path.of("jk-lock.toml"), 1, Path.of(".")));
-        assertThat(TestAnsi.strip(out)).contains("Updated 1 package in jk-lock.toml");
+    void printUpdatedLine_singular_counts() {
+        String out = Capture.stdout(() -> UpdateCommand.printUpdatedLine(Path.of("jk-lock.toml"), 1, 1, Path.of(".")));
+        assertThat(TestAnsi.strip(out)).contains("Analyzed 1 dependency, 1 was updated in jk-lock.toml");
+    }
+
+    @Test
+    void printUpdatedLine_reports_zero_when_nothing_moved() {
+        String out =
+                Capture.stdout(() -> UpdateCommand.printUpdatedLine(Path.of("jk-lock.toml"), 308, 0, Path.of(".")));
+        assertThat(TestAnsi.strip(out)).contains("Analyzed 308 dependencies, 0 were updated in jk-lock.toml");
     }
 
     @Test

@@ -383,10 +383,12 @@ public final class EngineRequests {
 
     /**
      * A finished lock/update module's written-lockfile counts ({@code -1} when the plan failed
-     * before writing), the artifacts it pinned without a published checksum under
+     * before writing) — {@code changed} is how many packages the write added, removed or moved —
+     * the artifacts it pinned without a published checksum under
      * {@code allow-unverified}, and the plaintext {@code http://} repositories it asked.
      */
-    public record LockCounts(long packages, long sources, long plugins, long unverified, List<String> insecureRepos) {}
+    public record LockCounts(
+            long packages, long changed, long sources, long plugins, long unverified, List<String> insecureRepos) {}
 
     /**
      * A lock/update request's terminal outcome. {@code errors} carries pre-plan failures (manifest

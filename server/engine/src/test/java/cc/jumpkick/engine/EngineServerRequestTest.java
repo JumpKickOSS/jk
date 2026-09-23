@@ -160,6 +160,9 @@ class EngineServerRequestTest extends EngineServerHarness {
             assertThat(planFinish).isNotNull();
             assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
             assertThat(Jsonl.longValue(planFinish, "lockPackages", -1)).isEqualTo(3); // leaf + 2 junit defaults
+            assertThat(Jsonl.longValue(planFinish, "lockChanged", -1))
+                    .as("a first lock adds every package")
+                    .isEqualTo(3);
 
             assertThat(lockFinish).isNotNull();
             assertThat(Jsonl.bool(lockFinish, "success", false)).isTrue();

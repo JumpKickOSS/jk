@@ -176,7 +176,10 @@ public final class UpdateCommand implements CliCommand {
                     @Nullable String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 if (result.success() && !global.outputIsJson()) {
                     printUpdatedLine(
-                            LockPaths.lockFile(Path.of(moduleDir)), (int) counts.packages(), global.workingDir());
+                            LockPaths.lockFile(Path.of(moduleDir)),
+                            counts.packages(),
+                            counts.changed(),
+                            global.workingDir());
                 }
             }
         };
@@ -233,11 +236,12 @@ public final class UpdateCommand implements CliCommand {
     }
 
     /**
-     * {@code ✓ Update  Updated [yellow]N[/] packages in [path]jk-lock.toml[/]} — count in warning
-     * yellow, lockfile name in path periwinkle.
+     * {@code ✓ Update  Analyzed N dependencies, [yellow]M[/] were updated in
+     * [path]jk-lock.toml[/]} — changed count in warning yellow, lockfile name in path periwinkle.
      */
-    static void printUpdatedLine(Path lockFile, int packages, Path workingDir) {
-        JkWedge.ok("Update", updatedTail(lockFile, packages, workingDir)).print();
+    static void printUpdatedLine(Path lockFile, long analyzed, long changed, Path workingDir) {
+        JkWedge.ok("Update", updatedTail(lockFile, analyzed, changed, workingDir))
+                .print();
     }
 
     /** True for a dependency scope table ({@code dependencies}, {@code test-dependencies}, …). */
@@ -248,16 +252,23 @@ public final class UpdateCommand implements CliCommand {
         return false;
     }
 
-    /** Settle-line tail: {@code Updated [yellow]N[/] packages in [path]jk-lock.toml[/]}. */
-    static RichText updatedTail(Path lockFile, int packages, Path workingDir) {
+    /**
+     * Settle-line tail: {@code Analyzed N dependencies, [yellow]M[/] were updated in
+     * [path]jk-lock.toml[/]} — N every locked package, M those the write added, removed or moved.
+     */
+    static RichText updatedTail(Path lockFile, long analyzed, long changed, Path workingDir) {
         String lockName = lockFile.getFileName() != null
                 ? lockFile.getFileName().toString()
                 : PathDisplay.of(lockFile, workingDir);
-        return RichText.parse("Updated [yellow]"
-                + packages
-                + "[/] package"
-                + (packages == 1 ? "" : "s")
-                + " in [path]"
+        return RichText.parse("Analyzed "
+                + analyzed
+                + " dependenc"
+                + (analyzed == 1 ? "y" : "ies")
+                + ", [yellow]"
+                + changed
+                + "[/] "
+                + (changed == 1 ? "was" : "were")
+                + " updated in [path]"
                 + RichText.escape(lockName)
                 + "[/]");
     }
