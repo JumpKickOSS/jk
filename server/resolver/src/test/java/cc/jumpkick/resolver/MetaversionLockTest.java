@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -27,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A dependency POM that asks for {@code LATEST} or {@code RELEASE} resolves as Maven reads the
  * repository's metadata: the newest version, or the newest release, never a version literally so
- * named. The lock pins the number and the edge records the metaversion the POM wrote.
+ * named. The lock pins the number; {@code jk why} reads the metaversion back from the POM.
  */
 class MetaversionLockTest {
 
@@ -87,7 +88,7 @@ class MetaversionLockTest {
 
         Lockfile.Artifact natives = row(lock, "com.foo:leaf:jar:natives");
         assertThat(natives.version()).isEqualTo("2.0");
-        assertThat(row(lock, "com.foo:asks-classified:jar:").declaredFor("com.foo:leaf:jar:natives@2.0"))
+        assertThat(declared(tempDir, lock, "com.foo:asks-classified:jar:", natives))
                 .isEqualTo("RELEASE");
     }
 
@@ -96,7 +97,7 @@ class MetaversionLockTest {
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project("asks-release"), "test");
 
         assertThat(row(lock, LEAF).version()).isEqualTo("2.0");
-        assertThat(row(lock, "com.foo:asks-release:jar:").declaredFor(LEAF + "@2.0"))
+        assertThat(declared(tempDir, lock, "com.foo:asks-release:jar:", row(lock, LEAF)))
                 .isEqualTo("RELEASE");
     }
 
@@ -106,14 +107,18 @@ class MetaversionLockTest {
 
         Lockfile.Artifact leaf = row(lock, LEAF);
         assertThat(leaf.version()).isEqualTo("3.0-SNAPSHOT");
-        assertThat(row(lock, "com.foo:asks-latest:jar:").declaredFor(LEAF + "@3.0-SNAPSHOT"))
-                .isEqualTo("LATEST");
+        assertThat(declared(tempDir, lock, "com.foo:asks-latest:jar:", leaf)).isEqualTo("LATEST");
     }
 
     private static JkBuild project(String middle) {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(Scope.MAIN, List.of(new Dependency("com.foo:" + middle, VersionSelector.parse("=1.0"))));
         return new JkBuild(new Project("com.example", "test", "0.1.0", 25), new JkBuild.Dependencies(byScope));
+    }
+
+    /** What {@code parent}'s POM asked for on its edge to {@code child}, read as {@code jk why} reads it. */
+    private @Nullable String declared(Path tempDir, Lockfile lock, String parent, Lockfile.Artifact child) {
+        return new EdgeSelectors(repoGroup(tempDir), lock).declared(row(lock, parent), child);
     }
 
     private static Lockfile.Artifact row(Lockfile lock, String packageKey) {

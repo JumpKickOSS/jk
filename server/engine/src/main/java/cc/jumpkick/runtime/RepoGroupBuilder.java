@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.Interpolation;
@@ -144,6 +145,11 @@ public final class RepoGroupBuilder {
      */
     public static RepoGroup buildFor(JkBuild project, @Nullable URI overrideUrl, Cas cas) {
         return buildFor(project, overrideUrl, cas, BuildEnv.ambient());
+    }
+
+    /** {@code project}'s repositories over the artifact store, for a read that fetches nothing new. */
+    public static RepoGroup buildFor(JkBuild project) {
+        return buildFor(project, null, JkStores.storeCas(), BuildEnv.ambient());
     }
 
     /** As {@link #buildFor(JkBuild, URI, Cas)} but resolving credentials against {@code env}. */

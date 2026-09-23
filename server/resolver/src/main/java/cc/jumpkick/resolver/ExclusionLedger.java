@@ -139,7 +139,7 @@ final class ExclusionLedger {
             for (Map.Entry<String, Set<String>> e : view.entrySet()) {
                 if (matches(ga, e.getKey())) from.addAll(e.getValue());
             }
-            out.add(from.isEmpty() ? ga : ga + Lockfile.DECLARED_SEPARATOR + String.join(", ", from));
+            out.add(from.isEmpty() ? ga : ga + Lockfile.EXCLUSION_ORIGIN_SEPARATOR + String.join(", ", from));
         }
         return out;
     }
