@@ -188,17 +188,17 @@ try {
     Import-InstallerFunction "Test-ReleaseSignature"
     Import-InstallerFunction "Get-ReleasePointerVersion"
     $pointer = Join-Path $work "LATEST"
-    $pointerSignature = Join-Path $work "LATEST.sig"
     function Write-Pointer([string] $Text, [Security.Cryptography.RSA] $Signer = $rsa) {
-        [IO.File]::WriteAllBytes($pointer, [Text.Encoding]::ASCII.GetBytes($Text))
+        $body = [Text.Encoding]::ASCII.GetBytes($Text)
         $sig = $Signer.SignData(
-            [IO.File]::ReadAllBytes($pointer),
+            $body,
             [Security.Cryptography.HashAlgorithmName]::SHA256,
             [Security.Cryptography.RSASignaturePadding]::Pkcs1)
-        [IO.File]::WriteAllText($pointerSignature, [Convert]::ToBase64String($sig) + "`n", [Text.Encoding]::ASCII)
+        $object = $Text + "signature $([Convert]::ToBase64String($sig))`n"
+        [IO.File]::WriteAllBytes($pointer, [Text.Encoding]::ASCII.GetBytes($object))
     }
     function Resolve-Pointer([string] $Floor = "1.0.0") {
-        return Get-ReleasePointerVersion -Pointer $pointer -Signature $pointerSignature `
+        return Get-ReleasePointerVersion -Pointer $pointer `
             -Modulus $modulus -Exponent $exponent -Floor $Floor
     }
     function Assert-PointerRefused([string] $Case, [string] $Expected) {
@@ -215,11 +215,12 @@ try {
     Write-Pointer "version 1.2.0-rc.1`nissued 1757700000`n"
     if ((Resolve-Pointer) -cne "1.2.0-rc.1") { throw "a pre-release pointer did not resolve to its version" }
 
-    Remove-Item -LiteralPath $pointerSignature -Force
-    Assert-PointerRefused "unsigned pointer" "Could not find file"
+    [IO.File]::WriteAllBytes($pointer, [Text.Encoding]::ASCII.GetBytes("version 1.0.0`nissued 1757700000`n"))
+    Assert-PointerRefused "unsigned pointer" "latest-release pointer is malformed"
 
     Write-Pointer "version 1.0.0`nissued 1757700000`n"
-    [IO.File]::WriteAllBytes($pointer, [Text.Encoding]::ASCII.GetBytes("version 1.0.1`nissued 1757700000`n"))
+    $tampered = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($pointer)).Replace("version 1.0.0", "version 1.0.1")
+    [IO.File]::WriteAllBytes($pointer, [Text.Encoding]::ASCII.GetBytes($tampered))
     Assert-PointerRefused "tampered pointer" "latest-release pointer signature verification failed"
 
     # Rollback: an older release's pointer, validly signed, re-served as the latest one.

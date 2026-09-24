@@ -6,12 +6,13 @@
 #   scripts/sign-latest-pointer.sh <version> <out-dir> [private-key.pem]
 #   JK_RELEASE_RSA_SIGNING_KEY='<base64 PKCS#8 DER>' scripts/sign-latest-pointer.sh <version> <out-dir>
 # Writes to <out-dir>:
-#   LATEST       two LF-terminated lines: `version <version>` and `issued <unix-seconds>`
-#   LATEST.sig   base64 RSA/SHA-256 PKCS#1 v1.5 signature over the exact LATEST bytes
-#   VERSION      the bare version, a redirect-compatible convenience that nothing verifies
+#   LATEST    three LF-terminated lines: `version <version>`, `issued <unix-seconds>`, and
+#             `signature <base64>`. The signature is RSA/SHA-256 PKCS#1 v1.5 over the exact bytes
+#             of the first two lines, so the object is one file and its publish is one copy.
+#   VERSION   the bare version, a redirect-compatible convenience that nothing verifies
 # The key is the release key sign-release.sh uses for SHA256SUMS; the public half is baked into
 # the installers, the wrappers and ReleaseVerifier. A verifier checks the signature, requires the
-# exact two-line form, and refuses a version older than the one it ships with or already runs,
+# exact three-line form, and refuses a version older than the one it ships with or already runs,
 # so a pointer copied from an older release or edited in place installs nothing.
 set -euo pipefail
 
@@ -30,12 +31,20 @@ if [[ -z "$KEY_FILE" && -z "${JK_RELEASE_RSA_SIGNING_KEY:-}" && -z "${JK_RELEASE
 fi
 
 mkdir -p "$OUT"
+rm -f "$OUT/LATEST.sig"
 issued="${JK_POINTER_ISSUED:-$(date +%s)}"
-printf 'version %s\nissued %s\n' "$VERSION" "$issued" >"$OUT/LATEST"
-printf '%s\n' "$VERSION" >"$OUT/VERSION"
+body="$(mktemp "${TMPDIR:-/tmp}/jk-latest.XXXXXX")"
+trap 'rm -f "$body" "$body.sig"' EXIT
+printf 'version %s\nissued %s\n' "$VERSION" "$issued" >"$body"
 if [[ -n "$KEY_FILE" ]]; then
-  bash "$ROOT/scripts/sign-release.sh" "$OUT/LATEST" "$KEY_FILE" >/dev/null
+  bash "$ROOT/scripts/sign-release.sh" "$body" "$KEY_FILE" >/dev/null
 else
-  bash "$ROOT/scripts/sign-release.sh" "$OUT/LATEST" >/dev/null
+  bash "$ROOT/scripts/sign-release.sh" "$body" >/dev/null
 fi
-echo "sign-latest-pointer: wrote $OUT/LATEST, $OUT/LATEST.sig and $OUT/VERSION for $VERSION (issued $issued)"
+sig="$(tr -d '\r\n' <"$body.sig")"
+{
+  cat "$body"
+  printf 'signature %s\n' "$sig"
+} >"$OUT/LATEST"
+printf '%s\n' "$VERSION" >"$OUT/VERSION"
+echo "sign-latest-pointer: wrote $OUT/LATEST and $OUT/VERSION for $VERSION (issued $issued)"

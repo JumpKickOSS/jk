@@ -52,21 +52,22 @@ call :require_version_token INSTALLED "the installed VERSION file" || exit /b 1
 call :version_ge INSTALLED FLOOR && goto run
 
 :bootstrap
-rem Bootstrap the latest published release. The pointer is signed data - LATEST (`version <v>` /
-rem `issued <unix-seconds>`) and LATEST.sig over its exact bytes - verified against the release
-rem key and read literally; the jk-min floor below refuses one rolled back too far for this lock.
+rem Bootstrap the latest published release. The pointer is one signed object - LATEST is
+rem `version <v>`, `issued <unix-seconds>`, and `signature` over those two lines - verified
+rem against the release key and read literally; the jk-min floor below refuses one rolled back.
 rem Scratch directories live in JK_WRAPPER_* variables only. TMP and TEMP are Windows' own: every
 rem powershell child inherits them and writes its temp files wherever they point, and this script
 rem deletes its scratch directory while a child may still hold a file there. They are read, never set.
 set "JK_WRAPPER_PTMP=%TEMP%\jk-wrapper-latest-%RANDOM%"
 mkdir "!JK_WRAPPER_PTMP!"
-powershell -NoProfile -Command "$d=$env:JK_WRAPPER_PTMP; $b=$env:JK_RELEASES_URL + '/latest/'; Invoke-WebRequest -UseBasicParsing ($b + 'LATEST') -OutFile (Join-Path $d 'LATEST'); Invoke-WebRequest -UseBasicParsing ($b + 'LATEST.sig') -OutFile (Join-Path $d 'LATEST.sig')" || (
+powershell -NoProfile -Command "$d=$env:JK_WRAPPER_PTMP; $b=$env:JK_RELEASES_URL + '/latest/'; Invoke-WebRequest -UseBasicParsing ($b + 'LATEST') -OutFile (Join-Path $d 'LATEST')" || (
   echo jk wrapper: could not read !JK_RELEASES_URL!/latest/LATEST - offline, or JK_RELEASES_URL is wrong. 1>&2
   exit /b 1
 )
 set "VERSION="
-call :verify_signature JK_WRAPPER_PTMP LATEST || goto pointer_checked
-for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "$m=[IO.File]::ReadAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST')); foreach($x in $m){if($x -gt 127){exit 1}}; $t=[Text.Encoding]::ASCII.GetString($m); if($t -notmatch '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued [0-9]{1,18}\n$'){exit 1}; Write-Output $Matches[1]"`) do set "VERSION=%%V"
+powershell -NoProfile -Command "$b=[IO.File]::ReadAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST')); foreach($x in $b){if($x -gt 127){exit 1}}; $t=[Text.Encoding]::ASCII.GetString($b); if(-not ($t -match '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued ([0-9]{1,18})\nsignature ([A-Za-z0-9+/]+={0,2})\n$')){exit 1}; $s=('version '+$Matches[1]+\"`n\"+'issued '+$Matches[2]+\"`n\"); [IO.File]::WriteAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body'),[Text.Encoding]::ASCII.GetBytes($s)); [IO.File]::WriteAllText((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body.sig'),($Matches[3]+\"`n\"),[Text.Encoding]::ASCII)" || goto pointer_checked
+call :verify_signature JK_WRAPPER_PTMP LATEST.body || goto pointer_checked
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "$m=[IO.File]::ReadAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body')); foreach($x in $m){if($x -gt 127){exit 1}}; $t=[Text.Encoding]::ASCII.GetString($m); if($t -notmatch '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued [0-9]{1,18}\n$'){exit 1}; Write-Output $Matches[1]"`) do set "VERSION=%%V"
 :pointer_checked
 rmdir /s /q "!JK_WRAPPER_PTMP!"
 if not defined VERSION (
