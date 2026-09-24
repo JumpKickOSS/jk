@@ -14,8 +14,33 @@ bench/wall/measure --render                 # docs tables from the banked entrie
 ```
 
 Clones, working copies, Gradle's private user home and build cache, and the per-run logs live under
-`$WALL_HOME` (default `~/src/scratch/wall`), never in this tree. The first run provisions; every
+`$WALL_HOME` (default `$JK_BENCH_HOME/wall`; set `$JK_BENCH_HOME` for the scratch root — default in
+[`../benchtools.py`](../benchtools.py) `bench_home()`), never in this tree. The first run provisions; every
 later run measures.
+
+Maven and Gradle are the versions in [`../tools.toml`](../tools.toml). The harness provisions
+those distributions through jk and runs the binaries directly — not the repository wrapper, and
+not `jk mvn` / `jk gradle`, which would follow it. A pin older than the latest GA, or a latest-GA
+check that cannot reach the network, refuses the run unless `--allow-stale-tools` or
+`--offline-tools` is passed; the row then records `stale_tools` or `offline_tools`. Gradle keeps
+this harness's daemon policy (`GRADLE_USER_HOME=$WALL_HOME/gradle-home`, configuration cache,
+build cache). If the build script cannot run on the pinned Gradle, the row is
+`incompatible-with-latest-gradle` plus the first error line, and the wrapper is not used instead.
+
+`jk mvn` used to select `JAVA_HOME` from `.jdk-version` and strip `MAVEN_OPTS` /
+`JAVA_TOOL_OPTIONS` before exec. The harness does that itself: `org.gradle.java.home` or
+`.jdk-version`, when the project sets one, must exist or be ensured, and a miss is
+`jdk-unavailable` with that tool not run. With neither, the environment's Java is recorded and
+used. The row stores `JAVA_HOME` and the first line of `java -version`. The Maven event spy
+`jk mvn` attaches is not reproduced; this harness times the build. Shell variables that could
+retarget the JVM (`JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_HOME`, `KOTLIN_HOME`, `MAVEN_OPTS`,
+`GRADLE_OPTS`) are stripped for the Maven and Gradle processes.
+
+Every row records the Maven and Gradle versions and the binary paths, plus a host block. The
+host id is the first 12 hex digits of sha256 over cpu model, logical CPUs, RAM GiB rounded, and
+the OS id (`/etc/os-release` `ID` and `VERSION_ID`), unless `JK_BENCH_HOST` is set. `--bank`
+fills a cell from `--from` only when that row's host id matches, and the docs table compares
+only this host. Rows with no host id are host `bocabox` and are kept under an other-host heading.
 
 ## The project
 
@@ -47,13 +72,14 @@ plugins jk has no counterpart for.
 | Tool | Build command | Test command |
 |---|---|---|
 | jk 0.13.7 | `jk build --skip-tests` (`-r` in the clean row) | `jk test -r` |
-| Gradle 9.5.1, the repository's wrapper | `./gradlew classes jar --configuration-cache --build-cache -I bench/wall/wall.init.gradle` | `./gradlew test --rerun` with the same flags |
-| Maven 3.9.16 through `jk mvn` | `jk mvn -q -o -Dmaven.test.skip -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip package` | the same properties minus `maven.test.skip`, goal `test` |
+| Gradle, `bench/tools.toml` | `gradle classes jar --configuration-cache --build-cache -I bench/wall/wall.init.gradle` | `gradle test --rerun` with the same flags |
+| Maven, `bench/tools.toml` | `mvn -q -o -Dmaven.test.skip -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip package` | the same properties minus `maven.test.skip`, goal `test` |
 
 Gradle runs with the configuration cache and the build cache on, in a user home of the harness's
 own (`$WALL_HOME/gradle-home`) so its daemon is the only daemon on the memory bill; the init script
 points the local build cache at `$WALL_HOME/gradle-build-cache` so the clean row can empty it.
-Maven has no daemon here (mvnd is not used) and no output cache. jk's engine is the developer's
+The `gradle` binary is the pinned distribution, not `./gradlew`. Maven has no daemon here (mvnd is
+not used) and no output cache. jk's engine is the developer's
 resident engine, shared with everything else the machine builds with jk.
 
 ## Scenarios
