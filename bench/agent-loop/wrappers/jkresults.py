@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -121,8 +122,6 @@ MVN_GOAL_TASKS = [
     (re.compile(r"(?:^|:)(?:maven-)?resources(?:-plugin)?:[^:]*:(?:test)?[rR]esources"), "copy-resources"),
     (re.compile(r"(?:^|:)(?:maven-)?jar(?:-plugin)?:[^:]*:jar"), "package-jar"),
 ]
-MVN_VERSION = re.compile(r"^Apache Maven ([\d.]+)")
-
 MVN_HEADER = re.compile(r"^\[INFO\] --- (\S+?):(\S+?):(\S+?)(?: \((\S+)\))? @ (\S+) ---")
 MVN_REACTOR = re.compile(
     r"^\[INFO\] (\S.*?) \.{2,} (SUCCESS|FAILURE|SKIPPED)(?: \[\s*([\d.]+) (s|min)\])?"
@@ -778,13 +777,17 @@ def gradle_coord(project_dir: Path) -> str:
 
 
 def wrapper_version(project_dir: Path, tool: str) -> str:
-    props = {
-        "mvn": project_dir / ".mvn/wrapper/maven-wrapper.properties",
-        "gradle": project_dir / "gradle/wrapper/gradle-wrapper.properties",
-    }[tool]
+    """Pinned comparator version actually executed. The repo wrapper is not consulted."""
+    del project_dir
+    key = "maven" if tool == "mvn" else "gradle"
+    env = "JK_BENCH_MAVEN_VERSION" if tool == "mvn" else "JK_BENCH_GRADLE_VERSION"
+    version = os.environ.get(env)
+    if not version:
+        bench = Path(__file__).resolve().parents[2]
+        if str(bench) not in sys.path:
+            sys.path.insert(0, str(bench))
+        import benchtools
+
+        version = benchtools.read_pin()[key]
     label = "Maven" if tool == "mvn" else "Gradle"
-    if props.exists():
-        m = re.search(r"distributionUrl=.*?/(?:apache-maven|gradle)-([\d.]+\d)", props.read_text(errors="replace"))
-        if m:
-            return f"{label} {m.group(1)} (wrapper)"
-    return label
+    return f"{label} {version}"

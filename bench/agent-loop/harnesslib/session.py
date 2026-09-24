@@ -5,10 +5,16 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .mcp import HttpMcp, McpClient, StdioMcp
+_BENCH = Path(__file__).resolve().parents[2]
+if str(_BENCH) not in sys.path:
+    sys.path.insert(0, str(_BENCH))
+import benchtools  # noqa: E402
+
+from .mcp import HttpMcp, McpClient, StdioMcp  # noqa: E402
 
 WRAPPERS = Path(__file__).resolve().parent.parent / "wrappers"
 
@@ -31,10 +37,10 @@ def engine_mcp() -> tuple[str, str]:
     current = next((e for e in status.get("engines") or [] if e.get("current")), None)
     ids = [current["id"]] if current else [e["id"] for e in status.get("engines") or []]
     for eid in ids:
-        token_file = Path.home() / ".jk" / "state" / "engine" / f"{eid}.http-token"
+        token_file = benchtools.jk_home() / "state" / "engine" / f"{eid}.http-token"
         if token_file.exists():
             return url, token_file.read_text(encoding="utf-8").strip()
-    raise RuntimeError("no http-token for the running engine under ~/.jk/state/engine")
+    raise RuntimeError(f"no http-token for the running engine under {benchtools.jk_home() / 'state' / 'engine'}")
 
 
 def mcp_server_config(tool: str, sandbox: Path) -> dict:

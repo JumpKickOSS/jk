@@ -24,8 +24,9 @@ TOOLS = [
     {
         "name": "run",
         "description": (
-            "Run the build and tests (Maven `test` or Gradle `test` through the wrapper), wait "
-            "for it, and return the results markdown it wrote. Call after every edit."
+            "Run the build and tests (pinned Maven `test` or Gradle `test` through "
+            "mvn-results / gradle-results), wait for it, and return the results markdown it wrote. "
+            "Call after every edit."
         ),
         "inputSchema": {
             "type": "object",
@@ -144,13 +145,27 @@ def reply(rid, result: dict) -> dict:
     return {"jsonrpc": "2.0", "id": rid, "result": result}
 
 
+def infer_tool(project: Path) -> str:
+    """The only build file in `project`. Both or neither is a refusal, not a default."""
+    mvn = (project / "pom.xml").is_file()
+    gradle = any((project / name).is_file() for name in (
+        "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"))
+    if mvn and not gradle:
+        return "mvn"
+    if gradle and not mvn:
+        return "gradle"
+    if mvn and gradle:
+        raise SystemExit(f"{project} has both a pom.xml and a Gradle build file; pass --tool")
+    raise SystemExit(f"{project} has no pom.xml or Gradle build file; pass --tool")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--dir", default=".", help="project directory whose target/ holds the wrapper's output")
-    ap.add_argument("--tool", choices=("mvn", "gradle"), help="which wrapper `run` invokes; default from the build file present")
+    ap.add_argument("--tool", choices=("mvn", "gradle"), help="which wrapper `run` invokes; required when both build files exist")
     ns = ap.parse_args()
     project = Path(ns.dir).resolve()
-    tool = ns.tool or ("mvn" if (project / "pom.xml").exists() else "gradle")
+    tool = ns.tool or infer_tool(project)
     for line in sys.stdin:
         line = line.strip()
         if not line:

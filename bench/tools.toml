@@ -1,0 +1,3 @@
+# Comparator versions every harness runs. Latest GA only; the harness refuses a stale pin.
+maven = "3.9.16"
+gradle = "9.8.0"

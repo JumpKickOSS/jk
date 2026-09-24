@@ -18,7 +18,9 @@ costs nothing and proves the plumbing), `claude-code` (`claude -p` with the MCP 
 tools), `api` (a Messages-API tool-use loop; needs ANTHROPIC_API_KEY and the anthropic SDK).
 
 Rows go to `results/<date>/rows.jsonl` beside this script and the table to `TABLE.md` there;
-sandboxes and transcripts live under `$AGENT_LOOP_HOME/harness/<date>/`, never in this tree.
+sandboxes and transcripts live under `$AGENT_LOOP_HOME/harness/<date>/` (default
+`$JK_BENCH_HOME/agent-loop`; `$JK_BENCH_HOME` defaults to `${XDG_CACHE_HOME:-~/.cache}/jk-bench`),
+never in this tree.
 """
 
 from __future__ import annotations
@@ -38,11 +40,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent))
+import benchtools  # noqa: E402
 
 from harnesslib import agents, oracle, report  # noqa: E402
 from harnesslib.session import Session, open_mcp, results_ok  # noqa: E402
 
-HOME = Path(os.environ.get("AGENT_LOOP_HOME", "/home/bsant/src/scratch/agent-loop"))
+HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop")
 DRIVERS = ("scripted", "claude-code", "api")
 DEFAULT_MODEL = "claude-sonnet-5"
 
@@ -103,11 +107,13 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
         "claims_green": False, "verified_green": False, "fix_sources": [], "finding": "",
         "sandbox": str(sandbox), "transcript": str(transcript),
     }
+    row.update(benchtools.stamp(ns.tools))
     try:
         scenario.materialise(repo, tool, failure, sandbox)
         code, out, red_wall = scenario.run_tool(sandbox, tool)
         row["red_wall_ms"] = red_wall
         (run_dir / "red.log").write_text(scenario.strip_ansi(out), encoding="utf-8")
+        _note_tool(row, sandbox, tool, out)
         if code == 0:
             row.update(outcome="error", finding="the injection did not break the build (exit 0 before the agent started)")
             return row
@@ -137,6 +143,7 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
         # The harness's own rerun decides: an agent's claim, or a results file from a partial run, is not green.
         code, out, verify_wall = scenario.run_tool(sandbox, tool)
         (run_dir / "verify.log").write_text(scenario.strip_ansi(out), encoding="utf-8")
+        _note_tool(row, sandbox, tool, out)
         row["verify_wall_ms"] = verify_wall
         row["verified_green"] = code == 0
         if row["claims_green"] and row["verified_green"]:
@@ -150,9 +157,27 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
                 row["finding"] = (row["finding"] + "; " if row["finding"] else "") + "the tree is green although the agent did not report it"
     except Exception as e:
         row["outcome"] = "error"
-        row["finding"] = f"{type(e).__name__}: {str(e).splitlines()[0] if str(e) else ''}"[:300]
+        message = str(e).splitlines()[0] if str(e) else ""
+        row["finding"] = f"{type(e).__name__}: {message}"[:300]
+        if "incompatible-with-latest-gradle" in message:
+            row["status"] = "incompatible-with-latest-gradle"
+            row["error"] = message.split("incompatible-with-latest-gradle:", 1)[-1].strip()
         (run_dir / "error.log").write_text(traceback.format_exc(), encoding="utf-8")
     return row
+
+
+def _note_tool(row: dict, sandbox: Path, tool: str, out: str) -> None:
+    meta_path = sandbox / "target" / "jk-bench.json"
+    if meta_path.is_file():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        for key in ("java_home", "java_version", "jdk", "env_stripped", "status", "error"):
+            if key in meta and key not in row:
+                row[key] = meta[key]
+    if tool == "gradle":
+        rejected = benchtools.gradle_incompatibility(scenario.strip_ansi(out))
+        if rejected:
+            row["status"] = "incompatible-with-latest-gradle"
+            row["error"] = rejected
 
 
 def print_row(row: dict) -> None:
@@ -177,7 +202,9 @@ def main() -> int:
     ap.add_argument("--date", default=dt.date.today().isoformat(), help="results directory name (default today)")
     ap.add_argument("--results", type=Path, help="results directory (default results/<date> beside this script)")
     ap.add_argument("--dry-run", action="store_true", help="list the matrix and exit")
+    benchtools.add_arguments(ap)
     ns = ap.parse_args()
+    benchtools.use_flags(ns)
     repos = scenario.load_config()
     tools = ns.tool or list(scenario.TOOLS)
     work = matrix(repos, tools, ns.only)
@@ -189,6 +216,7 @@ def main() -> int:
         return 0
     if not work:
         sys.exit("nothing to run")
+    ns.tools = benchtools.resolve(allow_stale=ns.allow_stale_tools, offline=ns.offline_tools)
     if ns.driver == "api" and not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("the api driver needs ANTHROPIC_API_KEY")
     results_dir = ns.results or HERE / "results" / ns.date

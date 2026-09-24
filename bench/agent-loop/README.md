@@ -17,7 +17,21 @@ bench/agent-loop/harness --driver claude-code --only gs-rest-service:missing-dep
 ```
 
 Clones, green baselines and verify sandboxes live under `$AGENT_LOOP_HOME` (default
-`/home/bsant/src/scratch/agent-loop`), never in this tree.
+`$JK_BENCH_HOME/agent-loop`; set `$JK_BENCH_HOME` for the scratch root — default in
+[`../benchtools.py`](../benchtools.py) `bench_home()`),
+never in this tree. Maven and Gradle are the versions in [`../tools.toml`](../tools.toml): the
+harness provisions those distributions through jk and runs the binaries directly. A pin older
+than the latest GA, or a latest-GA check that cannot reach the network, refuses the run unless
+`--allow-stale-tools` or `--offline-tools` is passed, in which case every row records
+`stale_tools` or `offline_tools`. A repo build script that cannot run on the pinned Gradle is
+`incompatible-with-latest-gradle` plus the first error line; the repo wrapper is not a fallback.
+`.jdk-version`, when present, is ensured and used; if that fails the run is
+`jdk-unavailable: <spec>` and the tool is not started. Otherwise the environment's Java is the
+one recorded (`java_home` and the first line of `java -version`). Every results row and the
+table header carry a host block and a host id (sha256 of cpu model, logical CPUs, RAM GiB
+rounded, and the OS id from `/etc/os-release`, first 12 hex; `JK_BENCH_HOST` overrides it).
+Rows written with no host id are host `bocabox`. Medians compare only the current host; other
+hosts are a separate section.
 
 ## What a scenario is
 
@@ -55,9 +69,9 @@ their import failures). Both injectors exist so a repo that imports later can us
 
 Nineteen repositories, [`scenarios.toml`](scenarios.toml), all Gradle single-module Java
 projects: eighteen Spring guides (`complete/` of each) and the JUnit 5 Gradle starter. Thirteen of
-the guides also ship a `pom.xml`, so they have a Maven baseline too and the Maven wrapper is
-exercised on real projects. Every repo compiles and tests green under `jk gradle`, under `jk mvn`
-where listed, and under jk 0.13.7 after `jk import` of its `build.gradle` with no hand edits.
+the guides also ship a `pom.xml`, so they have a Maven baseline too. Every repo compiles and
+tests green under the pinned Gradle, under the pinned Maven where listed, and under jk after
+`jk import` of its `build.gradle` with no hand edits.
 
 The selection is one repository short of twenty and narrower than the design asked for (a mix of
 Maven and Gradle, single- and multi-module, Kotlin). That is the honest result of the filter, not a
@@ -93,8 +107,9 @@ row keeps visible until it is fixed.
 
 ## The wrappers: the null hypothesis
 
-`wrappers/mvn-results` and `wrappers/gradle-results` run the tool through `jk mvn` / `jk gradle`
-(so provisioning is uniform), keep the console verbatim in `target/<tool>.log`, and write
+`wrappers/mvn-results` and `wrappers/gradle-results` run the pinned `mvn` / `gradle` binaries
+(not `./mvnw`, `./gradlew`, or `jk mvn` / `jk gradle`, which would follow the repo wrapper),
+keep the console verbatim in `target/<tool>.log`, and write
 `target/jk-results.md` in **the same shape jk writes**: outcome headline, why-lines, `Tests:` and
 `Diagnostics:` counts, `## Files`, `## Failures` with `file:line:col` and the compiler's snippet,
 `## Tests` with the per-package table and each failing test's message and stack clipped to 24
