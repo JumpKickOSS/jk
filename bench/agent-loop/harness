@@ -5,6 +5,7 @@
     harness --driver scripted                           # the deterministic oracle over the whole matrix
     harness --driver claude-code --only gs-rest-service:missing-dependency
     harness --driver api --only gs-rest-service:compile-error --tool jk
+    harness --driver grok --only gs-rest-service:compile-error
 
 For each (repo × failure × tool) the harness materialises the sandbox with `scenario`, runs the
 tool once so the results file is red, starts the tool's MCP server (jk: the shared engine's,
@@ -15,7 +16,8 @@ harness then reruns the tool itself and calls the row green only when that rerun
 
 Drivers: `scripted` (an oracle that reads the results file and applies the class's known fix;
 costs nothing and proves the plumbing), `claude-code` (`claude -p` with the MCP server and file
-tools), `api` (a Messages-API tool-use loop; needs ANTHROPIC_API_KEY and the anthropic SDK).
+tools), `grok` (`grok -p` the same way; file tools only, throwaway `GROK_HOME`), `api` (a
+Messages-API tool-use loop; needs ANTHROPIC_API_KEY and the anthropic SDK).
 
 Rows go to `results/<date>/rows.jsonl` beside this script and the table to `TABLE.md` there;
 sandboxes and transcripts live under `$AGENT_LOOP_HOME/harness/<date>/` (default
@@ -47,8 +49,18 @@ from harnesslib import agents, oracle, report  # noqa: E402
 from harnesslib.session import Session, open_mcp, results_ok  # noqa: E402
 
 HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop")
-DRIVERS = ("scripted", "claude-code", "api")
+DRIVERS = ("scripted", "claude-code", "api", "grok")
 DEFAULT_MODEL = "claude-sonnet-5"
+DEFAULT_GROK_MODEL = "grok-4.7"
+DEFAULT_EFFORT = "high"
+
+
+def resolve_model(driver: str, model: str | None) -> str | None:
+    if driver == "scripted":
+        return None
+    if model:
+        return model
+    return DEFAULT_GROK_MODEL if driver == "grok" else DEFAULT_MODEL
 
 
 def load_scenario_module():
@@ -107,6 +119,8 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
         "claims_green": False, "verified_green": False, "fix_sources": [], "finding": "",
         "sandbox": str(sandbox), "transcript": str(transcript),
     }
+    if ns.driver == "grok":
+        row["effort"] = ns.effort
     row.update(benchtools.stamp(ns.tools))
     try:
         scenario.materialise(repo, tool, failure, sandbox)
@@ -128,15 +142,21 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
             transcript.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in res.transcript), encoding="utf-8")
             row.update(turns=res.turns, fix_sources=res.fix_sources, finding=res.finding, claims_green=res.green)
         else:
-            driver = agents.claude_code if ns.driver == "claude-code" else agents.api
-            res = driver(tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript)
+            run = {"claude-code": agents.claude_code, "api": agents.api, "grok": agents.grok}[ns.driver]
+            kwargs = {"effort": ns.effort} if ns.driver == "grok" else {}
+            res = run(tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript, **kwargs)
             usage = res.usage
             row.update(
-                turns=res.turns, finding=res.finding, cost_usd=round(res.cost_usd, 4),
+                turns=res.turns, finding=res.finding,
+                cost_usd=None if res.cost_usd is None else round(res.cost_usd, 4),
                 input_tokens=usage.get("input_tokens", 0), output_tokens=usage.get("output_tokens", 0),
                 cache_read_tokens=usage.get("cache_read_input_tokens", 0), cache_write_tokens=usage.get("cache_creation_input_tokens", 0),
                 claims_green=res.green_claimed or agents.claims_green_from_results(sandbox),
             )
+            if usage.get("reasoning_tokens") is not None:
+                row["reasoning_tokens"] = usage["reasoning_tokens"]
+            if res.extra.get("tools"):
+                row["tools"] = res.extra["tools"]
             row["tokens"] = row["input_tokens"] + row["output_tokens"] + row["cache_read_tokens"] + row["cache_write_tokens"]
             (run_dir / "agent.json").write_text(json.dumps({"summary": res.transcript, "extra": res.extra}, indent=1, ensure_ascii=False), encoding="utf-8")
         row["wall_ms"] = int((time.monotonic() - started) * 1000)
@@ -193,7 +213,10 @@ def print_row(row: dict) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0], formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__.split("\n\n", 1)[1])
     ap.add_argument("--driver", choices=DRIVERS, default="scripted")
-    ap.add_argument("--model", default=DEFAULT_MODEL, help=f"model for the LLM drivers (default {DEFAULT_MODEL})")
+    ap.add_argument("--model", default=None,
+                    help=f"model for the LLM drivers (default {DEFAULT_MODEL}; {DEFAULT_GROK_MODEL} for --driver grok)")
+    ap.add_argument("--effort", default=DEFAULT_EFFORT,
+                    help=f"reasoning effort for --driver grok, passed as --reasoning-effort (default {DEFAULT_EFFORT})")
     ap.add_argument("--tool", choices=scenario.TOOLS, action="append", help="restrict to a tool (repeatable; default all three)")
     ap.add_argument("--only", metavar="REPO[:FAILURE]", help="one repo, or one repo × failure")
     ap.add_argument("--max-turns", type=int, default=8, help="turn budget per run (default 8)")
@@ -204,6 +227,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="list the matrix and exit")
     benchtools.add_arguments(ap)
     ns = ap.parse_args()
+    ns.model = resolve_model(ns.driver, ns.model)
     benchtools.use_flags(ns)
     repos = scenario.load_config()
     tools = ns.tool or list(scenario.TOOLS)
@@ -211,8 +235,13 @@ def main() -> int:
     if ns.dry_run:
         for repo, failure, tool in work:
             print(f"{repo.name:28} {failure:20} {tool}")
+        detail = ""
+        if ns.driver != "scripted":
+            detail += f" · {ns.model}"
+        if ns.driver == "grok":
+            detail += f" · effort {ns.effort}"
         print(f"\n{len({(r.name, f) for r, f, _ in work})} scenarios · {len(work)} (scenario × tool) runs · driver {ns.driver}"
-              + (f" · {ns.model}" if ns.driver != "scripted" else "") + f" · budget {ns.max_turns} turns / {ns.max_minutes:g} min")
+              + detail + f" · budget {ns.max_turns} turns / {ns.max_minutes:g} min")
         return 0
     if not work:
         sys.exit("nothing to run")

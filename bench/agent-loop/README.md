@@ -149,7 +149,10 @@ and a finding when the run had something to say; the transcript sits beside the 
 |---|---|---|
 | `scripted` | a deterministic oracle: classify the failure from the results file, apply that class's known fix, rerun through MCP | none |
 | `claude-code` | `claude -p` in the sandbox with the tool's MCP server, file tools only (no shell, no git), `--max-turns` as the budget | the API's |
+| `grok` | `grok -p` in the sandbox with the tool's MCP server, file tools only (`read_file`, `search_replace`, `grep`, `list_dir`; no shell, no web, no subagents) under `--sandbox agent-loop`, `--max-turns` as the budget (`grok-4.7`, effort `high`) | the API's |
 | `api` | a Messages-API tool-use loop (`claude-sonnet-5` default): MCP tools bridged through the harness, file tools confined to the sandbox; needs `ANTHROPIC_API_KEY` and the `anthropic` SDK | the API's |
+
+Each grok run keeps its MCP config and sessions in a throwaway `GROK_HOME` that is deleted when the run ends (`GROK_MEMORY=0`, vendor compatibility off), with the login passed as a copy via `GROK_AUTH_PATH`; `--sandbox agent-loop` denies reads of the user's grok state, the local artifact cache, sibling runs and the harness sources, so file tools stay on the project and nothing carries from one scenario to the next.
 
 The oracle is the plumbing proof and the results-file audit in one. It never reads the injection
 to decide what is wrong; the results file has to say. A compile locus with `';' expected` gets its
