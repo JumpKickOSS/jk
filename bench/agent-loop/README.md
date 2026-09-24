@@ -41,7 +41,7 @@ built and tested green once with that tool:
 
 | Tool | Baseline contents | Run |
 |---|---|---|
-| `jk` | `jk import <build file>`, the original Maven/Gradle files removed, `jk.toml` + `jk-lock.toml` committed | `jk test` |
+| `jk` | `jk import <build file>`, every Maven and Gradle build file removed (both families, whatever was imported), `jk.toml` + `jk-lock.toml` committed | `jk test` |
 | `gradle` | the repo's own `build.gradle` / wrapper | `wrappers/gradle-results test` |
 | `mvn` | the repo's own `pom.xml` / wrapper | `wrappers/mvn-results test` |
 
@@ -82,9 +82,12 @@ with a `$property` version imports it literally; JUnit 4 suites do not run. Thos
 import work the corpus waits on, and the matrix grows as they land — add the repo table, its
 failures, run `scenario --baseline` and `--verify`.
 
-Baseline walls (tests included, warm caches) are in each `BASELINE.json` under
-`$AGENT_LOOP_HOME/baselines/<tool>/<repo>/`; the guides take 3–25 s per tool, the whole corpus a
-few minutes.
+Each baseline keeps only its own tool's build: a jk tree has neither Maven's nor Gradle's files,
+a Maven tree has no Gradle build and a Gradle tree no `pom.xml`, so no agent can read the answer
+out of another tool's build file. Baseline walls (tests included, warm caches) are in
+`$AGENT_LOOP_HOME/baselines/<tool>/<repo>.BASELINE.json`, beside the tree rather than in it, so a
+sandbox never carries harness state; the guides take 3–25 s per tool, the whole corpus a few
+minutes. The marker records `baseline_format`; a missing or different value rebuilds the baseline.
 
 ## Verification
 
@@ -98,12 +101,10 @@ there is either a scenario to fix or a defect in the tool that produced the resu
 row says which. A targeted re-run (`--repo`, `--failure`, `--tool`) replaces its own rows in an
 existing report and leaves the rest of the table in place.
 
-One row is red on purpose: `junit-starter-gradle` × `version-conflict` under jk. An exact
-`junit-jupiter-api = 5.0.0` pin beside `junit-jupiter 6.1.3` resolves without complaint under jk
-and under Gradle; the JUnit engine then fails to start. Gradle's console says so and the wrapper
-carries it into the results file; jk's results file says `run-tests: 1 test failure` and names no
-test, no exception and no message, so an agent gets nothing to act on. That is a jk defect the
-row keeps visible until it is fixed.
+`junit-starter-gradle` × `version-conflict` resolves the exact `junit-jupiter-api = 5.0.0` pin
+under both jk and Gradle, then fails when the JUnit engine starts. No test class can be named.
+The scenario accepts a results file that says the discovery failed (`failed to discover tests`,
+`discovery exited`, or the same resolve wording Gradle uses).
 
 ## The wrappers: the null hypothesis
 
@@ -152,7 +153,7 @@ and a finding when the run had something to say; the transcript sits beside the 
 | `grok` | `grok -p` in the sandbox with the tool's MCP server, file tools only (`read_file`, `search_replace`, `grep`, `list_dir`; no shell, no web, no subagents) under `--sandbox agent-loop`, `--max-turns` as the budget (`grok-4.7`, effort `high`) | the API's |
 | `api` | a Messages-API tool-use loop (`claude-sonnet-5` default): MCP tools bridged through the harness, file tools confined to the sandbox; needs `ANTHROPIC_API_KEY` and the `anthropic` SDK | the API's |
 
-Each grok run keeps its MCP config and sessions in a throwaway `GROK_HOME` that is deleted when the run ends (`GROK_MEMORY=0`, vendor compatibility off), with the login passed as a copy via `GROK_AUTH_PATH`; `--sandbox agent-loop` denies reads of the user's grok state, the local artifact cache, sibling runs and the harness sources, so file tools stay on the project and nothing carries from one scenario to the next.
+Each grok run keeps its MCP config and sessions in a throwaway `GROK_HOME` that is deleted when the run ends (`GROK_MEMORY=0`, vendor compatibility off), with the login passed as a copy via `GROK_AUTH_PATH`; `--sandbox agent-loop` denies reads of the user's grok state, the local artifact cache (`~/.jk/store/repos`), sibling runs and the harness sources, so file tools stay on the project and nothing carries from one scenario to the next. The profile extends grok's `workspace` profile (read anywhere; write the project, `/tmp`, and `~/.grok`) and adds a `read_write` grant for the Gradle user home (`GRADLE_USER_HOME`, otherwise `~/.gradle`), the same home the baselines use. Gradle writes a lock beside `libnative-platform.so` there; without the grant the in-sandbox client cannot start. A warm Maven build only reads `~/.m2`, which `workspace` already allows. The pinned `mvn` and `gradle` binaries live under `~/.jk/store/tools`, which is not denied. jk's engine is not a child of grok, so the `repos` deny does not change its builds. Grok does not put MCP tools on the model's function list: there is no config key or flag for that, so the model calls them through `search_tool` and `use_tool`.
 
 The oracle is the plumbing proof and the results-file audit in one. It never reads the injection
 to decide what is wrong; the results file has to say. A compile locus with `';' expected` gets its
