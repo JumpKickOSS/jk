@@ -116,17 +116,11 @@ public final class TestStoreSeed {
         int[] materialised = {0};
         Map<Path, TreeSet<String>> pomVersions = new LinkedHashMap<>();
         Map<Path, TreeSet<String>> hostVersions = new LinkedHashMap<>();
+        List<Path> hostFiles = new ArrayList<>();
         for (String tree : TREES) {
             PathUtil.forEachRegularFile(hostCentral.resolve(tree), (file, attrs) -> {
                 if (EmptyArchive.is(file)) return;
-                if (!same) {
-                    Path target =
-                            sandboxCentral.resolve(hostCentral.relativize(file).toString());
-                    if (seedable(target)) {
-                        Linking.linkOrCopy(file, target);
-                        materialised[0]++;
-                    }
-                }
+                if (!same) hostFiles.add(file);
                 Path version = file.getParent();
                 Path artifact = version == null ? null : version.getParent();
                 if (version == null || artifact == null) return;
@@ -141,6 +135,7 @@ public final class TestStoreSeed {
                 }
             });
         }
+        if (!same) linkHostFiles(hostCentral, sandboxCentral, hostFiles, materialised);
         Path m2Root = m2 == null ? null : m2.toAbsolutePath().normalize();
         if (m2Root != null && Files.isDirectory(m2Root) && !m2Root.equals(sandbox)) {
             fillMissingPoms(hostCentral, sandboxCentral, m2Root, hostVersions, pomVersions, materialised);
@@ -209,17 +204,43 @@ public final class TestStoreSeed {
     }
 
     /**
+     * Link {@code files} from the host tree into the sandbox. Hollow stand-ins are cleared first,
+     * memos included, and the host's files are linked only after that: a POM memo is
+     * {@code <file>.pom.jk} and a jar memo is {@code <file>.jk}, both ordinary files of the same
+     * tree, and directory order is not a safe sequence for deleting a sibling during the link.
+     */
+    private static void linkHostFiles(Path hostCentral, Path sandboxCentral, List<Path> files, int[] materialised)
+            throws IOException {
+        for (Path file : files) {
+            Path target = sandboxCentral.resolve(hostCentral.relativize(file).toString());
+            if (EmptyArchive.is(target)) clearStandIn(target);
+        }
+        for (Path file : files) {
+            Path target = sandboxCentral.resolve(hostCentral.relativize(file).toString());
+            if (Files.exists(target)) continue;
+            Linking.linkOrCopy(file, target);
+            materialised[0]++;
+        }
+    }
+
+    /**
      * A slot the seed may fill: empty, or holding a hollow stand-in an earlier seed linked before
      * the host had the real bytes. The stand-in and its memo go, so the real file takes the slot.
+     * An empty slot's siblings stay — one of them may be a memo this seed already linked.
      */
     private static boolean seedable(Path target) throws IOException {
-        if (Files.exists(target) && !EmptyArchive.is(target)) return false;
+        if (!Files.exists(target)) return true;
+        if (!EmptyArchive.is(target)) return false;
+        clearStandIn(target);
+        return true;
+    }
+
+    /** Drop a hollow stand-in and the memo that still describes it. */
+    private static void clearStandIn(Path target) throws IOException {
         Files.deleteIfExists(target);
-        // A memo describes the blob that was here; the one the seed links is another blob.
         String name = target.getFileName().toString();
         Files.deleteIfExists(target.resolveSibling(ArtifactMemo.jkFileName(name)));
         Files.deleteIfExists(target.resolveSibling(ArtifactMemo.jkFileName(name).replace(".jk", ".m2.jk")));
-        return true;
     }
 
     /**
