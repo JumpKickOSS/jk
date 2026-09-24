@@ -322,6 +322,14 @@ def resolve(*, allow_stale: bool = False, offline: bool = False, need: tuple[str
     return tools
 
 
+def stop_gradle() -> None:
+    """Stop the pinned Gradle's daemons. Each sandbox is a new project, so a matrix otherwise leaves
+    a daemon and a pool of compiler workers per Gradle user home holding gigabytes after it ends."""
+    binary = os.environ.get(_BIN_ENV["gradle"])
+    if binary and Path(binary).is_file():
+        subprocess.run([binary, "--stop", "-q"], capture_output=True, timeout=120)
+
+
 def gradle_incompatibility(text: str) -> str | None:
     """First line showing the build script cannot run on this Gradle, else None."""
     if not text or not _INCOMPAT.search(text):
