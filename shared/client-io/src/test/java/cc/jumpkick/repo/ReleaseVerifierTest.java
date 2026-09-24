@@ -104,28 +104,34 @@ class ReleaseVerifierTest {
     }
 
     @Test
-    void latest_pointer_is_exactly_a_version_line_and_an_issued_line() throws Exception {
-        var pointer =
-                ReleaseVerifier.parsePointer("version 0.13.3\nissued 1757700000\n".getBytes(StandardCharsets.US_ASCII));
-        assertThat(pointer.version()).isEqualTo("0.13.3");
-        assertThat(pointer.issued()).isEqualTo(1757700000L);
-        assertThat(ReleaseVerifier.parsePointer("version 1.0.0-rc.2\nissued 7\n".getBytes(StandardCharsets.US_ASCII))
+    void latest_pointer_is_the_two_lines_and_the_signature_over_them() throws Exception {
+        byte[] object = "version 0.13.3\nissued 1757700000\nsignature QUJDRA==\n".getBytes(StandardCharsets.US_ASCII);
+        var signed = ReleaseVerifier.parseSignedPointer(object);
+        assertThat(signed.pointer().version()).isEqualTo("0.13.3");
+        assertThat(signed.pointer().issued()).isEqualTo(1757700000L);
+        assertThat(signed.signature()).isEqualTo("QUJDRA==");
+        assertThat(signed.signedBytes())
+                .isEqualTo("version 0.13.3\nissued 1757700000\n".getBytes(StandardCharsets.US_ASCII));
+        assertThat(ReleaseVerifier.parsePointer(
+                                "version 1.0.0-rc.2\nissued 7\nsignature QUJD\n".getBytes(StandardCharsets.US_ASCII))
                         .version())
                 .isEqualTo("1.0.0-rc.2");
 
         for (String malformed : List.of(
                 "0.13.3\n",
                 "version 0.13.3\n",
+                "version 0.13.3\nissued 1757700000\n",
                 "version 0.13.3\nissued 1757700000",
-                "version 0.13.3\r\nissued 1757700000\r\n",
+                "version 0.13.3\r\nissued 1757700000\r\nsignature QUJD\r\n",
                 "version 0.13.3\nissued 1757700000\nextra\n",
-                "version ../0.13.3\nissued 1757700000\n",
-                "version 0.13\nissued 1757700000\n",
-                "version 0.13.3\nissued soon\n",
-                "issued 1757700000\nversion 0.13.3\n",
+                "version 0.13.3\nissued 1757700000\nsignature not base64!\n",
+                "version ../0.13.3\nissued 1757700000\nsignature QUJD\n",
+                "version 0.13\nissued 1757700000\nsignature QUJD\n",
+                "version 0.13.3\nissued soon\nsignature QUJD\n",
+                "issued 1757700000\nversion 0.13.3\nsignature QUJD\n",
                 "")) {
             assertThatThrownBy(() -> ReleaseVerifier.parsePointer(malformed.getBytes(StandardCharsets.UTF_8)))
-                    .as("pointer %s", malformed.replace("\n", "\\n"))
+                    .as("pointer %s", malformed.replace("\n", "\\n").replace("\r", "\\r"))
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("malformed");
         }

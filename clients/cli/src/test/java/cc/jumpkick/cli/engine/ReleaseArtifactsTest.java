@@ -71,45 +71,53 @@ class ReleaseArtifactsTest {
     void the_latest_pointer_must_verify_and_must_not_roll_back_below_the_running_version() throws Exception {
         KeyPair pair = rsaPair();
         ReleaseVerifier verifier = ReleaseVerifier.of(List.of(spki(pair)));
-        byte[] newer = pointer("0.14.0");
-        byte[] same = pointer("0.13.3");
-        byte[] older = pointer("0.13.0");
+        byte[] newer = pointer(pair, "0.14.0");
+        byte[] same = pointer(pair, "0.13.3");
+        byte[] older = pointer(pair, "0.13.0");
 
-        assertThat(ReleaseArtifacts.latestVersion(verifier, newer, sign(pair, newer), "0.13.3"))
-                .isEqualTo("0.14.0");
-        assertThat(ReleaseArtifacts.latestVersion(verifier, same, sign(pair, same), "0.13.3"))
-                .isEqualTo("0.13.3");
+        assertThat(ReleaseArtifacts.latestVersion(verifier, newer, "0.13.3")).isEqualTo("0.14.0");
+        assertThat(ReleaseArtifacts.latestVersion(verifier, same, "0.13.3")).isEqualTo("0.13.3");
 
         // Valid signature, older release: the rollback shape a bucket writer or a mirror can stage.
-        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, older, sign(pair, older), "0.13.3"))
+        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, older, "0.13.3"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("REFUSING")
                 .hasMessageContaining("0.13.0");
-        // Tampered after signing.
-        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, newer, sign(pair, older), "0.13.3"))
+        // Tampered after signing: the two lines changed, the signature line did not.
+        byte[] tampered = object(body("0.14.0"), signBase64(pair, body("0.13.0")));
+        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, tampered, "0.13.3"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("REFUSING");
         // Signed by a key this jk does not trust.
-        byte[] foreign = sign(rsaPair(), newer);
-        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, newer, foreign, "0.13.3"))
+        byte[] foreign = pointer(rsaPair(), "0.14.0");
+        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, foreign, "0.13.3"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("REFUSING");
-        // Signed, but not a pointer.
+        // Not a pointer object.
         byte[] bare = "0.14.0\n".getBytes(StandardCharsets.US_ASCII);
-        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, bare, sign(pair, bare), "0.13.3"))
+        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, bare, "0.13.3"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("malformed");
     }
 
-    private static byte[] pointer(String version) {
+    private static byte[] body(String version) {
         return ("version " + version + "\nissued 1757700000\n").getBytes(StandardCharsets.US_ASCII);
     }
 
-    private static byte[] sign(KeyPair pair, byte[] data) throws Exception {
+    private static byte[] pointer(KeyPair pair, String version) throws Exception {
+        return object(body(version), signBase64(pair, body(version)));
+    }
+
+    private static byte[] object(byte[] signedLines, String signatureBase64) {
+        return (new String(signedLines, StandardCharsets.US_ASCII) + "signature " + signatureBase64 + "\n")
+                .getBytes(StandardCharsets.US_ASCII);
+    }
+
+    private static String signBase64(KeyPair pair, byte[] data) throws Exception {
         Signature signer = Signature.getInstance("SHA256withRSA");
         signer.initSign(pair.getPrivate());
         signer.update(data);
-        return (Base64.getEncoder().encodeToString(signer.sign()) + "\n").getBytes(StandardCharsets.US_ASCII);
+        return Base64.getEncoder().encodeToString(signer.sign());
     }
 
     private static String spki(KeyPair pair) {

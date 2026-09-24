@@ -135,24 +135,52 @@ verify_release_signature() {
   }
 }
 
-# Nothing suitable installed — bootstrap the latest published release. The pointer is signed
-# data — LATEST (`version <v>` / `issued <unix-seconds>`) and LATEST.sig over its exact bytes —
-# and is read literally once the signature verifies; the lock's jk-min floor below is what
-# refuses a pointer rolled back to a release too old for this checkout.
+# Split one LATEST object into the signed two lines ($2) and the signature file ($3)
+# verify_release_signature already checks. Exactly three LF-terminated lines; the signature
+# covers the first two and nothing else.
+split_latest_pointer() {
+  _sp_status=0
+  _sp_l1=
+  _sp_l2=
+  _sp_l3=
+  _sp_extra=
+  {
+    IFS= read -r _sp_l1 || _sp_status=1
+    IFS= read -r _sp_l2 || _sp_status=1
+    IFS= read -r _sp_l3 || _sp_status=1
+    if IFS= read -r _sp_extra; then _sp_status=1; fi
+  } < "$1" || return 1
+  # A fourth line, empty or not, is not the three-line object.
+  [ -z "$_sp_extra" ] || _sp_status=1
+  [ "$_sp_status" -eq 0 ] || return 1
+  printf '%s\n' "$_sp_l1" | grep -Eq '^version [0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9]+)*$' || return 1
+  printf '%s\n' "$_sp_l2" | grep -Eq '^issued [0-9]{1,18}$' || return 1
+  printf '%s\n' "$_sp_l3" | grep -Eq '^signature [A-Za-z0-9+/]+={0,2}$' || return 1
+  printf '%s\n%s\n' "$_sp_l1" "$_sp_l2" > "$2"
+  printf '%s\n' "${_sp_l3#signature }" > "$3"
+}
+
+# Nothing suitable installed — bootstrap the latest published release. The pointer is one
+# signed object — `version <v>`, `issued <unix-seconds>`, and `signature` over those two
+# lines — and is read literally once the signature verifies; the lock's jk-min floor below is
+# what refuses a pointer rolled back to a release too old for this checkout.
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-if ! curl -fsSL -o "$TMP/LATEST" "$RELEASES/latest/LATEST" ||
-  ! curl -fsSL -o "$TMP/LATEST.sig" "$RELEASES/latest/LATEST.sig"; then
+if ! curl -fsSL -o "$TMP/LATEST" "$RELEASES/latest/LATEST"; then
   echo "jk wrapper: could not read $RELEASES/latest/LATEST — offline, or JK_RELEASES_URL is wrong." >&2
   exit 1
 fi
-verify_release_signature "$TMP/LATEST" "$TMP/LATEST.sig" "latest-release pointer"
+if ! split_latest_pointer "$TMP/LATEST" "$TMP/LATEST.body" "$TMP/LATEST.sig"; then
+  echo "jk wrapper: $RELEASES/latest/LATEST is not a release pointer — refusing." >&2
+  exit 1
+fi
+verify_release_signature "$TMP/LATEST.body" "$TMP/LATEST.sig" "latest-release pointer"
 VERSION="$(awk '
   NR == 1 && $0 ~ /^version [0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9]+)*$/ { v = substr($0, 9); next }
   NR == 2 && $0 ~ /^issued [0-9]+$/ { next }
   { bad = 1 }
   END { if (bad || NR != 2 || v == "") exit 1; print v }
-' "$TMP/LATEST")" || {
+' "$TMP/LATEST.body")" || {
   echo "jk wrapper: $RELEASES/latest/LATEST is not a release pointer — refusing." >&2
   exit 1
 }

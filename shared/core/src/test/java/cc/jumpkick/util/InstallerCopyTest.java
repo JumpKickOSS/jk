@@ -102,7 +102,7 @@ class InstallerCopyTest {
         assertThat(capture(shell, "RELEASE_FLOOR=\"([^\"]+)\"")).isEqualTo(declared);
         assertThat(capture(powershell, "\\$ReleaseFloor = \"([^\"]+)\"")).isEqualTo(declared);
         // Verified before the version directory is named: the pointer check precedes the archive URL.
-        assertThat(shell.indexOf("verify_signature \"$TMPDIR_JK/LATEST\""))
+        assertThat(shell.indexOf("verify_signature \"$TMPDIR_JK/LATEST.body\""))
                 .isLessThan(shell.indexOf("ARCHIVE_URL=\"$RELEASES_URL/$VERSION/"));
         assertThat(powershell.indexOf("Get-ReleasePointerVersion -Pointer"))
                 .isLessThan(powershell.indexOf("$ArchiveUrl = \"$ReleasesUrl/$version/"));

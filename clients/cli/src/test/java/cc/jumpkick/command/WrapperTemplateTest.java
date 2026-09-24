@@ -44,9 +44,9 @@ class WrapperTemplateTest {
     void posix_wrapper_bootstraps_and_touches_only_the_frozen_surfaces() throws Exception {
         String sh = template("jk.sh");
         // The two frozen dependencies: the release layout and the lock's optional floor.
-        assertThat(sh).contains("latest/LATEST").contains("latest/LATEST.sig").contains("SHA256SUMS.sig");
+        assertThat(sh).contains("latest/LATEST").contains("SHA256SUMS.sig").doesNotContain("latest/LATEST.sig");
         // The pointer is signed data, verified before the version it names is used for anything.
-        assertThat(sh.indexOf("verify_release_signature \"$TMP/LATEST\""))
+        assertThat(sh.indexOf("verify_release_signature \"$TMP/LATEST.body\""))
                 .isLessThan(sh.indexOf("jk-$OS-$ARCH-$VERSION.xz"));
         assertThat(sh).contains("/^version [0-9]+").contains("/^issued [0-9]+$/");
         assertThat(sh).doesNotContain("latest/VERSION");
@@ -81,15 +81,16 @@ class WrapperTemplateTest {
     @Test
     void windows_wrapper_bootstraps_and_touches_only_the_frozen_surfaces() throws Exception {
         String bat = template("jk.bat");
-        assertThat(bat).contains("'/latest/'").contains("'LATEST.sig'").contains("SHA256SUMS.sig");
+        assertThat(bat).contains("'/latest/'").contains("'LATEST'").contains("SHA256SUMS.sig");
+        assertThat(bat).doesNotContain("'LATEST.sig'");
         assertThat(bat).contains("^version ([0-9]+").contains("if not defined VERSION");
         assertThat(bat).doesNotContain("latest/VERSION");
         assertThat(bat).contains("RSASignaturePadding]::Pkcs1").contains("$count -ne 1");
         // One :verify_signature subroutine checks both remote inputs, each before it is read.
         assertThat(occurrences(bat, "VerifyData(")).isEqualTo(1);
-        assertThat(bat.indexOf("call :verify_signature JK_WRAPPER_PTMP LATEST"))
-                .isGreaterThan(0)
-                .isLessThan(bat.indexOf("^version ([0-9]+"));
+        assertThat(bat.indexOf("call :verify_signature JK_WRAPPER_PTMP LATEST.body"))
+                .isGreaterThan(bat.indexOf("'/latest/'"))
+                .isLessThan(bat.indexOf("Write-Output $Matches[1]"));
         assertThat(bat.indexOf("call :verify_signature JK_WRAPPER_TMP SHA256SUMS"))
                 .isGreaterThan(0)
                 .isLessThan(bat.indexOf("Get-FileHash"));
@@ -265,16 +266,17 @@ class WrapperTemplateTest {
     }
 
     /**
-     * {@code LATEST} holding exactly {@code body} and {@code LATEST.sig} over those bytes from
-     * {@code signer}, laid out as sign-latest-pointer.sh writes them.
+     * One {@code LATEST} object: {@code body} plus a {@code signature} line over those bytes from
+     * {@code signer}, laid out as sign-latest-pointer.sh writes a well-formed pointer.
      */
     private static void signedPointer(Path latestDir, String body, KeyPair signer) throws Exception {
         byte[] bytes = body.getBytes(StandardCharsets.US_ASCII);
-        Files.write(latestDir.resolve("LATEST"), bytes);
         Signature signature = Signature.getInstance("SHA256withRSA");
         signature.initSign(signer.getPrivate());
         signature.update(bytes);
-        Files.writeString(latestDir.resolve("LATEST.sig"), Base64.getEncoder().encodeToString(signature.sign()) + "\n");
+        String object = body + "signature " + Base64.getEncoder().encodeToString(signature.sign()) + "\n";
+        Files.writeString(latestDir.resolve("LATEST"), object);
+        Files.deleteIfExists(latestDir.resolve("LATEST.sig"));
     }
 
     private record Run(int exit, String stdout, String stderr) {}

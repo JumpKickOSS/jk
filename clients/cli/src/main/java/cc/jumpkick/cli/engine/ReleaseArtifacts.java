@@ -152,25 +152,23 @@ public final class ReleaseArtifacts {
     }
 
     /**
-     * The version the signed {@code latest/LATEST} pointer under {@code releasesBase} names, once
-     * its signature verifies and it is not older than {@code running}. The pointer is the one
+     * The version the signed {@code latest/LATEST} object under {@code releasesBase} names, once
+     * its signature verifies and it is not older than {@code running}. The object is the one
      * mutable input of an update, so a bucket writer or a mirror that rolls it back to an older,
      * validly signed release gets a refusal rather than a downgrade; an explicit {@code jk self
      * update <version>} never reads the pointer and stays the deliberate way down.
      */
     public static String latestVersion(URI releasesBase, ReleaseVerifier verifier, String running) throws IOException {
         Http http = new Http();
-        byte[] pointer = get(http, URI.create(releasesBase + "/latest/LATEST"), "latest-release pointer");
-        byte[] signature =
-                get(http, URI.create(releasesBase + "/latest/LATEST.sig"), "latest-release pointer signature");
-        return latestVersion(verifier, pointer, signature, running);
+        byte[] object = get(http, URI.create(releasesBase + "/latest/LATEST"), "latest-release pointer");
+        return latestVersion(verifier, object, running);
     }
 
-    /** {@link #latestVersion(URI, ReleaseVerifier, String)} over bytes already fetched. */
-    static String latestVersion(ReleaseVerifier verifier, byte[] pointer, byte[] signature, String running)
-            throws IOException {
-        verifier.verify(pointer, new String(signature, StandardCharsets.UTF_8));
-        String latest = ReleaseVerifier.parsePointer(pointer).version();
+    /** {@link #latestVersion(URI, ReleaseVerifier, String)} over the pointer object already fetched. */
+    static String latestVersion(ReleaseVerifier verifier, byte[] object, String running) throws IOException {
+        ReleaseVerifier.SignedPointer signed = ReleaseVerifier.parseSignedPointer(object);
+        verifier.verify(signed.signedBytes(), signed.signature());
+        String latest = signed.pointer().version();
         if (Versions.compare(latest, running) < 0) {
             throw new IOException("the latest-release pointer names " + latest + ", older than the " + running
                     + " this jk runs — REFUSING a rolled-back pointer (a mirror or the release site may be"

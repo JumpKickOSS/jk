@@ -236,11 +236,18 @@ if command -v xz >/dev/null 2>&1; then
   xz -kc "$RELEASE/$ARTIFACT" >"$RELEASE/$LATEST_ARTIFACT"
   write_pointer 1.0.0
   [[ "$(cat "$LATEST_DIR/VERSION")" == "1.0.0" ]] || { echo "the pointer script did not write the bare VERSION" >&2; exit 1; }
-  if ! { grep -qE '^version 1\.0\.0$' "$LATEST_DIR/LATEST" && grep -qE '^issued [0-9]+$' "$LATEST_DIR/LATEST"; }; then
+  if ! { grep -qE '^version 1\.0\.0$' "$LATEST_DIR/LATEST" \
+      && grep -qE '^issued [0-9]+$' "$LATEST_DIR/LATEST" \
+      && grep -qE '^signature [A-Za-z0-9+/]+={0,2}$' "$LATEST_DIR/LATEST"; }; then
     cat "$LATEST_DIR/LATEST" >&2
-    echo "the pointer script did not write a two-line LATEST" >&2
+    echo "the pointer script did not write a three-line LATEST" >&2
     exit 1
   fi
+  [[ ! -e "$LATEST_DIR/LATEST.sig" ]] || { echo "the pointer script wrote a detached LATEST.sig" >&2; exit 1; }
+  [[ "$(awk 'END { print NR }' "$LATEST_DIR/LATEST")" == "3" ]] || {
+    echo "LATEST is not exactly three lines" >&2
+    exit 1
+  }
   latest_hash="$(openssl dgst -sha256 "$RELEASE/$LATEST_ARTIFACT" | awk '{print tolower($NF)}')"
   write_evidence "$latest_hash  $LATEST_ARTIFACT"$'\n'
   run_installer "$WORK/home-latest" || {
@@ -279,8 +286,10 @@ assert_pointer_refused() {
 }
 
 write_pointer 1.0.0
+awk 'NR<=2' "$LATEST_DIR/LATEST" >"$LATEST_DIR/LATEST.two"
+mv "$LATEST_DIR/LATEST.two" "$LATEST_DIR/LATEST"
 rm -f "$LATEST_DIR/LATEST.sig"
-assert_pointer_refused "unsigned-pointer" "could not download the latest-release pointer signature"
+assert_pointer_refused "unsigned-pointer" "latest-release pointer at https://fixture/releases/latest/LATEST is malformed"
 
 write_pointer 1.0.0
 sed -i.bak 's/^version 1\.0\.0$/version 1.0.1/' "$LATEST_DIR/LATEST"

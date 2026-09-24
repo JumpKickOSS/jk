@@ -125,7 +125,7 @@ $ReleaseRsaExponent = "AQAB"
 # The release this installer ships with. A signed latest-release pointer naming anything older is
 # a rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
 # refused; JK_VERSION remains the deliberate way to install a specific release.
-$ReleaseFloor = "0.13.9"
+$ReleaseFloor = "0.14.0"
 
 # irm|iex cannot pass positional args; allow JK_LOCAL_PATH as the local-dist seam.
 if (-not $LocalPath -and $env:JK_LOCAL_PATH) {
@@ -331,28 +331,34 @@ function Test-ReleaseSignature {
     }
 }
 
-# The version a verified latest-release pointer names. The signature covers the exact bytes, so
-# the reading is as literal as the writing: precisely `version <x.y.z>` then `issued <seconds>`,
-# LF-terminated, or a refusal. A pointer older than $Floor is a rollback and is refused too.
+# The version a verified latest-release pointer names. The object is three LF-terminated lines and
+# the signature covers the exact bytes of the first two, so the reading is as literal as the
+# writing. A pointer older than $Floor is a rollback and is refused too.
 function Get-ReleasePointerVersion {
     param(
         [Parameter(Mandatory = $true)][string] $Pointer,
-        [Parameter(Mandatory = $true)][string] $Signature,
         [Parameter(Mandatory = $true)][string] $Modulus,
         [Parameter(Mandatory = $true)][string] $Exponent,
         [Parameter(Mandatory = $true)][string] $Floor
     )
     $pointerBytes = [IO.File]::ReadAllBytes($Pointer)
-    Test-ReleaseSignature -SignedBytes $pointerBytes -Signature $Signature -Modulus $Modulus -Exponent $Exponent `
-        -What "latest-release pointer"
     foreach ($byte in $pointerBytes) {
         if ($byte -gt 127) { throw "latest-release pointer is not ASCII" }
     }
     $text = [Text.Encoding]::ASCII.GetString($pointerBytes)
-    if ($text -notmatch '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued [0-9]{1,18}\n$') {
+    if (-not ($text -match '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued ([0-9]{1,18})\nsignature ([A-Za-z0-9+/]+={0,2})\n$')) {
         throw "latest-release pointer is malformed; refusing"
     }
     $version = $Matches[1]
+    $signedBytes = [Text.Encoding]::ASCII.GetBytes("version $($Matches[1])`nissued $($Matches[2])`n")
+    $signatureFile = "$Pointer.signature"
+    try {
+        [IO.File]::WriteAllText($signatureFile, $Matches[3] + "`n", [Text.Encoding]::ASCII)
+        Test-ReleaseSignature -SignedBytes $signedBytes -Signature $signatureFile -Modulus $Modulus -Exponent $Exponent `
+            -What "latest-release pointer"
+    } finally {
+        Remove-Item -LiteralPath $signatureFile -Force -ErrorAction SilentlyContinue
+    }
     if ([version]($version -replace '-.*', '') -lt [version]($Floor -replace '-.*', '')) {
         throw "latest-release pointer names $version, older than the $Floor this installer ships with; refusing a rolled-back pointer (set JK_VERSION to install a specific release)"
     }
@@ -628,22 +634,16 @@ if ($LocalPath) {
     $target = if ($UseJvm) { "jvm" } else { Get-JkTarget }
     $version = $env:JK_VERSION
     if (-not $version) {
-        # The pointer is signed data and the only mutable input: verified against the release key,
-        # read literally, and refused when it names a release older than this installer's own.
+        # The pointer is one signed object and the only mutable input: verified against the release
+        # key, read literally, and refused when it names a release older than this installer's own.
         $pointerFile = Join-Path $tmpRoot "LATEST"
-        $pointerSignature = Join-Path $tmpRoot "LATEST.sig"
         try {
             Save-Url "$ReleasesUrl/latest/LATEST" $pointerFile
         } catch {
             Die "could not resolve the latest jk version from $ReleasesUrl/latest/LATEST ($($_.Exception.Message))"
         }
         try {
-            Save-Url "$ReleasesUrl/latest/LATEST.sig" $pointerSignature
-        } catch {
-            Die "could not download the latest-release pointer signature from $ReleasesUrl/latest/LATEST.sig ($($_.Exception.Message))"
-        }
-        try {
-            $version = Get-ReleasePointerVersion -Pointer $pointerFile -Signature $pointerSignature `
+            $version = Get-ReleasePointerVersion -Pointer $pointerFile `
                 -Modulus $ReleaseRsaModulus -Exponent $ReleaseRsaExponent -Floor $ReleaseFloor
         } catch {
             Die $_.Exception.Message

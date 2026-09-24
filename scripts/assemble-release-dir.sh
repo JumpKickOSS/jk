@@ -17,7 +17,8 @@
 # jk-maven-spy-<version>.jar (the Maven core extension `jk mvn` attaches; a client self-fetches it)
 # SHA256SUMS
 # SHA256SUMS.sig (if JK_RELEASE_RSA_SIGNING_KEY or its file variant is set)
-# The ../latest/ pointer (LATEST, LATEST.sig, VERSION) is the caller's job: scripts/sign-latest-pointer.sh.
+# The ../latest/ pointer (LATEST, the one signed object, and VERSION) is the caller's job:
+# scripts/sign-latest-pointer.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

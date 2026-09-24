@@ -44,10 +44,10 @@ main() {
   INSTALL_DIR="${JK_HOME_DIR}/bin"
   DEFAULT_HOME_DIR="${HOME}/.jk"
   # One immutable directory per version (jk-<os>-<arch>-<version>[.xz] + jk-engine-<version>.jar
-  # + SHA256SUMS); `latest/LATEST` is the only mutable pointer, and it is signed data
-  # (`version <v>` / `issued <unix-seconds>` + LATEST.sig) verified before anything it
-  # names is fetched. The version is resolved ONCE and both artifacts come from the
-  # frozen directory, so a release published mid-install can never hand out a binary
+  # + SHA256SUMS); `latest/LATEST` is the only mutable pointer, and it is one signed
+  # object (`version <v>`, `issued <unix-seconds>`, `signature <base64>` over those two
+  # lines) verified before anything it names is fetched. The version is resolved ONCE and both
+  # artifacts come from the frozen directory, so a release published mid-install can never hand out a binary
   # and an engine jar that disagree (the client refuses to launch a version-skewed jar).
   RELEASES_URL="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 
@@ -127,7 +127,7 @@ main() {
   # The release this installer ships with. A signed pointer naming anything older is a
   # rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
   # refused; JK_VERSION remains the deliberate way to install a specific release.
-  RELEASE_FLOOR="0.13.9"
+  RELEASE_FLOOR="0.14.0"
 
   # Verify the release key's RSA/SHA-256 signature in <sig-file> over the exact bytes of
   # <signed-file>, or die naming <what>. Every remote input that steers the install — the
@@ -158,7 +158,29 @@ main() {
       || die "$what signature verification failed; refusing the download."
   }
 
-  # The version a verified LATEST pointer names. The signature covers the exact bytes, so the
+  # Split one LATEST object into the signed two lines and the signature file
+  # verify_signature already checks. Exactly three LF-terminated lines; the signature covers
+  # the first two and nothing else, so publishing the pointer is one copy.
+  split_pointer() {
+    local object="$1" signed="$2" sig="$3"
+    local l1="" l2="" l3="" extra="" status=0
+    {
+      IFS= read -r l1 || status=1
+      IFS= read -r l2 || status=1
+      IFS= read -r l3 || status=1
+      if IFS= read -r extra; then status=1; fi
+    } < "$object" || return 1
+    # A fourth line, empty or not, is not the three-line object.
+    [ -z "$extra" ] || status=1
+    [ "$status" -eq 0 ] || return 1
+    [[ "$l1" =~ ^version\ [0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9]+)*$ ]] || return 1
+    [[ "$l2" =~ ^issued\ [0-9]{1,18}$ ]] || return 1
+    [[ "$l3" =~ ^signature\ [A-Za-z0-9+/]+={0,2}$ ]] || return 1
+    printf '%s\n%s\n' "$l1" "$l2" > "$signed"
+    printf '%s\n' "${l3#signature }" > "$sig"
+  }
+
+  # The version a verified LATEST body names. The signature covers these exact bytes, so the
   # reading is as literal as the writing: precisely `version <x.y.z>` then `issued <seconds>`,
   # LF-terminated, or nothing.
   pointer_version() {
@@ -333,14 +355,14 @@ main() {
     if [ -n "${JK_VERSION:-}" ]; then
       VERSION="$JK_VERSION"
     else
-      # The pointer is signed data and the only mutable input: verified against the release key,
-      # read literally, and refused when it names a release older than this installer's own.
+      # The pointer is one signed object and the only mutable input: verified against the release
+      # key, read literally, and refused when it names a release older than this installer's own.
       download "$RELEASES_URL/latest/LATEST" "$TMPDIR_JK/LATEST" \
         || die "could not resolve the latest jk version from $RELEASES_URL/latest/LATEST"
-      download "$RELEASES_URL/latest/LATEST.sig" "$TMPDIR_JK/LATEST.sig" \
-        || die "could not download the latest-release pointer signature from $RELEASES_URL/latest/LATEST.sig"
-      verify_signature "$TMPDIR_JK/LATEST" "$TMPDIR_JK/LATEST.sig" "latest-release pointer"
-      VERSION="$(pointer_version "$TMPDIR_JK/LATEST")" \
+      split_pointer "$TMPDIR_JK/LATEST" "$TMPDIR_JK/LATEST.body" "$TMPDIR_JK/LATEST.sig" \
+        || die "latest-release pointer at $RELEASES_URL/latest/LATEST is malformed; refusing."
+      verify_signature "$TMPDIR_JK/LATEST.body" "$TMPDIR_JK/LATEST.sig" "latest-release pointer"
+      VERSION="$(pointer_version "$TMPDIR_JK/LATEST.body")" \
         || die "latest-release pointer at $RELEASES_URL/latest/LATEST is malformed; refusing."
       ver_ge "$VERSION" "$RELEASE_FLOOR" \
         || die "latest-release pointer names $VERSION, older than the $RELEASE_FLOOR this installer ships with;" \
