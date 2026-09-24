@@ -42,14 +42,14 @@ register.
 | grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | tracks an 8.x milestone; `latest` would pick Grails 7 |
 | Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | compiles; no cross-building, Scala.js/Native or sbt parity |
 
-The next core battery is whichever step most Spring and Kotlin services touch every day —
-coverage in the results file, sources and javadoc jars, Central Portal publishing, lint as a
-cached step — in the order set by [the 1.0 plan](../contributors/plan-1.0.md).
+Coverage (`jk test --coverage` / the Coverage block), sources and javadoc jars, Central Portal
+publishing (`jk publish --central`), and lint as a cached step are core batteries today — see the
+register above and [the 1.0 plan](../contributors/plan-1.0.md).
 
 Which batteries matter is measured, not guessed: the [plugin census](../contributors/plugin-census.md)
 ranks the Maven and Gradle plugins GitHub projects declare and classifies each against this
-register. Core plus the planned batteries covers about ninety percent of Maven plugin use and of
-server-side Gradle use; the census names the gaps, the recipes and the deliberate non-goals.
+register. Core covers about ninety percent of Maven plugin use and of server-side Gradle use; the
+census names the gaps, the recipes and the deliberate non-goals.
 
 Framework how-tos: [Frameworks](frameworks.md). Generators: [Generate](generate.md). Format:
 [Format](format.md).
@@ -73,9 +73,9 @@ name is refused the same way.
 
 ## Third-party and vendored plugins
 
-The plugin SDK, `cc.jumpkick:jk-plugin-sdk`, is a published coordinate: every jk release ships it
-(with `jk-host`, its one dependency) to `https://jumpkick.build/repo/` and to Maven Central through
-`jk publish --central` ([releases](../contributors/releases.md)), at the release's own version. A
+The plugin SDK, `cc.jumpkick:jk-plugin-sdk` (with `jk-host`, its one dependency), ships to
+`https://jumpkick.build/repo/` with each release and is publishable to Maven Central with
+`jk publish --central` ([releases](../contributors/releases.md)); it is not on Central yet. A
 plugin authored outside the jk tree depends on that coordinate and declares the jk it needs with a
 `jk-compat` floor — [examples/third-party-plugin](examples/third-party-plugin/) is the complete
 shape, and the [contributor plugin guide](../contributors/plugins.md) the reference. Pre-1.0 the

@@ -69,8 +69,11 @@ Details: [Install](install.md), [JDK](jdk.md), [Cache](cache.md), [Repositories]
 | **Before the rewrite** | `jk mvn` / `jk gradle` run the real build, wrapper-aware. `jk mvn` writes the same results file from Maven's events, Surefire and Failsafe XML, and compiler diagnostics. `jk build` can run an unmodified `pom.xml` from the effective POM. | — | — |
 | **Import** | `jk import` writes `jk.toml` and a fidelity report graded per plugin. Common compiler, jar, Surefire, Boot, shade, and Kotlin mappings land. The report names what did not. | — | — |
 
-The agent-loop **surface** is shipped. A published turns-to-green number against Maven and Gradle
-is not. Until that table exists, "agents finish faster" is a design claim, not a measurement.
+The agent-loop **surface** is shipped. One scenario with one coding-agent driver has been
+measured, and jk is behind: 9 turns / 45,982 tokens against Maven 6 / 23,623 and Gradle
+6 / 23,807 ([`bench/agent-loop/results/2026-09-16/TABLE.md`](../../bench/agent-loop/results/2026-09-16/TABLE.md)).
+The scripted driver is a plumbing proof. A full matrix is pending. Until that table shows jk
+ahead, "agents finish faster" is the goal being measured.
 See [Why JumpKick](why.md) and [Agents](agents.md).
 
 ## Speed and memory
@@ -129,13 +132,13 @@ When a row is won, change its score here and the matching cell above in the same
 | **JDK discovery** | Gradle | The probe list is a superset of Gradle's suppliers, Maven `toolchains.xml`, and Mill's Coursier JVM cache. A JDK any of them would use, JumpKick uses, and does not download again. Bazel's output base is not a probe: those JDKs are per-checkout and hermetic on purpose. |
 | **Uninstall of a JDK someone else installed** | — | `jk jdk uninstall` never deletes a home outside the managed JDK root unless the owning tool removed it. `JAVA_HOME`, Gradle's provisioned JDKs, a `toolchains.xml` pointer, a registry entry, and a Coursier cache entry are refused or delegated, not `rm`'d. |
 | **Open the project in an IDE** | Maven and Gradle | Opening a `jk.toml` workspace in IntelliJ or VS Code needs no generated project files and no install-from-disk step. Today the plugin is an external system (live model, gutter run and debug) packaged from this repository. Without it, `jk ide` writes files. |
-| **Plugin ecosystem** | Maven and Gradle | A third-party plugin is as ordinary to add as a dependency. Today the SDK publishes to Central and a plugin is a pinned jar. There is no marketplace. The common server-side batteries are already first-party. |
+| **Plugin ecosystem** | Maven and Gradle | A third-party plugin is as ordinary to add as a dependency. The SDK is publishable with `jk publish --central` and is not on Central yet; a plugin is a pinned jar. There is no marketplace. The common server-side batteries are already first-party. |
 | **Remote cache** | Gradle, and Maven's Build Cache Extension | A second machine restores an action-cache hit. Local keys are already shaped for that. The remote layer is not a product yet. |
 | **Memory of a build** | Maven, then Gradle | Peak RSS of the whole process tree on the [petclinic](performance.md) run is in Maven's range, or at least Gradle's. The 256 MiB figure is the engine heap cap. The measured tree is about 2.7 GiB on a build and about 7.5 GiB on the test run. |
 | **One-file edit** | Gradle | Median at or under Gradle's 0.52 s on that run (JumpKick is 0.64 s). |
 | **Test wall** | Maven, then Gradle | Median at or under Maven's 23.66 s on that run (JumpKick is 26.15 s), without the 7.5 GiB RSS. |
 | **Import fidelity** | — | An imported Maven or Gradle build builds the same artifact without a fidelity-report row for the common plugins. Today Failsafe's `*IT.java` layout, an arbitrary exec, the release plugin, `war`, Tycho, OSGi, and a non-standard filtered resource directory are reports. |
-| **Measured agent loop** | Unmeasured | A published turns-to-green table beats Maven and Gradle on the same scenarios. Results, MCP, and `jk mvn` are already real. |
+| **Measured agent loop** | One scenario; jk behind | A published turns-to-green table beats Maven and Gradle across the scenario matrix. The one banked comparison is jk 9 turns / 45,982 tokens against Maven 6 / 23,623 and Gradle 6 / 23,807. Results, MCP, and `jk mvn` are already real. |
 
 ### Held
 

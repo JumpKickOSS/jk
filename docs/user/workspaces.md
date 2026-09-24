@@ -80,7 +80,7 @@ widget-core.workspace = true        # sibling module (matches name)
 ```
 
 A shared entry in the root's `[workspace.dependencies]` is a catalog short name with a version
-(`jackson-databind = "2.18.2"`), a `group:artifact:version` coordinate, or an inline table with
+(`jackson-databind = "2.22.2"`), a `group:artifact:version` coordinate, or an inline table with
 `version` (plus `group` / `name` when the key is not a catalog name) or `git` (with `group`). An
 inline table also takes `exclude`, the entry's own exclusions, which every member edge to it
 carries beside the edge's own — one place to prune a transitive every member would otherwise

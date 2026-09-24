@@ -7,14 +7,14 @@
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/user/README.md)
 
-**JumpKick** (CLI: **`jk`**) shortens the edit → build → diagnose → fix loop for **AI coding
+**JumpKick** (CLI: **`jk`**) shortens the edit → build → diagnose → fix loop for **coding
 agents** and for the humans who supervise them. Java, Kotlin, Groovy, and Scala. One TOML
 manifest. A real lockfile. Structured results agents can read without scraping a TTY. A warm
-engine that stays small. Maven Central — not a new package universe.
+engine with a capped heap. Maven Central — not a new package universe.
 
 Wall-clock parity with a tuned Gradle 9.x build is table stakes. The conversion claim is
-**fewer failed cycles and less agent thrash** — so Grok, Claude, Codex, and friends finish
-green in fewer turns.
+**fewer failed cycles and less agent thrash** — coding agents finishing green in fewer turns.
+That is the goal the agent-loop harness is measuring. It is not a result yet.
 
 > Import your Maven or Gradle project when you are ready. Keep shipping with `jk mvn` /
 > `jk gradle` until the JumpKick path owns the loop.
@@ -59,7 +59,7 @@ That is it. No `build.gradle.kts` that is itself a software project. No 200-line
 |------|-------------------------|
 | **Intent** | `jk manual` / MCP `jk_manual` — the system prompt for a tool models were not trained on |
 | **Mutate** | Declarative `jk.toml`; surgical `jk add` / `remove`; MCP preview-before-apply |
-| **Execute** | Lockfile is law; action cache + CAS; slim resident engine (~256 MiB) |
+| **Execute** | Lockfile is law; action cache + CAS; resident engine (256 MiB heap cap) |
 | **Test rungs** | Default `jk test` is unit (inner loop). `--guard` is the named share-the-commit bar. `--all` is nightly, not a habit. |
 | **Observe** | `target/jk-results.md`, MCP diagnostics, JSONL — same facts as the human CLI |
 | **Repair** | Readable PubGrub conflicts, `jk why` / `jk explain`, format after edits |
@@ -88,11 +88,11 @@ three skins** (TTY / browser / MCP) — never scrape wedges.
 |---|---|
 | **An agent-closed loop** | `jk-results.md`, MCP tools, `jk manual` — diagnose without log archaeology |
 | **Named test rungs** | Cheap unit inner loop; `--guard` before share; e2e / `--all` on purpose — not Surefire folklore |
-| **Ergonomics of Cargo / uv** | `jk init` `add` `lock` `build` `test` `tree` `why` — native binary, sub-50 ms cold start |
+| **Ergonomics of Cargo / uv** | `jk init` `add` `lock` `build` `test` `tree` `why` — native binary |
 | **Data, not a second app** | TOML manifest; plugins extend a finite model; no Kotlin/Groovy DSL as the build |
 | **Reproducible by default** | `jk-lock.toml` is law; `jk build` does not re-resolve |
 | **Correct resolution you can read** | PubGrub; highest-wins without a BOM; enforced platform when a BOM is present |
-| **Warm speed without a fat daemon** | Content-addressed action cache; engine hard-capped (~256 MiB; 512 MiB when `CI=1`) |
+| **Warm speed, capped engine heap** | Content-addressed action cache; engine heap hard-capped (256 MiB; 512 MiB when `CI=1`). Whole-tree RSS: [Performance](docs/user/performance.md) |
 | **Always current by design** | Scaffolds and `jk add` pin today's stable; `jk update` bumps the pins and relocks |
 | **Maven Central, not a new ecosystem** | Same coordinates, scopes, BOMs; `~/.m2`-friendly cache |
 | **Adoption without a rewrite** | `jk mvn` / `jk gradle` run your *real* build; `import` / `export` when ready |
@@ -104,11 +104,11 @@ surface, real lockfile, agent-readable outcomes.
 **Coming from Gradle:** keep warm/incremental ambition without “your build is a second
 program.” Agents should not write Kotlin DSL to add Jackson.
 
-**Speed (honest):** competitive with modern Gradle on warm builds; the jk / Gradle / Maven
-table — walls and peak memory on one public Spring Boot project — is in
-[docs/user/performance.md](docs/user/performance.md). Lead with *repeated* local and agent cycles
-(RSS + cache + structured retries), not a one-shot CI bake-off. The feature matrix, including
-where JumpKick loses, is in [docs/user/comparison.md](docs/user/comparison.md).
+**Speed (honest):** on that one project, clean, warm and no-op builds are faster than Gradle
+and Maven; a one-file edit is slower than Gradle, and the test run is slower than both. The table — walls and peak RSS — is in
+[docs/user/performance.md](docs/user/performance.md). Peak RSS there is higher than both.
+The feature matrix, including where JumpKick loses, is in
+[docs/user/comparison.md](docs/user/comparison.md).
 
 ### Stay on the newest versions
 
@@ -211,12 +211,13 @@ must. A key names content and a project-relative output, never the checkout, so 
 worktree or a CI agent at the same commit restores what the first built. `jk explain`
 forecasts the work before you spend the time.
 
-### A small engine, not a multi-gigabyte daemon
+### Capped engine heap
 
-Build work runs in a **resident engine** (plain JVM, default **256 MiB** heap) so concurrent
-`jk` commands share one memory plan. Compilers and tests are **forked workers**. The CLI is
-a **native** `jk` binary — TUI, shell, JDK prompts — with a cold start measured in
-milliseconds. The same engine hosts the **web UI** and **MCP** server.
+Build work runs in a **resident engine** (plain JVM, default **256 MiB** heap cap, **512 MiB**
+when `CI=1`) so concurrent `jk` commands share one heap plan. Compilers and tests are **forked
+workers** and are not under that cap. Whole-tree peak RSS — client, engine, and workers — is
+in [Performance](docs/user/performance.md). The CLI is a **native** `jk` binary. The same
+engine hosts the **web UI** and **MCP** server.
 
 ```bash
 jk engine status
@@ -234,8 +235,8 @@ jk engine stop
 ```bash
 jk new payments-api && cd payments-api
 
-jk add org.springframework.boot:spring-boot-starter-web:3.4.0
-jk add --test org.springframework.boot:spring-boot-starter-test:3.4.0
+jk add org.springframework.boot:spring-boot-starter-web:4.1.0
+jk add --test org.springframework.boot:spring-boot-starter-test:4.1.0
 
 jk build
 jk test
@@ -251,7 +252,7 @@ version = "0.1.0"
 java = 25
 
 [platform-dependencies]
-boot = "org.springframework.boot:spring-boot-dependencies:3.4.0"
+boot = "org.springframework.boot:spring-boot-dependencies:4.1.0"
 
 [dependencies]
 web = "org.springframework.boot:spring-boot-starter-web"     # versionless: the BOM manages it
@@ -265,7 +266,7 @@ web = "org.springframework.boot:spring-boot-starter-web"     # versionless: the 
 modules = ["libs/*", "services/*"]
 
 [workspace.dependencies]
-jackson-databind = "com.fasterxml.jackson.core:jackson-databind:2.18.2"
+jackson-databind = "com.fasterxml.jackson.core:jackson-databind:2.22.2"
 ```
 
 ```toml
@@ -383,7 +384,8 @@ the developer's inner loop first (Maven projects as they are, a measured agent l
 that just works, daily-loop batteries, the dashboard as the supervisor's view, checkable
 performance numbers).
 
-Supported project JDKs: **17+** (no Java 8 or 11).
+Project language level: `java = 8` is the oldest `--release` a current javac accepts. Below 17
+the build warns once per module. A `jdk =` pin below 17 is refused. Running `jk` requires JDK 25+.
 
 ## License
 

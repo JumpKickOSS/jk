@@ -39,8 +39,9 @@ they ride the user’s JVM).
 
 Every jk release publishes `cc.jumpkick:jk-plugin-sdk` and `cc.jumpkick:jk-host` (the SDK's one
 dependency) at the release's version — sources and javadoc jars, a POM with the metadata Central
-requires, GPG-signed — to `https://jumpkick.build/repo/` and, through `jk publish --central`, to
-Maven Central ([releases](releases.md#maven-central)). A plugin outside this tree:
+requires, GPG-signed — to `https://jumpkick.build/repo/`. The same modules are publishable to
+Maven Central with `jk publish --central` ([releases](releases.md#maven-central)); they are not
+on Central yet. A plugin outside this tree:
 
 ```toml
 [dependencies]
@@ -346,7 +347,7 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 |---|---|
 | **First-party** plugins under `plugins/` | Ship with jk; `jk install` publishes them to `repos/jk-local` |
 | **Private / vendored** jars (`[plugins]` + `sha256`) | Supported now — see below |
-| **Third-party** plugins against the published SDK | `cc.jumpkick:jk-plugin-sdk:<version>` on `jumpkick.build/repo` and Maven Central from each release; pinned by content in the consumer |
+| **Third-party** plugins against the published SDK | `cc.jumpkick:jk-plugin-sdk:<version>` on `jumpkick.build/repo` (publishable to Maven Central with `jk publish --central`; not on Central yet); pinned by content in the consumer |
 | **Plugin marketplace / registry** | Intentionally deferred (product anti-goal pre-freeze) |
 
 ### Private plugins (path or Maven pin)
