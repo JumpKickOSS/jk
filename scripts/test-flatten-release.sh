@@ -19,7 +19,11 @@ stage() {
     local dir="$staging/release-$VER-$platform"
     mkdir -p "$dir"
     printf 'client %s\n' "$platform" >"$dir/jk-$platform-$VER.xz"
-    [[ "$platform" == "windows-x86_64" ]] && printf 'client zip\n' >"$dir/jk-$platform-$VER.zip"
+    if [[ "$platform" == "windows-x86_64" ]]; then
+      printf 'client zip\n' >"$dir/jk-$platform-$VER.zip"
+    else
+      printf 'client gz\n' >"$dir/jk-$platform-$VER.gz"
+    fi
     printf 'engine bytes\n' >"$dir/jk-engine-$VER.jar"
     printf 'client jar bytes\n' >"$dir/jk-$VER.jar"
     printf 'spy jar bytes\n' >"$dir/jk-maven-spy-$VER.jar"
@@ -54,23 +58,27 @@ run_flatten "$WORK/staging" "$WORK/out" || { cat "$WORK/last.log" >&2; echo "tes
 expected_listing="SHA256SUMS
 jk-$VER.jar
 jk-engine-$VER.jar
+jk-linux-aarch64-$VER.gz
 jk-linux-aarch64-$VER.xz
+jk-linux-x86_64-$VER.gz
 jk-linux-x86_64-$VER.xz
+jk-macos-aarch64-$VER.gz
 jk-macos-aarch64-$VER.xz
+jk-macos-x86_64-$VER.gz
 jk-macos-x86_64-$VER.xz
 jk-maven-spy-$VER.jar
 jk-windows-x86_64-$VER.xz
 jk-windows-x86_64-$VER.zip"
 [[ "$(cd "$WORK/out" && printf '%s\n' * | LC_ALL=C sort)" == "$expected_listing" ]] || {
   (cd "$WORK/out" && printf '%s\n' *) >&2
-  echo "test-flatten-release: the flattened tree does not hold exactly the nine artifacts plus SHA256SUMS" >&2
+  echo "test-flatten-release: the flattened tree does not hold exactly the thirteen artifacts plus SHA256SUMS" >&2
   exit 1
 }
 [[ ! -e "$WORK/out/SHA256SUMS.sig" ]] || { echo "test-flatten-release: a per-platform signature leaked into the tree" >&2; exit 1; }
 # The manifest names every artifact once, in coreutils form, and nothing else.
-[[ "$(wc -l <"$WORK/out/SHA256SUMS" | tr -d '[:space:]')" == "9" ]] || {
+[[ "$(wc -l <"$WORK/out/SHA256SUMS" | tr -d '[:space:]')" == "13" ]] || {
   cat "$WORK/out/SHA256SUMS" >&2
-  echo "test-flatten-release: SHA256SUMS does not hold nine entries" >&2
+  echo "test-flatten-release: SHA256SUMS does not hold thirteen entries" >&2
   exit 1
 }
 grep -vqE '^[0-9a-f]{64}  [A-Za-z0-9][A-Za-z0-9._-]*$' "$WORK/out/SHA256SUMS" && {
@@ -93,7 +101,7 @@ cmp -s "$WORK/staging/release-$VER-linux-x86_64/jk-$VER.jar" "$WORK/out/jk-$VER.
 stage "$WORK/staging"
 rm -rf "$WORK/staging/release-$VER-macos-aarch64"
 assert_refused "$WORK/staging" "missing client jk-macos-aarch64-$VER.xz — the macos-aarch64 build did not finish"
-grep -q "1 artifact(s) missing: a partial matrix is not a release" "$WORK/last.log" || {
+grep -q "2 artifact(s) missing: a partial matrix is not a release" "$WORK/last.log" || {
   cat "$WORK/last.log" >&2
   echo "test-flatten-release: the missing-platform count was not reported" >&2
   exit 1
@@ -102,6 +110,10 @@ grep -q "1 artifact(s) missing: a partial matrix is not a release" "$WORK/last.l
 stage "$WORK/staging"
 rm -f "$WORK/staging/release-$VER-windows-x86_64/jk-windows-x86_64-$VER.zip"
 assert_refused "$WORK/staging" "missing jk-windows-x86_64-$VER.zip"
+
+stage "$WORK/staging"
+rm -f "$WORK/staging/release-$VER-linux-x86_64/jk-linux-x86_64-$VER.gz"
+assert_refused "$WORK/staging" "missing jk-linux-x86_64-$VER.gz"
 
 stage "$WORK/staging"
 rm -rf "$WORK/staging/release-$VER-linux-x86_64"
@@ -142,16 +154,16 @@ assert_refused "$WORK/staging" "two platform trees carry jk-linux-x86_64-$VER.xz
 
 # ---- the platform list the workflow passes ---------------------------------------------------
 # The rows the release matrix builds are the clients the flatten requires: a tree holding exactly
-# them is accepted, one short of a named row is refused, and the Windows zip is only demanded
-# when Windows is in the list.
+# them is accepted, one short of a named row is refused, the Linux/macOS .gz is demanded for
+# those rows, and the Windows zip is only demanded when Windows is in the list.
 stage "$WORK/staging"
 rm -rf "$WORK/staging/release-$VER-linux-aarch64" "$WORK/staging/release-$VER-macos-x86_64"
 rm -rf "$WORK/out-subset"
 JK_RELEASE_PLATFORMS="linux-x86_64 macos-aarch64 windows-x86_64" run_flatten "$WORK/staging" "$WORK/out-subset" \
   || { cat "$WORK/last.log" >&2; echo "test-flatten-release: the matrix's own platform list was refused" >&2; exit 1; }
-[[ "$(wc -l <"$WORK/out-subset/SHA256SUMS" | tr -d '[:space:]')" == "7" ]] || {
+[[ "$(wc -l <"$WORK/out-subset/SHA256SUMS" | tr -d '[:space:]')" == "9" ]] || {
   cat "$WORK/out-subset/SHA256SUMS" >&2
-  echo "test-flatten-release: three platforms flatten to seven artifacts" >&2
+  echo "test-flatten-release: three platforms flatten to nine artifacts" >&2
   exit 1
 }
 rm -rf "$WORK/staging/release-$VER-windows-x86_64"

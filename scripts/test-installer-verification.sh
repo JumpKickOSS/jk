@@ -226,14 +226,14 @@ host_os="$(uname -s)"
 case "$host_os" in Linux) host_os=linux ;; Darwin) host_os=macos ;; esac
 host_arch="$(uname -m)"
 case "$host_arch" in x86_64|amd64) host_arch=x86_64 ;; aarch64|arm64) host_arch=aarch64 ;; esac
-LATEST_ARTIFACT="jk-$host_os-$host_arch-1.0.0.xz"
+LATEST_ARTIFACT="jk-$host_os-$host_arch-1.0.0.gz"
 LATEST_DIR="$WORK/http/releases/latest"
 write_pointer() {
   rm -rf "$LATEST_DIR"
   "$ROOT/scripts/sign-latest-pointer.sh" "$1" "$LATEST_DIR" "${2:-$WORK/test-key.pem}" >/dev/null
 }
-if command -v xz >/dev/null 2>&1; then
-  xz -kc "$RELEASE/$ARTIFACT" >"$RELEASE/$LATEST_ARTIFACT"
+if command -v gzip >/dev/null 2>&1; then
+  gzip -cn "$RELEASE/$ARTIFACT" >"$RELEASE/$LATEST_ARTIFACT"
   write_pointer 1.0.0
   [[ "$(cat "$LATEST_DIR/VERSION")" == "1.0.0" ]] || { echo "the pointer script did not write the bare VERSION" >&2; exit 1; }
   if ! { grep -qE '^version 1\.0\.0$' "$LATEST_DIR/LATEST" \
@@ -263,7 +263,7 @@ if command -v xz >/dev/null 2>&1; then
 fi
 
 # Every pointer refusal happens before the version directory is even named, so these cases need
-# no artifact and no xz. The prior installation must stay untouched each time.
+# no artifact. The prior installation must stay untouched each time.
 assert_pointer_refused() {
   local case_name="$1" expected="$2"
   local home="$WORK/home-$case_name"

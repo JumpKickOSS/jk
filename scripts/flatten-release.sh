@@ -11,8 +11,9 @@
 # SHA256SUMS and .sig are dropped; the combined manifest is signed by the caller.
 #
 # Refused, each by name: a missing canonical jar, a jar whose sha differs from the canonical one,
-# two trees carrying one file name, and a tree missing any required client or, when Windows is
-# among them, the Windows zip. A partial matrix is not a release.
+# two trees carrying one file name, and a tree missing any required client, the Linux/macOS
+# .gz install.sh fetches, or, when Windows is among them, the Windows zip. A partial matrix is
+# not a release.
 #
 # JK_RELEASE_PLATFORMS names the required clients, space-separated (`<os>-<arch>`); the release
 # workflow sets it to the rows of its build matrix. Unset, every platform jk has a client for.
@@ -88,8 +89,13 @@ for client in "${PLATFORMS[@]}"; do
     echo "missing client jk-${client}-${VER}.xz — the ${client} build did not finish" >&2
     missing=$((missing + 1))
   fi
-  if [[ "$client" == windows-* && ! -f "$OUT/jk-${client}-${VER}.zip" ]]; then
-    echo "missing jk-${client}-${VER}.zip" >&2
+  if [[ "$client" == windows-* ]]; then
+    if [[ ! -f "$OUT/jk-${client}-${VER}.zip" ]]; then
+      echo "missing jk-${client}-${VER}.zip" >&2
+      missing=$((missing + 1))
+    fi
+  elif [[ ! -f "$OUT/jk-${client}-${VER}.gz" ]]; then
+    echo "missing jk-${client}-${VER}.gz" >&2
     missing=$((missing + 1))
   fi
 done
