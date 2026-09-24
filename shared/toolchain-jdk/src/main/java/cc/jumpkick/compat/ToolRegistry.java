@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Catalog of the build-tool distributions installed under {@code $JK_STORE_DIR/tools/}. Layout:
  * {@code <toolsRoot>/<slug>/<version>/}, where {@code <slug>} comes from {@link BuildTool} and
- * {@code <version>} is the upstream distribution version ({@code 3.9.9}, {@code 9.5.1}, {@code
+ * {@code <version>} is the upstream distribution version ({@code 3.9.9}, {@code 9.8.0}, {@code
  * 2.4.0}).
  *
  * <p>On the <strong>client-safe</strong> leaf rather than in the engine, because both sides ask:
