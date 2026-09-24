@@ -3,15 +3,20 @@
 What a release may change in the formats a project depends on, and how a breaking change is
 announced. Every repo that adopts jk commits a `jk.toml` and a `jk-lock.toml` and points agents
 at `target/jk-results.md` and the MCP tools; those are the surfaces this page governs. The
-pre-1.0 freeze itself is stated in [Architecture](architecture.md#schema-freeze-until-10).
+pre-1.0 rule that version numbers stay at 1 is stated in
+[Architecture](architecture.md#schema-freeze-until-10).
 
 ## Before 1.0
 
-Every schema and protocol number stays at **1**. `jk.toml` grows additively. A lock written by
-0.x is read by every later 0.y and rewritten in the newer shape on the next `jk lock`. Anything
-else can change between minors; the release entry in [Releases](releases.md) says what did.
+There is no compatibility contract. Schema and protocol numbers stay at **1**
+([Architecture](architecture.md#schema-freeze-until-10)). A format changes in place: the reader
+understands the current shape, and an older shape is not kept beside it. A lock, a results
+file, or an MCP argument may change between releases. The release entry in
+[Releases](releases.md) says what did.
 
 ## From 1.0
+
+The rules in this table start at 1.0.
 
 | Surface | Within a major (`1.x` → `1.y`) | Only in a major (`1.x` → `2.0`) |
 |---|---|---|

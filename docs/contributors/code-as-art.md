@@ -261,7 +261,7 @@ forked worker   no descriptor, camel config keys, engine hardcodes argv,
 
 Any uniformity rule is written per family, and a rule that reads as a
 style violation across the two is usually a family boundary being crossed
-correctly. Of the 15 modules under `plugins/`, 7 carry a descriptor and 8
+correctly. Of the 24 modules under `plugins/`, 16 carry a descriptor and 8
 are workers — a clean partition, and `checkPluginFamily` (G25) holds it:
 each module's own `check` derives its family from the descriptor and
 asserts the architectural consequence, which is the **shape of its
@@ -285,11 +285,11 @@ re-lock and 13 test files.
 What G25 buys instead is the case a directory name cannot see: a module
 whose family and whose actual engine wiring disagree.
 
-An earlier proposal asked for **two** convention scripts. There is one,
-`jk.plugin-conventions`, with a family arm inside it — because everything
-else in that script (thin fat-jar, flattened worker POM, staged repo,
-`installLocal`) is identical for both families, and splitting it would
-duplicate 340 lines to express one boolean.
+Both families are ordinary workspace modules, each with its own `jk.toml`.
+`jk install` shelves a thin jar and renders the worker POM from that manifest:
+direct dependencies, workspace siblings hoisted, the resolved runtime pinned in
+`dependencyManagement` ([The worker POM](maven-repo.md#the-worker-pom)). The
+descriptor is the family switch; packaging does not branch on it.
 
 Manual constructor injection of concrete `final` classes. An interface
 exists only when there are two production implementations, a process
