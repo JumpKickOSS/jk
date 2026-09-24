@@ -115,6 +115,57 @@ class TestStoreSeedTest {
         assertThat(memo).as("the stand-in's memo goes with it").doesNotExist();
     }
 
+    /**
+     * Filling an empty slot must not delete the memo beside it. A POM memo is {@code <file>.pom.jk}
+     * and a jar memo is {@code <file>.jk}; both live in the version directory the seed walks, so
+     * deleting the sibling of every file removes a memo the same seed has linked or is about to.
+     */
+    @Test
+    void an_empty_slot_keeps_the_memo_beside_it(@TempDir Path tmp) throws Exception {
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
+        Path sandbox = tmp.resolve("sandbox");
+        Path dir = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL).resolve(LAUNCHER + "/6.1.3");
+        Files.createDirectories(dir);
+        Path pomMemo = dir.resolve("junit-platform-launcher-6.1.3.pom.jk");
+        Path jarMemo = dir.resolve("junit-platform-launcher-6.1.3.jk");
+        Files.writeString(pomMemo, "pom memo");
+        Files.writeString(jarMemo, "jar memo");
+
+        TestStoreSeed.seed(host, sandbox);
+
+        assertThat(Files.readString(pomMemo)).isEqualTo("pom memo");
+        assertThat(Files.readString(jarMemo)).isEqualTo("jar memo");
+        assertThat(dir.resolve("junit-platform-launcher-6.1.3.pom")).isRegularFile();
+        assertThat(dir.resolve("junit-platform-launcher-6.1.3.jar")).isRegularFile();
+    }
+
+    /**
+     * A hollow jar and the stale memo beside it give way to the host's bytes, including the memo,
+     * whichever directory order the walk happens to use.
+     */
+    @Test
+    void a_hollow_stand_in_gives_way_to_the_hosts_file_and_its_memo(@TempDir Path tmp) throws Exception {
+        byte[] emptyZip = {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar", ".jk", ".pom.jk");
+        Path sandbox = tmp.resolve("sandbox");
+        Path dir = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL).resolve(LAUNCHER + "/6.1.3");
+        Files.createDirectories(dir);
+        Path slot = dir.resolve("junit-platform-launcher-6.1.3.jar");
+        Files.write(slot, emptyZip);
+        Files.writeString(dir.resolve("junit-platform-launcher-6.1.3.jk"), "stale");
+
+        TestStoreSeed.seed(host, sandbox);
+
+        assertThat(Files.readString(slot)).isEqualTo(".jar");
+        assertThat(Files.readString(dir.resolve("junit-platform-launcher-6.1.3.jk")))
+                .isEqualTo(".jk");
+        assertThat(Files.readString(dir.resolve("junit-platform-launcher-6.1.3.pom.jk")))
+                .isEqualTo(".pom.jk");
+        assertThat(dir.resolve("junit-platform-launcher-6.1.3.pom")).isRegularFile();
+    }
+
     /** A version whose POM the host never fetched cannot be solved from, so the list does not offer it. */
     @Test
     void a_version_without_a_pom_is_linked_but_not_advertised(@TempDir Path tmp) throws Exception {
