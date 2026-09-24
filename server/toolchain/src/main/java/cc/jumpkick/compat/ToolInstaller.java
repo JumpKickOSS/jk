@@ -331,7 +331,7 @@ public final class ToolInstaller {
 
     /**
      * Maven and Gradle archives unpack into a single top-level directory (e.g. {@code
-     * apache-maven-3.9.9/}, {@code gradle-9.5.1/}). Strip it so {@code home/bin/} is reachable.
+     * apache-maven-3.9.9/}, {@code gradle-9.8.0/}). Strip it so {@code home/bin/} is reachable.
      */
     private static Path flattenedRoot(Path stagingDir) throws IOException {
         List<Path> children = new ArrayList<>();
