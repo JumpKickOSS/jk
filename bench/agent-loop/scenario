@@ -836,3 +836,5 @@ if __name__ == "__main__":
         sys.exit(main())
     except RuntimeError as e:
         sys.exit(f"scenario: {e}")
+    finally:
+        benchtools.stop_gradle()
