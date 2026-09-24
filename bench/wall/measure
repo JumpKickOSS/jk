@@ -4,7 +4,7 @@
     bench/wall/measure                         # every tool, every scenario, five timed runs each
     bench/wall/measure --tool jk --scenario edit --runs 3
     bench/wall/measure --bank                  # measure, then rewrite the [[wall.*]] tail of wall-baseline.toml
-    bench/wall/measure --bank --from ~/src/scratch/wall/results/<run> --tool maven --scenario test
+    bench/wall/measure --bank --from "$JK_BENCH_HOME/wall/results/<run>" --tool maven --scenario test
                                                # re-measure one cell and bank it with that run's other rows
     bench/wall/measure --bank --from <run1> --from <run2> --runs 0
                                                # bank earlier runs as they are, the later run winning a cell
@@ -12,7 +12,8 @@
 
 The project is spring-projects/spring-petclinic at the commit in PROJECT: one module, a pom.xml
 and a build.gradle from the same authors, green under all three tools. Every tool gets its own
-working copy under $WALL_HOME (default ~/src/scratch/wall), built from the clone once and then
+working copy under $WALL_HOME (default $JK_BENCH_HOME/wall; $JK_BENCH_HOME defaults to
+${XDG_CACHE_HOME:-~/.cache}/jk-bench), built from the clone once and then
 reused, so a rerun measures and never re-provisions.
 
 Each tool does the same work: compile the main sources, copy resources, write the plain jar. The
@@ -43,7 +44,6 @@ import argparse
 import datetime as dt
 import json
 import os
-import platform
 import re
 import shutil
 import statistics
@@ -54,11 +54,31 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+import benchtools  # noqa: E402
+
 JK_TREE = HERE.parent.parent
 BASELINE = JK_TREE / "wall-baseline.toml"
 DOCS = [JK_TREE / "docs" / "user" / "performance.md", JK_TREE / "docs" / "user" / "why.md"]
-WALL_HOME = Path(os.environ.get("WALL_HOME", Path.home() / "src" / "scratch" / "wall"))
-JK = os.environ.get("JK_BIN") or str(Path.home() / ".jk" / "bin" / "jk")
+WALL_HOME = benchtools.scratch("WALL_HOME", "wall")
+
+
+def jk_binary() -> str:
+    if os.environ.get("JK_BIN"):
+        return os.environ["JK_BIN"]
+    candidate = benchtools.jk_home() / "bin" / "jk"
+    if candidate.is_file():
+        return str(candidate)
+    return shutil.which("jk") or str(candidate)
+
+
+JK = jk_binary()
+PINNED: benchtools.Tools | None = None
+MVN = ""
+GRADLE = ""
+# JAVA_HOME and PATH handed to each tool's process, plus the version line recorded on the row.
+JAVA_FOR: dict[str, dict[str, str]] = {}
+JAVA_META: dict[str, tuple[str, str]] = {}
 
 PROJECT = {
     "name": "spring-petclinic",
@@ -119,7 +139,7 @@ def cmdline(pid: int) -> str:
 def engine_pids() -> set[int]:
     """The resident jk engines: the pid files under the state root, checked against /proc."""
     pids = set()
-    for pid_file in (Path.home() / ".jk" / "state" / "engine").glob("*.pid"):
+    for pid_file in (benchtools.jk_home() / "state" / "engine").glob("*.pid"):
         try:
             pid = int(pid_file.read_text().strip().split()[0])
         except (OSError, ValueError, IndexError):
@@ -194,8 +214,17 @@ def sh(cmd: list[str], cwd: Path, log: Path | None = None, check: bool = True) -
 
 
 def tool_env(cmd: list[str]) -> dict[str, str]:
-    """Gradle runs in the harness's own user home; every other tool inherits the shell's environment."""
-    return dict(os.environ, GRADLE_USER_HOME=str(gradle_home())) if cmd and cmd[0] == "./gradlew" else dict(os.environ)
+    """Gradle keeps the harness's private user home. Maven and Gradle drop the shell vars jk strips."""
+    env = dict(os.environ)
+    name = Path(cmd[0]).name if cmd else ""
+    if name not in ("gradle", "mvn"):
+        return env
+    for key in benchtools.STRIPPED:
+        env.pop(key, None)
+    if name == "gradle":
+        env["GRADLE_USER_HOME"] = str(gradle_home())
+    env.update(JAVA_FOR.get(name, {}))
+    return env
 
 
 def timed(tool: str, cmd: list[str], cwd: Path, log: Path) -> tuple[float, int, int, int]:
@@ -245,10 +274,17 @@ def clone() -> Path:
     return repo
 
 
+def _tools_marker() -> str:
+    if PINNED is None:
+        raise SystemExit("refusing to run: comparator tools were not resolved")
+    return f"{PINNED.maven_version}\n{PINNED.gradle_version}\n{benchtools.host_id()}\n"
+
+
 def working_copy(tool: str, repo: Path, log: Path) -> Path:
     """The tool's copy of the pinned tree, provisioned once: dependencies fetched, one build green."""
     work = WALL_HOME / "work" / tool
-    if (work / ".wall-ready").is_file():
+    marker = work / ".wall-tools"
+    if (work / ".wall-ready").is_file() and marker.is_file() and marker.read_text(encoding="utf-8") == _tools_marker():
         return work
     shutil.rmtree(work, ignore_errors=True)
     work.parent.mkdir(parents=True, exist_ok=True)
@@ -264,10 +300,15 @@ def working_copy(tool: str, repo: Path, log: Path) -> Path:
             shutil.copy(HERE / PROJECT["name"] / name, work / name)
         sh([JK, "build", "--skip-tests", "--no-ansi"], cwd=work, log=log)
     elif tool == "gradle":
-        sh(["./gradlew"] + gradle_tasks("build") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"], cwd=work, log=log)
+        res = sh([GRADLE] + gradle_tasks("build") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"], cwd=work, log=log, check=False)
+        if res.returncode != 0:
+            _tool_failed(tool, res)
     else:
-        sh([JK, "mvn", "-q"] + MAVEN_OFF + ["-Dmaven.test.skip", "package"], cwd=work, log=log)
+        res = sh([MVN, "-q"] + MAVEN_OFF + ["-Dmaven.test.skip", "package"], cwd=work, log=log, check=False)
+        if res.returncode != 0:
+            _tool_failed(tool, res)
     (work / ".wall-ready").write_text(PROJECT["commit"] + "\n")
+    marker.write_text(_tools_marker(), encoding="utf-8")
     return work
 
 
@@ -291,15 +332,25 @@ def gradle_tasks(kind: str) -> list[str]:
     return ["test", "--rerun"] if kind == "test" else ["classes", "jar"]
 
 
+def _tool_failed(tool: str, res: subprocess.CompletedProcess) -> None:
+    blob = (res.stdout or "") + (res.stderr or "")
+    if tool == "gradle":
+        rejected = benchtools.gradle_incompatibility(blob)
+        if rejected:
+            raise benchtools.GradleRejected(rejected)
+    raise SystemExit(f"{tool} failed (exit {res.returncode}):\n{blob[-3000:]}")
+
+
 def tool_version(tool: str, work: Path) -> str:
     if tool == "jk":
         return sh([JK, "--version"], cwd=work).stdout.strip()
+    if PINNED is None:
+        raise SystemExit(f"refusing to run: comparator tools are not resolved, so {tool} has no version")
     if tool == "gradle":
-        m = re.search(r"gradle-([\d.]+)-", (work / "gradle/wrapper/gradle-wrapper.properties").read_text())
-        return f"Gradle {m.group(1)} (the repository's wrapper)" if m else "Gradle (wrapper)"
-    out = sh([JK, "mvn", "-v"], cwd=work, check=False).stdout
-    m = re.search(r"Apache Maven ([\d.]+)", out)
-    return f"Maven {m.group(1)} via jk mvn" if m else "Maven via jk mvn"
+        return f"Gradle {PINNED.gradle_version}"
+    if tool == "maven":
+        return f"Maven {PINNED.maven_version}"
+    return tool
 
 
 # --------------------------------------------------------------------------- the scenarios
@@ -308,16 +359,16 @@ def build_cmd(tool: str, redo: bool = False) -> list[str]:
     if tool == "jk":
         return [JK, "build", "--skip-tests", "--no-ansi"] + (["-r"] if redo else [])
     if tool == "gradle":
-        return ["./gradlew"] + gradle_tasks("build") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"]
-    return [JK, "mvn", "-q", "-o"] + MAVEN_OFF + ["-Dmaven.test.skip", "package"]
+        return [GRADLE] + gradle_tasks("build") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"]
+    return [MVN, "-q", "-o"] + MAVEN_OFF + ["-Dmaven.test.skip", "package"]
 
 
 def test_cmd(tool: str) -> list[str]:
     if tool == "jk":
         return [JK, "test", "-r", "--no-ansi"]
     if tool == "gradle":
-        return ["./gradlew"] + gradle_tasks("test") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"]
-    return [JK, "mvn", "-q", "-o"] + MAVEN_OFF + ["test"]
+        return [GRADLE] + gradle_tasks("test") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"]
+    return [MVN, "-q", "-o"] + MAVEN_OFF + ["test"]
 
 
 def wipe_outputs(tool: str, work: Path, log: Path, cache_too: bool) -> None:
@@ -374,12 +425,20 @@ def measure(tool: str, scenario: str, work: Path, runs: int, log: Path) -> dict:
         print(f"  {tool:<7}{scenario:<9}run {i}: {wall:7.2f} s  peak tree rss {peak >> 20:5d} MiB  {status}", file=sys.stderr)
         if rc != 0:
             failures += 1
+            if tool == "gradle" and log.is_file() and benchtools.gradle_incompatibility(
+                    log.read_text(encoding="utf-8", errors="replace")):
+                break
             continue
         walls.append(round(wall, 2))
         peaks.append(peak)
         residents.append(resident)
     row = {"tool": tool, "scenario": scenario, "runs": len(walls), "failures": failures,
            "command": " ".join(as_typed(c) for c in cmd), "walls_s": walls}
+    if tool == "gradle" and failures and log.is_file():
+        rejected = benchtools.gradle_incompatibility(log.read_text(encoding="utf-8", errors="replace"))
+        if rejected:
+            row["status"] = "incompatible-with-latest-gradle"
+            row["error"] = rejected
     if walls:
         ordered = sorted(walls)
         row["median_s"] = round(statistics.median(walls), 2)
@@ -390,9 +449,11 @@ def measure(tool: str, scenario: str, work: Path, runs: int, log: Path) -> dict:
 
 
 def as_typed(part: str) -> str:
-    """The command as a reader types it: the jk binary and the init script by name, not by path."""
+    """The command as a reader types it: binaries and the init script by name, not by path."""
     if part == JK:
         return "jk"
+    if part and part in (MVN, GRADLE):
+        return Path(part).name
     if part.startswith(str(HERE)):
         return "bench/wall/" + part[len(str(HERE)) + 1:]
     if part.startswith("-Dwall.build-cache="):
@@ -403,31 +464,59 @@ def as_typed(part: str) -> str:
 # --------------------------------------------------------------------------- host, banking, rendering
 
 def host_line() -> str:
-    cpu = "unknown cpu"
-    for line in Path("/proc/cpuinfo").read_text().splitlines():
-        if line.startswith("model name"):
-            cpu = line.split(":", 1)[1].strip()
-            break
-    mem = next((int(l.split()[1]) // 1048576 for l in Path("/proc/meminfo").read_text().splitlines() if l.startswith("MemTotal")), 0)
-    return f"{cpu}, {os.cpu_count()} threads, {mem} GB, {platform.system()} {platform.release()}"
+    return benchtools.host_summary()
 
 
 def jk_commit() -> str:
     res = subprocess.run(["git", "-C", str(JK_TREE), "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
-    return res.stdout.strip() or "unknown"
+    if res.returncode != 0 or not res.stdout.strip():
+        raise SystemExit("refusing to run: cannot read the jk tree commit")
+    return res.stdout.strip()
 
 
 def toml_str(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _entry_host(entry: dict) -> str:
+    return entry.get("host-id") or benchtools.LEGACY_HOST
+
+
+def _all_banked() -> list[tuple[str, str, dict]]:
+    import tomllib
+    if not BASELINE.is_file():
+        return []
+    data = tomllib.loads(BASELINE.read_text()).get("wall", {})
+    return [(tool, scenario, entry) for tool, scenarios in data.items() for scenario, entries in scenarios.items() for entry in entries]
+
+
+def _emit_number(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    if isinstance(value, str):
+        return toml_str(value)
+    return str(value)
+
+
+def _emit_saved(out: list[str], tool: str, scenario: str, entry: dict) -> None:
+    out.append("")
+    out.append(f"[[wall.{tool}.{scenario}]]")
+    for key, value in entry.items():
+        out.append(f"{key} = {_emit_number(value)}")
+
+
 def bank(rows: list[dict], versions: dict[str, str], load: str) -> None:
-    """Rewrite the [[wall.*]] tail of wall-baseline.toml from this run; the ratchet tables above it stay."""
+    """Rewrite this host's [[wall.*]] entries. Rows from another host stay in the file, uncompared."""
     text = BASELINE.read_text() if BASELINE.is_file() else ""
     head = text.split("\n" + WALL_MARK, 1)[0].rstrip("\n") + "\n"
+    current = benchtools.host_id()
+    kept = [(tool, scenario, entry) for tool, scenario, entry in _all_banked() if _entry_host(entry) != current]
     out = [head, "", WALL_MARK]
-    out.append("# one entry per tool and scenario, from the run named by its date, commit and host.")
+    out.append("# one entry per tool and scenario for this host. Other-host entries follow and are not compared.")
     today = dt.date.today().isoformat()
+    info = benchtools.host_info()
     for row in rows:
         if "median_s" not in row:
             continue
@@ -440,25 +529,37 @@ def bank(rows: list[dict], versions: dict[str, str], load: str) -> None:
         out.append(f"date = {toml_str(today)}")
         out.append(f"commit = {toml_str(jk_commit())}")
         out.append(f"host = {toml_str(host_line())}")
+        out.append(f"host-id = {toml_str(current)}")
+        out.append(f"host-cpu = {toml_str(info['cpu'])}")
+        out.append(f"host-logical-cpus = {info['logical_cpus']}")
+        out.append(f"host-ram-gib = {info['ram_gib']}")
+        out.append(f"host-os = {toml_str(info['os'])}")
+        out.append(f"host-kernel = {toml_str(info['kernel'])}")
+        out.append(f"host-wsl = {'true' if info['wsl'] else 'false'}")
         out.append(f"project = {toml_str(PROJECT['source'].split('github.com/')[1] + '@' + PROJECT['commit'][:9])}")
         out.append(f"tool-version = {toml_str(row.get('tool_version') or versions[row['tool']])}")
+        if PINNED is not None:
+            out.append(f"maven-version = {toml_str(PINNED.maven_version)}")
+            out.append(f"gradle-version = {toml_str(PINNED.gradle_version)}")
+            if PINNED.maven_bin is not None:
+                out.append(f"maven-binary = {toml_str(str(PINNED.maven_bin))}")
+            if PINNED.gradle_bin is not None:
+                out.append(f"gradle-binary = {toml_str(str(PINNED.gradle_bin))}")
+            out.append(f"stale-tools = {'true' if PINNED.stale_tools else 'false'}")
+            out.append(f"offline-tools = {'true' if PINNED.offline_tools else 'false'}")
         out.append(f"command = {toml_str(row['command'])}")
         out.append(f"load = {toml_str(row.get('load') or load)}")
+    if kept:
+        out.append("")
+        out.append("# Other host entries. Not compared with the rows above.")
+        for tool, scenario, entry in kept:
+            _emit_saved(out, tool, scenario, entry)
     BASELINE.write_text("\n".join(out) + "\n")
     print(f"banked {sum('median_s' in r for r in rows)} entries into {BASELINE}", file=sys.stderr)
 
 
-def banked() -> dict[tuple[str, str], dict]:
-    import tomllib
-    data = tomllib.loads(BASELINE.read_text()).get("wall", {})
-    return {(tool, scenario): entries[-1] for tool, scenarios in data.items() for scenario, entries in scenarios.items()}
-
-
-def render_table() -> str:
-    """The markdown the docs carry between the wall-table markers: walls, then peak memory, then the run."""
-    entries = banked()
-    if not entries:
-        return "_No banked wall yet: run `bench/wall/measure --bank`._"
+def _table(entries: dict[tuple[str, str], dict]) -> str:
+    """Walls, peak memory, and the run line for one host's cells."""
     labels = {"clean": "Clean build", "rebuild": "Warm rebuild", "noop": "No-op", "edit": "One-file edit", "test": "Test run"}
     names = {"jk": "jk", "gradle": "Gradle", "maven": "Maven"}
     lines = ["| Scenario | " + " | ".join(f"{names[t]} median / p90" for t in TOOLS) + " |",
@@ -466,21 +567,39 @@ def render_table() -> str:
     for scenario in SCENARIOS:
         cells = []
         for tool in TOOLS:
-            e = entries.get((tool, scenario))
-            cells.append(f"{e['median-s']:.2f} s / {e['p90-s']:.2f} s" if e else "—")
+            entry = entries.get((tool, scenario))
+            cells.append(f"{entry['median-s']:.2f} s / {entry['p90-s']:.2f} s" if entry else "—")
         lines.append(f"| {labels[scenario]} | " + " | ".join(cells) + " |")
     lines += ["", "| Scenario | " + " | ".join(f"{names[t]} peak RSS" for t in TOOLS) + " |", "|---|" + "---:|" * len(TOOLS)]
     for scenario in SCENARIOS:
         cells = []
         for tool in TOOLS:
-            e = entries.get((tool, scenario))
-            cells.append(f"{e['peak-rss-mb']:,} MiB" if e else "—")
+            entry = entries.get((tool, scenario))
+            cells.append(f"{entry['peak-rss-mb']:,} MiB" if entry else "—")
         lines.append(f"| {labels[scenario]} | " + " | ".join(cells) + " |")
-    any_entry = next(iter(entries.values()))
-    versions = "; ".join(sorted({e["tool-version"] for e in entries.values()}))
-    lines += ["", f"Measured {any_entry['date']} on {any_entry['host']}; project {any_entry['project']}; "
-                  f"{versions}; jk tree at {any_entry['commit']}; {any_entry['runs']} timed runs per cell; {any_entry['load']}."]
+    if entries:
+        any_entry = next(iter(entries.values()))
+        versions = "; ".join(sorted({e["tool-version"] for e in entries.values()}))
+        hid = _entry_host(any_entry)
+        lines += ["", f"Measured {any_entry['date']} on {any_entry['host']} (host `{hid}`); project {any_entry['project']}; "
+                      f"{versions}; jk tree at {any_entry['commit']}; {any_entry['runs']} timed runs per cell; {any_entry['load']}."]
     return "\n".join(lines)
+
+
+def render_table() -> str:
+    """The markdown the docs carry between the wall-table markers. Only this host's cells are the table."""
+    grouped: dict[str, dict[tuple[str, str], dict]] = {}
+    for tool, scenario, entry in _all_banked():
+        grouped.setdefault(_entry_host(entry), {})[(tool, scenario)] = entry
+    if not grouped:
+        return "_No banked wall yet: run `bench/wall/measure --bank`._"
+    current = benchtools.host_id()
+    parts = [_table(grouped[current]) if current in grouped else f"_No wall rows for this host (`{current}`)._"]
+    for host, entries in sorted(grouped.items()):
+        if host == current:
+            continue
+        parts.append(f"## Other host `{host}`\n\nThese rows are not compared with this host.\n\n{_table(entries)}")
+    return "\n\n".join(parts)
 
 
 def render_docs() -> None:
@@ -510,47 +629,113 @@ def main() -> int:
     ap.add_argument("--render", action="store_true", help="only render the docs tables from wall-baseline.toml")
     ap.add_argument("--from", dest="from_dirs", action="append", type=Path, default=[],
                     help="an earlier run's results directory whose rows fill the cells this run does not measure (repeatable; later wins)")
+    benchtools.add_arguments(ap)
     args = ap.parse_args()
+    benchtools.use_flags(args)
     if args.render:
         render_docs()
         return 0
 
+    global PINNED, MVN, GRADLE
     tools = args.tool or list(TOOLS)
     scenarios = args.scenario or list(SCENARIOS)
     if args.bank and (args.tool or args.scenario) and not args.from_dirs:
         raise SystemExit("--bank banks a whole run: drop --tool and --scenario, or name the run to fill from with --from")
-    earlier: dict[tuple[str, str], dict] = {}
-    for from_dir in args.from_dirs:
-        for line in (from_dir / "rows.jsonl").read_text().splitlines():
-            if line.strip():
-                row = json.loads(line)
-                if "median_s" in row:
-                    earlier[(row["tool"], row["scenario"])] = row
     if args.runs == 0:
         tools, scenarios = [], []
+    if tools:
+        if not Path(JK).is_file():
+            raise SystemExit(f"refusing to run: jk binary not found at {JK}")
+        PINNED = benchtools.resolve(allow_stale=args.allow_stale_tools, offline=args.offline_tools)
+        MVN = str(PINNED.maven_bin)
+        GRADLE = str(PINNED.gradle_bin)
+    earlier: dict[tuple[str, str], dict] = {}
+    skipped_hosts: list[dict] = []
+    for from_dir in args.from_dirs:
+        for line in (from_dir / "rows.jsonl").read_text().splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if "median_s" not in row:
+                continue
+            if benchtools.row_host(row) != benchtools.host_id():
+                skipped_hosts.append(row)
+                continue
+            earlier[(row["tool"], row["scenario"])] = row
+    if skipped_hosts:
+        ids = ", ".join(sorted({benchtools.row_host(row) for row in skipped_hosts}))
+        print(f"skipped {len(skipped_hosts)} cells from other host(s) {ids}; they do not fill this host's bank", file=sys.stderr)
     out_dir = WALL_HOME / "results" / f"{dt.datetime.now():%Y-%m-%dT%H%M%S}"
     out_dir.mkdir(parents=True)
     log = out_dir / "setup.log"
-    repo = clone()
-    works = {tool: working_copy(tool, repo, log) for tool in tools}
-    versions = {tool: tool_version(tool, works[tool]) for tool in tools}
+    repo = clone() if tools or args.from_dirs else None
+    blocked: dict[str, Exception] = {}
+    if repo is not None:
+        for tool in tools:
+            if tool == "jk":
+                continue
+            try:
+                home, line = benchtools.java_for_project(repo, tool)
+            except benchtools.JdkUnavailable as exc:
+                blocked[tool] = exc
+                continue
+            JAVA_FOR["mvn" if tool == "maven" else "gradle"] = {
+                "JAVA_HOME": str(home),
+                "PATH": f"{home / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}",
+            }
+            JAVA_META[tool] = (str(home), line)
+    works = {}
+    for tool in tools:
+        if tool in blocked or repo is None:
+            continue
+        try:
+            works[tool] = working_copy(tool, repo, log)
+        except benchtools.GradleRejected as exc:
+            blocked[tool] = exc
+    versions = {tool: tool_version(tool, works[tool]) for tool in works}
 
     live, load1 = wait_idle(args.wait_idle if tools else 0)
     load = f"loadavg {load1:.1f} at start, engine live jobs {live if live is not None else '?'}"
     for row in earlier.values():
         if row["tool"] not in versions:
+            recorded = row.get("tool_version")
             work = WALL_HOME / "work" / row["tool"]
-            versions[row["tool"]] = row.get("tool_version") or (tool_version(row["tool"], work) if work.is_dir() else row["tool"])
+            if recorded:
+                versions[row["tool"]] = recorded
+            elif PINNED is not None and work.is_dir():
+                versions[row["tool"]] = tool_version(row["tool"], work)
+            else:
+                raise SystemExit(f"refusing to use a {row['tool']} row that records no tool version")
     print(f"host: {host_line()}\n{load}", file=sys.stderr)
     rows = []
+
+    def write_row(row: dict) -> None:
+        row.update(benchtools.stamp(PINNED))
+        if row["tool"] in JAVA_META:
+            row["java_home"], row["java_version"] = JAVA_META[row["tool"]]
+        rows.append(row)
+        with open(out_dir / "rows.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+
     for tool in tools:
+        if tool in blocked:
+            exc = blocked[tool]
+            if isinstance(exc, benchtools.GradleRejected):
+                status, error = "incompatible-with-latest-gradle", exc.line
+            else:
+                status, error = str(exc), getattr(exc, "detail", "")
+            for scenario in scenarios:
+                write_row({
+                    "tool": tool, "scenario": scenario, "runs": 0, "failures": 1,
+                    "status": status, "error": error, "command": "", "walls_s": [], "load": load,
+                    "tool_version": versions.get(tool, tool),
+                })
+            continue
         for scenario in scenarios:
             row = measure(tool, scenario, works[tool], args.runs, out_dir / f"{tool}-{scenario}.log")
             row["tool_version"] = versions[tool]
             row["load"] = load
-            rows.append(row)
-            with open(out_dir / "rows.jsonl", "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(row, sort_keys=True) + "\n")
+            write_row(row)
     load += f", loadavg {os.getloadavg()[0]:.1f} at end"
 
     print(f"\n{'tool':<8}{'scenario':<9}{'median':>8}{'p90':>8}{'peak rss':>10}  runs", file=sys.stderr)

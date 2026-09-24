@@ -5,7 +5,13 @@ from __future__ import annotations
 import datetime as dt
 import json
 import statistics
+import sys
 from pathlib import Path
+
+_BENCH = Path(__file__).resolve().parents[2]
+if str(_BENCH) not in sys.path:
+    sys.path.insert(0, str(_BENCH))
+import benchtools  # noqa: E402
 
 TOOLS = ("jk", "mvn", "gradle")
 
@@ -55,17 +61,9 @@ def outcome_cell(r: dict) -> str:
     return cell
 
 
-def render(rows: list[dict], jk_version: str) -> str:
-    lines = ["# Agent loop: turns, tokens and wall to green", ""]
+def _driver_sections(rows: list[dict]) -> list[str]:
+    lines: list[str] = []
     drivers = sorted({r["driver"] for r in rows})
-    lines.append(f"Date: {dt.date.today().isoformat()} · {jk_version} · drivers: {', '.join(drivers)} · {len(rows)} (scenario × tool) runs")
-    lines.append("")
-    lines.append("A run materialises one (repo × failure) for one tool, runs the tool once so the results file is red, "
-                 "then lets the agent loop through that tool's MCP server until the results say OK or the budget ends. "
-                 "Turns are the agent's fix-and-rerun cycles (API turns for the LLM drivers); tokens are the API's input + output "
-                 "including cache reads and writes; wall is the agent's time only. A row is green only when the harness's own rerun "
-                 "after the agent stopped is green too. Median and p90 are over every run of the tool, red runs at their budget.")
-    lines.append("")
     for driver in drivers:
         sub = [r for r in rows if r["driver"] == driver]
         models = sorted({r.get("model") or "" for r in sub} - {""})
@@ -108,4 +106,41 @@ def render(rows: list[dict], jk_version: str) -> str:
             for r in findings:
                 lines.append(f"| {r['repo']} | {r['failure']} | {r['tool']} | {r['outcome']} | {', '.join(r.get('fix_sources') or []) or '—'} | {r['finding'].replace('|', '\\|')} |")
             lines.append("")
+    return lines
+
+
+def render(rows: list[dict], jk_version: str) -> str:
+    info = benchtools.host_info()
+    hid = benchtools.host_id(info)
+    current = [r for r in rows if benchtools.row_host(r) == hid]
+    others: dict[str, list[dict]] = {}
+    for row in rows:
+        host = benchtools.row_host(row)
+        if host != hid:
+            others.setdefault(host, []).append(row)
+    drivers = sorted({r["driver"] for r in current}) or sorted({r["driver"] for r in rows})
+    lines = ["# Agent loop: turns, tokens and wall to green", ""]
+    lines.append(
+        f"Date: {dt.date.today().isoformat()} · {jk_version} · host `{hid}` · {benchtools.host_summary(info)} · "
+        f"drivers: {', '.join(drivers) if drivers else '—'} · {len(current)} (scenario × tool) runs on this host"
+    )
+    lines.append("")
+    lines.append("A run materialises one (repo × failure) for one tool, runs the tool once so the results file is red, "
+                 "then lets the agent loop through that tool's MCP server until the results say OK or the budget ends. "
+                 "Turns are the agent's fix-and-rerun cycles (API turns for the LLM drivers); tokens are the API's input + output "
+                 "including cache reads and writes; wall is the agent's time only. A row is green only when the harness's own rerun "
+                 "after the agent stopped is green too. Median and p90 are over this host's runs of the tool, red runs at their budget. "
+                 "Rows from another host are listed under their own heading and are not mixed into these numbers.")
+    lines.append("")
+    if current:
+        lines.extend(_driver_sections(current))
+    else:
+        lines.append(f"No rows for this host (`{hid}`).")
+        lines.append("")
+    for host, host_rows in sorted(others.items()):
+        lines.append(f"## Other host `{host}`")
+        lines.append("")
+        lines.append("Not compared with this host. These runs do not enter the medians above.")
+        lines.append("")
+        lines.extend(_driver_sections(host_rows))
     return "\n".join(lines)

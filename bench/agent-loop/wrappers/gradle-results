@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Gradle through `jk gradle` and write `target/jk-results.md` in jk's shape. Arguments are Gradle's; default task `test`."""
+"""Run the pinned Gradle and write `target/jk-results.md` in jk's shape. Arguments are Gradle's; default task `test`."""
 import sys
 from pathlib import Path
 
