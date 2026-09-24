@@ -10,8 +10,8 @@
 Clones, baselines and verify sandboxes live under $AGENT_LOOP_HOME (default
 $JK_BENCH_HOME/agent-loop; $JK_BENCH_HOME defaults to ${XDG_CACHE_HOME:-~/.cache}/jk-bench),
 never inside this repository. A baseline is the pinned
-commit built green once with the given tool (for jk: imported, original build files removed,
-`jk.toml` + `jk-lock.toml` committed); a sandbox is a copy of that baseline with one failure
+commit built green once with the given tool (for jk: imported, Maven and Gradle build
+files removed, `jk.toml` + `jk-lock.toml` committed); a sandbox is a copy of that baseline with one failure
 injected as an uncommitted working-tree change, so `git diff` shows exactly the injection and
 `git checkout -- . && git clean -fd` reverts it.
 """
@@ -179,6 +179,11 @@ def baseline_dir(repo: Repo, tool: str) -> Path:
     return HOME / "baselines" / tool / repo.name
 
 
+def baseline_marker(repo: Repo, tool: str) -> Path:
+    """Beside the tree, not in it: a sandbox is a copy of the tree and the agent must not read harness state."""
+    return HOME / "baselines" / tool / f"{repo.name}.BASELINE.json"
+
+
 def tool_command(tool: str) -> list[str]:
     if tool == "jk":
         return ["jk", "test", "--no-progress", "--no-ansi"]
@@ -190,20 +195,33 @@ def run_tool(sandbox: Path, tool: str, timeout: int = 1800) -> tuple[int, str, i
     return run(tool_command(tool), sandbox, timeout=timeout, env=env)
 
 
-def strip_original_build(root: Path, source_tool: str) -> None:
-    if source_tool == "mvn":
-        for p in root.rglob("pom.xml"):
-            p.unlink()
-        for name in ("mvnw", "mvnw.cmd"):
-            (root / name).unlink(missing_ok=True)
-        shutil.rmtree(root / ".mvn", ignore_errors=True)
-    else:
-        for p in list(root.rglob("build.gradle")) + list(root.rglob("build.gradle.kts")):
-            p.unlink()
-        for name in ("settings.gradle", "settings.gradle.kts", "gradlew", "gradlew.bat", "gradle.properties"):
-            (root / name).unlink(missing_ok=True)
-        for name in ("gradle", "buildSrc"):
-            shutil.rmtree(root / name, ignore_errors=True)
+# Tree recipe recorded in the baseline marker. A missing or different value rebuilds the baseline.
+BASELINE_FORMAT = "own-build-only"
+
+
+def _strip_maven_build(root: Path) -> None:
+    for p in list(root.rglob("pom.xml")):
+        p.unlink(missing_ok=True)
+    for name in ("mvnw", "mvnw.cmd"):
+        (root / name).unlink(missing_ok=True)
+    shutil.rmtree(root / ".mvn", ignore_errors=True)
+
+
+def _strip_gradle_build(root: Path) -> None:
+    for p in list(root.rglob("build.gradle")) + list(root.rglob("build.gradle.kts")):
+        p.unlink(missing_ok=True)
+    for name in ("settings.gradle", "settings.gradle.kts", "gradlew", "gradlew.bat", "gradle.properties"):
+        (root / name).unlink(missing_ok=True)
+    for name in ("gradle", "buildSrc"):
+        shutil.rmtree(root / name, ignore_errors=True)
+
+
+def strip_foreign_builds(root: Path, tool: str) -> None:
+    """Leave only the tool's own build: jk keeps neither Maven's nor Gradle's, each of those drops the other's."""
+    if tool != "mvn":
+        _strip_maven_build(root)
+    if tool != "gradle":
+        _strip_gradle_build(root)
 
 
 def _pinned() -> benchtools.Tools:
@@ -214,16 +232,18 @@ def _pinned() -> benchtools.Tools:
 
 
 def _baseline_current(info: dict, tools: benchtools.Tools) -> bool:
-    return (
-        info.get("host_id") == benchtools.host_id()
-        and info.get("maven_version") == tools.maven_version
-        and info.get("gradle_version") == tools.gradle_version
-    )
+    if info.get("host_id") != benchtools.host_id():
+        return False
+    if info.get("maven_version") != tools.maven_version or info.get("gradle_version") != tools.gradle_version:
+        return False
+    if info.get("baseline_format") != BASELINE_FORMAT:
+        return False
+    return True
 
 
 def ensure_baseline(repo: Repo, tool: str, rebuild: bool = False) -> Path:
     d = baseline_dir(repo, tool)
-    marker = d / "BASELINE.json"
+    marker = baseline_marker(repo, tool)
     tools = _pinned()
     if marker.exists() and not rebuild:
         info = json.loads(marker.read_text(encoding="utf-8"))
@@ -240,7 +260,7 @@ def ensure_baseline(repo: Repo, tool: str, rebuild: bool = False) -> Path:
         log_lines.append(out)
         if code != 0 or not (d / "jk.toml").exists():
             raise RuntimeError(f"{repo.name}: jk import failed (exit {code}):\n{strip_ansi(out)}")
-        strip_original_build(d, repo.tool)
+    strip_foreign_builds(d, tool)
     code, out, wall = run_tool(d, tool)
     log_lines.append(out)
     (d.parent / f"{repo.name}.baseline.log").write_text(strip_ansi("\n".join(log_lines)), encoding="utf-8")
@@ -263,11 +283,12 @@ def ensure_baseline(repo: Repo, tool: str, rebuild: bool = False) -> Path:
     git(["init", "-q"], d)
     git(["add", "-A"], d)
     git(["commit", "-q", "-m", "Baseline"], d)
-    marker.write_text(json.dumps({
+    payload = {
         "repo": repo.name, "tool": tool, "commit": repo.commit, "wall_ms": wall, "tests": tests,
         "date": dt.date.today().isoformat(), "jk": jk_version(),
-        **benchtools.stamp(tools),
-    }, indent=1), encoding="utf-8")
+        "baseline_format": BASELINE_FORMAT, **benchtools.stamp(tools),
+    }
+    marker.write_text(json.dumps(payload, indent=1), encoding="utf-8")
     return d
 
 
@@ -788,7 +809,7 @@ def main() -> int:
                     continue
                 try:
                     d = ensure_baseline(r, tool, rebuild=ns.rebuild)
-                    info = json.loads((d / "BASELINE.json").read_text())
+                    info = json.loads(baseline_marker(r, tool).read_text())
                     print(f"ok   {r.name:28} {tool:6} {info['wall_ms'] / 1000:6.1f}s  {info['tests']} tests")
                 except Exception as e:
                     rc = 1

@@ -148,7 +148,8 @@ def summarize(events: list[dict]) -> list[dict]:
 # ----------------------------------------------------------------------------------- grok
 
 # Allowlist ids `grok --tools` accepts. `search_replace` is both edit and write (an empty
-# old_string creates the file); `list_dir` is the glob. MCP stays on the always-on meta-tools.
+# old_string creates the file); `list_dir` is the glob. MCP tools are not functions grok
+# will advertise: the model reaches them only through these meta-tools.
 GROK_FILE_TOOLS = ("read_file", "search_replace", "grep", "list_dir")
 GROK_META_TOOLS = ("search_tool", "use_tool")
 
@@ -251,11 +252,21 @@ def _grok_env(home: Path) -> dict[str, str]:
     return env
 
 
+def _gradle_user_home() -> Path:
+    """Gradle user home this process uses. Baselines use the same one, so the in-loop build stays warm."""
+    raw = os.environ.get("GRADLE_USER_HOME")
+    path = Path(raw).expanduser() if raw else Path.home() / ".gradle"
+    return path.resolve() if path.exists() else path.absolute()
+
+
 def _write_sandbox_profile(home: Path, sandbox: Path) -> None:
     """Deny reads of user grok state, the artifact cache, sibling runs, and harness sources.
 
     Extends `workspace` rather than `strict`: `strict` blocks DNS for the model API. Writes are the
-    project, `/tmp`, and `~/.grok` except the paths denied below.
+    project, `/tmp`, and `~/.grok`, plus the Gradle user home. Gradle writes a lock beside its
+    native library there; without that write the client reports that `libnative-platform.so` failed
+    to load. Maven's local repository gets the same grant, so a fix that needs a download
+    behaves as it does outside the sandbox.
     """
     denies: list[Path] = []
     user_grok = Path.home() / ".grok"
@@ -276,7 +287,19 @@ def _write_sandbox_profile(home: Path, sandbox: Path) -> None:
             for sib in parent.iterdir():
                 if sib.resolve() != keep.resolve():
                     denies.append(sib)
-    lines = ["[profiles.agent-loop]", 'extends = "workspace"', "deny = ["]
+    gradle_home = _gradle_user_home()
+    gradle_home.mkdir(parents=True, exist_ok=True)
+    m2 = Path.home() / ".m2"
+    m2.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "[profiles.agent-loop]",
+        'extends = "workspace"',
+        "read_write = [",
+        f"  {_toml_basic(str(gradle_home.resolve()))},",
+        f"  {_toml_basic(str(m2.resolve()))},",
+        "]",
+        "deny = [",
+    ]
     for path in denies:
         if path.exists():
             lines.append(f"  {_toml_basic(str(path.resolve()))},")
