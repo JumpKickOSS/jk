@@ -26,7 +26,7 @@ installs `SIG_DFL`, parks a helper thread in `FileInputStream.read()`, rewrites 
 `toAnsi()`, emits color-first SGR, and pulls `capabilities.txt` / `*.caps` / `jline-native`
 into the Graal image.
 
-This document specifies a new Gradle/jk module **`:cli-terminal`** (`clients/cli-terminal/`,
+This document specifies the jk module **`:cli-terminal`** (`clients/cli-terminal/`,
 package `cc.jumpkick.terminal`) that is the library we wished `jline-terminal` had been for us:
 one controlling TTY independent of stdio redirection, named input modes, `poll` /
 `WaitForSingleObject` timed reads, first-class Windows console, our own Style/width/keys, and
@@ -40,20 +40,16 @@ The branch merges to `main` only when `:cli`'s classpath contains **zero** JLine
 
 ### What JLine is used for today
 
-Verified against the tree (not the prior inventory's word). Runtime dependency:
+`:cli` depends on `jk-cli-terminal` (`clients/cli/jk.toml`, workspace edge). There is no
+`clients/cli/build.gradle.kts` and no root `gradle/libs.versions.toml`: the workspace is the
+root `jk.toml`, and `.jk/after-build-dist.kts` assembles `target/dist`. `:cli` production
+code imports no `org.jline` type (`SelfHostingTomlTest` asserts the merged main graph does
+not contain `org.jline:jline-terminal-ffm`). `jk-lock.toml` still records `org.jline` through
+Zinc (`org.scala-sbt.jline`). The catalog aliases `jline` and `jline-terminal-ffm` stay in
+`shared/core/src/main/resources/cc/jumpkick/library/libraries.toml`, and the adopter template
+`templates/java/none/cli-native.g8` pins `jline`.
 
-- `clients/cli/jk.toml` → `jline-terminal-ffm = "latest"`
-- `clients/cli/build.gradle.kts` → `implementation(libs.jline.terminal.ffm)`
-- Catalog pin: `gradle/libs.versions.toml` `jline = "4.1.2"` — this is what Gradle
-  `implementation(libs.jline.terminal.ffm)` resolves, and what
-  `clients/cli/build/install/jk/lib/jline-*-4.1.2.jar` contains.
-- `clients/cli/jk.toml` writes `jline-terminal-ffm = "latest"`; `jk-lock.toml` records
-  `org.jline:jline-terminal:jar:@4.3.1` for the **jk** graph. Two version numbers, two graphs.
-  Both go away with the `:cli` dep. Catalog aliases stay for adopters / `cli-native.g8`.
-- Transitive at CLI **Gradle** runtime: `jline-terminal`, `jline-native`. `jline-reader` is **not**
-  on the CLI install lib; it appears in `jk-lock.toml` via other graphs (Zinc/sbt).
-
-**JLine types actually imported by `:cli` production code:**
+**`org.jline` types `:cli` production code does not import** (the leaf owns this surface):
 
 | JLine type | Callers | What we use |
 |------------|---------|-------------|
@@ -188,11 +184,11 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
 
 ## Key Decisions
 
-1. **New module, new package, JDK-only leaf.** Path `clients/cli-terminal/`, Gradle
-   `:cli-terminal`, jk name `jk-cli-terminal`, package `cc.jumpkick.terminal`. Zero
+1. **New module, new package, JDK-only leaf.** Path `clients/cli-terminal/`, jk name
+   `jk-cli-terminal`, package `cc.jumpkick.terminal`. Zero
    dependency on `:cli`, `:wire`, `:jk-api`, `:toolchain-jdk`, theme, or commands.
    **`HostPlatform` is forbidden** in the leaf (`WindowsUtf8` today imports it — replace with
-   `Os.isWindows()` / `isDarwin()` / `isLinux()`; no `currentOs()`/`currentArch()`). JSpecify is `compileOnly` via `jk.java-conventions`. Only `:cli`
+   `Os.isWindows()` / `isDarwin()` / `isLinux()`; no `currentOs()`/`currentArch()`). Nullness is the module's `[javac]` Error Prone table. Only `:cli`
    may depend on it. After the campaign, `rg 'java.lang.foreign' clients/cli/src/main` is empty
    (FFM lives only in the leaf; the **image** still passes `--enable-native-access` because it
    links the leaf). `rg 'org.jline' clients/cli` is empty except `templates/` (out of that
@@ -278,8 +274,8 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
 
 11. **User template `cli-native.g8` keeps teaching JLine LineReader.** That template is a
     *user* REPL scaffold (completion, history) unrelated to jk internals. Catalog aliases
-    `jline` / `jline-terminal-ffm` stay in `libraries.toml` for adopters. They come off
-    **`:cli`'s** `jk.toml` / Gradle. *Rationale:* do not silently keep JLine on our client
+    `jline` / `jline-terminal-ffm` stay in `libraries.toml` for adopters. They are not a
+    dependency of `:cli`. *Rationale:* do not silently keep JLine on our client
     because of a template; do not rip LineReader out of a template that actually needs it.
 
 12. **Land on `main` only when JLine is gone from `:cli` and contributor TUI docs match.**
@@ -295,7 +291,6 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
 
 ```
 clients/cli-terminal/
-  build.gradle.kts
   jk.toml
   src/main/java/cc/jumpkick/terminal/
     package-info.java          @NullMarked
@@ -332,55 +327,14 @@ clients/cli-terminal/
 `TermiosLinux` and `TermiosDarwin` are layout-only (do not merge into one 800-line `Termios`).
 `WindowsUtf8` stays CP/VTP/streams; `WindowsConsole` stays handles/mode/I/O.
 
-Gradle:
+`clients/cli-terminal/jk.toml` names `jk-cli-terminal`, sets `java = 25`, and depends on
+`jk-host`. `clients/cli/jk.toml` depends on `jk-cli-terminal` (workspace edge) and passes
+`--enable-native-access=ALL-UNNAMED` in `[native] args`. Both modules are in the root
+`jk.toml` `[workspace] modules`. Nullness is each module's own `[javac]` Error Prone table.
 
-```kotlin
-// clients/cli-terminal/build.gradle.kts
-plugins { id("jk.java-conventions") }
-description = "Client TTY session, VT style, and keys — FFM POSIX/Windows, no JLine"
-
-tasks.named<Test>("test") {
-    // JDK 25: FFM downcalls in unit tests (poll/termios/Kernel32) warn-then-fail without this.
-    // Same flag :cli already passes (clients/cli/build.gradle.kts L99, L188, L212) and :core
-    // uses for MacPrefs (shared/core/build.gradle.kts L50).
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
-}
-tasks.matching { it.name == "integrationTest" }.configureEach {
-    (this as Test).jvmArgs("--enable-native-access=ALL-UNNAMED")
-}
-
-// clients/cli/build.gradle.kts — replace the jline-terminal-ffm implementation line
-implementation(project(":cli-terminal"))
-```
-
-`clients/cli-terminal/jk.toml`:
-
-```toml
-name = "jk-cli-terminal"
-description = "Controlling TTY, VT style, and keys for the native CLI"
-java = 25
-
-[dependencies]
-jk-host.workspace = true
-
-[test-dependencies]
-assertj-core = "latest"
-junit-jupiter = "latest"
-```
-
-Only `jk-host` (for `Os`). JSpecify/Lombok come from conventions as `compileOnly`.
-
-Workspace registration (same pattern as `:host`):
-
-- `settings.gradle.kts` — `include(":cli-terminal")` under the clients/ block;
-  `project(":cli-terminal").projectDir = file("clients/cli-terminal")`
-- root `jk.toml` `[workspace].modules` — add `"clients/cli-terminal"` next to `"clients/cli"`
-- `clients/cli/jk.toml` — `jk-cli-terminal.workspace = true`, delete `jline-terminal-ffm`
-
-**Who may depend:** `:cli` only. Add a Gradle check next to `checkCliRuntimeClasspath`:
-
-- `:cli` runtime must contain `:cli-terminal` and must **not** contain `jline-*`
-- `:engine` and every `plugins/*` runtime must **not** contain `cli-terminal` / `jk-cli-terminal`
+**Who may depend:** `:cli` only. `cli-runtime-classpath` bans `org.jline:*` on `:cli`'s
+runtime dependencies. `cli-runtime-modules` is the closed client layer `:cli` links,
+`jk-cli-terminal` included.
 
 Package `cc.jumpkick.terminal` is deliberate: not `cc.jumpkick.cli.tui`. The library is a
 leaf. Putting it under `cli.tui` would invite `:cli` internals to leak in.
@@ -1413,8 +1367,7 @@ Ctrl-C. POSIX WINCH/INT *reflection* is required in commit 1. Windows INT *behav
 Decision 8: `sun.misc.Signal("INT")` only; no `SetConsoleCtrlHandler` until dogfood proves
 otherwise.
 
-`:cli` **drops** (commit 5b; grep `SharedArena` / `org.jline` at delete time — today the only
-`Arena.ofShared` mention is the JLine comment in `clients/cli/build.gradle.kts` L332–334):
+`:cli` carries no `org.jline` native-image config. The flags the image must not grow back:
 
 - `--initialize-at-run-time=org.jline`
 - `-H:+SharedArenaSupport`
@@ -1427,10 +1380,9 @@ otherwise.
 - `--enable-native-access=ALL-UNNAMED` (the **image** still enables native access because it
   links the leaf; `:cli` **source** has no `java.lang.foreign` after delete)
 - `--initialize-at-run-time=cc.jumpkick.terminal.windows.WindowsUtf8` (Kernel32 holder).
-  **Replace** the two existing lines that still say
-  `cc.jumpkick.cli.tui.WindowsUtf8` (`clients/cli/build.gradle.kts` L349 **and**
-  `clients/cli/jk.toml` L43) in the same commit `:cli` starts depending on the leaf
-  (PR #3). Leaving the old FQCN is a native-image init of a missing class; forgetting
+  **Replace** any line that still says `cc.jumpkick.cli.tui.WindowsUtf8` in
+  `clients/cli/jk.toml` `[native] args` in the same commit `:cli` starts depending on the
+  leaf (PR #3). Leaving the old FQCN is a native-image init of a missing class; forgetting
   the new FQCN puts Kernel32 lookup on the image-build heap.
 - `-Os`, serial GC, heap caps
 
@@ -1565,20 +1517,14 @@ the singleton must not `close()` it in a way that would drop `isLive` (they call
 | `WindowsUtf8` | `:cli.tui` | `cc.jumpkick.terminal.windows.WindowsUtf8` (`Terminals.bootstrap()`) |
 | Command methods taking `org.jline.terminal.Terminal` | JDK wizards, `NewCommand`, `ActivateCommand`, `JdkInstallCommand` | `TerminalSession` or no terminal arg (they only needed it to pass to Wizard) |
 
-### Gradle / catalog
+### Module edges
 
-| Artifact | Action |
-|----------|--------|
-| `clients/cli` `implementation(libs.jline.terminal.ffm)` | delete |
-| `clients/cli/jk.toml` `jline-terminal-ffm` | delete |
-| `gradle/libs.versions.toml` `jline` / `jline-terminal-ffm` | **keep** (user catalog + `cli-native.g8`) |
-| `libraries.toml` `jline` / `jline-terminal-ffm` | **keep** (adopters) |
-| `jk-lock.toml` rows for `org.jline:jline-terminal*` used by `:cli` | drop on next lock; Zinc's `org.scala-sbt.jline` is unrelated |
-
-`SelfHostingTomlTest` currently asserts workspace merge kept `org.jline:jline-terminal-ffm`
-because it is `:cli`'s **only** non-workspace main dependency. After this, pick a new
-sentinel (or assert the merged main graph is workspace-only plus whatever remains). Do not
-add a fake external dep to keep the old assertion.
+`:cli` depends on `jk-cli-terminal` (`clients/cli/jk.toml`). `clients/cli-terminal/jk.toml`
+depends on `jk-host`. Both are in the root `jk.toml` `[workspace] modules`. There is no
+Gradle catalog. `SelfHostingTomlTest` asserts the merged main graph does not contain
+`org.jline:jline-terminal-ffm`. `jk-lock.toml` still has `org.jline` rows through Zinc
+(`org.scala-sbt.jline`). The catalog aliases stay in `libraries.toml`; the adopter template
+`templates/java/none/cli-native.g8` pins `jline`.
 
 ---
 
@@ -1725,13 +1671,11 @@ required before merge. User docs do not become a terminal tutorial.
 
 ### Delete (library / Graal / deps)
 
-- `clients/cli` Gradle `implementation(libs.jline.terminal.ffm)` and the comment at
-  `build.gradle.kts` ~L25–29, L332–365 JLine-specific `buildArgs` / hint comments
 - `clients/cli/jk.toml` `jline-terminal-ffm` and native args `--initialize-at-run-time=org.jline`,
   `-H:+SharedArenaSupport`, `-H:ExcludeResources=org/jline/nativ/.*`
 - Replace `--initialize-at-run-time=cc.jumpkick.cli.tui.WindowsUtf8` with
-  `cc.jumpkick.terminal.windows.WindowsUtf8` in `clients/cli/build.gradle.kts` **and**
-  `clients/cli/jk.toml` (commit 3, when `:cli` depends on the leaf)
+  `cc.jumpkick.terminal.windows.WindowsUtf8` in `clients/cli/jk.toml` (commit 3, when `:cli`
+  depends on the leaf)
 - `clients/cli/src/main/resources/META-INF/native-image/org.jline/` (entire)
 - `StdinWake.java` (+ tests that only exist for the pulse)
 - `Wizard.unblockBlockingInput` / `restoreCooked` / `drainInput(NonBlockingReader)` /
@@ -1851,9 +1795,9 @@ None remaining.
 - `clients/cli/src/main/java/cc/jumpkick/cli/tui/DrainView.java` (`terminal.close()` L230)
 - `clients/cli/src/main/java/cc/jumpkick/cli/tui/Table.java` (FQCN italic L129)
 - `clients/cli/src/main/java/cc/jumpkick/cli/tui/RichText.java` (`strike` / `crossedOut`)
-- `clients/cli/build.gradle.kts`, `clients/cli/jk.toml`
+- `clients/cli/jk.toml`
 - `templates/java/none/cli-native.g8` — user LineReader template (stays)
-- `shared/host/` — leaf-module Gradle/jk.toml template
+- `shared/host/` — leaf-module `jk.toml` template
 
 ---
 
@@ -1872,8 +1816,7 @@ on a dedicated branch, independently reviewable. **Merge the branch to `main` on
   `posix/PosixTty`, `TermiosLinux`, `TermiosDarwin`, `windows/WindowsConsole`,
   `WindowsUtf8` **in the leaf** — `:cli` keeps its copy until 5b), `Os`, `Signals` +
   `reachability-metadata.json` for `sun.misc.Signal`/`SignalHandler`, `Size`,
-  `settings.gradle.kts`, root `jk.toml` workspace list; `build.gradle.kts` with
-  `jvmArgs("--enable-native-access=ALL-UNNAMED")` on test/integrationTest; unit tests
+  root `jk.toml` workspace list, `clients/cli-terminal/jk.toml`; unit tests
   (`MemoryTerminal`, mode-bit tables including IXON/IEXTEN, fd≠0); optional
   `@Tag("integration")` pty test
 - **Depends on:** none
@@ -1903,7 +1846,7 @@ split from its callers: the intermediate JLine+leaf **classpath** does not save 
 signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-only**.
 
 - **Title:** Point every JLine `Terminal` call site at `:cli-terminal`
-- **Files/components:** `clients/cli/build.gradle.kts` + `jk.toml` add `:cli-terminal`
+- **Files/components:** `clients/cli/jk.toml` adds `jk-cli-terminal.workspace = true`
   (**JLine still on the classpath — branch only**); **every**
   `openTerminal` / `takeSharedTerminal` site in the same commit (grep must be empty
   after this commit for those two names):
@@ -1928,10 +1871,9 @@ signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-o
   `TerminalSize` call sites → `Size`; rewrite `OutputKeyListenerAttributesTest`
   (IEXTEN+IXON), `WizardUnblockInputTest`. **Replace**
   `--initialize-at-run-time=cc.jumpkick.cli.tui.WindowsUtf8` with
-  `cc.jumpkick.terminal.windows.WindowsUtf8` in **both**
-  `clients/cli/build.gradle.kts` L349 and `clients/cli/jk.toml` L43 (needed for
-  intermediate native-image on the branch). `:cli` `WindowsUtf8` class unused after
-  this commit; deleted in 5b. `StdinWake` unused. No
+  `cc.jumpkick.terminal.windows.WindowsUtf8` in `clients/cli/jk.toml` `[native] args`
+  (needed for intermediate native-image on the branch). `:cli` `WindowsUtf8` class
+  unused after this commit; deleted in 5b. `StdinWake` unused. No
   `try-with-resources` on `Terminals.controlling()`.
 - **Depends on:** #1, #2
 - **Description:** One compilable commit. `InputMode.PROMPT` + `PLAN_KEYS`. Ctrl-O,
@@ -1949,18 +1891,18 @@ signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-o
   `RenderContext` delegates to `Width`; tests (`TestAnsi`, `*HighlightTest`,
   `TestFailureHighlightTest` SGR bits, `HelpWidthTest`, `BoxTableRenderTest`)
 - **Depends on:** #3
-- **Description:** Independently reviewable chrome migration. Gradle may still resolve
+- **Description:** Independently reviewable chrome migration. The lock may still resolve
   JLine in this commit (branch only). Gate: `rg 'org.jline.utils' clients/cli/src` empty.
 
 ### 5b. Drop JLine artifact, Graal args, StdinWake
 
 - **Title:** Remove JLine from the `:cli` classpath
-- **Files/components:** delete Gradle/jk.toml JLine dep; delete
+- **Files/components:** delete `clients/cli/jk.toml` JLine dep; delete
   `META-INF/native-image/org.jline/`; drop `--initialize-at-run-time=org.jline`,
   `-H:+SharedArenaSupport`, `-H:ExcludeResources=org/jline/nativ/.*` (grep `SharedArena` /
   `Arena.ofShared` at delete time); the run-time-init line must **already** be
   `cc.jumpkick.terminal.windows.WindowsUtf8` (replaced in #3) — do **not** leave
-  `cc.jumpkick.cli.tui.WindowsUtf8` in `build.gradle.kts` or `jk.toml`; delete
+  `cc.jumpkick.cli.tui.WindowsUtf8` in `jk.toml`; delete
   `StdinWake`, `:cli` `KeyReader`/`TerminalSize`/`WindowsUtf8`/`cc.jumpkick.cli.Ansi`;
   classpath check forbidding `jline-*` on `:cli` and `:cli-terminal` on `:engine`/plugins;
   `SelfHostingTomlTest` sentinel
@@ -1983,9 +1925,9 @@ signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-o
   Product docs stay non-tutorial. Template keeps LineReader for users. Catalog `jline`
   aliases remain for adopters.
 
-Done criteria (ticket, when one exists): `:cli:test` green; `:cli-terminal:test` green
-(with native-access jvmArgs); `:cli:integrationTest` if wire-adjacent tests were touched
-(they should not be); `jk install --skip-tests && jk engine stop`;
-`jk engine status`; `jk init` + `jk build` smoke; interactive wizard + Ctrl-C + Ctrl-O +
-`jk run` echo on a real TTY; Done greps above; `tui.md` no longer mentions JLine's reader
-before status `done`; record `stat target/dist/jk` before/after (verify, not a design unknown).
+Done criteria (ticket, when one exists): `jk test -m jk-cli` green; `jk test -m jk-cli-terminal`
+green; integration profile if wire-adjacent tests were touched (they should not be);
+`jk install --skip-tests && jk engine stop`; `jk engine status`; `jk init` + `jk build` smoke;
+interactive wizard + Ctrl-C + Ctrl-O + `jk run` echo on a real TTY; Done greps above;
+`tui.md` no longer mentions JLine's reader before status `done`; record `stat target/dist/jk`
+before/after (verify, not a design unknown).

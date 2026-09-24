@@ -72,9 +72,9 @@ jk lock          # re-resolves and rewrites jk-lock.toml; commit it
 A build that rewrites the committed lock is a drifted pin or a non-deterministic writer, and CI's
 self-host job fails on the diff.
 
-**The native binary is the shipped client** — a slim GraalVM native image, sub-50 ms cold start,
-and the client that self-heals a missing engine (`EngineJarFetcher`). Released natives are signed
-when published; Smart App Control blocks an unsigned `jk.exe`.
+**The native binary is the shipped client** — a slim GraalVM native image, and the client that
+self-heals a missing engine (`EngineJarFetcher`). Released natives are signed when published;
+Smart App Control blocks an unsigned `jk.exe`.
 
 ### Black-box examples (sibling repo)
 

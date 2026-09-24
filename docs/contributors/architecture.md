@@ -27,11 +27,12 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 ```
 
 - **Client** — presentation, shell hooks, JDK install prompts, anything that owns your terminal
-  (`jk run` exec, `jk mvn`/`gradle` interactive). Preferred form is a Graal native image
-  (sub-50 ms cold start). On Windows the thin JVM launcher (`jk.bat` from `:cli:installDist`)
-  is also supported. No engine code in the native image. The CLI does not interpret plugin
-  schemas — `jk-plugin.toml` and Giter8 templates are engine-only, never `:core` / the
-  native client.
+  (`jk run` exec, `jk mvn`/`gradle` interactive). Preferred form is a Graal native image.
+  Hosts without a native client use the JVM client: `jk-<version>.jar` is the CLI module's
+  assembly (`[application] assembly = true` in `clients/cli/jk.toml`), with launcher `bin/jk`
+  (`bin/jk.bat`) from `jk self write-launcher`. No engine code in the native image. The CLI does
+  not interpret plugin schemas — `jk-plugin.toml` and Giter8 templates are engine-only, never
+  `:core` / the native client.
 - **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
   compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
   **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
@@ -272,24 +273,25 @@ Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 
 ### Schema freeze until 1.0
 
-**Until JumpKick 1.0 ships, do not rev schema / protocol version numbers.** Stay on **version 1**
-(or the field’s existing constant) for every external-ish format:
+**Until JumpKick 1.0 ships, keep schema / protocol version numbers at 1.** Stay on **version 1**
+(or the field’s existing constant) for every external-ish format. Change the shape **in place** —
+never mint a v2 and keep v1 alive. There is no compatibility contract before 1.0
+([compatibility](compatibility.md); AGENTS.md Pre-release).
 
 | Surface | Field / constant | Pre-1.0 policy |
 |---------|------------------|----------------|
-| `jk.toml` | grammar / tables | Additive only; no version bump |
-| `jk-lock.toml` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; additive rows/fields only (guarded: `schema-freeze`, `lock-version-is-one`) |
-| Client↔engine wire | `EngineProtocol.PROTOCOL` | Stay on **1** (guarded: `schema-freeze`) |
-| CLI JSONL / session transcripts | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** (guarded: `schema-freeze`) |
-| Session transcripts | `details.jsonl` `"schema"` | Stay on **1** |
-| Run report | `jk-results.md` | Markdown; no version field |
-| REST `/api/*` | response shapes | Additive fields only |
-| SSE event `data` | `"schema"` | Stay on **1** |
-| MCP | `protocolVersion` / tool payloads | Stay on advertised **1**-era shape; no version churn |
+| `jk.toml` | grammar / tables | Stay on the current grammar; change in place |
+| `jk-lock.toml` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; change fields in place (guarded: `schema-freeze`, `lock-version-is-one`) |
+| Client↔engine wire | `EngineProtocol.PROTOCOL` | Stay on **1**; change in place (guarded: `schema-freeze`) |
+| CLI JSONL / session transcripts | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1**; change in place (guarded: `schema-freeze`) |
+| Session transcripts | `details.jsonl` `"schema"` | Stay on **1**; change in place |
+| Run report | `jk-results.md` | Markdown; no version field; change in place |
+| REST `/api/*` | response shapes | Stay on **1**-era shapes; change in place |
+| SSE event `data` | `"schema"` | Stay on **1**; change in place |
+| MCP | `protocolVersion` / tool payloads | Stay on advertised **1**-era shape; change in place |
 
-**Why:** there are no public users to protect yet. Version bumps create noise and force dual
-readers without benefit. Prefer **additive, backward-compatible** fields under the same version.
-Breaking renames/removals wait for an explicit 1.0 compatibility story.
+**Why:** there are no public users to protect yet. Version bumps create dual readers with no
+audience. A format changes in place; an older shape is not kept beside it.
 
 **Exception:** pure internal constants (metrics/journal experiments) may already differ; do not
 proliferate new schema versions. When in doubt, keep `1` and document the field in prose.

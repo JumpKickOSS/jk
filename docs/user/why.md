@@ -5,7 +5,7 @@ How to *use* JumpKick: [manual](manual.md) · [getting started](getting-started.
 makes the bet true before 1.0 is ordered in [the 1.0 plan](../contributors/plan-1.0.md).
 
 **Audience:** Maven or Gradle users evaluating a switch, and anyone building JVM software
-with coding agents (Grok, Claude, Codex, …).
+with coding agents.
 
 ---
 
@@ -14,8 +14,11 @@ with coding agents (Grok, Claude, Codex, …).
 > **JumpKick is the JVM build tool that coding agents can actually drive — and that humans
 > enjoy enough to keep.**
 
-Wall-clock parity with a tuned Gradle 9.x build is hygiene, not the conversion claim, and it
-is a claim we owe a table for (see [the 1.0 plan](../contributors/plan-1.0.md), epic 6).
+Wall-clock parity with a tuned Gradle 9.x build is hygiene, not the conversion claim. The
+measured table is in this file, after the feature ranking, and in
+[Performance](performance.md): spring-petclinic, jk 0.13.7, on the machine named under the
+table.
+
 The reason to abandon Maven or Gradle is that the **edit → build → diagnose → fix →
 rebuild** loop gets shorter for agents and for humans who work with agents. That is the
 **inner loop** of a developer's day, and it outranks CI lanes, nightly profiles and release
@@ -37,7 +40,7 @@ or remove a tool-switch.
 |-----------|---------------------------|
 | **Observe & repair** | Structured, token-cheap failures — not Gradle/Maven log archaeology |
 | **Mutate without fear** | Small declarative surface agents and humans edit the same way |
-| **Execute cheaply** | The *Nth* rebuild in a session feels free (cache + warm engine + low RSS) |
+| **Execute cheaply** | The *Nth* rebuild in a session feels free (cache + warm engine). Whole-tree RSS is the table below |
 | **Run the right tests** | Inner loop is unit; the named **`--guard`** rung before share; `--all` is nightly; the report discloses what was skipped |
 | **Stabilize the environment** | No turns burned on `JAVA_HOME`, wrappers, or bootstrap scripts |
 | **Enter the ecosystem** | Import/export so migration time counts in cycle time |
@@ -67,8 +70,8 @@ Think in **layers of the switch decision**, not a flat checklist.
 | **5** | **Named test rungs** (unit inner loop · `--guard` before share · `--all` nightly) | Agents stop running Playwright on every assertion fix *and* stop shipping wiring bugs the default suite never saw. Results disclose what was skipped. |
 
 Alone, each is nice. Together they make the agent loop *possible* — and keep the execute step from destroying it.
-The ranking is a claim until the **turns-to-green** table exists (below); building that table is a
-Tier 0 item in its own right.
+The ranking is a claim until a **turns-to-green** table shows a win. That measurement is open —
+[Making the north star true](#making-the-north-star-true).
 
 ### Tier 1 — Prove it in the first ten minutes
 
@@ -76,7 +79,7 @@ Tier 0 item in its own right.
 |------|---------|------|
 | **6** | **IntelliJ that just works** (live project model, gutter through jk, Marketplace listing) | The first ten seconds of every human evaluation. Generated project files are not this. |
 | **7** | **Web dashboard as the supervisor's view** | The human watching an agent sees trigger, session, per-attempt change set, failure and time. Neither incumbent nor the agent harness shows this. |
-| **8** | **Action cache + CAS + warm engine (low RSS)** | Shorter *repeated* cycles — not “we beat Gradle by 8%.” |
+| **8** | **Action cache + CAS + warm engine** | Shorter *repeated* cycles. Whole-tree RSS is the table below — not “we beat Gradle by 8%.” |
 | **9** | **Beautiful CLI + accurate ETA** | Human trust on long runs; progress/ETA also exist as machine facts. |
 | **10** | **Built-in format** | Closes the agent edit loop without a second toolchain. |
 | **11** | **Templates / `jk new`** | Time-to-first-success for humans and agents scaffolding greenfield work. |
@@ -272,9 +275,9 @@ The observe step has to match: `target/jk-results.md` (and MCP `jk_results`) mus
 disclose **what ran, what did not, how to replay, what to run next.** A green unit
 run that silently skipped integration is how wiring bugs escape.
 
-Commands, layout, and MCP `rung` are specified in KanArtist (`projects/jk/docs/test-rungs.md`).
-Day-to-day flags while that lands: [Test](test.md). Default `jk test` is
-already the unit suite — that half of the bet is real.
+Commands and layout: [Test](test.md). Default `jk test` is the unit suite.
+`--guard` is the share-the-commit bar; `--scripts-only` runs the guard scripts alone;
+`--no-scripts` skips them.
 
 ---
 
@@ -312,25 +315,29 @@ and success rate**.
 If that number does not win, polish the Tier 0 surfaces until it does. Feature count will
 not save it.
 
-Honesty today: the skeleton is real (`jk manual`, results, MCP, TOML edits, lockfile,
-cache, **directory suites** so `jk test` is already the unit rung, the named `--guard` bar).
-What is **not** yet real, and is ordered in [the 1.0 plan](../contributors/plan-1.0.md):
+Honesty today: the loop's surfaces are real — `jk manual`, results, MCP, TOML edits, the
+lockfile, the cache, directory suites, `--guard` / `--scripts-only` / `--no-scripts`,
+effective-POM import with profiles and plugin mapping, `jk mvn` writing
+`target/jk-results.md`, a build over an unmodified `pom.xml`, and the IntelliJ
+external-system model. What is still open, in [the 1.0 plan](../contributors/plan-1.0.md):
 
-- **Turns-to-green has no agent numbers yet.** The corpus, the wrapped comparators and the
-  harness exist — `bench/agent-loop/harness` drives an agent over every scenario against jk,
-  Maven and Gradle and writes the table — and the comparator is Maven and Gradle *wrapped* with a
-  results file and MCP tools, because that is the cheapest thing an incumbent could ship; the
-  table with a real agent behind it is the number that is still owed.
-- **Maven import is shallow.** Only the compiler plugin maps; parents, profiles, resource
-  filtering and every other plugin do not. `jk mvn` gives an agent nothing structured.
-- **IDE support is generated files.** The IntelliJ plugin is not on the Marketplace and does not
-  own the project model.
-- **Speed and memory are claims.** The wall harness compares jk with jk; the 256 MiB is heap, not
-  RSS, and worker heaps have no ceiling.
+- **Turns-to-green is not a win yet.** One scenario, one coding-agent driver: jk 9 turns /
+  45,982 tokens, Maven 6 / 23,623, Gradle 6 / 23,807
+  ([`bench/agent-loop/results/2026-09-16/TABLE.md`](../../bench/agent-loop/results/2026-09-16/TABLE.md)).
+  The scripted driver is a plumbing proof. A full matrix is pending.
+- **IntelliJ and VS Code are not on their marketplaces.** The IntelliJ plugin is an external
+  system packaged from this repository.
+- **The plugin SDK is not on Maven Central.** `jk publish --central` can publish it; a release
+  has not put the coordinate there.
+- **Maven top-20 corpus:** 13 of 20 build and 2 of 20 pass their tests (run 16, main
+  `03de088c6`, 2026-09-18). The table is in
+  [Migration](migration.md#where-import-stands-on-real-repositories).
+- **Workers have no heap ceiling that keeps the tree small.** 256 MiB is the engine's heap
+  cap. On the table above, a test run peaks at 7,479 MiB, above Gradle and Maven.
 
-The north star becomes *true* when measured turns-to-green beat the wrapped incumbents, the
-fifty-repo Maven corpus builds, and IntelliJ opens a `jk.toml` workspace with no generated
-file — not when the README says so.
+The north star is true when measured turns-to-green beat the wrapped incumbents, more of
+that top-20 corpus passes its tests, the IDE plugins are on their marketplaces, and the SDK
+is on Central — not when this page says so.
 
 ---
 
