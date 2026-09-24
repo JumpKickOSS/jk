@@ -64,6 +64,62 @@ class PosixTtyTest {
         }
     }
 
+    @Test
+    void select_waits_out_an_idle_descriptor_instead_of_returning_at_once() throws Throwable {
+        assumeTrue(Os.isLinux() || Os.isDarwin());
+        int[] fds = pipe();
+        try (PosixTty tty = over(fds[0])) {
+            tty.waitWithSelect();
+            long start = System.nanoTime();
+            int got = assertTimeoutPreemptively(
+                    Duration.ofSeconds(3), () -> tty.readByte(Duration.ofMillis(60), () -> true));
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
+            assertThat(got).isEqualTo(-1);
+            assertThat(elapsedMs).isGreaterThanOrEqualTo(40);
+        } finally {
+            close(fds[1]);
+        }
+    }
+
+    @Test
+    void select_delivers_a_buffered_byte_and_then_the_hang_up() throws Throwable {
+        assumeTrue(Os.isLinux() || Os.isDarwin());
+        int[] fds = pipe();
+        write(fds[1], (byte) 'y');
+        close(fds[1]);
+        try (PosixTty tty = over(fds[0])) {
+            tty.waitWithSelect();
+            int first = assertTimeoutPreemptively(
+                    Duration.ofSeconds(3), () -> tty.readByte(Duration.ofMillis(200), () -> true));
+            assertThat(first).isEqualTo('y');
+            int then = assertTimeoutPreemptively(
+                    Duration.ofSeconds(3), () -> tty.readByte(Duration.ofMillis(200), () -> true));
+            assertThat(then).isEqualTo(-2);
+        }
+    }
+
+    @Test
+    void a_controlling_tty_idle_read_times_out_instead_of_dying() {
+        assumeTrue(Os.isLinux() || Os.isDarwin());
+        PosixTty tty = PosixTty.openControlling();
+        if (tty == null) {
+            assumeTrue(false, "no controlling terminal");
+            return;
+        }
+        try {
+            long start = System.nanoTime();
+            int got = assertTimeoutPreemptively(
+                    Duration.ofSeconds(3), () -> tty.readByte(Duration.ofMillis(80), () -> true));
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
+            assertThat(got).as("timeout, not a dead terminal").isEqualTo(-1);
+            assertThat(elapsedMs)
+                    .as("waited for the terminal instead of returning at once")
+                    .isGreaterThanOrEqualTo(50);
+        } finally {
+            tty.close();
+        }
+    }
+
     /** A {@link PosixTty} over a plain descriptor: no termios to restore, the host's layout. */
     private static PosixTty over(int fd) {
         boolean darwin = Os.isDarwin();
