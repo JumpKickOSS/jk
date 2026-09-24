@@ -33,6 +33,7 @@ class ForeignDowncallsMetadataTest {
                         "jint|jint, void*|capture",
                         "jint|jint, jint, void*|capture",
                         "jint|void*, jlong, jint|capture",
+                        "jint|jint, void*, void*, void*, void*|capture",
                         "jint|void*, jint, jint|capture",
                         "jlong|jint, void*, jlong|capture",
                         "jint|jint, jint, jint|variadic2",

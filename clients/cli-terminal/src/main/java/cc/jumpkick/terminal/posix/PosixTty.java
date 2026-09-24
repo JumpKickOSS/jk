@@ -18,17 +18,21 @@ import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * POSIX {@code /dev/tty}: open, termios, poll, non-blocking read/write. Never owns FD 0/1/2.
+ * POSIX {@code /dev/tty}: open, termios, poll or select, non-blocking read/write. Never owns FD 0/1/2.
  */
 public final class PosixTty implements AutoCloseable {
     private static final int SLICE_MS = 50;
     private static final MemoryLayout CAPTURED = Linker.Option.captureStateLayout();
     private static final VarHandle ERRNO = CAPTURED.varHandle(MemoryLayout.PathElement.groupElement("errno"));
 
+    private static final int FD_SET_BYTES = 128;
+
     private final int fd;
     private final byte[] original;
     private final boolean darwin;
     private volatile boolean open = true;
+    /** {@code poll} on this fd returns {@code POLLNVAL}. Later waits use {@code select}. */
+    private volatile boolean selectWait;
 
     /**
      * Over an already-open descriptor whose termios to restore is {@code original}. Package-private
@@ -163,8 +167,11 @@ public final class PosixTty implements AutoCloseable {
         boolean forever = timeout.isZero();
         long deadline = forever ? Long.MAX_VALUE : System.nanoTime() + timeout.toNanos();
         ensure();
-        if (pollMh == null) {
+        if (pollMh == null && selectMh == null) {
             return -1;
+        }
+        if (pollMh == null) {
+            selectWait = true;
         }
         while (live.getAsBoolean()) {
             if (!forever && System.nanoTime() >= deadline) {
@@ -173,57 +180,81 @@ public final class PosixTty implements AutoCloseable {
             long remaining = forever ? Long.MAX_VALUE : Math.max(0, deadline - System.nanoTime());
             int timeoutMs = forever ? -1 : (int) Math.min(Integer.MAX_VALUE, remaining / 1_000_000L);
             long t0 = System.nanoTime();
-            int rc;
-            int err;
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment state = arena.allocate(CAPTURED);
-                MemorySegment fds = arena.allocate(8);
-                fds.set(ValueLayout.JAVA_INT, 0, fd);
-                fds.set(ValueLayout.JAVA_SHORT, 4, (short) pollin());
-                fds.set(ValueLayout.JAVA_SHORT, 6, (short) 0);
-                rc = poll(state, fds, timeoutMs);
-                err = rc < 0 ? errno(state) : 0;
-                if (rc > 0) {
-                    // Hang-up, error or a closed descriptor with nothing left to read: the peer
-                    // is gone. Reading anyway answers 0 bytes and poll answers again at once, so
-                    // a prompt waiting forever spins at full CPU and never learns it is dead.
-                    int revents = Short.toUnsignedInt(fds.get(ValueLayout.JAVA_SHORT, 6));
-                    if ((revents & pollin()) == 0 && (revents & pollDead()) != 0) {
-                        return -2;
-                    }
-                    MemorySegment buf = arena.allocate(1);
-                    int n = readOne(state, buf);
-                    if (n > 0) {
-                        return Byte.toUnsignedInt(buf.get(ValueLayout.JAVA_BYTE, 0));
-                    }
-                    if (n == 0) {
-                        return -2; // EOF: a closed pty master reads as zero bytes on macOS
-                    }
-                    err = errno(state);
-                    if (err == eintr()) {
-                        continue;
-                    }
-                    if (err == eagain()) {
-                        long elapsed = System.nanoTime() - t0;
-                        if (elapsed < 1_000_000L) {
-                            sleepSlice(forever ? SLICE_MS * 1_000_000L : Math.min(remaining, SLICE_MS * 1_000_000L));
-                        }
-                        continue;
-                    }
-                    return -2; // dead
+                int ready = awaitReadable(arena, state, timeoutMs);
+                if (ready == 0) {
+                    return -1;
                 }
+                if (ready < 0) {
+                    if (ready == -1) {
+                        continue;
+                    }
+                    return -2;
+                }
+                MemorySegment buf = arena.allocate(1);
+                int n = readOne(state, buf);
+                if (n > 0) {
+                    return Byte.toUnsignedInt(buf.get(ValueLayout.JAVA_BYTE, 0));
+                }
+                if (n == 0) {
+                    return -2; // EOF: a closed pty master reads as zero bytes on macOS
+                }
+                int err = errno(state);
+                if (err == eintr()) {
+                    continue;
+                }
+                if (err == eagain()) {
+                    long elapsed = System.nanoTime() - t0;
+                    if (elapsed < 1_000_000L) {
+                        sleepSlice(forever ? SLICE_MS * 1_000_000L : Math.min(remaining, SLICE_MS * 1_000_000L));
+                    }
+                    continue;
+                }
+                return -2; // dead
             } catch (Throwable t) {
                 return -2;
             }
-            if (rc == 0) {
-                return -1;
-            }
-            if (err == eintr()) {
-                continue;
-            }
-            return -2;
         }
         return -1;
+    }
+
+    /**
+     * Darwin {@code poll} answers {@code POLLNVAL} at once for {@code /dev/tty} — poll does not
+     * support that device — so a prompt would cancel before a key arrived. {@code select} waits.
+     * Package-private so a pipe can take the same path without a terminal.
+     */
+    void waitWithSelect() {
+        selectWait = true;
+    }
+
+    /** 1 readable, 0 timeout, -1 interrupted, -2 dead. */
+    private int awaitReadable(Arena arena, MemorySegment state, int timeoutMs) throws Throwable {
+        if (selectWait) {
+            return selectReady(arena, state, timeoutMs, true);
+        }
+        MemorySegment fds = arena.allocate(8);
+        fds.set(ValueLayout.JAVA_INT, 0, fd);
+        fds.set(ValueLayout.JAVA_SHORT, 4, (short) pollin());
+        fds.set(ValueLayout.JAVA_SHORT, 6, (short) 0);
+        int rc = poll(state, fds, timeoutMs);
+        if (rc == 0) {
+            return 0;
+        }
+        if (rc < 0) {
+            return errno(state) == eintr() ? -1 : -2;
+        }
+        int revents = Short.toUnsignedInt(fds.get(ValueLayout.JAVA_SHORT, 6));
+        if ((revents & pollnval()) != 0) {
+            selectWait = true;
+            return selectReady(arena, state, timeoutMs, true);
+        }
+        // Hang-up or error with nothing left to read. Reading anyway answers 0 bytes and poll
+        // answers again at once, so a prompt waiting forever would spin and never learn it is dead.
+        if ((revents & pollin()) == 0 && (revents & pollDead()) != 0) {
+            return -2;
+        }
+        return 1;
     }
 
     public void writeFully(byte[] buf, BooleanSupplier live) {
@@ -259,13 +290,73 @@ public final class PosixTty implements AutoCloseable {
 
     private void pollOut(MemorySegment state) throws Throwable {
         try (Arena arena = Arena.ofConfined()) {
+            if (selectWait) {
+                selectReady(arena, state, SLICE_MS, false);
+                return;
+            }
             MemorySegment fds = arena.allocate(8);
             fds.set(ValueLayout.JAVA_INT, 0, fd);
             fds.set(ValueLayout.JAVA_SHORT, 4, (short) pollout());
             fds.set(ValueLayout.JAVA_SHORT, 6, (short) 0);
-            MemorySegment st = arena.allocate(CAPTURED);
-            int ignored = poll(st, fds, SLICE_MS);
+            int rc = poll(state, fds, SLICE_MS);
+            if (rc > 0) {
+                int revents = Short.toUnsignedInt(fds.get(ValueLayout.JAVA_SHORT, 6));
+                if ((revents & pollnval()) != 0) {
+                    selectWait = true;
+                    selectReady(arena, state, SLICE_MS, false);
+                }
+            }
         }
+    }
+
+    /** 1 ready, 0 timeout, -1 interrupted, -2 dead. */
+    private int selectReady(Arena arena, MemorySegment state, int timeoutMs, boolean forRead) throws Throwable {
+        MethodHandle select = selectMh;
+        if (select == null) {
+            return -2;
+        }
+        MemorySegment interest = interestSet(arena);
+        if (interest == null) {
+            return -2;
+        }
+        MemorySegment read = forRead ? interest : MemorySegment.NULL;
+        MemorySegment write = forRead ? MemorySegment.NULL : interest;
+        MemorySegment error = forRead ? interestSet(arena) : MemorySegment.NULL;
+        int rc = (int) select.invokeExact(state, fd + 1, read, write, error, timeval(arena, timeoutMs));
+        if (rc > 0) {
+            return 1;
+        }
+        if (rc == 0) {
+            return 0;
+        }
+        return errno(state) == eintr() ? -1 : -2;
+    }
+
+    /** Little-endian {@code fd_set} bit {@code fd}. Null when the fd does not fit in {@code FD_SETSIZE}. */
+    private @Nullable MemorySegment interestSet(Arena arena) {
+        if (fd < 0 || fd >= FD_SET_BYTES * 8) {
+            return null;
+        }
+        MemorySegment set = arena.allocate(FD_SET_BYTES);
+        int index = fd >>> 3;
+        set.set(ValueLayout.JAVA_BYTE, index, (byte) (1 << (fd & 7)));
+        return set;
+    }
+
+    /** {@code timeoutMs < 0} is a blocking wait ({@code NULL} timeval). Darwin {@code tv_usec} is 32-bit. */
+    private MemorySegment timeval(Arena arena, int timeoutMs) {
+        if (timeoutMs < 0) {
+            return MemorySegment.NULL;
+        }
+        MemorySegment tv = arena.allocate(16);
+        tv.set(ValueLayout.JAVA_LONG, 0, timeoutMs / 1000L);
+        long usec = (timeoutMs % 1000L) * 1000L;
+        if (darwin) {
+            tv.set(ValueLayout.JAVA_INT, 8, (int) usec);
+        } else {
+            tv.set(ValueLayout.JAVA_LONG, 8, usec);
+        }
+        return tv;
     }
 
     @Override
@@ -293,6 +384,10 @@ public final class PosixTty implements AutoCloseable {
     }
 
     /** The revents that mean the descriptor has no future: hang-up, error, or not open. */
+    private int pollnval() {
+        return darwin ? TermiosDarwin.POLLNVAL : TermiosLinux.POLLNVAL;
+    }
+
     private int pollDead() {
         return darwin
                 ? TermiosDarwin.POLLHUP | TermiosDarwin.POLLERR | TermiosDarwin.POLLNVAL
@@ -328,6 +423,7 @@ public final class PosixTty implements AutoCloseable {
     private static volatile @Nullable MethodHandle tcgetattrMh;
     private static volatile @Nullable MethodHandle tcsetattrMh;
     private static volatile @Nullable MethodHandle pollMh;
+    private static volatile @Nullable MethodHandle selectMh;
     private static volatile @Nullable MethodHandle readMh;
     private static volatile @Nullable MethodHandle writeMh;
     private static volatile boolean initAttempted;
@@ -368,6 +464,18 @@ public final class PosixTty implements AutoCloseable {
                         lookup,
                         "poll",
                         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, nfds, ValueLayout.JAVA_INT),
+                        cap);
+                selectMh = bind(
+                        linker,
+                        lookup,
+                        "select",
+                        FunctionDescriptor.of(
+                                ValueLayout.JAVA_INT,
+                                ValueLayout.JAVA_INT,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.ADDRESS),
                         cap);
                 readMh = bind(
                         linker,
