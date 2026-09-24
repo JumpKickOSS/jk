@@ -5,7 +5,7 @@
 # Usage:
 #   curl -fsSL https://jumpkick.build/install.sh | bash
 #   wget -qO- https://jumpkick.build/install.sh | bash
-#   bash install.sh [--rc] [/path/to/jk[.xz|.zip] | /path/to/lib/jk-<version>.jar]
+#   bash install.sh [--rc] [/path/to/jk[.gz|.zip] | /path/to/lib/jk-<version>.jar]
 #
 # Options:
 #   --rc             Write the `# >>> jk installer >>>` block into the shell rc files
@@ -17,7 +17,7 @@
 # Environment variables:
 #   JK_ARCHIVE_URL   Override the archive URL to download. JK_VERSION is required
 #                    with this override; verification evidence still comes from
-#                    JK_RELEASES_URL/<version>/. Supports .xz, .zip and .jar.
+#                    JK_RELEASES_URL/<version>/. Supports .gz, .zip and .jar.
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
 #   JK_HOME          jk's home directory. Default $HOME/.jk; everything jk
@@ -43,15 +43,16 @@ main() {
   JK_HOME_DIR="${JK_HOME:-${HOME}/.jk}"
   INSTALL_DIR="${JK_HOME_DIR}/bin"
   DEFAULT_HOME_DIR="${HOME}/.jk"
-  # One immutable directory per version (jk-<os>-<arch>-<version>[.xz] + jk-engine-<version>.jar
-  # + SHA256SUMS); `latest/LATEST` is the only mutable pointer, and it is one signed
+  # One immutable directory per version (jk-<os>-<arch>-<version>.gz for this installer,
+  # the .xz beside it for self-update, + jk-engine-<version>.jar + SHA256SUMS); `latest/LATEST`
+  # is the only mutable pointer, and it is one signed
   # object (`version <v>`, `issued <unix-seconds>`, `signature <base64>` over those two
   # lines) verified before anything it names is fetched. The version is resolved ONCE and both
   # artifacts come from the frozen directory, so a release published mid-install can never hand out a binary
   # and an engine jar that disagree (the client refuses to launch a version-skewed jar).
   RELEASES_URL="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 
-  # Optional positional argument: local path to jk, jk.xz, or jk.zip. `--rc` asks for the
+  # Optional positional argument: local path to jk, jk.gz, or jk.zip. `--rc` asks for the
   # shell rc block on a non-default JK_HOME, which otherwise leaves the rc files alone.
   LOCAL_FILE=""
   RC_REQUESTED=0
@@ -277,31 +278,11 @@ main() {
     return 0
   }
 
-  # Archive format for auto URL resolution: Linux/macOS releases are .xz
-  # only (docs/releases.md). Windows uses install.ps1 and a .zip — this
-  # script never runs there. JK_ARCHIVE_URL / a local file may still be
-  # .zip. Missing xz must not fall through to a .zip we do not host.
-  #
-  # Stock macOS ships no xz binary; its /usr/bin/compression_tool decodes the
-  # xz container (Compression framework LZMA), so Darwin falls back to it.
-  can_unxz() {
-    have xz && return 0
-    [ "$(uname -s)" = "Darwin" ] && [ -x /usr/bin/compression_tool ]
-  }
-
-  # unxz <in.xz> <out> — xz when present, else Apple's compression_tool.
-  unxz_file() {
-    if have xz; then
-      xz -dc "$1" > "$2"
-    else
-      /usr/bin/compression_tool -decode -A lzma -i "$1" -o "$2"
-    fi
-  }
-
-  detect_ext() {
-    can_unxz || die "cannot decompress .xz: install xz and re-run (Linux: xz-utils; macOS: brew install xz)."
-    printf 'xz'
-  }
+  # Archive format for auto URL resolution: Linux/macOS releases are one gzip member
+  # of the client binary (docs/contributors/releases.md). gunzip ships with both.
+  # The .xz beside that .gz is for `jk self update`, which the engine inflates.
+  # Windows uses install.ps1 and a .zip — this script never runs there.
+  # JK_ARCHIVE_URL / a local file may still be .zip.
 
   # ---- resolve source (URL or local file) ------------------------------------
 
@@ -310,12 +291,15 @@ main() {
   trap cleanup EXIT
 
   # Sets decompress() based on the file/URL extension, and CLIENT for a .jar: the JVM client is
-  # a jar and nothing else is. Plain binary (no .xz/.zip — the local dist flow) is installed with cp.
+  # a jar and nothing else is. Plain binary (no .gz/.zip — the local dist flow) is installed with cp.
   infer_decompress() {
     case "$1" in
+      *.gz)
+        have gunzip || die "'$1' is a .gz file but gunzip is not installed."
+        # The download is named *.gz: GNU gunzip ignores a member whose name has another suffix.
+        decompress() { gunzip -c "$1" > "$2"; } ;;
       *.xz)
-        can_unxz || die "'$1' is a .xz file but xz is not installed (Linux: xz-utils; macOS: brew install xz)."
-        decompress() { unxz_file "$1" "$2"; } ;;
+        die "'$1' is an .xz archive. This installer fetches the .gz release; .xz is for 'jk self update'." ;;
       *.zip)
         have unzip || die "'$1' is a .zip file but unzip is not installed."
         # Single-entry archive: -p streams the binary to stdout.
@@ -350,7 +334,8 @@ main() {
       fi
     fi
     if [ "$CLIENT" = "native" ]; then
-      EXT="$(detect_ext)"
+      have gunzip || die "gunzip is required to install the native jk client."
+      EXT="gz"
     fi
     if [ -n "${JK_VERSION:-}" ]; then
       VERSION="$JK_VERSION"
@@ -395,7 +380,8 @@ main() {
   if [ -n "$LOCAL_FILE" ]; then
     ARCHIVE_FILE="$LOCAL_FILE"
   else
-    ARCHIVE_FILE="$TMPDIR_JK/jk.archive"
+    # Keep the published filename: gunzip refuses to read a member whose name does not end in .gz.
+    ARCHIVE_FILE="$TMPDIR_JK/$ARTIFACT_NAME"
     download "$ARCHIVE_URL" "$ARCHIVE_FILE" \
       || die "failed to download $ARCHIVE_URL"
     download "$RELEASE_VERSION_URL/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS" \

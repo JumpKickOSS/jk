@@ -213,9 +213,13 @@ releases/
                             #   signature <base64>   # over the exact first two lines
     VERSION                 # bare version — a redirect-compatible convenience nothing verifies
   0.13.6/
-    jk-linux-x86_64-0.13.6.xz
+    jk-linux-x86_64-0.13.6.gz      # install.sh (gunzip)
+    jk-linux-x86_64-0.13.6.xz      # self-update (engine inflates)
+    jk-linux-aarch64-0.13.6.gz
     jk-linux-aarch64-0.13.6.xz
+    jk-macos-x86_64-0.13.6.gz
     jk-macos-x86_64-0.13.6.xz
+    jk-macos-aarch64-0.13.6.gz
     jk-macos-aarch64-0.13.6.xz
     jk-windows-x86_64-0.13.6.xz    # self-update (engine inflates; no system xz needed)
     jk-windows-x86_64-0.13.6.zip   # install.ps1 / jk.bat only
@@ -228,8 +232,9 @@ releases/
     SHA256SUMS.sig          # base64 RSA/SHA-256 signature over exact SHA256SUMS bytes
 ```
 
-`install.sh` and the Unix `jk` wrapper fetch `jk-<os>-<arch>-<version>.xz`. `jk.bat` /
-`install.ps1` fetch the Windows `.zip`. On a host with no native client, `install.sh` fetches
+`install.sh` fetches `jk-<os>-<arch>-<version>.gz` and inflates it with `gunzip`. `jk.bat` /
+`install.ps1` fetch the Windows `.zip`. The Unix `jk` wrapper and `jk self update` fetch the
+`.xz` beside that `.gz`. On a host with no native client, `install.sh` fetches
 `jk-<version>.jar` and `jk-engine-<version>.jar` instead (so does `install.ps1` on
 `JK_CLIENT=jvm`, and `jk self update` from a JVM install). No installer fetches
 `jk-maven-spy-<version>.jar`: the client does, from the same version directory and against the

@@ -8,8 +8,9 @@
 # Env:
 # JK_VERSION override version (default: JkVersion / project version via git describe or file)
 # Layout written to out-dir (default: target/release/<version>/):
-# jk-<os>-<arch>-<version>.xz (every platform, including Windows — self-update)
-# jk-windows-x86_64-<version>.zip (Windows only — install.ps1 / jk.bat; no system xz)
+# jk-<os>-<arch>-<version>.xz (every platform, including Windows — self-update; the engine inflates it)
+# jk-<os>-<arch>-<version>.gz (Linux and macOS — install.sh; gunzip)
+# jk-windows-x86_64-<version>.zip (Windows only — install.ps1 / jk.bat)
 # The version is part of every artifact name, so a signed manifest copied from another
 # release directory cannot name what an installer asks for.
 # jk-engine-<version>.jar
@@ -72,6 +73,16 @@ if ! command -v xz >/dev/null 2>&1; then
   exit 2
 fi
 xz -ck9 "$src" >"$OUT/${name}.xz"
+
+# install.sh fetches gzip. -n omits the source name and mtime, so the same binary gzips to the
+# same bytes. Windows install.ps1 fetches the zip below, so a Windows tree gets no .gz.
+if [[ "$os" != "windows" ]]; then
+  if ! command -v gzip >/dev/null 2>&1; then
+    echo "assemble-release-dir: gzip is required (install.sh fetches .gz on Linux and macOS)" >&2
+    exit 2
+  fi
+  gzip -cn9 "$src" >"$OUT/${name}.gz"
+fi
 
 # Windows wrapper / install.ps1 have no system xz — also ship a single-entry zip. Git Bash ships
 # no zip either, so PowerShell's Compress-Archive writes it there.
