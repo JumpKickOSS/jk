@@ -63,7 +63,7 @@ class WrapperTemplateTest {
         assertThat(sh).doesNotContain("\"jk = \"*").doesNotContain("sha256 = ");
         // Newest installed wins when it satisfies the floor; a stale channel is a hard error.
         assertThat(sh).contains("ver_ge").contains("requires jk >=");
-        // Unix wrapper matches install.sh: .xz, inflated with system xz. No zip.
+        // The wrapper fetches the .xz that self-update inflates. install.sh fetches .gz.
         assertThat(sh).contains("jk-$OS-$ARCH-$VERSION.xz").contains("xz -dc");
         // The same refusal JkDirs makes: a relative JK_HOME is not a home jk would read.
         assertThat(sh).contains("JK_HOME must be an absolute path");
