@@ -88,8 +88,8 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 - Do not expand infinite ecosystem long tail (full KMP multiplatform, AGP parity, plugin marketplace, RBE) without an explicit ticket that says so.
 - Do not leave historical essays, ticket ids, or decision records in code comments — see [Comments and Javadoc](#comments-and-javadoc).
 - **Do not bump schema/protocol versions before 1.0** — stay on version **1** for `jk-lock.toml`, wire
-  `proto`, JSONL/`details.jsonl` `schema`, REST/SSE, MCP, etc. Additive fields only; no version
-  churn noise without public users. See [docs/contributors/architecture.md](docs/contributors/architecture.md#schema-freeze-until-10).
+  `proto`, JSONL/`details.jsonl` `schema`, REST/SSE, MCP, etc. Shapes change in place (see
+  Pre-release); no version churn noise without public users. See [docs/contributors/architecture.md](docs/contributors/architecture.md#schema-freeze-until-10).
 
 ## Tech stack
 
