@@ -1,17 +1,21 @@
-"""The LLM drivers: headless Claude Code (`claude -p`) and a Messages-API tool-use loop.
+"""The LLM drivers: headless Claude Code, headless Grok, and a Messages-API tool-use loop.
 
-Both get the same fixed system prompt, the tool's MCP server, and file access confined to the
-sandbox. Turns, tokens and wall come from the harness's own clock and the API's usage fields;
-the transcript is every event the driver saw, written beside the row.
+Each gets the same fixed system prompt, the tool's MCP server, and file tools on the sandbox.
+Turns, tokens and wall come from the harness's own clock and the API's usage fields; the
+transcript is every event the driver saw, written beside the row.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import queue
 import re
 import shutil
+import signal
 import subprocess
+import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,7 +60,7 @@ class AgentResult:
     green_claimed: bool
     turns: int
     usage: dict
-    cost_usd: float
+    cost_usd: float | None
     transcript: list[dict]
     finding: str = ""
     extra: dict = field(default_factory=dict)
@@ -139,6 +143,373 @@ def summarize(events: list[dict]) -> list[dict]:
             elif block.get("type") == "text" and block.get("text", "").strip():
                 out.append({"text": block["text"][:300]})
     return out
+
+
+# ----------------------------------------------------------------------------------- grok
+
+# Allowlist ids `grok --tools` accepts. `search_replace` is both edit and write (an empty
+# old_string creates the file); `list_dir` is the glob. MCP stays on the always-on meta-tools.
+GROK_FILE_TOOLS = ("read_file", "search_replace", "grep", "list_dir")
+GROK_META_TOOLS = ("search_tool", "use_tool")
+
+
+def _toml_basic(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _write_grok_config(home: Path, tool: str, sandbox: Path) -> str:
+    """User-scope MCP config for this run. `home` is a throwaway GROK_HOME, not `~/.grok`."""
+    server = "jk" if tool == "jk" else "results"
+    cfg = mcp_server_config(tool, sandbox)
+    lines = [
+        "[cli]",
+        "auto_update = false",
+        "",
+        "[memory]",
+        "enabled = false",
+        "",
+        "[memory_v2]",
+        "enabled = false",
+        "",
+        "[session]",
+        "load_envrc = false",
+        "save_on_end = false",
+        "",
+        "[features]",
+        "telemetry = false",
+        "feedback = false",
+        "codebase_indexing = false",
+        "web_fetch = false",
+        "image_gen = false",
+        "video_gen = false",
+        "lsp_tools = false",
+        "ask_user_question = false",
+        "session_recap = false",
+        "",
+        "[compat.claude]",
+        "skills = false",
+        "rules = false",
+        "agents = false",
+        "mcps = false",
+        "hooks = false",
+        "sessions = false",
+        "",
+        "[compat.cursor]",
+        "skills = false",
+        "rules = false",
+        "agents = false",
+        "mcps = false",
+        "hooks = false",
+        "sessions = false",
+        "",
+        "[compat.codex]",
+        "sessions = false",
+        "",
+    ]
+    if cfg["type"] == "http":
+        lines += [
+            f"[mcp_servers.{server}]",
+            f"url = {_toml_basic(cfg['url'])}",
+            "enabled = true",
+            "",
+            f"[mcp_servers.{server}.headers]",
+        ]
+        for key, value in cfg["headers"].items():
+            lines.append(f"{_toml_basic(key) if not key.isidentifier() else key} = {_toml_basic(value)}")
+    else:
+        args = ", ".join(_toml_basic(a) for a in cfg["args"])
+        lines += [
+            f"[mcp_servers.{server}]",
+            f"command = {_toml_basic(cfg['command'])}",
+            f"args = [{args}]",
+            "enabled = true",
+        ]
+    path = home / "config.toml"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.chmod(0o600)
+    return server
+
+
+def _grok_env(home: Path) -> dict[str, str]:
+    """Isolated home, memory off, vendor compat off. The login is a copy, not the user's file."""
+    env = dict(os.environ)
+    env.pop("GROK_AGENT", None)
+    env["GROK_HOME"] = str(home)
+    env["GROK_MEMORY"] = "0"
+    env["GROK_DISABLE_AUTOUPDATER"] = "1"
+    for vendor in ("CLAUDE", "CURSOR"):
+        for surface in ("SKILLS", "RULES", "AGENTS", "MCPS", "HOOKS", "SESSIONS"):
+            env[f"GROK_{vendor}_{surface}_ENABLED"] = "0"
+    if not env.get("XAI_API_KEY"):
+        auth = Path.home() / ".grok" / "auth.json"
+        if not auth.is_file():
+            raise RuntimeError("grok has no credentials: set XAI_API_KEY or run `grok login`")
+        dest = home / "auth.json"
+        shutil.copy2(auth, dest)
+        dest.chmod(0o600)
+        env["GROK_AUTH_PATH"] = str(dest)
+    return env
+
+
+def _write_sandbox_profile(home: Path, sandbox: Path) -> None:
+    """Deny reads of user grok state, the artifact cache, sibling runs, and harness sources.
+
+    Extends `workspace` rather than `strict`: `strict` blocks DNS for the model API. Writes are the
+    project, `/tmp`, and `~/.grok` except the paths denied below.
+    """
+    denies: list[Path] = []
+    user_grok = Path.home() / ".grok"
+    for name in ("auth.json", "config.toml", "trusted_folders.toml", "memory", "memory-v2", "sessions"):
+        denies.append(user_grok / name)
+    denies.append(Path.home() / ".ssh")
+    denies.append(Path.home() / ".jk" / "store" / "repos")
+    loop = Path(__file__).resolve().parents[1]
+    denies += [loop / "harnesslib", loop / "scenario", loop / "scenarios.toml"]
+    # <date>/<driver>/<tool>/<repo.failure>/sandbox — deny sibling tools and sibling drivers.
+    tool_dir = sandbox.parent.parent
+    driver_dir = tool_dir.parent
+    if sandbox.name == "sandbox" and tool_dir.name in {"jk", "mvn", "gradle"} and driver_dir.name == "grok":
+        date_dir = driver_dir.parent
+        for parent, keep in ((driver_dir, tool_dir), (date_dir, driver_dir)):
+            if not parent.is_dir():
+                continue
+            for sib in parent.iterdir():
+                if sib.resolve() != keep.resolve():
+                    denies.append(sib)
+    lines = ["[profiles.agent-loop]", 'extends = "workspace"', "deny = ["]
+    for path in denies:
+        if path.exists():
+            lines.append(f"  {_toml_basic(str(path.resolve()))},")
+    lines.append("]")
+    dest = home / "sandbox.toml"
+    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    dest.chmod(0o600)
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+
+
+def _pump(stream, sink: queue.Queue) -> None:
+    try:
+        for line in stream:
+            sink.put(line)
+    finally:
+        sink.put(None)
+
+
+def _unexpected_tools(names: list[str]) -> list[str]:
+    """Advertised tools that are neither file tools, MCP meta-tools, nor `server__tool` keys."""
+    allowed = set(GROK_FILE_TOOLS) | set(GROK_META_TOOLS)
+    return [name for name in names if name not in allowed and "__" not in name]
+
+
+def _grok_persisted_usage(env: dict[str, str], session_id: str | None, socket: Path) -> dict | None:
+    if not session_id:
+        return None
+    proc = subprocess.run(
+        ["grok", "usage", session_id, "--leader-socket", str(socket)],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _grok_cost(result: dict | None, persisted: dict | None) -> float | None:
+    """Dollars from `grok usage` ticks, else the stream's cost. Zero means unreported, not free."""
+    session = (persisted or {}).get("session") or {}
+    if session and not session.get("costIsPartial"):
+        ticks = session.get("costUsdTicks")
+        if isinstance(ticks, int) and ticks > 0:
+            return ticks / 10_000_000_000
+    cost = (result or {}).get("total_cost_usd")
+    if isinstance(cost, (int, float)) and cost > 0:
+        return float(cost)
+    return None
+
+
+def _merge_grok_usage(usage: dict, persisted: dict | None) -> dict:
+    """Stream usage matches claude-code's buckets. `grok usage` adds reasoning, and fills buckets the stream left empty.
+
+    `grok usage` `inputTokens` already includes cache reads, so it is not copied on top of a stream split.
+    """
+    session = (persisted or {}).get("session") or {}
+    if session.get("reasoningTokens") is not None:
+        usage["reasoning_tokens"] = session["reasoningTokens"]
+    if any(usage.get(k) for k in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")):
+        return usage
+    if not session:
+        return usage
+    cached = session.get("cachedReadTokens") or 0
+    created = session.get("cacheCreationTokens") or 0
+    usage["input_tokens"] = max(0, (session.get("inputTokens") or 0) - cached - created)
+    usage["output_tokens"] = session.get("outputTokens") or 0
+    usage["cache_read_input_tokens"] = cached
+    usage["cache_creation_input_tokens"] = created
+    return usage
+
+
+def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, transcript_path: Path,
+         effort: str = "high") -> AgentResult:
+    """`grok -p` with the tool's MCP server, file tools only, and the same system prompt as Claude Code.
+
+    Config, sessions and memory live in a throwaway directory (`GROK_HOME`) that this function deletes.
+    A copy of the login is passed as `GROK_AUTH_PATH`. File tools run under `--sandbox agent-loop`.
+    """
+    if not shutil.which("grok"):
+        raise RuntimeError("the `grok` CLI is not on PATH")
+    with tempfile.TemporaryDirectory(prefix="jk-agent-loop-grok-") as tmp:
+        home = Path(tmp)
+        server = _write_grok_config(home, tool, sandbox)
+        _write_sandbox_profile(home, sandbox)
+        env = _grok_env(home)
+        socket = home / "leader.sock"
+        cmd = [
+            "grok", "-p", USER_PROMPT,
+            "--verbatim",
+            "--output-format", "streaming-messages-json",
+            "--model", model,
+            "--reasoning-effort", effort,
+            "--max-turns", str(max_turns),
+            "--system-prompt-override", system_prompt(tool, sandbox, server),
+            "--tools", ",".join(GROK_FILE_TOOLS),
+            "--disable-web-search",
+            "--no-subagents",
+            "--no-plan",
+            "--always-approve",
+            "--permission-mode", "bypassPermissions",
+            "--sandbox", "agent-loop",
+            "--leader-socket", str(socket),
+        ]
+        events: list[dict] = []
+        started = time.monotonic()
+        timed_out = False
+        result: dict | None = None
+        advertised: list[str] = []
+        stderr_parts: list[str] = []
+        with subprocess.Popen(
+            cmd, cwd=sandbox, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, errors="replace", env=env, start_new_session=True,
+        ) as proc, transcript_path.open("w", encoding="utf-8") as out:
+            assert proc.stdout and proc.stderr
+            stdout_q: queue.Queue = queue.Queue()
+            stderr_q: queue.Queue = queue.Queue()
+            threads = [
+                threading.Thread(target=_pump, args=(proc.stdout, stdout_q), daemon=True),
+                threading.Thread(target=_pump, args=(proc.stderr, stderr_q), daemon=True),
+            ]
+            for thread in threads:
+                thread.start()
+            stdout_done = False
+            while not stdout_done:
+                if time.monotonic() - started > max_seconds:
+                    timed_out = True
+                    _kill_group(proc)
+                    break
+                try:
+                    line = stdout_q.get(timeout=0.25)
+                except queue.Empty:
+                    if proc.poll() is not None and stdout_q.empty():
+                        break
+                    continue
+                if line is None:
+                    stdout_done = True
+                    break
+                out.write(line)
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                events.append(ev)
+                if ev.get("type") == "system" and ev.get("subtype") == "init":
+                    advertised = list(ev.get("tools") or [])
+                    if _unexpected_tools(advertised):
+                        _kill_group(proc)
+                        break
+                elif ev.get("type") == "result":
+                    result = ev
+            while True:
+                try:
+                    line = stdout_q.get_nowait()
+                except queue.Empty:
+                    break
+                if not line:
+                    continue
+                out.write(line)
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                events.append(ev)
+                if ev.get("type") == "result":
+                    result = ev
+            if timed_out or _unexpected_tools(advertised):
+                _kill_group(proc)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                _kill_group(proc)
+                proc.wait(timeout=5)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                try:
+                    line = stderr_q.get(timeout=0.2)
+                except queue.Empty:
+                    if proc.poll() is not None:
+                        break
+                    continue
+                if line is None:
+                    break
+                stderr_parts.append(line)
+        stderr = "".join(stderr_parts).strip()
+        # One `assistant` event per model response: the same count as claude-code's stream-json.
+        turns = count_assistant_turns(events)
+        unexpected = _unexpected_tools(advertised)
+        persisted = _grok_persisted_usage(env, (result or {}).get("session_id"), socket)
+        usage = _merge_grok_usage(dict((result or {}).get("usage") or {}), persisted)
+        extra = {
+            "session_id": (result or {}).get("session_id"),
+            "subtype": (result or {}).get("subtype"),
+            "tools": advertised,
+            "model_usage": (result or {}).get("modelUsage"),
+            "effort": effort,
+        }
+        if unexpected:
+            return AgentResult(False, turns, usage, _grok_cost(result, persisted), summarize(events),
+                               f"grok advertised tools outside the file and MCP set: {', '.join(unexpected)}", extra)
+        if "keeping full grok toolset" in stderr:
+            return AgentResult(False, turns, usage, _grok_cost(result, persisted), summarize(events),
+                               "grok ignored the tool allowlist and kept its full toolset", extra)
+        if result is None:
+            finding = "grok exited without a result event" + (f": {stderr[:300]}" if stderr else "")
+            if timed_out or time.monotonic() - started > max_seconds:
+                finding = f"time budget exhausted ({max_seconds}s)"
+            return AgentResult(False, turns, usage, _grok_cost(None, persisted), summarize(events), finding, extra)
+        if result.get("num_turns"):
+            turns = int(result["num_turns"])
+        text = result.get("result") or ""
+        claimed = bool(re.match(r"\s*GREEN\b", text))
+        finding = "" if claimed else (f"agent stopped: {text.strip()[:200]}" if text.strip() else f"agent stopped ({result.get('subtype')})")
+        if timed_out and not claimed:
+            finding = f"time budget exhausted ({max_seconds}s)"
+        summary = summarize(events)
+        used = _unexpected_tools([step["tool_use"] for step in summary if step.get("tool_use")])
+        if used:
+            claimed = False
+            finding = f"agent used a tool outside the file and MCP set: {', '.join(used)}"
+        return AgentResult(claimed, turns, usage, _grok_cost(result, persisted), summary, finding, extra)
 
 
 # -------------------------------------------------------------------------------- api

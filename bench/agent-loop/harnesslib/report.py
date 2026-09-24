@@ -67,8 +67,14 @@ def _driver_sections(rows: list[dict]) -> list[str]:
     for driver in drivers:
         sub = [r for r in rows if r["driver"] == driver]
         models = sorted({r.get("model") or "" for r in sub} - {""})
+        efforts = sorted({r.get("effort") or "" for r in sub} - {""})
         budgets = sorted({f"{r['max_turns']} turns / {r['max_minutes']} min" for r in sub})
-        lines.append(f"## `{driver}`" + (f" · {', '.join(models)}" if models else "") + f" · budget {', '.join(budgets)}")
+        title = f"## `{driver}`"
+        if models:
+            title += f" · {', '.join(models)}"
+        if efforts:
+            title += f" · effort {', '.join(efforts)}"
+        lines.append(title + f" · budget {', '.join(budgets)}")
         lines.append("")
         lines.append("| Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost |")
         lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
