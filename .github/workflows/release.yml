@@ -19,7 +19,7 @@
 #                                (id-token, attestations)
 #
 # Hosting: objects in GCS behind the Firebase CDN at https://jumpkick.build. Path:
-#   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/{LATEST,LATEST.sig,VERSION}
+#   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/LATEST (one signed object)
 #
 # The GitHub Release that triggered the run receives the same version tree (clients, engine jar,
 # SHA256SUMS and its signature), the CycloneDX SBOM jk wrote of its engine (`jk publish --sbom
@@ -336,9 +336,8 @@ jobs:
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
       # Preconditions first, then the version tree and the Maven repository, and the latest pointer
-      # as the very last objects: an installer that reads it finds everything it names already there.
-      # The pointer is signed data (scripts/sign-latest-pointer.sh); its signature goes up before
-      # the pointer, so a client reading mid-publish gets a refusal, never an unverified version.
+      # as the very last object: an installer that reads it finds everything it names already there.
+      # The pointer is one signed object (scripts/sign-latest-pointer.sh), so its publish is one copy.
       - name: Upload to GCS
         if: github.event_name == 'release'
         env:
@@ -362,13 +361,16 @@ jobs:
           gsutil -m rsync -r "target/release/repo/" "gs://${BUCKET}/repo/"
           echo "  gs://${BUCKET}/repo/cc/jumpkick/ ($(find target/release/repo -name '*.jar' | wc -l) jars)"
           scripts/sign-latest-pointer.sh "$VER" out/latest
-          for object in LATEST.sig LATEST VERSION; do
-            gsutil -h "Cache-Control:no-cache,max-age=0" cp "out/latest/$object" \
-              "gs://${BUCKET}/releases/latest/$object"
-          done
+          gsutil -h "Cache-Control:no-cache,max-age=0" cp "out/latest/LATEST" \
+            "gs://${BUCKET}/releases/latest/LATEST"
+          # VERSION is an unsigned convenience. Nothing verifies it, and nothing orders it
+          # against LATEST. The detached signature from earlier releases is no longer read.
+          gsutil -h "Cache-Control:no-cache,max-age=0" cp "out/latest/VERSION" \
+            "gs://${BUCKET}/releases/latest/VERSION"
+          gsutil rm "gs://${BUCKET}/releases/latest/LATEST.sig" || true
           echo "Published:"
           echo "  gs://${BUCKET}/releases/${VER}/"
-          echo "  gs://${BUCKET}/releases/latest/{LATEST,LATEST.sig,VERSION}"
+          echo "  gs://${BUCKET}/releases/latest/LATEST"
           echo "  https://jumpkick.build/repo/cc/jumpkick/jk-formatter/${VER}/jk-formatter-${VER}.jar"
           gsutil ls -l "gs://${BUCKET}/releases/${VER}/"
           gsutil cat "gs://${BUCKET}/releases/latest/LATEST"

@@ -8,10 +8,10 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.13.9`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.13.9`** | Next public release cut from that line |
-| Prior | **`0.13.8`** — previous tagged release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.13.9`, `0.14.0`, … |
+| **`0.14.0`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.14.0`** | Next public release cut from that line |
+| Prior | **`0.13.9`** — previous release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.14.0`, `0.15.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -25,6 +25,13 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.14.0
+
+- **The latest-release pointer is one signed file.** `releases/latest/LATEST` carries the version, when it was issued, and the signature over those two lines. Publishing it is one copy, so a client never reads a pointer whose signature has not landed. Installers, wrappers and `jk self update` from 0.13.9 and earlier still fetch a separate signature and cannot read this pointer: reinstall from [jumpkick.build](https://jumpkick.build). `jk self update` works again from 0.14.0 onward.
+- **`jk update` does not move a pin down.** `jk update` and `jk lock -F` keep a package at least where the lock they replace had it, and `jk update` lists the packages it actually changed.
+- **`jk why` reads the request from the parent POM.** A lock edge records the version that was picked.
+- **A mixed Java and Scala compile stays on the Scala compiler.** `.scala` files are not handed to javac.
 
 ### 0.13.9
 
@@ -200,10 +207,11 @@ Layout under the bucket (and under the CDN path `/releases`):
 ```text
 releases/
   latest/
-    LATEST                  # signed pointer: `version 0.13.6` + `issued <unix-seconds>`, LF each
-    LATEST.sig              # base64 RSA/SHA-256 signature over the exact LATEST bytes
+    LATEST                  # one signed object, LF each, Cache-Control: no-cache:
+                            #   version <v>
+                            #   issued <unix-seconds>
+                            #   signature <base64>   # over the exact first two lines
     VERSION                 # bare version — a redirect-compatible convenience nothing verifies
-                            # (all three: Cache-Control: no-cache)
   0.13.6/
     jk-linux-x86_64-0.13.6.xz
     jk-linux-aarch64-0.13.6.xz
@@ -239,10 +247,10 @@ manifest is signed but not bound to its directory, so a valid manifest copied fr
 release into a newer version's directory names only the older artifacts and satisfies no
 request for the newer one. `jk self update` prefers `.xz` on every OS
 (the engine jar inflates; the native CLI does not link tukaani) and falls back to
-`.zip` on Windows when the sums have no xz entry. All of them read `latest/LATEST` and
-`latest/LATEST.sig`, verify the signature, read the pointer literally (exactly the two lines
-above; a CRLF, a bare version or a third line is refused), then fetch **only** from the version
-directory it names so a mid-install publish cannot mix artifacts.
+`.zip` on Windows when the sums have no xz entry. All of them read `latest/LATEST`, one object
+whose third line is the signature over the exact first two, verify that signature, read the
+pointer literally (a CRLF, a bare version, a missing signature line or a fourth line is refused),
+then fetch **only** from the version directory it names so a mid-install publish cannot mix artifacts.
 
 The pointer is the one mutable object under `releases/`, so it is the one a bucket writer or an
 interposed `JK_RELEASES_URL` mirror would rewrite. Signing it stops an edited pointer; the floor
@@ -260,14 +268,15 @@ to Cloud Storage — either is fine as long as the URL layout above is public HT
 ## Signing
 
 - Algorithm: **SHA256withRSA**, RSA-3072, PKCS#1 v1.5, over the exact `SHA256SUMS` bytes and,
-  with the same key, over the exact `latest/LATEST` bytes.
+  with the same key, over the exact first two lines of `latest/LATEST`.
 - Public key: baked into `ReleaseVerifier.BUILT_IN_KEY` (base64 X.509/SPKI), with the same
   modulus/exponent embedded in the stock PowerShell verifier.
 - Private key: GitHub Actions secret **`JK_RELEASE_RSA_SIGNING_KEY`** (base64 PKCS#8 DER).
 - Local sign: `scripts/sign-release.sh path/to/SHA256SUMS /owner-only/path/release-key.pem`
 - Pointer: `scripts/sign-latest-pointer.sh <version> <out-dir> /owner-only/path/release-key.pem`
-  writes `LATEST`, `LATEST.sig` and `VERSION` (fixtures: `scripts/test-installer-verification.sh`
-  and `.ps1` cover an unsigned, a tampered, a rolled-back and a malformed pointer).
+  writes `LATEST` (the three-line object) and `VERSION` (fixtures:
+  `scripts/test-installer-verification.sh` and `.ps1` cover an unsigned, a tampered, a rolled-back
+  and a malformed pointer).
 - Additional host keys: `[release] trusted-keys` in `~/.jk/config.toml`.
 
 Remote installers, wrappers, self-update, and engine materialization all require the signatures.
@@ -286,8 +295,8 @@ it, and the workflow does the rest. Nothing reaches the bucket, the pointer, the
 the release page from a developer machine.
 
 ```bash
-git tag v0.13.9 && git push origin v0.13.9
-gh release create v0.13.9 --title "jk 0.13.9" --notes "building"   # the body is replaced by CI
+git tag v0.14.0 && git push origin v0.14.0
+gh release create v0.14.0 --title "jk 0.14.0" --notes "building"   # the body is replaced by CI
 gh run watch                                                         # ~30 min across the matrix
 ```
 
@@ -303,7 +312,7 @@ that holds the signing key would be a signed release someone else cut. The
 under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow-lint job, and
 `.github/dependabot.yml` moves the pins weekly.
 
-1. Publish a GitHub Release for tag `v0.13.9`. The version must equal `JkVersion` without the
+1. Publish a GitHub Release for tag `v0.14.0`. The version must equal `JkVersion` without the
    `v`; `scripts/release-version.sh` refuses any other tag before anything is built.
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
@@ -325,9 +334,9 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    workspace root — the document the engine jar embeds under `META-INF/sbom/`, derived from
    `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` — beside the tree, so the signed
    `SHA256SUMS` the installers verify is untouched. A dispatch ends here.
-6. **`gsutil rsync`** to GCS, then the pointer (`scripts/sign-latest-pointer.sh`): `LATEST.sig`
-   first, then `LATEST`, then `VERSION`, all with no-cache headers. A client reading between the
-   two copies gets a signature refusal and retries; it never gets an unverified version.
+6. **`gsutil rsync`** to GCS, then the pointer (`scripts/sign-latest-pointer.sh`): one `gsutil cp`
+   of `LATEST` with a no-cache header. The object carries its own signature, so the publish is
+   atomic. `VERSION` is copied beside it; nothing verifies it. A leftover `LATEST.sig` is removed.
 7. `firebase deploy --only hosting` puts `hosting/public` — the installers with this release's
    floor and public key — on jumpkick.build, after the pointer they will read.
 8. `actions/attest-build-provenance` stores one build-provenance attestation per client, the
@@ -387,9 +396,9 @@ the repository. Nothing prints the value.
 ### Manual upload (ops)
 
 The workflow is the publisher; this is the same sequence by hand, for a release cut on a machine
-when CI cannot run. Order matters: the version tree, then the pointer (signature before
-pointer), then the website — a freshly deployed `install.sh` carries the new floor and refuses
-the old pointer until step 2 is done.
+when CI cannot run. Order matters: the version tree, then the pointer, then the website — a
+freshly deployed `install.sh` carries the new floor and refuses the old pointer until step 2 is
+done. The pointer publish is one copy.
 
 Before any of it, the tree is built and installed in the order the CI lane keeps: the
 **previous** release's client and engine — the ones the home names before the bump — run
@@ -408,18 +417,21 @@ version tree.
 # 1. After assemble-release-dir.sh / flatten-release.sh (or the merged workflow artifact):
 gsutil -m rsync -r -d target/release/0.13.6/ gs://$BUCKET/releases/0.13.6/
 
-# 2. The signed pointer: LATEST.sig, then LATEST, then the VERSION convenience.
+# 2. The signed pointer: one copy of LATEST. VERSION is an unsigned convenience.
 scripts/sign-latest-pointer.sh 0.13.6 target/release/latest /owner-only/path/release-key.pem
-for object in LATEST.sig LATEST VERSION; do
-  gsutil -h "Cache-Control:no-cache,max-age=0" cp "target/release/latest/$object" \
-    "gs://$BUCKET/releases/latest/$object"
-done
+gsutil -h "Cache-Control:no-cache,max-age=0" cp target/release/latest/LATEST \
+  "gs://$BUCKET/releases/latest/LATEST"
+gsutil -h "Cache-Control:no-cache,max-age=0" cp target/release/latest/VERSION \
+  "gs://$BUCKET/releases/latest/VERSION"
+gsutil rm "gs://$BUCKET/releases/latest/LATEST.sig" || true
 
-# 3. Verify through the public edge the installers use, with the baked-in public key:
+# 3. Verify through the public edge the installers use, with the baked-in public key.
+# The signature covers the first two lines, not the signature line.
 curl -fsSL https://jumpkick.build/releases/latest/LATEST -o LATEST
-curl -fsSL https://jumpkick.build/releases/latest/LATEST.sig | openssl base64 -d -A >LATEST.sig.bin
-openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST   # "Verified OK"
-cat LATEST                                                                        # version 0.13.6 / issued …
+head -n 2 LATEST >LATEST.body
+awk 'NR==3 { sub(/^signature /,""); print }' LATEST | openssl base64 -d -A >LATEST.sig.bin
+openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST.body   # "Verified OK"
+head -n 2 LATEST                                                                        # version 0.13.6 / issued …
 
 # 4. Deploy hosting/public (install.sh / install.ps1 with the matching floor).
 

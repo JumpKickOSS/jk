@@ -44,7 +44,7 @@ Maven Central ([releases](releases.md#maven-central)). A plugin outside this tre
 
 ```toml
 [dependencies]
-jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.13.9"     # the release you compile against
+jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.14.0"     # the release you compile against
 ```
 
 ```toml
@@ -52,7 +52,7 @@ jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.13.9"     # the release you compile
 id        = "hello"
 table     = "hello"
 version   = "0.1.0"
-sdk       = "0.13.9"          # the jk-plugin-sdk release you compiled against — the pin above
+sdk       = "0.14.0"          # the jk-plugin-sdk release you compiled against — the pin above
 jk-compat = ">=0.13"          # the floor: the oldest jk line that loads this plugin
 ```
 
@@ -110,7 +110,7 @@ id        = "spring-boot"
 table     = "spring-boot"     # jk.toml table you own
 version   = "1.0.0"
 jk-compat = ">=0.10"
-# sdk = "0.13.9"              # out-of-tree plugins: the jk-plugin-sdk release compiled against
+# sdk = "0.14.0"              # out-of-tree plugins: the jk-plugin-sdk release compiled against
 
 [schema]
 version = { type = "string", required = true, example = "4.1.0",

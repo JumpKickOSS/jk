@@ -11,6 +11,7 @@ import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
@@ -105,33 +106,52 @@ public final class ReleaseVerifier {
      */
     public record Pointer(String version, long issued) {}
 
-    private static final Pattern POINTER =
-            Pattern.compile("version ([0-9]+\\.[0-9]+\\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\\nissued ([0-9]{1,18})\\n");
+    /**
+     * One {@code LATEST} object. {@code signedBytes} are the exact {@code version} and {@code
+     * issued} lines the signature covers; {@code signature} is the base64 on the third line.
+     */
+    public record SignedPointer(Pointer pointer, byte[] signedBytes, String signature) {}
+
+    private static final Pattern POINTER_OBJECT =
+            Pattern.compile("version ([0-9]+\\.[0-9]+\\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\\n"
+                    + "issued ([0-9]{1,18})\\n"
+                    + "signature ([A-Za-z0-9+/]+={0,2})\\n");
 
     /**
-     * Parse the exact bytes of a {@code LATEST} pointer: precisely {@code version <v>} and {@code
-     * issued <unix-seconds>}, each LF-terminated, nothing else. The signature is over these bytes,
-     * so the verifier's reading has to be as literal as the signer's writing — a CRLF, a third
-     * line or a version that is not a plain version token is refused, not tolerated.
+     * Parse one {@code LATEST} object: {@code version <v>}, {@code issued <unix-seconds>} and
+     * {@code signature <base64>}, each LF-terminated, nothing else. The signature covers the exact
+     * bytes of the first two lines, so the verifier's reading has to be as literal as the signer's
+     * writing — a CRLF, a missing signature line or a version that is not a plain version token is
+     * refused, not tolerated.
      */
-    public static Pointer parsePointer(byte[] pointerBytes) throws IOException {
+    public static SignedPointer parseSignedPointer(byte[] objectBytes) throws IOException {
         String text;
         try {
             text = StandardCharsets.US_ASCII
                     .newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(pointerBytes))
+                    .decode(ByteBuffer.wrap(objectBytes))
                     .toString();
         } catch (CharacterCodingException e) {
             throw new IOException("latest-release pointer is not ASCII", e);
         }
-        var match = POINTER.matcher(text);
+        var match = POINTER_OBJECT.matcher(text);
         if (!match.matches()) {
             throw new IOException("latest-release pointer is malformed — expected exactly"
-                    + " 'version <x.y.z>' and 'issued <unix-seconds>', LF-terminated");
+                    + " 'version <x.y.z>', 'issued <unix-seconds>' and 'signature <base64>',"
+                    + " LF-terminated");
         }
-        return new Pointer(match.group(1), Long.parseLong(match.group(2)));
+        int signatureLine = text.lastIndexOf("\nsignature ");
+        return new SignedPointer(
+                new Pointer(match.group(1), Long.parseLong(match.group(2))),
+                Arrays.copyOf(objectBytes, signatureLine + 1),
+                match.group(3));
+    }
+
+    /** The version and issued time {@link #parseSignedPointer} reads out of the object. */
+    public static Pointer parsePointer(byte[] objectBytes) throws IOException {
+        return parseSignedPointer(objectBytes).pointer();
     }
 
     /**
