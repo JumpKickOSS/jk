@@ -213,7 +213,7 @@ final class HttpProjectApi {
                 return;
             }
         }
-        // One card, one parse path (shared with MCP jk_project): identity resolves without a
+        // One card, one parse path (shared with MCP project): identity resolves without a
         // parseable manifest, so a ?dir= call on a broken workspace still gets its durable id.
         ProjectCard card = ProjectCard.of(Path.of(dir));
         String resolvedId = card.projectId() != null ? card.projectId() : projectId;

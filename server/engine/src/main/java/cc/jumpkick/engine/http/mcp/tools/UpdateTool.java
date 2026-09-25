@@ -9,13 +9,13 @@ import cc.jumpkick.engine.http.mcp.McpUpdate;
 import java.util.List;
 import java.util.Map;
 
-/** {@code jk_update} — preview or apply the pin rewrite and relock {@code jk update} performs. */
+/** {@code update} — preview or apply the pin rewrite and relock {@code jk update} performs. */
 public final class UpdateTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_update",
+                "update",
                 "Move declared exact pins in jk.toml to the newest stable on the same major (major=true"
                         + " crosses) and relock — same as jk update. apply=false (default) only previews"
                         + " the rewrites; apply=true writes jk.toml and jk-lock.toml and lists every lock"

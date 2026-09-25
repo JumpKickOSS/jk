@@ -90,7 +90,7 @@ class JkResultsAgentTest {
                         FAIL build rest-service · 4 errors · 900ms
                         E src/main/java/com/example/restservice/GreetingController.java:3:8 package org.springframework.web.bind.annotation does not exist
                           +3 more in GreetingController.java
-                        FIX jk add org.springframework.boot:spring-boot-starter-web
+                        FIX deps(add, org.springframework.boot:spring-boot-starter-web)
                         """);
     }
 
@@ -151,7 +151,7 @@ class JkResultsAgentTest {
                 diag("compile-java", "javac", "f", "src/F.java", 6, 1, 0, List.of(), ""),
                 diag("compile-java", "javac", "g", "src/G.java", 7, 1, 0, List.of(), ""));
         String text = JkResultsAgent.render(record("build", false, false, 100, null, diags, List.of()));
-        assertThat(text).contains("+2 more: jk_diagnostics(file=src/F.java)\n");
+        assertThat(text).contains("+2 more: diagnostics(file=src/F.java)\n");
         assertThat(text).doesNotContain("src/G.java:");
     }
 

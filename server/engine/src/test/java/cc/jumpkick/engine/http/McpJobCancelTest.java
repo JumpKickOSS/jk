@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 
-/** {@code jk_job action=cancel} target selection — no HTTP bind. */
+/** {@code job action=cancel} target selection — no HTTP bind. */
 class McpJobCancelTest {
 
     private final List<Long> cancelled = new CopyOnWriteArrayList<>();
@@ -57,14 +57,14 @@ class McpJobCancelTest {
                 null);
     }
 
-    /** A connection bound to {@code /ws}: {@code initialize} mints it, {@code jk_bind} binds it. */
+    /** A connection bound to {@code /ws}: {@code initialize} mints it, {@code bind} binds it. */
     private static String boundToWs(McpHandler mcp) {
         String session = requireNonNull(
                 mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
                         .openedSessionId());
         mcp.handle(
                 "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                        + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws\"}}}",
+                        + "\"params\":{\"name\":\"bind\",\"arguments\":{\"dir\":\"/ws\"}}}",
                 session);
         return session;
     }
@@ -80,7 +80,7 @@ class McpJobCancelTest {
         String session = boundToWs(mcp);
         String body = mcp.handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                                + "\"params\":{\"name\":\"jk_job\",\"arguments\":{\"action\":\"cancel\"}}}",
+                                + "\"params\":{\"name\":\"job\",\"arguments\":{\"action\":\"cancel\"}}}",
                         session)
                 .body();
         assertThat(cancelled).containsExactly(7L);
@@ -93,7 +93,7 @@ class McpJobCancelTest {
         String session = boundToWs(mcp);
         mcp.handle(
                 "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                        + "\"params\":{\"name\":\"jk_job\",\"arguments\":{\"action\":\"cancel\"}}}",
+                        + "\"params\":{\"name\":\"job\",\"arguments\":{\"action\":\"cancel\"}}}",
                 session);
         assertThat(cancelled).containsExactly(5L);
     }
@@ -102,7 +102,7 @@ class McpJobCancelTest {
     void unbound_cancel_without_jid_is_an_error_not_a_kill() {
         McpHandler mcp = handler(List.of(run(7L, 2_000L)));
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_job\",\"arguments\":{\"action\":\"cancel\"}}}");
+                + "\"params\":{\"name\":\"job\",\"arguments\":{\"action\":\"cancel\"}}}");
         assertThat(body).contains("-32602");
         assertThat(body).contains("jid");
         assertThat(cancelled).isEmpty();

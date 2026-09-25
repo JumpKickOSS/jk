@@ -8,8 +8,8 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
 /**
- * {@code jk_publish} / {@code jk_import} — a discoverable name for one {@code jk_run} kind. The
- * body is {@code jk_run}'s, pinned: a second job path would be a second definition of "finished".
+ * {@code publish} / {@code import} — a discoverable name for one {@code run} kind. The
+ * body is {@code run}'s, pinned: a second job path would be a second definition of "finished".
  */
 public final class RunAliasTool implements McpTool {
 

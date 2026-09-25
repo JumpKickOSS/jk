@@ -179,4 +179,4 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   from it. `jk storage usage` reports its size for information only.
 - **Managed JDKs**: `jk jdk uninstall` removes them; nothing else does.
 
-MCP: `jk_disk` (`clean`/`nuke` require `confirm=true`).
+MCP: `disk` (`clean`/`nuke` require `confirm=true`).

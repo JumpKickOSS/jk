@@ -35,11 +35,8 @@ public final class JkResultsAgent {
     /** Snippet lines when a caller asks for the lines around an error, not only the offending one. */
     static final int MAX_SNIPPET = 3;
 
-    /**
-     * Tool name in the continuation line. The card is still {@code jk_diagnostics}; a later rename
-     * changes this constant with the card.
-     */
-    public static final String DIAGNOSTICS_TOOL = "jk_diagnostics";
+    /** Tool name in the continuation line. The card is {@code diagnostics}. */
+    public static final String DIAGNOSTICS_TOOL = "diagnostics";
 
     private static final Pattern FRAME =
             Pattern.compile("^at\\s+(?:[\\w.$]+/)?([\\w.$]+)\\.([\\w$<>]+)\\(([^():]+):(\\d+)\\)");
@@ -529,11 +526,14 @@ public final class JkResultsAgent {
         if (hint != null) sb.append(fixLine(hint, "")).append('\n');
     }
 
-    /** The hint as one action. A coordinate the hint already names stays {@code jk add g:a}. */
+    /**
+     * The hint as one action. A coordinate the hint names is {@code deps(add, g:a)} — the same
+     * call on MCP and in {@code --agent} output. {@code jk add g:a} is the CLI spelling of it.
+     */
     private static String fixLine(JkResultsHints.Hint hint, String projectDir) {
         String raw = hint.text();
         Matcher add = JK_ADD.matcher(raw.replace("`", ""));
-        if (add.find() && !add.group(1).startsWith("<")) return "FIX jk add " + add.group(1);
+        if (add.find() && !add.group(1).startsWith("<")) return "FIX deps(add, " + add.group(1) + ")";
         return "FIX " + one(raw.replace('`', ' '), projectDir);
     }
 

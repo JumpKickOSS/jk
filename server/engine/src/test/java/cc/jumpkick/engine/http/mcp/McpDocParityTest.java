@@ -4,13 +4,13 @@ package cc.jumpkick.engine.http.mcp;
 import static cc.jumpkick.engine.http.JsonFields.objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.docs.JkManual;
+import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,8 +32,11 @@ import org.junit.jupiter.api.Test;
  */
 class McpDocParityTest {
 
-    /** A first-column tool cell: {@code **`jk_x`**}, repeated in combined rows. */
-    private static final Pattern TOOL_CELL = Pattern.compile("\\*\\*`(jk_[a-z_]+)`\\*\\*");
+    /** A first-column tool cell: {@code **`run`**}, repeated in combined rows. */
+    private static final Pattern TOOL_CELL = Pattern.compile("\\*\\*`([a-z_]+)`\\*\\*");
+
+    /** A tool call in the skill's MCP column: {@code `run(kind=test)`}. */
+    private static final Pattern MCP_CALL = Pattern.compile("`([a-z_]+)\\(");
 
     /** A first-column resource cell: {@code `jk://…`}. */
     private static final Pattern RESOURCE_CELL = Pattern.compile("`(jk://[a-z/-]+)`");
@@ -53,33 +56,23 @@ class McpDocParityTest {
     }
 
     /**
-     * The playbook's {@code ## MCP tools} table is the default {@code tools/list} in prose: same
-     * names, same one-sentence descriptions, byte for byte. A card that says one thing while the
-     * manual says another is two playbooks for one loop.
+     * The skill's {@code ## Loop} table names every default tool in its MCP column, so an agent that
+     * reads the skill meets each one. Descriptions are not repeated there: an MCP client already has
+     * them from {@code tools/list}.
      */
     @Test
-    void manual_tool_table_is_the_default_list_verbatim() {
-        Map<String, String> manual = new LinkedHashMap<>();
-        for (String line : manualSection("MCP tools")) {
+    void skill_loop_table_names_every_default_tool() {
+        Set<String> named = new LinkedHashSet<>();
+        for (String line : skillSection("Loop")) {
             if (!line.startsWith("|")) continue;
             String[] cells = line.split("\\|");
-            if (cells.length < 3) continue;
-            Matcher m = TOOL_CELL.matcher(cells[1]);
-            if (m.find()) manual.put(m.group(1), cells[2].trim());
+            if (cells.length < 4) continue;
+            Matcher m = MCP_CALL.matcher(cells[3]);
+            while (m.find()) named.add(m.group(1));
         }
-        assertThat(manual)
-                .as("tool rows parsed from the playbook's MCP tools table")
-                .isNotEmpty();
-        McpTools tools = McpTools.standard();
-        assertThat(manual.keySet())
-                .as("playbook MCP tools table vs the default tools/list")
-                .containsExactlyElementsOf(tools.loopNames());
-        for (Map<String, Object> row : objects(tools.listing(McpTools.Surface.LOOP), "tools")) {
-            String name = String.valueOf(row.get("name"));
-            assertThat(manual.get(name))
-                    .as("%s: playbook row vs served card", name)
-                    .isEqualTo(row.get("description"));
-        }
+        assertThat(named)
+                .as("MCP tools named in the skill's Loop table vs the default tools/list")
+                .containsExactlyInAnyOrderElementsOf(McpTools.standard().loopNames());
     }
 
     @Test
@@ -122,11 +115,11 @@ class McpDocParityTest {
         return names;
     }
 
-    /** The lines of one {@code ## <name>} section of the served playbook, exclusive of the next heading. */
-    private static List<String> manualSection(String name) {
+    /** The lines of one {@code ## <name>} section of the skill core, exclusive of the next heading. */
+    private static List<String> skillSection(String name) {
         List<String> out = new ArrayList<>();
         boolean in = false;
-        for (String line : JkManual.markdown().split("\n")) {
+        for (String line : JkSkill.core().split("\n")) {
             if (line.startsWith("## ")) in = line.equals("## " + name);
             else if (in) out.add(line);
         }

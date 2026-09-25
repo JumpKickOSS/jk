@@ -7,7 +7,7 @@ what to do.
 ```bash
 jk test          # unit tier
 jk build         # jar with git.properties, plus sources and javadoc jars, under target/
-jk publish       # dry-run by default; see `jk manual`
+jk publish       # dry-run by default; see `jk skill`
 ```
 
 `jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the

@@ -97,7 +97,7 @@ final class HttpHistoryApi {
     /**
      * Redact a batch of raw journal records with one per-dir redactor cache. This endpoint
      * streams record bodies verbatim, so {@code .env} secrets in message/stack are stripped here.
-     * MCP journal suppliers ride this so {@code jk_history view=full} / {@code jk_diagnostics}
+     * MCP journal suppliers ride this so {@code history view=full} / {@code diagnostics}
      * never serve those secrets.
      */
     static List<String> redactRecords(List<String> raw) {

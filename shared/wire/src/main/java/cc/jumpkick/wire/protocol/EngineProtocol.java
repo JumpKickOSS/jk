@@ -309,7 +309,7 @@ public final class EngineProtocol {
      * libraries}/{@code jdks} only, for tests and power users); one {@link #FRESHEN_CATALOG_ACK}.
      *
      * <p>JDK installs themselves ride one shared path everywhere: {@code JdkService.install}
-     * fetches the catalog and installs (CLI {@code jk jdk install} and MCP {@code jk_jdk} both
+     * fetches the catalog and installs (CLI {@code jk jdk install} and MCP {@code jdk} both
      * call it). This request is the engine-hosted <em>catalog refresh</em> channel; the CLI only
      * sends it when an engine already answers — the engine is a JVM process that needs a JDK to
      * run, so this cannot be the sole path to provisioning the first JDK on a bare machine.

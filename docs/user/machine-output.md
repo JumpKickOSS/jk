@@ -7,12 +7,12 @@ How JumpKick talks to **agents, scripts, and CI**. Humans at a TTY get a terse v
 |----------|-----------------|
 | Human at a TTY | Terse visual CLI |
 | Human debugging | `jk results` first; `--details` / `-v` if needed |
-| Agents | **`jk manual`** once, then the verdict: MCP `jk_run`, or `jk --agent` / `JK_AGENT=1` |
+| Agents | **`jk skill`** once, then the verdict: MCP `run`, or `jk --agent` / `JK_AGENT=1` |
 | Scripts / CI | **`target/jk-results.md`** / `jk results`, or `--output json`/`jsonl` |
 | Web dashboard | Engine HTTP + SSE (`/api/events`) |
 | MCP clients | Tools, resources, SSE — same facts, not a second build model |
 
-JumpKick system prompt: `jk manual` / MCP `jk_manual`. Agent playbook: [Agents](agents.md).
+JumpKick system prompt: `jk skill` / MCP `skill`. Agent playbook: [Agents](agents.md).
 MCP tools: [MCP](mcp.md). Failures: [Troubleshooting](troubleshooting.md).
 
 ## `jk results`
@@ -45,7 +45,7 @@ written without one, because their parsers would read the mark as content.
 The header's second line names who asked: `trigger: cli`, or `trigger: mcp · session:
 claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an IDE), then
 `commit:` and the jk version. The same `trigger`/`session` fields sit on the journal record
-(`jk history`, `GET /api/history`, `jk_history`) and on the `session-start` line of
+(`jk history`, `GET /api/history`, `history`) and on the `session-start` line of
 `details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked). The line after it is
 `tokens ≈ N`: the whole file's size at a fixed 3.6 characters per token, so an agent can decide
 between this file and `details.jsonl` before reading either.
@@ -89,7 +89,7 @@ code `test-launcher`: the exit (the signal's name beside it for `128 + signal`),
 engine the runner named or the JVM's own last words (else the fork's last lines, or that it printed
 nothing and the command it was started with), the two conflicting JUnit coordinates when the lock names them, and the fix (`jk why
 <coordinate>`), with the fork's output as the fenced block. It is never
-counted as a red test, so there is no `Tests:` line for it. MCP `jk_diagnostics` returns it as one
+counted as a red test, so there is no `Tests:` line for it. MCP `diagnostics` returns it as one
 row (`code`, `message`, `detail`, `exceptionClass`). [Test](test.md#when-the-launcher-cannot-start).
 
 The headline outcome is the run's own verdict. `FAIL` with the failed step's exit (`1`, or `4` for
@@ -111,7 +111,7 @@ that has sources) and `no tests ran` (`jk test` on a workspace in which no modul
 step. [Workspaces](workspaces.md#nothing-to-build).
 
 The two markdown files are the same human report. JUnit XML stays at `target/reports/test-results/`.
-There is no separate `test-results.md`. MCP `jk_run` / `jk_results` and `jk://runs/latest/results`
+There is no separate `test-results.md`. MCP `run` / `run` and `jk://runs/latest/results`
 are the verdict, not this markdown. After a test run, prefer the verdict over `--all` guesswork:
 default `jk test` is the unit suite; climb with `--suite`. [Test](test.md).
 
@@ -266,7 +266,7 @@ Same event shape as `--output json`. Default **on**; disable with `JK_CLI_DETAIL
 run's origin: `trigger`, plus `session` when the requester has one), a `job` meta line after
 admit, ends with `session-finish`. Includes **jid**, **buildNumber**, and **etaMs** when
 known. Writing is best-effort: a missing project or full disk never fails the user command.
-A run with no CLI behind it — MCP `jk_run`, the dashboard's `POST /api/build` — gets the same
+A run with no CLI behind it — MCP `run`, the dashboard's `POST /api/build` — gets the same
 `session-start` header from the engine (`command` is the kind, `trigger` is `mcp` or `web`,
 `session` the MCP connection), so its transcript also says who asked.
 
@@ -281,7 +281,7 @@ build order. The dev events carry no `progress`.
 
 With `-v`, the CLI prints `Details: <path>` and `Results: <target/jk-results.md>` after a
 run. `jk results -v` / `jk results --details -v` print the path on stderr, then the file. MCP
-`jk_details` (resource `jk://runs/latest/details`) is a **budgeted tail**; the CLI flag dumps
+`details` (resource `jk://runs/latest/details`) is a **budgeted tail**; the CLI flag dumps
 the whole file.
 
 ## Event vocabulary

@@ -27,7 +27,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk_update}: a preview lists the pin moves and the proposed manifest without writing;
+ * {@code update}: a preview lists the pin moves and the proposed manifest without writing;
  * apply writes {@code jk.toml} and relocks. Candidates come from the project's own declared
  * repositories.
  */
@@ -125,7 +125,7 @@ class McpUpdateTest {
                 List::of,
                 "0.12.0");
         String reply = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_update\",\"arguments\":{\"dir\":"
+                + "\"params\":{\"name\":\"update\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"deps\":[\"other\"]}}}");
         assertThat(reply)

@@ -14,13 +14,13 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
 
-/** {@code jk_new} — the scaffolder behind {@code jk new} and the dashboard, preview included. */
+/** {@code new} — the scaffolder behind {@code jk new} and the dashboard, preview included. */
 public final class NewTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_new",
+                "new",
                 "Scaffold a project (same scaffolder as jk new / the dashboard). "
                         + "action=templates lists catalog + local template short names; "
                         + "preview=true returns the exact file set without writing.",
@@ -71,7 +71,7 @@ public final class NewTool implements McpTool {
             }
             Map<String, Object> created = McpScaffold.create(req);
             return in.ok(
-                    McpEnvelope.of("created", created, false, null, "jk_bind {dir: " + created.get("path") + "} next"),
+                    McpEnvelope.of("created", created, false, null, "bind {dir: " + created.get("path") + "} next"),
                     "created " + created.get("path"));
         } catch (IllegalArgumentException e) {
             throw new McpError(-32602, e.getMessage());
@@ -91,6 +91,6 @@ public final class NewTool implements McpTool {
             Path p = Path.of(bound).getParent();
             if (p != null) return p.toString();
         }
-        throw new McpError(-32602, "requires arguments.parentDir (or jk_bind first — its parent is the default)");
+        throw new McpError(-32602, "requires arguments.parentDir (or bind first — its parent is the default)");
     }
 }

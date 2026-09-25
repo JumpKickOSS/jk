@@ -104,7 +104,7 @@ has nothing to say. This section is the one home for release highlights; there i
   stable on the same Maven major, then relocks; `--major` crosses a line, `jk update <name>` or
   `--dep` limits it, and the diff to review is `jk.toml` plus the lock. `jk lock` keeps pins,
   `jk lock -F` moves only opt-in selectors, `jk outdated` shows Compatible equal to Current for a
-  pin. MCP gains `jk_update`, a preview by default (`apply=true` writes and relocks).
+  pin. MCP gains `update`, a preview by default (`apply=true` writes and relocks).
 - **Writers pin today's stable.** `jk add <name>` with no version, `jk add g:a`, `jk new` and
   every template write the current stable as a number — catalog one-liner, coordinate string or
   inline table, in that order — never `latest`. Offline with no version is a usage error.

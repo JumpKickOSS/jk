@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * cause chain with its first frames, the classes discovery could not load, the two conflicting
  * JUnit coordinates when the lock names them, and the repair —
  * with the fork's output as its stack. It renders as a failed step in {@code jk-results.md} and
- * as one row of {@code jk_diagnostics}, never as a red test.
+ * as one row of {@code diagnostics}, never as a red test.
  */
 final class TestLauncherReport {
 

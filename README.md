@@ -23,7 +23,7 @@ That is the goal the agent-loop harness is measuring. It is not a result yet.
 jk new my-app && cd my-app
 jk add jackson3-databind
 jk build
-# agents: read target/jk-results.md  (or MCP jk_results) — do not scrape the TTY
+# agents: read target/jk-results.md  (or MCP run) — do not scrape the TTY
 ```
 
 ```toml
@@ -50,15 +50,15 @@ That is it. No `build.gradle.kts` that is itself a software project. No 200-line
 ```text
   intent ──► mutate ──► build/test ──► observe ──► repair ──► repeat
      │          │            │             │          │
-  jk manual  TOML +       cache +       jk-results  structured
+  jk skill  TOML +       cache +       jk-results  structured
   / MCP      jk add       right rung    + diagnostics edits +
   templates  format       lockfile law  (not log scrape)  format
 ```
 
 | Step | What JumpKick optimizes |
 |------|-------------------------|
-| **Intent** | `jk manual` / MCP `jk_manual` — the system prompt for a tool models were not trained on |
-| **Mutate** | Declarative `jk.toml`; surgical `jk add` / `remove`; MCP preview-before-apply |
+| **Intent** | `jk skill` / MCP `skill` — the system prompt for a tool models were not trained on |
+| **Mutate** | Declarative `jk.toml`; surgical `jk add` / `remove`; MCP `deps` applies and relocks |
 | **Execute** | Lockfile is law; action cache + CAS; resident engine (256 MiB heap cap) |
 | **Test rungs** | Default `jk test` is unit (inner loop). `--guard` is the named share-the-commit bar. `--all` is nightly, not a habit. |
 | **Observe** | `target/jk-results.md`, MCP diagnostics, JSONL — same facts as the human CLI |
@@ -86,7 +86,7 @@ three skins** (TTY / browser / MCP) — never scrape wedges.
 
 | You want… | JumpKick gives you… |
 |---|---|
-| **An agent-closed loop** | `jk-results.md`, MCP tools, `jk manual` — diagnose without log archaeology |
+| **An agent-closed loop** | `jk-results.md`, MCP tools, `jk skill` — diagnose without log archaeology |
 | **Named test rungs** | Cheap unit inner loop; `--guard` before share; e2e / `--all` on purpose — not Surefire folklore |
 | **Ergonomics of Cargo / uv** | `jk init` `add` `lock` `build` `test` `tree` `why` — native binary |
 | **Data, not a second app** | TOML manifest; plugins extend a finite model; no Kotlin/Groovy DSL as the build |
@@ -137,9 +137,9 @@ jk build        # still fully reproducible from that lock
 
 ### Lead — agent loop + declarative core
 
-- **`target/jk-results.md`** · MCP `jk_results` / `jk_diagnostics` · `jk manual`
+- **`target/jk-results.md`** · MCP `run` / `diagnostics` · `jk skill`
 - **Named test rungs** — `jk test` (unit) · `--guard` (share the commit) · `--all` (nightly)
-- **`jk.toml`** + `jk add` / `remove` · MCP preview/apply for deps and manifest keys
+- **`jk.toml`** + `jk add` / `remove` · MCP `deps` applies and relocks; `manifest` sets `java = N`
 - Canonical **`jk-lock.toml`** (commit it); PubGrub with **English conflict diagnostics**
 - `jk why` · `jk explain` · `jk tree` · `jk outdated` / `jk update`
 
@@ -165,7 +165,7 @@ jk build        # still fully reproducible from that lock
 - `jk image` (Jib-core) · `jk native` (GraalVM) · Spring Boot / Quarkus / Micronaut / protobuf · `[build-info]` git properties; Android and Grails as contrib batteries ([tiers](docs/user/plugins.md#batteries-and-their-tiers))
 - Git and path dependencies (SHA-pinned in the lock)
 
-More detail: **[User docs](docs/user/README.md)** · **[Manual](docs/user/manual.md)** ·
+More detail: **[User docs](docs/user/README.md)** · **[Skill](docs/user/skill.md)** ·
 **[Architecture](docs/contributors/architecture.md)**
 
 ---
@@ -289,7 +289,7 @@ jk build          # one lock at the root; whole workspace
 jk test
 jk results                    # same markdown as target/jk-results.md
 jk results --details          # details.jsonl when you need the raw event stream
-# or: MCP jk_bind → jk_diagnostics → jk_run wait=true
+# or: MCP bind → diagnostics → run wait=true
 ```
 
 ### Keep shipping with Maven while you try JumpKick
@@ -364,7 +364,7 @@ Product docs (will be published at [jumpkick.build/documentation](https://jumpki
 |---|---|
 | [**Why JumpKick**](docs/user/why.md) | Product bet, feature ranking, agentic north star |
 | [**User documentation**](docs/user/README.md) | People and coding agents *using* JumpKick |
-| [**Manual**](docs/user/manual.md) | `jk manual` playbook + website map into every topic |
+| [**Skill**](docs/user/skill.md) | `jk skill` — the agent playbook, one topic at a time |
 | [**Agents**](docs/user/agents.md) / [**MCP**](docs/user/mcp.md) | How agents should talk to `jk` |
 | [**Security**](docs/user/security.md) | Report a vulnerability; trust boundaries |
 | [**Contributor documentation**](docs/contributors/README.md) | People changing JumpKick |

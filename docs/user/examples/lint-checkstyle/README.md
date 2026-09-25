@@ -2,7 +2,7 @@
 
 Checkstyle runs as a **cached build step**: `[lint] checkstyle` names the rule set, the step runs
 after compile over `src/main/java`, and every finding is a diagnostic — file, line, message and
-the rule id — in `target/jk-results.md`, on the terminal, and in the MCP `jk_diagnostics` an
+the rule id — in `target/jk-results.md`, on the terminal, and in the MCP `diagnostics` an
 agent reads. A clean module is a cache hit on the next build; a source or rule-set edit re-runs
 the step and nothing else does.
 

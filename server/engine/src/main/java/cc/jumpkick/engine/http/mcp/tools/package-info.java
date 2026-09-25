@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * The MCP tools, one class each. Adding {@code jk_quux} is a class here and one line in
+ * The MCP tools, one class each. Adding a tool is a class here and one line in
  * {@link cc.jumpkick.engine.http.mcp.McpTools#standard()} — the same shape hosted verbs use, and
  * for the same reason: an explicit list is greppable and a {@code ServiceLoader} is not.
  *

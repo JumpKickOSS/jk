@@ -8,13 +8,13 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_explain} — the next build's forecast: what is dirty and what the cache already has. */
+/** {@code explain} — the next build's forecast: what is dirty and what the cache already has. */
 public final class ExplainTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_explain",
+                "explain",
                 "Forecast the next build: dirty modules and cache hits (jk explain).",
                 McpSchemas.object(Map.of("dir", McpSchemas.string())));
     }

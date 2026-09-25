@@ -17,7 +17,7 @@ import java.util.Set;
  * {@code .bsp/jk.json}: how BSP clients (Metals, the JetBrains BSP plugin) spawn {@code jk bsp
  * serve} on stdio, and which languages the workspace compiles — {@code scala} among them when a
  * module does, which is what lets Metals import it. Idempotent; written by {@code jk bsp install},
- * {@code jk ide} and {@code jk_ide}.
+ * {@code jk ide} and {@code ide}.
  */
 public final class BspConnectionFile {
 

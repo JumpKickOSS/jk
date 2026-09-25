@@ -7,7 +7,7 @@ what to do.
 ```bash
 jk test          # unit tier
 jk build         # jar with git.properties, plus sources and javadoc jars, under target/
-jk publish       # dry-run by default; see `jk manual`
+jk publish       # dry-run by default; see `jk skill`
 ```
 
 The javadoc jar is Dokka's javadoc-format output, the form a Maven Central release expects;

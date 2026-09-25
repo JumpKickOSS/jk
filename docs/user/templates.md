@@ -15,7 +15,7 @@ jk init -t hello
 flag scaffolder for a plain library or `--executable` app.
 
 Standalone scaffolds write **`AGENTS.md`** (unless the template already shipped one)
-pointing coding agents at `jk manual`. Workspace modules skip it — the root owns the file.
+pointing coding agents at `jk skill`. Workspace modules skip it — the root owns the file.
 
 Every library and framework version a scaffold writes is today's **current stable, as an exact
 pin** (`[spring-boot] version = "4.1.0"`, not `"latest"`). The committed file says what you
@@ -106,7 +106,7 @@ table, so the jar records the commit it was built from (`git.properties`, and Bo
 `META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
 writes the current one into every project it scaffolds.
 
-MCP `jk_new`: `action=templates` lists `{id,name,language,framework,…}`; `preview=true`
+MCP `new`: `action=templates` lists `{id,name,language,framework,…}`; `preview=true`
 returns the file set without writing. The web dashboard has a New project modal —
 [Web](web.md).
 

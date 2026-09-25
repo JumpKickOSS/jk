@@ -19,7 +19,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * MCP {@code jk_details}: a budgeted tail of a run's {@code details.jsonl} transcript. The default
+ * MCP {@code details}: a budgeted tail of a run's {@code details.jsonl} transcript. The default
  * shape (last-fail run, error + task-finish events, 80-event tail, hard byte budget) keeps a
  * failed compile under a few KiB; the absolute path rides along for hosts that want the whole
  * file. Paging: {@code next} counts matching events already consumed from the newest end.

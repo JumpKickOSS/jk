@@ -335,7 +335,7 @@ engine's `[engine] detached-deadline-ms` / `JK_ENGINE_DETACHED_DEADLINE_MS` (def
 Past it the job takes the same bounded cancel path a user cancel does, and `request-finish` and
 the journal row carry a `cancelReason` naming the deadline and the knob that set it. Socket jobs
 the CLI owns are unchanged: their EOF is the deadline, and `JK_ENGINE_JOB_DEADLINE_MS` stays off
-unless set. MCP `jk_run` exposes the same field as `deadline_s`.
+unless set. MCP `run` exposes the same field as `deadline_s`.
 
 ## Live updates (`GET /api/events`)
 

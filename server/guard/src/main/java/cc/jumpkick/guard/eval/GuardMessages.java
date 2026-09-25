@@ -7,7 +7,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 
 /**
- * The failure text an agent reads. First line is the title (what {@code jk_diagnostics} shows as the
+ * The failure text an agent reads. First line is the title (what {@code diagnostics} shows as the
  * message); the rest is the detail. At most {@value #SITES} sites per rule; the full list is in the
  * run's {@code jk-guards.jsonl}. Every line carries the two fields that move one-shot fix rate:
  * {@code instead} and {@code why}.

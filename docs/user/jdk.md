@@ -42,4 +42,4 @@ without a prompt; `jk jdk graal` sets it explicitly when several exist.
 
 Shell PATH / `JAVA_HOME` hooks: `jk activate` — [Install](install.md#shell-integration).
 
-MCP: `jk_jdk` (uninstall requires `confirm=true`) — [MCP](mcp.md).
+MCP: `jdk` (uninstall requires `confirm=true`) — [MCP](mcp.md).

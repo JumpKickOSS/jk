@@ -18,11 +18,11 @@ repo), [AGENTS.md](../AGENTS.md) (protocol for agents contributing here).
 
 ## Start here
 
-- **Using JumpKick:** `jk manual` (CLI) prints the agent/human playbook. The website map is
-  [user/manual.md](user/manual.md).
+- **Using JumpKick:** `jk skill` (CLI) prints the agent skill. The website page is
+  [user/skill.md](user/skill.md).
 - **Against Maven and Gradle:** [user/comparison.md](user/comparison.md).
 - **Coding agents (one recipe):** [user/troubleshooting.md](user/troubleshooting.md) — fix a
-  failing build (`jk results` or MCP `jk_results`).
+  failing build (`jk results` or MCP `run`).
 - **Contributing to JumpKick:** [contributors/README.md](contributors/README.md).
 
 ## Future HTML
@@ -32,13 +32,12 @@ When these pages are published, keep the markdown filenames as slugs:
 | Markdown | URL |
 |----------|-----|
 | `docs/user/README.md` | `https://jumpkick.build/documentation` |
-| `docs/user/manual.md` | `https://jumpkick.build/documentation/manual` |
+| `docs/user/skill.md` | `https://jumpkick.build/documentation/skill` |
 | `docs/user/<topic>.md` | `https://jumpkick.build/documentation/<topic>` |
 | `docs/contributors/<topic>.md` | `https://jumpkick.build/documentation/contributors/<topic>` |
 
-`jk manual` prints a self-contained playbook (absolute GitHub / jumpkick.build links) so
-coding agents do not have to chase relative paths. [user/manual.md](user/manual.md) is the
-website map into topic pages.
+`jk skill` prints the core; `jk skill <topic>` prints one page. [user/skill.md](user/skill.md)
+is the same entry on the website. Longer topic pages stay under `docs/user/`.
 
 Old paths under `docs/*.md` (for example `docs/guide.md`) are **stubs** that point here, so
 existing `jk://docs/…` ticket links and in-code `docs/architecture.md` citations still resolve.

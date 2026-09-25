@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
  *       components. Omits {@code totalMemoryBytes},
  *       {@code availableMemoryBytes}, {@code systemCpuLoad}, {@code systemLoadAverage},
  *       {@code engineEpoch}, {@code peakActiveRequests}, {@code peakActiveBuildPlans} — so an agent
- *       reading {@code jk_status} cannot see host memory headroom, host load, or the epoch that
+ *       reading {@code status} cannot see host memory headroom, host load, or the epoch that
  *       tells it the engine was replaced under it.
  *   <li>{@code ProtoLifecycle.statusAck}, fed positionally by {@code EngineServer} — the CLI socket
  *       {@code status-ack}, 12 of 18. Omits {@code cores}, {@code totalMemoryBytes},

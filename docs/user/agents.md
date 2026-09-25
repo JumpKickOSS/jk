@@ -3,7 +3,7 @@
 How AI coding agents (and scripts) should talk to JumpKick. Humans at a TTY get a terse
 visual CLI; **agents should not scrape it.**
 
-**First:** run `jk manual` (or MCP `jk_manual` / resource `jk://manual`). That is the
+**First:** run `jk skill` (or MCP `skill` / resource `jk://skill`). That is the
 system prompt for JumpKick — models have not been trained on this tool. Projects scaffolded
 by `jk new` include an `AGENTS.md` that says the same thing.
 
@@ -13,21 +13,21 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 ## Default recipe
 
 ```text
-0. Playbook                  jk manual             or MCP jk_manual
+0. Playbook                  jk skill             or MCP skill
 1. Name the project          dir={root} on the first MCP call binds it (or just cd and use the CLI)
-2. What happened?            MCP jk_run (the reply is the verdict) or jk --agent test
-3. Past the cap              MCP jk_diagnostics(file=…)
-4. Raw step log (optional)   jk results --details  or MCP jk_details
+2. What happened?            MCP run (the reply is the verdict) or jk --agent test
+3. Past the cap              MCP diagnostics(file=…)
+4. Raw step log (optional)   jk results --details  or MCP details
 5. Rebuild                   same selection as the failure (jk test, not --all)
-6. Graph / ETA               jk why / jk explain   or MCP jk_why / jk_explain (via jk_tools)
-7. Stalled                   jk jobs / jk cancel   or MCP jk_status + jk_job cancel (via jk_tools)
+6. Graph / ETA               jk why / jk explain   or MCP why / explain (extended tools/list)
+7. Stalled                   jk jobs / jk cancel   or MCP status, then job cancel (extended tools/list)
 ```
 
-Read the **verdict** first. `jk_run` returns it; `jk --agent` prints the same text. The human
+Read the **verdict** first. `run` returns it; `jk --agent` prints the same text. The human
 markdown at `target/jk-results.md` is for a person, or for an agent with neither MCP nor
 `--agent`. The verdict is one line when the run is OK.
 
-After an edit, MCP **`jk_affected_tests`** (or `jk test --affected`) writes
+After an edit, MCP **`affected_tests`** (or `jk test --affected`) writes
 `target/jk-tests-affected.md` — a short ranked list of test classes for the working tree.
 That file is not the last-job report. `--affected` and `--affected-since` cannot be combined.
 
@@ -57,13 +57,13 @@ for “unit + integration + optional house-rule scripts.” [Why](why.md#test-ru
 
 | Channel | Use when |
 |---------|----------|
-| **`jk manual`** | Once per session — the JumpKick playbook (MCP `jk_manual` / `jk://manual`) |
-| **MCP `jk_run`** | The verdict for the run it just finished |
+| **`jk skill`** | Once per session — the JumpKick playbook (MCP `skill` / `jk://skill`) |
+| **MCP `run`** | The verdict for the run it just finished. `run=<id>` reads an earlier one |
 | **`--agent` / `JK_AGENT=1`** | That same text on stdout |
 | **`target/jk-results.md`** | Human report when MCP and `--agent` are both off |
-| **MCP `jk_results`** | The verdict again, for the newest run. Resource: `jk://runs/latest/results` |
+| **`jk://runs/latest/results`** | Latest verdict, same text as `run` |
 | **`--output json` / `jsonl`** | Live events on stdout (CI, watchers) |
-| **`jk results --details`** | Full `details.jsonl`. MCP `jk_details` is a budgeted tail (`jk://runs/latest/details`) |
+| **`jk results --details`** | Full `details.jsonl`. MCP `details` is a budgeted tail (`jk://runs/latest/details`) |
 | **`target/jk-profile.json`** | Timings (Perfetto / `chrome://tracing`), not failure triage |
 
 Do **not** set `TERM=dumb` and scrape wedges. Do **not** use `-v` / `--verbose` as the
@@ -82,12 +82,12 @@ Most lines also carry aggregate `progress` (0–100 or `null`).
 
 MCP is **on by default** when the engine HTTP server is on (loopback, token-gated). Discover
 the URL with `jk engine status`. Send `Authorization: Bearer <token>`. Pass `dir` on the first
-call — that binds the connection — then omit it; `jk_bind` switches.
+call — that binds the connection — then omit it; `bind` switches.
 
-The default `tools/list` is the loop: `jk_run`, `jk_results`, `jk_diagnostics`, `jk_deps`,
-`jk_manifest`, `jk_manual`, `jk_bind`, plus `jk_tools`, which lists and calls everything else
-(`jk_why`, `jk_explain`, `jk_history`, `jk_job`, …). Server instructions (also returned from
-`initialize`) say the same: run → results → edit → run; the rest through `jk_tools`.
+The default `tools/list` is `run`, `diagnostics`, `deps`, `why`, and `skill`.
+`deps` edits `jk.toml` and relocks in that same call. Everything else (history, explain,
+graph, jdk, …) is a `tools/list` with `{"extended": true}`. `initialize` says the same:
+run → read the verdict → edit → run.
 
 Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).
 
@@ -95,13 +95,13 @@ Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).
 
 | Goal | Prefer |
 |------|--------|
-| Add/remove a dependency | `jk add` / `jk remove`, or MCP `jk_deps` (`apply` defaults **false** — preview first). The version written is an exact pin, or `managed` when a platform BOM of the manifest already supplies it |
-| Bump dependency versions | `jk outdated` (read-only; the whole picture is `target/jk-outdated-dependencies.md`), then `jk update` (same major; `--major` to cross; `jk update <name>` for one handle), or MCP `jk_update` (`apply` defaults **false** — read the `jk.toml` hunk, then `apply=true`). Never hand-edit `jk-lock.toml` |
-| Change `java = N` | MCP `jk_manifest`, or edit `jk.toml` (`java` is language level, not `jdk`) |
-| Scaffold | `jk new -t …`, or MCP `jk_new` (`preview=true` first; `action=templates` lists ids) |
+| Add/remove/pin a dependency | `jk add` / `jk remove`, or MCP `deps` (applies and relocks; `preview=true` does not write). The version written is an exact pin, or `managed` when a platform BOM of the manifest already supplies it |
+| Bump dependency versions | `jk outdated` (read-only; the whole picture is `target/jk-outdated-dependencies.md`), then `jk update` (same major; `--major` to cross; `jk update <name>` for one handle), or MCP `update` (`apply` defaults **false** — read the `jk.toml` hunk, then `apply=true`). Never hand-edit `jk-lock.toml` |
+| Change `java = N` | MCP `manifest`, or edit `jk.toml` (`java` is language level, not `jdk`) |
+| Scaffold | `jk new -t …`, or MCP `new` (`preview=true` first; `action=templates` lists ids) |
 | Format after edits | `jk format` — [Format](format.md) |
-| Import Maven/Gradle | `jk import`, or MCP `jk_import` |
-| Publish | **CLI only** for real uploads. MCP `jk_publish` / `jk_run kind=publish` is always a **dry-run** |
+| Import Maven/Gradle | `jk import`, or MCP `import` |
+| Publish | **CLI only** for real uploads. MCP `publish` / `run kind=publish` is always a **dry-run** |
 
 ## Hooks and protected files
 
@@ -126,4 +126,4 @@ export JK_OUTPUT=json       # if you consume stdout
 # optional: JK_CLI_DETAILS=off  to skip writing details.jsonl
 ```
 
-CI cache paths: [CI](ci.md). Machine config preset: MCP `jk_config` `apply_preset=ci`.
+CI cache paths: [CI](ci.md). Machine config preset: MCP `config` `apply_preset=ci`.

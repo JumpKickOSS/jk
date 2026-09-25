@@ -10,7 +10,7 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import java.util.Map;
 
 /**
- * {@code jk_build} / {@code jk_test} / {@code jk_lock} — fire one job kind at a directory and
+ * {@code build} / {@code test} / {@code lock} — fire one job kind at a directory and
  * answer with its jid. One class, three registry lines: the tools differ only in the kind they
  * pin and the prose that explains it.
  */

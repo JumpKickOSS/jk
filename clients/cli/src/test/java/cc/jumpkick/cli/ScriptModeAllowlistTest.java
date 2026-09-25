@@ -35,7 +35,7 @@ class ScriptModeAllowlistTest {
             "jk cache dir",
             "jk hook-env",
             "jk jdk home",
-            "jk manual",
+            "jk skill",
             "jk show",
             "jk storage dir",
             "jk tool dir");

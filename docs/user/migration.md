@@ -48,7 +48,7 @@ install maven:3.6.3 --accept-unverified-tool` takes the same consent ahead of ti
 never bypasses a checksum that is published.
 
 `jk mvn` also writes jk's run report for the Maven run: `target/jk-results.md` and the history
-row behind `jk results`, MCP `jk_results` and `jk_diagnostics` (header `trigger: cli · tool: mvn`).
+row behind `jk results`, MCP `run` and `diagnostics` (header `trigger: cli · tool: mvn`).
 The run counts as a build: it takes the project's next build number (`#N` in the header), appears
 in `jk history` and on the dashboard's Activity feed labelled `tool: mvn`, so a supervisor sees
 what an agent ran through Maven beside what it ran through jk. The row's duration is Maven's wall
@@ -237,7 +237,7 @@ a POM change reports each row once, under Warnings, with the remedy — `jk impo
 a `jk.toml` you can edit.
 
 The manifest in this mode is the POM, so the commands that edit `jk.toml` — `jk add`, `jk remove`,
-`jk update` and the `jk_deps` / `jk_manifest` / `jk_update` MCP tools — refuse a directory built
+`jk update` and the `deps` / `manifest` / `update` MCP tools — refuse a directory built
 this way and name the two ways forward: `jk import pom.xml` to own a `jk.toml`, or edit the POM.
 
 #### Behind a corporate mirror
@@ -583,7 +583,7 @@ test processors; a Gradle constraint carries no exclusions, so a managed entry's
 
 Single-file scripts: `jk tool run script.java` / `jkx` — [Tools](tools.md).
 
-MCP: `jk_import` auto-detects the build file; `jk_export` writes maven/gradle/bom; `jk_ide`
+MCP: `import` auto-detects the build file; `export` writes maven/gradle/bom; `ide`
 writes the IDE project files.
 
 ## Related

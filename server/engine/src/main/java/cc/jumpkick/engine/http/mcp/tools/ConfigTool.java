@@ -9,13 +9,13 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_config} — read machine config, set one key, or apply the CI preset. */
+/** {@code config} — read machine config, set one key, or apply the CI preset. */
 public final class ConfigTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_config",
+                "config",
                 "get / set machine config, or apply_preset=ci.",
                 McpSchemas.object(Map.of(
                         "action",
@@ -37,7 +37,7 @@ public final class ConfigTool implements McpTool {
         }
         if ("set".equals(action)) {
             String key = in.str("key");
-            if (key == null) throw new McpError(-32602, "jk_config set requires key");
+            if (key == null) throw new McpError(-32602, "config set requires key");
             return in.ok(McpEnvelope.of("config", McpMachine.configSet(key, in.str("value"))), "set " + key);
         }
         return in.ok(McpEnvelope.of("config", McpMachine.configGet()), "config");

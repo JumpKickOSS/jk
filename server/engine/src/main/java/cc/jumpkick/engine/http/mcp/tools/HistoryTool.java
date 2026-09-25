@@ -11,13 +11,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** {@code jk_history} — recent runs as budgeted summaries; {@code view=full} is the raw journal. */
+/** {@code history} — recent runs as budgeted summaries; {@code view=full} is the raw journal. */
 public final class HistoryTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_history",
+                "history",
                 "Recent runs as summaries (id, success, failed modules, diagnostic count). "
                         + "Default view=summary. Filters: dir, projectId, success, kind, limit, next.",
                 McpSchemas.object(Map.of(
@@ -65,7 +65,7 @@ public final class HistoryTool implements McpTool {
         fields.put("records", page);
         fields.put("count", page.size());
         fields.put("totalMatched", total);
-        String hint = truncated ? "jk_history next=" + next : null;
+        String hint = truncated ? "history next=" + next : null;
         return in.ok(McpEnvelope.of("history", fields, truncated, next, hint), page.size() + " of " + total + " runs");
     }
 }

@@ -155,7 +155,7 @@ These commands intentionally emit only machine-consumable stdout. Every row but 
 | `jk auth token [provider]` | Single-line token | scripts / curl |
 | `jk show` / `jk tasks show` | Absolute path (or `coord\tpath`) | command substitution |
 | `jk tool dir` / `jk cache dir` / `jk storage dir` | Path | scripts / installers |
-| `jk manual` | Playbook markdown | agents / MCP |
+| `jk skill` | Playbook markdown | agents / MCP |
 | `jk --version` / `-V` | `jk <version>` | CI |
 | `jk explain --graph dot\|mermaid` | Graph source | `dot` / editors |
 | `jk selective resolve` (+ `--json`) | Paths or JSON | CI selective plans |

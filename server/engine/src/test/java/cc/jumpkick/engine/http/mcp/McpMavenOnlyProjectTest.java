@@ -43,15 +43,15 @@ class McpMavenOnlyProjectTest {
                 mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
                         .openedSessionId());
 
-        Map<String, Object> bound = call(mcp, session, "jk_bind", "{\"dir\":\"" + dir + "\"}");
+        Map<String, Object> bound = call(mcp, session, "bind", "{\"dir\":\"" + dir + "\"}");
         assertThat(bound.get("coord")).isEqualTo("com.example:app");
         assertThat(object(bound, "lastRun").get("kind")).isEqualTo("mvn");
 
-        assertThat(reply(mcp, session, "jk_results", "{}"))
+        assertThat(reply(mcp, session, "run", "{\"run\":\"latest\"}"))
                 .startsWith("FAIL mvn app")
                 .contains("src/A.java")
                 .contains("cannot find symbol");
-        assertThat(reply(mcp, session, "jk_diagnostics", "{}"))
+        assertThat(reply(mcp, session, "diagnostics", "{}"))
                 .contains("src/A.java:3:5")
                 .contains("cannot find symbol");
     }

@@ -8,16 +8,16 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_graph} — the compact module/dependency graph the dashboard draws. */
+/** {@code graph} — the compact module/dependency graph the dashboard draws. */
 public final class GraphTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_graph",
+                "graph",
                 "Compact module/dep graph (same model as the dashboard graph). Default: workspace "
                         + "members + declared deps. transitive=true is opt-in and budget-capped. "
-                        + "For one artifact's origin prefer jk_why.",
+                        + "For one artifact's origin prefer why.",
                 McpSchemas.object(Map.of(
                         "dir",
                         McpSchemas.string(McpSchemas.BOUND_ROOT),

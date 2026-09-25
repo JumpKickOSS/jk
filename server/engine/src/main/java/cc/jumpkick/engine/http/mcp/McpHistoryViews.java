@@ -102,8 +102,8 @@ public final class McpHistoryViews {
      * input still resolve against the host. {@code ..} collapses either way — a key still reading
      * {@code /ws/../other} matches no journal row.
      *
-     * <p>Every tool that looks a project up by directory keys it through here, or {@code jk_bind}
-     * and {@code jk_project} answer differently for the same argument.
+     * <p>Every tool that looks a project up by directory keys it through here, or {@code bind}
+     * and {@code project} answer differently for the same argument.
      */
     public static String dirKey(String dir) {
         String stripped = dir.strip();

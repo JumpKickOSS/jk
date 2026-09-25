@@ -100,15 +100,15 @@ class McpManifestTest {
                 "0.12.0");
         Files.writeString(dir.resolve("jk.toml"), TABLE_TERMINATED, StandardCharsets.UTF_8);
         String applied = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_manifest\",\"arguments\":{\"dir\":"
+                + "\"params\":{\"name\":\"manifest\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"java\":21,\"apply\":true}}}");
-        assertThat(applied).contains("jk_run kind=lock");
+        assertThat(applied).contains("run kind=lock");
         String preview = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_manifest\",\"arguments\":{\"dir\":"
+                + "\"params\":{\"name\":\"manifest\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"java\":25,\"apply\":false}}}");
-        assertThat(preview).doesNotContain("jk_run kind=lock");
+        assertThat(preview).doesNotContain("run kind=lock");
     }
 
     /**

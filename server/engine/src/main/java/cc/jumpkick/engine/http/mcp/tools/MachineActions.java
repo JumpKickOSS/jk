@@ -9,8 +9,8 @@ final class MachineActions {
     private MachineActions() {}
 
     /**
-     * An error wins, then an unconfirmed preview, then the action's own name. {@code jk_disk} and
-     * {@code jk_jdk} both gate destruction on {@code confirm}, so both must say the same thing
+     * An error wins, then an unconfirmed preview, then the action's own name. {@code disk} and
+     * {@code jdk} both gate destruction on {@code confirm}, so both must say the same thing
      * when the confirmation is missing.
      */
     static String summary(Map<String, Object> data, String action) {

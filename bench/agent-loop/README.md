@@ -104,7 +104,7 @@ lines, `## Failed steps`, `## Warnings`, `## Modules`. Compiler errors come from
 `target/surefire-reports`, `target/failsafe-reports` and `build/test-results`. `target/jk-diagnostics.json`
 carries the parsed structure. `wrappers/results-mcp --dir <project> --tool mvn|gradle` is a stdio
 JSON-RPC MCP server exposing `run`, `results` and `diagnostics`: the wrapper's rerun and the two
-readers an agent reaches for first with jk (`jk_run`, `jk_results`, `jk_diagnostics`).
+readers an agent reaches for first with jk (`run`, `run`, `diagnostics`).
 
 These wrappers are built **deliberately well**. They are the benchmark's null hypothesis: the
 cheapest thing Maven or Gradle could ship tomorrow — a results file and two MCP tools over the
@@ -119,10 +119,9 @@ the agent can edit — is exactly what the measurement is for.
 `harness` runs the metric. For each (repo × failure × tool) it materialises the sandbox with
 `scenario`, runs the tool once so the results file is red, starts the tool's MCP server (jk: the
 shared engine's, every call scoped to the sandbox with `dir` — the first such call binds the
-connection, so there is no `jk_bind` turn; Maven and Gradle: `wrappers/results-mcp`), and hands an
+connection, so there is no `bind` turn; Maven and Gradle: `wrappers/results-mcp`), and hands an
 agent one fixed system prompt: the build is red, make it green, use only these tools, stop when the
-results say OK. jk's default `tools/list` is its loop set (`jk_run`, `jk_results`,
-`jk_diagnostics`, `jk_deps`, `jk_manifest`, `jk_manual`, `jk_bind`) plus `jk_tools`; the wrapper's
+results say OK. jk's default `tools/list` is `run`, `diagnostics`, `deps`, `why`, and `skill`; the wrapper's
 is its three. The agent loops until green or the
 budget ends (`--max-turns 8`, `--max-minutes 10` by default). The harness then reruns the tool
 itself; a row is **green** only when that rerun is green too, **claimed** when the agent said

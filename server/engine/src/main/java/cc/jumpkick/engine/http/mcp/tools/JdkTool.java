@@ -8,13 +8,13 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_jdk} — list, install or uninstall jk-owned JDKs. Removals need {@code confirm}. */
+/** {@code jdk} — list, install or uninstall jk-owned JDKs. Removals need {@code confirm}. */
 public final class JdkTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_jdk",
+                "jdk",
                 "List, install, or uninstall JDKs. uninstall and older_than require confirm=true.",
                 McpSchemas.object(Map.of(
                         "action",

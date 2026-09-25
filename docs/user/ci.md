@@ -123,7 +123,7 @@ Vulnerabilities: `jk audit --severity HIGH --output json | tee target/jk-audit.j
 `set -o pipefail` — the exit status is the verdict, the JSON lines are the artifact to annotate
 from, and `[audit] ignore` with a reason is the only accepted silence ([Publish](publish.md#audit)).
 
-MCP: `jk_config apply_preset=ci`. Selective prepare/run: [Workspaces](workspaces.md#selective-ci-plan).
+MCP: `config apply_preset=ci`. Selective prepare/run: [Workspaces](workspaces.md#selective-ci-plan).
 
 ## Guards
 

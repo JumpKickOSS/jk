@@ -10,7 +10,7 @@ import org.jspecify.annotations.Nullable;
  * {@code claude-code 3f9a} — so a supervisor can tell two agents on one project apart.
  *
  * <p>The bind is per connection, so two agents on one engine never clobber each other's default
- * dir. It is set by {@code jk_bind}, or implicitly by the first call that carries {@code dir}
+ * dir. It is set by {@code bind}, or implicitly by the first call that carries {@code dir}
  * while the connection is unbound.
  */
 public final class McpConnection {

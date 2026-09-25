@@ -82,31 +82,22 @@ class McpHandlerTest {
         // The instructions are the loop and the door to the rest — the only names a default
         // client can see; the CLI mirrors and the event stream are the playbook's business.
         String instructions = String.valueOf(result.get("instructions"));
-        assertThat(instructions).contains("jk_run", "jk_results", "jk_diagnostics", "jk_manual", "jk_tools");
-        assertThat(instructions).doesNotContain("jk_why", "jk_status", "jk_history");
+        assertThat(instructions).contains("run", "diagnostics", "deps", "why", "skill");
+        assertThat(instructions).doesNotContain("status", "history");
     }
 
     @Test
     void tools_list_includes_status_and_build_once_the_engine_serves_every_card() {
         List<Object> loop = listedNames();
-        assertThat(loop).contains("jk_bind").doesNotContain("jk_status", "jk_build", "jk_history");
+        assertThat(loop).contains("skill").doesNotContain("status", "build", "history", "bind");
         mcp.surface(McpTools.Surface.ALL);
-        assertThat(listedNames())
-                .contains(
-                        "jk_status",
-                        "jk_build",
-                        "jk_test",
-                        "jk_lock",
-                        "jk_cancel",
-                        "jk_bind",
-                        "jk_project",
-                        "jk_history");
+        assertThat(listedNames()).contains("status", "build", "test", "lock", "cancel", "bind", "project", "history");
     }
 
     @Test
     void tools_call_status() {
         String body = mcp.handleBody(
-                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
+                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"status\",\"arguments\":{}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
@@ -131,12 +122,12 @@ class McpHandlerTest {
     @Test
     void tools_call_build() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
+                + "\"params\":{\"name\":\"build\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         String text = (String) objects(result, "content").getFirst().get("text");
-        assertThat(text).isEqualTo("RUNNING build jid=42\njk_job action=wait jid=42\n");
+        assertThat(text).isEqualTo("RUNNING build jid=42\njob action=wait jid=42\n");
         Map<String, Object> structured = object(result, "structuredContent");
         assertThat(structured.get("type")).isEqualTo("build-accepted");
         assertThat(number(structured, "jid").longValue()).isEqualTo(42L);
@@ -145,25 +136,25 @@ class McpHandlerTest {
     @Test
     void tools_call_test_lock_cancel() {
         String testBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_test\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
+                + "\"params\":{\"name\":\"test\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
         // Nested tool payload is JSON-escaped inside content.text
         assertThat(testBody).contains("test-accepted");
         assertThat(testBody).contains("jid");
         assertThat(testBody).contains("43");
 
         String lockBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_lock\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
+                + "\"params\":{\"name\":\"lock\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
         assertThat(lockBody).contains("lock-accepted");
         assertThat(lockBody).contains("44");
 
         String cancelBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_cancel\",\"arguments\":{\"jid\":42}}}");
+                + "\"params\":{\"name\":\"cancel\",\"arguments\":{\"jid\":42}}}");
         assertThat(cancelBody).contains("cancelled");
         assertThat(cancelBody).contains("true");
     }
 
     /**
-     * The {@code jobs} array of {@code jk_status} is the one {@code jk engine status --output json}
+     * The {@code jobs} array of {@code status} is the one {@code jk engine status --output json}
      * and {@code GET /api/status} carry: every live and queued job as its {@link JobRow}, so an agent
      * reads the same rows — and the same field names — whichever surface it asks.
      */
@@ -210,7 +201,7 @@ class McpHandlerTest {
                 AdmissionYield.NONE,
                 null);
         String body = withLive.handleBody(
-                "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
+                "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"status\",\"arguments\":{}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> structured = object(object(resp, "result"), "structuredContent");
@@ -269,7 +260,7 @@ class McpHandlerTest {
                 },
                 null);
         String body = waiting.handleBody("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"wait\":true}}}");
+                + "\"params\":{\"name\":\"run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"wait\":true}}}");
         assertThat(body).contains("\"finished\":true");
         // Both the live-run park and the journal lookup ran with the RPC permit yielded.
         assertThat(yields.get()).isGreaterThanOrEqualTo(2);
@@ -300,7 +291,7 @@ class McpHandlerTest {
                 AdmissionYield.NONE,
                 null);
         String body = withTokens.handleBody("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
+                + "\"params\":{\"name\":\"build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
                 + "\"_meta\":{\"progressToken\":\"tok-1\"}}}");
         assertThat(tokens.resolve("tok-1")).isEqualTo(42L);
         assertThat(body).contains("jid=42");
@@ -309,20 +300,10 @@ class McpHandlerTest {
 
     @Test
     void tools_list_includes_the_agent_followup_tools_once_the_engine_serves_every_card() {
-        assertThat(listedNames()).contains("jk_manual", "jk_results").doesNotContain("jk_new", "jk_graph");
+        assertThat(listedNames()).contains("skill", "diagnostics").doesNotContain("new", "graph");
         mcp.surface(McpTools.Surface.ALL);
         assertThat(listedNames())
-                .contains(
-                        "jk_manual",
-                        "jk_new",
-                        "jk_publish",
-                        "jk_install",
-                        "jk_import",
-                        "jk_export",
-                        "jk_ide",
-                        "jk_results",
-                        "jk_details",
-                        "jk_graph");
+                .contains("skill", "new", "publish", "install", "import", "export", "ide", "details", "graph");
     }
 
     /** The names {@code tools/list} answers right now. */
@@ -338,7 +319,7 @@ class McpHandlerTest {
     @Test
     void ide_without_a_manifest_is_an_error_envelope(@TempDir Path dir) {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_ide\",\"arguments\":{\"dir\":"
+                + "\"params\":{\"name\":\"ide\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"preview\":true}}}");
         assertThat(body).contains("\"isError\":true");
@@ -348,7 +329,7 @@ class McpHandlerTest {
     @Test
     void ide_rejects_an_unknown_kind(@TempDir Path dir) {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":23,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_ide\",\"arguments\":{\"dir\":"
+                + "\"params\":{\"name\":\"ide\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"kind\":\"eclipse\"}}}");
         assertThat(body).contains("-32602");
@@ -359,14 +340,14 @@ class McpHandlerTest {
     void publish_import_and_install_ride_jk_run(@TempDir Path dir) throws Exception {
         // The thin aliases pin the kind and go through the one runResult path.
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_publish\",\"arguments\":{\"dir\":"
+                + "\"params\":{\"name\":\"publish\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"wait\":false}}}");
         assertThat(body).contains("\"kind\":\"publish\"");
         assertThat(body).contains("\"jid\"");
 
         String install = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_import\",\"arguments\":{\"dir\":"
+                + "\"params\":{\"name\":\"import\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"wait\":false}}}");
         assertThat(install).contains("\"kind\":\"import\"");
@@ -375,7 +356,7 @@ class McpHandlerTest {
     @Test
     void install_list_reports_installed_tools_without_a_job() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":23,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_install\",\"arguments\":{\"action\":\"list\"}}}");
+                + "\"params\":{\"name\":\"install\",\"arguments\":{\"action\":\"list\"}}}");
         assertThat(body).contains("\"type\":\"tools\"");
         assertThat(body).contains("\"tools\"");
     }
@@ -391,7 +372,7 @@ class McpHandlerTest {
                 gson = { group = "com.google.code.gson", version = "2.11.0" }
                 """);
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":24,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_graph\",\"arguments\":{\"dir\":"
+                + "\"params\":{\"name\":\"graph\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + "}}}");
         assertThat(body).contains("\"type\":\"graph\"");
@@ -427,15 +408,15 @@ class McpHandlerTest {
                 "0.12.0");
 
         h.handleBody("{\"jsonrpc\":\"2.0\",\"id\":40,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws/../other\"}}}");
+                + "\"params\":{\"name\":\"bind\",\"arguments\":{\"dir\":\"/ws/../other\"}}}");
         String history = h.handleBody("{\"jsonrpc\":\"2.0\",\"id\":41,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_history\",\"arguments\":{}}}");
+                + "\"params\":{\"name\":\"history\",\"arguments\":{}}}");
 
         assertThat(history).contains("run-9");
     }
 
     /**
-     * {@code jk_bind} and {@code jk_project} must derive the same key from the same argument. A
+     * {@code bind} and {@code project} must derive the same key from the same argument. A
      * drive-qualified key shows the difference on any host: {@code PathUtil.resolveUserPath} reads
      * {@code C:/ws} as relative off Windows (and {@code /ws} as relative on it), so keying through
      * it lands one tool's rows under {@code $HOME} and the other's under the key the agent sent.
@@ -449,7 +430,7 @@ class McpHandlerTest {
     @Test
     void details_with_no_matching_run_is_a_tool_error() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":25,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_details\",\"arguments\":{}}}");
+                + "\"params\":{\"name\":\"details\",\"arguments\":{}}}");
         // The fixture history has a finished row but no transcript on disk — still a tool error.
         assertThat(body).contains("no details.jsonl");
         assertThat(body).contains("\"isError\":true");
@@ -483,27 +464,27 @@ class McpHandlerTest {
                 "0.12.0");
         h.detailsFile(id -> Optional.of(run.resolve("details.jsonl")));
         String body = h.handleBody("{\"jsonrpc\":\"2.0\",\"id\":28,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_results\",\"arguments\":{}}}");
+                + "\"params\":{\"name\":\"run\",\"arguments\":{\"run\":\"latest\"}}}");
         assertThat(body).contains("FAIL build");
-        assertThat(body).contains("\"type\":\"results\"");
+        assertThat(body).contains("\"type\":\"run\"");
         assertThat(body).doesNotContain("\"isError\":true");
     }
 
     @Test
     void results_and_details_are_advertised_as_read_only() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"tools/list\"}");
-        assertThat(body).contains("jk_results");
-        assertThat(body).contains("jk_manual");
+        assertThat(body).contains("\"skill\"");
+        assertThat(body).contains("\"diagnostics\"");
         assertThat(body).contains("readOnlyHint");
         mcp.surface(McpTools.Surface.ALL);
         String every = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"tools/list\"}");
-        assertThat(every).contains("jk_details");
+        assertThat(every).contains("details");
         assertThat(every).contains("jk results --details");
         assertThat(every).contains("jk://runs/latest/details");
         String resources = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":31,\"method\":\"resources/list\"}");
         assertThat(resources).contains("jk://runs/latest/results");
         assertThat(resources).contains("jk://runs/latest/details");
-        assertThat(resources).contains("jk://manual");
+        assertThat(resources).contains("jk://skill");
         assertThat(resources).contains("text/markdown");
     }
 
@@ -545,25 +526,27 @@ class McpHandlerTest {
     }
 
     @Test
-    void manual_returns_the_playbook_markdown() {
+    void skill_returns_the_core_markdown() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":32,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_manual\",\"arguments\":{}}}");
-        assertThat(body).contains("JumpKick playbook");
+                + "\"params\":{\"name\":\"skill\",\"arguments\":{}}}");
+        assertThat(body).contains("name: jk");
         assertThat(body).contains("jk.toml");
-        assertThat(body).contains("\"type\":\"manual\"");
-        assertThat(body).contains("jk://manual");
+        assertThat(body).contains("\"type\":\"skill\"");
+        assertThat(body).contains("jk://skill");
         assertThat(body).doesNotContain("\"isError\":true");
         String resource = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":33,\"method\":\"resources/read\","
-                + "\"params\":{\"uri\":\"jk://manual\"}}");
+                + "\"params\":{\"uri\":\"jk://skill\"}}");
         assertThat(resource).contains("text/markdown");
-        assertThat(resource).contains("target/jk-results.md");
-        assertThat(resource).contains("jk://manual");
+        assertThat(resource).contains("jk://skill");
+        String topic = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":34,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"dependencies\"}}}");
+        assertThat(topic).contains("preview=true");
     }
 
     @Test
     void results_with_no_file_is_a_tool_error() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":29,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_results\",\"arguments\":{}}}");
+                + "\"params\":{\"name\":\"run\",\"arguments\":{\"run\":\"latest\"}}}");
         assertThat(body).contains("FAIL build");
         assertThat(body).doesNotContain("\"isError\":true");
     }
@@ -571,11 +554,11 @@ class McpHandlerTest {
     @Test
     void new_templates_and_preview_write_nothing(@TempDir Path parent) throws Exception {
         String templates = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":26,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_new\",\"arguments\":{\"action\":\"templates\"}}}");
+                + "\"params\":{\"name\":\"new\",\"arguments\":{\"action\":\"templates\"}}}");
         assertThat(templates).contains("builtinLayouts");
 
         String preview = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":27,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_new\",\"arguments\":{\"name\":\"demo\",\"parentDir\":"
+                + "\"params\":{\"name\":\"new\",\"arguments\":{\"name\":\"demo\",\"parentDir\":"
                 + Jsonl.quote(parent.toString())
                 + ",\"preview\":true}}}");
         assertThat(preview).contains("new-preview");
