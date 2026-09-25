@@ -6,6 +6,7 @@ import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
@@ -228,7 +229,7 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
      * names the build and the last line the fork printed.
      */
     private Run run(ProcessBuilder pb, Path buildRoot, String label) throws IOException {
-        Process process = pb.start();
+        Process process = Forks.start(pb);
         Output output = new Output();
         output.lastAdvanceNanos = clock.nanos();
         Thread pump = SessionContext.startPlatform("jk-gradle-import-pump", () -> pump(process, output));

@@ -235,10 +235,11 @@ public final class WorkerAotCache {
             Files.createDirectories(Objects.requireNonNull(cache.getParent(), "cache dir"));
             scratch = Files.createTempDirectory("jk-worker-aot-");
             Files.createDirectories(scratch.resolve("out"));
-            p = new ProcessBuilder(trainer.command(tmp, scratch))
+            // Not registered for request cancel: a cancelled build must not kill the recording the
+            // next build maps. The trainer is still contained.
+            p = JobWorkers.startDetached(new ProcessBuilder(trainer.command(tmp, scratch))
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+                    .redirectError(ProcessBuilder.Redirect.DISCARD));
             LIVE.add(p);
             Log.info("jk engine: recording a startup cache for the " + what + " (pid " + p.pid() + ")");
             if (!p.waitFor(trainingTimeoutMillis, TimeUnit.MILLISECONDS)) {

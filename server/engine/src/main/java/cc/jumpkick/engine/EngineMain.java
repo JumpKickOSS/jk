@@ -5,6 +5,9 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
@@ -75,6 +78,9 @@ public final class EngineMain {
         // Cancelling a build is CANCEL_REQUEST on the wire.
         PosixDetach.intoOwnSession();
         TerminalSignals.install();
+        // Before any worker is forked: the score and, where the cgroup allows it, the workers group.
+        WorkerContainment.install();
+        Forks.install(JobWorkers::start);
         try {
             JkDirs.current().secureRoots();
             EnginePaths.Paths paths = EnginePaths.current();

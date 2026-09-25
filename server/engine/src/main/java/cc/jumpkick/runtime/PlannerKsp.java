@@ -11,6 +11,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.KspProcessors;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.PathUtil;
@@ -478,7 +479,10 @@ public final class PlannerKsp {
         }
         String output = captured.toString();
         if (exit != 0) {
-            ctx.error(TaskNames.KSP, output.isBlank() ? ("KSP exited " + exit) : output);
+            String killed = WorkerContainment.failure(exit, "");
+            String body = output.isBlank() ? (killed.isEmpty() ? "KSP exited " + exit : "KSP " + killed) : output;
+            if (!output.isBlank() && !killed.isEmpty()) body = killed + "\n" + output;
+            ctx.error(TaskNames.KSP, body);
             throw new RuntimeException("KSP processing failed");
         }
         return output;

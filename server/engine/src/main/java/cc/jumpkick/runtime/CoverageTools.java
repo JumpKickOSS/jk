@@ -2,6 +2,8 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -113,19 +115,23 @@ final class CoverageTools {
         }
         Files.createDirectories(xml.toAbsolutePath().getParent());
         Files.createDirectories(html);
-        Process process = JavaHomes.underJdk(
+        Process process = JobWorkers.start(JavaHomes.underJdk(
                         new ProcessBuilder(
                                 reportCommand(javaHome, tools.cliJar(), exec, classDirs, sourceDirs, xml, html, name)),
                         javaHome)
-                .redirectErrorStream(true)
-                .start();
+                .redirectErrorStream(true));
         String output;
         try (var in = process.getInputStream()) {
             output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
         int exit = process.waitFor();
         if (exit != 0 || !Files.isRegularFile(xml)) {
-            throw new IOException("jacoco report exited " + exit + " for " + name + ":\n" + output.strip());
+            throw new IOException("jacoco report "
+                    + WorkerContainment.failure(exit, "exited " + exit)
+                    + " for "
+                    + name
+                    + ":\n"
+                    + output.strip());
         }
     }
 

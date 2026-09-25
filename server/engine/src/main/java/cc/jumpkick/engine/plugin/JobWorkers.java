@@ -215,12 +215,28 @@ public final class JobWorkers {
     }
 
     /**
-     * {@link ProcessBuilder#start()} then {@link #register}. No-op register when no request scope
-     * is open (probes, engine spawn, tests).
+     * {@link ProcessBuilder#start()}, then {@link WorkerContainment#contain} and {@link #register}.
+     * Register is a no-op when no request scope is open.
+     *
+     * <p>On Linux the child is moved into the workers cgroup just after it starts, so it can run
+     * outside that group for the moment between start and the move.
      */
     public static Process start(ProcessBuilder pb) throws IOException {
+        return launch(pb, true);
+    }
+
+    /**
+     * As {@link #start} but not registered for request cancel. The build-script host and the AOT
+     * trainer outlive the request that spawned them; they are still contained.
+     */
+    public static Process startDetached(ProcessBuilder pb) throws IOException {
+        return launch(pb, false);
+    }
+
+    private static Process launch(ProcessBuilder pb, boolean track) throws IOException {
         Process p = pb.start();
-        register(p);
+        WorkerContainment.contain(p);
+        if (track) register(p);
         return p;
     }
 

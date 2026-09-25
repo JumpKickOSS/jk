@@ -8,6 +8,7 @@ import static cc.jumpkick.test.TestEventFields.methodOf;
 import static cc.jumpkick.test.TestEventFields.progressLabel;
 import static cc.jumpkick.test.TestEventFields.xmlName;
 
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SessionCancel;
@@ -350,8 +351,15 @@ final class ResultAggregator {
             // that arrives after every discovered test was reported did finish: that one stays green.
             failed++;
             total++;
-            failures.add(
-                    new TestFailureInfo(moduleLabel, "", "", "(test run)", "", "worker exited " + exitCode, "", 0));
+            failures.add(new TestFailureInfo(
+                    moduleLabel,
+                    "",
+                    "",
+                    "(test run)",
+                    "",
+                    "worker " + WorkerContainment.failure(exitCode, "exited " + exitCode),
+                    "",
+                    0));
         }
         return new TestSummary(
                 total,

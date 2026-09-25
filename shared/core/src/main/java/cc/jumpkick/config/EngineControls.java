@@ -120,7 +120,13 @@ public final class EngineControls {
                     "JK_CANCEL_GRACE_MS",
                     "500",
                     ENGINE_START,
-                    "Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000."));
+                    "Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000."),
+            control(
+                    "",
+                    "JK_ENGINE_SCOPE",
+                    "delegated scope when reachable",
+                    ENGINE_START,
+                    "0 keeps the engine in the caller's cgroup. Otherwise Linux starts it in a delegated systemd user scope when one is reachable."));
 
     /** TomlScan keys: {@code engine.max-heap-mb}, … */
     public static String[] tomlScanKeys() {

@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.plugin.MemoryProbe;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import com.sun.management.OperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
 import java.util.List;
@@ -41,6 +42,7 @@ public final class EngineVitals {
         MemoryProbe.Memory host = MemoryProbe.current();
         int connections = liveConnectionCount();
         peakActiveConnections.accumulateAndGet(connections, Math::max);
+        WorkerContainment.Report containment = WorkerContainment.report();
         return new StatusSnapshot(
                 version,
                 pid,
@@ -65,6 +67,9 @@ public final class EngineVitals {
                 ignoredSignals.get(),
                 queuedBuildPlans.getAsInt(),
                 installSource.get(),
+                containment.modeWord(),
+                containment.reason(),
+                containment.maxBytes(),
                 jobs.get());
     }
 

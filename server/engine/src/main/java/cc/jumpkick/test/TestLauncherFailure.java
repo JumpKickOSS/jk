@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Classpaths;
 import java.util.ArrayList;
 import java.util.List;
@@ -87,7 +88,10 @@ public final class TestLauncherFailure extends RuntimeException {
     private final List<String> command;
 
     private TestLauncherFailure(String moduleLabel, String phase, int exit, String output, List<String> command) {
-        super(phase + " exited " + exit + signalSuffix(exit) + " before any test ran" + headlineSuffix(output));
+        super(phase + " "
+                + WorkerContainment.failure(exit, "exited " + exit + signalSuffix(exit))
+                + " before any test ran"
+                + headlineSuffix(output));
         this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
         this.phase = phase;
         this.exit = exit;

@@ -180,6 +180,32 @@ dumps older than seven days between builds. Raise `[engine] max-heap-mb` (or `JK
 `jk engine stop` to apply it, or shrink what the engine holds with `jk cache prune`. Open
 the `.hprof` with any Java heap analyser.
 
+### Worker containment
+
+On Linux every worker the engine forks — compiler lanes, Kotlin and Groovy compiles, test
+JVMs, plugin workers, and the tool processes those steps run — is given `oom_score_adj` 800
+as soon as it starts. Under memory pressure the kernel then prefers a jk worker over the
+engine and over an ordinary session process. The engine's own score is never changed. A
+refusal to write the score is a debug log line, not a failed build.
+
+Where cgroup v2 is mounted and this process's own cgroup can take a child with the memory
+controller, the engine also creates `engine` and `workers` under that cgroup, moves itself
+into `engine`, and runs workers in `workers`. `memory.max` is host `MemTotal`, or the
+enclosing cgroup's `memory.max` when that is lower, minus a reserve of the larger of 2 GiB
+and 10%. `memory.swap.max` is 0 where that file exists, so the cap is not absorbed by swap.
+A worker the kernel kills there — it exits by SIGKILL while the group's `oom_kill` count
+rose, or while the group is at the hard cap — is reported as killed for memory. The move
+into `workers` happens just after the process starts, so there is a short window before it
+is inside the group.
+
+If that setup cannot be done (the cgroup is shared with other processes, it is not
+writable, or the memory controller is not delegated), the engine keeps the score adjustment
+only and remembers why. On any other operating system it does neither, and does not error.
+`jk engine status` reports the mode: `cgroup (max … GiB)`, `score-only (<reason>)`, or
+`none`. On Linux the client starts the engine in its own delegated systemd user scope
+when `systemd-run` can reach a user manager, so that cgroup is private; `JK_ENGINE_SCOPE=0`
+starts it in the caller's cgroup instead.
+
 ### Memory after a build
 
 An idle engine's memory returns to a floor. When the last job finishes the engine drops its
@@ -297,6 +323,7 @@ inherited once would be every later terminal's truth. Workers are narrowed again
 | `JK_ENGINE_JOB_DEADLINE_MS` | 0 | Wall deadline for a job a client owns over its socket, in ms. 0 = off. |
 | `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |
 | `JK_CANCEL_GRACE_MS` | 500 | Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000. |
+| `JK_ENGINE_SCOPE` | delegated scope when reachable | 0 keeps the engine in the caller's cgroup. Otherwise Linux starts it in a delegated systemd user scope when one is reachable. |
 <!-- engine-process:end -->
 
 A resident engine keeps that environment for its whole life, so anything that must follow the

@@ -4,6 +4,7 @@ package cc.jumpkick.tool;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
@@ -175,7 +176,7 @@ public final class NativeImageDriver {
             ProcessBuilder pb = new ProcessBuilder(command);
             if (effective.workingDir() != null)
                 pb.directory(effective.workingDir().toFile());
-            Process process = pb.start();
+            Process process = Forks.start(pb);
             Thread fwdOut = forwardStdout(process.getInputStream(), listener, sink);
             Thread fwdErr = forwardStream(process.getErrorStream(), sink);
             int exit = process.waitFor();

@@ -11,6 +11,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.image.ImageConfig;
@@ -461,6 +462,9 @@ public final class ImagePlans {
                 if (workerError[0] != null) throw new RuntimeException("image worker: " + workerError[0]);
                 if (exit != 0) {
                     String d = diag.length() > 0 ? diag.toString().trim() : null;
+                    if (WorkerContainment.killedForMemory(exit)) {
+                        throw new RuntimeException("image worker killed for memory" + (d != null ? ": " + d : ""));
+                    }
                     throw new RuntimeException("image worker failed" + (d != null ? ": " + d : " (exit " + exit + ")"));
                 }
                 String built = ref[0];
@@ -530,7 +534,11 @@ public final class ImagePlans {
         }
         int exit = p.waitFor();
         if (exit != 0) {
-            throw new RuntimeException(cmd.get(0) + " " + cmd.get(1) + " failed (exit " + exit + ")");
+            throw new RuntimeException(cmd.get(0)
+                    + " "
+                    + cmd.get(1)
+                    + " "
+                    + WorkerContainment.failure(exit, "failed (exit " + exit + ")"));
         }
     }
 
@@ -543,12 +551,15 @@ public final class ImagePlans {
     private static @Nullable String detectDockerExecutable() {
         for (String candidate : new String[] {"docker", "podman"}) {
             try {
-                Process p = new ProcessBuilder(candidate, "--version")
+                Process p = JobWorkers.start(new ProcessBuilder(candidate, "--version")
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                        .redirectError(ProcessBuilder.Redirect.DISCARD)
-                        .start();
-                if (p.waitFor(2, TimeUnit.SECONDS) && p.exitValue() == 0) {
-                    return candidate;
+                        .redirectError(ProcessBuilder.Redirect.DISCARD));
+                try {
+                    if (p.waitFor(2, TimeUnit.SECONDS) && p.exitValue() == 0) {
+                        return candidate;
+                    }
+                } finally {
+                    if (p.isAlive()) p.destroyForcibly();
                 }
             } catch (Exception e) {
                 Log.debug("detectDockerExecutable: Exception ignored", e);

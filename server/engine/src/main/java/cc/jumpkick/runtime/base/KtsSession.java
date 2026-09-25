@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
@@ -293,7 +295,10 @@ final class KtsSession {
                     // The reader's EOF follows the exit at once, unless a grandchild the script
                     // started still holds the pipe's write end; either way the request ends here.
                     reply = replies.poll(EXIT_GRACE.toMillis(), TimeUnit.MILLISECONDS);
-                    if (reply == null) throw new SessionDied("exited " + process.exitValue() + " without replying");
+                    if (reply == null) {
+                        int exit = process.exitValue();
+                        throw new SessionDied(WorkerContainment.failure(exit, "exited " + exit) + " without replying");
+                    }
                     break;
                 }
             }
@@ -378,11 +383,9 @@ final class KtsSession {
     }
 
     private static KtsSession start() throws IOException, InterruptedException {
-        // Started directly, not through JobWorkers: that registry belongs to the request on this
-        // thread and kills its members when the request ends, and this host is the engine's —
-        // reused by later builds, and possibly mid-script for another build right now. Its own
-        // owners are the idle reaper below and the shutdown hook.
-        Process p = hostProcess().start();
+        // Not registered for request cancel: this host outlives the build that started it and is
+        // reused by later builds. The idle reaper and the shutdown hook own it. It is still contained.
+        Process p = JobWorkers.startDetached(hostProcess());
         registerShutdownHook();
         KtsSession session = new KtsSession(p);
         String ready = session.replies.poll(START_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
