@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.cli.api.AgentMode;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -51,6 +52,17 @@ public final class ResultsCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         boolean details = in.isSet("details");
         Path root = projectRoot(global.workingDir());
+        if (global.agent && !details) {
+            Optional<Path> agent = AgentMode.find(root);
+            if (agent.isEmpty()) {
+                CommandWedge.printFail("results", "no run report for this project (run a build first)");
+                return Exit.FAILURE;
+            }
+            String text = Files.readString(agent.get(), StandardCharsets.UTF_8);
+            System.out.write(text.getBytes(StandardCharsets.UTF_8));
+            System.out.flush();
+            return Exit.SUCCESS;
+        }
         Optional<Path> file = findFile(JkDirs.builds(), root, details);
         if (file.isEmpty()) {
             CommandWedge.printFail(

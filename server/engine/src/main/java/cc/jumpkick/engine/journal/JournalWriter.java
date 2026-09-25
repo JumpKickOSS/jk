@@ -28,6 +28,7 @@ import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -256,6 +257,11 @@ public final class JournalWriter {
             } catch (IOException | RuntimeException e) {
                 log.accept("jk engine: jk-results.md write failed: " + e);
             }
+            try {
+                writeAgent(runDir, latest, JkResultsAgent.render(record, tests));
+            } catch (IOException | RuntimeException e) {
+                log.accept("jk engine: agent report write failed: " + e);
+            }
             if (!coverage.isEmpty() && latest != null) {
                 try {
                     CoverageRollup.write(Path.of(a.dir()), record, previous);
@@ -343,6 +349,19 @@ public final class JournalWriter {
                     m.html()));
         }
         return out;
+    }
+
+    /** The agent report beside the markdown, in the run directory and as {@code target/jk-agent.txt}. */
+    private static void writeAgent(@Nullable Path runDir, @Nullable Path latestMarkdown, String text)
+            throws IOException {
+        String body = text.endsWith("\n") ? text : text + "\n";
+        if (runDir != null) {
+            Files.writeString(runDir.resolve(JkResultsAgent.FILE_NAME), body, StandardCharsets.UTF_8);
+        }
+        if (latestMarkdown != null && latestMarkdown.getParent() != null) {
+            Files.writeString(
+                    latestMarkdown.getParent().resolve(JkResultsAgent.FILE_NAME), body, StandardCharsets.UTF_8);
+        }
     }
 
     /** {@code target/jk-results.md} at the invocation root. */

@@ -125,13 +125,16 @@ class McpContractTest {
 
     @Test
     void diagnostics_unique_last_fail() {
-        Map<String, Object> d = call("jk_diagnostics", "{}");
-        assertThat(d.get("type")).isEqualTo("diagnostics");
-        List<Map<String, Object>> rows = objects(d, "diagnostics");
-        assertThat(rows).hasSize(2);
-        assertThat(number(rows.getFirst(), "count").intValue()).isEqualTo(2);
-        assertThat(rows.getFirst().get("file")).isEqualTo("/ws/A.java");
-        assertThat(MiniJson.write(d).length()).isLessThan(4_096);
+        call("jk_diagnostics", "{}"); // mint the session the next call rides
+        String body = mcp.handle(
+                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                                + "\"params\":{\"name\":\"jk_diagnostics\",\"arguments\":{}}}",
+                        session)
+                .body();
+        assertThat(body).contains("\"type\":\"diagnostics\"");
+        assertThat(body).contains("A.java").contains("+1 more in A.java").contains("B.java");
+        assertThat(body).doesNotContain("/ws/A.java");
+        assertThat(body.length()).isLessThan(4_096);
     }
 
     @Test

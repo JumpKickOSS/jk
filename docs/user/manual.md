@@ -24,14 +24,14 @@ an agent does not have to chase relative paths. Follow a topic link below for fl
 
 ## If you are a coding agent, start here
 
-Do not scrape the terminal UI. JumpKick writes a high-level report on every hosted run.
+Do not scrape the terminal UI. A hosted run writes a human report and a one-screen verdict.
 
 1. Run **`jk manual`** (or MCP **`jk_manual`**) once per session.
-2. **Read** `target/jk-results.md` with your file/grep tools after a build or test (same
-   markdown as `jk results`). Prefer the file over shelling out.
-3. If MCP is configured, prefer **`jk_results`** / **`jk_diagnostics`** over files; pass `dir`
-   on your first call and the connection is bound. See [Agents](agents.md) and [MCP](mcp.md).
-4. Rebuild with `jk build` / `jk test`, or MCP `jk_run`. Format after edits: `jk format`.
+2. Read the **verdict**. MCP `jk_run` returns it. On the CLI, `jk --agent` or `JK_AGENT=1`
+   prints it. `target/jk-results.md` is the human report.
+3. Detail past the cap is MCP **`jk_diagnostics`** (`file=`). Pass `dir` on the first call and
+   the connection is bound. See [Agents](agents.md) and [MCP](mcp.md).
+4. Rebuild with `jk build` / `jk test`, or MCP `jk_run` again. Format after edits: `jk format`.
 5. Need the live event stream? `--output json` / `jsonl`, or `jk results --details`.
    See [Machine output](machine-output.md).
 

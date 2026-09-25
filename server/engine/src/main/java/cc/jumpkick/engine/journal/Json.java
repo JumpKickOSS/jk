@@ -224,13 +224,19 @@ final class Json {
 
     // ---------------------------------------------------------------- read
 
-    @SuppressWarnings("unchecked")
     static BuildRecord read(String json) {
         Object root = MiniJson.parse(json);
         if (!(root instanceof Map<?, ?> m)) {
             throw new IllegalArgumentException("record.json is not a JSON object");
         }
-        Map<String, Object> o = (Map<String, Object>) m;
+        return readMap(m);
+    }
+
+    /** A journal row already parsed into the JSON object model. */
+    @SuppressWarnings("unchecked")
+    static BuildRecord readMap(Map<?, ?> raw) {
+        if (raw == null) throw new IllegalArgumentException("record.json is not a JSON object");
+        Map<String, Object> o = (Map<String, Object>) raw;
 
         TestSummary counts = TestSummary.countsFromMap(o.get(TestSummary.WIRE_KEY));
         BuildRecord.Tests tests = counts == null

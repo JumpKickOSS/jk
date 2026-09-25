@@ -55,7 +55,7 @@ class McpProgressTokenTest {
                 + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
                 + "\"_meta\":{\"progressToken\":5}}}");
         assertThat(tokens.resolve("5")).isEqualTo(42L); // raw SSE query text
-        assertThat(body).contains("progressToken=5");
+        assertThat(body).contains("jid=42");
         assertThat(body).doesNotContain("5.0");
     }
 

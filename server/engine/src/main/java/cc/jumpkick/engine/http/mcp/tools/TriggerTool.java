@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp.tools;
 
+import cc.jumpkick.engine.http.mcp.McpAgentText;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpJobRuns;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
@@ -30,6 +31,8 @@ public final class TriggerTool implements McpTool {
 
     @Override
     public Map<String, Object> call(McpCall in) {
-        return in.ok(McpJobRuns.accept(in, JobSpec.of(kind, in.requiredDir())), kind + " accepted");
+        Map<String, Object> accepted = McpJobRuns.accept(in, JobSpec.of(kind, in.requiredDir()));
+        long jid = accepted.get("jid") instanceof Number n ? n.longValue() : 0L;
+        return in.ok(accepted, McpAgentText.running(kind, jid));
     }
 }

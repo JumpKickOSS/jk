@@ -135,6 +135,7 @@ class CommandDispatchTest {
                         "-F, --force",
                         "-r, --redo",
                         "-O, --output <FORMAT>",
+                        "--agent",
                         "-q, --quiet",
                         "-v, --verbose",
                         "--no-progress",

@@ -57,6 +57,10 @@ public final class ProjectBuilds {
     public static final String RECORD = "record.json";
     public static final String DETAILS = "details.jsonl";
     public static final String RESULTS = "jk-results.md";
+
+    /** Terse run report written beside {@link #RESULTS}. Agents read this; humans keep the markdown. */
+    public static final String AGENT = "jk-agent.txt";
+
     public static final String METRICS = "metrics.toml";
 
     private ProjectBuilds() {}

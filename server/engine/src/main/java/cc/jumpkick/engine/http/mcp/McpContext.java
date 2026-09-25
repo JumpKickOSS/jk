@@ -30,7 +30,7 @@ import org.jspecify.annotations.Nullable;
  * ({@link McpCall#dir()}): its argument, else the bind of the connection it rode in on — never a
  * process-wide default two agents could overwrite for each other.
  *
- * <p>The four {@code @Setter} fields are optional wiring the embedded server attaches after
+ * <p>The {@code @Setter} fields are optional wiring the embedded server attaches after
  * construction ({@code cacheSnapshot}, {@code detailsFile}, {@code cacheGate}) or that only tests
  * shorten ({@code journalSettleMs}). Everything else is required and final.
  */
@@ -76,13 +76,6 @@ public final class McpContext {
 
     /** Every connection that has said {@code initialize}, by the session id the engine minted for it. */
     private final McpConnections connections = new McpConnections();
-
-    /**
-     * The authenticated dashboard URL for a checkout dir — the project page that follows its newest
-     * run. Optional wiring; unset answers null and job results carry no {@code dashboard} field.
-     */
-    @Setter
-    private volatile Function<String, @Nullable String> dashboardLink = dir -> null;
 
     /**
      * Shared memoized cache/store walker (same supplier as {@code GET /api/cache}) — {@code

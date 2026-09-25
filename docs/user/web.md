@@ -49,8 +49,8 @@ tests that flipped (fixed, broke, new, gone). Clicking the strip opens the same 
 list is bounded (`+N more` past the first eight); the counts are exact. A three-attempt fix
 session reads as three runs, each strip naming what that attempt changed and whether it helped.
 
-The strip, the `## Since the previous run` section of `target/jk-results.md` and the `delta`
-field of MCP `jk_results` are one computation: the engine compares the two journal records at
+The strip and the `## Since the previous run` section of `target/jk-results.md` are one
+computation: the engine compares the two journal records at
 the end of the run. Files come from a content-hash snapshot of the build's inputs each run leaves
 in its journal entry (`sources.tsv`: the manifests, the lock, the guard rules, the `.jk/` scripts
 and every module's source, test and resource roots — nothing else in the checkout — with a tree
