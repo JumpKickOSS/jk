@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
@@ -160,6 +161,9 @@ public final class FormatWorker {
                     + (reported - total) + " more results than files (worker exit " + exit + ")";
         }
         if (exit != 0 && exit != 1) {
+            if (WorkerContainment.killedForMemory(exit)) {
+                return "format worker killed for memory after reporting on all " + total + " files";
+            }
             return "format worker exited " + exit + " after reporting on all " + total
                     + " files; its exit law is 0 or 1, so " + exit + " is a crash, not a verdict";
         }

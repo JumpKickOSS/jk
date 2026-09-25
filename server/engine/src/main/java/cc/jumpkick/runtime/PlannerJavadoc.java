@@ -17,6 +17,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JavadocJar;
 import cc.jumpkick.compile.DokkaTool;
 import cc.jumpkick.compile.JavadocTool;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JavadocMode;
@@ -234,7 +235,9 @@ final class PlannerJavadoc {
     /** The tool's located errors, or its exit and whole output when it located none. */
     static List<String> errorLines(String tool, JavadocTool.Result r) {
         if (!r.errors().isEmpty()) return r.errors();
-        return List.of(tool + " exited " + r.exit() + (r.output().isBlank() ? "" : "\n" + r.output()));
+        return List.of(tool + " "
+                + WorkerContainment.failure(r.exit(), "exited " + r.exit())
+                + (r.output().isBlank() ? "" : "\n" + r.output()));
     }
 
     private static boolean wroteFiles(Path out) throws IOException {

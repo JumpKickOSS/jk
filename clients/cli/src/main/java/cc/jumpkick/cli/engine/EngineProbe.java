@@ -73,11 +73,82 @@ public final class EngineProbe {
              * install pinned a shelf to it, {@code null} when the engine did not report.
              */
             @Nullable String installSource,
+            /**
+             * {@code cgroup}, {@code score-only}, or {@code none}; {@code null} when the engine did
+             * not report containment.
+             */
+            @Nullable String containment,
+            /** Why {@code containment} is {@code score-only}; {@code null} when the engine did not report. */
+            @Nullable String containmentReason,
+            /** {@code workers/memory.max} in bytes; {@code -1} when unset or not a cgroup. */
+            long workerMemoryMax,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
             List<Job> jobs) {
 
         public Status {
             jobs = jobs == null ? List.of() : List.copyOf(jobs);
+        }
+
+        /** A snapshot from an engine that did not report containment. */
+        public Status(
+                String version,
+                long pid,
+                long startedAtMillis,
+                int activeRequests,
+                int activeBuildPlans,
+                boolean draining,
+                long heapUsedBytes,
+                long heapCommittedBytes,
+                long heapMaxBytes,
+                long rssBytes,
+                @Nullable String httpUrl,
+                @Nullable String httpError,
+                @Nullable String mcpUrl,
+                @Nullable String vfsJson,
+                int cores,
+                long totalMemoryBytes,
+                long availableMemoryBytes,
+                double systemCpuLoad,
+                double systemLoadAverage,
+                String engineEpoch,
+                long idleDropped,
+                long logBytes,
+                long logRolledAt,
+                @Nullable String ignoredSignals,
+                int queuedBuildPlans,
+                @Nullable String installSource,
+                List<Job> jobs) {
+            this(
+                    version,
+                    pid,
+                    startedAtMillis,
+                    activeRequests,
+                    activeBuildPlans,
+                    draining,
+                    heapUsedBytes,
+                    heapCommittedBytes,
+                    heapMaxBytes,
+                    rssBytes,
+                    httpUrl,
+                    httpError,
+                    mcpUrl,
+                    vfsJson,
+                    cores,
+                    totalMemoryBytes,
+                    availableMemoryBytes,
+                    systemCpuLoad,
+                    systemLoadAverage,
+                    engineEpoch,
+                    idleDropped,
+                    logBytes,
+                    logRolledAt,
+                    ignoredSignals,
+                    queuedBuildPlans,
+                    installSource,
+                    null,
+                    null,
+                    -1L,
+                    jobs);
         }
     }
 
@@ -221,6 +292,9 @@ public final class EngineProbe {
                     Jsonl.str(ack, "ignoredSignals"),
                     Jsonl.intValue(ack, "queuedBuildPlans", 0),
                     Jsonl.str(ack, "installSource"),
+                    Jsonl.str(ack, "containment"),
+                    Jsonl.str(ack, "containmentReason"),
+                    Jsonl.longValue(ack, "workerMemoryMax", -1),
                     Job.decodeAll(ack)));
         } catch (IOException e) {
             return Optional.empty();

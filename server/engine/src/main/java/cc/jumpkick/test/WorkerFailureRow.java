@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.io.PrintWriter;
@@ -34,7 +35,7 @@ final class WorkerFailureRow {
             @Nullable RuntimeException handler) {
         String dispatched = lastClass.isBlank() ? "" : " (last class dispatched: " + lastClass + ")";
         if (handler != null) return handlerRow(moduleLabel, "test protocol handler", dispatched, workerId, handler);
-        String why = "test worker exited " + exit + " mid-run" + dispatched;
+        String why = "test worker " + WorkerContainment.failure(exit, "exited " + exit + " mid-run") + dispatched;
         return new TestFailureInfo(moduleLabel, "", lastClass, "(worker " + workerId + ")", "", why, output, workerId);
     }
 

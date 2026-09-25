@@ -357,6 +357,14 @@ in     = "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
 reason = "reads another program's XDG_CONFIG_HOME to find the terminal's font"
 
 [[guards.single-home-root.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineScope.java"
+reason = "the systemd user bus is $XDG_RUNTIME_DIR/bus; that directory is not a jk layout root"
+
+[[guards.single-home-root.allow]]
+in     = "clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineScopeTest.java"
+reason = "fixtures for the systemd user bus check"
+
+[[guards.single-home-root.allow]]
 in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/discovery/MiseProbe.java"
 reason = "reads mise's own layout (MISE_DATA_DIR, XDG_DATA_HOME, .local/share/mise) to discover JDKs"
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
@@ -80,9 +81,7 @@ public final class ToolIdentity {
     /** The first non-blank line {@code --version} prints, or a word saying why there is none. */
     static String probe(Path exe) {
         try {
-            Process p = new ProcessBuilder(exe.toString(), "--version")
-                    .redirectErrorStream(true)
-                    .start();
+            Process p = JobWorkers.start(new ProcessBuilder(exe.toString(), "--version").redirectErrorStream(true));
             p.getOutputStream().close();
             byte[] out = p.getInputStream().readNBytes(4096);
             if (!p.waitFor(VERSION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {

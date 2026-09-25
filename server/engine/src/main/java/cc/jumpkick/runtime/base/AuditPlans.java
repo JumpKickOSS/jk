@@ -5,6 +5,7 @@ import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockfileReader;
@@ -131,7 +132,9 @@ public final class AuditPlans {
                     throw new RuntimeException("audit worker: " + error[0] + withTail(tail));
                 }
                 if (exit != 0) {
-                    throw new RuntimeException("audit worker exited with code " + exit + withTail(tail));
+                    throw new RuntimeException("audit worker "
+                            + WorkerContainment.failure(exit, "exited with code " + exit)
+                            + withTail(tail));
                 }
             } finally {
                 Files.deleteIfExists(spec);

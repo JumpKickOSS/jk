@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JavacLevel;
 import cc.jumpkick.host.PathUtil;
@@ -84,7 +85,7 @@ public final class JavacRunner {
                             null,
                             -1,
                             -1,
-                            "javac exited with code " + exit
+                            "javac " + WorkerContainment.failure(exit, "exited with code " + exit)
                                     + (stray.isEmpty() ? " and no diagnostics" : ":\n" + String.join("\n", stray))));
                 }
                 return new CompileResult(exit == 0 && !hasErrors(diagnostics), diagnostics);

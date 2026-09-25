@@ -61,6 +61,7 @@ class CommandJsonFrozenBytesTest {
                         + "\"availableMemoryBytes\":16000,\"systemCpuLoad\":0.25,\"systemLoadAverage\":1.5,"
                         + "\"engineEpoch\":\"epoch-1\",\"logBytes\":40960,\"logRolledAt\":1700000000500,"
                         + "\"ignoredSignals\":\"\",\"installSource\":\"/home/me/src/jk\","
+                        + "\"containment\":null,\"containmentReason\":null,\"workerMemoryMax\":-1,"
                         + "\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
                         + "\"mcpUrl\":\"http://127.0.0.1:8910/mcp\",\"engines\":[]}");
         EngineProbe.Status withVfs = new EngineProbe.Status(

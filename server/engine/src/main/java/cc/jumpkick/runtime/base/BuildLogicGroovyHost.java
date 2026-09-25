@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
@@ -101,8 +102,12 @@ public final class BuildLogicGroovyHost {
             int exit = p.exitValue();
             if (exit != 0) {
                 // The compiler dump is the message, verbatim — its first error line already names
-                // file and line. The one jk-authored prefix is registerScripts', not this host's.
+                // file and line. A kernel memory kill is named even when the dump is empty.
                 String detail = log.strip();
+                if (WorkerContainment.killedForMemory(exit)) {
+                    throw new IllegalStateException(
+                            detail.isEmpty() ? "groovy killed for memory" : "groovy killed for memory\n" + detail);
+                }
                 throw new IllegalStateException(
                         detail.isEmpty() ? "groovy exited " + exit + " with no output" : detail);
             }

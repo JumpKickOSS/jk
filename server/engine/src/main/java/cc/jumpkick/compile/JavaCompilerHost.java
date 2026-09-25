@@ -10,6 +10,7 @@ import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.PluginSlots;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -520,7 +521,9 @@ public final class JavaCompilerHost {
                     .passthrough(this::output)
                     .converseNoSlot(
                             command, template.env().withJavaHome(hostJavaHome), (json, convo) -> onLine(json, convo));
-            if (exit != 0) throw new IOException("zinc worker exited with status " + exit);
+            if (exit != 0) {
+                throw new IOException("zinc worker " + WorkerContainment.failure(exit, "exited with status " + exit));
+            }
         }
 
         /** A non-protocol line the worker wrote: kept for the report should this item's worker die. */

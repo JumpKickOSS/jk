@@ -101,7 +101,7 @@ public final class GitCliExtension implements GitBackend {
             // found — the canonical installs ship git.exe, which is what we target.
             ProcessBuilder pb = new ProcessBuilder(exe, "--version").redirectErrorStream(true);
             replaceEnvironment(pb, Map.of("LC_ALL", "C"));
-            p = pb.start();
+            p = JobWorkers.start(pb);
             p.getOutputStream().close();
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             Thread reader = drain(p, buf);

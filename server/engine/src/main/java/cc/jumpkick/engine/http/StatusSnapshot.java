@@ -75,6 +75,15 @@ public record StatusSnapshot(
          */
         String installSource,
         /**
+         * Worker containment: {@code cgroup}, {@code score-only}, or {@code none}. {@code none}
+         * before the engine installs it, and on a non-Linux host.
+         */
+        String containment,
+        /** Why {@code containment} is {@code score-only}; {@code ""} otherwise. */
+        String containmentReason,
+        /** {@code workers/memory.max} in bytes; {@code -1} unless {@code containment} is {@code cgroup}. */
+        long workerMemoryMax,
+        /**
          * Every live and queued job, live first in admission order then queued in arrival order,
          * each as {@code JobRow.toJson()} renders it: {@code jid}, {@code kind}, {@code dir},
          * {@code state} ({@code live} | {@code queued}), {@code since}, {@code workers},
@@ -84,6 +93,66 @@ public record StatusSnapshot(
 
     public StatusSnapshot {
         jobs = jobs == null ? List.of() : List.copyOf(jobs);
+    }
+
+    /**
+     * As the canonical snapshot with containment left unset ({@code none}, the limit {@code -1}).
+     * Callers that have a {@link cc.jumpkick.engine.plugin.WorkerContainment.Report} pass it
+     * through the canonical constructor.
+     */
+    public StatusSnapshot(
+            String version,
+            long pid,
+            long startedAtMillis,
+            int activeRequests,
+            int activeBuildPlans,
+            long heapUsedBytes,
+            long heapCommittedBytes,
+            long heapMaxBytes,
+            long rssBytes,
+            int cores,
+            long totalMemoryBytes,
+            long availableMemoryBytes,
+            double systemCpuLoad,
+            double systemLoadAverage,
+            String engineEpoch,
+            int peakActiveRequests,
+            int peakActiveBuildPlans,
+            long idleDropped,
+            long logBytes,
+            long logRolledAt,
+            String ignoredSignals,
+            int queuedBuildPlans,
+            String installSource,
+            List<Map<String, Object>> jobs) {
+        this(
+                version,
+                pid,
+                startedAtMillis,
+                activeRequests,
+                activeBuildPlans,
+                heapUsedBytes,
+                heapCommittedBytes,
+                heapMaxBytes,
+                rssBytes,
+                cores,
+                totalMemoryBytes,
+                availableMemoryBytes,
+                systemCpuLoad,
+                systemLoadAverage,
+                engineEpoch,
+                peakActiveRequests,
+                peakActiveBuildPlans,
+                idleDropped,
+                logBytes,
+                logRolledAt,
+                ignoredSignals,
+                queuedBuildPlans,
+                installSource,
+                "none",
+                "",
+                -1L,
+                jobs);
     }
 
     /** Compact constructor for tests that omit the job listing. */
@@ -134,6 +203,9 @@ public record StatusSnapshot(
                 ignoredSignals,
                 queuedBuildPlans,
                 "",
+                "none",
+                "",
+                -1L,
                 List.of());
     }
 
@@ -223,6 +295,9 @@ public record StatusSnapshot(
         m.put("logRolledAt", logRolledAt);
         m.put("ignoredSignals", ignoredSignals);
         m.put("installSource", installSource);
+        m.put("containment", containment);
+        m.put("containmentReason", containmentReason);
+        m.put("workerMemoryMax", workerMemoryMax);
         m.put("jobs", jobs);
         return m;
     }
