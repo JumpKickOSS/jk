@@ -54,7 +54,7 @@ _EDIT_LEAVES = {
 _READ_LEAVES = {"read_file", "read"}
 _RESULTS_LEAVES = {"jk_results", "results"}
 _DIAG_LEAVES = {"jk_diagnostics", "diagnostics"}
-_MANUAL_LEAVES = {"jk_manual", "manual"}
+_MANUAL_LEAVES = {"jk_manual", "manual", "skill"}
 _READ_KINDS = {"read", "results", "diagnostics", "manual"}
 
 _FILE = re.compile(
@@ -98,7 +98,7 @@ def _kind_for(name: str) -> str:
         return "diagnostics"
     if leaf in _MANUAL_LEAVES:
         return "manual"
-    if leaf == "jk_deps":
+    if leaf in ("jk_deps", "deps"):
         return "deps"
     return "other"
 
@@ -182,7 +182,9 @@ def _call_from_tool(turn: int, name: str, inp: dict, sandbox: Path | None, tool:
     name, inp = _unwrap(name, inp)
     kind = _kind_for(name)
     if kind == "deps":
-        if inp.get("apply") is True:
+        # jk_deps applied only with apply=true; deps applies unless preview=true.
+        applied = inp.get("apply") is True if _leaf(name).lower() == "jk_deps" else inp.get("preview") is not True
+        if applied:
             return Call(turn, "edit", declaration_files(tool) + (["jk-lock.toml"] if tool == "jk" else []))
         return Call(turn, "other")
     if kind == "edit":
