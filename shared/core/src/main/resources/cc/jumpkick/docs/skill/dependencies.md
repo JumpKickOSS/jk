@@ -7,6 +7,7 @@ A version in `jk.toml` is an exact pin. `jk add g:a` writes today's stable as a 
 - add: `deps(action=add, coords=["g:a"])` or `coords=["g:a:1.2.3"]`
 - remove: `action=remove` with the coordinate or the artifact name
 - pin: `action=pin` with `g:a:version` rewrites that entry
+- a red run's `FIX deps(add, g:a)`, `FIX deps(pin, g:a:version)`, or `FIX deps(remove, g:a)` is that call
 - `scope`: `main` (default), `test`, `runtime`, `provided`, `processor`
 - `preview=true` shows the edit and does not write or lock
 
