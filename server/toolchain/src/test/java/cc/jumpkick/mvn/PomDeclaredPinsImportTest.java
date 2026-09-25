@@ -393,8 +393,9 @@ class PomDeclaredPinsImportTest {
                     .filteredOn(i -> i.message().contains("junit:junit"))
                     .singleElement()
                     .satisfies(i -> assertThat(i.message())
+                            .as("whichever walk dials, the row names the 401; the other does not ask")
                             .contains("was not checked against the repositories the lock reads")
-                            .contains("corp was not asked again after it answered HTTP 401"));
+                            .contains("HTTP 401"));
             assertThat(checked.issues())
                     .as("the pin the fixture lists has no row")
                     .noneMatch(i -> i.message().startsWith("`net.java.dev.swing-layout"));
