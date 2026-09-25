@@ -88,6 +88,9 @@ out of another tool's build file. Baseline walls (tests included, warm caches) a
 `$AGENT_LOOP_HOME/baselines/<tool>/<repo>.BASELINE.json`, beside the tree rather than in it, so a
 sandbox never carries harness state; the guides take 3–25 s per tool, the whole corpus a few
 minutes. The marker records `baseline_format`; a missing or different value rebuilds the baseline.
+`scenario --baseline` stops Gradle's daemons after each Gradle baseline that actually ran the
+build, before the next repo. A baseline that is already current does not start Gradle and does not
+stop it.
 
 ## Verification
 
@@ -99,7 +102,10 @@ reverts the tree, checks it clean, and after the last failure runs the tool once
 be green. The table is [VERIFY.md](VERIFY.md), dated and stamped with the jk version; a red row
 there is either a scenario to fix or a defect in the tool that produced the results file, and the
 row says which. A targeted re-run (`--repo`, `--failure`, `--tool`) replaces its own rows in an
-existing report and leaves the rest of the table in place.
+existing report and leaves the rest of the table in place. With `--jobs`, jk and Maven sandboxes
+still run in parallel. Gradle sandboxes run one at a time: `gradle --stop` stops every daemon for
+the pinned installation, so one job must not stop while another job's Gradle build is in flight.
+The daemons are stopped when that sandbox's last Gradle build (the green run after revert) finishes.
 
 `junit-starter-gradle` × `version-conflict` resolves the exact `junit-jupiter-api = 5.0.0` pin
 under both jk and Gradle, then fails when the JUnit engine starts. No test class can be named.
@@ -139,11 +145,15 @@ connection, so there is no `bind` turn; Maven and Gradle: `wrappers/results-mcp`
 agent one fixed system prompt: the build is red, make it green, use only these tools, stop when the
 results say OK. jk's default `tools/list` is `run`, `diagnostics`, `deps`, `why`, and `skill`; the wrapper's
 is its three. The agent loops until green or the
-budget ends (`--max-turns 8`, `--max-minutes 10` by default). The harness then reruns the tool
+budget ends (`--max-turns 16`, `--max-minutes 10` by default). The harness then reruns the tool
 itself; a row is **green** only when that rerun is green too, **claimed** when the agent said
-green and the rerun disagrees, **red** when the budget ran out. Every row records turns, input and
-output tokens (cache reads and writes counted), the agent's wall, the outcome, the fix sources,
-and a finding when the run had something to say; the transcript sits beside the sandbox under
+green and the rerun disagrees, **red** when the budget ran out. After that rerun a Gradle scenario
+stops the pinned Gradle's daemons, so a matrix does not leave a daemon and compiler workers per
+sandbox. The red run before the agent is what starts the daemon; the agent's builds keep it, and
+the row records `gradle_daemon: "warm"`. jk and Maven runs are unchanged. Every row records turns,
+input and output tokens (cache reads and writes counted; `output_tokens` and `reasoning_tokens`
+for every LLM driver), the agent's wall, the outcome, the fix sources, the signal-quality fields
+below, and a finding when the run had something to say; the transcript sits beside the sandbox under
 `$AGENT_LOOP_HOME/harness/<date>/<driver>/<tool>/<repo>.<failure>/`.
 
 | Driver | What drives the loop | Cost |
@@ -168,7 +178,55 @@ names nothing actionable it stops red and says so. Every finding is a fact about
 told the agent, and the table's Findings section lists them per run.
 
 Rows go to `results/<date>/rows.jsonl` and the rendered `results/<date>/TABLE.md` (median and p90
-per tool for turns, tokens and wall, the green rate, one line per scenario, the findings). A
-re-run of `--only` replaces its own rows and keeps the rest.
+per tool for turns, tokens and wall, the green rate, the signal-quality columns below, one line per
+scenario, the findings). A re-run of `--only` replaces its own rows and keeps the rest.
+`harness --render` recomputes the signal-quality fields from the transcripts and sandboxes already
+on disk and rewrites that table; it does not run an agent.
+
+### What the columns mean
+
+Turns under the cap are informational: the run stopped before the budget, and that count is not the
+comparison. The comparison is the green rate, the cost to green, and signal quality.
+
+`first_edit_turn` is the turn of the agent's first successful edit. `first_correct_edit_turn` is the
+first of those that touches the injection's locus, or null when none does. The median skips the
+nulls. The locus is the injected source file for a compile error or a failing assertion, the deleted
+file for a missing resource, and the build file for a missing dependency or a version conflict
+(`jk.toml` / `pom.xml` / `build.gradle`; for jk, `jk-lock.toml` is the same locus, because applying
+a dependency writes it). An edit is `search_replace`, `Edit`, `Write`, `edit_file`, `write_file`,
+or `jk_deps` with `apply: true`. The scripted oracle's `fix` event is an edit. A tool result with
+`is_error` is not one.
+
+`edits` counts those calls. `wrong_edits` counts the ones that touch a file outside the locus,
+whether that file is still in the final diff or the agent later reverted it. An edit that only
+touches the locus is not a wrong edit.
+
+`reads_before_fix` counts file reads (`read_file`, `Read`) and results, diagnostics, and manual
+calls that occur before the first locus edit. A read on that same turn that precedes the edit
+counts; `grep`, directory listings, and build reruns do not. The scripted oracle records no tool
+calls, so each of its turns counts as one results read placed before that turn's fix. When the
+locus is never edited, the count is every such call in the run.
+
+`fix_quality` compares the final diff of the sandbox with the injection's inverse. The diff is
+tracked files plus untracked files, ignoring `target/`, `build/`, `.gradle/`, and `.kotlin/`.
+`exact` means that diff is empty (the green baseline is restored). `collateral` means some other
+file changed. `equivalent` means every remaining change stays in the locus and the locus is fixed:
+either the injection's inverse is in the tree, or the agent edited and the harness rerun was green
+(a same-file repair that is not byte-identical, such as an assertion set to the value the test
+saw, or one starter declared as two). A green rerun with no edit does not count. `cheat` means a `src/test` source was deleted, the diff adds `@Disabled`,
+`@Ignore`, or `assumeTrue(false)`, or a changed test source has fewer `@Test` /
+`@ParameterizedTest` / `@RepeatedTest` annotations or fewer assertion calls than the baseline.
+Cheat wins over the other three. A row that is none of these (the injection is still there, the
+rerun was not green, nothing outside the locus changed, and there is no cheat) has a null quality
+and is left out of the four counts.
+
+The injection's inverse is in the tree when the original compile-error statement is back, the
+original assertion text is back and the injected replacement is gone, the removed artifact id is
+declared in the build file again, the strict or `:=` pin is gone, or the deleted resource exists
+again.
+
+Output+reasoning, uncached input, and cache-read are medians over the tool's runs. Cost to green is
+the sum of `cost_usd` on green runs divided by the number of green runs. `reasoning_tokens` is 0
+when the API reports reasoning only inside `output_tokens`.
 
 `bench/jar-size/` is the neighbouring bench; this one measures the loop, that one the artefact.

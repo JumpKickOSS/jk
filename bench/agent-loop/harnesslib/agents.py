@@ -363,6 +363,23 @@ def _grok_cost(result: dict | None, persisted: dict | None) -> float | None:
     return None
 
 
+def reasoning_count(usage: dict | None, model_usage: dict | None = None) -> int:
+    """Reasoning tokens, or 0 when the API does not report them separately from output."""
+    usage = usage or {}
+    for key in ("reasoning_tokens", "reasoningTokens", "thinking_tokens"):
+        if usage.get(key) is not None:
+            return int(usage[key])
+    total = 0
+    for entry in (model_usage or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        for key in ("reasoningTokens", "reasoning_tokens", "thinking_tokens"):
+            if entry.get(key):
+                total += int(entry[key])
+                break
+    return total
+
+
 def _merge_grok_usage(usage: dict, persisted: dict | None) -> dict:
     """Stream usage matches claude-code's buckets. `grok usage` adds reasoning, and fills buckets the stream left empty.
 
@@ -371,6 +388,8 @@ def _merge_grok_usage(usage: dict, persisted: dict | None) -> dict:
     session = (persisted or {}).get("session") or {}
     if session.get("reasoningTokens") is not None:
         usage["reasoning_tokens"] = session["reasoningTokens"]
+    else:
+        usage.setdefault("reasoning_tokens", 0)
     if any(usage.get(k) for k in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")):
         return usage
     if not session:
@@ -597,7 +616,10 @@ def api(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, 
     tools = anthropic_tools(mcp) + FILE_TOOLS
     client = anthropic.Anthropic()
     messages: list[dict] = [{"role": "user", "content": USER_PROMPT}]
-    usage = {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+    usage = {
+        "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0,
+        "reasoning_tokens": 0,
+    }
     transcript: list[dict] = []
     started = time.monotonic()
     claimed, finding, turns = False, "", 0
@@ -615,8 +637,10 @@ def api(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, 
                     system=[{"type": "text", "text": system_prompt(tool, sandbox, server), "cache_control": {"type": "ephemeral"}}],
                     thinking={"type": "adaptive"}, tools=tools, messages=messages,
                 )
-                for k in usage:
-                    usage[k] += getattr(response.usage, k, 0) or 0
+                for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
+                    usage[k] += int(getattr(response.usage, k, 0) or 0)
+                blob = response.usage.model_dump() if hasattr(response.usage, "model_dump") else {}
+                usage["reasoning_tokens"] += reasoning_count(blob)
                 content = [b.model_dump() for b in response.content]
                 out.write(json.dumps({"turn": turns, "assistant": content, "stop_reason": response.stop_reason}) + "\n")
                 messages.append({"role": "assistant", "content": content})

@@ -28,6 +28,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 from dataclasses import dataclass, field
@@ -241,7 +242,16 @@ def _baseline_current(info: dict, tools: benchtools.Tools) -> bool:
     return True
 
 
+_baseline_tls = threading.local()
+
+
+def baseline_invoked_gradle() -> bool:
+    """True when this thread's last ``ensure_baseline`` actually ran Gradle."""
+    return bool(getattr(_baseline_tls, "gradle_invoked", False))
+
+
 def ensure_baseline(repo: Repo, tool: str, rebuild: bool = False) -> Path:
+    _baseline_tls.gradle_invoked = False
     d = baseline_dir(repo, tool)
     marker = baseline_marker(repo, tool)
     tools = _pinned()
@@ -261,6 +271,8 @@ def ensure_baseline(repo: Repo, tool: str, rebuild: bool = False) -> Path:
         if code != 0 or not (d / "jk.toml").exists():
             raise RuntimeError(f"{repo.name}: jk import failed (exit {code}):\n{strip_ansi(out)}")
     strip_foreign_builds(d, tool)
+    if tool == "gradle":
+        _baseline_tls.gradle_invoked = True
     code, out, wall = run_tool(d, tool)
     log_lines.append(out)
     (d.parent / f"{repo.name}.baseline.log").write_text(strip_ansi("\n".join(log_lines)), encoding="utf-8")
@@ -593,6 +605,14 @@ def revert(sandbox: Path) -> None:
 
 
 def verify_sandbox(repo: Repo, tool: str, failures: list[str], log_dir: Path) -> list[Outcome]:
+    """One repo's failures. Gradle sandboxes run one at a time and stop the daemon when they finish."""
+    if tool != "gradle":
+        return _verify_sandbox(repo, tool, failures, log_dir)
+    with benchtools.gradle_run():
+        return _verify_sandbox(repo, tool, failures, log_dir)
+
+
+def _verify_sandbox(repo: Repo, tool: str, failures: list[str], log_dir: Path) -> list[Outcome]:
     sandbox = HOME / "verify" / tool / repo.name
     if sandbox.exists():
         shutil.rmtree(sandbox)
@@ -808,12 +828,16 @@ def main() -> int:
                 if tool not in r.tools:
                     continue
                 try:
-                    d = ensure_baseline(r, tool, rebuild=ns.rebuild)
+                    ensure_baseline(r, tool, rebuild=ns.rebuild)
                     info = json.loads(baseline_marker(r, tool).read_text())
                     print(f"ok   {r.name:28} {tool:6} {info['wall_ms'] / 1000:6.1f}s  {info['tests']} tests")
                 except Exception as e:
                     rc = 1
                     print(f"FAIL {r.name:28} {tool:6} {str(e).splitlines()[0]}")
+                finally:
+                    # A cache hit never started Gradle. A rebuild did; stop before the next repo.
+                    if tool == "gradle" and baseline_invoked_gradle():
+                        benchtools.stop_gradle()
         return rc
     if ns.verify:
         return verify(repos, tools, ns.repo, ns.failure, ns.jobs, ns.report)

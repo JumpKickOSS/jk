@@ -9,6 +9,7 @@ then invoked directly — never a repo wrapper, never `jk mvn` inside the repo.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import tomllib
 import urllib.error
 import urllib.request
@@ -328,6 +330,25 @@ def stop_gradle() -> None:
     binary = os.environ.get(_BIN_ENV["gradle"])
     if binary and Path(binary).is_file():
         subprocess.run([binary, "--stop", "-q"], capture_output=True, timeout=120)
+
+
+# ``gradle --stop`` stops every daemon for this installation, not one build.
+_gradle_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def gradle_run():
+    """One Gradle build at a time in this process; stop its daemons when the block ends.
+
+    Hold this across a whole scenario (the red run, the agent, and the harness rerun) so the
+    daemon stays warm inside the run. The stop runs before the lock is released, so another
+    job's build cannot be in flight.
+    """
+    with _gradle_lock:
+        try:
+            yield
+        finally:
+            stop_gradle()
 
 
 def gradle_incompatibility(text: str) -> str | None:
