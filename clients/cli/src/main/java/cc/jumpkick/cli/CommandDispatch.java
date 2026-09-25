@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.cli.api.AgentMode;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.args.Abbreviations;
@@ -8,6 +10,7 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
@@ -92,6 +95,10 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.PluginJarNotFoundException;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -412,33 +419,65 @@ public final class CommandDispatch {
             System.out.println("jk " + Jk.VERSION);
             return 0;
         }
-        boolean script = GlobalOptions.outputIsJson(in) || cmd.scriptMode(in);
+        boolean agent = AgentMode.requested(in);
+        boolean script = GlobalOptions.outputIsJson(in) || cmd.scriptMode(in) || agent;
+        PrintStream prevOut = System.out;
+        PrintStream prevErr = System.err;
+        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
+        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+        if (agent) {
+            System.setOut(new PrintStream(outBuf, true, StandardCharsets.UTF_8));
+            System.setErr(new PrintStream(errBuf, true, StandardCharsets.UTF_8));
+        }
+        int code;
         try {
             // One envelope per leaf command: the leading blank on the first chrome write, one
             // trailing blank after the last — including after the error line below. Machine stdout
-            // (JSON/JSONL, or a script-mode command) opts out of both and of the ASCII rewrite.
+            // (JSON/JSONL, a script-mode command, or agent mode) opts out of both and of the ASCII
+            // rewrite.
             CliOutput.beginCommand(script);
             // Hidden global -y/--yes: skip Confirm prompts for this leaf command only.
             Confirm.setAssumeYes(in.isSet("yes"));
             try {
-                return cmd.run(in);
+                code = cmd.run(in);
             } finally {
                 Confirm.clearAssumeYes();
             }
         } catch (PluginJarNotFoundException e) {
             closeActiveLiveRegion();
             printWorkerJarError(e, ansi);
-            return 1;
+            code = 1;
         } catch (Exception e) {
             closeActiveLiveRegion();
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
             CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + msg);
-            return 1;
+            code = 1;
         } finally {
+            if (agent) {
+                System.setOut(prevOut);
+                System.setErr(prevErr);
+            }
             // Trailing blank after the last chrome, on whichever stream wrote it — settles never
             // print it themselves, and an exec handoff suppresses it outright.
             CliOutput.closeEnvelope();
         }
+        if (agent) {
+            String verdict = AgentMode.reportsRun(cmd.name()) ? thisRunReport() : null;
+            try {
+                if (verdict != null) {
+                    System.out.write(verdict.getBytes(StandardCharsets.UTF_8));
+                    System.out.flush();
+                } else {
+                    System.out.write(outBuf.toByteArray());
+                    System.out.flush();
+                    System.err.write(errBuf.toByteArray());
+                    System.err.flush();
+                }
+            } catch (IOException e) {
+                // The streams are the console; a write failure here is the process going away.
+            }
+        }
+        return code;
     }
 
     /**
@@ -686,5 +725,18 @@ public final class CommandDispatch {
     /** Colored help/error chrome follows the one color gate ({@link GlobalConfig#colorEnabled}). */
     static boolean ansiEnabled() {
         return GlobalConfig.colorEnabled();
+    }
+
+    /** The agent report of the run this invocation started, or {@code null} when it started none. */
+    private static @Nullable String thisRunReport() {
+        Path file = WireStream.lastRunDir()
+                .map(dir -> dir.resolve(ProjectBuilds.AGENT))
+                .orElse(null);
+        if (file == null || !Files.isRegularFile(file)) return null;
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return null;
+        }
     }
 }

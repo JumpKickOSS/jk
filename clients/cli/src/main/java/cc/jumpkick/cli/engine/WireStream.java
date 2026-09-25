@@ -10,11 +10,13 @@ import cc.jumpkick.wire.protocol.JobStartFrame;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -42,6 +44,9 @@ public final class WireStream {
 
     private static volatile @Nullable JobStartListener jobStartListener;
 
+    /** Journal run directory of the last {@code job-start} this process saw; one process is one invocation. */
+    private static volatile @Nullable Path lastRunDir;
+
     /**
      * Register the process-wide {@code job-start} observer. The transcript layer registers itself
      * here so this package never names its renderers; a {@code null} listener (or none registered)
@@ -49,6 +54,11 @@ public final class WireStream {
      */
     public static void onJobStart(@Nullable JobStartListener listener) {
         jobStartListener = listener;
+    }
+
+    /** The journal run directory of this invocation's last engine job, if it started one. */
+    public static Optional<Path> lastRunDir() {
+        return Optional.ofNullable(lastRunDir);
     }
 
     /**
@@ -169,6 +179,8 @@ public final class WireStream {
 
     /** Hand a decoded {@code job-start} to the registered observer, if any. */
     private static void notifyJobStart(JobStartFrame start, long jid) {
+        String details = start.detailsPath();
+        if (details != null && !details.isBlank()) lastRunDir = Path.of(details).getParent();
         JobStartListener listener = jobStartListener;
         if (listener == null) return;
         listener.jobStarted(jid, start.buildNumber(), start.detailsPath(), start.etaMs());

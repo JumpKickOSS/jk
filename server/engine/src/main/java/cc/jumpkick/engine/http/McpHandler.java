@@ -107,11 +107,6 @@ public final class McpHandler {
         ctx.liveJid(liveJid);
     }
 
-    /** Wire the authenticated dashboard link for a checkout dir, what {@code jk_run} answers as {@code dashboard}. */
-    public void dashboardLink(Function<String, @Nullable String> link) {
-        if (link != null) ctx.dashboardLink(link);
-    }
-
     /** Serve the whole registry on {@code tools/list} ({@code [mcp] tools = "all"}) instead of the loop set. */
     public void surface(McpTools.Surface surface) {
         this.surface = surface;

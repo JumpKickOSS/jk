@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp.tools;
 
+import cc.jumpkick.engine.http.mcp.McpAgentText;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
-import cc.jumpkick.engine.http.mcp.McpResults;
+import cc.jumpkick.engine.http.mcp.McpHistoryViews;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
 /**
- * {@code jk_results} — the markdown run report, the same file the CLI writes to target/. The
- * card lists {@code dir}; {@code run} (a history id) is read too and the playbook's MCP page
- * spells it out.
+ * {@code jk_results} — the agent rendering of a finished run, the same text {@code jk_run} returns
+ * when it waits. The card lists {@code dir}; {@code run} (a history id) is read too.
  */
 public final class ResultsTool implements McpTool {
 
@@ -20,7 +20,7 @@ public final class ResultsTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "jk_results",
-                "Markdown report of the last run: what failed and where.",
+                "The last run's verdict.",
                 McpSchemas.object(Map.of("dir", McpSchemas.string())),
                 McpSchemas.READ_ONLY);
     }
@@ -33,9 +33,14 @@ public final class ResultsTool implements McpTool {
         Map<String, Object> rec = newest
                 ? McpDiagnostics.findNewest(in.ctx().history(), dir)
                 : McpDiagnostics.findRun(in.ctx().history(), run, dir);
-        Map<String, Object> fields = McpResults.read(rec, in.ctx().detailsFile());
-        String md = fields.get("markdown") instanceof String s ? s : "";
-        String summary = !md.isBlank() ? md : String.valueOf(fields.getOrDefault("error", "results"));
-        return in.ok(McpEnvelope.of("results", fields, false, null, "details.jsonl for step-by-step"), summary);
+        if (rec == null) {
+            return in.ok(
+                    McpEnvelope.of("results", Map.of("error", "no matching run"), false, null, null),
+                    "no matching run\n");
+        }
+        String text = McpAgentText.of(in.ctx(), rec);
+        if (text == null) text = "no matching run\n";
+        String id = McpHistoryViews.str(rec, "id");
+        return in.ok(McpEnvelope.of("results", Map.of("run", id)), text);
     }
 }

@@ -468,8 +468,8 @@ repositories at its newest release; not a lock entry) and, per module, writes
 results file gets a **Coverage** block after Tests — per module, covered lines and branches as a
 percentage with the counts, an **all** row for a workspace — and a `Coverage:` line in the
 headline; a workspace also gets a roll-up page at `target/reports/coverage/index.html` linking
-each module's report. MCP `jk_results` carries the same block; the figures are the whole-report
-`LINE` and `BRANCH` counters of each `jacoco.xml`.
+each module's report. The figures are the whole-report `LINE` and `BRANCH` counters of each
+`jacoco.xml`. The agent verdict does not repeat the block.
 
 The second coverage run of a project shows a **Δ** column against the previous run that measured
 coverage (`_Δ vs run #41_`), read from the build journal; runs in between that measured nothing

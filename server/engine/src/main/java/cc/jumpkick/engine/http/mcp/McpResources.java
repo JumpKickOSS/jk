@@ -7,10 +7,7 @@ import cc.jumpkick.guard.explain.GuardExplain;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
-import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -34,9 +31,7 @@ public final class McpResources {
         rs.add(resource("jk://project", "Project card"));
         rs.add(resource("jk://runs/latest", "Latest history summary"));
         rs.add(resource(
-                "jk://runs/latest/results",
-                "Latest run markdown (jk-results.md; same as jk_results / CLI jk results)",
-                "text/markdown"));
+                "jk://runs/latest/results", "Latest run verdict (same text as jk_results / jk_run)", "text/plain"));
         rs.add(resource(
                 "jk://runs/latest/details",
                 "Budgeted tail of latest details.jsonl (same as jk_details; CLI jk results --details dumps the full file)",
@@ -129,23 +124,12 @@ public final class McpResources {
 
     private static Map<String, Object> resultsResource(McpContext ctx, @Nullable String bound) {
         Map<String, Object> rec = McpDiagnostics.findNewest(ctx.history(), bound);
-        String id = rec == null ? null : McpHistoryViews.str(rec, "id");
-        Path file = McpResults.locate(rec, id, ctx.detailsFile());
-        if (file == null || !Files.isRegularFile(file)) {
+        String text = McpAgentText.of(ctx, rec);
+        if (text == null) {
             return contents(
-                    "jk://runs/latest/results",
-                    "application/json",
-                    MiniJson.write(Map.of("error", "no jk-results.md")));
+                    "jk://runs/latest/results", "application/json", MiniJson.write(Map.of("error", "no matching run")));
         }
-        try {
-            return contents(
-                    "jk://runs/latest/results",
-                    "text/markdown",
-                    MarkdownReports.strip(Files.readString(file, StandardCharsets.UTF_8)));
-        } catch (IOException e) {
-            String msg = e.getMessage() == null ? "read failed" : e.getMessage();
-            return contents("jk://runs/latest/results", "application/json", MiniJson.write(Map.of("error", msg)));
-        }
+        return contents("jk://runs/latest/results", "text/plain", text);
     }
 
     private static Map<String, Object> detailsResource(McpContext ctx, @Nullable String bound) {

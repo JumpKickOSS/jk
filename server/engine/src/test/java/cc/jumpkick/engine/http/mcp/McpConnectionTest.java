@@ -75,17 +75,16 @@ class McpConnectionTest {
     }
 
     @Test
-    void the_run_answers_its_origin_and_the_dashboard_url_that_follows_it() {
-        mcp.dashboardLink(
-                dir -> DashboardLinks.project("http://127.0.0.1:8910/", "tok-EN_1", "p-" + dir.length(), dir));
+    void a_detached_run_names_the_job_and_not_the_dashboard() {
         String id = initialize("claude-code");
-        Map<String, Object> accepted = run(id);
+        Map<String, Object> result = call(id, "jk_run", "{\"kind\":\"build\",\"dir\":\"/ws\",\"wait\":false}");
+        Map<String, Object> accepted = object(result, "structuredContent");
         assertThat(accepted.get("type")).isEqualTo("job-accepted");
-        assertThat(accepted.get("trigger")).isEqualTo("mcp");
-        assertThat(accepted.get("session")).isEqualTo("claude-code " + id);
-        assertThat(accepted.get("dashboard"))
-                .as("the link names the checkout: every worktree of a repository shares the id")
-                .isEqualTo("http://127.0.0.1:8910/#project/p-3?dir=%2Fws&t=tok-EN_1");
+        assertThat(accepted).doesNotContainKeys("dashboard", "session", "trigger");
+        assertThat(text(result)).contains("RUNNING build jid=").contains("jk_job action=wait jid=");
+        // Who asked is still on the job the engine journals, not in the reply.
+        assertThat(specs.getLast().origin().trigger()).isEqualTo("mcp");
+        assertThat(specs.getLast().origin().session()).isEqualTo("claude-code " + id);
     }
 
     @Test
@@ -203,8 +202,8 @@ class McpConnectionTest {
                 .isEqualTo("/ws-a");
         assertThat(object(call(two, b, "jk_status", "{}"), "structuredContent").get("boundDir"))
                 .isEqualTo("/ws-b");
-        assertThat(text(call(two, a, "jk_results", "{}"))).contains("run-a").doesNotContain("run-b");
-        assertThat(text(call(two, b, "jk_results", "{}"))).contains("run-b").doesNotContain("run-a");
+        assertThat(text(call(two, a, "jk_results", "{}"))).contains("ws-a").doesNotContain("ws-b");
+        assertThat(text(call(two, b, "jk_results", "{}"))).contains("ws-b").doesNotContain("ws-a");
         assertThat(resource(two, a, "jk://project")).contains("\"dir\":\"/ws-a\"");
         assertThat(resource(two, b, "jk://project")).contains("\"dir\":\"/ws-b\"");
 

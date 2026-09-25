@@ -50,6 +50,12 @@ public final class GlobalOptions {
 
     public boolean noProgress;
 
+    /**
+     * {@code --agent} / {@code JK_AGENT=1}, or a non-terminal stdout inside a coding-agent CLI.
+     * Run-reporting commands print the agent report and skip progress, colour, and OSC.
+     */
+    public boolean agent;
+
     /** {@code --no-ansi} / {@code config.no-ansi} — strip ANSI; also implies no progress. */
     public boolean noAnsi;
 
@@ -179,13 +185,14 @@ public final class GlobalOptions {
         g.force = in.isSet("force") || cfg.forceOr(false);
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
         g.rebuild = in.isSet("redo") || Boolean.TRUE.equals(cfg.rebuild());
-        g.noAnsi = in.isSet("no-ansi") || cfg.noAnsiOr(false);
+        g.agent = AgentMode.requested(in);
+        g.noAnsi = in.isSet("no-ansi") || cfg.noAnsiOr(false) || g.agent;
         // Progress is independent of --no-ansi: plain multi-line chrome still runs
-        // unless --no-progress / quiet / json mute it.
-        g.noProgress = in.isSet("no-progress") || cfg.noProgressOr(false);
-        g.noOsc = in.isSet("no-osc") || cfg.noOscOr(false);
+        // unless --no-progress / quiet / json mute it. Agent mode mutes it too.
+        g.noProgress = in.isSet("no-progress") || cfg.noProgressOr(false) || g.agent;
+        g.noOsc = in.isSet("no-osc") || cfg.noOscOr(false) || g.agent;
         // Notify: --no-notify > --notify > config/env (default AUTO).
-        if (in.isSet("no-notify")) {
+        if (in.isSet("no-notify") || g.agent) {
             g.notify = JkConfig.NotifyChoice.NEVER;
         } else if (in.isSet("notify")) {
             g.notify = JkConfig.NotifyChoice.ALWAYS;
@@ -272,6 +279,7 @@ public final class GlobalOptions {
                 Opt.flag("Redo work and re-fetch deps (bypass caches)", "-F", "--force"),
                 Opt.flag("Redo work without re-fetching deps", "-r", "--redo").alias("--rebuild"),
                 Opt.value("<FORMAT>", "Output format: text (default), or jsonl", "-O", "--output"),
+                Opt.flag("Terse run report; no progress", "--agent"),
                 Opt.flag("Suppress informational output", "-q", "--quiet"),
                 Opt.flag("Print additional diagnostic output", "-v", "--verbose"),
                 Opt.flag("Disable all progress bars and spinners", "--no-progress"),

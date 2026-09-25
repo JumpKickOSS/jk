@@ -19,7 +19,7 @@ public final class RunTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "jk_run",
-                "Run a jk job (kind, default build) and wait for it; then read jk_results.",
+                "Run a jk job (kind, default build) and wait; the reply is that run's verdict.",
                 McpSchemas.object(Map.of(
                         "kind",
                         McpSchemas.oneOf(

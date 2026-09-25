@@ -7,7 +7,8 @@ How JumpKick talks to **agents, scripts, and CI**. Humans at a TTY get a terse v
 |----------|-----------------|
 | Human at a TTY | Terse visual CLI |
 | Human debugging | `jk results` first; `--details` / `-v` if needed |
-| Agents / scripts / CI | **`jk manual`** once, then **`target/jk-results.md`** / `jk results` (or MCP `jk_results`), then `--output json`/`jsonl` or `jk results --details` |
+| Agents | **`jk manual`** once, then the verdict: MCP `jk_run`, or `jk --agent` / `JK_AGENT=1` |
+| Scripts / CI | **`target/jk-results.md`** / `jk results`, or `--output json`/`jsonl` |
 | Web dashboard | Engine HTTP + SSE (`/api/events`) |
 | MCP clients | Tools, resources, SSE — same facts, not a second build model |
 
@@ -109,9 +110,9 @@ that has sources) and `no tests ran` (`jk test` on a workspace in which no modul
 `FAIL` with `exit 2` and the one-line reason naming the modules — the project's shape, not a red
 step. [Workspaces](workspaces.md#nothing-to-build).
 
-The two markdown files are the same report. JUnit XML stays at `target/reports/test-results/`.
-There is no separate `test-results.md`. MCP: **`jk_results`** and resource
-`jk://runs/latest/results`. After a test run, prefer this file over `--all` guesswork:
+The two markdown files are the same human report. JUnit XML stays at `target/reports/test-results/`.
+There is no separate `test-results.md`. MCP `jk_run` / `jk_results` and `jk://runs/latest/results`
+are the verdict, not this markdown. After a test run, prefer the verdict over `--all` guesswork:
 default `jk test` is the unit suite; climb with `--suite`. [Test](test.md).
 
 ### Since the previous run
@@ -139,10 +140,9 @@ walked (absent when either side has none);
 diagnostics by severity, step, site and message (a changed stack trace is the same diagnostic);
 tests by `Class#display` verdict from `test-outcomes.tsv` (absent when either run recorded no
 tests). Lists show at most eight rows and say `+N more`. `- Nothing changed: same files,
-diagnostics and tests.` is a re-run of the same tree. MCP `jk_results` returns the same facts
-as `delta` ({ `previousBuildNumber`, `previousSuccess`, `previousMillis`, and per list
-`{ count, shown }` for `files`, `appeared`, `gone`, `broke`, `fixed`, `added`, `dropped` }), and
-the web dashboard renders them as the run's iteration strip ([Web dashboard](web.md)).
+diagnostics and tests.` is a re-run of the same tree. The agent verdict adds one line,
+`new <n> · fixed <m>`, only when that comparison changes what to do next. The web dashboard
+renders the same comparison as the run's iteration strip ([Web dashboard](web.md)).
 
 ## Live JSONL
 

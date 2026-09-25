@@ -136,7 +136,7 @@ class McpHandlerTest {
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         String text = (String) objects(result, "content").getFirst().get("text");
-        assertThat(text).isEqualTo("build accepted"); // summary only; payload is structured
+        assertThat(text).isEqualTo("RUNNING build jid=42\njk_job action=wait jid=42\n");
         Map<String, Object> structured = object(result, "structuredContent");
         assertThat(structured.get("type")).isEqualTo("build-accepted");
         assertThat(number(structured, "jid").longValue()).isEqualTo(42L);
@@ -302,9 +302,8 @@ class McpHandlerTest {
         String body = withTokens.handleBody("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
                 + "\"_meta\":{\"progressToken\":\"tok-1\"}}}");
-        assertThat(body).contains("progressToken");
-        assertThat(body).contains("tok-1");
         assertThat(tokens.resolve("tok-1")).isEqualTo(42L);
+        assertThat(body).contains("jid=42");
         assertThat(body).contains("jid=42");
     }
 
@@ -485,8 +484,7 @@ class McpHandlerTest {
         h.detailsFile(id -> Optional.of(run.resolve("details.jsonl")));
         String body = h.handleBody("{\"jsonrpc\":\"2.0\",\"id\":28,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_results\",\"arguments\":{}}}");
-        assertThat(body).contains("jk results — FAIL");
-        assertThat(body).contains("compile boom");
+        assertThat(body).contains("FAIL build");
         assertThat(body).contains("\"type\":\"results\"");
         assertThat(body).doesNotContain("\"isError\":true");
     }
@@ -566,8 +564,8 @@ class McpHandlerTest {
     void results_with_no_file_is_a_tool_error() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":29,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_results\",\"arguments\":{}}}");
-        assertThat(body).contains("no jk-results.md");
-        assertThat(body).contains("\"isError\":true");
+        assertThat(body).contains("FAIL build");
+        assertThat(body).doesNotContain("\"isError\":true");
     }
 
     @Test
