@@ -130,10 +130,14 @@ public final class JavaCompile {
         String key = ActionKey.forJavac(taskId, request, jkVersion);
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
-            if (hit.isPresent() && actionCache.restore(hit.get(), out)) {
-                Files.createDirectories(stateDir);
-                LangCompile.recordTree(stateDir, key, hit.get().outputs());
-                return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of(), List.of(), 0L);
+            if (hit.isPresent()) {
+                ActionCache.ActionRecord cached = MirroredOutputs.omitting(out, hit.get());
+                if (actionCache.restore(cached, out)) {
+                    Files.createDirectories(stateDir);
+                    LangCompile.recordTree(stateDir, key, cached.outputs());
+                    return new Result(
+                            true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of(), List.of(), 0L);
+                }
             }
         }
 
@@ -181,7 +185,7 @@ public final class JavaCompile {
             prewriter.close();
             throw compileFailure;
         }
-        Map<String, String> outputs = prewriter.finish();
+        Map<String, String> outputs = MirroredOutputs.without(out, prewriter.finish());
         if (!wr.success()) {
             return new Result(false, "errors", key, wr.diagnostics(), wr.compiledSources(), List.of(), wr.waitMillis());
         }

@@ -35,6 +35,8 @@ import org.jspecify.annotations.Nullable;
  * <li>the project JDK's identity ({@link #jdkToken})
  * <li>each source file's module-relative path and SHA-256 (so editing a file invalidates the key,
  *     and two checkouts of the same module compute the same key)
+ * <li>a constant {@code mirrored:excluded} line, so a record that captured resource files copied
+ *     into the same directory is not a hit — a resource edit does not move the key
  * <li>each compile-classpath entry's JVM ABI ({@link ClasspathAbi}: {@code abi:<sha256>}) and each
  *     processor-path entry's content identity ({@code file:<sha256>} / directory tree hash) —
  *     see {@link #javacClasspathTokens}
@@ -75,6 +77,9 @@ public final class ActionKey {
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
         appendJavacOptions(sb, request);
+        // Resources copied into this output directory are not compile outputs. The line does not
+        // move when a resource changes; a record stored without it does not hit.
+        sb.append("mirrored:excluded\n");
 
         // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
         appendSources(sb, request.sources());
