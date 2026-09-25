@@ -8,6 +8,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
@@ -765,7 +766,11 @@ public final class PluginBuild {
         }
         if (exit != 0) {
             String detail = tail.isEmpty() ? "" : "\n" + String.join("\n", tail);
-            throw new IOException("plugin worker " + active.manifest().id() + " failed (exit " + exit + ")" + detail);
+            throw new IOException("plugin worker "
+                    + active.manifest().id()
+                    + " "
+                    + WorkerContainment.failure(exit, "failed (exit " + exit + ")")
+                    + detail);
         }
         return collected;
     }

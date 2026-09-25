@@ -10,6 +10,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -544,11 +545,12 @@ public final class PlannerNative {
             // Best-effort report; never fail the image over log write.
         }
         if (exit != 0) {
+            String how = WorkerContainment.failure(exit, "exited " + exit);
             ctx.error(
                     "native",
-                    "native-image exited " + exit
-                            + (Files.isRegularFile(niReport) ? " (full log: " + niReport + ")" : ""));
-            throw new RuntimeException("native-image failed (exit " + exit + ")");
+                    "native-image " + how + (Files.isRegularFile(niReport) ? " (full log: " + niReport + ")" : ""));
+            throw new RuntimeException("native-image "
+                    + (WorkerContainment.KILLED_FOR_MEMORY.equals(how) ? how : "failed (exit " + exit + ")"));
         }
         // The framework's args name their own output, inside its sources dir.
         if (frameworkSources != null) {

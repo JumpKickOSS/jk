@@ -6,6 +6,7 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
@@ -193,8 +194,10 @@ public final class WorkerCompileDriver {
                     .run(cmd, job.env().withJavaHome(hostJavaHome));
             boolean success = exit == 0 && "COMPILATION_SUCCESS".equals(status[0]);
             if (!success && diagnostics.isEmpty() && !chatter.isEmpty()) {
-                StringBuilder tail =
-                        new StringBuilder(job.tool() + " worker exited " + exit + " without diagnostics; last output:");
+                StringBuilder tail = new StringBuilder(job.tool()
+                        + " worker "
+                        + WorkerContainment.failure(exit, "exited " + exit + " without diagnostics")
+                        + "; last output:");
                 for (String line : chatter) tail.append('\n').append(line);
                 diagnostics.add(
                         new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, tail.toString()));

@@ -7,6 +7,7 @@ import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -451,9 +452,8 @@ public final class JournalWriter {
         if (dir == null || dir.isEmpty()) return null;
         Process p = null;
         try {
-            p = new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+            p = JobWorkers.start(new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
+                    .redirectError(ProcessBuilder.Redirect.DISCARD));
             Process proc = p;
             StringBuilder sb = new StringBuilder();
             // Byte pump for the git probe's output; reads no session.

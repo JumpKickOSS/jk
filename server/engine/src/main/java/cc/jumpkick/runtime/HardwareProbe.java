@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -614,7 +615,7 @@ final class HardwareProbe {
         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         long t0 = System.nanoTime();
-        Process p = pb.start();
+        Process p = JobWorkers.start(pb);
         if (!p.waitFor(90, TimeUnit.SECONDS)) {
             p.destroyForcibly();
             return -1;

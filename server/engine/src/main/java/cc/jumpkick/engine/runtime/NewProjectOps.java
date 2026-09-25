@@ -8,6 +8,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.docs.JkSkill;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
 import cc.jumpkick.giter8.Giter8ShortNames;
@@ -527,7 +528,7 @@ public final class NewProjectOps {
         }
         args.add(url);
         args.add(staging.toString());
-        Process p = new ProcessBuilder(args).redirectErrorStream(true).start();
+        Process p = JobWorkers.start(new ProcessBuilder(args).redirectErrorStream(true));
         String out;
         try (var in = p.getInputStream()) {
             out = new String(in.readAllBytes());

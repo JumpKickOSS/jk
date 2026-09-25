@@ -24,13 +24,16 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.HelloAckFrame;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -269,25 +272,40 @@ public final class EngineSpawn {
         return startOnce(paths, clientVersion, resolveEngineTarget(paths, clientVersion));
     }
 
-    /** Spawn and wait until serving; retries once on early exit. */
+    /**
+     * Spawn and wait until serving. A plain spawn retries once on an early exit. On Linux a
+     * delegated user scope is tried first when one can be started; if that process exits before it
+     * serves, one plain spawn follows and the engine is told why. A scope that stays up but never
+     * serves is the same hang as a plain spawn that does.
+     */
     private static EngineProbe.Handshake startOnce(EnginePaths.Paths paths, String clientVersion, EngineTarget target)
             throws IOException {
         // The log about to be rotated is the previous engine's; if it ends in an OutOfMemoryError
         // exit, say so once, here, before the fresh start truncates the evidence.
         EngineHeapDump.reportExit(paths);
-        for (int attempt = 0; attempt < 2; attempt++) {
+        EngineScope.Decision scope = EngineScope.current();
+        String note = scope.note();
+        // A failed scope gets one plain spawn, not the retry — the scope attempt was the first try.
+        int attempts = 2;
+        if (scope.scoped()) {
+            ScopeAttempt scoped = scopedStart(paths, clientVersion, target, scope);
+            if (scoped.handshake != null) return scoped.handshake;
+            note = scoped.note;
+            attempts = 1;
+        }
+        for (int attempt = 0; attempt < attempts; attempt++) {
             StartResult r = awaitStartup(
                     paths,
                     clientVersion,
                     COLD_START_CEILING,
-                    spawn(paths, target).process());
+                    spawn(paths, target, EngineScope.Decision.plain(note)).process());
             switch (r.outcome()) {
                 case UP -> {
                     return Objects.requireNonNull(r.handshake(), "UP without a handshake");
                 }
                 case TIMED_OUT -> throw notStarted(paths); // alive but never served → genuine hang
                 case CHILD_EXITED -> {
-                    if (attempt == 0) {
+                    if (attempt + 1 < attempts) {
                         logReason(paths, "engine exited before serving; retrying after backoff");
                         sleepQuietly(1_500);
                         continue;
@@ -299,12 +317,59 @@ public final class EngineSpawn {
         throw notStarted(paths); // unreachable
     }
 
+    /**
+     * One scoped launch. {@link ScopeAttempt#handshake} is set when that engine is serving. Otherwise
+     * {@link ScopeAttempt#note} is what the plain spawn should repeat. A timeout throws: the process
+     * is alive, and a second spawn would strand it.
+     */
+    private static ScopeAttempt scopedStart(
+            EnginePaths.Paths paths, String clientVersion, EngineTarget target, EngineScope.Decision scope)
+            throws IOException {
+        Spawned spawned;
+        try {
+            spawned = spawn(paths, target, scope);
+        } catch (IOException e) {
+            String note = EngineScope.failureNote(-1, e.getMessage());
+            logReason(paths, "delegated scope failed (" + note + "); starting without it");
+            return ScopeAttempt.failed(note);
+        }
+        StartResult r = awaitStartup(paths, clientVersion, COLD_START_CEILING, spawned.process());
+        switch (r.outcome()) {
+            case UP -> {
+                return ScopeAttempt.up(Objects.requireNonNull(r.handshake(), "UP without a handshake"));
+            }
+            case TIMED_OUT -> throw notStarted(paths);
+            case CHILD_EXITED -> {
+                String note = EngineScope.failureNote(
+                        exitCode(spawned.process()), readFrom(paths.log(), spawned.logOffset()));
+                logReason(paths, "delegated scope failed (" + note + "); starting without it");
+                return ScopeAttempt.failed(note);
+            }
+        }
+        throw notStarted(paths); // unreachable
+    }
+
+    /** A scoped launch that is either serving or a note for the plain fallback. */
+    private record ScopeAttempt(EngineProbe.@Nullable Handshake handshake, String note) {
+        static ScopeAttempt up(EngineProbe.Handshake handshake) {
+            return new ScopeAttempt(handshake, "");
+        }
+
+        static ScopeAttempt failed(String note) {
+            return new ScopeAttempt(null, note);
+        }
+    }
+
     private static IOException notStarted(EnginePaths.Paths paths) {
         return new IOException("could not start the build engine — see " + paths.log() + " for details");
     }
 
-    /** What {@link #spawn} launched: the child (same pid — it setsid()s, never forks). */
-    private record Spawned(Process process) {}
+    /**
+     * What {@link #spawn} launched. The child setsid()s and never forks, and a systemd scope execs
+     * the engine in place, so {@code process} stays the engine's pid. {@code logOffset} is where
+     * that child's output begins in the engine log.
+     */
+    private record Spawned(Process process, long logOffset) {}
 
     /** The resolved engine to spawn: which artifact, and the host JDK (JAR only). */
     record EngineTarget(EngineArtifact engine, @Nullable Path javaHome) {}
@@ -545,7 +610,8 @@ public final class EngineSpawn {
     }
 
     /** Spawn a fresh engine, detached — mirrors {@link CachePruneScheduler}'s spawn-and-forget pattern. */
-    private static Spawned spawn(EnginePaths.Paths paths, EngineTarget target) throws IOException {
+    private static Spawned spawn(EnginePaths.Paths paths, EngineTarget target, EngineScope.Decision launch)
+            throws IOException {
         EngineArtifact engine = target.engine();
         JkEngineConfig config = JkEngineConfig.resolve();
         OwnerOnlyFiles.directory(paths.dir());
@@ -553,16 +619,20 @@ public final class EngineSpawn {
         // The child detaches ITSELF into its own session (setsid(2) via PosixDetach, first thing
         // in the engine role) — without that it stays in THIS client's process group, and a
         // Ctrl-C/SIGTERM aimed at the client (or its whole group) would take down the engine and
-        // every other build it is hosting.
+        // every other build it is hosting. A delegated scope execs this same command in place.
         List<String> command =
                 switch (engine.kind()) {
                     case JAR -> jarCommand(paths, target, config);
                     case EXE -> exeCommand(paths, engine, config);
                 };
+        command = EngineScope.command(launch.prefix(), command);
         ProcessBuilder pb = new ProcessBuilder(command);
         // The allow-list of this shell's environment, never the whole of it: the daemon serves
         // every later terminal with whatever it started with (EngineEnvironment says what and why).
-        EngineEnvironment.seed(pb.environment(), System.getenv());
+        Map<String, String> shell = System.getenv();
+        EngineEnvironment.seed(pb.environment(), shell);
+        if (launch.scoped()) EngineScope.keepBus(pb.environment(), shell);
+        EngineScope.applyNote(pb.environment(), launch.note());
         // Anchor the detached daemon's working directory to its own state dir (created just above),
         // never the spawning client's CWD. A resident engine outlives the shell that started it, and
         // if it inherited an ephemeral CWD (a /tmp scratch dir, a git worktree, a since-deleted
@@ -577,6 +647,7 @@ public final class EngineSpawn {
         // log the way the header would have.
         pb.redirectErrorStream(true);
         boolean headed = writeSpawnHeader(paths.log(), engine, freshLog);
+        long logOffset = logSize(paths.log());
         pb.redirectOutput(
                 headed || !freshLog
                         ? ProcessBuilder.Redirect.appendTo(paths.log().toFile())
@@ -584,7 +655,41 @@ public final class EngineSpawn {
         pb.redirectInput(ProcessBuilder.Redirect.PIPE);
         Process p = pb.start();
         p.getOutputStream().close(); // EOF immediately; the engine doesn't read stdin
-        return new Spawned(p);
+        return new Spawned(p, logOffset);
+    }
+
+    /** Bytes already in {@code log}, or 0 when the file cannot be sized. */
+    private static long logSize(Path log) {
+        try {
+            return Files.size(log);
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
+    /** Up to 4 KiB of {@code log} from {@code offset}, or empty when it cannot be read. */
+    private static String readFrom(Path log, long offset) {
+        if (offset < 0) return "";
+        try (InputStream in = Files.newInputStream(log)) {
+            long left = offset;
+            while (left > 0) {
+                long skipped = in.skip(left);
+                if (skipped <= 0) return "";
+                left -= skipped;
+            }
+            return new String(in.readNBytes(4096), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    /** {@code -1} when {@code process} has not exited. */
+    private static int exitCode(Process process) {
+        try {
+            return process.exitValue();
+        } catch (IllegalThreadStateException stillAlive) {
+            return -1;
+        }
     }
 
     /**

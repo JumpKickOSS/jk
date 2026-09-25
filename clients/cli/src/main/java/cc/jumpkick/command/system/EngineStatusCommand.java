@@ -28,6 +28,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -115,6 +116,8 @@ public final class EngineStatusCommand implements CliCommand {
         if (s.ignoredSignals() != null && !s.ignoredSignals().isEmpty()) {
             detail("Signals", describeIgnoredSignals(s.ignoredSignals()));
         }
+        String containment = describeContainment(s.containment(), s.containmentReason(), s.workerMemoryMax());
+        if (containment != null) detail("Containment", containment);
         heapDumpRow(paths);
         String memory = formatMemory(s);
         if (memory != null) {
@@ -275,6 +278,9 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("logRolledAt", s.logRolledAt())
                 .string("ignoredSignals", s.ignoredSignals())
                 .string("installSource", s.installSource())
+                .string("containment", s.containment())
+                .string("containmentReason", s.containmentReason())
+                .number("workerMemoryMax", s.workerMemoryMax())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
                 .string("mcpUrl", s.mcpUrl());
@@ -310,10 +316,10 @@ public final class EngineStatusCommand implements CliCommand {
     }
 
     /**
-     * Label field width including the trailing colon (widest is {@code Live Jobs:}). Labels are
+     * Label field width including the trailing colon (widest is {@code Containment:}). Labels are
      * left-aligned and padded with dim dots — same shape as {@code jk status}.
      */
-    private static final int LABEL_W = 10;
+    private static final int LABEL_W = 12;
 
     /** Column where values (and the memory bar) begin: leading space + label field + one space. */
     private static final int VALUE_COL = 1 + LABEL_W + 1;
@@ -342,6 +348,26 @@ public final class EngineStatusCommand implements CliCommand {
         // Pre-styled values (hyperlinks) keep their own sequences; plain text is bright white.
         String styledVal = val.indexOf('\u001B') >= 0 ? val : Theme.colorize(val, t.brightWhite());
         CliOutput.out(" " + Theme.colorize(name, t.settled()) + Theme.colorize(leader, t.darkGray()) + " " + styledVal);
+    }
+
+    /**
+     * {@code none}, {@code score-only (<reason>)}, or {@code cgroup (max X GiB)}. Null when the
+     * engine did not report a mode.
+     */
+    static @Nullable String describeContainment(@Nullable String mode, @Nullable String reason, long maxBytes) {
+        if (mode == null || mode.isEmpty()) return null;
+        if ("cgroup".equals(mode) && maxBytes > 0) {
+            return "cgroup (max " + gib(maxBytes) + ")";
+        }
+        if ("score-only".equals(mode)) {
+            return reason == null || reason.isEmpty() ? "score-only" : "score-only (" + reason + ")";
+        }
+        return mode;
+    }
+
+    /** One decimal gibibyte, for a cgroup limit. */
+    private static String gib(long bytes) {
+        return String.format(Locale.ROOT, "%.1f GiB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
     /** The engine pid in yellow on an ANSI terminal (matching the start/stop wedges). */
