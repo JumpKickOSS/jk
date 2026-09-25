@@ -166,14 +166,20 @@ below, and a finding when the run had something to say; the transcript sits besi
 Each grok run keeps its MCP config and sessions in a throwaway `GROK_HOME` that is deleted when the run ends (`GROK_MEMORY=0`, vendor compatibility off), with the login passed as a copy via `GROK_AUTH_PATH`; `--sandbox agent-loop` denies reads of the user's grok state, the local artifact cache (`~/.jk/store/repos`), sibling runs and the harness sources, so file tools stay on the project and nothing carries from one scenario to the next. The profile extends grok's `workspace` profile (read anywhere; write the project, `/tmp`, and `~/.grok`) and adds a `read_write` grant for the Gradle user home (`GRADLE_USER_HOME`, otherwise `~/.gradle`), the same home the baselines use. Gradle writes a lock beside `libnative-platform.so` there; without the grant the in-sandbox client cannot start. A warm Maven build only reads `~/.m2`, which `workspace` already allows. The pinned `mvn` and `gradle` binaries live under `~/.jk/store/tools`, which is not denied. jk's engine is not a child of grok, so the `repos` deny does not change its builds. Grok does not put MCP tools on the model's function list: there is no config key or flag for that, so the model calls them through `search_tool` and `use_tool`.
 
 The oracle is the plumbing proof and the results-file audit in one. It never reads the injection
-to decide what is wrong; the results file has to say. A compile locus with `';' expected` gets its
-semicolon; `package X does not exist` maps the package to the artifact and declares it in the
-tool's build file (Boot 3 and Boot 4 starter names both known); a resolve message or a
-`NoSuchMethodError` under a failing test removes the exact pin it names; a template or document
-named in a test's message is restored from the tree; an assertion message with an
-expected/actual pair edits the failing test's line. Where the file names the failure but not the
+to decide what is wrong; the results text has to say. Maven and Gradle still return the markdown
+page. jk's `run` returns the agent verdict (`OK`/`FAIL` headline, `E path:line:col message`,
+`T Class#method` with its expectation and `at File:line`, `E step: cause` for resolve and lock,
+`FIX` when jk knows the edit, `+K more: diagnostics(file=…)` past the cap). A compile locus with
+`';' expected` (or a `FIX insert ';' at line:col` line) gets its semicolon; `package X does not exist`
+maps the package to the artifact and declares it in the tool's build file (Boot 3 and Boot 4 starter
+names both known); a `FIX deps(add|pin|remove, g:a…)` line is applied through jk's `deps` tool; a
+resolve message or a `NoSuchMethodError` under a failing test removes the exact pin it names when
+no `FIX` line did; a template or document named in a test's message, or in a `FIX` line, is restored
+from the tree; an assertion message with an expected/actual pair edits the failing test's line. A
+`FIX` line is preferred over those derivations. Where the text names the failure but not the
 edit, the oracle falls back to the scenario's inverse and records the gap as a finding
-(`fix_sources` says `results`, `results-heuristic`, `git-status` or `scenario`); where the file
+(`fix_sources` says `results` when the verdict or the page carried the fix, `results-fix-line` when
+a `FIX` line did, or `results-heuristic`, `git-status` or `scenario`); where the text
 names nothing actionable it stops red and says so. Every finding is a fact about what the tool
 told the agent, and the table's Findings section lists them per run.
 
