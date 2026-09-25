@@ -551,11 +551,20 @@ public final class EffortWeights {
         return w > 0 ? w : TOKEN;
     }
 
-    /** Within-module workers for plan-time test weights (matches runtime {@link TestWorkers}). */
-    private static int resolveTestWorkersForPredict(BuildPlanner.Inputs in, int classCount) {
-        int requested = in != null ? in.workerCount() : 0;
-        int jobs = TestWorkers.effectiveJobs();
-        return TestWorkers.resolve(requested, classCount, jobs);
+    /**
+     * Within-module workers for plan-time test weights. An explicit {@code -w} or a module pin is
+     * today's cap; auto is {@link TestWorkers#autoCount}, the same rule the run and {@code jk
+     * explain} use. {@code in.workerCount()} is already the share on a workspace build.
+     */
+    private static int resolveTestWorkersForPredict(BuildPlanner.Inputs in, int classCount, int modulePin) {
+        if (in == null) return 1;
+        boolean explicit = modulePin > 0 || in.session().requestedTestWorkers() > 0;
+        if (explicit) {
+            int requested = modulePin > 0 ? modulePin : Math.max(1, in.workerCount());
+            return TestWorkers.resolve(requested, classCount, TestWorkers.effectiveJobs());
+        }
+        int share = in.workerCount() > 0 ? in.workerCount() : TestWorkers.effectiveJobs();
+        return TestWorkers.autoCount(share, in.dir(), List.of(), classCount);
     }
 
     /**
@@ -672,7 +681,15 @@ public final class EffortWeights {
                             coldWorkWeight(TaskNames.COMPILE_TEST, Math.max(1, testSrc.size())),
                             projectDirs)
                     : SKIP;
-            runTests = predictRunTests(in, compact, timings, metrics, mod, projectDirs, testWillRun);
+            runTests = predictRunTests(
+                    in,
+                    compact,
+                    timings,
+                    metrics,
+                    mod,
+                    projectDirs,
+                    testWillRun,
+                    project.build().effectiveTestWorkers(0));
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
             int staticPkg = coldWorkWeight(TaskNames.PACKAGE_JAR, 1);
@@ -735,11 +752,12 @@ public final class EffortWeights {
             BuildMetrics metrics,
             String mod,
             List<String> projectDirs,
-            boolean testWillRun)
+            boolean testWillRun,
+            int modulePin)
             throws Exception {
         int methods = in.estimatedTestCount();
         int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
-        int testWorkers = resolveTestWorkersForPredict(in, classes);
+        int testWorkers = resolveTestWorkersForPredict(in, classes, modulePin);
         int staticTests =
                 coldWorkWeight(TaskNames.RUN_TESTS, methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
         if (!testWillRun) return SKIP;

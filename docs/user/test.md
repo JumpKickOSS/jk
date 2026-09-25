@@ -259,27 +259,28 @@ Discover test classes, then fork N runners that **pull** classes until empty.
 
 | Value | Meaning |
 |-------|---------|
-| omit / `0` | **Auto:** this build's share of the jobs budget — `jobs / dirty-module width`, then `min(…, classCount)`, then heap-clamped. `jobs` is `-j` / `JK_JOBS` / `[engine] jobs`, default all cores |
+| omit / `0` | **Auto:** `clamp(ceil(Σ class wall / max class wall), 1, min(share, classCount))`, then heap-clamped. `share` is this build's jobs budget divided by how many modules can run at once (`jobs / dirty width`). A class with no recorded wall counts as the median of the known ones. No history for the module: `min(2, share, classCount)` — the run records the walls, and the next run uses the formula. `jobs` is `-j` / `JK_JOBS` / `[engine] jobs`, default all cores |
 | `1` | One test JVM (serial within the module). It lists the classes the way the pull runners are fed — on a launcher that fires no session or discovery listener — and then executes them one class at a time, so a framework that readies the JVM per class as the classes load (Quarkus augments one application per test profile) does so for the class about to run, not for every class in the module |
 | `N` | Cap at N runners (still ≤ class count; heap-clamped) |
 
-Auto is a **share**, not "as many as this module could use", because jk takes its
-parallelism from modules first and the two layers spend one budget. `-j N` therefore caps
-the whole build: at most N modules at once and at most N test JVMs in total. `jk explain`
-prices suites on the same share the build hands out:
+Auto forks another JVM only when the recorded class walls say it can finish the suite sooner.
+The share is still the cap, because jk takes its parallelism from modules first and the two
+layers spend one budget. `-j N` therefore caps the whole build: at most N modules at once and
+at most N test JVMs in total. `jk explain` prices each suite with the same rule:
 
-| Build (default `jobs` = all cores) | Dirty width | Auto workers per module |
-|---|---|---|
-| touched one module | 1 | all cores |
-| a few modules | 4 | cores / 4 |
-| full 30-module rebuild | 13 | 1 — the modules already fill the machine |
-| one module, `-j 4` | 1 | 4 |
+| Build | Auto workers |
+|---|---|
+| spring-petclinic, one module, 20 classes (longest ~18 s, the other nineteen ~6 s together) | 2 — `ceil(25 s / 18 s)`, not all 24 cores |
+| a module of many similar classes, alone | the share (every core, or `-j`) — `ceil(Σ / max)` is about the class count |
+| full 30-module rebuild (width 13, 24 cores) | 1 — the share is 1; the modules already fill the machine |
+| one module, `-j 4` | at most 4; a long tail may use fewer |
 
-That last row is the point. Sharding *every* module of a wide build as if it were alone
-costs more in JVM starts than it wins in overlap: on jk's own 30-module tree it moved the
-rebuild from 73 s to 103 s, and the whole-build wall is monotone in `-w`
-(73 s at `-w1`, 77 s at `-w2`, 81 s at `-w4`). Width comes from the **dirty** set, so
-touching one module in a big workspace still shards wide — that is the inner loop.
+Sharding *every* module of a wide build as if it were alone costs more in JVM starts than it
+wins in overlap: on jk's own 30-module tree it moved the rebuild from 73 s to 103 s, and the
+whole-build wall is monotone in `-w` (73 s at `-w1`, 77 s at `-w2`, 81 s at `-w4`). The share
+keeps that wide build at one runner per module. A long-tailed module — petclinic's Spring
+suite, one class near 18 s and the rest done in a few seconds — stays at two runners even when
+it is the only thing building, which is the inner loop.
 
 An explicit `-w N` is never rescaled; it means N.
 
@@ -314,7 +315,7 @@ jk test --serial-tests
 
 Modules that cannot share a JVM pin workers in `jk.toml`. A positive module pin **wins**
 over CLI auto / `-w N`. `workers = 0` is the same as no pin: the module takes this build's
-auto share (it does not get the whole machine).
+auto count, capped by the share (it does not get the whole machine).
 
 A framework plugin can pin the same thing for its modules: a Quarkus module's suite runs in
 one JVM — the shape of Surefire's single fork — because Quarkus's test bootstrap writes and
