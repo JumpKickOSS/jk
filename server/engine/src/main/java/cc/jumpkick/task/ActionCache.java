@@ -527,7 +527,18 @@ public final class ActionCache {
      * it), so the caller falls through to a real run instead of building on wrong bytes.
      */
     public boolean restore(ActionRecord record, Path outputDir) throws IOException {
-        Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
+        // Paths the resource mirror owns stay on disk and are not rewritten from this record:
+        // a compile that snapshotted them would otherwise delete or resurrect a resource.
+        Set<String> mirrored = MirroredOutputs.recorded(outputDir);
+        Map<String, String> outputs = record.outputs();
+        if (!mirrored.isEmpty()) {
+            Map<String, String> kept = new LinkedHashMap<>();
+            for (var entry : outputs.entrySet()) {
+                if (!mirrored.contains(entry.getKey())) kept.put(entry.getKey(), entry.getValue());
+            }
+            outputs = kept;
+        }
+        Optional<Map<String, Blob>> resolved = resolveAll(outputs);
         if (resolved.isEmpty()) return false;
         Map<String, Blob> blobs = resolved.get();
         // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the classes tree
@@ -536,7 +547,10 @@ public final class ActionCache {
         // classpath entries by mtime, so re-copying an unchanged classes tree would invalidate
         // every downstream stamp on a cache hit.
         Set<Path> owned = new HashSet<>();
-        for (String rel : record.outputs().keySet()) {
+        for (String rel : outputs.keySet()) {
+            owned.add(outputDir.resolve(rel).normalize());
+        }
+        for (String rel : mirrored) {
             owned.add(outputDir.resolve(rel).normalize());
         }
         for (String f : BuildStamps.ALL) {
@@ -546,8 +560,8 @@ public final class ActionCache {
             pruneUnowned(outputDir, owned);
         }
         Files.createDirectories(outputDir);
-        meter(blobs, record.outputs()); // cache hit: these bytes come back out of the cache
-        for (Map.Entry<String, String> entry : record.outputs().entrySet()) {
+        meter(blobs, outputs); // cache hit: these bytes come back out of the cache
+        for (Map.Entry<String, String> entry : outputs.entrySet()) {
             Path target = outputDir.resolve(entry.getKey());
             // COPY, never link: compilers rewrite restored class files IN PLACE on the next
             // build, and a hard link would let that rewrite mutate the CAS blob (see

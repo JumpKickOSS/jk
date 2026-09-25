@@ -17,6 +17,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.runtime.base.BuildLogicGroovyHost;
 import cc.jumpkick.runtime.base.BuildLogicKtsHost;
+import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
@@ -291,7 +292,7 @@ public final class BuildLogicSupport {
                 Files.createDirectories(outDir);
                 if (actionCache.restore(hit.get(), outDir)) {
                     label.accept("build-logic:" + simple + ": cache hit");
-                    if (mergesIntoClasses) mergeIntoClasses(outDir, classesDir);
+                    if (mergesIntoClasses) mergeIntoClasses(layout, simple, outDir, classesDir);
                     continue;
                 }
             }
@@ -326,7 +327,7 @@ public final class BuildLogicSupport {
                     actionCache.store(taskId, key, inputs, outDir);
                 }
             }
-            if (mergesIntoClasses) mergeIntoClasses(outDir, classesDir);
+            if (mergesIntoClasses) mergeIntoClasses(layout, simple, outDir, classesDir);
         }
         return true;
     }
@@ -521,9 +522,15 @@ public final class BuildLogicSupport {
         return hits.stream().sorted().toList();
     }
 
-    private static void mergeIntoClasses(Path generated, @Nullable Path classesDir) throws IOException {
+    /**
+     * Merge one script's output into the classes tree. The ledger is per script, so a file the
+     * script no longer writes leaves the tree, and a resource or class another step owns does not.
+     */
+    private static void mergeIntoClasses(BuildLayout layout, String task, Path generated, @Nullable Path classesDir)
+            throws IOException {
         if (classesDir == null) return;
-        PathUtil.copyTree(generated, classesDir);
+        Path ledger = layout.buildDir().resolve("incremental").resolve("merged-build-logic-" + task + ".txt");
+        ResourceMirror.sync(List.of(generated), classesDir, ledger);
     }
 
     private static void deleteContents(Path dir) throws IOException {
