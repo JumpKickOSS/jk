@@ -65,7 +65,10 @@ public final class JkResultsAgent {
     private static final Pattern SOURCE_ROOT =
             Pattern.compile("(?:^|/)src/(?:main|test)/(?:java|kotlin|groovy|scala)/(.+)/[^/]+$");
 
-    private static final Pattern JK_ADD = Pattern.compile("jk add\\s+([^\\s`]+)");
+    private static final Pattern DEPS = Pattern.compile("deps\\((add|remove|pin),\\s*([^)]+)\\)");
+
+    /** A coordinate: {@code jk add} in prose ({@code jk add the dependency}) is not one. */
+    private static final Pattern JK_ADD = Pattern.compile("jk add\\s+([A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+)");
 
     private JkResultsAgent() {}
 
@@ -418,7 +421,8 @@ public final class JkResultsAgent {
         if (action != null && !action.isBlank())
             sb.append("  ").append(one(action, projectDir)).append('\n');
         JkResultsHints.Hint hint = JkResultsHints.forDiag(d);
-        if (hint != null) sb.append(fixLine(hint, projectDir)).append('\n');
+        String fix = hint == null ? null : fixLine(hint, projectDir);
+        if (fix != null) sb.append(fix).append('\n');
         return sb.toString();
     }
 
@@ -523,18 +527,39 @@ public final class JkResultsAgent {
 
     private static void appendFix(StringBuilder sb, BuildRecord.Diag d) {
         JkResultsHints.Hint hint = JkResultsHints.forDiag(d);
-        if (hint != null) sb.append(fixLine(hint, "")).append('\n');
+        String line = hint == null ? null : fixLine(hint, "");
+        if (line != null) sb.append(line).append('\n');
     }
 
     /**
-     * The hint as one action. A coordinate the hint names is {@code deps(add, g:a)} — the same
-     * call on MCP and in {@code --agent} output. {@code jk add g:a} is the CLI spelling of it.
+     * The hint as one action, or two when it names two coordinates. {@code deps(add|remove|pin, …)}
+     * is already the edit; {@code jk add g:a} is the CLI spelling of an add. A hint that only says
+     * to add "the dependency" names no coordinate and is not a {@code FIX}.
      */
-    private static String fixLine(JkResultsHints.Hint hint, String projectDir) {
-        String raw = hint.text();
-        Matcher add = JK_ADD.matcher(raw.replace("`", ""));
-        if (add.find() && !add.group(1).startsWith("<")) return "FIX deps(add, " + add.group(1) + ")";
-        return "FIX " + one(raw.replace('`', ' '), projectDir);
+    private static @Nullable String fixLine(JkResultsHints.Hint hint, String projectDir) {
+        String raw = hint.text().replace("`", "");
+        String deps = depsLines(raw);
+        if (deps != null) return deps;
+        List<String> added = new ArrayList<>();
+        Matcher add = JK_ADD.matcher(raw);
+        while (add.find() && added.size() < 2) {
+            if (!added.contains(add.group(1))) added.add(add.group(1));
+        }
+        if (added.size() == 1) return "FIX deps(add, " + added.get(0) + ")";
+        if (added.size() == 2) return "FIX deps(add, " + added.get(0) + ")\nFIX deps(add, " + added.get(1) + ")";
+        if (raw.contains("jk add")) return null;
+        return "FIX " + one(hint.text().replace('`', ' '), projectDir);
+    }
+
+    /** {@code FIX deps(action, coord)} lines already spelled in the hint, at most two. */
+    private static @Nullable String depsLines(String raw) {
+        List<String> lines = new ArrayList<>();
+        Matcher m = DEPS.matcher(raw);
+        while (m.find() && lines.size() < 2) {
+            String line = "FIX deps(" + m.group(1) + ", " + m.group(2).strip() + ")";
+            if (!lines.contains(line)) lines.add(line);
+        }
+        return lines.isEmpty() ? null : String.join("\n", lines);
     }
 
     private static String testId(BuildRecord.Diag d) {

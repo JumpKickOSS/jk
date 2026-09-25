@@ -19,7 +19,9 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -138,6 +140,68 @@ class PackageProvidersTest {
                         + " (central+https://repo.maven.apache.org/maven2/)");
     }
 
+    /**
+     * The jar that holds the package is still in the lock, on another scope, because a test starter
+     * pulls it. The coordinate to add is the direct dependency that left this compile.
+     */
+    @Test
+    void a_removed_direct_dependency_is_named_ahead_of_the_jar_that_holds_the_package(@TempDir Path tmp)
+            throws Exception {
+        Path web = jar(tmp.resolve("spring-web.jar"), "org/springframework/web/bind/annotation/GetMapping.class");
+        Path starter = jar(tmp.resolve("starter.jar"), "org/springframework/boot/Starter.class");
+        String webName = "org.springframework:spring-web:jar:";
+        String starterName = "org.springframework.boot:spring-boot-starter-webmvc:jar:";
+        List<String> deps = List.of("org.springframework:spring-web:jar:@7.0.9");
+        List<Lockfile.Artifact> previous = List.of(
+                artifact(starterName, EnumSet.of(Scope.MAIN, Scope.TEST), deps),
+                artifact(webName, EnumSet.of(Scope.MAIN, Scope.TEST), List.of()));
+        List<Lockfile.Artifact> current = List.of(
+                artifact(starterName, EnumSet.of(Scope.TEST), deps),
+                artifact(webName, EnumSet.of(Scope.TEST), List.of()));
+        PackageProviders providers = new PackageProviders(
+                List.of(entry(current.get(1), web), entry(current.get(0), starter)),
+                List.of(entry(previous.get(1), web), entry(previous.get(0), starter)),
+                previous,
+                current,
+                ClasspathResolver.COMPILE_MAIN,
+                List.of(),
+                List.of(),
+                tmp.resolve("index"),
+                LibraryCatalog.bundled(),
+                null,
+                4);
+
+        assertThat(providers.provider("org.springframework.web.bind.annotation"))
+                .isEqualTo(
+                        "org.springframework.boot:spring-boot-starter-webmvc (removed from this module's dependencies)");
+    }
+
+    /** No lock row holds the package. A Boot project is told the starter, not left to guess. */
+    @Test
+    void a_boot_project_is_offered_the_starter_for_a_package_the_lock_does_not_carry(@TempDir Path tmp)
+            throws Exception {
+        Path boot = jar(tmp.resolve("spring-boot.jar"), "org/springframework/boot/SpringApplication.class");
+        Lockfile.Artifact platform =
+                artifact("org.springframework.boot:spring-boot:jar:", EnumSet.of(Scope.MAIN), List.of());
+        PackageProviders providers = new PackageProviders(
+                List.of(entry(platform, boot)),
+                List.of(),
+                List.of(),
+                List.of(platform),
+                ClasspathResolver.COMPILE_MAIN,
+                List.of(),
+                List.of(boot),
+                tmp.resolve("index"),
+                LibraryCatalog.bundled(),
+                null,
+                4);
+
+        assertThat(providers.provider("org.springframework.web.bind.annotation"))
+                .isEqualTo("org.springframework.boot:spring-boot-starter-webmvc (library catalog)");
+        assertThat(providers.provider("jakarta.validation"))
+                .isEqualTo("org.springframework.boot:spring-boot-starter-validation (library catalog)");
+    }
+
     @Test
     void the_catalog_answers_by_group_prefix_when_the_lock_has_nothing(@TempDir Path tmp) {
         PackageProviders providers =
@@ -201,6 +265,21 @@ class PackageProvidersTest {
                 null,
                 List.of(scope),
                 List.of());
+    }
+
+    private static Lockfile.Artifact artifact(String name, Set<Scope> scopes, List<String> deps) {
+        return new Lockfile.Artifact(
+                name,
+                "4.0.8",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + SHA,
+                null,
+                List.copyOf(scopes),
+                deps);
+    }
+
+    private static ClasspathResolver.Entry entry(Lockfile.Artifact artifact, Path jar) {
+        return new ClasspathResolver.Entry(artifact, jar);
     }
 
     private static ClasspathResolver.Entry entry(String ga, String sha, Path jar) {

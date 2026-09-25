@@ -95,6 +95,83 @@ class JkResultsAgentTest {
     }
 
     @Test
+    void a_removed_starter_is_the_add_and_a_symbol_error_names_no_coordinate() {
+        String message = """
+                package org.springframework.web.bind.annotation does not exist
+                provided by: org.springframework.boot:spring-boot-starter-webmvc (removed from this module's dependencies)
+                """;
+        BuildRecord.Diag missing = diag(
+                "compile-java",
+                "javac",
+                message,
+                "src/main/java/com/example/restservice/GreetingController.java",
+                3,
+                8,
+                0,
+                List.of(),
+                "compiler.err.doesnt.exist");
+        BuildRecord.Diag symbol = diag(
+                "compile-java",
+                "javac",
+                """
+                        cannot find symbol
+                          symbol:   class RestController
+                          location: class com.example.restservice.GreetingController""",
+                "src/main/java/com/example/restservice/GreetingController.java",
+                9,
+                2,
+                0,
+                List.of(),
+                "compiler.err.cant.resolve.location");
+        BuildRecord r = record("build", false, false, 900, null, List.of(missing, symbol), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                        FAIL build rest-service · 2 errors · 900ms
+                        E src/main/java/com/example/restservice/GreetingController.java:3:8 package org.springframework.web.bind.annotation does not exist
+                        FIX deps(add, org.springframework.boot:spring-boot-starter-webmvc)
+                        E src/main/java/com/example/restservice/GreetingController.java:9:2 cannot find symbol
+                        """);
+    }
+
+    @Test
+    void a_pinned_resolve_conflict_names_the_version_the_graph_requires() {
+        BuildRecord.Diag err =
+                new BuildRecord.Diag("error", "/ws/rest-service", "parse-build", "verbatim", """
+                ‼ Cannot resolve dependencies:
+                  │ org.springframework.boot:spring-boot 4.0.8 depends on org.springframework:spring-core [7.0.9,+∞)
+                  │ The project depends on org.springframework.boot:spring-boot-starter-webmvc 4.0.8
+                  │ The project depends on org.springframework:spring-core 6.0.0
+                """, null, null);
+        BuildRecord.Task step = new BuildRecord.Task("parse-build", "resolve", "FAIL", 400, 0);
+        BuildRecord r = record("test", false, false, 400, null, List.of(err), List.of(step));
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                        FAIL test rest-service · 1 error · 400ms
+                        E parse-build: │ org.springframework.boot:spring-boot 4.0.8 depends on org.springframework:spring-core [7.0.9,+∞)
+                          │ The project depends on org.springframework.boot:spring-boot-starter-webmvc 4.0.8
+                        FIX deps(pin, org.springframework:spring-core:7.0.9)
+                        """);
+    }
+
+    @Test
+    void a_junit_engine_that_failed_to_start_names_the_pin_to_drop_forward() {
+        BuildRecord.Diag err = new BuildRecord.Diag(
+                "error", "/ws/junit-starter-gradle", "run-tests", "test-launcher", """
+                        test discovery exited 70 before any test ran — TestEngine with ID 'junit-jupiter' failed to discover tests
+                        engine: junit-jupiter
+
+                        Two versions of the org.junit.jupiter line on the test classpath:
+                          5.0.0: org.junit.jupiter:junit-jupiter-api
+                          6.1.3: org.junit.jupiter:junit-jupiter-engine, org.junit.jupiter:junit-jupiter
+                        """, null, null);
+        BuildRecord r = record("test", false, false, 986, null, List.of(err), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                        FAIL test rest-service · 1 error · 986ms
+                        E run-tests: test discovery exited 70 before any test ran — TestEngine with ID 'junit-jupiter' failed to discover tests
+                          engine: junit-jupiter
+                        FIX deps(pin, org.junit.jupiter:junit-jupiter-api:6.1.3)
+                        """);
+    }
+
+    @Test
     void a_lock_failure_is_the_step_and_its_cause() {
         BuildRecord.Diag err = new BuildRecord.Diag("error", "/ws/rest-service", "lock", "verbatim", """
                 Cannot resolve dependencies:
