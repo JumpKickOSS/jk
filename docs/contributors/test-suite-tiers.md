@@ -203,6 +203,17 @@ JK_NIA_OVERLAY=~/src/oss/jk-examples/android/nowinandroid/overlay \
 A number taken while anything else was building is load, not lock cost. The lock's gate is the
 scheduled wall measurement ([docs/perf](../perf/README.md)), not this assert.
 
+## One heavy run per machine
+
+Many integration tests start a nested engine that runs a whole build, and each engine keeps its own
+compiler pool, so jk's full integration tier holds far more forked JVMs than any user build: on a
+15 GiB host it peaked at 13.8 GiB, 6.6 GiB of it in 18 compiler workers and 4 GiB in 26 test JVMs.
+Two such runs at once, or one beside another heavy job, can exhaust the host. Run one heavy job
+per machine: `jk test --profile integration`, an uncached full `jk build`, or a benchmark
+(`bench/agent-loop`, `bench/wall`, the jk-examples corpus). Benchmarks also need the host otherwise
+idle, because they measure wall time and memory. Editing, narrow `-m` / `--class` runs and
+`jk guard` in parallel worktrees are fine.
+
 ## Isolation
 
 A forked test JVM never sees the developer's product layout or the engine's. `TestEnv` hands
