@@ -13,8 +13,9 @@ manifest. A real lockfile. Structured results agents can read without scraping a
 engine with a capped heap. Maven Central — not a new package universe.
 
 Wall-clock parity with a tuned Gradle 9.x build is table stakes. The conversion claim is
-**fewer failed cycles and less agent thrash** — coding agents finishing green in fewer turns.
-That is the goal the agent-loop harness is measuring. It is not a result yet.
+**fewer failed cycles and less agent thrash**. On 165 broken-build scenarios a coding agent
+fixes jk projects in fewer turns, with about a quarter less context and wall time than Maven
+or Gradle given the same agent tooling ([the table](docs/user/why.md#making-the-north-star-true)).
 
 > Import your Maven or Gradle project when you are ready. Keep shipping with `jk mvn` /
 > `jk gradle` until the JumpKick path owns the loop.

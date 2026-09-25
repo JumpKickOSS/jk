@@ -177,6 +177,19 @@ has nothing to say. This section is the one home for release highlights; there i
 - The release workflow ships what jk builds of itself, bootstrapped from the hosted release
   `.jk/ci-bootstrap-version` pins.
 
+## Benchmarks each release
+
+After the release is installed on the benchmark host, re-run the agent loop and bank it:
+
+```bash
+bench/agent-loop/scenario --baseline && bench/agent-loop/scenario --verify --jobs 2 --report bench/agent-loop/VERIFY.md
+bench/agent-loop/harness --driver <llm driver> --results bench/agent-loop/results/<date>-<version>
+```
+
+Then update the turns-to-green table in [Why JumpKick](../user/why.md#making-the-north-star-true)
+with the commit, the tool versions and the host, and the headline numbers in the README and
+[Comparison](../user/comparison.md). A release whose table regresses says so in its highlights.
+
 ## Hosting (GCS + Firebase CDN)
 
 | Layer | Role |

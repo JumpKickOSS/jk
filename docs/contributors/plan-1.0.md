@@ -17,7 +17,7 @@ outrank anything here.
 
 | Area | Now |
 |---|---|
-| Agent loop | One scenario, one coding-agent driver: jk is behind on turns and tokens. The scripted driver is a plumbing proof. A full matrix is pending. |
+| Agent loop | Measured: 165 scenarios, one LLM driver, every tool green; jk leads Maven and Gradle on turns, first correct edit, input and output tokens, wall and cost ([why.md](../user/why.md#making-the-north-star-true)). A second driver and more project kinds are open. |
 | Maven projects | Effective-POM import, profiles, plugin mapping, `jk mvn` results, and coexistence have landed. Of the top-20 corpus, 13 build and 2 pass their tests (run 16). |
 | IDE | The IntelliJ external system (live model, gutter, debug) and Scala over BSP have landed. Marketplace listings have not. |
 | Batteries | Coverage beyond XML, the generators, lint, TestNG, the database-migration recipe, and a publishable SDK have landed. The SDK is not on Maven Central. |
@@ -83,10 +83,10 @@ product and epic 1 absorbs it.
 
 **Open**
 
-- Publishing the numbers. The only LLM comparison banked is one `claude-code` scenario
-  ([`results/2026-09-16/TABLE.md`](../../bench/agent-loop/results/2026-09-16/TABLE.md)): jk
-  9 turns / 45,982 tokens, Maven 6 / 23,623, Gradle 6 / 23,807. The `api` driver has a single
-  jk run and no Maven or Gradle row. A full matrix is pending.
+- A second LLM driver over the same matrix, and scenarios beyond Gradle single-module Java
+  guides (Maven-first, multi-module, Kotlin). The published table
+  ([`results/2026-09-25-agent-mode/TABLE.md`](../../bench/agent-loop/results/2026-09-25-agent-mode/TABLE.md))
+  is one driver on one host.
 
 The published table is the two LLM drivers (`claude-code`, `api`) over the scenario matrix,
 three tools, against a named commit, refreshed each release. `scripted` stays the plumbing
