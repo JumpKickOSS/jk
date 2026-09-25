@@ -100,6 +100,17 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /**
+     * When set, the worker count passed to {@link #run} is the auto share ({@link TestWorkers#autoShare}),
+     * not an explicit pin. The launcher then sizes the pool from recorded class walls.
+     */
+    private boolean autoShare;
+
+    public JUnitLauncher withAutoShare(boolean auto) {
+        this.autoShare = auto;
+        return this;
+    }
+
     /** JDWP listener for the suite JVM ({@code --debug-jvm}); null for an ordinary run. */
     private @Nullable DebugJvm debug;
 
@@ -532,16 +543,26 @@ public final class JUnitLauncher {
 
         int resolvedWorkers = wanted;
         List<String> preDiscovered = null;
-        if (!classNames.isEmpty()) {
+        // Auto (the share, or a bare 0) sizes from this selection's recorded walls. An explicit
+        // count is capped by class count the way it always was.
+        boolean auto = debug == null && (autoShare || wanted == 0);
+        if (auto) {
+            if (!classNames.isEmpty()) {
+                preDiscovered = classNames;
+            } else {
+                Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener);
+                if (discovery.crashed()) return discovery.verdict(moduleLabel).withWorkers(1);
+                preDiscovered = discovery.classes();
+            }
+            int share = wanted > 0 ? wanted : TestWorkers.effectiveJobs();
+            resolvedWorkers = preDiscovered.isEmpty()
+                    ? 1
+                    : TestWorkers.autoCount(share, inferredModuleDir, preDiscovered, preDiscovered.size());
+            if (preDiscovered.size() <= 1) resolvedWorkers = 1;
+        } else if (!classNames.isEmpty()) {
             preDiscovered = classNames;
             resolvedWorkers = TestWorkers.resolve(wanted, preDiscovered.size(), TestWorkers.effectiveJobs());
             if (preDiscovered.size() <= 1) resolvedWorkers = 1;
-        } else if (wanted == 0) {
-            // Discover once so auto can size the pool; reuse the list when W>1.
-            Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener);
-            if (discovery.crashed()) return discovery.verdict(moduleLabel).withWorkers(1);
-            preDiscovered = discovery.classes();
-            resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
         } else if (wanted > 1) {
             resolvedWorkers = TestWorkers.resolve(wanted, Integer.MAX_VALUE, TestWorkers.effectiveJobs());
         }

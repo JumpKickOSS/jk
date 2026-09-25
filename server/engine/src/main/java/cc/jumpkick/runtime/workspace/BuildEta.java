@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
@@ -23,6 +24,8 @@ import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.TaskForecast;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -266,8 +269,8 @@ public final class BuildEta {
         int dirtyWidth = BuildGraph.maxReadyWidth(dirtyDirs, plan.edges());
         if (maxModuleConcurrency > 0) dirtyWidth = Math.min(Math.max(1, dirtyWidth), maxModuleConcurrency);
         int jobsBudget = TestWorkers.jobsBudget(maxModuleConcurrency);
-        // The live countdown arrives with the share already resolved (workers > 0); explain
-        // resolves it here, through the executor's own function.
+        // `workers` is the user's -w: 0 is auto, and the share is what auto caps against. An
+        // explicit -w is the share itself — it is never rescaled.
         int share = workers > 0 ? workers : TestWorkers.autoShare(jobsBudget, dirtyWidth);
         Perf.note(
                 "eta-width",
@@ -344,7 +347,7 @@ public final class BuildEta {
             // is guessed at three methods a class.
             int knownClasses = EffortWeights.knownClassCount(BuildMetrics.slashKey(mdir.toString()));
             int classGuess = knownClasses > 0 ? knownClasses : m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
-            int testW = TestWorkers.resolve(share, classGuess, share);
+            int testW = pricedTestWorkers(mdir, workers, share, classGuess);
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
             // resolve-deps runs on every scheduled module and the forecast lists it as bookkeeping,
@@ -368,6 +371,31 @@ public final class BuildEta {
             costs.add(priced);
         }
         return costs;
+    }
+
+    /**
+     * Workers a suite is priced at. An explicit {@code -w} or a {@code [test] workers} pin keeps
+     * today's cap; auto uses {@link TestWorkers#autoCount} on the module's most recent class walls,
+     * capped by the same share the run will hand the launcher.
+     */
+    private static int pricedTestWorkers(Path mdir, int requestedWorkers, int share, int classGuess) {
+        int pin = moduleWorkersPin(mdir);
+        if (requestedWorkers > 0 || pin > 0) {
+            int requested = pin > 0 ? pin : requestedWorkers;
+            return TestWorkers.resolve(requested, classGuess, share);
+        }
+        return TestWorkers.autoCount(share, mdir, List.of(), classGuess);
+    }
+
+    /** A positive {@code [test] workers} / {@code [build] test-workers} pin, or {@code 0}. */
+    private static int moduleWorkersPin(Path dir) {
+        try {
+            Path manifest = ManifestPaths.manifestIn(dir);
+            if (!Files.isRegularFile(manifest)) return 0;
+            return JkBuildParser.parse(manifest).build().effectiveTestWorkers(0);
+        } catch (IOException | RuntimeException e) {
+            return 0;
+        }
     }
 
     /**

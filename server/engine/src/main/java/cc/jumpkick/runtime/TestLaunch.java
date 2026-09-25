@@ -302,9 +302,10 @@ final class TestLaunch {
      * Test JVMs for this module, decided now rather than at plan time.
      *
      * <p>A module pin and an explicit {@code -w N} are both answers the caller already gave, so they
-     * stand. Auto is the one case with something left to decide: the plan share was the jobs budget
-     * divided by the graph's widest point, and by the time the last module's suite dispatches that
-     * width is long gone. {@link TestWorkers#liveShare} re-reads it, and can only widen.
+     * stand. Auto returns the share — {@link TestWorkers#autoShare} at plan time, re-read by {@link
+     * TestWorkers#liveShare} when the graph has narrowed — and the launcher turns that cap into a
+     * worker count from recorded class walls. {@code 0} must not be returned for auto: the launcher
+     * would have nothing to cap.
      *
      * <p>A plugin step that declares {@code oneTestJvm} — Quarkus's test model, whose bootstrap keeps
      * its test-class index beside the classes and binds the application's ports — makes the
@@ -315,9 +316,21 @@ final class TestLaunch {
         boolean modulePinned = module.effectiveTestWorkers(0) > 0;
         if (!modulePinned && oneTestJvm(decls)) return 1;
         int planned = module.effectiveTestWorkers(in.workerCount());
-        boolean pinned = modulePinned || in.session().requestedTestWorkers() > 0;
-        if (pinned) return planned;
-        return TestWorkers.liveShare(planned, TestWorkers.effectiveJobs(), LiveUnits.running());
+        if (modulePinned || in.session().requestedTestWorkers() > 0) return planned;
+        int jobs = TestWorkers.effectiveJobs();
+        int running = LiveUnits.running();
+        if (planned > 0) return TestWorkers.liveShare(planned, jobs, running);
+        // Standalone auto has no plan share. Alone, the share is the whole jobs budget.
+        if (running <= 0) return jobs;
+        return TestWorkers.liveShare(1, jobs, running);
+    }
+
+    /** True when {@link #dispatchWorkers} returned a share for {@link TestWorkers#autoCount} to cap. */
+    static boolean autoDispatch(BuildPlanner.Inputs in, BuildBlock module, @Nullable PluginDeclarations decls) {
+        if (in.session().debugJvm() != null) return false;
+        if (module.effectiveTestWorkers(0) > 0) return false;
+        if (oneTestJvm(decls)) return false;
+        return in.session().requestedTestWorkers() <= 0;
     }
 
     /** Whether any plugin step of the module declared that its tests run in one JVM. */
