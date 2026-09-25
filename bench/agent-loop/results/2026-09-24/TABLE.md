@@ -2,15 +2,15 @@
 
 Date: 2026-09-24 · jk 0.14.0 · host `1a8c211a203d` · 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL · drivers: grok, scripted · 330 (scenario × tool) runs on this host
 
-A run materialises one (repo × failure) for one tool, runs the tool once so the results file is red, then lets the agent loop through that tool's MCP server until the results say OK or the budget ends. Turns are the agent's fix-and-rerun cycles (API turns for the LLM drivers); tokens are the API's input + output including cache reads and writes; wall is the agent's time only. A row is green only when the harness's own rerun after the agent stopped is green too. Median and p90 are over this host's runs of the tool, red runs at their budget. Rows from another host are listed under their own heading and are not mixed into these numbers.
+A run materialises one (repo × failure) for one tool, runs the tool once so the results file is red, then lets the agent loop through that tool's MCP server until the results say OK or the budget ends. A row is green only when the harness's own rerun after the agent stopped is green too. Turns under the cap are informational. The comparison is the green rate, the cost to green (sum of cost on green runs ÷ green runs), and the signal-quality columns: median turn of the first edit that touches the injection, median reads before that edit, median output+reasoning tokens, median uncached input tokens, median cache-read tokens, and the fix-quality counts (exact, equivalent, collateral, cheat). Median and p90 of turns, tokens, and wall are over this host's runs of the tool, red runs at their budget. The column rules are in the agent-loop README. Rows from another host are listed under their own heading and are not mixed into these numbers.
 
 ## `grok` · grok-4.7 · effort high · budget 8 turns / 10 min
 
-| Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost |
-|---|---|---|---|---|---|---|---|---|---|---|
-| jk | 63 | 41 | 65% | 8 | 8 | 87,814 | 148,476 | 28.2s | 53.5s | $2.45 |
-| mvn | 39 | 35 | 90% | 7 | 8 | 66,094 | 85,630 | 31.4s | 65.0s | $1.10 |
-| gradle | 63 | 58 | 92% | 7 | 8 | 63,330 | 83,472 | 29.2s | 59.2s | $1.67 |
+| Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost | First correct edit | Reads before fix | Output+reasoning | Input (uncached) | Cache read | Cost to green | Fix quality |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| jk | 63 | 41 | 65% | 8 | 8 | 87,814 | 148,476 | 28.2s | 53.5s | $2.45 | 5 | 4 | 2,496 | 29,724 | 54,016 | $0.0296 | 44 exact · 13 equivalent · 5 collateral · 0 cheat |
+| mvn | 39 | 35 | 90% | 7 | 8 | 66,094 | 85,630 | 31.4s | 65.0s | $1.10 | 5 | 5 | 2,413 | 26,042 | 34,176 | $0.0260 | 26 exact · 7 equivalent · 4 collateral · 0 cheat |
+| gradle | 63 | 58 | 92% | 7 | 8 | 63,330 | 83,472 | 29.2s | 59.2s | $1.67 | 5 | 5 | 2,397 | 24,172 | 36,224 | $0.0253 | 43 exact · 12 equivalent · 5 collateral · 0 cheat |
 
 | Repo | Failure | jk | mvn | gradle |
 |---|---|---|---|---|
@@ -124,11 +124,11 @@ What the results file did not say, per run: the oracle records where it needed m
 
 ## `scripted` · budget 8 turns / 10 min
 
-| Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost |
-|---|---|---|---|---|---|---|---|---|---|---|
-| jk | 63 | 62 | 98% | 1 | 1 | 0 | 0 | 0.3s | 0.4s | — |
-| mvn | 39 | 39 | 100% | 1 | 1 | 0 | 0 | 6.0s | 7.5s | — |
-| gradle | 63 | 63 | 100% | 1 | 1 | 0 | 0 | 4.5s | 6.1s | — |
+| Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost | First correct edit | Reads before fix | Output+reasoning | Input (uncached) | Cache read | Cost to green | Fix quality |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| jk | 63 | 62 | 98% | 1 | 1 | 0 | 0 | 0.3s | 0.4s | — | 1 | 1 | 0 | 0 | 0 | $0 | 45 exact · 18 equivalent · 0 collateral · 0 cheat |
+| mvn | 39 | 39 | 100% | 1 | 1 | 0 | 0 | 6.0s | 7.5s | — | 1 | 1 | 0 | 0 | 0 | $0 | 30 exact · 9 equivalent · 0 collateral · 0 cheat |
+| gradle | 63 | 63 | 100% | 1 | 1 | 0 | 0 | 4.5s | 6.1s | — | 1 | 1 | 0 | 0 | 0 | $0 | 53 exact · 10 equivalent · 0 collateral · 0 cheat |
 
 | Repo | Failure | jk | mvn | gradle |
 |---|---|---|---|---|

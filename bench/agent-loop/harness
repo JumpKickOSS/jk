@@ -6,13 +6,16 @@
     harness --driver claude-code --only gs-rest-service:missing-dependency
     harness --driver api --only gs-rest-service:compile-error --tool jk
     harness --driver grok --only gs-rest-service:compile-error
+    harness --render
 
 For each (repo × failure × tool) the harness materialises the sandbox with `scenario`, runs the
 tool once so the results file is red, starts the tool's MCP server (jk: the shared engine's,
 bound to the sandbox; Maven and Gradle: `wrappers/results-mcp`) and hands the agent a fixed
 system prompt: the build is red, make it green, use only these tools, stop when the results say
-OK. The agent runs until green or the budget (`--max-turns`, `--max-minutes`) is spent; the
+OK. The agent runs until green or the budget (`--max-turns` 16, `--max-minutes` 10) is spent; the
 harness then reruns the tool itself and calls the row green only when that rerun is green too.
+A Gradle run stops that Gradle's daemons after the rerun. `--render` recomputes signal metrics
+from transcripts and sandboxes already on disk and rewrites the table; it does not run an agent.
 
 Drivers: `scripted` (an oracle that reads the results file and applies the class's known fix;
 costs nothing and proves the plumbing), `claude-code` (`claude -p` with the MCP server and file
@@ -45,7 +48,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 import benchtools  # noqa: E402
 
-from harnesslib import agents, oracle, report  # noqa: E402
+from harnesslib import agents, metrics, oracle, report  # noqa: E402
 from harnesslib.session import Session, open_mcp, results_ok  # noqa: E402
 
 HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop")
@@ -53,6 +56,8 @@ DRIVERS = ("scripted", "claude-code", "api", "grok")
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_GROK_MODEL = "grok-4.7"
 DEFAULT_EFFORT = "high"
+# Real runs stop Gradle on the way out. --help, --dry-run, and --render do not.
+_stop_gradle_on_exit = True
 
 
 def resolve_model(driver: str, model: str | None) -> str | None:
@@ -117,8 +122,12 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
         "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 0.0,
         "wall_ms": 0, "red_wall_ms": 0, "verify_wall_ms": 0,
         "claims_green": False, "verified_green": False, "fix_sources": [], "finding": "",
+        "first_edit_turn": None, "first_correct_edit_turn": None,
+        "edits": 0, "wrong_edits": 0, "reads_before_fix": 0, "fix_quality": None,
         "sandbox": str(sandbox), "transcript": str(transcript),
     }
+    if ns.driver != "scripted":
+        row["reasoning_tokens"] = 0
     if ns.driver == "grok":
         row["effort"] = ns.effort
     row.update(benchtools.stamp(ns.tools))
@@ -131,6 +140,9 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
         if code == 0:
             row.update(outcome="error", finding="the injection did not break the build (exit 0 before the agent started)")
             return row
+        # The red run already started Gradle's daemon. The agent's builds, and the rerun below, keep it.
+        if tool == "gradle":
+            row["gradle_daemon"] = "warm"
         started = time.monotonic()
         deadline = started + ns.max_minutes * 60
         if ns.driver == "scripted":
@@ -149,12 +161,11 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
             row.update(
                 turns=res.turns, finding=res.finding,
                 cost_usd=None if res.cost_usd is None else round(res.cost_usd, 4),
-                input_tokens=usage.get("input_tokens", 0), output_tokens=usage.get("output_tokens", 0),
+                input_tokens=usage.get("input_tokens", 0), output_tokens=int(usage.get("output_tokens") or 0),
                 cache_read_tokens=usage.get("cache_read_input_tokens", 0), cache_write_tokens=usage.get("cache_creation_input_tokens", 0),
+                reasoning_tokens=agents.reasoning_count(usage, res.extra.get("model_usage")),
                 claims_green=res.green_claimed or agents.claims_green_from_results(sandbox),
             )
-            if usage.get("reasoning_tokens") is not None:
-                row["reasoning_tokens"] = usage["reasoning_tokens"]
             if res.extra.get("tools"):
                 row["tools"] = res.extra["tools"]
             row["tokens"] = row["input_tokens"] + row["output_tokens"] + row["cache_read_tokens"] + row["cache_write_tokens"]
@@ -183,7 +194,17 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
             row["status"] = "incompatible-with-latest-gradle"
             row["error"] = message.split("incompatible-with-latest-gradle:", 1)[-1].strip()
         (run_dir / "error.log").write_text(traceback.format_exc(), encoding="utf-8")
+    finally:
+        metrics.enrich(row, repo.failures.get(failure, {}))
     return row
+
+
+def run_guarded(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
+    """Gradle scenarios take the install-wide daemon lock and stop the daemon after the rerun."""
+    if tool != "gradle":
+        return run_one(repo, failure, tool, ns, run_root)
+    with benchtools.gradle_run():
+        return run_one(repo, failure, tool, ns, run_root)
 
 
 def _note_tool(row: dict, sandbox: Path, tool: str, out: str) -> None:
@@ -203,7 +224,11 @@ def _note_tool(row: dict, sandbox: Path, tool: str, out: str) -> None:
 def print_row(row: dict) -> None:
     mark = {"green": "ok  ", "red": "RED ", "claimed": "CLM ", "error": "ERR "}[row["outcome"]]
     tokens = f"{row['tokens']:>8,}" if row["tokens"] else "        "
+    correct = row.get("first_correct_edit_turn")
+    correct_s = "·" if correct is None else str(correct)
+    quality = row.get("fix_quality") or "·"
     print(f"{mark} {row['repo']:28} {row['failure']:20} {row['tool']:6} {row['turns']:>2}t {row['wall_ms'] / 1000:6.1f}s {tokens}  "
+          f"fix@{correct_s} {quality}  "
           f"{', '.join(row['fix_sources']) or ''}{'  ' + row['finding'] if row['finding'] else ''}", flush=True)
 
 
@@ -219,14 +244,21 @@ def main() -> int:
                     help=f"reasoning effort for --driver grok, passed as --reasoning-effort (default {DEFAULT_EFFORT})")
     ap.add_argument("--tool", choices=scenario.TOOLS, action="append", help="restrict to a tool (repeatable; default all three)")
     ap.add_argument("--only", metavar="REPO[:FAILURE]", help="one repo, or one repo × failure")
-    ap.add_argument("--max-turns", type=int, default=8, help="turn budget per run (default 8)")
+    ap.add_argument("--max-turns", type=int, default=16, help="turn budget per run (default 16)")
     ap.add_argument("--max-minutes", type=float, default=10, help="wall budget per run in minutes (default 10)")
     ap.add_argument("--jobs", type=int, default=2, help="runs in parallel (default 2)")
     ap.add_argument("--date", default=dt.date.today().isoformat(), help="results directory name (default today)")
     ap.add_argument("--results", type=Path, help="results directory (default results/<date> beside this script)")
     ap.add_argument("--dry-run", action="store_true", help="list the matrix and exit")
+    ap.add_argument("--render", action="store_true",
+                    help="recompute signal metrics from rows already in --results (or results/<date>) and rewrite the table; do not run agents")
     benchtools.add_arguments(ap)
     ns = ap.parse_args()
+    global _stop_gradle_on_exit
+    if ns.render or ns.dry_run:
+        _stop_gradle_on_exit = False
+    if ns.render:
+        return render_existing(ns)
     ns.model = resolve_model(ns.driver, ns.model)
     benchtools.use_flags(ns)
     repos = scenario.load_config()
@@ -255,13 +287,14 @@ def main() -> int:
     started = time.time()
     jobs = 1 if ns.driver != "scripted" else ns.jobs
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        futures = [pool.submit(run_one, repo, failure, tool, ns, run_root) for repo, failure, tool in work]
+        futures = [pool.submit(run_guarded, repo, failure, tool, ns, run_root) for repo, failure, tool in work]
         for fut in concurrent.futures.as_completed(futures):
             row = fut.result()
             rows.append(row)
             print_row(row)
     rows_path = results_dir / "rows.jsonl"
     merged = report.merge(report.load_rows(rows_path), rows)
+    refresh_metrics(merged)
     report.write_rows(rows_path, merged)
     table = report.render(merged, scenario.jk_version())
     (results_dir / "TABLE.md").write_text(table, encoding="utf-8")
@@ -271,8 +304,33 @@ def main() -> int:
     return 0 if green == len(rows) else 1
 
 
+def refresh_metrics(rows: list[dict]) -> None:
+    """Recompute signal quality for every row that still has its transcript and sandbox."""
+    repos = scenario.load_config()
+    for row in rows:
+        repo = repos.get(row.get("repo"))
+        spec = repo.failures.get(row.get("failure"), {}) if repo else {}
+        metrics.enrich(row, spec)
+
+
+def render_existing(ns) -> int:
+    results_dir = ns.results or HERE / "results" / ns.date
+    rows_path = results_dir / "rows.jsonl"
+    rows = report.load_rows(rows_path)
+    if not rows:
+        sys.exit(f"no rows in {rows_path}")
+    refresh_metrics(rows)
+    report.write_rows(rows_path, rows)
+    table = report.render(rows, scenario.jk_version())
+    (results_dir / "TABLE.md").write_text(table, encoding="utf-8")
+    print(table)
+    print(f"\nwrote {rows_path} and {results_dir / 'TABLE.md'}")
+    return 0
+
+
 if __name__ == "__main__":
     try:
         sys.exit(main())
     finally:
-        benchtools.stop_gradle()
+        if _stop_gradle_on_exit and "--help" not in sys.argv and "-h" not in sys.argv:
+            benchtools.stop_gradle()
