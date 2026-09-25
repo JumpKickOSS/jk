@@ -1,22 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Jobs;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.MemoryProbe;
+import cc.jumpkick.runtime.base.RecentClassWalls;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Within-module test JVM count (Mill {@code testParallelism} analogue).
+ * Within-module test JVM count.
  *
  * <ul>
- *   <li><b>explicit {@code -w N}</b> ({@code N ≥ 1}) — use N (capped by class count + heap)
- *   <li><b>auto {@code -w 0} / omit</b> — {@code min(jobs, classCount)}, then {@link HeapPlan}
- *       shrinks if free RAM cannot support that many 512 MiB-class worker heaps
+ *   <li><b>explicit {@code -w N}</b> or a module pin ({@code N ≥ 1}) — N, capped by class count,
+ *       then the heap clamp
+ *   <li><b>auto</b> — {@link #autoCount}: measured class walls, capped by this module's
+ *       {@link #autoShare}, then the heap clamp
  * </ul>
- *
- * <p>Matches Mill's {@code testSubprocessCount}: {@code min(jobs, numTests)} when parallel is on
- * and there is more than one class.
  */
 public final class TestWorkers {
 
@@ -25,26 +31,116 @@ public final class TestWorkers {
     /**
      * Resolve the number of test-runner JVMs for one module.
      *
-     * @param requested {@code ≤ 0} = auto; {@code ≥ 1} = explicit
-     * @param classCount discovered top-level test classes (0 if unknown/empty)
-     * @param jobs effective {@code -j} / jobs budget (cores when default)
+     * @param requested {@code ≤ 0} = auto with no class-wall history; {@code ≥ 1} = explicit
+     * @param classCount discovered top-level test classes ({@code 0} if unknown)
+     * @param jobs for an explicit request, ignored; for auto, the {@link #autoShare} cap (the whole
+     *     jobs budget when the module is alone)
      */
     public static int resolve(int requested, int classCount, int jobs) {
         int classes = Math.max(0, classCount);
-        int raw;
         if (requested > 0) {
-            raw = classes == 0 ? requested : Math.min(requested, Math.max(1, classes));
-        } else {
-            raw = auto(jobs, classes);
+            int raw = classes == 0 ? requested : Math.min(requested, Math.max(1, classes));
+            return clampByHeap(Math.max(1, raw));
         }
-        return clampByHeap(Math.max(1, raw));
+        return autoCount(jobs, Map.of(), List.of(), classes);
     }
 
-    /** Mill-shaped auto: one class → 1; else {@code min(jobs, classCount)} — {@code jobs} pre-shared. */
-    public static int auto(int jobs, int classCount) {
-        if (classCount <= 1) return 1;
-        int j = Math.max(1, jobs);
-        return Math.max(1, Math.min(j, classCount));
+    /**
+     * Auto {@code W} for one module: {@code clamp(ceil(Σ class wall / max class wall), 1, min(share,
+     * classCount))}, then {@link #clampByHeap}. A class with no recorded wall counts as the median of
+     * the known ones. No history for the module is {@code min(2, share, classCount)}; a class count of
+     * {@code 0} does not cap. {@code share} is {@link #autoShare}.
+     *
+     * @param recorded most recent wall-ms per class (FQCN); empty when the module has no history
+     * @param selection classes about to run; empty means the recorded suite, padded up to
+     *     {@code coldClassCount} when that is larger
+     * @param coldClassCount class count to assume when nothing has been recorded, or a floor on the
+     *     recorded suite when {@code selection} is empty
+     */
+    public static int autoCount(
+            int share, @Nullable Map<String, Long> recorded, @Nullable List<String> selection, int coldClassCount) {
+        return clampByHeap(uncapped(share, wallsOf(recorded, selection, coldClassCount)));
+    }
+
+    /**
+     * {@link #autoCount} for {@code moduleDir}'s most recent recorded walls ({@link RecentClassWalls}).
+     */
+    public static int autoCount(
+            int share, @Nullable Path moduleDir, @Nullable List<String> selection, int coldClassCount) {
+        Map<String, Long> recorded = moduleDir == null ? Map.of() : RecentClassWalls.forModule(moduleDir);
+        return autoCount(share, recorded, selection, coldClassCount);
+    }
+
+    /** {@link #autoCount} before the heap clamp. */
+    static int uncapped(int share, long[] wallMs) {
+        int capShare = Math.max(1, share);
+        int n = wallMs == null ? 0 : wallMs.length;
+        int knownCount = 0;
+        for (int i = 0; i < n; i++) if (wallMs[i] > 0) knownCount++;
+        if (knownCount == 0) {
+            if (n <= 0) return Math.min(2, capShare);
+            return Math.min(2, Math.min(capShare, n));
+        }
+        long[] known = new long[knownCount];
+        int k = 0;
+        long sum = 0;
+        long max = 0;
+        for (int i = 0; i < n; i++) {
+            long w = wallMs[i];
+            if (w <= 0) continue;
+            known[k++] = w;
+            sum += w;
+            if (w > max) max = w;
+        }
+        int missing = n - knownCount;
+        if (missing > 0) {
+            Arrays.sort(known);
+            long median = median(known);
+            sum += median * missing;
+            if (median > max) max = median;
+        }
+        int ideal = (int) Math.min(Integer.MAX_VALUE, (sum + max - 1) / max);
+        int classCap = Math.min(capShare, n);
+        return Math.min(Math.max(ideal, 1), Math.max(classCap, 1));
+    }
+
+    private static long[] wallsOf(
+            @Nullable Map<String, Long> recorded, @Nullable List<String> selection, int coldClassCount) {
+        int cold = Math.max(0, coldClassCount);
+        if (selection != null && !selection.isEmpty()) {
+            int n = 0;
+            for (String name : selection) if (name != null && !name.isBlank()) n++;
+            long[] walls = new long[n];
+            int i = 0;
+            for (String name : selection) {
+                if (name == null || name.isBlank()) continue;
+                walls[i++] = lookup(recorded, name);
+            }
+            return walls;
+        }
+        List<Long> known = new ArrayList<>();
+        if (recorded != null) {
+            for (Long v : recorded.values()) if (v != null && v > 0) known.add(v);
+        }
+        if (known.isEmpty()) return new long[cold];
+        int n = Math.max(known.size(), cold);
+        long[] walls = new long[n];
+        for (int i = 0; i < known.size(); i++) walls[i] = known.get(i);
+        return walls;
+    }
+
+    private static long lookup(@Nullable Map<String, Long> recorded, String fqcn) {
+        if (recorded == null || recorded.isEmpty()) return 0;
+        Long v = recorded.get(fqcn);
+        if (v == null) v = recorded.get(AggregatedMetrics.sanitize(fqcn));
+        return v == null || v <= 0 ? 0 : v;
+    }
+
+    /** Median of a sorted array; the mean of the two central values when the count is even. */
+    private static long median(long[] sorted) {
+        int n = sorted.length;
+        if ((n & 1) == 1) return sorted[n / 2];
+        return (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
     }
 
     /** Shrink toward 1 when free RAM cannot fund parallel heaps ({@link HeapPlan#MIN_PARALLEL_HEAP}). */

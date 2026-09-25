@@ -3,21 +3,55 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class TestWorkersTest {
 
     @Test
-    void auto_is_one_for_empty_or_single_class() {
-        assertThat(TestWorkers.auto(8, 0)).isEqualTo(1);
-        assertThat(TestWorkers.auto(8, 1)).isEqualTo(1);
+    void no_history_is_a_modest_default_capped_by_share_and_class_count() {
+        // Unknown class count does not cap; one class cannot use a second JVM.
+        assertThat(TestWorkers.uncapped(24, new long[0])).isEqualTo(2);
+        assertThat(TestWorkers.uncapped(24, new long[1])).isEqualTo(1);
+        assertThat(TestWorkers.uncapped(24, new long[17])).isEqualTo(2);
+        assertThat(TestWorkers.uncapped(1, new long[17])).isEqualTo(1);
+        assertThat(TestWorkers.resolve(0, 1, 16)).isEqualTo(1);
+    }
+
+    /**
+     * spring-petclinic, one module: the longest class is ~18.5 s and the other nineteen sum to ~6.5 s,
+     * so {@code ceil(Σ / max)} is 2 even when the share is every core.
+     */
+    @Test
+    void a_long_tail_suite_forks_two_workers() {
+        long[] petclinic = {18_501, 4_094, 544, 494, 317, 208, 208, 173, 113, 98, 84, 84, 22, 13, 10, 4, 4, 2, 2, 1};
+        assertThat(TestWorkers.uncapped(24, petclinic)).isEqualTo(2);
+        Map<String, Long> recorded = new LinkedHashMap<>();
+        for (int i = 0; i < petclinic.length; i++) recorded.put("org.example.T" + i, petclinic[i]);
+        assertThat(TestWorkers.autoCount(24, recorded, List.of(), 0)).isEqualTo(TestWorkers.clampByHeap(2));
     }
 
     @Test
-    void auto_is_min_jobs_and_class_count() {
-        assertThat(TestWorkers.auto(8, 3)).isEqualTo(3);
-        assertThat(TestWorkers.auto(2, 100)).isEqualTo(2);
-        assertThat(TestWorkers.auto(1, 50)).isEqualTo(1);
+    void even_classes_shard_up_to_the_share() {
+        long[] even = new long[8];
+        Arrays.fill(even, 1_000);
+        assertThat(TestWorkers.uncapped(24, even)).isEqualTo(8);
+        assertThat(TestWorkers.uncapped(3, even)).isEqualTo(3);
+    }
+
+    @Test
+    void a_class_without_a_wall_counts_as_the_median() {
+        // Known 10s and 30s → median 20s. The unrecorded class takes 20s: sum 60s, max 30s → 2.
+        Map<String, Long> recorded = Map.of("a.Slow", 30_000L, "a.Fast", 10_000L);
+        assertThat(TestWorkers.uncapped(8, walls(recorded, "a.Slow", "a.Fast", "a.New")))
+                .isEqualTo(2);
+        // A name only the ledger would have sanitized still matches.
+        Map<String, Long> nested = Map.of("a.Outer_Inner", 5_000L);
+        assertThat(TestWorkers.autoCount(4, nested, List.of("a.Outer$Inner"), 0))
+                .isEqualTo(TestWorkers.clampByHeap(1));
     }
 
     @Test
@@ -30,10 +64,19 @@ class TestWorkersTest {
     }
 
     @Test
-    void resolve_auto_uses_jobs_and_classes() {
+    void resolve_auto_without_history_stays_within_the_modest_default() {
         int w = TestWorkers.resolve(0, 10, 4);
-        assertThat(w).isBetween(1, 4);
+        assertThat(w).isBetween(1, 2);
         assertThat(TestWorkers.resolve(0, 1, 16)).isEqualTo(1);
+    }
+
+    private static long[] walls(Map<String, Long> recorded, String... names) {
+        long[] out = new long[names.length];
+        for (int i = 0; i < names.length; i++) {
+            Long v = recorded.get(names[i]);
+            out[i] = v == null ? 0 : v;
+        }
+        return out;
     }
 
     @Test

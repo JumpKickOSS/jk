@@ -64,11 +64,14 @@ final class WorkspaceResourcePhase {
         }
 
         ExplainPlan etaPlan = etaPlan(preflight, request, dirtyUnits);
+        // The user's -w (0 = auto). The resolved share stays on `request` for the executor; the ETA
+        // recomputes that share and, for auto, the class-wall worker count. Passing the share here
+        // would look like an explicit pin.
         BuildService.EtaModel etaModel = BuildEta.estimateEtaModel(
                 etaPlan,
                 request.entryDir(),
                 request.cache(),
-                request.workers(),
+                incoming.workers(),
                 request.jdksDir(),
                 request.profile(),
                 request.skipTests(),

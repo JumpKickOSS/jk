@@ -605,15 +605,17 @@ public final class PlannerTest {
                     TestSummary result;
                     try {
                         // Module pin ([test] workers / [build] test-workers) wins over CLI for
-                        // hermetic opt-out (Mill testParallelism = false). 0 = auto min(jobs, classes).
-                        // One debugger attaches to one JVM: a debug run is a one-worker run.
-                        int testWorkers = in.session().debugJvm() != null
-                                ? 1
-                                : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
+                        // hermetic opt-out. Auto hands the launcher the share; it applies the
+                        // class-wall rule once the selection is known. A debug run is one JVM.
+                        boolean debug = in.session().debugJvm() != null;
+                        boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
+                        int testWorkers =
+                                debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
                         TestProgressListener listener = TestSupport.bridgeListener(
                                 ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets);
                         JUnitLauncher launcher = TestLaunch.launcher(
-                                in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec);
+                                        in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec)
+                                .withAutoShare(auto);
                         try {
                             result = TestLaunch.launch(
                                     ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
