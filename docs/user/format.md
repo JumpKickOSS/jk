@@ -8,7 +8,7 @@ jk format                 # rewrite dirty files
 jk format --check         # exit non-zero if anything would change (CI gate)
 ```
 
-This page is the full reference. High-level: [Manual](manual.md) · [Getting started](getting-started.md).
+This page is the full reference. High-level: [Skill](skill.md) · [Getting started](getting-started.md).
 
 ## What it does
 

@@ -77,7 +77,7 @@ are never "stable", so an RC is taken only by an opt-in selector that admits it.
 manifest keeps its spelling — a catalog one-liner stays a one-liner, a GAV string stays a GAV
 string — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update` also revalidates
 metadata and refreshes the recorded toolchain ([below](#toolchain-pins)). MCP has the same verb
-with a preview: [`jk_update`](mcp.md#tools).
+with a preview: [`update`](mcp.md#tools).
 
 Each moved pin prints as it is written (`guava  31.0-jre → 31.1-jre`). Once the relock lands, every
 other lock package it changed prints the same way — a transitive dependency that moved, `new → 1.2`
@@ -144,7 +144,7 @@ Compatible/Latest — the CLI prints a note so that is not mistaken for “every
 JSON is an **array** of row objects (`module`, `dependency`, `display`, `scope`, `current`,
 `compatible`, `latest`, `tip`), filtered the same way as the table (`--all` for every row).
 `module` is empty for a single-project root. `display` is the catalog short name when known.
-MCP [`jk_outdated`](mcp.md#tools) takes the same `all` and reports `checked`, the number of rows
+MCP [`outdated`](mcp.md#tools) takes the same `all` and reports `checked`, the number of rows
 examined, and `file`, the path of the markdown report, beside `rows`.
 
 ## Toolchain pins

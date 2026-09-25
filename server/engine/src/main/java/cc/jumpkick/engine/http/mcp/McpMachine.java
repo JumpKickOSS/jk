@@ -117,7 +117,7 @@ public final class McpMachine {
                 return m;
             }
             if ("engine.max-heap-mb".equals(key)) {
-                if (value == null) throw new McpError(-32602, "jk_config set " + key + " requires value");
+                if (value == null) throw new McpError(-32602, "config set " + key + " requires value");
                 int mb = Integer.parseInt(value.trim());
                 Path file = JkDirs.userConfigFile();
                 String text = Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
@@ -145,7 +145,7 @@ public final class McpMachine {
     }
 
     /**
-     * Cache-tier vs artifact-store bytes for {@code jk_disk} / {@code jk_doctor} / {@code
+     * Cache-tier vs artifact-store bytes for {@code disk} / {@code doctor} / {@code
      * jk://disk}. Reads the shared {@link CacheSnapshot} supplier (memoized single-flight walk,
      * same exclusive CAS-first accounting as {@code GET /api/cache}); a fresh capture only when
      * no supplier is wired.
@@ -159,7 +159,7 @@ public final class McpMachine {
             m.put("cacheBytes", snap.actionCacheBytes());
             m.put("storeDir", JkDirs.store().toString());
             m.put("storeBytes", snap.artifactStorageBytes());
-            m.put("hint", "jk_disk action=clean then nuke if you still need space");
+            m.put("hint", "disk action=clean then nuke if you still need space");
         } catch (Exception e) {
             m.put("error", Errors.text(e));
         }
@@ -209,7 +209,7 @@ public final class McpMachine {
     static Map<String, Object> jdkInstall(@Nullable String spec, JdkRegistry registry) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (spec == null || spec.isBlank()) {
-            m.put("error", "jk_jdk install requires spec (lts, latest, 26, temurin-26)");
+            m.put("error", "jdk install requires spec (lts, latest, 26, temurin-26)");
             return m;
         }
         if (!HostPlatform.supported()) {
@@ -264,7 +264,7 @@ public final class McpMachine {
                 }
                 victims.add(jdkVictim(hit.get()));
             } else {
-                m.put("error", "jk_jdk uninstall requires spec or older_than");
+                m.put("error", "jdk uninstall requires spec or older_than");
                 return m;
             }
             m.put("victims", victims);

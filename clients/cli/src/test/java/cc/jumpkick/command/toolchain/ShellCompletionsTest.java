@@ -14,7 +14,7 @@ class ShellCompletionsTest {
     @Test
     void top_level_names_include_common_commands() {
         assertThat(ShellCompletions.topLevelNames(CommandDispatch.commands()))
-                .contains("build", "test", "activate", "completion", "results", "manual");
+                .contains("build", "test", "activate", "completion", "results", "skill");
     }
 
     @Test

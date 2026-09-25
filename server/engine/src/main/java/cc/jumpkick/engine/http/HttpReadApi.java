@@ -204,7 +204,7 @@ final class HttpReadApi {
     /**
      * {@code POST /api/build} — acknowledge with a request id; progress streams on
      * {@code /api/events}. Optional {@code kind} (default {@code build}) starts any HTTP-exposed
-     * job kind (test, lock, …) through the same admission point MCP {@code jk_run} uses. Optional
+     * job kind (test, lock, …) through the same admission point MCP {@code run} uses. Optional
      * {@code deadlineMs} bounds the job's wall time ({@code 0} = none); absent, the engine's
      * detached default applies.
      */

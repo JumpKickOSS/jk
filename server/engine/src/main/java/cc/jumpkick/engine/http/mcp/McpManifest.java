@@ -48,6 +48,20 @@ public final class McpManifest {
                     after = JkBuildEditor.removeDependency(after, scope, name);
                     notes.add("remove " + name);
                 }
+            } else if ("pin".equals(action)) {
+                for (String c : coords) {
+                    Parsed p = parseCoord(c);
+                    if (p.version == null || p.group.isBlank()) {
+                        notes.add("skip " + c + " (pin needs group:artifact:version)");
+                        continue;
+                    }
+                    try {
+                        after = JkBuildEditor.setDependencyVersion(after, scope, p.name, p.version);
+                        notes.add("pin " + p.group + ":" + p.artifact + ":" + p.version);
+                    } catch (RuntimeException e) {
+                        notes.add("skip " + c + " (" + e.getMessage() + ")");
+                    }
+                }
             } else {
                 LibraryCatalog catalog = LibraryCatalog.forProject(
                         Objects.requireNonNull(file.toAbsolutePath().getParent(), "manifest directory"));

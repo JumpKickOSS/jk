@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-/** The generators {@code jk ide} and {@code jk_ide} share, in their one stable emit order. */
+/** The generators {@code jk ide} and {@code ide} share, in their one stable emit order. */
 public final class IdeGenerators {
 
     private static final List<IdeGenerator> ALL = List.of(new IntellijIdeGenerator(), new VscodeIdeGenerator());

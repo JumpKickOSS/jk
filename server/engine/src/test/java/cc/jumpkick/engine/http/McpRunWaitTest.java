@@ -17,7 +17,7 @@ import java.util.function.LongFunction;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
-/** {@code jk_run wait=true} journal attribution — no HTTP bind. */
+/** {@code run wait=true} journal attribution — no HTTP bind. */
 class McpRunWaitTest {
 
     private static final long JID = 45L;
@@ -99,7 +99,7 @@ class McpRunWaitTest {
 
     private static String runWait(McpHandler mcp) {
         return mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_run\",\"arguments\":"
+                + "\"params\":{\"name\":\"run\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/ws\",\"wait\":true,\"timeout_s\":2}}}");
     }
 
@@ -158,8 +158,8 @@ class McpRunWaitTest {
         String first = textOf(runWait(mcp));
         String second = textOf(runWait(mcp));
         assertThat(first).startsWith("FAIL build a").contains("src/A.java:3:10").contains("';' expected");
-        assertThat(first).doesNotContain("jk_results", "dashboard", "session");
-        assertThat(second).startsWith("OK build a").doesNotContain("jk_results");
+        assertThat(first).doesNotContain("run", "dashboard", "session");
+        assertThat(second).startsWith("OK build a").doesNotContain("run");
         assertThat(served).hasValue(2);
     }
 
@@ -171,9 +171,9 @@ class McpRunWaitTest {
                 + "\"message\":\"/ws/b/Bad.java:1: error: cannot find symbol\"}]}";
         McpHandler mcp = handler(() -> List.of(failed), jid -> jid == JID ? failed : null);
         mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws/a\"}}}");
+                + "\"params\":{\"name\":\"bind\",\"arguments\":{\"dir\":\"/ws/a\"}}}");
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,"
-                + "\"method\":\"tools/call\",\"params\":{\"name\":\"jk_run\",\"arguments\":"
+                + "\"method\":\"tools/call\",\"params\":{\"name\":\"run\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/ws/b\",\"wait\":true,\"timeout_s\":2}}}");
         Map<String, Object> fields = structured(body);
         assertThat(fields.get("success")).isEqualTo(false);

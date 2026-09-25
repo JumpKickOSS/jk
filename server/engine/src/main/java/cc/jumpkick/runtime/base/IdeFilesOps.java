@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted {@code jk ide}: the {@link IdeOps} model run through the same {@link
- * IdeGenerators} the CLI uses, plus {@code .bsp/jk.json}. What the {@code jk_ide} MCP tool calls.
+ * IdeGenerators} the CLI uses, plus {@code .bsp/jk.json}. What the {@code ide} MCP tool calls.
  * Missing jars are fetched in-line — no hosted sync runs ahead of this path — and the IDE spawns
  * {@code jk} from the PATH.
  */

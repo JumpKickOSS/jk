@@ -20,14 +20,12 @@ public final class McpPrompts {
 
     private static Map<String, String> catalog() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("learn-jumpkick", "jk_manual then follow that playbook (not Maven/Gradle)");
-        m.put(
-                "fix-failing-build",
-                "jk_run kind=build wait=true (the reply is the verdict) then edit then jk_run again");
-        m.put("recover-disk", "jk_disk usage then clean or nuke with confirm");
-        m.put("setup-ci", "jk_config apply_preset=ci");
-        m.put("upgrade-deps", "jk_outdated then read its file then jk_update (preview) then jk_update apply=true");
-        m.put("stall-or-cancel", "jk_status then jk_job cancel");
+        m.put("learn-jumpkick", "skill then follow that playbook (not Maven/Gradle)");
+        m.put("fix-failing-build", "run kind=build (the reply is the verdict) then edit then run again");
+        m.put("recover-disk", "disk usage then clean or nuke with confirm");
+        m.put("setup-ci", "config apply_preset=ci");
+        m.put("upgrade-deps", "outdated then read its file then update (preview) then update apply=true");
+        m.put("stall-or-cancel", "status then job cancel");
         return Collections.unmodifiableMap(m); // list order is the reading order
     }
 

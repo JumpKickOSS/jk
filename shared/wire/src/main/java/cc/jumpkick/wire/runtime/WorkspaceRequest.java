@@ -31,7 +31,7 @@ public record WorkspaceRequest(
         boolean freshenLock,
         /**
          * When true, each module's plan is {@code testOnly} (parse → sync → compile main/test →
-         * run-tests, no package) — same shape as {@code jk test}. HTTP/MCP {@code jk_test} uses this.
+         * run-tests, no package) — same shape as {@code jk test}. HTTP/MCP {@code test} uses this.
          */
         boolean testOnly,
         // Variant selection ("" / "release" / "release|tier=free").
@@ -165,7 +165,7 @@ public record WorkspaceRequest(
                 keepGoing);
     }
 
-    /** Copy with {@link #testOnly()} set (HTTP/MCP {@code jk_test} true test-only path). */
+    /** Copy with {@link #testOnly()} set (HTTP/MCP {@code test} true test-only path). */
     public WorkspaceRequest withTestOnly(boolean testOnly) {
         return new WorkspaceRequest(
                 entryDir,

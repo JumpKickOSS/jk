@@ -168,7 +168,7 @@ public final class McpDiagnostics {
     }
 
     /**
-     * Which diagnostics a caller wants. {@code jk_diagnostics} fills all seven; {@code jk_run
+     * Which diagnostics a caller wants. {@code diagnostics} fills all seven; {@code run
      * wait=true} attaching a failed job's errors uses {@link #Query(String, String)}.
      *
      * @param run {@code null} / {@code last-fail} for the newest failed run, else a history id

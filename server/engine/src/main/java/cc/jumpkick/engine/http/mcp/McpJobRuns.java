@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -10,14 +11,14 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Everything {@code jk_run} / {@code jk_job} / the thin {@code jk_build}-style aliases share:
+ * Everything {@code run} / {@code job} / the thin {@code build}-style aliases share:
  * submit a {@link JobSpec} through the one admission point, optionally park for it, and attach the
  * finished journal row. The wait loop and the journal-settle poll live here so a second tool
  * cannot invent a different definition of "finished".
  */
 public final class McpJobRuns {
 
-    /** Hard cap on a single wait; agents re-issue {@code jk_job action=wait} to keep waiting. */
+    /** Hard cap on a single wait; agents re-issue {@code job action=wait} to keep waiting. */
     public static final int MAX_WAIT_S = 3600;
 
     private McpJobRuns() {}
@@ -43,8 +44,8 @@ public final class McpJobRuns {
     }
 
     /**
-     * {@code jk_run}: start a job and, unless {@code wait=false}, park for it and attach the
-     * outcome. {@code pinnedKind} is set by the thin aliases ({@code jk_publish} and friends);
+     * {@code run}: start a job and, unless {@code wait=false}, park for it and attach the
+     * outcome. {@code pinnedKind} is set by the thin aliases ({@code publish} and friends);
      * {@code null} reads {@code arguments.kind}, defaulting to {@code build}.
      */
     public static Map<String, Object> run(McpCall in, @Nullable String pinnedKind) {
@@ -57,6 +58,7 @@ public final class McpJobRuns {
         if (kind == null) kind = in.str("kind");
         if (kind == null || kind.isBlank()) kind = "build";
         List<String> modules = in.strings("modules");
+        if (modules.isEmpty()) modules = only(in);
         boolean affected = in.flag("affected");
         if (affected && (modules == null || modules.isEmpty())) {
             modules = List.of("affected-wip");
@@ -97,7 +99,7 @@ public final class McpJobRuns {
         return in.ok(McpEnvelope.of("job", fields), text);
     }
 
-    /** {@code jk_job}: get / wait / cancel, defaulting to the latest live job for the bound dir. */
+    /** {@code job}: get / wait / cancel, defaulting to the latest live job for the bound dir. */
     public static Map<String, Object> job(McpCall in) {
         McpContext ctx = in.ctx();
         String action = in.action("get").toLowerCase(Locale.ROOT);
@@ -105,7 +107,7 @@ public final class McpJobRuns {
         if ("cancel".equals(action) && jid == null && in.dir() == null) {
             // Unbound sessions must name their victim: "latest live job" across every dir could
             // kill another client's build.
-            throw new McpError(-32602, "jk_job cancel requires jid (or jk_bind first)");
+            throw new McpError(-32602, "job cancel requires jid (or bind first)");
         }
         if (jid == null) jid = McpVitals.latestLiveJid(ctx, in.dir());
         if ("cancel".equals(action)) {
@@ -163,6 +165,20 @@ public final class McpJobRuns {
         if (seconds == null) return null;
         if (seconds < 0) throw new McpError(-32602, "deadline_s must be >= 0 (0 = no deadline)");
         return seconds * 1000L;
+    }
+
+    /** {@code only} is the module filter: a string ({@code a,b}) or a string array. */
+    private static List<String> only(McpCall in) {
+        List<String> many = in.strings("only");
+        if (!many.isEmpty()) return many;
+        String one = in.str("only");
+        if (one == null || one.isBlank()) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String part : one.split(",", -1)) {
+            String s = part.trim();
+            if (!s.isEmpty()) out.add(s);
+        }
+        return out;
     }
 
     /** Modules and test filters, emitted only when the caller narrowed the job. */

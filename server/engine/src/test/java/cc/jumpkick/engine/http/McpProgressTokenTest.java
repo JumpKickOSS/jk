@@ -52,7 +52,7 @@ class McpProgressTokenTest {
                 AdmissionYield.NONE,
                 null);
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
+                + "\"params\":{\"name\":\"build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
                 + "\"_meta\":{\"progressToken\":5}}}");
         assertThat(tokens.resolve("5")).isEqualTo(42L); // raw SSE query text
         assertThat(body).contains("jid=42");

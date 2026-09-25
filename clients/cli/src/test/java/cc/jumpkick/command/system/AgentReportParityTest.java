@@ -132,7 +132,7 @@ class AgentReportParityTest {
 
         McpHandler mcp = handler(List.of(raw), run);
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_results\",\"arguments\":{\"dir\":\""
+                + "\"params\":{\"name\":\"run\",\"arguments\":{\"run\":\"latest\",\"dir\":\""
                 + tmp.toString().replace("\\", "\\\\")
                 + "\"}}}");
         assertThat(text(body)).isEqualTo(expected);

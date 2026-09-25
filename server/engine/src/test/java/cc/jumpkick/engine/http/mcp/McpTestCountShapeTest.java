@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>{@code McpHistoryViews.summarize} used to flatten the journal's nested
  * {@code tests:{total,succeeded,failed,skipped}} into a private scalar {@code testFailed}, so an
- * agent asking {@code jk_history} and a human reading the dashboard were looking at two different
+ * agent asking {@code history} and a human reading the dashboard were looking at two different
  * spellings of the same number — and the agent could not see how many passed at all.
  */
 class McpTestCountShapeTest {

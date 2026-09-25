@@ -91,7 +91,7 @@ final class McpFront {
         HttpResponses.sendJson(exchange, 200, response);
     }
 
-    /** Project metadata fallback for MCP {@code jk_project} — one card, one parse path. */
+    /** Project metadata fallback for MCP {@code project} — one card, one parse path. */
     static Map<String, Object> projectMap(String dir) {
         Map<String, Object> m = new LinkedHashMap<>();
         Path root;

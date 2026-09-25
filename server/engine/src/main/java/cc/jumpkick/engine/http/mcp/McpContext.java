@@ -79,21 +79,21 @@ public final class McpContext {
 
     /**
      * Shared memoized cache/store walker (same supplier as {@code GET /api/cache}) — {@code
-     * jk_disk}/{@code jk_doctor}/{@code jk://disk} must not re-walk multi-GiB stores per call.
+     * disk}/{@code doctor}/{@code jk://disk} must not re-walk multi-GiB stores per call.
      * Optional wiring; {@code null} falls back to a fresh exclusive capture.
      */
     @Setter
     private volatile @Nullable Supplier<CacheSnapshot> cacheSnapshot;
 
     /**
-     * Journal locator to {@code details.jsonl} path for {@code jk_details}. Optional wiring;
+     * Journal locator to {@code details.jsonl} path for {@code details}. Optional wiring;
      * unset resolves empty and the tool reports transcripts unavailable.
      */
     @Setter
     private volatile Function<String, Optional<Path>> detailsFile = locator -> Optional.empty();
 
     /**
-     * The engine's plan-vs-maintenance lock ({@code cacheGate}); {@code jk_disk clean|nuke} must
+     * The engine's plan-vs-maintenance lock ({@code cacheGate}); {@code disk clean|nuke} must
      * hold its write side (plus {@code .prune.lock}) before deleting. {@code null} only in tests
      * with no engine — the file lock still applies there.
      */

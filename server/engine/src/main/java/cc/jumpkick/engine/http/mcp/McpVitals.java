@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code status} envelope: engine vitals with their job rows, and the last finished run. One
- * owner, because {@code jk_status} and the {@code jk://session} resource are the same facts and
+ * owner, because {@code status} and the {@code jk://session} resource are the same facts and
  * must not answer differently.
  */
 public final class McpVitals {

@@ -354,7 +354,7 @@ class NewScaffolderTest {
         assertThat(body).contains(".jk/selective-plan.json");
         Path agents = tempDir.resolve("AGENTS.md");
         assertThat(agents).exists();
-        assertThat(Files.readString(agents)).contains("jk manual");
+        assertThat(Files.readString(agents)).contains("jk skill");
     }
 
     @Test
@@ -407,7 +407,7 @@ class NewScaffolderTest {
 
         assertThat(tempDir.resolve("README.md")).exists();
         assertThat(tempDir.resolve("AGENTS.md")).exists();
-        assertThat(Files.readString(tempDir.resolve("AGENTS.md"))).contains("jk manual");
+        assertThat(Files.readString(tempDir.resolve("AGENTS.md"))).contains("jk skill");
         // A plugin project has no app sample (no Calc/Main).
         assertThat(tempDir.resolve("src/main/java/com/example/Calc.java")).doesNotExist();
     }

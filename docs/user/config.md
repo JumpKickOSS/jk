@@ -95,7 +95,7 @@ They are not project-overridable.
 [mcp]
 # enabled = false          # 404 /mcp only; dashboard stays
 # max-event-streams = 16
-# tools = "loop"           # tools/list: "loop" (the fix-and-rerun set + jk_tools) or "all"
+# tools = "loop"           # tools/list: "loop" (five tools) or "all"; a client can also pass extended=true
 ```
 
 `JK_HTTP_ENABLED=false`, `JK_MCP_ENABLED=false`, `JK_MCP_TOOLS=all`. Details: [MCP](mcp.md),

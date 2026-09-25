@@ -12,7 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code jk_outdated} writes the same results file the CLI does and names it in the payload. */
+/** {@code outdated} writes the same results file the CLI does and names it in the payload. */
 class McpOutdatedFileTest {
 
     @TempDir

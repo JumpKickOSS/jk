@@ -10,7 +10,7 @@ Install details (paths, Windows, env): [Install](install.md).
 ```bash
 curl -fsSL https://jumpkick.build/install.sh | bash
 jk --help
-jk manual                 # playbook for humans and coding agents
+jk skill                 # playbook for humans and coding agents
 ```
 
 The installer puts `jk` and `jkx` on your PATH under `~/.jk/bin` (Windows:
@@ -76,9 +76,9 @@ See [Run](run.md).
 |------|------|
 | `jk.toml` | What you declared |
 | `jk-lock.toml` | Exact versions + checksums — law for `jk build` |
-| `AGENTS.md` | Tells coding agents to run `jk manual` |
+| `AGENTS.md` | Tells coding agents to run `jk skill` |
 | `target/` | Classes, jars, reports |
 | `target/jk-results.md` | High-level report of the last run (`jk results` prints it) |
 
-When a build fails: [Troubleshooting](troubleshooting.md). Next: **`jk manual`** (or
-[Manual](manual.md) on the web) for the rest of the product.
+When a build fails: [Troubleshooting](troubleshooting.md). Next: **`jk skill`** (or
+[Skill](skill.md) on the web) for the rest of the product.

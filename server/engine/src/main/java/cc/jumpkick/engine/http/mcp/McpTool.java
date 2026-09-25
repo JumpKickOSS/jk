@@ -7,8 +7,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One MCP tool. Not sealed — the set grows and tests need fakes. Not {@code ServiceLoader}: the
- * set is {@link McpTools#standard()}, an explicit list, so adding {@code jk_quux} is one class and
- * one line there.
+ * set is {@link McpTools#standard()}, an explicit list, so adding a tool is one class and one
+ * line there.
  *
  * <p>{@link #spec()} is the only place the wire name is written. {@code tools/list} and
  * {@code tools/call} both read it, so the two cannot drift.
@@ -24,7 +24,7 @@ public interface McpTool {
     /**
      * What {@code tools/list} publishes for one tool.
      *
-     * @param name the wire name, {@code jk_*}, declared exactly once
+     * @param name the wire name, declared exactly once. The server name scopes it; no {@code jk_} prefix.
      * @param description prose the model reads; say which CLI verb it mirrors
      * @param inputSchema JSON Schema for {@code arguments} (see {@link McpSchemas})
      * @param annotations MCP hints such as {@link McpSchemas#READ_ONLY}; empty when mutating

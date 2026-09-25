@@ -12,7 +12,7 @@ jk audit                  # OSV
 jk deny                   # apply [deny.sources]
 ```
 
-Real credentialed uploads are **CLI-only**. MCP `jk_publish` / `jk_run kind=publish` is
+Real credentialed uploads are **CLI-only**. MCP `publish` / `run kind=publish` is
 always a **dry-run** so tokens never enter the engine — [MCP](mcp.md).
 
 Export a lock scope as a Maven BOM: `jk export bom` — [Platforms](platforms.md).

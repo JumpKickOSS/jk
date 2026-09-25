@@ -95,19 +95,19 @@ class McpDiskTest {
     void disk_bytes_agree_with_the_api_cache_surfaces_and_repeated_calls_hit_the_memo() {
         McpHandler mcp = handler();
         Map<String, Object> disk = structured(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,"
-                + "\"method\":\"tools/call\",\"params\":{\"name\":\"jk_disk\",\"arguments\":{}}}"));
+                + "\"method\":\"tools/call\",\"params\":{\"name\":\"disk\",\"arguments\":{}}}"));
         // Same accounting as GET /api/cache: cache tier vs artifact store, exclusive bytes.
         assertThat(number(disk, "cacheBytes").longValue()).isEqualTo(snap.actionCacheBytes());
         assertThat(number(disk, "storeBytes").longValue()).isEqualTo(snap.artifactStorageBytes());
         assertThat(walks).hasValue(1);
         mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_disk\",\"arguments\":{}}}");
+                + "\"params\":{\"name\":\"disk\",\"arguments\":{}}}");
         Map<String, Object> doctor = structured(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":3,"
-                + "\"method\":\"tools/call\",\"params\":{\"name\":\"jk_doctor\",\"arguments\":{}}}"));
+                + "\"method\":\"tools/call\",\"params\":{\"name\":\"doctor\",\"arguments\":{}}}"));
         Map<String, Object> doctorDisk = object(doctor, "disk");
         assertThat(number(doctorDisk, "storeBytes").longValue()).isEqualTo(snap.artifactStorageBytes());
         mcp.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/read\"," + "\"params\":{\"uri\":\"jk://disk\"}}");
-        assertThat(walks).hasValue(1); // one walk serves jk_disk, jk_doctor, and jk://disk
+        assertThat(walks).hasValue(1); // one walk serves disk, doctor, and jk://disk
     }
 }

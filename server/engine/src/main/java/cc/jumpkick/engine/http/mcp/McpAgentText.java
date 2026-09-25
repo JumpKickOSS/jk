@@ -17,12 +17,12 @@ public final class McpAgentText {
 
     /** A job that has not finished. The second line is how to collect the verdict. */
     public static String running(String kind, long jid) {
-        return "RUNNING " + kind + " jid=" + jid + "\njk_job action=wait jid=" + jid + "\n";
+        return "RUNNING " + kind + " jid=" + jid + "\njob action=wait jid=" + jid + "\n";
     }
 
     /** A wait that ended before the job did. Same continuation as {@link #running}. */
     public static String timeout(String kind, long jid) {
-        return "TIMEOUT " + kind + " jid=" + jid + "\njk_job action=wait jid=" + jid + "\n";
+        return "TIMEOUT " + kind + " jid=" + jid + "\njob action=wait jid=" + jid + "\n";
     }
 
     /**

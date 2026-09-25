@@ -21,17 +21,17 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
-/** {@code jk_ide} — the generators behind {@code jk ide}, run engine-side; preview lists without writing. */
+/** {@code ide} — the generators behind {@code jk ide}, run engine-side; preview lists without writing. */
 public final class IdeTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_ide",
+                "ide",
                 "Write IDE project files (same generators as jk ide): kind=idea (.idea + *.iml), "
                         + "vscode (.vscode + Eclipse metadata for redhat.java) or all (default); "
                         + ".bsp/jk.json is refreshed too. Returns the files written; preview=true "
-                        + "lists them without writing. Missing jars are fetched first; run jk_lock "
+                        + "lists them without writing. Missing jars are fetched first; run lock "
                         + "after a jk.toml change.",
                 McpSchemas.object(Map.of(
                         "kind",

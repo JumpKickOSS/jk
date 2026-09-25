@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
- * A parked {@code jk_job action=wait} needs one fact twenty times a second: is this jid still
+ * A parked {@code job action=wait} needs one fact twenty times a second: is this jid still
  * live. It asks the job's own liveness probe, not the dashboard's live-run snapshot, which copies
  * every in-flight module and step map under their monitors on each call — for as long as an hour
  * per parked agent.

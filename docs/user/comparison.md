@@ -64,7 +64,7 @@ Details: [Install](install.md), [JDK](jdk.md), [Cache](cache.md), [Repositories]
 | | JumpKick | Maven | Gradle |
 |---|---|---|---|
 | **Failure output** | `target/jk-results.md`: modules, steps, tests, diagnostics with file and line. `jk results` reprints it. | The log. Surefire XML on disk. | The log. Reports and build scans (Develocity) after the fact. |
-| **Driving the tool** | MCP on the engine's loopback HTTP listener: run, results, diagnostics, manifest edits. `jk manual` is the playbook. | No first-party agent surface. | Tooling API for IDEs. No first-party MCP server. |
+| **Driving the tool** | MCP on the engine's loopback HTTP listener: run, results, diagnostics, manifest edits. `jk skill` is the playbook. | No first-party agent surface. | Tooling API for IDEs. No first-party MCP server. |
 | **Watching an agent** | The web dashboard shows the run, the failure, and the change between attempts. Same facts as the CLI. | — | Build scans, when a scan server is in play. |
 | **Before the rewrite** | `jk mvn` / `jk gradle` run the real build, wrapper-aware. `jk mvn` writes the same results file from Maven's events, Surefire and Failsafe XML, and compiler diagnostics. `jk build` can run an unmodified `pom.xml` from the effective POM. | — | — |
 | **Import** | `jk import` writes `jk.toml` and a fidelity report graded per plugin. Common compiler, jar, Surefire, Boot, shade, and Kotlin mappings land. The report names what did not. | — | — |

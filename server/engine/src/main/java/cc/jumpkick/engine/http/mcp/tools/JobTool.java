@@ -7,13 +7,13 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_job} — get / wait / cancel one job, defaulting to the newest live one. */
+/** {@code job} — get / wait / cancel one job, defaulting to the newest live one. */
 public final class JobTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_job",
+                "job",
                 "get / wait / cancel a job. Omit jid to use the latest live job for the bound dir.",
                 McpSchemas.object(Map.of(
                         "action",

@@ -13,7 +13,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 
 | Page | When to open it |
 |------|-----------------|
-| **[Manual](manual.md)** | First stop. Live text is `jk manual` (MCP `jk_manual`). This page maps into every topic. |
+| **[Skill](skill.md)** | First stop. Live text is `jk skill` (MCP `skill`). Topics load one page at a time. |
 | **[Getting started](getting-started.md)** | Install, first project, first build. |
 | **[Why JumpKick](why.md)** | Agentic north star, feature ranking, Maven vs Gradle vs JumpKick. |
 | **[Comparison](comparison.md)** | Feature matrix against Maven and Gradle: where JumpKick wins, and where it does not. |

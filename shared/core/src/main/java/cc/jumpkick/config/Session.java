@@ -92,7 +92,7 @@ public record Session(
          * writes {@code reports/jacoco.xml}. A coverage run never replays a green marker.
          */
         @With boolean coverage,
-        /** {@code jk_run kind=test affected=true}: rank and run WIP test classes. */
+        /** {@code run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
         @With AffectedChanged affectedChanged,

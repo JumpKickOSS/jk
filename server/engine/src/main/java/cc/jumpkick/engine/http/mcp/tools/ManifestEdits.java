@@ -11,6 +11,6 @@ final class ManifestEdits {
 
     /** Applied jk.toml edits stale {@code manifests-sha256}; the result must say how to re-lock. */
     static @Nullable String relockHint(Map<String, Object> data) {
-        return Boolean.TRUE.equals(data.get("applied")) ? "jk_run kind=lock to refresh the stale jk-lock.toml" : null;
+        return Boolean.TRUE.equals(data.get("applied")) ? "run kind=lock to refresh the stale jk-lock.toml" : null;
     }
 }

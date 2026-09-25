@@ -38,7 +38,7 @@ is a request the install did not record, so those resolve fresh instead of using
 installed pin.
 
 `jk install g:a:v` outside a project is the same jkx-style install (coordinate on PATH).
-Trust gates stay on the CLI — MCP `jk_install action=list` shows installed tools but does
+Trust gates stay on the CLI — MCP `install action=list` shows installed tools but does
 not perform tool installs.
 
 ## Build tools

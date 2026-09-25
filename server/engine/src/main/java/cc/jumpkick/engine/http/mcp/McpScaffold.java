@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MCP {@code jk_new}: the same {@link NewProjectOps} scaffolder as {@code jk new} and
+ * MCP {@code new}: the same {@link NewProjectOps} scaffolder as {@code jk new} and
  * {@code POST /api/projects} — never a second layout. Encoding only lives here.
  */
 public final class McpScaffold {

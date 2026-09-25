@@ -94,13 +94,13 @@ class McpGuardsResourceTest {
                 .body();
     }
 
-    /** A connection bound to {@code root}: {@code initialize} mints it, {@code jk_bind} binds it. */
+    /** A connection bound to {@code root}: {@code initialize} mints it, {@code bind} binds it. */
     private static String boundTo(McpHandler mcp, Path root) {
         String session = requireNonNull(mcp.handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
                 .openedSessionId());
         mcp.handle(
-                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\""
+                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"bind\",\"arguments\":{\"dir\":\""
                         + root.toString().replace("\\", "\\\\") + "\"}}}",
                 session);
         return session;
@@ -114,7 +114,7 @@ class McpGuardsResourceTest {
         String list = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}");
         assertThat(list).contains("\"jk://guards\"").contains("jk://guards/<id>");
 
-        assertThat(text(read(mcp, 2, "jk://guards"))).contains("jk_bind first");
+        assertThat(text(read(mcp, 2, "jk://guards"))).contains("bind first");
         String session = boundTo(mcp, root);
 
         @SuppressWarnings("unchecked")

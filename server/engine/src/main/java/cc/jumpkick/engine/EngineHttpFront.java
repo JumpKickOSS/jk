@@ -144,7 +144,7 @@ public final class EngineHttpFront {
     }
 
     /**
-     * {@code POST /api/build} / MCP {@code jk_run}: resolve the verb, decode the spec into its
+     * {@code POST /api/build} / MCP {@code run}: resolve the verb, decode the spec into its
      * wire request line, stamp the origin that asked, submit FireAndForget on the one envelope.
      */
     private long trigger(JobSpec spec) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.mcp.tools.AffectedTestsTool;
 import cc.jumpkick.engine.http.mcp.tools.BindTool;
@@ -20,13 +21,12 @@ import cc.jumpkick.engine.http.mcp.tools.InstallTool;
 import cc.jumpkick.engine.http.mcp.tools.JdkTool;
 import cc.jumpkick.engine.http.mcp.tools.JobTool;
 import cc.jumpkick.engine.http.mcp.tools.ManifestTool;
-import cc.jumpkick.engine.http.mcp.tools.ManualTool;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
 import cc.jumpkick.engine.http.mcp.tools.OutdatedTool;
 import cc.jumpkick.engine.http.mcp.tools.ProjectTool;
-import cc.jumpkick.engine.http.mcp.tools.ResultsTool;
 import cc.jumpkick.engine.http.mcp.tools.RunAliasTool;
 import cc.jumpkick.engine.http.mcp.tools.RunTool;
+import cc.jumpkick.engine.http.mcp.tools.SkillTool;
 import cc.jumpkick.engine.http.mcp.tools.StatusTool;
 import cc.jumpkick.engine.http.mcp.tools.TriggerTool;
 import cc.jumpkick.engine.http.mcp.tools.UpdateTool;
@@ -41,38 +41,31 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Explicit list — adding {@code jk_quux} is one class in {@code mcp.tools} plus one line in
- * {@link #standard()}. Never {@code ServiceLoader}: a tool the agent can call must be visible in
- * a grep, and a native image must be able to see it at build time.
+ * Explicit list — adding a tool is one class in {@code mcp.tools} plus one line in {@link
+ * #standard()}. Never {@code ServiceLoader}: a tool the agent can call must be visible in a grep,
+ * and a native image must be able to see it at build time.
  *
  * <p>{@code tools/list} and {@code tools/call} both read this one map, so a name cannot be
  * advertised without a body or answered without being advertised.
  *
- * <p>Two surfaces read the map. {@link Surface#LOOP} is the default {@code tools/list}: the
- * fix-and-rerun loop ({@link #LOOP}) plus {@link #CATALOG}, which lists and calls everything
- * else — every tool card an MCP host shows the model is paid for on every turn, and the metric
- * jk is sold on is tokens to green. {@link Surface#ALL} is the whole registry, for a client that
- * opted in ({@code [mcp] tools = "all"}).
+ * <p>The default {@code tools/list} is {@link #LOOP}. A client asks for the rest by sending {@code
+ * tools/list} with {@code extended: true}, or by setting {@code [mcp] tools = "all"} so every list
+ * is the full registry. Both select {@link Surface}. Every registered tool stays callable by name.
  */
 public final class McpTools {
 
-    /** The wire name of the tool that lists and calls the tools outside {@link #LOOP}. */
-    public static final String CATALOG = "jk_tools";
-
     /** The wire name of the explicit bind; the one call that never binds implicitly. */
-    public static final String BIND = "jk_bind";
+    public static final String BIND = "bind";
 
     /**
-     * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order. An edit
-     * to {@code jk.toml} is part of the loop, so the two manifest editors are here; everything
-     * else is a {@link #CATALOG} call away.
+     * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order.
+     * Everything else is an extended {@code tools/list}.
      */
-    public static final List<String> LOOP =
-            List.of("jk_run", "jk_results", "jk_diagnostics", "jk_deps", "jk_manifest", "jk_manual", BIND);
+    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "why", "skill");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
-        /** {@link #LOOP} plus {@link #CATALOG}. The default. */
+        /** {@link #LOOP}. The default. */
         LOOP,
         /** Every registered tool. */
         ALL;
@@ -84,33 +77,31 @@ public final class McpTools {
     }
 
     /**
-     * The system prompt an MCP host shows the model. Every {@code jk_*} it names must exist in
-     * {@link #standard()} — {@code McpToolRegistryTest} asserts that, because a playbook pointing
-     * at a tool the server does not serve is worse than no playbook.
+     * The system prompt an MCP host shows the model. Every tool it names is on the default list —
+     * a playbook pointing at a tool the default list does not serve is worse than no playbook.
      */
     public static final String INSTRUCTIONS =
             "JumpKick (jk) is not Maven or Gradle: the manifest is jk.toml, the lock is jk-lock.toml, "
                     + "never add pom.xml or Gradle files. "
-                    + "Loop: jk_run kind=test dir=<project> returns the verdict → edit → jk_run again; "
-                    + "jk_results repeats it, jk_diagnostics(file=…) is the rest, "
-                    + "jk_deps / jk_manifest to edit jk.toml. "
-                    + "The first call that carries dir binds the connection (later calls may omit it); jk_bind switches. "
-                    + "Every other tool (why, explain, graph, history, jdk, disk, …): jk_tools action=list, then "
-                    + "jk_tools action=call name=<tool> arguments={…}. Playbook: jk_manual.";
+                    + "Loop: run(kind=test, dir=<project>) returns the verdict → edit → run again. "
+                    + "diagnostics(file=…) is the rest. deps adds, removes, or pins and relocks. "
+                    + "why(coord) is the path and the rule that picked the version. skill is the playbook. "
+                    + "The first call that carries dir binds the connection. "
+                    + "Other tools: tools/list with extended=true.";
 
     private final Map<String, McpTool> byName;
 
     /** The loop set in reading order; empty when this registry has no default surface of its own. */
     private final List<String> loop;
 
-    /** A registry with no loop set: {@code tools/list} answers every tool and there is no catalog. */
+    /** A registry with no loop set: {@code tools/list} answers every tool. */
     public McpTools(List<McpTool> tools) {
         this(tools, List.of());
     }
 
     /**
-     * A registry whose default listing is {@code loop} plus the {@link #CATALOG} tool. Every loop
-     * name must be a registered tool — a typo here would silently shrink the default list.
+     * A registry whose default listing is {@code loop}. Every loop name must be a registered tool —
+     * a typo here would silently shrink the default list.
      */
     public McpTools(List<McpTool> tools, List<String> loop) {
         Map<String, McpTool> map = new LinkedHashMap<>();
@@ -122,10 +113,6 @@ public final class McpTools {
         for (String name : loop) {
             if (!map.containsKey(name)) throw new IllegalArgumentException("loop names an unregistered tool " + name);
         }
-        if (!loop.isEmpty()) {
-            if (map.containsKey(CATALOG)) throw new IllegalArgumentException(CATALOG + " is the registry's own tool");
-            map.put(CATALOG, new Catalog());
-        }
         this.byName = map;
         this.loop = List.copyOf(loop);
     }
@@ -133,21 +120,21 @@ public final class McpTools {
     public static McpTools standard() {
         return new McpTools(
                 List.of(
-                        new ManualTool(),
+                        new SkillTool(),
                         new StatusTool(),
                         new TriggerTool(
-                                "jk_build",
+                                "build",
                                 "build",
                                 "Start a workspace/module build for dir (async). Returns jid; stream progress "
                                         + "via GET /mcp?jid=N (or ?progressToken=T with _meta.progressToken) "
                                         + "Accept: text/event-stream. Same as POST /api/build."),
                         new TriggerTool(
-                                "jk_test",
+                                "test",
                                 "test",
                                 "Start a true test-only job for dir (async; compile + tests, no package — same as "
                                         + "jk test). Journal kind test. Progress: GET /mcp?jid=N. Returns jid."),
                         new TriggerTool(
-                                "jk_lock",
+                                "lock",
                                 "lock",
                                 "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?jid=N."),
                         new CancelTool(),
@@ -155,7 +142,6 @@ public final class McpTools {
                         new ProjectTool(),
                         new HistoryTool(),
                         new DiagnosticsTool(),
-                        new ResultsTool(),
                         new DetailsTool(),
                         new RunTool(),
                         new JobTool(),
@@ -172,14 +158,14 @@ public final class McpTools {
                         new JdkTool(),
                         new NewTool(),
                         new RunAliasTool(
-                                "jk_publish",
+                                "publish",
                                 "publish",
                                 "Validate the publish bundle — ALWAYS a dry-run (same planner as jk publish; "
                                         + "credentials never enter the engine). Real uploads: jk publish CLI.",
                                 McpSchemas.BOUND_ROOT),
                         new InstallTool(),
                         new RunAliasTool(
-                                "jk_import",
+                                "import",
                                 "import",
                                 "Import a Maven/Gradle build into jk.toml (auto-detects build.gradle.kts / "
                                         + "build.gradle / pom.xml). Same importer as jk import.",
@@ -196,22 +182,38 @@ public final class McpTools {
         return List.copyOf(byName.keySet());
     }
 
-    /** The names the default {@code tools/list} answers: the loop set in its reading order, then the catalog. */
+    /** The names the default {@code tools/list} answers, in reading order. */
     public List<String> loopNames() {
         if (loop.isEmpty()) return names();
-        List<String> out = new ArrayList<>(loop);
-        out.add(CATALOG);
-        return out;
+        return loop;
     }
 
     /** The {@code tools/list} result for one surface. */
     public Map<String, Object> listing(Surface surface) {
+        return listing(surface, Map.of());
+    }
+
+    /**
+     * As {@link #listing(Surface)}, widened to every tool when {@code params.extended} is true.
+     * The configured surface still applies when the client does not ask.
+     */
+    public Map<String, Object> listing(Surface surface, @Nullable Map<String, Object> params) {
+        boolean all = surface == Surface.ALL || extended(params) || loop.isEmpty();
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (String name : surface == Surface.ALL ? names() : loopNames()) {
-            // Both name lists are drawn from byName's own keys (plus CATALOG, which the constructor put there).
+        for (String name : all ? names() : loop) {
             rows.add(Objects.requireNonNull(byName.get(name)).spec().listed());
         }
         return Map.of("tools", rows);
+    }
+
+    /** {@code extended: true} on a {@code tools/list} request — the client asked for every tool. */
+    static boolean extended(@Nullable Map<String, Object> params) {
+        if (params == null) return false;
+        Object value = params.get("extended");
+        if (value instanceof Boolean b) return b;
+        if (value instanceof String s) return EnvValues.parseBool(s).orElse(false);
+        if (value instanceof Number n) return n.intValue() != 0;
+        return false;
     }
 
     /** Dispatch one {@code tools/call} from an anonymous connection. */
@@ -222,8 +224,7 @@ public final class McpTools {
     /**
      * Dispatch one {@code tools/call}; {@code connection} is the caller's, or null when it sent no
      * session id. An unbound connection whose call carries {@code dir} is bound to it first, and
-     * the result says so — that is the whole {@code jk_bind} turn, folded into the call the agent
-     * was making anyway.
+     * the result says so.
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> call(McpContext ctx, Map<String, Object> params, @Nullable McpConnection connection) {
@@ -291,73 +292,5 @@ public final class McpTools {
         if (tok == null) return null;
         String s = ProgressTokenRegistry.canonicalText(String.valueOf(tok));
         return s.isEmpty() || "null".equals(s) ? null : s;
-    }
-
-    /**
-     * {@code jk_tools} — the registry's own view of the tools outside the loop set: {@code list}
-     * answers names and one-liners, {@code call} dispatches one by name through the same
-     * {@link #call} every direct call takes (same implicit bind, same session). Lives here rather
-     * than in {@code mcp.tools} because it is a view of this map, not a tool of its own.
-     */
-    private final class Catalog implements McpTool {
-
-        @Override
-        public Spec spec() {
-            return new Spec(
-                    CATALOG,
-                    "List every other jk tool (action=list), or call one by name (action=call).",
-                    McpSchemas.object(Map.of(
-                            "action",
-                            McpSchemas.oneOf("list", "call"),
-                            "name",
-                            McpSchemas.string(),
-                            "arguments",
-                            Map.of("type", "object"))));
-        }
-
-        @Override
-        public Map<String, Object> call(McpCall in) {
-            String action = in.action("list").toLowerCase(Locale.ROOT);
-            return switch (action) {
-                case "list" -> list(in);
-                case "call" -> dispatch(in);
-                default -> throw new McpError(-32602, CATALOG + " action must be list or call");
-            };
-        }
-
-        private Map<String, Object> list(McpCall in) {
-            List<Map<String, Object>> rows = new ArrayList<>();
-            StringBuilder text = new StringBuilder();
-            for (Map.Entry<String, McpTool> e : byName.entrySet()) {
-                if (loop.contains(e.getKey()) || CATALOG.equals(e.getKey())) continue;
-                Spec spec = e.getValue().spec();
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("name", spec.name());
-                row.put("description", spec.oneLiner());
-                rows.add(row);
-                text.append(spec.name()).append(" — ").append(spec.oneLiner()).append('\n');
-            }
-            Map<String, Object> fields = new LinkedHashMap<>();
-            fields.put("tools", rows);
-            fields.put("count", rows.size());
-            String hint = CATALOG + " action=call name=<tool> arguments={…}";
-            return in.ok(
-                    McpEnvelope.of("tools", fields, false, null, hint),
-                    text.toString().stripTrailing());
-        }
-
-        @SuppressWarnings("unchecked")
-        private Map<String, Object> dispatch(McpCall in) {
-            String name = in.str("name");
-            if (name == null || name.isBlank()) throw new McpError(-32602, CATALOG + " call requires name");
-            if (CATALOG.equals(name)) throw new McpError(-32602, CATALOG + " cannot call itself");
-            Map<String, Object> arguments =
-                    in.args().get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
-            Map<String, Object> params = new LinkedHashMap<>();
-            params.put("name", name);
-            params.put("arguments", arguments);
-            if (in.progressToken() != null) params.put("_meta", Map.of("progressToken", in.progressToken()));
-            return McpTools.this.call(in.ctx(), params, in.connection());
-        }
     }
 }

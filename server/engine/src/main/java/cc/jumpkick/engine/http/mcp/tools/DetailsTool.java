@@ -9,16 +9,16 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_details} — a budgeted tail of one run's details.jsonl transcript. */
+/** {@code details} — a budgeted tail of one run's details.jsonl transcript. */
 public final class DetailsTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_details",
+                "details",
                 "Budgeted tail of a run's details.jsonl transcript (default: last-fail, error + "
                         + "task-finish, 80 events). Same facts as CLI `jk results --details`, which "
-                        + "prints the full file. Start with jk_results. Resource: jk://runs/latest/details.",
+                        + "prints the full file. Start with run. Resource: jk://runs/latest/details.",
                 McpSchemas.object(Map.of(
                         "run",
                         McpSchemas.string("last-fail (default) or history id"),
@@ -46,11 +46,7 @@ public final class DetailsTool implements McpTool {
         Object next = fields.remove("nextCursor");
         return in.ok(
                 McpEnvelope.of(
-                        "details",
-                        fields,
-                        truncated,
-                        next,
-                        "jk_results is the high-level report; this is the raw transcript"),
+                        "details", fields, truncated, next, "run is the high-level report; this is the raw transcript"),
                 "details " + fields.getOrDefault("run", ""));
     }
 }

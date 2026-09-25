@@ -177,7 +177,7 @@ public final class McpReads {
                     default -> null;
                 };
         if (kind == null) {
-            m.put("error", "format must be maven | gradle | bom (IDE files: jk_ide)");
+            m.put("error", "format must be maven | gradle | bom (IDE files: ide)");
             return m;
         }
         GeneratedFiles files;
