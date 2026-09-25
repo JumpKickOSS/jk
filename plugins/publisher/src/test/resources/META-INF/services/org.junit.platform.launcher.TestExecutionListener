@@ -1,2 +1,3 @@
 cc.jumpkick.config.testing.SessionBoundary
 cc.jumpkick.config.testing.ClassOrderRecorder
+cc.jumpkick.http.testing.ConnectFaultsReset

@@ -4,6 +4,7 @@ package cc.jumpkick.resolve;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoProcessMemos;
 import cc.jumpkick.resolver.KmpRedirects;
 
 /**
@@ -30,10 +31,7 @@ public final class ResolveProcessCacheControl {
 
     /** Drop all process resolve memos (force / tests). */
     public static void clearAll() {
-        EffectivePomBuilder.clearProcessCache();
-        GradleModuleMetadata.clearParseCache();
-        RepoGroup.clearProcessFetchCache();
-        RepoGroup.clearProcessVersionsCache();
+        RepoProcessMemos.clear();
         KmpRedirects.clearProcessCache();
     }
 }
