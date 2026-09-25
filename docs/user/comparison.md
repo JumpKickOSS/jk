@@ -69,11 +69,10 @@ Details: [Install](install.md), [JDK](jdk.md), [Cache](cache.md), [Repositories]
 | **Before the rewrite** | `jk mvn` / `jk gradle` run the real build, wrapper-aware. `jk mvn` writes the same results file from Maven's events, Surefire and Failsafe XML, and compiler diagnostics. `jk build` can run an unmodified `pom.xml` from the effective POM. | — | — |
 | **Import** | `jk import` writes `jk.toml` and a fidelity report graded per plugin. Common compiler, jar, Surefire, Boot, shade, and Kotlin mappings land. The report names what did not. | — | — |
 
-The agent-loop **surface** is shipped. One scenario with one coding-agent driver has been
-measured, and jk is behind: 9 turns / 45,982 tokens against Maven 6 / 23,623 and Gradle
-6 / 23,807 ([`bench/agent-loop/results/2026-09-16/TABLE.md`](../../bench/agent-loop/results/2026-09-16/TABLE.md)).
-The scripted driver is a plumbing proof. A full matrix is pending. Until that table shows jk
-ahead, "agents finish faster" is the goal being measured.
+The agent loop is measured: over 165 broken-build scenarios, one coding agent, the same
+prompt and budget for each tool, every tool fixes every scenario and jk takes 6 turns
+against 7, 47k input tokens against 64k and 63k, and 21 s against 29 s (medians; one agent,
+one host, Gradle single-module guides — [the table](why.md#making-the-north-star-true)).
 See [Why JumpKick](why.md) and [Agents](agents.md).
 
 ## Speed and memory
@@ -138,7 +137,7 @@ When a row is won, change its score here and the matching cell above in the same
 | **One-file edit** | Gradle | Median at or under Gradle's 0.52 s on that run (JumpKick is 0.64 s). |
 | **Test wall** | Maven, then Gradle | Median at or under Maven's 23.66 s on that run (JumpKick is 26.15 s), without the 7.5 GiB RSS. |
 | **Import fidelity** | — | An imported Maven or Gradle build builds the same artifact without a fidelity-report row for the common plugins. Today Failsafe's `*IT.java` layout, an arbitrary exec, the release plugin, `war`, Tycho, OSGi, and a non-standard filtered resource directory are reports. |
-| **Measured agent loop** | One scenario; jk behind | A published turns-to-green table beats Maven and Gradle across the scenario matrix. The one banked comparison is jk 9 turns / 45,982 tokens against Maven 6 / 23,623 and Gradle 6 / 23,807. Results, MCP, and `jk mvn` are already real. |
+| **Measured agent loop** | jk ahead on one agent and one host | The table holds across a second agent, Maven-first and multi-module scenarios, and Kotlin. Results, MCP, `jk mvn` and the agent report are already real. |
 
 ### Held
 
