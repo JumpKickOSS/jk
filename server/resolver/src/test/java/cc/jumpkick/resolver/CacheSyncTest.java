@@ -13,6 +13,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.SysProps;
 import com.sun.net.httpserver.HttpServer;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -141,7 +143,14 @@ class CacheSyncTest {
                 .hasSize(1);
 
         AtomicInteger asked = new AtomicInteger();
-        HttpServer back = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+        HttpServer back;
+        try {
+            back = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+        } catch (BindException taken) {
+            // A parallel test took the freed port between the two phases; nothing left to prove.
+            Assumptions.abort("port " + port + " was taken before the server came back");
+            return;
+        }
         back.createContext("/", exchange -> {
             asked.incrementAndGet();
             String path = exchange.getRequestURI().getPath();
