@@ -20,9 +20,10 @@ WRAPPERS = Path(__file__).resolve().parent.parent / "wrappers"
 
 # What each tool's MCP server calls the three verbs the loop needs.
 TOOL_NAMES = {
-    "jk": {"run": "jk_run", "results": "jk_results", "diagnostics": "jk_diagnostics", "run_args": {"kind": "test", "wait": True}},
-    "mvn": {"run": "run", "results": "results", "diagnostics": "diagnostics", "run_args": {}},
-    "gradle": {"run": "run", "results": "results", "diagnostics": "diagnostics", "run_args": {}},
+    # jk's run replies with the verdict and rereads the last one with run=latest; it has no results tool.
+    "jk": {"run": "run", "results": "run", "results_args": {"run": "latest"}, "diagnostics": "diagnostics", "run_args": {"kind": "test"}},
+    "mvn": {"run": "run", "results": "results", "results_args": {}, "diagnostics": "diagnostics", "run_args": {}},
+    "gradle": {"run": "run", "results": "results", "results_args": {}, "diagnostics": "diagnostics", "run_args": {}},
 }
 TOOL_LABEL = {"jk": "JumpKick (jk)", "mvn": "Maven", "gradle": "Gradle"}
 
@@ -61,7 +62,8 @@ def open_mcp(tool: str, sandbox: Path) -> McpClient:
 
 
 def results_ok(text: str) -> bool:
-    return bool(re.match(r"# jk results — OK", text))
+    """The results page headline (the comparators' wrappers) or jk's agent verdict line says OK."""
+    return bool(re.match(r"(?:# jk results — OK|OK )", text))
 
 
 @dataclass
@@ -85,7 +87,7 @@ class Session:
         return {**args, "dir": str(self.sandbox)} if self.tool == "jk" else args
 
     def results(self) -> str:
-        r = self.mcp.call(self.names["results"], self.scoped({}))
+        r = self.mcp.call(self.names["results"], self.scoped(dict(self.names["results_args"])))
         self.calls.append({"tool": self.names["results"], "is_error": r.is_error, "chars": len(r.text)})
         return r.text
 
@@ -98,8 +100,8 @@ class Session:
             args["timeout_s"] = timeout_s
         r = self.mcp.call(self.names["run"], self.scoped(args))
         structured = r.structured or {}
-        success = bool((structured.get("result") or {}).get("success")) if self.tool == "jk" else bool(structured.get("success"))
-        text = self.results() if self.tool == "jk" else (r.text or self.results())
+        text = r.text or self.results()
+        success = results_ok(text) if self.tool == "jk" else bool(structured.get("success"))
         self.calls.append({"tool": self.names["run"], "is_error": r.is_error, "success": success})
         return success and results_ok(text), text
 

@@ -27,7 +27,7 @@ SYSTEM_PROMPT = """You are fixing a {tool_label} project at {sandbox}. The build
 
 Use only the tools you are given: the `{server}` MCP tools to see why the build failed and to rerun it, and the file tools to read and edit files under {sandbox}. Do not run shell commands, do not use git to revert or check out files, do not delete tests: fix the source or the build file the results point at.
 
-Start with `{results_tool}`; it says what failed and where. Edit, then rerun with `{run_tool}`{run_hint} and read the results again. Stop as soon as the results headline says OK and reply with one line: GREEN. If you cannot make it green, reply with one line starting with RED and say why.
+Start with `{results_tool}`; it says what failed and where. Edit, then rerun with `{run_tool}`{run_hint}; its reply is the new result. Stop as soon as the result says OK and reply with one line: GREEN. If you cannot make it green, reply with one line starting with RED and say why.
 """
 USER_PROMPT = "The build is red. Make it green."
 
@@ -43,7 +43,7 @@ def system_prompt(tool: str, sandbox: Path, server: str) -> str:
     names = TOOL_NAMES[tool]
     hint = f" (kind=test, dir={sandbox}; pass dir on every jk tool call)" if tool == "jk" else ""
     return SYSTEM_PROMPT.format(tool_label=TOOL_LABEL[tool], sandbox=sandbox, server=server,
-                                results_tool=f"{server}: {names['results']}", run_tool=f"{server}: {names['run']}", run_hint=hint)
+                                results_tool=f"{server}: {names['results']}" + (" (run=latest)" if tool == "jk" else ""), run_tool=f"{server}: {names['run']}", run_hint=hint)
 
 
 def estimate_cost(model: str, usage: dict) -> float:
