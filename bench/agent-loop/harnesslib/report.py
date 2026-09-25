@@ -53,6 +53,45 @@ def fmt_n(n: float) -> str:
     return f"{int(n):,}" if n else "0"
 
 
+def fmt_unit_cost(n: float | None) -> str:
+    """Per-green-run cost. Totals at or above a dollar keep cents; smaller totals keep four places."""
+    if n is None:
+        return "—"
+    if n == 0:
+        return "$0"
+    if abs(n) >= 1:
+        return f"${n:.2f}"
+    return f"${n:.4f}"
+
+
+def _median(values: list[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
+def _median_text(values: list[float], numeric: bool = False) -> str:
+    med = _median(values)
+    if med is None:
+        return "—"
+    return fmt_n(med) if numeric else f"{med:g}"
+
+
+def _present_median(rows: list[dict], key: str, numeric: bool = False) -> str:
+    values = [r[key] for r in rows if r.get(key) is not None]
+    return _median_text(values, numeric)
+
+
+def _cost_to_green(rows: list[dict]) -> str:
+    green = [r for r in rows if r["outcome"] == "green"]
+    if not green or all(r.get("cost_usd") is None for r in green):
+        return "—"
+    return fmt_unit_cost(sum(r.get("cost_usd") or 0 for r in green) / len(green))
+
+
+def _quality_cell(rows: list[dict]) -> str:
+    counts = {name: sum(1 for r in rows if r.get("fix_quality") == name) for name in ("exact", "equivalent", "collateral", "cheat")}
+    return " · ".join(f"{counts[name]} {name}" for name in ("exact", "equivalent", "collateral", "cheat"))
+
+
 def outcome_cell(r: dict) -> str:
     mark = {"green": "green", "red": "**red**", "claimed": "**claimed**", "error": "**error**"}.get(r["outcome"], r["outcome"])
     cell = f"{mark} · {r['turns']}t · {fmt_s(r['wall_ms'])}"
@@ -76,8 +115,11 @@ def _driver_sections(rows: list[dict]) -> list[str]:
             title += f" · effort {', '.join(efforts)}"
         lines.append(title + f" · budget {', '.join(budgets)}")
         lines.append("")
-        lines.append("| Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost |")
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append(
+            "| Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost "
+            "| First correct edit | Reads before fix | Output+reasoning | Input (uncached) | Cache read | Cost to green | Fix quality |"
+        )
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for tool in TOOLS:
             tr = [r for r in sub if r["tool"] == tool]
             if not tr:
@@ -87,10 +129,17 @@ def _driver_sections(rows: list[dict]) -> list[str]:
             tokens = [r.get("tokens") or 0 for r in tr]
             walls = [r["wall_ms"] for r in tr]
             cost = sum(r.get("cost_usd") or 0 for r in tr)
+            produced = [(r.get("output_tokens") or 0) + (r.get("reasoning_tokens") or 0) for r in tr if "output_tokens" in r or "reasoning_tokens" in r]
+            fresh = [r.get("input_tokens") or 0 for r in tr if "input_tokens" in r]
+            cached = [r.get("cache_read_tokens") or 0 for r in tr if "cache_read_tokens" in r]
             lines.append(
                 f"| {tool} | {len(tr)} | {len(green)} | {100 * len(green) / len(tr):.0f}% | {statistics.median(turns):g} | {p90(turns):g} "
                 f"| {fmt_n(statistics.median(tokens))} | {fmt_n(p90(tokens))} | {fmt_s(statistics.median(walls))} | {fmt_s(p90(walls))} "
-                f"| {'$' + format(cost, '.2f') if cost else '—'} |")
+                f"| {'$' + format(cost, '.2f') if cost else '—'} "
+                f"| {_present_median(tr, 'first_correct_edit_turn')} | {_present_median(tr, 'reads_before_fix')} "
+                f"| {_median_text(produced, numeric=True)} | {_median_text(fresh, numeric=True)} | {_median_text(cached, numeric=True)} "
+                f"| {_cost_to_green(tr)} | {_quality_cell(tr)} |"
+            )
         lines.append("")
         lines.append("| Repo | Failure | jk | mvn | gradle |")
         lines.append("|---|---|---|---|---|")
@@ -133,9 +182,13 @@ def render(rows: list[dict], jk_version: str) -> str:
     lines.append("")
     lines.append("A run materialises one (repo × failure) for one tool, runs the tool once so the results file is red, "
                  "then lets the agent loop through that tool's MCP server until the results say OK or the budget ends. "
-                 "Turns are the agent's fix-and-rerun cycles (API turns for the LLM drivers); tokens are the API's input + output "
-                 "including cache reads and writes; wall is the agent's time only. A row is green only when the harness's own rerun "
-                 "after the agent stopped is green too. Median and p90 are over this host's runs of the tool, red runs at their budget. "
+                 "A row is green only when the harness's own rerun after the agent stopped is green too. "
+                 "Turns under the cap are informational. The comparison is the green rate, the cost to green "
+                 "(sum of cost on green runs ÷ green runs), and the signal-quality columns: median turn of the first edit "
+                 "that touches the injection, median reads before that edit, median output+reasoning tokens, median uncached "
+                 "input tokens, median cache-read tokens, and the fix-quality counts (exact, equivalent, collateral, cheat). "
+                 "Median and p90 of turns, tokens, and wall are over this host's runs of the tool, red runs at their budget. "
+                 "The column rules are in the agent-loop README. "
                  "Rows from another host are listed under their own heading and are not mixed into these numbers.")
     lines.append("")
     if current:
