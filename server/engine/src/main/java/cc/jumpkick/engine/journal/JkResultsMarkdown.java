@@ -951,5 +951,5 @@ public final class JkResultsMarkdown {
         return s != null && !s.isBlank();
     }
 
-    private record Row(String module, BuildRecord.Task task) {}
+    record Row(String module, BuildRecord.Task task) {}
 }

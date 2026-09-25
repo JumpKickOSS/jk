@@ -31,7 +31,8 @@ public final class JkManual {
             ## Never
 
             - Do not add `pom.xml`, `build.gradle` or `build.gradle.kts`; do not run `mvn` or `./gradlew`.
-            - Do not parse the terminal output. It is drawn for people; the channels below are for you.
+            - Do not parse the human terminal output. With `--agent` or `JK_AGENT=1`, stdout is the
+              verdict. Otherwise it is drawn for people.
             - Do not edit `jk-guards-baseline.toml` and do not add suppression comments (there is no such
               syntax). A guard exemption is an `allow` entry with a reason, and that is the user's call.
 
@@ -42,9 +43,8 @@ public final class JkManual {
               `jk lock` rewrites it keeping every pin. A declared version is an exact pin: `jk update`
               moves the pins in `jk.toml` to the newest stable on the same major (`--major` to cross),
               then relocks.
-            - `target/jk-results.md` — the last run's report: status, failures with stack tails, tests,
-              guards, deliverables. Read or grep it after every build or test; it is the same markdown
-              `jk results` prints, without a process.
+            - `target/jk-results.md` — the human report. Agents read the verdict instead: MCP `jk_run`
+              returns it, and `jk --agent` prints it. `jk results` prints the markdown.
             - `target/jk-tests-affected.md` — the ranked selection `jk test --affected` ran.
 
             ## Exit codes
@@ -54,7 +54,7 @@ public final class JkManual {
 
             ## Loop
 
-            `jk test` → read `target/jk-results.md` → edit → `jk format` → `jk test`. Default `jk test` is
+            `jk test` (or `jk --agent test`) → read the verdict → edit → `jk format` → `jk test`. Default `jk test` is
             the unit tier; climb with `--suite integration` (or a profile) when the change needs that rung,
             never `--all` by habit. `jk build` packages, `jk dev` runs the app with reload, `jk explain`
             says what a build would redo and why, `jk guard` runs every house-rule lane.
@@ -63,9 +63,10 @@ public final class JkManual {
 
             The resident engine serves MCP over loopback HTTP with a bearer token. `jk engine status
             --output json` gives `mcpUrl`; the token file is `~/.jk/state/engine/<key>.http-token`.
-            Register it once (Claude Code: `claude mcp add --transport http jk <mcpUrl> --header
-            "Authorization: Bearer <token>"`), then `jk_bind` the project, `jk_run kind=test|build|guard`,
-            and read `jk_results` / `jk_diagnostics` — structured, no terminal to scrape.
+            Register it once (`claude mcp add --transport http jk <mcpUrl> --header
+            "Authorization: Bearer <token>"`), then `jk_bind` the project and
+            `jk_run kind=test|build|guard`. The run reply is the verdict. `jk_diagnostics(file=…)`
+            is the rest.
 
             ## Machine output and CI
 

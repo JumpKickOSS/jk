@@ -15,18 +15,17 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 ```text
 0. Playbook                  jk manual             or MCP jk_manual
 1. Name the project          dir={root} on the first MCP call binds it (or just cd and use the CLI)
-2. What happened?            target/jk-results.md  (read/grep) or jk results or MCP jk_results
-3. Structured failures       MCP jk_diagnostics    (compiler / test)
+2. What happened?            MCP jk_run (the reply is the verdict) or jk --agent test
+3. Past the cap              MCP jk_diagnostics(file=…)
 4. Raw step log (optional)   jk results --details  or MCP jk_details
 5. Rebuild                   same selection as the failure (jk test, not --all)
 6. Graph / ETA               jk why / jk explain   or MCP jk_why / jk_explain (via jk_tools)
 7. Stalled                   jk jobs / jk cancel   or MCP jk_status + jk_job cancel (via jk_tools)
 ```
 
-Read **`target/jk-results.md` first** (same markdown as `jk results`). File tools beat
-shelling out `jk results` when MCP is not connected. The report is token-cheap: first
-screen is outcome, exit, and why the invocation failed — compile, test, and package, not
-JUnit alone.
+Read the **verdict** first. `jk_run` returns it; `jk --agent` prints the same text. The human
+markdown at `target/jk-results.md` is for a person, or for an agent with neither MCP nor
+`--agent`. The verdict is one line when the run is OK.
 
 After an edit, MCP **`jk_affected_tests`** (or `jk test --affected`) writes
 `target/jk-tests-affected.md` — a short ranked list of test classes for the working tree.
@@ -59,9 +58,10 @@ for “unit + integration + optional house-rule scripts.” [Why](why.md#test-ru
 | Channel | Use when |
 |---------|----------|
 | **`jk manual`** | Once per session — the JumpKick playbook (MCP `jk_manual` / `jk://manual`) |
-| **`target/jk-results.md`** | Preferred triage when MCP is off: read/grep the file (same markdown as `jk results`) |
-| **`jk results`** | CLI print of that report when you cannot read the file |
-| **MCP `jk_results`** | Multi-turn agents; engine already running (`jk engine status` → `mcpUrl`). Resource: `jk://runs/latest/results` |
+| **MCP `jk_run`** | The verdict for the run it just finished |
+| **`--agent` / `JK_AGENT=1`** | That same text on stdout |
+| **`target/jk-results.md`** | Human report when MCP and `--agent` are both off |
+| **MCP `jk_results`** | The verdict again, for the newest run. Resource: `jk://runs/latest/results` |
 | **`--output json` / `jsonl`** | Live events on stdout (CI, watchers) |
 | **`jk results --details`** | Full `details.jsonl`. MCP `jk_details` is a budgeted tail (`jk://runs/latest/details`) |
 | **`target/jk-profile.json`** | Timings (Perfetto / `chrome://tracing`), not failure triage |

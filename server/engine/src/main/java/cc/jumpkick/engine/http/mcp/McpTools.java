@@ -91,8 +91,9 @@ public final class McpTools {
     public static final String INSTRUCTIONS =
             "JumpKick (jk) is not Maven or Gradle: the manifest is jk.toml, the lock is jk-lock.toml, "
                     + "never add pom.xml or Gradle files. "
-                    + "Loop: jk_run kind=test dir=<project> → read jk_results → edit → jk_run again; "
-                    + "jk_diagnostics for structured failures, jk_deps / jk_manifest to edit jk.toml. "
+                    + "Loop: jk_run kind=test dir=<project> returns the verdict → edit → jk_run again; "
+                    + "jk_results repeats it, jk_diagnostics(file=…) is the rest, "
+                    + "jk_deps / jk_manifest to edit jk.toml. "
                     + "The first call that carries dir binds the connection (later calls may omit it); jk_bind switches. "
                     + "Every other tool (why, explain, graph, history, jdk, disk, …): jk_tools action=list, then "
                     + "jk_tools action=call name=<tool> arguments={…}. Playbook: jk_manual.";

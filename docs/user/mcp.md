@@ -42,17 +42,44 @@ Disable MCP only: `[mcp] enabled = false` in `~/.jk/config.toml` (or
 
 SSE budget: `[mcp] max-event-streams` / `JK_MCP_MAX_EVENT_STREAMS` (default **16**).
 
-Results use MCP `structuredContent` plus a short `content` text summary. Tool JSON uses
-`schema` + `type` like the rest of the machine model (`schema` stays **1** until 1.0).
+Results use MCP `structuredContent` plus `content` text. For `jk_run`, `jk_results` and
+`jk_diagnostics` that text **is** the verdict (below). Tool JSON uses `schema` + `type` like the
+rest of the machine model (`schema` stays **1** until 1.0).
 
-A job result (`jk_run`, `jk_build`, `jk_test`, `jk_lock`) names who asked — `trigger: "mcp"`
-and `session: "claude-code 3f9a"` when the client echoes its session id — and carries
-**`dashboard`**: the authenticated project page
-(`{httpUrl}#project/<id>?dir=<checkout>&t=<token>`) that follows the newest run of that
-checkout, so the human supervising the agent can open it and watch. The link names the checkout
-because every git worktree of a repository shares the project id; `jk_results`, `jk_details` and
-`jk://runs/latest/*` likewise answer for the bound `dir`, never a sibling worktree's run. Absent
-when HTTP is not serving. Same facts as `target/jk-results.md`: [Web](web.md).
+`jk_run` waits by default and the reply is the run. It does not carry a dashboard link, a
+session id, or a trigger. The journal still records who asked; the human report is
+`target/jk-results.md` and [Web](web.md). `jk_results`, `jk_details` and `jk://runs/latest/*`
+answer for the bound `dir`, never a sibling worktree's run.
+
+## Verdict
+
+An OK run is one line. A failure adds one line per problem, capped at five, then
+`+K more: jk_diagnostics(file=<path>)`.
+
+```
+OK test rest-service · 2 tests · 500ms
+```
+
+```
+FAIL build rest-service · 1 error · 700ms
+E src/main/java/com/example/restservice/RestServiceApplication.java:3:50 ';' expected
+  3| public class RestServiceApplication {
+```
+
+```
+FAIL test rest-service · 1 of 2 failed · 1.2s
+T com.example.restservice.GreetingControllerTests#noParamGreetingShouldReturnDefaultMessage
+  expected: "Hello, World!" but was: "Hello, Wrld!"
+  at GreetingControllerTests.java:44
+```
+
+Paths are relative to the project directory. `wait=false` answers `RUNNING build jid=42` and
+`jk_job action=wait jid=42`. A wait that expires answers `TIMEOUT build jid=42` with the same
+continuation; that wait returns the verdict when the job finishes.
+
+The CLI prints the same text with `--agent` or `JK_AGENT=1`, and when stdout is not a terminal
+and the process was spawned by a coding-agent CLI. Human terminals keep today's output.
+`--output json` stays the live event stream.
 
 ## Tools
 
@@ -62,7 +89,7 @@ tools one fix-and-rerun loop needs — plus **`jk_tools`**, which lists and call
 
 | Default list | |
 |------|------|
-| **`jk_run`** **`jk_results`** **`jk_diagnostics`** | run, read the report, read the structured failures |
+| **`jk_run`** **`jk_results`** **`jk_diagnostics`** | run (the reply is the verdict), re-read it, detail past the cap |
 | **`jk_deps`** **`jk_manifest`** | edit `jk.toml` (dependencies; `java = N`) |
 | **`jk_manual`** **`jk_bind`** | the playbook; switch project dir |
 | **`jk_tools`** | `action=list` → every other tool's name and one-liner; `action=call name=… arguments={…}` → call it |
@@ -89,13 +116,13 @@ The whole registry:
 | **`jk_tools`** | `list` the tools outside the default list with one-liners, or `call` one by name |
 | **`jk_status`** | Engine vitals (pid, version, heap) and the `jobs` array — every live and queued job as the same row `jk engine status --output json` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
 | **`jk_project`** | Project card (coord, java, members, last run) |
-| **`jk_run`** | Start a job: `build` (default) \| `test` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. **`wait` defaults true**. Publish is **always a dry-run**. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (the card lists the first two; the playbook spells out the rest). `deadline_s` caps the job's wall time — the engine cancels it past that and the record says so; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
+| **`jk_run`** | Start a job and, by default, wait. The reply is the verdict (see above). `build` (default) \| `test` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. Publish is **always a dry-run**. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s`. `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`jk_build`** / **`jk_test`** / **`jk_lock`** | Async convenience aliases (return `jid` immediately) |
 | **`jk_job`** | `get` \| `wait` \| `cancel`; omit `jid` → latest live job for bound dir |
 | **`jk_cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`jk_history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
-| **`jk_diagnostics`** | Structured compiler/test failures (`last-fail` default, or a history id); `severity`, `module`, `unique`, `limit`, `next` |
-| **`jk_results`** | High-level markdown (same as CLI `jk results` / `target/jk-results.md`); `delta` = what changed since this session's previous run (files, diagnostics, tests, wall) |
+| **`jk_diagnostics`** | Failures past the verdict cap, or every failure in one file (`file`). Source lines included |
+| **`jk_results`** | The same verdict as `jk_run`, for the newest run or a history id (`run`) |
 | **`jk_details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events). CLI `jk results --details` dumps the full file |
 | **`jk_why`** | Why a dependency is on the graph: the matches with their paths, plus an `exclusions` array of the edges the manifest or a POM pruned |
 | **`jk_explain`** | Forecast next build |
@@ -117,7 +144,7 @@ The whole registry:
 | **`jk_ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
 | **`jk_graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
 
-Start with **`jk_results`** or **`jk_diagnostics`**. Do not dump full journal records. A tool
+Start with **`jk_run`**. The reply is the verdict. **`jk_diagnostics`** is the detail past its cap. Do not dump full journal records. A tool
 outside the default list is called as itself when the client knows the name, or through
 `jk_tools action=call`; the two paths are one dispatcher, so the bind and the session are the same.
 
@@ -131,7 +158,7 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 | `jk://session` | Bound dir + engine status |
 | `jk://project` | Project card for the connection's bound dir (`jk_bind` first) |
 | `jk://runs/latest` | Latest history summary |
-| `jk://runs/latest/results` | Latest `jk-results.md` (same as `jk_results`) |
+| `jk://runs/latest/results` | Latest verdict (same text as `jk_results`) |
 | `jk://runs/latest/details` | Budgeted tail of latest `details.jsonl` (same as `jk_details`) |
 | `jk://guards` | Guard catalog (same as `jk guard explain`); `jk://guards/<id>` is one rule's card (same as `jk guard explain <id>`). Reads the connection's bound dir (`jk_bind` first); an unknown id is a `-32602` error naming the nearest ids |
 | `jk://disk` | Cache and store usage |
@@ -142,7 +169,7 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 | Name | Intent |
 |------|--------|
 | `learn-jumpkick` | `jk_manual` then follow that playbook (not Maven/Gradle) |
-| `fix-failing-build` | `jk_results` → edit → `jk_run kind=build wait=true` |
+| `fix-failing-build` | `jk_run kind=build wait=true` (the reply is the verdict) → edit → `jk_run` again |
 | `recover-disk` | `jk_disk usage` then clean/nuke with confirm |
 | `setup-ci` | `jk_config apply_preset=ci` |
 | `upgrade-deps` | `jk_outdated`, read its `file`, then `jk_update` (preview), then `jk_update apply=true` |

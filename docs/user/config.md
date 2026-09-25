@@ -30,6 +30,14 @@ force = false
 | `notify` | `--notify` / `--no-notify` | `JK_NOTIFY` |
 | `build-output` | — | `JK_BUILD_OUTPUT` |
 | `quiet` / `verbose` / `offline` / `force` | `-q` / `-v` / `--offline` / `-F` | `JK_QUIET` / `JK_VERBOSE` / `JK_OFFLINE` / `JK_FORCE` |
+| agent report | `--agent` | `JK_AGENT=1` ( `JK_AGENT=0` keeps the human report) |
+
+**`--agent`:** commands that report a run (`build`, `test`, `run`, `lock`, …) print the
+verdict on stdout and skip progress, colour, and OSC. Shapes are in [MCP](mcp.md#verdict).
+The same text is selected when stdout is not a terminal and the process carries a variable a
+coding-agent CLI sets on commands it spawns. A pipe or a CI log without that variable keeps
+today's output. `--output json` stays the live event stream unless `--agent` or `JK_AGENT=1`
+is set.
 
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
 elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never.

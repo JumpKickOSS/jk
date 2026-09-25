@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
-import static cc.jumpkick.engine.http.JsonFields.number;
 import static cc.jumpkick.engine.http.JsonFields.object;
 import static cc.jumpkick.engine.http.JsonFields.objects;
 import static java.util.Objects.requireNonNull;
@@ -48,16 +47,13 @@ class McpMavenOnlyProjectTest {
         assertThat(bound.get("coord")).isEqualTo("com.example:app");
         assertThat(object(bound, "lastRun").get("kind")).isEqualTo("mvn");
 
-        Map<String, Object> results = call(mcp, session, "jk_results", "{}");
-        assertThat(results.get("run")).isEqualTo("m1");
-        assertThat(String.valueOf(results.get("markdown"))).contains("tool: mvn");
-
-        Map<String, Object> diagnostics = call(mcp, session, "jk_diagnostics", "{}");
-        assertThat(number(diagnostics, "count").intValue()).isEqualTo(1);
-        Map<String, Object> row = objects(diagnostics, "diagnostics").get(0);
-        assertThat(number(row, "line").intValue()).isEqualTo(3);
-        assertThat(number(row, "col").intValue()).isEqualTo(5);
-        assertThat(String.valueOf(row.get("file"))).endsWith("src/A.java");
+        assertThat(reply(mcp, session, "jk_results", "{}"))
+                .startsWith("FAIL mvn app")
+                .contains("src/A.java")
+                .contains("cannot find symbol");
+        assertThat(reply(mcp, session, "jk_diagnostics", "{}"))
+                .contains("src/A.java:3:5")
+                .contains("cannot find symbol");
     }
 
     private static McpHandler handler(List<String> history) {
@@ -94,6 +90,18 @@ class McpMavenOnlyProjectTest {
                 dir -> Map.of(),
                 () -> history,
                 "0.13.7");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String reply(McpHandler mcp, String session, String name, String argsJson) {
+        Map<String, Object> result = object(
+                (Map<String, Object>) requireNonNull(MiniJson.parse(mcp.handle(
+                                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\"," + "\"params\":{\"name\":\""
+                                        + name + "\",\"arguments\":" + argsJson + "}}",
+                                session)
+                        .body())),
+                "result");
+        return String.valueOf(objects(result, "content").getFirst().get("text"));
     }
 
     private static Map<String, Object> call(McpHandler mcp, String session, String name, String argsJson) {

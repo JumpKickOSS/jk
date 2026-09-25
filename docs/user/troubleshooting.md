@@ -26,8 +26,8 @@ On disk:
 The two files are the same report. Prefer the command over `cat` so you do not have to
 know the state-dir path.
 
-**Agents:** run `jk manual` once. Then `target/jk-results.md` (read/grep) or MCP
-`jk_results` first. Do not scrape the TTY. Do not turn on `--verbose` as your primary API.
+**Agents:** run `jk manual` once. Then MCP `jk_run` (the reply is the verdict) or
+`jk --agent`. Do not scrape the TTY. Do not turn on `--verbose` as your primary API.
 
 JUnit XML for CI stays at `target/reports/test-results/`. Failed-test stacks are in
 `jk-results.md` — there is no separate `test-results.md`.
@@ -41,12 +41,12 @@ The engine hosts MCP at `POST {httpUrl}/mcp` (token required). `jk engine status
 
 Recommended loop:
 
-1. `jk_results` with `dir` = the project directory (that first `dir` binds the connection; later
-   calls may omit it). Same markdown as `jk results` / `target/jk-results.md`. Or `jk_diagnostics`
-   (structured compiler/test failures).
-3. Edit sources.
-4. `jk_run` with `kind=build` or `kind=test` (`wait` defaults true).
-5. If stalled: `jk_status`, then `jk_job` `cancel` — both through `jk_tools action=call`.
+1. `jk_run` with `kind=build` or `kind=test` and `dir` = the project directory (that first
+   `dir` binds the connection; later calls may omit it). The reply is the verdict.
+   `jk_diagnostics` with `file` is the rest.
+2. Edit sources.
+3. `jk_run` again (`wait` defaults true).
+4. If stalled: `jk_status`, then `jk_job` `cancel` — both through `jk_tools action=call`.
 
 Do not dump full journal records. Open `jk_details` only when you need the raw
 `details.jsonl` transcript.
@@ -57,8 +57,9 @@ Agent playbook: [Agents](agents.md).
 ## If MCP is not configured
 
 ```bash
-# High-level:
-jk results
+# Verdict for an agent (the human report is `jk results`):
+jk --agent test
+jk --agent build
 
 # Rebuild / retest:
 jk test

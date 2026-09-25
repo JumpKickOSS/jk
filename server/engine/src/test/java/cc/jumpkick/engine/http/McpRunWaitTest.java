@@ -111,12 +111,12 @@ class McpRunWaitTest {
                     return List.of();
                 },
                 jid -> jid == JID ? FINISHED_OK : null);
-        Map<String, Object> fields = structured(runWait(mcp));
+        String body = runWait(mcp);
+        Map<String, Object> fields = structured(body);
         assertThat(fields.get("finished")).isEqualTo(true);
-        Map<String, Object> result = object(fields, "result");
-        assertThat(result.get("id")).isEqualTo("r9");
-        assertThat(result.get("success")).isEqualTo(true);
-        assertThat(number(result, "jid").longValue()).isEqualTo(JID);
+        assertThat(fields.get("success")).isEqualTo(true);
+        assertThat(number(fields, "jid").longValue()).isEqualTo(JID);
+        assertThat(textOf(body)).startsWith("OK build a ·");
         assertThat(historyScans).hasValue(0);
     }
 
@@ -128,7 +128,7 @@ class McpRunWaitTest {
         McpHandler mcp = handler(() -> List.of(stale), jid -> null);
         Map<String, Object> fields = structured(runWait(mcp));
         assertThat(fields.get("finished")).isEqualTo(true);
-        assertThat(fields).doesNotContainKey("result");
+        assertThat(fields).doesNotContainKey("success");
     }
 
     @Test
@@ -137,9 +137,30 @@ class McpRunWaitTest {
                 + "\"exitCode\":0,\"startedAt\":" + (System.currentTimeMillis() + 60_000)
                 + ",\"modules\":[],\"diagnostics\":[]}";
         McpHandler mcp = handler(() -> List.of(fresh), jid -> null);
-        Map<String, Object> fields = structured(runWait(mcp));
-        Map<String, Object> result = object(fields, "result");
-        assertThat(result.get("id")).isEqualTo("new");
+        String body = runWait(mcp);
+        Map<String, Object> fields = structured(body);
+        assertThat(fields.get("success")).isEqualTo(true);
+        assertThat(textOf(body)).startsWith("OK build");
+    }
+
+    @Test
+    void run_returns_the_failure_then_the_next_runs_ok() {
+        String failed = "{\"id\":\"rf\",\"kind\":\"build\",\"dir\":\"/ws\",\"success\":false,"
+                + "\"exitCode\":1,\"millis\":700,\"coord\":\"g:a\",\"requestId\":45,"
+                + "\"startedAt\":1700000000000,\"modules\":[],"
+                + "\"diagnostics\":[{\"severity\":\"error\",\"dir\":\"/ws\",\"file\":\"src/A.java\","
+                + "\"line\":3,\"col\":10,\"message\":\"';' expected\"}]}";
+        AtomicInteger served = new AtomicInteger();
+        McpHandler mcp = handler(() -> List.of(), jid -> {
+            if (jid != JID) return null;
+            return served.getAndIncrement() == 0 ? failed : FINISHED_OK;
+        });
+        String first = textOf(runWait(mcp));
+        String second = textOf(runWait(mcp));
+        assertThat(first).startsWith("FAIL build a").contains("src/A.java:3:10").contains("';' expected");
+        assertThat(first).doesNotContain("jk_results", "dashboard", "session");
+        assertThat(second).startsWith("OK build a").doesNotContain("jk_results");
+        assertThat(served).hasValue(2);
     }
 
     @Test
@@ -151,13 +172,19 @@ class McpRunWaitTest {
         McpHandler mcp = handler(() -> List.of(failed), jid -> jid == JID ? failed : null);
         mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws/a\"}}}");
-        Map<String, Object> fields = structured(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,"
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,"
                 + "\"method\":\"tools/call\",\"params\":{\"name\":\"jk_run\",\"arguments\":"
-                + "{\"kind\":\"build\",\"dir\":\"/ws/b\",\"wait\":true,\"timeout_s\":2}}}"));
-        Map<String, Object> result = object(fields, "result");
-        assertThat(result.get("success")).isEqualTo(false);
-        List<Map<String, Object>> diags = objects(fields, "diagnostics");
-        assertThat(diags).isNotEmpty();
-        assertThat(String.valueOf(diags.getFirst().get("file"))).contains("Bad.java");
+                + "{\"kind\":\"build\",\"dir\":\"/ws/b\",\"wait\":true,\"timeout_s\":2}}}");
+        Map<String, Object> fields = structured(body);
+        assertThat(fields.get("success")).isEqualTo(false);
+        assertThat(fields).doesNotContainKeys("diagnostics", "dashboard", "session");
+        assertThat(textOf(body)).contains("Bad.java").contains("cannot find symbol");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String textOf(String body) {
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
+        List<Map<String, Object>> content = objects(object(resp, "result"), "content");
+        return String.valueOf(content.getFirst().get("text"));
     }
 }

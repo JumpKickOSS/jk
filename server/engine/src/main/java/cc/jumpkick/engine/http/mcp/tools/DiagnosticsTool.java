@@ -6,15 +6,14 @@ import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
-import java.util.LinkedHashMap;
-import java.util.List;
+import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.journal.JkResultsAgent;
 import java.util.Map;
 
 /**
- * {@code jk_diagnostics} — the compiler/test failures of one run, deduped and paged. The card
- * lists the loop's arguments; {@code run}, {@code module}, {@code unique} and {@code next} are
- * read too (a truncated page's hint names {@code next}) and the playbook's MCP page spells them
- * out.
+ * {@code jk_diagnostics} — the problems past the run reply's cap, or every problem in one file
+ * with its source lines. {@code run} selects a history id (default: the newest run); {@code file}
+ * or {@code module} narrows to a path.
  */
 public final class DiagnosticsTool implements McpTool {
 
@@ -22,9 +21,11 @@ public final class DiagnosticsTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "jk_diagnostics",
-                "Structured compiler and test failures of the last failed run.",
+                "Failures past the verdict cap, or every failure in one file.",
                 McpSchemas.object(Map.of(
                         "dir",
+                        McpSchemas.string(),
+                        "file",
                         McpSchemas.string(),
                         "severity",
                         McpSchemas.oneOf("error", "warning"),
@@ -34,30 +35,18 @@ public final class DiagnosticsTool implements McpTool {
 
     @Override
     public Map<String, Object> call(McpCall in) {
-        McpDiagnostics.Query query = new McpDiagnostics.Query(
-                in.str("run"),
-                in.dir(),
-                in.str("module"),
-                in.str("severity"),
-                in.flagOr("unique", true),
-                in.count("limit", 20, 1, 200),
-                in.count("next", 0, 0, Integer.MAX_VALUE));
-        McpDiagnostics.Page page = McpDiagnostics.page(in.ctx().history(), query);
-        if (page == null) {
-            Map<String, Object> empty = new LinkedHashMap<>();
-            empty.put("diagnostics", List.of());
-            empty.put("count", 0);
-            return in.ok(McpEnvelope.of("diagnostics", empty, false, null, "no matching failed run"), "0 diagnostics");
+        String run = in.str("run");
+        Map<String, Object> rec = run == null || run.isBlank()
+                ? McpDiagnostics.findNewest(in.ctx().history(), in.dir())
+                : McpDiagnostics.findRun(in.ctx().history(), run, in.dir());
+        BuildRecord record = JkResultsAgent.recordOf(rec);
+        if (record == null) {
+            return in.ok(McpEnvelope.of("diagnostics", Map.of("count", 0)), "0 diagnostics\n");
         }
-        Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("run", page.run());
-        fields.put("diagnostics", page.rows());
-        fields.put("count", page.rows().size());
-        fields.put("totalMatched", page.totalMatched());
-        String hint =
-                page.truncated() ? "jk_diagnostics next=" + page.next() : "jk_run kind=build wait=true to rebuild";
-        return in.ok(
-                McpEnvelope.of("diagnostics", fields, page.truncated(), page.next(), hint),
-                page.rows().size() + " of " + page.totalMatched() + " diagnostics");
+        String file = in.str("file");
+        if (file == null || file.isBlank()) file = in.str("module");
+        int limit = in.count("limit", 20, 1, 200);
+        String text = JkResultsAgent.renderDetails(record, file, limit, true);
+        return in.ok(McpEnvelope.of("diagnostics", Map.of("count", text.startsWith("0 ") ? 0 : 1)), text);
     }
 }

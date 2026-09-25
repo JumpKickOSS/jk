@@ -33,21 +33,8 @@ public final class McpJobRuns {
             fields.put("kind", spec.kind());
             fields.put("jid", requestId);
             fields.put("dir", spec.dir());
-            putOrigin(fields, spec.origin());
-            putDashboard(ctx, fields, spec.dir());
-            fields.put("events", "/api/events");
-            fields.put("mcpEvents", "GET /mcp?jid=" + requestId);
             putSelection(fields, spec);
-            if (progressToken != null) {
-                fields.put("progressToken", progressToken);
-                fields.put("mcpEventsByToken", "GET /mcp?progressToken=" + progressToken);
-            }
-            return McpEnvelope.of(
-                    spec.kind() + "-accepted",
-                    fields,
-                    false,
-                    null,
-                    "Stream GET /mcp?jid=" + requestId + " or jk_cancel jid=" + requestId);
+            return McpEnvelope.of(spec.kind() + "-accepted", fields);
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -93,31 +80,21 @@ public final class McpJobRuns {
         fields.put("kind", spec.kind());
         fields.put("jid", jid);
         fields.put("dir", spec.dir());
-        putOrigin(fields, spec.origin());
-        putDashboard(ctx, fields, spec.dir());
         putSelection(fields, spec);
         if (!wait) {
-            fields.put("mcpEvents", "GET /mcp?jid=" + jid);
-            return in.ok(
-                    McpEnvelope.of("job-accepted", fields, false, null, "jk_job action=wait jid=" + jid), "jid " + jid);
+            return in.ok(McpEnvelope.of("job-accepted", fields), McpAgentText.running(spec.kind(), jid));
         }
         // Parked waits yield their RPC admission permit — 16 waiting agents must not 503 the surface.
         boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * 1000L));
-        fields.put("waited", true);
         fields.put("finished", done);
         if (!done) {
-            return in.ok(
-                    McpEnvelope.of("job", fields, false, null, "jk_job action=wait jid=" + jid),
-                    "still running " + jid);
+            return in.ok(McpEnvelope.of("job", fields), McpAgentText.timeout(spec.kind(), jid));
         }
         Map<String, Object> last = ctx.admissionYield().yielding(() -> finishedJob(ctx, jid, in.dir(), triggeredAt));
-        if (last != null) {
-            fields.put("result", last);
-            if (Boolean.FALSE.equals(last.get("success"))) {
-                attachDiagnostics(ctx, fields, last.get("id"), spec.dir());
-            }
-        }
-        return in.ok(McpEnvelope.of("job", fields), "finished " + jid);
+        String text = McpAgentText.of(ctx, last);
+        if (text == null) text = "FAIL " + spec.kind() + " jid=" + jid + "\nno run record\n";
+        if (last != null && last.get("success") != null) fields.put("success", last.get("success"));
+        return in.ok(McpEnvelope.of("job", fields), text);
     }
 
     /** {@code jk_job}: get / wait / cancel, defaulting to the latest live job for the bound dir. */
@@ -146,7 +123,15 @@ public final class McpJobRuns {
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("jid", jid);
             fields.put("finished", done);
-            return in.ok(McpEnvelope.of("job", fields), done ? "finished " + jid : "still running " + jid);
+            if (!done) {
+                return in.ok(McpEnvelope.of("job", fields), McpAgentText.timeout("job", jid));
+            }
+            Map<String, Object> last = McpDiagnostics.findByRequestId(ctx.history(), jid);
+            if (last == null)
+                last = ctx.finishedRecords().apply(jid) instanceof String raw ? McpHistoryViews.parseRecord(raw) : null;
+            String text = McpAgentText.of(ctx, last);
+            if (text == null) text = "FAIL job jid=" + jid + "\nno run record\n";
+            return in.ok(McpEnvelope.of("job", fields), text);
         }
         boolean live = McpVitals.isLive(ctx, jid.longValue());
         Map<String, Object> fields = new LinkedHashMap<>();
@@ -180,18 +165,6 @@ public final class McpJobRuns {
         return seconds * 1000L;
     }
 
-    /** The origin the journal will record for this job — what the run record and the dashboard show. */
-    private static void putOrigin(Map<String, Object> fields, JobOrigin origin) {
-        fields.put("trigger", origin.trigger());
-        if (origin.session() != null) fields.put("session", origin.session());
-    }
-
-    /** The authenticated project page for the job's checkout; absent when HTTP is not serving. */
-    private static void putDashboard(McpContext ctx, Map<String, Object> fields, String dir) {
-        String url = ctx.dashboardLink().apply(dir);
-        if (url != null && !url.isBlank()) fields.put("dashboard", url);
-    }
-
     /** Modules and test filters, emitted only when the caller narrowed the job. */
     private static void putSelection(Map<String, Object> fields, JobSpec spec) {
         if (!spec.modules().isEmpty()) fields.put("modules", spec.modules());
@@ -208,16 +181,7 @@ public final class McpJobRuns {
         throw new McpError(-32603, "job did not return jid");
     }
 
-    /** A failed run answers with the diagnostics an agent would ask for next. */
-    private static void attachDiagnostics(
-            McpContext ctx, Map<String, Object> fields, @Nullable Object runId, String jobDir) {
-        // The job's own dir — the one the call named or was bound to — so the run is found where
-        // it lives, whichever connection asks.
-        String run = runId == null ? null : String.valueOf(runId);
-        McpDiagnostics.Page page = McpDiagnostics.page(ctx.history(), new McpDiagnostics.Query(run, jobDir));
-        fields.put("diagnostics", page == null ? List.of() : page.rows());
-    }
-
+    /** The finished journal row, full enough to render. Not a previous run that happened to be newest. */
     private static @Nullable Map<String, Object> finishedJob(
             McpContext ctx, long jid, @Nullable String dir, long triggeredAt) {
         Map<String, Object> rec = waitForJournal(ctx, jid);
@@ -228,7 +192,7 @@ public final class McpJobRuns {
             Map<String, Object> newest = McpDiagnostics.findNewest(ctx.history(), dir);
             if (newest != null && McpHistoryViews.lng(newest, "startedAt") >= triggeredAt) rec = newest;
         }
-        return McpHistoryViews.jobSummary(rec);
+        return rec;
     }
 
     /**

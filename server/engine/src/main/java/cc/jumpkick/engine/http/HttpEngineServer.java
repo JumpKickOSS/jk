@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
-import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpTools;
@@ -183,10 +182,6 @@ public final class HttpEngineServer implements AutoCloseable {
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
         // jk_details serves a budgeted tail of the journal-owned details.jsonl transcript.
         if (this.mcp != null) this.mcp.detailsFile(journal::detailsFile);
-        // jk_run answers the project page that follows the job it just started, authenticated.
-        if (this.mcp != null) {
-            this.mcp.dashboardLink(dir -> DashboardLinks.project(url(), tokens.tokenText(), ProjectIds.idOf(dir), dir));
-        }
         this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());

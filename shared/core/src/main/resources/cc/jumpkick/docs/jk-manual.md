@@ -17,21 +17,24 @@ Printed by `jk manual` (JumpKick ${jk.version}). Same text: MCP tool **`jk_manua
 1. **Learn JumpKick from this page.** Do not invent `pom.xml`, `build.gradle`, or `build.gradle.kts`.
 2. **Work at the project/workspace root** (the directory with the root `jk.toml`). From a module
    directory, `jk build` / `jk test` already mean that module plus its upstreams.
-3. **After every build or test, triage the report** — do not scrape the terminal UI, and do not
-   turn on `-v` / `--verbose` as your API.
+3. **After every build or test, read the verdict** — do not scrape the human terminal UI, and do
+   not turn on `-v` / `--verbose` as your API. With MCP, `jk_run` returns the verdict; do not
+   call `jk_results` for that same run. On the CLI, `--agent` or `JK_AGENT=1` prints it.
 
 | Channel | When to use it |
 |---------|----------------|
-| **`target/jk-results.md`** | **Preferred when MCP is not connected.** Read or grep this file with your file tools. Same markdown `jk results` would print, without a process. |
-| **MCP `jk_results`** | Preferred when the engine MCP server is connected. Resource: `jk://runs/latest/results`. |
-| **`jk results`** | CLI equivalent if you cannot read the file. `jk results --details` dumps that run's `details.jsonl`. |
-| **MCP `jk_diagnostics`** | Structured compiler/test failures after the markdown report. |
+| **MCP `jk_run`** | Preferred. The reply is the verdict for the run it just finished. |
+| **`--agent` / `JK_AGENT=1`** | Same verdict on stdout. No progress, colour, or OSC. Also on when stdout is not a terminal and a coding-agent CLI spawned the process. |
+| **`target/jk-results.md`** | The human report, when MCP is not connected and you are not in agent mode. |
+| **MCP `jk_results`** | The same verdict as `jk_run`, for the newest run or `run=<id>`. Resource: `jk://runs/latest/results`. |
+| **`jk results`** | Human report. Under `--agent` it prints the verdict. `jk results --details` dumps `details.jsonl`. |
+| **MCP `jk_diagnostics`** | Failures past the verdict cap, or every failure in one file (`file=`). |
 | **`--output json` / `jsonl`** | Live events on stdout (CI, watchers). Not the first triage tool. |
 
 Then edit sources → `jk format` → rebuild (`jk test` / `jk build`, or MCP `jk_run`).
 
 **Do not** set `TERM=dumb` and scrape wedges. **Do not** dump the full journal. Open
-`details.jsonl` / `jk_details` only when the markdown report is not enough.
+`details.jsonl` / `jk_details` only when the verdict is not enough.
 
 ---
 
@@ -130,9 +133,9 @@ The default `tools/list` is the fix-and-rerun loop. Each row is that tool's card
 
 | Tool | What it does |
 |------|--------------|
-| **`jk_run`** | Run a jk job (kind, default build) and wait for it; then read jk_results. |
-| **`jk_results`** | Markdown report of the last run: what failed and where. |
-| **`jk_diagnostics`** | Structured compiler and test failures of the last failed run. |
+| **`jk_run`** | Run a jk job (kind, default build) and wait; the reply is that run's verdict. |
+| **`jk_results`** | The last run's verdict. |
+| **`jk_diagnostics`** | Failures past the verdict cap, or every failure in one file. |
 | **`jk_deps`** | Add or remove jk.toml dependencies (group:artifact[:version]); apply=false previews. |
 | **`jk_manifest`** | Set java=N (the language level, not a JDK) in jk.toml; apply=false previews. |
 | **`jk_manual`** | The jk playbook (markdown): read it before editing jk.toml. |
@@ -146,10 +149,11 @@ Arguments the cards leave out, all optional. `jk_run`: `wait` defaults true and 
 the wait (default 600, max 3600); `deadline_s` caps the job's wall time (the engine cancels past it;
 default 1 hour, `0` = none); `modules` and `suites` select; `include_tags`, `exclude_tags`,
 `skip_tests` filter; `kind=test` is the unit suite unless `suites` says otherwise; `kind=publish`
-is always a dry-run. `jk_results`: `run` is a history id (default: the last run); the same
-markdown is `target/jk-results.md`. `jk_diagnostics`: `run` is a history id (default: the last
-failed run); `severity` is `error` or `warning`; `module` filters by dir substring; `unique`
-(default true) collapses repeats; `limit` (default 20) and `next` page. `jk_deps`: `scope` is
+is always a dry-run. `wait=false` or a timed-out wait answers `RUNNING <kind> jid=<n>` or
+`TIMEOUT <kind> jid=<n>` plus `jk_job action=wait jid=<n>`, which returns the verdict when the
+job finishes. `jk_results`: `run` is a history id (default: the last run); the human markdown
+stays at `target/jk-results.md`. `jk_diagnostics`: `file` narrows to one path and prints the
+source lines; `run` selects a history id; `limit` (default 20) caps the problems. `jk_deps`: `scope` is
 `main|test|runtime|provided|processor`; a coordinate with no version pins the newest stable.
 
 Every other tool — `jk_why`, `jk_explain`, `jk_graph`, `jk_history`, `jk_details`, `jk_status`,
