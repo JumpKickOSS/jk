@@ -9,15 +9,15 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.List;
 import java.util.Map;
 
-/** {@code jk_export} — write the model out as Maven / Gradle / BOM files. */
+/** {@code export} — write the model out as Maven / Gradle / BOM files. */
 public final class ExportTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_export",
+                "export",
                 "Export the full model as maven | gradle | bom files (same generators as jk export). "
-                        + "Returns written paths; read them yourself. IDE files: jk_ide.",
+                        + "Returns written paths; read them yourself. IDE files: ide.",
                 McpSchemas.object(
                         Map.of(
                                 "format",

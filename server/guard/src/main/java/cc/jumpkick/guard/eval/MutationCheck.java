@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Mutation-time enforcement: judge the manifest text a {@code jk add} / {@code jk remove} /
- * {@code jk_deps} is about to write, before it is written. Only the kinds whose substrate is the
+ * {@code deps} is about to write, before it is written. Only the kinds whose substrate is the
  * model run here ({@code depend} and {@code toolchain}). A project without guards
  * pays one stat. There is no {@code --force}: the sanctioned path is a reviewed {@code allow}.
  */

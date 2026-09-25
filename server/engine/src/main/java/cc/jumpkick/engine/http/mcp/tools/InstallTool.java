@@ -10,7 +10,7 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
 /**
- * {@code jk_install} — install the project into the local Maven repo, or list the installed jkx
+ * {@code install} — install the project into the local Maven repo, or list the installed jkx
  * tools. Installing a tool stays CLI-side: the trust gate is a human decision.
  */
 public final class InstallTool implements McpTool {
@@ -18,7 +18,7 @@ public final class InstallTool implements McpTool {
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_install",
+                "install",
                 "Install the project app into the local Maven repo (jk install), or "
                         + "action=list for installed jkx tools. Tool installs stay CLI-side (trust gates).",
                 McpSchemas.object(Map.of(

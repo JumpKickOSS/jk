@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code jk_update}'s body: the pin rewrites {@link ManifestUpdates} plans for {@code dir}, and with
+ * {@code update}'s body: the pin rewrites {@link ManifestUpdates} plans for {@code dir}, and with
  * {@code apply} the written manifests plus the {@link LockMode.Update} relock and every lock package
  * it changed — the same phases the hosted {@code jk update} runs, answered synchronously.
  */

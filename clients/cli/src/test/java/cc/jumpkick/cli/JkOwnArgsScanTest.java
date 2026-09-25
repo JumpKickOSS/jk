@@ -41,6 +41,7 @@ class JkOwnArgsScanTest {
 
         assertThat(Jk.rewriteListToHelp(new String[] {"--list"})).containsExactly("--help");
         assertThat(Jk.rewriteListToHelp(new String[] {"jdk", "--list"})).containsExactly("jdk", "--help");
+        assertThat(Jk.rewriteListToHelp(new String[] {"skill", "--list"})).containsExactly("skill", "--list");
     }
 
     @Test

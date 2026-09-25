@@ -1,6 +1,6 @@
 # Why JumpKick
 
-How to *use* JumpKick: [manual](manual.md) · [getting started](getting-started.md) ·
+How to *use* JumpKick: [skill](skill.md) · [getting started](getting-started.md) ·
 [agents](agents.md). This page is the product bet, not a command reference. The work that
 makes the bet true before 1.0 is ordered in [the 1.0 plan](../contributors/plan-1.0.md).
 
@@ -30,7 +30,7 @@ or remove a tool-switch.
 ```text
   intent ──► mutate project ──► build/test ──► observe ──► repair ──► repeat
      │            │                 │             │           │
-  jk manual    TOML +            cache +       jk-results   structured
+  jk skill    TOML +            cache +       jk-results   structured
   / MCP        jk add/deps       right rung    + diagnostics  edits +
   templates    format            warm engine   (not log scrape) format
                toolchain         lockfile law
@@ -63,8 +63,8 @@ Think in **layers of the switch decision**, not a flat checklist.
 
 | Rank | Feature | Why it converts |
 |------|---------|-----------------|
-| **1** | **Agent-native results + MCP** (`jk-results.md`, diagnostics, `jk manual`, MCP tools) | Agents stop scraping logs. Failures become structured, token-cheap, re-enterable. This is the unique moat vs Maven *and* Gradle. |
-| **2** | **Declarative TOML + surgical edits** (`jk.toml`, `jk add`/`remove`, MCP `jk_deps` / `jk_manifest`) | Agents and humans share one small surface. Mutation is cheap and reviewable. |
+| **1** | **Agent-native results + MCP** (`jk-results.md`, diagnostics, `jk skill`, MCP tools) | Agents stop scraping logs. Failures become structured, token-cheap, re-enterable. This is the unique moat vs Maven *and* Gradle. |
+| **2** | **Declarative TOML + surgical edits** (`jk.toml`, `jk add`/`remove`, MCP `deps` / `manifest`) | Agents and humans share one small surface. Mutation is cheap and reviewable. |
 | **3** | **Lockfile-as-law + PubGrub diagnostics** (`jk-lock.toml`, `why`, readable conflicts) | Removes overnight CI drift and “agent guessed a version.” Predictability is what Maven users actually loved. |
 | **4** | **Works on the Maven project you already have** (`jk mvn` with structured results; effective-POM import; a jk loop over an unmodified `pom.xml`) | Two thirds of the market is Maven. The loop has to arrive before the migration, or the evaluation ends at the fidelity report. |
 | **5** | **Named test rungs** (unit inner loop · `--guard` before share · `--all` nightly) | Agents stop running Playwright on every assertion fix *and* stop shipping wiring bugs the default suite never saw. Results disclose what was skipped. |
@@ -219,7 +219,7 @@ ergonomics — and adds an **agent-closed loop** as a first-class surface.
 
 | Principle | What it means |
 |-----------|----------------|
-| **Closed loop for agents** | `jk manual`, `jk-results.md`, MCP diagnostics/run — same model as the human CLI |
+| **Closed loop for agents** | `jk skill`, `jk-results.md`, MCP diagnostics/run — same model as the human CLI |
 | **Cheapest test rung first** | Unit on every edit; the named `--guard` rung before share; e2e / `--all` on purpose. Suites are scope; tags are cost. |
 | **Data, not a program** | `jk.toml` is TOML — readable, editable, reviewable |
 | **Finite shape** | Convention-over-configuration; plugins extend a known model |
@@ -271,7 +271,7 @@ build) belong on that same named bar: runnable **with** `--guard`, **alone**
 (`--scripts-only`), or **skipped** (`--no-scripts`). They are not a surprise tax on
 `jk test` while you fix `assertEquals`.
 
-The observe step has to match: `target/jk-results.md` (and MCP `jk_results`) must
+The observe step has to match: `target/jk-results.md` (and MCP `run`) must
 disclose **what ran, what did not, how to replay, what to run next.** A green unit
 run that silently skipped integration is how wiring bugs escape.
 
@@ -315,7 +315,7 @@ and success rate**.
 If that number does not win, polish the Tier 0 surfaces until it does. Feature count will
 not save it.
 
-Honesty today: the loop's surfaces are real — `jk manual`, results, MCP, TOML edits, the
+Honesty today: the loop's surfaces are real — `jk skill`, results, MCP, TOML edits, the
 lockfile, the cache, directory suites, `--guard` / `--scripts-only` / `--no-scripts`,
 effective-POM import with profiles and plugin mapping, `jk mvn` writing
 `target/jk-results.md`, a build over an unmodified `pom.xml`, and the IntelliJ
@@ -345,7 +345,7 @@ is on Central — not when this page says so.
 
 - JetBrains, [*The State of Java 2025*](https://lp.jetbrains.com/the-state-of-java-2025/)  
 - JetBrains, [*State of Developer Ecosystem 2022 — Java*](https://www.jetbrains.com/lp/devecosystem-2022/java/)  
-- Day-to-day product surface: [manual](manual.md), [agents](agents.md), [MCP](mcp.md),
+- Day-to-day product surface: [skill](skill.md), [agents](agents.md), [MCP](mcp.md),
   [machine output](machine-output.md)
 
 Survey percentages are self-reported and multi-select; treat them as **order-of-magnitude
@@ -360,7 +360,7 @@ build enforces it, and an agent reads the rule instead of a reviewer re-typing i
 
 - [Comparison](comparison.md) — feature matrix against Maven and Gradle
 - [The 1.0 plan](../contributors/plan-1.0.md) — the inner-loop priorities this page depends on
-- [Manual](manual.md)
+- [Skill](skill.md)
 - [Getting started](getting-started.md)
 - [Agents](agents.md)
 - [MCP](mcp.md)

@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  * "what did it change, and did that help": the files that differ between the runs, the
  * diagnostics that appeared or went away, the tests that flipped, and the wall of the run before.
  * Computed once at journal-write by {@link #compute} and carried on the {@link BuildRecord}, so
- * {@code jk-results.md}, the dashboard's run view and MCP {@code jk_results} all read the same
+ * {@code jk-results.md}, the dashboard's run view and MCP {@code run} all read the same
  * facts.
  *
  * <p>Every list is a {@link Rows}: the exact count beside at most {@value #MAX_SHOWN} entries, so

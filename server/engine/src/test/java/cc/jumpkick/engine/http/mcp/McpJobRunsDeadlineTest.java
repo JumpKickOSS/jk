@@ -13,7 +13,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code jk_run deadline_s}: a detached job's only bound is its wall deadline, so an agent may set
+ * {@code run deadline_s}: a detached job's only bound is its wall deadline, so an agent may set
  * it per job in the unit it thinks in. Absent leaves the engine's detached default, {@code 0}
  * lifts the cap, and a negative is the caller's error.
  */

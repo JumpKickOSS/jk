@@ -9,14 +9,14 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_project} — the project card for a checkout, keyed exactly as {@code jk_bind} keys it. */
+/** {@code project} — the project card for a checkout, keyed exactly as {@code bind} keys it. */
 public final class ProjectTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_project",
-                "Project card (coord, java, members, last run). dir optional after jk_bind.",
+                "project",
+                "Project card (coord, java, members, last run). dir optional after bind.",
                 McpSchemas.dirOnly(McpSchemas.PROJECT_ROOT));
     }
 

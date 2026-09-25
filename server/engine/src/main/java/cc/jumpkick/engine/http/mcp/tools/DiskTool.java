@@ -11,13 +11,13 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 import java.util.function.Supplier;
 
-/** {@code jk_disk} — cache vs store usage, and the two destructive actions behind {@code confirm}. */
+/** {@code disk} — cache vs store usage, and the two destructive actions behind {@code confirm}. */
 public final class DiskTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_disk",
+                "disk",
                 "Cache vs store disk usage. clean/nuke require confirm=true (nuke cache only).",
                 McpSchemas.object(
                         Map.of("action", McpSchemas.string("usage | clean | nuke"), "confirm", McpSchemas.bool())));

@@ -19,7 +19,7 @@ import java.util.Objects;
 
 /**
  * The number a writer pins when the user named a coordinate without a version: the newest stable
- * release the repositories advertise. {@code jk add}, {@code jk new} and MCP {@code jk_deps} write
+ * release the repositories advertise. {@code jk add}, {@code jk new} and MCP {@code deps} write
  * this number into {@code jk.toml}; nothing writes {@code latest}.
  */
 public final class StableVersions {

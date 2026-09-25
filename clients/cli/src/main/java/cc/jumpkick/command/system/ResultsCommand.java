@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * {@code jk results} — print the latest run's {@code jk-results.md} (journal copy under the state
  * dir, with a {@code target/jk-results.md} fallback). {@code --details} prints that run's {@code
  * details.jsonl} instead. No engine round-trip: the files are already on disk. MCP: {@code
- * jk_results} / {@code jk_details}.
+ * run} / {@code details}.
  */
 public final class ResultsCommand implements CliCommand {
 

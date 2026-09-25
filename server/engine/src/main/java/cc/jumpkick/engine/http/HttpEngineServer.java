@@ -105,7 +105,7 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Engine hook: bump the combined-connection high-water mark on every SSE admission. */
     private volatile Runnable onSseAdmitted = () -> {};
 
-    /** Engine hook: the cache maintenance gate for MCP {@code jk_disk clean|nuke}. */
+    /** Engine hook: the cache maintenance gate for MCP {@code disk clean|nuke}. */
     public void setCacheGate(ReentrantReadWriteLock cacheGate) {
         if (mcp != null && cacheGate != null) mcp.cacheGate(cacheGate);
     }
@@ -178,9 +178,9 @@ public final class HttpEngineServer implements AutoCloseable {
                 : null;
         // tools/list answers the loop set unless [mcp] tools = "all" asked for every card.
         if (this.mcp != null) this.mcp.surface(McpTools.Surface.of(config.mcp().tools()));
-        // jk_disk / jk_doctor / jk://disk read the same memoized walk as GET /api/cache.
+        // disk / doctor / jk://disk read the same memoized walk as GET /api/cache.
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
-        // jk_details serves a budgeted tail of the journal-owned details.jsonl transcript.
+        // details serves a budgeted tail of the journal-owned details.jsonl transcript.
         if (this.mcp != null) this.mcp.detailsFile(journal::detailsFile);
         this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);

@@ -23,7 +23,7 @@ class NewProjectOpsTest {
         assertThat(root).isEqualTo(temp.resolve("widget"));
         assertThat(root.resolve("jk.toml")).exists();
         assertThat(root.resolve("AGENTS.md")).exists();
-        assertThat(Files.readString(root.resolve("AGENTS.md"))).contains("jk manual");
+        assertThat(Files.readString(root.resolve("AGENTS.md"))).contains("jk skill");
         String toml = Files.readString(root.resolve("jk.toml"));
         assertThat(toml).contains("name     = \"widget\"");
         assertThat(toml).contains("group    = \"com.acme\"");
@@ -181,7 +181,7 @@ class NewProjectOpsTest {
                 true));
         assertThat(result.path().resolve("jk.toml")).exists();
         assertThat(result.path().resolve("AGENTS.md")).exists();
-        assertThat(Files.readString(result.path().resolve("AGENTS.md"))).contains("jk manual");
+        assertThat(Files.readString(result.path().resolve("AGENTS.md"))).contains("jk skill");
     }
 
     @Test

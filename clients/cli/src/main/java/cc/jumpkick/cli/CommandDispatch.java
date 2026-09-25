@@ -64,11 +64,11 @@ import cc.jumpkick.command.system.HistoryCommand;
 import cc.jumpkick.command.system.HookEnvCommand;
 import cc.jumpkick.command.system.InspectCommand;
 import cc.jumpkick.command.system.LibraryCommand;
-import cc.jumpkick.command.system.ManualCommand;
 import cc.jumpkick.command.system.RepoCommand;
 import cc.jumpkick.command.system.ResultsCommand;
 import cc.jumpkick.command.system.SelfCommand;
 import cc.jumpkick.command.system.ShowCommand;
+import cc.jumpkick.command.system.SkillCommand;
 import cc.jumpkick.command.system.StatusCommand;
 import cc.jumpkick.command.system.StorageCommand;
 import cc.jumpkick.command.system.TasksCommand;
@@ -130,7 +130,7 @@ public final class CommandDispatch {
             new HistoryCommand(),
             new ActivityCommand(), // name() = jobs; activity/act aliases
             new ResultsCommand(),
-            new ManualCommand(),
+            new SkillCommand(),
             new CancelCommand(),
             new StatusCommand(),
             new TreeCommand(),

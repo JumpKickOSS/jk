@@ -2,5 +2,5 @@
 
 User documentation now lives under **[user/](user/README.md)**.
 
-Start with the **[manual](user/manual.md)** (high-level, link-rich) or
+Start with the **[skill](user/skill.md)** (`jk skill`) or
 **[getting started](user/getting-started.md)**.

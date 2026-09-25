@@ -69,7 +69,7 @@ final class HttpAdmission {
 
     /**
      * {@link AdmissionYield} over the RPC gate: MCP long-polls park here after releasing their
-     * permit, so 16 waiting agents cannot 503 the surface (including the {@code jk_cancel} that
+     * permit, so 16 waiting agents cannot 503 the surface (including the {@code cancel} that
      * would un-wedge them). Reacquire is uninterruptible — the balancing {@code release()} in
      * the server's handle method must never release a permit this thread does not hold.
      */

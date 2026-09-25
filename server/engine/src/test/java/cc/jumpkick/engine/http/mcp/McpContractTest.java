@@ -91,7 +91,7 @@ class McpContractTest {
 
     @Test
     void history_default_is_summaries_without_blobs() {
-        Map<String, Object> structured = call("jk_history", "{}");
+        Map<String, Object> structured = call("history", "{}");
         assertThat(structured.get("type")).isEqualTo("history");
         List<Map<String, Object>> records = objects(structured, "records");
         assertThat(records).hasSize(7);
@@ -104,11 +104,11 @@ class McpContractTest {
 
     @Test
     void history_limit_and_next_page() {
-        Map<String, Object> page = call("jk_history", "{\"limit\":2}");
+        Map<String, Object> page = call("history", "{\"limit\":2}");
         assertThat(page.get("truncated")).isEqualTo(true);
         assertThat(number(page, "next").intValue()).isEqualTo(2);
         assertThat(number(page, "count").intValue()).isEqualTo(2);
-        Map<String, Object> page2 = call("jk_history", "{\"limit\":2,\"next\":2}");
+        Map<String, Object> page2 = call("history", "{\"limit\":2,\"next\":2}");
         assertThat(number(page2, "next").intValue()).isEqualTo(4);
         List<Map<String, Object>> rows = objects(page2, "records");
         assertThat(rows.getFirst().get("id")).isEqualTo("r2");
@@ -116,8 +116,8 @@ class McpContractTest {
 
     @Test
     void bind_filters_history_without_dir() {
-        call("jk_bind", "{\"dir\":\"/ws\"}");
-        Map<String, Object> hist = call("jk_history", "{}");
+        call("bind", "{\"dir\":\"/ws\"}");
+        Map<String, Object> hist = call("history", "{}");
         assertThat(number(hist, "totalMatched").intValue()).isEqualTo(6);
         List<Map<String, Object>> records = objects(hist, "records");
         assertThat(records).allMatch(r -> "/ws".equals(r.get("dir")));
@@ -125,10 +125,10 @@ class McpContractTest {
 
     @Test
     void diagnostics_unique_last_fail() {
-        call("jk_diagnostics", "{}"); // mint the session the next call rides
+        call("diagnostics", "{}"); // mint the session the next call rides
         String body = mcp.handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                                + "\"params\":{\"name\":\"jk_diagnostics\",\"arguments\":{}}}",
+                                + "\"params\":{\"name\":\"diagnostics\",\"arguments\":{}}}",
                         session)
                 .body();
         assertThat(body).contains("\"type\":\"diagnostics\"");
@@ -139,20 +139,20 @@ class McpContractTest {
 
     @Test
     void run_wait_returns_job_envelope() {
-        Map<String, Object> r = call("jk_run", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
+        Map<String, Object> r = call("run", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
         assertThat(r.get("type")).isIn("job", "job-accepted", "test-accepted");
         assertThat(r.get("jid")).isNotNull();
     }
 
     @Test
     void run_hosts_format_and_applies_tags() {
-        Map<String, Object> r = call("jk_run", "{\"kind\":\"format\",\"dir\":\"/tmp\",\"wait\":false}");
+        Map<String, Object> r = call("run", "{\"kind\":\"format\",\"dir\":\"/tmp\",\"wait\":false}");
         assertThat(r.get("type")).isEqualTo("job-accepted");
         assertThat(number(r, "jid").longValue()).isEqualTo(45L);
         assertThat(requireNonNull(lastSpec).kind()).isEqualTo("format");
 
         call(
-                "jk_run",
+                "run",
                 "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":false,\"include_tags\":[\"network\"],\"modules\":[\"api\"]}");
         assertThat(requireNonNull(lastSpec).kind()).isEqualTo("test");
         assertThat(requireNonNull(lastSpec).includeTags()).containsExactly("network");
@@ -162,7 +162,7 @@ class McpContractTest {
     @Test
     void aot_cache_is_rejected_not_silently_ignored() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_run\",\"arguments\":"
+                + "\"params\":{\"name\":\"run\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/tmp\",\"wait\":false,\"aot_cache\":true}}}");
         assertThat(body).contains("-32602");
         assertThat(body).contains("aot_cache");
@@ -173,19 +173,19 @@ class McpContractTest {
     @Test
     void tools_list_is_the_loop_set_until_the_engine_opts_into_every_card() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
-        assertThat(body).contains("jk_bind", "jk_run", "jk_results", "jk_diagnostics", "jk_deps", "jk_manifest");
-        assertThat(body).contains("jk_manual", "jk_tools");
-        assertThat(body).doesNotContain("jk_history", "jk_why", "jk_config", "jk_jdk");
+        assertThat(body).contains("\"run\"", "\"diagnostics\"", "\"deps\"", "\"why\"", "\"skill\"");
+        assertThat(body).doesNotContain("\"history\"", "\"bind\"", "\"manifest\"", "\"jdk\"");
 
         mcp.surface(McpTools.Surface.ALL);
         String all = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
-        assertThat(all).contains("jk_history", "jk_why", "jk_config", "jk_jdk", "jk_tools", "jk_run");
+        assertThat(all).contains("\"history\"", "\"why\"", "\"config\"", "\"jdk\"", "\"run\"");
+        assertThat(all).doesNotContain("jk_tools");
         assertThat(objects(JsonFields.object(JsonFields.parseObject(all), "result"), "tools"))
                 .hasSameSizeAs(McpTools.standard().names());
 
         // Off the default list is not off the server: the card is hidden, the call still lands.
         mcp.surface(McpTools.Surface.LOOP);
-        Map<String, Object> why = call("jk_history", "{}");
+        Map<String, Object> why = call("history", "{}");
         assertThat(why.get("type")).isEqualTo("history");
     }
 
@@ -220,7 +220,7 @@ class McpContractTest {
         assertThat(body).contains("\"messages\"");
         String learn = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"prompts/get\","
                 + "\"params\":{\"name\":\"learn-jumpkick\"}}");
-        assertThat(learn).contains("jk_manual");
+        assertThat(learn).contains("skill");
         assertThat(learn).contains("\"messages\"");
         String unknown = mcp.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"prompts/get\"," + "\"params\":{\"name\":\"nope\"}}");
@@ -232,7 +232,7 @@ class McpContractTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}");
         assertThat(body).contains("jk://session");
         assertThat(body).contains("jk://disk");
-        assertThat(body).contains("jk://manual");
+        assertThat(body).contains("jk://skill");
         assertThat(body).contains("jk://runs/latest/results");
         assertThat(body).contains("jk://runs/latest/details");
     }
@@ -301,26 +301,26 @@ class McpContractTest {
     @Test
     void tool_level_failures_set_is_error_and_successes_do_not() {
         String failing = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_jdk\",\"arguments\":{\"action\":\"install\",\"spec\":\"\"}}}");
+                + "\"params\":{\"name\":\"jdk\",\"arguments\":{\"action\":\"install\",\"spec\":\"\"}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(failing));
         Map<String, Object> result = object(resp, "result");
         assertThat(result.get("isError")).isEqualTo(true);
         String okBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
+                + "\"params\":{\"name\":\"status\",\"arguments\":{}}}");
         assertThat(okBody).doesNotContain("isError");
     }
 
     @Test
     void config_get_has_rows() {
-        Map<String, Object> c = call("jk_config", "{\"action\":\"get\"}");
+        Map<String, Object> c = call("config", "{\"action\":\"get\"}");
         assertThat(c.get("type")).isEqualTo("config");
         assertThat(c.get("rows")).isInstanceOf(List.class);
     }
 
     @Test
     void config_get_with_preset_ci_is_a_read_not_a_preset_apply() {
-        Map<String, Object> c = call("jk_config", "{\"action\":\"get\",\"preset\":\"ci\"}");
+        Map<String, Object> c = call("config", "{\"action\":\"get\",\"preset\":\"ci\"}");
         assertThat(c.get("type")).isEqualTo("config");
         assertThat(c.get("rows")).isInstanceOf(List.class);
         assertThat(c).doesNotContainKey("heap"); // the apply_preset result shape never appears

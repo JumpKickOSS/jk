@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.docs.JkManual;
+import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.guard.explain.GuardExplain;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
@@ -26,15 +26,14 @@ public final class McpResources {
 
     public static Map<String, Object> list() {
         List<Map<String, Object>> rs = new ArrayList<>();
-        rs.add(resource("jk://manual", "JumpKick playbook (same as CLI jk manual / tool jk_manual)", "text/markdown"));
+        rs.add(resource("jk://skill", "JumpKick skill (same as CLI jk skill / tool skill)", "text/markdown"));
         rs.add(resource("jk://session", "Bound dir + engine status"));
         rs.add(resource("jk://project", "Project card"));
         rs.add(resource("jk://runs/latest", "Latest history summary"));
-        rs.add(resource(
-                "jk://runs/latest/results", "Latest run verdict (same text as jk_results / jk_run)", "text/plain"));
+        rs.add(resource("jk://runs/latest/results", "Latest run verdict (same text as run)", "text/plain"));
         rs.add(resource(
                 "jk://runs/latest/details",
-                "Budgeted tail of latest details.jsonl (same as jk_details; CLI jk results --details dumps the full file)",
+                "Budgeted tail of latest details.jsonl (same as details; CLI jk results --details dumps the full file)",
                 "application/json"));
         rs.add(
                 resource(
@@ -56,7 +55,7 @@ public final class McpResources {
         String uri = raw == null ? null : String.valueOf(raw);
         if (uri == null) throw new McpError(-32602, "resources/read requires uri");
         String bound = connection == null ? null : connection.dir();
-        if ("jk://manual".equals(uri)) return manualResource();
+        if ("jk://skill".equals(uri) || uri.startsWith("jk://skill/")) return skillResource(uri);
         if ("jk://runs/latest/results".equals(uri)) return resultsResource(ctx, bound);
         if ("jk://runs/latest/details".equals(uri)) return detailsResource(ctx, bound);
         if (uri.equals(GUARDS) || uri.startsWith(GUARDS + "/")) return guardsResource(ctx, uri, bound);
@@ -65,7 +64,7 @@ public final class McpResources {
                     case "jk://session" -> McpVitals.statusPayload(ctx, bound);
                     case "jk://project" -> {
                         String dir = bound;
-                        if (dir == null) yield Map.of("error", "jk_bind first");
+                        if (dir == null) yield Map.of("error", "bind first");
                         yield McpProjectCards.card(dir, ctx.history());
                     }
                     case "jk://runs/latest" -> {
@@ -91,7 +90,7 @@ public final class McpResources {
      * An unknown id is a parameter error naming the nearest ids, not an empty document.
      */
     private static Map<String, Object> guardsResource(McpContext ctx, String uri, @Nullable String dir) {
-        if (dir == null) return contents(uri, "application/json", MiniJson.write(Map.of("error", "jk_bind first")));
+        if (dir == null) return contents(uri, "application/json", MiniJson.write(Map.of("error", "bind first")));
         Path root = Path.of(dir);
         String id = uri.equals(GUARDS) ? null : uri.substring(GUARDS.length() + 1);
         if (id != null && id.isEmpty()) throw new McpError(-32602, "jk://guards/<id> needs a rule id");
@@ -118,8 +117,12 @@ public final class McpResources {
         return contents(uri, "application/json", r.json());
     }
 
-    private static Map<String, Object> manualResource() {
-        return contents("jk://manual", "text/markdown", JkManual.markdown());
+    private static Map<String, Object> skillResource(String uri) {
+        if ("jk://skill".equals(uri)) return contents(uri, "text/markdown", JkSkill.core());
+        String topic = uri.substring("jk://skill/".length());
+        String text = JkSkill.topic(topic);
+        if (text == null) throw new McpError(-32602, "unknown skill topic: " + topic);
+        return contents(uri, "text/markdown", text);
     }
 
     private static Map<String, Object> resultsResource(McpContext ctx, @Nullable String bound) {

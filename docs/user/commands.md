@@ -40,7 +40,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk engine …` | Resident engine | [Engine](engine.md) |
 | `jk jobs` / `jk cancel` | Running work | [Engine](engine.md) |
 | `jk results` | Latest human report (`jk-results.md`); under `--agent` the verdict. `--details` dumps `details.jsonl` | [Machine output](machine-output.md) |
-| `jk manual` | Playbook for agents and new users (markdown) | [Manual](manual.md) |
+| `jk skill` | Skill for agents (core, one topic, or install the folder) | [Skill](skill.md) |
 | `jk cache …` / `jk storage …` | Disk hygiene | [Cache](cache.md) |
 | `jk clean` | Delete `target/` | [Cache](cache.md) |
 | `jk self nuke` / `jk self update` | Product data / upgrade | [Cache](cache.md), [Install](install.md) |

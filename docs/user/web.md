@@ -71,7 +71,7 @@ that links each module's report. The engine serves the report from the checkout 
 under a per-run route that carries the dashboard token in its path (so the report's own pages and
 stylesheets resolve) and in a sandboxed origin, so a report cannot script the dashboard. The
 figures are the record's `coverage[]` rows — the same facts as `target/jk-results.md` and MCP
-`jk_results`; the baseline is the nearest earlier record of the project whose coverage is not
+`run`; the baseline is the nearest earlier record of the project whose coverage is not
 empty, as the results file chooses it.
 
 The link ends in `#t=<token>`; a project link from MCP carries it as `#project/<id>?t=<token>`.

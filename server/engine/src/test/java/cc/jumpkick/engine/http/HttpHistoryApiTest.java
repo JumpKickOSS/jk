@@ -44,7 +44,7 @@ class HttpHistoryApiTest {
 
     @Test
     void mcp_journal_suppliers_serve_redacted_records(@TempDir Path dir) throws Exception {
-        // jk_history view=full and jk_diagnostics read raw journal JSON through the suppliers the
+        // history view=full and diagnostics read raw journal JSON through the suppliers the
         // engine wires into McpHandler — those ride redactRecords, so an agent on the MCP surface
         // sees the same masking as the REST history stream.
         Files.writeString(dir.resolve("jk.toml"), """

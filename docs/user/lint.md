@@ -3,7 +3,7 @@
 Checkstyle, PMD, SpotBugs and detekt run as **cached build steps after compile**: the `[lint]`
 table enables each with its configuration, the step forks the tool over the module and reads its
 report back, and every finding is a diagnostic — file, line, the rule id and the message — in
-`target/jk-results.md`, on the terminal, and in the MCP `jk_diagnostics` an agent reads. A finding
+`target/jk-results.md`, on the terminal, and in the MCP `diagnostics` an agent reads. A finding
 that is not in the results file is a finding an agent does not see; these are.
 
 ```toml

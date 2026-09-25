@@ -348,6 +348,9 @@ public final class Jk {
      * someone else's — {@code jk run mytool -- --list} hands the tool {@code --list}.
      */
     static String[] rewriteListToHelp(String[] args) {
+        // `jk skill --list` is the skill's own flag. Everywhere else `--list` is still `--help`.
+        int commandAt = CommandDispatch.commandIndex(List.of(args));
+        if (commandAt >= 0 && "skill".equals(args[commandAt])) return args;
         int end = CommandDispatch.ownArgsEnd(List.of(args));
         String[] out = null;
         for (int i = 0; i < end; i++) {

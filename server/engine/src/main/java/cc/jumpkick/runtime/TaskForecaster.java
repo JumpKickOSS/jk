@@ -518,7 +518,7 @@ public final class TaskForecaster {
 
     /**
      * As {@link #inputsFor(Path, Path, int, Path, String, boolean, boolean, Set)} with {@code
-     * testOnly} — when true, plans stop before packaging ({@code jk test} / MCP {@code jk_test}).
+     * testOnly} — when true, plans stop before packaging ({@code jk test} / MCP {@code test}).
      */
     public static BuildPlanner.Inputs inputsFor(
             Path dir,

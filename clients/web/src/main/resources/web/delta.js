@@ -4,7 +4,7 @@ import { fmtDuration } from './format.js';
 
 // The per-iteration strip under a run: what changed since the run before it from the same origin
 // (the engine's `delta` on the journal record — the same facts `jk-results.md` prints under
-// "Since the previous run" and MCP `jk_results` returns as `delta`). One line of chips, counts
+// "Since the previous run" and MCP `run` returns as `delta`). One line of chips, counts
 // first: files changed, diagnostics that appeared / went away, tests that flipped, and the wall
 // against the previous attempt. Each chip's tooltip lists the rows the engine kept (a bounded
 // head, `+N more` beyond it); clicking the strip opens them inline.

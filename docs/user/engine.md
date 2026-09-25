@@ -26,7 +26,7 @@ Every engine-hosted operation gets a **jid** at admission.
 | **Ctrl-C** | Cancels the engine job(s) for this project, then exits (bounded teardown; `JK_CANCEL_GRACE_MS`) |
 | **`jk cancel`** | All live jobs for the current project directory |
 | **`jk cancel <jid>`** | That job (unknown/finished jid → clear error) |
-| **Web / MCP** | `POST /api/cancel` with `{"jid":N}` · MCP `jk_cancel` |
+| **Web / MCP** | `POST /api/cancel` with `{"jid":N}` · MCP `cancel` |
 
 A second same-kind build in the same checkout is rejected: **Build #N already running**.
 Worktrees are different slots. The rule holds across engines too: the checkout's
@@ -52,7 +52,7 @@ processes and how long since its last task event:
 
 `--output json` carries the same rows as `jobs` (`jid`, `kind`, `dir`, `state` = `live` |
 `queued`, `since`, `workers`, `lastEventAt`, `ahead`); `GET /api/status`, the socket status
-frame, the dashboard's live `status` frame and the MCP `jk_status` tool carry the identical array,
+frame, the dashboard's live `status` frame and the MCP `status` tool carry the identical array,
 and `POST /api/cancel {"jid":N}` takes any jid it lists.
 
 ### Queued for memory

@@ -8,12 +8,12 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_doctor} — host health, off the same memoized cache walk as {@code jk_disk}. */
+/** {@code doctor} — host health, off the same memoized cache walk as {@code disk}. */
 public final class DoctorTool implements McpTool {
 
     @Override
     public Spec spec() {
-        return new Spec("jk_doctor", "Host health snapshot (config + disk).", McpSchemas.object(Map.of()));
+        return new Spec("doctor", "Host health snapshot (config + disk).", McpSchemas.object(Map.of()));
     }
 
     @Override

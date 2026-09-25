@@ -146,7 +146,7 @@ attempts and how long each took.
   by session.
 - The iteration strip is the per-attempt delta: files changed, diagnostics that appeared or
   disappeared, tests that flipped, wall time against the previous run from the same origin.
-  The same computation is `## Since the previous run` in `jk-results.md` and MCP `jk_results`
+  The same computation is `## Since the previous run` in `jk-results.md` and MCP `run`
   `delta`.
 - An MCP-triggered run returns its dashboard URL; the project page follows the newest job.
 

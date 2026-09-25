@@ -102,7 +102,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 | **Engine-side writer** | Each connection is served on a platform thread of its own and its lines go out through one queue and one writer thread per stream, so hello, ping and status are answered whatever the CPU pool and the virtual-thread scheduler are doing, and a plan's worker threads hand their events over without waiting for any client's socket. A client that stops reading is dropped, not waited for: its socket is closed and its job ends as on a disconnect; the engine log says so | **8 MiB** of unread lines, or an unread line older than `JK_STREAM_IDLE_MS` (`0` leaves only the byte bound) while a job owns the connection; **10 s** for a request/reply connection |
 | **Job heartbeat** | Engine emits `heartbeat` while async wire jobs run; detached (HTTP/MCP) jobs have no stream to keep alive, so only the wall-deadline watchdog runs | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
 | **Job wall deadline** | Cancel token + worker shutdown + interrupt runner; connection join bounded. A socket job's EOF is its real bound, so its cap is off unless set; a detached job has no connection to end it, so it always runs under a cap — the submission's own (`POST /api/build` `deadlineMs`, MCP `deadline_s`; `0` = none) or the engine's detached default. The cancel reason names the knob | Socket: `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off). Detached: `[engine] detached-deadline-ms` / `JK_ENGINE_DETACHED_DEADLINE_MS` (default **1 hour**). Join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
-| **User cancel / EOF** | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
+| **User cancel / EOF** | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → re-probed; a holder that shows life without a reply (younger than 2 min, worker children, CPU advancing) is waited out — 30 s + 15 s per worker, 3 min at most — then left alone with a refusal naming it; one that shows none across two readings is hard-killed once + respawned |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
 | **Out of memory** | The engine JVM runs with `-XX:+ExitOnOutOfMemoryError` and `-XX:+HeapDumpOnOutOfMemoryError`: the first `OutOfMemoryError` writes `<state>/engine/java_pid<pid>.hprof` and ends the process, however it was caught. The next client spawns a fresh engine and reports the exit once; `jk engine status` and `jk doctor` name the dump while it exists | Dump ≤ `max-heap-mb`; the idle boundary deletes dumps older than 7 days |
@@ -246,7 +246,7 @@ Only files present under the root are overridden; anything missing still falls t
 | `[http] max-event-streams` | `JK_HTTP_MAX_EVENT_STREAMS` | `16` (min `1`) | Web-UI SSE budget (`GET /api/events`) |
 | `[mcp] enabled` | `JK_MCP_ENABLED` | `true` | MCP surface toggle — `false` 404s `/mcp`; the HTTP server and dashboard stay up |
 | `[mcp] max-event-streams` | `JK_MCP_MAX_EVENT_STREAMS` | `16` (min `1`) | MCP SSE budget (`GET /mcp` event streams) |
-| `[mcp] tools` | `JK_MCP_TOOLS` | `loop` | Which cards `tools/list` serves: `loop` (the fix-and-rerun set plus `jk_tools`) or `all`; every tool stays callable |
+| `[mcp] tools` | `JK_MCP_TOOLS` | `loop` | Which cards `tools/list` serves by default: `loop` (five tools) or `all`. A client passes `extended: true` for every card. Every tool stays callable |
 
 `[http] enabled = false` still disables the whole server, MCP included.
 
@@ -600,7 +600,7 @@ capability table, including what is deliberately not implemented (a debug adapte
 (writing, or preview), and `BspConnectionFile` writes `.bsp/jk.json`. The module is pure
 model-to-files — no terminal, no engine — which is why it sits above `wire` and `toolchain-jdk` and
 below both `cli` and `engine`: `jk ide` adds the live chrome around the same generators the engine's
-MCP `jk_ide` runs in-process. `wire` cannot host them (it is the frozen protocol contract, and the
+MCP `ide` runs in-process. `wire` cannot host them (it is the frozen protocol contract, and the
 generators need `toolchain-jdk`); `core` cannot see the wire record at all.
 
 - **VS Code:** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.
@@ -735,8 +735,8 @@ follows the raw `<modules>` of the root and of every profile through nested aggr
 Maven would not build here (an aggregator, a module of an inactive profile) has no shadow;
 reading it names the root to build from.
 
-**MCP.** `jk_bind` already accepts any directory; the card for a shadowed project reads its
-identity from the shadow, and `jk_results` / `jk_diagnostics` need no change once the engine writes
+**MCP.** `bind` already accepts any directory; the card for a shadowed project reads its
+identity from the shadow, and `run` / `diagnostics` need no change once the engine writes
 through the normal journal.
 
 **Scope.** Single modules and reactors, default Maven layout (`ModuleLayout.TRADITIONAL` matches

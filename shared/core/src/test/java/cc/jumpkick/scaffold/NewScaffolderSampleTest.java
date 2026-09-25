@@ -33,7 +33,7 @@ class NewScaffolderSampleTest {
         assertThat(calc).doesNotContain("lombok").doesNotContain("@Data");
         assertThat(dir.resolve("src/main/java/com/example/package-info.java")).doesNotExist();
         assertThat(dir.resolve("AGENTS.md")).exists();
-        assertThat(Files.readString(dir.resolve("AGENTS.md"))).contains("jk manual");
+        assertThat(Files.readString(dir.resolve("AGENTS.md"))).contains("jk skill");
     }
 
     @Test

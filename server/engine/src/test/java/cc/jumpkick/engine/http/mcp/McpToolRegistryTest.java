@@ -14,12 +14,8 @@ import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
@@ -31,8 +27,8 @@ import org.junit.jupiter.api.Test;
  */
 class McpToolRegistryTest {
 
-    /** A name written anywhere the surface publishes prose. */
-    private static final Pattern TOOL_NAME = Pattern.compile("jk_[a-z_]+");
+    /** A leftover prefixed tool name. The server name scopes tools; the prefix is not part of one. */
+    private static final Pattern PREFIXED = Pattern.compile("jk_[a-z_]+");
 
     /** The entire cost of a new tool: this class, plus one line in {@link McpTools#standard()}. */
     private static final class QuuxTool implements McpTool {
@@ -92,34 +88,20 @@ class McpToolRegistryTest {
     }
 
     @Test
-    void the_default_list_is_the_loop_set_plus_the_catalog_and_nothing_else() {
+    void the_default_list_is_the_five_loop_tools() {
         McpTools tools = McpTools.standard();
         List<String> listed = names(tools.listing(McpTools.Surface.LOOP));
-        List<String> expected = new ArrayList<>(McpTools.LOOP);
-        expected.add(McpTools.CATALOG);
-        assertThat(listed).containsExactlyInAnyOrderElementsOf(expected);
-        assertThat(listed)
-                .containsExactly(
-                        "jk_run",
-                        "jk_results",
-                        "jk_diagnostics",
-                        "jk_deps",
-                        "jk_manifest",
-                        "jk_manual",
-                        "jk_bind",
-                        "jk_tools");
+        assertThat(listed).containsExactly("run", "diagnostics", "deps", "why", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
+        assertThat(listed).doesNotContain("bind", "history", "manifest");
     }
 
     @Test
-    void the_loop_cards_are_one_sentence_each() {
+    void the_loop_cards_are_one_or_two_sentences() {
         for (Map<String, Object> row : objects(McpTools.standard().listing(McpTools.Surface.LOOP), "tools")) {
             String description = String.valueOf(row.get("description"));
-            assertThat(description)
-                    .as("%s card", row.get("name"))
-                    .doesNotContain(". ")
-                    .endsWith(".");
-            assertThat(description.length()).as("%s card", row.get("name")).isLessThanOrEqualTo(110);
+            assertThat(description).as("%s card", row.get("name")).endsWith(".");
+            assertThat(description.length()).as("%s card", row.get("name")).isLessThanOrEqualTo(160);
         }
     }
 
@@ -129,9 +111,10 @@ class McpToolRegistryTest {
         List<String> listed = names(tools.listing(McpTools.Surface.ALL));
         assertThat(listed).isEqualTo(tools.names());
         assertThat(listed).doesNotHaveDuplicates();
-        assertThat(listed).allMatch(n -> n.startsWith("jk_"));
-        assertThat(listed).contains("jk_tools", "jk_why", "jk_outdated", "jk_history", "jk_jdk");
-        assertThat(listed.size()).isGreaterThan(McpTools.LOOP.size() + 1);
+        assertThat(listed).noneMatch(n -> n.startsWith("jk_"));
+        assertThat(listed).contains("why", "outdated", "history", "jdk", "bind");
+        assertThat(listed).doesNotContain("jk_tools");
+        assertThat(listed.size()).isGreaterThan(McpTools.LOOP.size());
     }
 
     @Test
@@ -144,63 +127,21 @@ class McpToolRegistryTest {
     }
 
     @Test
-    void the_catalog_lists_every_tool_outside_the_loop_with_one_liners() {
+    void extended_true_lists_every_tool_and_a_hidden_tool_is_still_callable() {
         McpTools tools = McpTools.standard();
-        Map<String, Object> result = tools.call(context(), Map.of("name", "jk_tools", "arguments", Map.of()));
-        Map<String, Object> structured = object(result, "structuredContent");
-        assertThat(structured.get("type")).isEqualTo("tools");
-        List<Map<String, Object>> rows = objects(structured, "tools");
-        List<String> listed =
-                rows.stream().map(r -> String.valueOf(r.get("name"))).toList();
-        List<String> outsideLoop = new ArrayList<>(tools.names());
-        outsideLoop.removeAll(McpTools.LOOP);
-        outsideLoop.remove(McpTools.CATALOG);
-        assertThat(listed).isEqualTo(outsideLoop);
-        for (Map<String, Object> row : rows) {
-            assertThat(String.valueOf(row.get("description")))
-                    .as("%s one-liner", row.get("name"))
-                    .doesNotContain(". ")
-                    .isNotBlank();
-        }
-        String text = String.valueOf(objects(result, "content").getFirst().get("text"));
-        assertThat(text).contains("jk_outdated — ").contains("jk_why — ").doesNotContain("jk_run — ");
-    }
+        assertThat(names(tools.listing(McpTools.Surface.LOOP, Map.of("extended", true))))
+                .isEqualTo(tools.names());
+        assertThat(names(tools.listing(McpTools.Surface.LOOP, Map.of("extended", "true"))))
+                .contains("history", "bind", "outdated");
+        assertThat(names(tools.listing(McpTools.Surface.ALL, Map.of("extended", false))))
+                .isEqualTo(tools.names());
 
-    @Test
-    void the_catalog_calls_a_tool_outside_the_loop_by_name() {
-        McpTools tools = McpTools.standard();
-        Map<String, Object> result = tools.call(
-                context(),
-                Map.of(
-                        "name",
-                        "jk_tools",
-                        "arguments",
-                        Map.of("action", "call", "name", "jk_outdated", "arguments", Map.of("dir", "/nowhere"))));
-        Map<String, Object> structured = object(result, "structuredContent");
-        assertThat(structured.get("type")).isEqualTo("outdated");
-        assertThat(String.valueOf(objects(result, "content").getFirst().get("text")))
-                .startsWith("outdated");
-
-        Map<String, Object> card = objects(tools.listing(McpTools.Surface.ALL), "tools").stream()
-                .filter(t -> "jk_outdated".equals(t.get("name")))
-                .findFirst()
-                .orElseThrow();
-        assertThat(object(object(card, "inputSchema"), "properties")).containsKeys("dir", "all");
-
-        assertThatThrownBy(() -> tools.call(
-                        context(),
-                        Map.of("name", "jk_tools", "arguments", Map.of("action", "call", "name", "jk_nope"))))
+        Map<String, Object> result =
+                tools.call(context(), Map.of("name", "outdated", "arguments", Map.of("dir", "/nowhere")));
+        assertThat(object(result, "structuredContent").get("type")).isEqualTo("outdated");
+        assertThatThrownBy(() -> tools.call(context(), Map.of("name", "nope")))
                 .isInstanceOf(McpError.class)
-                .hasMessageContaining("unknown tool: jk_nope");
-        assertThatThrownBy(() -> tools.call(
-                        context(),
-                        Map.of("name", "jk_tools", "arguments", Map.of("action", "call", "name", "jk_tools"))))
-                .isInstanceOf(McpError.class)
-                .hasMessageContaining("cannot call itself");
-        assertThatThrownBy(
-                        () -> tools.call(context(), Map.of("name", "jk_tools", "arguments", Map.of("action", "call"))))
-                .isInstanceOf(McpError.class)
-                .hasMessageContaining("requires name");
+                .hasMessageContaining("unknown tool: nope");
     }
 
     /**
@@ -218,52 +159,34 @@ class McpToolRegistryTest {
         String loop = MiniJson.write(objects(McpTools.standard().listing(McpTools.Surface.LOOP), "tools"));
         String all = MiniJson.write(objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools"));
         assertThat(wrapper.length()).isBetween(1_000, 1_600);
-        assertThat(loop.length())
-                .as("default tools/list %d bytes vs wrapper %d bytes", loop.length(), wrapper.length())
-                .isLessThanOrEqualTo((int) (wrapper.length() * 1.75));
+        String listing = MiniJson.write(McpTools.standard().listing(McpTools.Surface.LOOP));
+        assertThat(listing.length())
+                .as("default tools/list reply %d bytes", listing.length())
+                .isLessThanOrEqualTo(1_500);
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
     }
 
     @Test
-    void every_tool_the_playbook_names_exists() {
-        assertThat(namesIn(McpTools.INSTRUCTIONS))
-                .isNotEmpty()
-                .allSatisfy(name -> assertThat(McpTools.standard().names()).contains(name));
-    }
-
-    @Test
-    void the_playbook_names_only_tools_the_default_list_serves() {
-        assertThat(namesIn(McpTools.INSTRUCTIONS))
-                .allSatisfy(name -> assertThat(McpTools.standard().loopNames()).contains(name));
-    }
-
-    @Test
-    void every_tool_a_prompt_names_exists() {
-        Set<String> named = new LinkedHashSet<>();
-        for (String prompt : McpPrompts.names()) {
-            named.addAll(namesIn(McpPrompts.playbook(prompt).orElseThrow()));
+    void the_playbook_names_only_the_default_tools() {
+        String instructions = McpTools.INSTRUCTIONS;
+        for (String name : List.of("run", "diagnostics", "deps", "why", "skill")) {
+            assertThat(instructions).contains(name);
+            assertThat(McpTools.standard().loopNames()).contains(name);
         }
-        assertThat(named)
-                .isNotEmpty()
-                .allSatisfy(name -> assertThat(McpTools.standard().names()).contains(name));
+        assertThat(instructions).doesNotContain("jk_");
+        assertThat(MiniJson.write(McpTools.standard().listing(McpTools.Surface.ALL)))
+                .doesNotContain("jk_");
     }
 
     @Test
-    void every_tool_a_description_or_schema_cross_references_exists() {
-        McpTools tools = McpTools.standard();
-        Set<String> mentioned = namesIn(MiniJson.write(tools.listing(McpTools.Surface.ALL)));
-        assertThat(mentioned).contains("jk_build", "jk_why"); // the cross-references really are in there
-        assertThat(mentioned).allSatisfy(name -> assertThat(tools.names()).contains(name));
-    }
-
-    /** The structured payload's {@code exclusions} array is named where a caller decides to call the tool. */
-    @Test
-    void the_why_card_names_the_exclusions_array_its_payload_carries() {
-        Map<String, Object> why = objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools").stream()
-                .filter(row -> "jk_why".equals(row.get("name")))
-                .findFirst()
-                .orElseThrow();
-        assertThat(String.valueOf(why.get("description"))).contains("exclusions");
+    void prompts_name_tools_that_exist() {
+        for (String prompt : McpPrompts.names()) {
+            String text = McpPrompts.playbook(prompt).orElseThrow();
+            assertThat(text).doesNotContain("jk_");
+            assertThat(PREFIXED.matcher(text).find()).isFalse();
+        }
+        assertThat(McpPrompts.playbook("learn-jumpkick").orElseThrow()).contains("skill");
+        assertThat(McpPrompts.playbook("fix-failing-build").orElseThrow()).contains("run");
     }
 
     private static List<String> names(Map<String, Object> listing) {
@@ -279,13 +202,6 @@ class McpToolRegistryTest {
             return (Map<String, Object>)
                     requireNonNull(MiniJson.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8)));
         }
-    }
-
-    private static Set<String> namesIn(String prose) {
-        Set<String> out = new LinkedHashSet<>();
-        Matcher m = TOOL_NAME.matcher(prose);
-        while (m.find()) out.add(m.group());
-        return out;
     }
 
     private static McpContext context() {

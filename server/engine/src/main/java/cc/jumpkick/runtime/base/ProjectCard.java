@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One project summary for the snapshot surfaces ({@code GET /api/project}, MCP
- * {@code jk_project}/{@code jk_bind}): durable identity plus best-effort manifest facts. Never
+ * {@code project}/{@code bind}): durable identity plus best-effort manifest facts. Never
  * throws — an unparseable or missing {@code jk.toml} yields nulls, and identity still resolves
  * (lock / identity file / hash) so a broken checkout keeps its durable id. Each surface encodes
  * the subset it serves; the wire {@code project-info} IDE contract stays its own richer type.

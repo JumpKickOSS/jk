@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * One MCP connection is one session: {@code initialize} mints the id, every {@code jk_run} on that
+ * One MCP connection is one session: {@code initialize} mints the id, every {@code run} on that
  * id journals under it, a second connection is a second session, and each is bound to its own
  * project dir by the first call that names one. No HTTP bind — the session id is handed in as the
  * transport would from the {@code Mcp-Session-Id} header.
@@ -77,11 +77,11 @@ class McpConnectionTest {
     @Test
     void a_detached_run_names_the_job_and_not_the_dashboard() {
         String id = initialize("claude-code");
-        Map<String, Object> result = call(id, "jk_run", "{\"kind\":\"build\",\"dir\":\"/ws\",\"wait\":false}");
+        Map<String, Object> result = call(id, "run", "{\"kind\":\"build\",\"dir\":\"/ws\",\"wait\":false}");
         Map<String, Object> accepted = object(result, "structuredContent");
         assertThat(accepted.get("type")).isEqualTo("job-accepted");
         assertThat(accepted).doesNotContainKeys("dashboard", "session", "trigger");
-        assertThat(text(result)).contains("RUNNING build jid=").contains("jk_job action=wait jid=");
+        assertThat(text(result)).contains("RUNNING build jid=").contains("job action=wait jid=");
         // Who asked is still on the job the engine journals, not in the reply.
         assertThat(specs.getLast().origin().trigger()).isEqualTo("mcp");
         assertThat(specs.getLast().origin().session()).isEqualTo("claude-code " + id);
@@ -120,26 +120,26 @@ class McpConnectionTest {
         String id = initialize("claude-code");
 
         // Unbound connection, a read that carries dir: the read runs, and the result says it bound.
-        Map<String, Object> first = call(id, "jk_results", "{\"dir\":\"/ws\"}");
+        Map<String, Object> first = call(id, "run", "{\"run\":\"latest\",\"dir\":\"/ws\"}");
         assertThat(object(first, "structuredContent").get("bound")).isEqualTo("/ws");
         assertThat(text(first)).startsWith("bound /ws (later calls may omit dir)\n");
 
         // Bound: the next call omits dir and still targets /ws, with no announcement.
-        Map<String, Object> second = call(id, "jk_run", "{\"kind\":\"build\",\"wait\":false}");
+        Map<String, Object> second = call(id, "run", "{\"kind\":\"build\",\"wait\":false}");
         assertThat(specs.getLast().dir()).isEqualTo("/ws");
         assertThat(object(second, "structuredContent")).doesNotContainKey("bound");
         assertThat(text(second)).doesNotStartWith("bound");
 
         // A dir on a later call is that call's target only; the bind stays.
-        call(id, "jk_run", "{\"kind\":\"build\",\"wait\":false,\"dir\":\"/elsewhere\"}");
+        call(id, "run", "{\"kind\":\"build\",\"wait\":false,\"dir\":\"/elsewhere\"}");
         assertThat(specs.getLast().dir()).isEqualTo("/elsewhere");
-        call(id, "jk_run", "{\"kind\":\"build\",\"wait\":false}");
+        call(id, "run", "{\"kind\":\"build\",\"wait\":false}");
         assertThat(specs.getLast().dir()).isEqualTo("/ws");
 
-        // jk_bind switches, and never announces itself.
-        Map<String, Object> bound = call(id, "jk_bind", "{\"dir\":\"/other\"}");
+        // bind switches, and never announces itself.
+        Map<String, Object> bound = call(id, "bind", "{\"dir\":\"/other\"}");
         assertThat(object(bound, "structuredContent")).doesNotContainKey("bound");
-        call(id, "jk_run", "{\"kind\":\"build\",\"wait\":false}");
+        call(id, "run", "{\"kind\":\"build\",\"wait\":false}");
         assertThat(specs.getLast().dir()).isEqualTo("/other");
     }
 
@@ -147,37 +147,36 @@ class McpConnectionTest {
     void a_bind_is_the_connection_s_own() {
         String a = initialize("claude-code");
         String b = initialize("codex");
-        call(a, "jk_results", "{\"dir\":\"/ws-a\"}");
+        call(a, "run", "{\"run\":\"latest\",\"dir\":\"/ws-a\"}");
 
         // Connection B is still unbound: a call with no dir is a protocol error, not A's dir.
         McpHandler.Reply reply = mcp.handle(
-                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_run\","
+                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"run\","
                         + "\"arguments\":{\"kind\":\"build\",\"wait\":false}}}",
                 b);
         assertThat(reply.body()).contains("-32602").contains("requires arguments.dir");
 
         // B binds itself; A's bind is untouched.
-        call(b, "jk_results", "{\"dir\":\"/ws-b\"}");
-        call(b, "jk_run", "{\"kind\":\"build\",\"wait\":false}");
+        call(b, "run", "{\"run\":\"latest\",\"dir\":\"/ws-b\"}");
+        call(b, "run", "{\"kind\":\"build\",\"wait\":false}");
         assertThat(specs.getLast().dir()).isEqualTo("/ws-b");
-        call(a, "jk_run", "{\"kind\":\"build\",\"wait\":false}");
+        call(a, "run", "{\"kind\":\"build\",\"wait\":false}");
         assertThat(specs.getLast().dir()).isEqualTo("/ws-a");
 
-        // The catalog path binds the same way: jk_tools call carrying dir on a fresh connection.
+        // An extended tool binds the same way: a direct call carrying dir on a fresh connection.
         String c = initialize("cursor");
-        Map<String, Object> viaCatalog =
-                call(c, "jk_tools", "{\"action\":\"call\",\"name\":\"jk_history\",\"arguments\":{\"dir\":\"/ws-c\"}}");
+        Map<String, Object> viaCatalog = call(c, "history", "{\"dir\":\"/ws-c\"}");
         assertThat(object(viaCatalog, "structuredContent").get("bound")).isEqualTo("/ws-c");
-        call(c, "jk_run", "{\"kind\":\"build\",\"wait\":false}");
+        call(c, "run", "{\"kind\":\"build\",\"wait\":false}");
         assertThat(specs.getLast().dir()).isEqualTo("/ws-c");
     }
 
     @Test
     void an_anonymous_call_binds_nothing() {
-        Map<String, Object> result = call(null, "jk_results", "{\"dir\":\"/ws\"}");
+        Map<String, Object> result = call(null, "run", "{\"run\":\"latest\",\"dir\":\"/ws\"}");
         assertThat(object(result, "structuredContent")).doesNotContainKey("bound");
         McpHandler.Reply reply = mcp.handle(
-                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_run\","
+                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"run\","
                         + "\"arguments\":{\"kind\":\"build\",\"wait\":false}}}",
                 null);
         assertThat(reply.body()).contains("-32602").contains("requires arguments.dir");
@@ -195,24 +194,27 @@ class McpConnectionTest {
                 new McpHandler(status, jobs, dir -> Map.of("coord", "com.example:" + dir), () -> history, "0.13.7");
         String a = initialize(two, "claude-code");
         String b = initialize(two, "codex");
-        call(two, a, "jk_bind", "{\"dir\":\"/ws-a\"}");
-        call(two, b, "jk_bind", "{\"dir\":\"/ws-b\"}");
+        call(two, a, "bind", "{\"dir\":\"/ws-a\"}");
+        call(two, b, "bind", "{\"dir\":\"/ws-b\"}");
 
-        assertThat(object(call(two, a, "jk_status", "{}"), "structuredContent").get("boundDir"))
+        assertThat(object(call(two, a, "status", "{}"), "structuredContent").get("boundDir"))
                 .isEqualTo("/ws-a");
-        assertThat(object(call(two, b, "jk_status", "{}"), "structuredContent").get("boundDir"))
+        assertThat(object(call(two, b, "status", "{}"), "structuredContent").get("boundDir"))
                 .isEqualTo("/ws-b");
-        assertThat(text(call(two, a, "jk_results", "{}"))).contains("ws-a").doesNotContain("ws-b");
-        assertThat(text(call(two, b, "jk_results", "{}"))).contains("ws-b").doesNotContain("ws-a");
+        assertThat(text(call(two, a, "run", "{\"run\":\"latest\"}")))
+                .contains("ws-a")
+                .doesNotContain("ws-b");
+        assertThat(text(call(two, b, "run", "{\"run\":\"latest\"}")))
+                .contains("ws-b")
+                .doesNotContain("ws-a");
         assertThat(resource(two, a, "jk://project")).contains("\"dir\":\"/ws-a\"");
         assertThat(resource(two, b, "jk://project")).contains("\"dir\":\"/ws-b\"");
 
         // An anonymous reader has no bind of its own, whatever the connections bound.
-        assertThat(resource(two, null, "jk://project")).contains("jk_bind first");
-        assertThat(object(call(two, null, "jk_status", "{}"), "structuredContent"))
-                .doesNotContainKey("boundDir");
+        assertThat(resource(two, null, "jk://project")).contains("bind first");
+        assertThat(object(call(two, null, "status", "{}"), "structuredContent")).doesNotContainKey("boundDir");
         McpHandler.Reply reply = two.handle(
-                "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_bind\","
+                "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"bind\","
                         + "\"arguments\":{\"dir\":\"/ws-c\"}}}",
                 null);
         assertThat(reply.body()).contains("-32602").contains("needs a connection");
@@ -246,7 +248,7 @@ class McpConnectionTest {
 
     private Map<String, Object> run(@Nullable String sessionId) {
         return object(
-                call(sessionId, "jk_run", "{\"kind\":\"build\",\"dir\":\"/ws\",\"wait\":false}"), "structuredContent");
+                call(sessionId, "run", "{\"kind\":\"build\",\"dir\":\"/ws\",\"wait\":false}"), "structuredContent");
     }
 
     /** One {@code tools/call} on a connection; the whole {@code result} object. */

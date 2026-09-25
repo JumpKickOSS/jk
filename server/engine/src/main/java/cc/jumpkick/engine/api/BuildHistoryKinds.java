@@ -9,7 +9,7 @@ import java.util.Set;
  * reliability, exclusive admission, ETA metrics, {@code jk history}, and the Web UI Activity
  * feed.
  *
- * <p>Every JobEnvelope job is journaled (MCP wait / {@code jk_history} need the row). Non-build
+ * <p>Every JobEnvelope job is journaled (MCP wait / {@code history} need the row). Non-build
  * kinds ({@code lock}, {@code format}, …) persist under {@code runs/j-…} with {@code
  * buildNumber=0} so they do not increment {@code #N} or appear on Activity.
  *

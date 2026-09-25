@@ -9,7 +9,7 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
 /**
- * {@code jk_affected_tests} — WIP module cone + advisory ranked test classes. Writes
+ * {@code affected_tests} — WIP module cone + advisory ranked test classes. Writes
  * {@code target/jk-tests-affected.md}. Does not compile or run.
  */
 public final class AffectedTestsTool implements McpTool {
@@ -17,11 +17,11 @@ public final class AffectedTestsTool implements McpTool {
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_affected_tests",
+                "affected_tests",
                 "WIP module cone + advisory ranked test classes. Writes target/jk-tests-affected.md "
                         + "(does not touch jk-results.md). Payload ≤20 test rows (truncated=true if more). "
                         + "Does not compile or run. jk test --affected is the same list (table, no run). "
-                        + "jk_run kind=test affected=true re-ranks after compile and runs. "
+                        + "run kind=test affected=true re-ranks after compile and runs. "
                         + "Refuse rather than guess when too broad.",
                 McpSchemas.object(Map.of(
                         "dir",

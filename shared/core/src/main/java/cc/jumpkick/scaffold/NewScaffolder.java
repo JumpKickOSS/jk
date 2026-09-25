@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
-import cc.jumpkick.docs.JkManual;
+import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Layout;
@@ -19,7 +19,7 @@ import java.util.Map;
  * <li>{@code jk.toml} via {@link NewJkBuildRenderer}
  * <li>the production + test source roots (see {@link #createSourceTree})
  * <li>optional sample source tree (Java or Kotlin)
- * <li>{@code AGENTS.md} pointing at {@code jk manual} (standalone projects)
+ * <li>{@code AGENTS.md} pointing at {@code jk skill} (standalone projects)
  * </ul>
  *
  * <p>No {@code jk-lock.toml} — that's generated on the first build/run.
@@ -71,7 +71,7 @@ public final class NewScaffolder {
 
         if (standalone) {
             writeGitignore(dir);
-            JkManual.ensureAgentsGuide(dir);
+            JkSkill.ensureAgentsGuide(dir);
         }
 
         createSourceTree(inputs);
@@ -94,7 +94,7 @@ public final class NewScaffolder {
                 StandardCharsets.UTF_8);
         if (standalone) {
             writeGitignore(dir);
-            JkManual.ensureAgentsGuide(dir);
+            JkSkill.ensureAgentsGuide(dir);
         }
 
         String pkg = inputs.group();
@@ -154,7 +154,7 @@ public final class NewScaffolder {
                 version = "0.1.0"
                 java = $java$
                 """, StandardCharsets.UTF_8);
-        Files.writeString(g8.resolve("src/main/g8/AGENTS.md"), JkManual.AGENTS_MD, StandardCharsets.UTF_8);
+        Files.writeString(g8.resolve("src/main/g8/AGENTS.md"), JkSkill.AGENTS_MD, StandardCharsets.UTF_8);
     }
 
     /** CamelCase the plugin id into a class name, appending {@code Plugin} unless it already ends so. */

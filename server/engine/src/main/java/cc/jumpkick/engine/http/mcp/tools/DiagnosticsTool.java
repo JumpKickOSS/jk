@@ -11,26 +11,21 @@ import cc.jumpkick.engine.journal.JkResultsAgent;
 import java.util.Map;
 
 /**
- * {@code jk_diagnostics} — the problems past the run reply's cap, or every problem in one file
- * with its source lines. {@code run} selects a history id (default: the newest run); {@code file}
- * or {@code module} narrows to a path.
+ * {@code diagnostics} — the problems past the run reply's cap, or every problem in one file with
+ * its source lines. {@code run} selects a history id (default: the newest run); {@code file} or
+ * {@code module} narrows to a path.
  */
 public final class DiagnosticsTool implements McpTool {
+
+    static final String DESCRIPTION = "Problems past the verdict cap, or one file (file=) with full snippets.";
 
     @Override
     public Spec spec() {
         return new Spec(
-                "jk_diagnostics",
-                "Failures past the verdict cap, or every failure in one file.",
-                McpSchemas.object(Map.of(
-                        "dir",
-                        McpSchemas.string(),
-                        "file",
-                        McpSchemas.string(),
-                        "severity",
-                        McpSchemas.oneOf("error", "warning"),
-                        "limit",
-                        McpSchemas.integer())));
+                "diagnostics",
+                DESCRIPTION,
+                McpSchemas.object(Map.of("file", McpSchemas.string(), "dir", McpSchemas.string())),
+                McpSchemas.READ_ONLY);
     }
 
     @Override

@@ -13,7 +13,7 @@ import java.util.Map;
 public final class McpSchemas {
 
     /**
-     * Read-only tools agents should prefer for diagnosis (jk_results / jk_details / jk_manual).
+     * Read-only tools agents should prefer for diagnosis (diagnostics / why / skill).
      * The one hint hosts act on — a read-only tool needs no permission prompt; the idempotent and
      * open-world hints would cost every card bytes no client reads.
      */
@@ -25,10 +25,10 @@ public final class McpSchemas {
     /** The same root, named for a single project. */
     public static final String PROJECT_ROOT = "Project root (jk.toml): absolute, ~/…, or home-relative";
 
-    /** A read that defaults to {@code jk_bind}'s dir. */
+    /** A read that defaults to {@code bind}'s dir. */
     public static final String BOUND_ROOT = "Project root (default: bound dir)";
 
-    /** A history filter that defaults to {@code jk_bind}'s dir. */
+    /** A history filter that defaults to {@code bind}'s dir. */
     public static final String CHECKOUT_FILTER = "Checkout filter (default: bound dir)";
 
     private McpSchemas() {}

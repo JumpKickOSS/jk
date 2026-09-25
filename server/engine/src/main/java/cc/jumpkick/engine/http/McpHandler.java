@@ -38,8 +38,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>This class is the method table and nothing else. Framing is {@link McpRpc}, the tool set is
  * {@link McpTools#standard()}, and every collaborator a tool reaches hangs off {@link McpContext}.
- * {@code tools/list} answers the loop set by default ({@link McpTools#LOOP} plus {@code jk_tools});
- * {@link #surface} widens it to every tool.
+ * {@code tools/list} answers {@link McpTools#LOOP} by default. {@code extended: true} on that
+ * call, or {@link #surface}, widens it to every tool.
  */
 public final class McpHandler {
 
@@ -87,7 +87,7 @@ public final class McpHandler {
                 finishedRecords);
     }
 
-    /** Wire the journal's {@code details.jsonl} locator for {@code jk_details}. Optional. */
+    /** Wire the journal's {@code details.jsonl} locator for {@code details}. Optional. */
     public void detailsFile(Function<String, Optional<Path>> resolver) {
         if (resolver != null) ctx.detailsFile(resolver);
     }
@@ -102,7 +102,7 @@ public final class McpHandler {
         ctx.cacheGate(cacheGate);
     }
 
-    /** Wire the engine's one-jid liveness probe, what a parked {@code jk_job wait} polls. */
+    /** Wire the engine's one-jid liveness probe, what a parked {@code job wait} polls. */
     public void liveJid(LongPredicate liveJid) {
         ctx.liveJid(liveJid);
     }
@@ -172,7 +172,7 @@ public final class McpHandler {
         return switch (method) {
             case "notifications/initialized", "initialized" -> null; // notification
             case "ping" -> Map.of();
-            case "tools/list" -> tools.listing(surface);
+            case "tools/list" -> tools.listing(surface, params);
             case "tools/call" -> tools.call(ctx, params, connection);
             case "resources/list" -> McpResources.list();
             case "resources/read" -> McpResources.read(ctx, params, connection);
