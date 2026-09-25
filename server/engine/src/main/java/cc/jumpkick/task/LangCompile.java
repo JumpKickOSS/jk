@@ -104,9 +104,12 @@ public final class LangCompile {
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             // A failed restore (missing/corrupt blob) falls through to a real compile.
-            if (hit.isPresent() && actionCache.restore(hit.get(), request.outputDir())) {
-                reconcileState(workingDir, key, hit.get().outputs());
-                return cacheHit(key);
+            if (hit.isPresent()) {
+                ActionCache.ActionRecord cached = MirroredOutputs.omitting(request.outputDir(), hit.get());
+                if (actionCache.restore(cached, request.outputDir())) {
+                    reconcileState(workingDir, key, cached.outputs());
+                    return cacheHit(key);
+                }
             }
         }
 
@@ -196,7 +199,8 @@ public final class LangCompile {
                 // through the assemble merge and poison later records. A failed restore
                 // (missing/corrupt blob) falls through to the real compile below.
                 wipe(request);
-                if (actionCache.restore(hit.get(), request.outputDir())) {
+                ActionCache.ActionRecord cached = MirroredOutputs.omitting(request.outputDir(), hit.get());
+                if (actionCache.restore(cached, request.outputDir())) {
                     return cacheHit(key);
                 }
             }
@@ -247,7 +251,7 @@ public final class LangCompile {
         try {
             cr = fork.get();
         } finally {
-            outputs = prewriter.finish();
+            outputs = MirroredOutputs.without(outputDir, prewriter.finish());
         }
         if (!cr.success()) {
             return new Result(false, "errors", key, cr.diagnostics(), List.of());

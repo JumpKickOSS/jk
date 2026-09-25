@@ -304,17 +304,6 @@ public final class PlannerSupport {
     }
 
     /**
-     * Merge {@code resourceDir} into {@code classesDir}, leaving whatever is already correct alone.
-     *
-     * <p>{@link PathUtil#copyTree} skips byte-identical files so mtimes stay put: a sibling that
-     * compiles against this tree fingerprints it file by file through {@code FileHashMemo}, whose
-     * entries are keyed by size and mtime.
-     */
-    static void copyResources(Path resourceDir, Path classesDir) throws IOException {
-        PathUtil.copyTree(resourceDir, classesDir);
-    }
-
-    /**
      * Mirror one compiled-output tree ({@code kotlin}, {@code groovy}) into a shared classes tree.
      *
      * <p>A ledger under {@code incremental/} records what the previous merge copied, so a class the
@@ -322,7 +311,8 @@ public final class PlannerSupport {
      * compiler prunes its own output dir — leaves the classes tree before the copy. A plain copy is
      * additive and would keep it, and the jar would ship the old class beside the new one. The
      * ledger is per language, so a Java class beside the merged ones is never the mirror's to
-     * remove. Byte-identical files are left alone so mtimes stay put (see {@link #copyResources}).
+     * remove. Byte-identical files are left alone so mtimes stay put: a sibling fingerprints this
+     * tree through {@code FileHashMemo}, whose entries are keyed by size and mtime.
      */
     static void mergeLanguageOutput(Path langOut, Path classes, Path buildDir, String ledgerName) throws IOException {
         Path ledger = buildDir.resolve("incremental").resolve("merged-" + ledgerName + ".txt");

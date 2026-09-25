@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
 import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
-import static cc.jumpkick.runtime.PlannerSupport.copyResources;
 import static cc.jumpkick.runtime.PlannerSupport.effectiveSelection;
 import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
 import static cc.jumpkick.runtime.PlannerSupport.testStampExtras;
@@ -29,11 +28,13 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.LiveUnits;
+import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.LangCompile;
+import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
@@ -46,6 +47,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -102,6 +104,14 @@ public final class PlannerTest {
                     Path testClasses = ctx.require(TEST_CLASSES);
                     String selectionKey = String.join(",", suiteNames);
                     resetOnSelectionChange(ctx, testClasses, selectionKey);
+                    // Identity before the compilers run. Adoption may remove a copy that predates
+                    // the ledger, and must not remove a file this compile rewrote.
+                    Map<String, String> beforeNonClass = ResourceMirror.nonClassIdentity(testClasses);
+                    Path testLedger = ctx.require(LAYOUT)
+                            .buildDir()
+                            .resolve("incremental")
+                            .resolve(ResourceMirror.TEST_LEDGER);
+                    if (!Files.isRegularFile(testLedger)) forgetTestCompileState(in.cache(), testClasses);
                     boolean mixedTest =
                             !src.javaTest().isEmpty() && !src.ktTest().isEmpty();
                     boolean mixedTestGv =
@@ -132,7 +142,16 @@ public final class PlannerTest {
                             ctx.require(LAYOUT).buildDir(),
                             mixedTest,
                             mixedTestGv);
-                    copySuiteResources(ctx, in, compact, suiteNames, testClasses);
+                    copySuiteResources(
+                            ctx,
+                            in,
+                            actionCache,
+                            compact,
+                            suiteNames,
+                            testClasses,
+                            beforeNonClass,
+                            mixedTest,
+                            mixedTestGv);
                     Files.createDirectories(testClasses);
                     Files.writeString(testClasses.resolve(SUITE_MARKER), selectionKey);
                     ctx.progress(1);
@@ -441,14 +460,47 @@ public final class PlannerTest {
      * runtime cp — run-tests folds these dirs into its TestStamp key.
      */
     private static void copySuiteResources(
-            TaskContext ctx, BuildPlanner.Inputs in, boolean compact, List<String> suiteNames, Path testClasses)
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            ActionCache actionCache,
+            boolean compact,
+            List<String> suiteNames,
+            Path testClasses,
+            Map<String, String> beforeNonClass,
+            boolean mixedTest,
+            boolean mixedTestGv)
             throws IOException {
         List<Path> suiteResDirs = ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames);
-        for (Path resTest : suiteResDirs) {
-            Files.createDirectories(testClasses);
-            copyResources(resTest, testClasses);
-        }
+        Files.createDirectories(testClasses);
+        // adoptUnowned: a test-resource copy that predates the ledger left files this mirror
+        // must still remove. A file the compile just wrote is protected; main classes already
+        // carry a ledger, so they do not adopt.
+        Path ledger = ctx.require(LAYOUT).buildDir().resolve("incremental").resolve(ResourceMirror.TEST_LEDGER);
+        Set<String> mirrored = ResourceMirror.sync(
+                suiteResDirs, testClasses, ledger, true, ResourceMirror.changedNonClass(testClasses, beforeNonClass));
+        // The compile stored whatever was in the tree, including a resource it did not produce.
+        // Drop those paths so a later restore cannot put a deleted one back.
+        List<String> keys = new ArrayList<>();
+        ctx.get(COMPILE_TEST_ACTION_KEY).ifPresent(keys::add);
+        if (!mixedTest) ctx.get(COMPILE_TEST_KOTLIN_ACTION_KEY).ifPresent(keys::add);
+        if (!mixedTestGv) ctx.get(COMPILE_TEST_GROOVY_ACTION_KEY).ifPresent(keys::add);
+        for (String key : keys) MirroredOutputs.release(actionCache, key, testClasses, mirrored);
         ctx.put(TEST_RESOURCE_DIRS, suiteResDirs);
+    }
+
+    /**
+     * No test-resource ledger yet, so this compile has to be whole: an incremental one can leave a
+     * generated resource untouched, and adoption would then remove it with the stale copies.
+     */
+    private static void forgetTestCompileState(Path cache, Path testClasses) throws IOException {
+        Path actions = CacheTree.ACTIONS.under(cache);
+        Path javaState =
+                ActionKey.stateDir(ActionTree.INCREMENTAL_JAVA.under(actions), TaskNames.COMPILE_TEST, testClasses);
+        Path kotlinState = ActionKey.stateDir(
+                ActionTree.INCREMENTAL_KOTLIN.under(actions), TaskNames.COMPILE_TEST_KOTLIN, testClasses);
+        for (Path state : List.of(javaState, kotlinState)) {
+            if (Files.isDirectory(state)) PathUtil.deleteRecursively(state);
+        }
     }
 
     static Task runTestsStep(

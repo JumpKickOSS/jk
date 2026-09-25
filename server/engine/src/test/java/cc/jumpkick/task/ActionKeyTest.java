@@ -591,8 +591,9 @@ class ActionKeyTest {
                 .build();
 
         assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
-                .isEqualTo(Hashing.sha256Hex(
-                        "task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:none\noptions:\n"));
+                .isEqualTo(
+                        Hashing.sha256Hex(
+                                "task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:none\noptions:\nmirrored:excluded\n"));
     }
 
     /**
