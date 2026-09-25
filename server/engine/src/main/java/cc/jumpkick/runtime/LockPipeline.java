@@ -719,11 +719,29 @@ public final class LockPipeline {
         LockRewriteGuard.refuseUnlessForced(lockFile(), SessionContext.current().force());
     }
 
-    /** Freeze resolved first-party project identity, then write. Returns the lock as written. */
+    /**
+     * Freeze resolved first-party project identity, then write. Returns the lock as written, including
+     * the project id the file records — the in-memory lock a resolve just built does not carry it, and
+     * the missing-package hint keys the previous lock by that id.
+     */
     public Lockfile write(Lockfile lock, String manifestsSha) throws IOException {
         refuseOlderWriter();
         Lockfile stamped = LockfileModules.stamp(lock, lockDir);
-        LockfileWriter.write(stamped, lockFile(), manifestsSha);
+        Path file = lockFile();
+        if (Files.isRegularFile(file)) {
+            try {
+                Lockfile disk = LockfileReader.read(file);
+                if ((stamped.projectId() == null || stamped.projectId().isBlank())
+                        && disk.projectId() != null
+                        && !disk.projectId().isBlank()) {
+                    stamped = stamped.withProjectId(disk.projectId());
+                }
+                LockHistory.keep(lockDir, disk, stamped);
+            } catch (Exception unreadable) {
+                Log.debug("write: previous lock", unreadable);
+            }
+        }
+        LockfileWriter.write(stamped, file, manifestsSha);
         return stamped;
     }
 

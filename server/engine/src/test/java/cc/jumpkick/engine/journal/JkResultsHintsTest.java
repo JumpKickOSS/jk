@@ -261,6 +261,53 @@ class JkResultsHintsTest {
     }
 
     @Test
+    void a_resolve_conflict_names_the_pin_to_the_version_the_graph_requires() {
+        String md = render(verbatim("""
+                ‼ Cannot resolve dependencies:
+                  │ org.springframework.boot:spring-boot 4.0.8 depends on org.springframework:spring-core [7.0.9,+∞)
+                  │ The project depends on org.springframework.boot:spring-boot-starter-webmvc 4.0.8
+                  │ The project depends on org.springframework:spring-core 6.0.0
+                  │ Therefore, the project's requirements cannot be resolved
+                Suggestions:
+                  • Relax or remove the project constraint on org.springframework:spring-core
+                """));
+        assertThat(md)
+                .contains("→ the exact pin `org.springframework:spring-core` `6.0.0` is outside what the rest of"
+                        + " the graph allows: `deps(pin, org.springframework:spring-core:7.0.9)`.")
+                .doesNotContain("spring-boot-starter-webmvc` `4.0.8`");
+    }
+
+    @Test
+    void a_junit_line_on_two_versions_names_the_pin_to_the_version_the_line_resolved() {
+        BuildRecord.Diag launcher = new BuildRecord.Diag(
+                "error",
+                "/ws/app",
+                "run-tests",
+                "test-launcher",
+                """
+                        test discovery exited 70 before any test ran
+                        Two versions of the org.junit.jupiter line on the test classpath:
+                          5.0.0: org.junit.jupiter:junit-jupiter-api
+                          6.1.3: org.junit.jupiter:junit-jupiter-engine, org.junit.jupiter:junit-jupiter-params, org.junit.jupiter:junit-jupiter (declared =platform-managed in [test-dependencies])
+                        """,
+                null,
+                "org.junit.platform.commons.JUnitException");
+        assertThat(render(launcher))
+                .contains("`org.junit.jupiter:junit-jupiter-api` is behind the rest of its line, which resolved"
+                        + " `6.1.3`: `deps(pin, org.junit.jupiter:junit-jupiter-api:6.1.3)`.");
+    }
+
+    @Test
+    void two_providers_are_both_named() {
+        String md = render(javac("""
+                /ws/app/src/Main.java:3:8: error: package com.acme.util does not exist
+                  provided by: org.acme:acme-a, org.acme:acme-b (in the local artifact store)"""));
+        assertThat(md)
+                .contains("provided by `org.acme:acme-a` or `org.acme:acme-b` (in the local artifact store)")
+                .contains("`jk add org.acme:acme-a` or `jk add org.acme:acme-b`");
+    }
+
+    @Test
     void the_first_line_is_the_compiler_text_whatever_header_it_wears() {
         assertThat(JkResultsHints.firstLine("cannot find symbol\n  symbol: x")).isEqualTo("cannot find symbol");
         assertThat(JkResultsHints.firstLine("/ws/A.java:3:4: error: cannot find symbol"))
@@ -297,6 +344,10 @@ class JkResultsHintsTest {
                 List.of(),
                 0,
                 key);
+    }
+
+    private static BuildRecord.Diag verbatim(String message) {
+        return new BuildRecord.Diag("error", "/ws/app", "parse-build", "verbatim", message, null, null);
     }
 
     private static BuildRecord.Diag javac(String message) {

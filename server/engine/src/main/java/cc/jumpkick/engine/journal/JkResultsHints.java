@@ -15,7 +15,8 @@ import org.jspecify.annotations.Nullable;
  * compile worker records beside every diagnostic; the shape of the message is the fallback for a
  * diagnostic that arrived without one — a forked javac's stderr, and every kotlinc diagnostic, since
  * kotlinc's Build Tools logger reports a line of text. The hint quotes the symbol, package or type
- * from the message itself and never guesses a coordinate.
+ * from the message. A missing package names the coordinate the compile step recorded
+ * ({@code provided by:}), and a rejected pin names {@code deps(pin, …)} or {@code deps(remove, …)}.
  */
 @NullMarked
 final class JkResultsHints {
@@ -46,10 +47,16 @@ final class JkResultsHints {
 
     private JkResultsHints() {}
 
-    /** The hint for {@code d}, or {@code null}: only javac and kotlinc errors have one. */
+    /**
+     * The hint for {@code d}, or {@code null}. Javac and kotlinc errors have one, and so does a
+     * resolve conflict or a JUnit line pinned to two versions.
+     */
     static @Nullable Hint forDiag(BuildRecord.Diag d) {
         if (!JkResultsMarkdown.isError(d)) return null;
         String message = d.message() == null ? "" : d.message();
+        String stack = d.stack() == null ? "" : d.stack();
+        Hint dependency = DependencyEdits.hint(message, stack);
+        if (dependency != null) return dependency;
         String first = firstLine(message);
         return switch (d.code()) {
             case "javac" -> {
@@ -156,9 +163,23 @@ final class JkResultsHints {
                     "nothing on this module's compile classpath provides package `" + pkg
                             + "`: `jk add <group:artifact>` the library that ships it, or fix the import.");
         }
-        int space = provider.indexOf(' ');
-        String coordinate = space < 0 ? provider : provider.substring(0, space);
-        String where = space < 0 ? "" : " (" + provider.substring(space + 1).replaceAll("^\\(|\\)$", "") + ")";
+        int whereAt = provider.indexOf(" (");
+        String coordField = whereAt < 0 ? provider : provider.substring(0, whereAt);
+        String where = whereAt < 0
+                ? ""
+                : " ("
+                        + provider.substring(
+                                whereAt + 2, provider.endsWith(")") ? provider.length() - 1 : provider.length())
+                        + ")";
+        String[] coords = coordField.split(", ");
+        if (coords.length >= 2) {
+            return new Hint(
+                    DOESNT_EXIST,
+                    "package `" + pkg + "` is provided by `" + coords[0] + "` or `" + coords[1] + "`" + where
+                            + ": `jk add " + coords[0] + "` or `jk add " + coords[1]
+                            + "` in this module, or fix the import.");
+        }
+        String coordinate = coords[0];
         return new Hint(
                 DOESNT_EXIST,
                 "package `" + pkg + "` is provided by `" + coordinate + "`" + where + ": `jk add " + coordinate
