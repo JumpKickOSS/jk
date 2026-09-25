@@ -1,12 +1,12 @@
-"""The scripted driver: a deterministic oracle that reads the results file and applies the known fix.
+"""The scripted driver: a deterministic oracle that reads the results text and applies the known fix.
 
-It never reads the scenario's injection to decide *what* is wrong; the results file has to say.
-Each turn it classifies the failure from the file (compile locus, missing packages, a resolve
-message, a failing test and its message), applies the fix that class calls for, reruns through
-the tool's MCP and reads the results again. When the file names the failure but not enough to
-derive the edit (a failing test whose message carries no expected/actual pair, a deleted
-resource nobody names), it falls back to the scenario's own inverse edit and records that as a
-finding about the results file. When the file names nothing actionable, it stops red and says so.
+It never reads the scenario's injection to decide *what* is wrong; the results text has to say.
+Maven and Gradle still return the markdown results page. jk's ``run`` returns the agent verdict
+(``E`` loci, ``T`` tests, ``FIX`` lines). Each turn classifies the failure from that text, applies
+the fix that class calls for — a ``FIX`` line first, when one is present — reruns through the
+tool's MCP and reads the results again. When the text names the failure but not enough to derive
+the edit, it falls back to the scenario's own inverse edit and records that as a finding. When
+the text names nothing actionable, it stops red and says so.
 """
 
 from __future__ import annotations
@@ -51,6 +51,7 @@ PAIR_PATTERNS = [
     re.compile(r'Expected: a string containing "(?P<e>.*?)"\n\s*but: was "(?P<a>.*?)"\n', re.S),
     re.compile(r"Expected: (?P<e>.+?)\n\s*got: (?P<a>.+?)\n"),
     re.compile(r'to contain only:\n\s*\["(?P<e>.*?)"\]', re.S),
+    re.compile(r'expected:\s*"(?P<e>.*?)"\s+but was:\s*"(?P<a>.*?)"'),
 ]
 STATUS_METHOD = re.compile(r"^\d{3} ([A-Z_]+)$")
 ASSERTJ_NEGATIONS = [
@@ -79,6 +80,18 @@ class FailedTest:
 
 
 @dataclass
+class AgentFix:
+    """One ``FIX`` line from jk's agent verdict."""
+
+    action: str          # add | pin | remove | insert | resource
+    coord: str = ""
+    file: str = ""
+    line: int = 0
+    col: int = 0
+    resource: str = ""
+
+
+@dataclass
 class Parsed:
     ok: bool
     loci: list[Locus]
@@ -86,10 +99,12 @@ class Parsed:
     failures: str
     why: list[str]
     raw: str
+    fixes: list[AgentFix] = field(default_factory=list)
+    more_file: str = ""
 
     @property
     def names_nothing(self) -> bool:
-        return not self.loci and not self.tests and not self.failures.strip()
+        return not self.loci and not self.tests and not self.failures.strip() and not self.fixes
 
 
 def section(text: str, heading: str) -> str:
@@ -97,7 +112,128 @@ def section(text: str, heading: str) -> str:
     return m.group(1) if m else ""
 
 
-def parse(text: str) -> Parsed:
+# Agent verdict. A compile locus is ``E path:line[:col] message``; a step failure is ``E step: cause``.
+_AGENT_HEAD = re.compile(r"(?:OK|FAIL|CANCELLED) \S")
+_E_LOCUS = re.compile(
+    r"^E (?P<file>(?:[\w.-]+/)+[\w.-]+\.\w+):(?P<line>\d+)(?::(?P<col>\d+))? (?P<msg>\S.*)$"
+)
+_E_STEP = re.compile(r"^E (?P<step>[^:]+): (?P<cause>.+)$")
+_T_LINE = re.compile(r"^T (?P<cls>[^\s#]+)(?:#(?P<method>\S+))?$")
+_FIX_DEPS = re.compile(r"^deps\((add|pin|remove),\s*([^)]+?)\s*\)$")
+_FIX_INSERT = re.compile(
+    r"""^insert\s+['"];['"]\s+at\s+(?:(?P<file>\S+?):)?(?P<line>\d+):(?P<col>\d+)\s*$"""
+)
+_MORE_FILE = re.compile(r"diagnostics\(file=([^)\s]+)\)")
+# The first call on an unbound connection is prefixed with the dir it just bound.
+_BIND_NOTE = re.compile(r"^bound .+ \(later calls may omit dir\)\n")
+_RESOLVE_FAILURE = re.compile(
+    r"Cannot resolve dependencies|could not resolve|Could not find|cannot be resolved"
+    r"|depends on \S+:\S+|was not found|failed to discover tests|Could not complete execution"
+    r"|ClassNotFoundException|NoClassDefFoundError|NoSuchMethodError",
+    re.I,
+)
+
+
+def strip_preamble(text: str) -> str:
+    """Drop a leading byte-order mark and the one-time ``bound <dir>`` note."""
+    return _BIND_NOTE.sub("", text.lstrip("\ufeff"), count=1)
+
+
+def is_agent_verdict(text: str) -> bool:
+    """jk's ``run`` reply, as opposed to the markdown page the wrappers still return."""
+    head = strip_preamble(text).lstrip()
+    return bool(_AGENT_HEAD.match(head)) and not head.startswith("#")
+
+
+def _resource_named(body: str) -> str:
+    """A file a ``FIX`` line tells the agent to put back, or empty."""
+    for tick in re.findall(r"`([^`]+)`", body):
+        name = tick.strip().strip("/")
+        if re.search(r"\.(?:sql|csv|properties|ya?ml|json|graphqls?|html|txt|xml)$", Path(name).name):
+            return name
+    m = RESOURCE_HINT.search(body)
+    if not m:
+        return ""
+    return next((v for v in m.groupdict().values() if v), "")
+
+
+def _parse_fix(body: str, file: str) -> AgentFix | None:
+    m = _FIX_DEPS.match(body.strip())
+    if m:
+        return AgentFix(m.group(1), coord=m.group(2).strip())
+    m = _FIX_INSERT.match(body.strip())
+    if m:
+        return AgentFix("insert", file=m.group("file") or file, line=int(m.group("line")), col=int(m.group("col")))
+    resource = _resource_named(body)
+    if resource:
+        return AgentFix("resource", resource=resource)
+    return None
+
+
+def parse_agent(text: str) -> Parsed:
+    """The agent verdict: one headline, then ``E`` / ``T`` / ``FIX`` lines."""
+    loci: list[Locus] = []
+    tests: list[FailedTest] = []
+    fixes: list[AgentFix] = []
+    failure_lines: list[str] = []
+    more_file = ""
+    current: str | None = None
+    current_file = ""
+    block: list[str] = []
+
+    def flush() -> None:
+        nonlocal current
+        if current == "test" and tests:
+            tests[-1].block = "\n".join(block)
+        elif current == "step":
+            failure_lines.extend(block)
+        current = None
+        block.clear()
+
+    for line in text.splitlines():
+        if line.startswith(("OK ", "FAIL ", "CANCELLED ", "new ")):
+            flush()
+            continue
+        locus = _E_LOCUS.match(line)
+        if locus:
+            flush()
+            loc = Locus(locus.group("file"), int(locus.group("line")), locus.group("msg").strip())
+            loci.append(loc)
+            current, current_file = "locus", loc.file
+            continue
+        step = _E_STEP.match(line)
+        if step:
+            flush()
+            current = "step"
+            block.append(line)
+            continue
+        test = _T_LINE.match(line)
+        if test:
+            flush()
+            tests.append(FailedTest(test.group("cls"), test.group("method") or "", ""))
+            current = "test"
+            continue
+        if line.startswith("FIX "):
+            fix = _parse_fix(line[4:], current_file)
+            if fix is not None:
+                fixes.append(fix)
+            if current in ("test", "step"):
+                block.append(line)
+            continue
+        more = _MORE_FILE.search(line) if line.startswith("+") else None
+        if more:
+            flush()
+            more_file = more.group(1)
+            continue
+        if line.startswith("  ") and current in ("test", "step"):
+            block.append(line)
+    flush()
+    return Parsed(
+        results_ok(text), loci, tests, "\n".join(failure_lines), [], text, fixes, more_file,
+    )
+
+
+def parse_markdown(text: str) -> Parsed:
     failures = section(text, "Failures")
     loci = [Locus(m.group(1), int(m.group(2)), m.group(3).strip())
             for m in re.finditer(r"^`([^`\n]+?):(\d+)(?::\d+)?`\n```\n(.*?)\n```", failures, re.S | re.M)]
@@ -110,6 +246,11 @@ def parse(text: str) -> Parsed:
     return Parsed(results_ok(text), loci, tests, failures, why, text)
 
 
+def parse(text: str) -> Parsed:
+    text = strip_preamble(text)
+    return parse_agent(text) if is_agent_verdict(text) else parse_markdown(text)
+
+
 # --------------------------------------------------------------------------- classify
 
 
@@ -120,12 +261,19 @@ class Diagnosis:
     loci: list[Locus] = field(default_factory=list)
     tests: list[FailedTest] = field(default_factory=list)
     detail: str = ""
+    fixes: list[AgentFix] = field(default_factory=list)
 
 
 def classify(p: Parsed) -> Diagnosis:
+    d = classify_body(p)
+    d.fixes = list(p.fixes)
+    return d
+
+
+def classify_body(p: Parsed) -> Diagnosis:
     if p.ok:
         return Diagnosis("ok", "ok")
-    if re.search(r"Cannot resolve dependencies|could not resolve|Could not find|cannot be resolved", p.failures, re.I) and not p.loci:
+    if _RESOLVE_FAILURE.search(p.failures) and not p.loci:
         return Diagnosis("version-conflict", "resolve:" + p.failures.strip()[:200], detail=p.failures)
     if p.loci:
         missing = [l for l in p.loci if re.search(r"package \S+ does not exist|cannot find symbol|static import only", l.message)]
@@ -139,7 +287,7 @@ def classify(p: Parsed) -> Diagnosis:
         if RESOURCE_FAILURE.search(joined) and (not is_assertion(joined) or re.search(r"\b\w+Exception: ", actual_side(joined) or "")):
             return Diagnosis("missing-resource", "resource:" + ",".join(sorted({t.class_name for t in p.tests})), tests=p.tests, detail=joined)
         return Diagnosis("failing-assertion", "assert:" + ",".join(f"{t.class_name}#{t.method}" for t in p.tests), tests=p.tests, detail=joined)
-    if re.search(r"failed to discover tests|Could not complete execution", p.failures) or ENGINE_HINT.search(p.failures):
+    if ENGINE_HINT.search(p.failures):
         return Diagnosis("version-conflict", "engine:" + p.failures.strip()[:200], detail=p.failures)
     return Diagnosis("unnamed", "unnamed:" + (p.why[0] if p.why else "")[:200], detail=p.failures)
 
@@ -159,7 +307,7 @@ def actual_side(block: str) -> str | None:
 @dataclass
 class Fix:
     description: str
-    source: str          # results | results-heuristic | git-status | scenario
+    source: str          # results | results-fix-line | results-heuristic | git-status | scenario
     finding: str = ""
 
 
@@ -303,6 +451,18 @@ def fix_version_conflict(sandbox: Path, tool: str, d: Diagnosis) -> Fix | None:
     return Fix("removed the exact pin on " + ", ".join(f"{p.group}:{p.artifact}" for p in picked) + f" from {path.name}", source)
 
 
+def restore_deleted(sandbox: Path, stems: set[str], source: str) -> Fix | None:
+    """Check out deleted files whose stem the results named. ``stems`` empty never guesses."""
+    deleted = git_deleted(sandbox)
+    if not deleted or not stems:
+        return None
+    matches = [f for f in deleted if Path(f).stem in stems]
+    if not matches:
+        return None
+    subprocess.run(["git", "checkout", "--", *matches], cwd=sandbox, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return Fix("restored " + ", ".join(matches), source)
+
+
 def fix_missing_resource(sandbox: Path, d: Diagnosis) -> Fix | None:
     deleted = git_deleted(sandbox)
     if not deleted:
@@ -311,16 +471,18 @@ def fix_missing_resource(sandbox: Path, d: Diagnosis) -> Fix | None:
     for m in RESOURCE_HINT.finditer(d.detail):
         name = next(v for v in m.groupdict().values() if v)
         stems.add(Path(name).stem)
-    matches = [f for f in deleted if Path(f).stem in stems]
-    if matches:
-        source, finding = "results", ""
-    elif len(deleted) == 1:
-        matches, source = deleted, "git-status"
-        finding = "the failing test's message names no resource; the deleted file came from git status"
-    else:
-        return None
-    subprocess.run(["git", "checkout", "--", *matches], cwd=sandbox, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return Fix("restored " + ", ".join(matches), source, finding)
+    if stems:
+        restored = restore_deleted(sandbox, stems, "results")
+        if restored:
+            return restored
+    if len(deleted) == 1:
+        subprocess.run(["git", "checkout", "--", *deleted], cwd=sandbox, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return Fix(
+            "restored " + ", ".join(deleted),
+            "git-status",
+            "the failing test's message names no resource; the deleted file came from git status",
+        )
+    return None
 
 
 def test_source(sandbox: Path, class_name: str) -> Path | None:
@@ -335,6 +497,10 @@ def test_source(sandbox: Path, class_name: str) -> Path | None:
 def stack_line(block: str, class_name: str) -> int:
     simple = class_name.rsplit(".", 1)[-1]
     m = re.search(rf"at {re.escape(class_name)}\.\w+\({re.escape(simple)}\.\w+:(\d+)\)", block)
+    if m:
+        return int(m.group(1))
+    # The agent verdict keeps one project frame as ``at File.java:line``.
+    m = re.search(rf"\bat {re.escape(simple)}\.\w+:(\d+)", block)
     return int(m.group(1)) if m else 0
 
 
@@ -468,9 +634,100 @@ class DriverResult:
     finding: str = ""
 
 
+def _deps_landed(result) -> bool:
+    structured = result.structured or {}
+    if structured.get("applied") or structured.get("changed"):
+        return True
+    head = (result.text or "").lstrip().splitlines()[0] if result.text else ""
+    return head.startswith(("add ", "pin ", "remove ", "edited "))
+
+
+def apply_stated_fixes(session: Session, d: Diagnosis) -> Fix | None:
+    """A ``FIX`` line names the edit. Prefer it over what the surrounding lines only imply."""
+    deps = []
+    seen: set[tuple[str, str]] = set()
+    for fix in d.fixes:
+        if fix.action in ("add", "pin", "remove") and (fix.action, fix.coord) not in seen:
+            seen.add((fix.action, fix.coord))
+            deps.append(fix)
+    if deps and session.tool == "jk":
+        applied = _apply_deps(session, deps)
+        if applied is not None:
+            return applied
+    inserts = [f for f in d.fixes if f.action == "insert" and f.file and f.line]
+    if inserts:
+        edited = _insert_semicolons(session.sandbox, inserts)
+        if edited is not None:
+            return edited
+    stems = {Path(f.resource).stem for f in d.fixes if f.action == "resource" and f.resource}
+    if stems:
+        restored = restore_deleted(session.sandbox, stems, "results-fix-line")
+        if restored is not None:
+            return restored
+    return None
+
+
+def _apply_deps(session: Session, fixes: list[AgentFix]) -> Fix | None:
+    groups: list[tuple[str, list[str]]] = []
+    for fix in fixes:
+        if groups and groups[-1][0] == fix.action:
+            bucket = groups[-1][1]
+        else:
+            bucket = []
+            groups.append((fix.action, bucket))
+        if fix.coord not in bucket:
+            bucket.append(fix.coord)
+    applied: list[str] = []
+    for action, coords in groups:
+        try:
+            result = session.mcp.call("deps", session.scoped({"action": action, "coords": coords}))
+        except Exception:
+            continue
+        session.calls.append({"tool": "deps", "action": action, "is_error": result.is_error, "chars": len(result.text)})
+        if _deps_landed(result):
+            applied.append(f"deps({action}, {', '.join(coords)})")
+    if not applied:
+        return None
+    return Fix(", ".join(applied) + " in jk.toml", "results-fix-line")
+
+
+def _insert_semicolons(sandbox: Path, fixes: list[AgentFix]) -> Fix | None:
+    edited: list[str] = []
+    for fix in fixes:
+        path = sandbox / fix.file
+        if not path.is_file():
+            continue
+        lines = path.read_text(encoding="utf-8").split("\n")
+        if fix.line < 1 or fix.line > len(lines) or lines[fix.line - 1].rstrip().endswith(";"):
+            continue
+        lines[fix.line - 1] = lines[fix.line - 1].rstrip() + ";"
+        path.write_text("\n".join(lines), encoding="utf-8")
+        edited.append(f"{fix.file}:{fix.line}")
+    if not edited:
+        return None
+    return Fix("added the missing ';' at " + ", ".join(edited), "results-fix-line")
+
+
+def verdict_with_details(session: Session, text: str) -> str:
+    """When the verdict caps every problem behind ``diagnostics(file=…)``, read that file."""
+    if session.tool != "jk" or not is_agent_verdict(text):
+        return text
+    parsed = parse(text)
+    if parsed.ok or parsed.fixes or parsed.loci or parsed.tests or not parsed.more_file:
+        return text
+    try:
+        result = session.mcp.call(session.names["diagnostics"], session.scoped({"file": parsed.more_file}))
+    except Exception:
+        return text
+    session.calls.append({"tool": session.names["diagnostics"], "is_error": result.is_error, "chars": len(result.text)})
+    if result.is_error or not result.text.strip():
+        return text
+    return text + "\n" + result.text
+
+
 def scripted(session: Session, scenario: dict, max_turns: int, deadline: float, now) -> DriverResult:
     """Read → classify → fix → rerun, until green or the budget is spent."""
-    text = session.results()
+    text = verdict_with_details(session, session.results())
     transcript: list[dict] = []
     sources: list[str] = []
     seen: set[str] = set()
@@ -481,6 +738,7 @@ def scripted(session: Session, scenario: dict, max_turns: int, deadline: float, 
             finding = "time budget exhausted"
             break
         turns = turn
+        text = verdict_with_details(session, text)
         d = classify(parse(text))
         event = {"turn": turn, "classified": d.kind, "signature": d.signature[:120]}
         if d.kind == "ok":
@@ -513,6 +771,9 @@ def scripted(session: Session, scenario: dict, max_turns: int, deadline: float, 
 
 
 def apply(session: Session, d: Diagnosis, scenario: dict) -> Fix | None:
+    stated = apply_stated_fixes(session, d)
+    if stated is not None:
+        return stated
     if d.kind == "compile-error":
         return fix_compile_error(session.sandbox, d)
     if d.kind == "missing-dependency":
