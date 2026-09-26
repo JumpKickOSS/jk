@@ -220,6 +220,9 @@ public final class EngineProtocol {
     public static final String ERR_QUEUE_WAIT = "queue-wait";
     /** A job's estimated heap exceeds the engine's whole cap; refused at once, the message names the cap to set. */
     public static final String ERR_ENGINE_HEAP = "engine-heap";
+
+    /** The target or the store is under the free-space floor; the message names the path and the free space. */
+    public static final String ERR_DISK = "disk";
     /**
      * A build/test with the same job fingerprint is already running. Message is human text
      * like {@code Build #27 is already running}; optional {@code buildNumber}/{@code requestId}

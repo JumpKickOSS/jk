@@ -44,7 +44,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   (3) concurrency via
   **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
   cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap),
-  still RAM-clamped by `PluginSlots`; (4) **per-job input-tree retain**
+  still limited by the worker lease ledger (`WorkerLeases`); (4) **per-job input-tree retain**
   (`[engine] vfs-max-mb` / `JK_ENGINE_VFS_MAX_MB`, default 32 MiB per job, live sum
   capped at 75% of engine heap; further jobs stream). Does **not** follow `CI=1`; extra
   heap is concurrency headroom, extra VFS is a huge-tree knob. See [vfs.md](vfs.md). Do not grow the non-CI engine default toward multi-GiB

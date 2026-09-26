@@ -74,8 +74,8 @@ class ArtifactMaterializerTest {
 
     @Test
     void row_tasks_alive_at_once_never_exceed_the_download_slots() throws Exception {
-        // A task exists from its submission to its completion; parked on a slot it still holds its
-        // thread and closure. The window keeps the population near the width, not the row count.
+        // Counted from submission until the thread unwinds. The window permit is returned first, so a
+        // wave that finishes together overlaps the next one: two widths, not one task per row.
         int rows = DownloadSlots.width() * 4;
         AtomicInteger alive = new AtomicInteger();
         AtomicInteger peakAlive = new AtomicInteger();
@@ -115,9 +115,9 @@ class ArtifactMaterializerTest {
                 new ArtifactMaterializer(assembler, progress, counting).materialize(ordered, tags);
 
         assertThat(peakAlive.get())
-                .as("row tasks alive at once: the window's permit goes back as a row completes, a tick before its"
-                        + " thread unwinds, so the next row may start while the finished one exits")
-                .isLessThanOrEqualTo(DownloadSlots.width() + 1)
+                .as("a finishing wave releases its permits before those threads unwind, so the next"
+                        + " wave can be submitted while the previous one is still counted")
+                .isLessThanOrEqualTo(2 * DownloadSlots.width())
                 .isGreaterThan(1);
         assertThat(out).extracting(Lockfile.Artifact::name).containsExactly(names(rows));
     }

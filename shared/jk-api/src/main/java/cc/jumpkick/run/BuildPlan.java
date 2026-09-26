@@ -445,8 +445,8 @@ public final class BuildPlan {
      * break ties.
      *
      * <p>Readiness alone decides *whether* a step may start, so any order is correct. Order still
-     * matters for two reasons. Steps compete for {@code PluginSlots} permits — the process-wide cap
-     * on live worker JVMs — so whichever ready step is submitted first gets the permit, and a
+     * matters for two reasons. Steps compete for worker-memory leases, so whichever ready step is
+     * submitted first gets the lease, and a
      * 30 s native-image should win that race against a leaf that packages a sources jar. And
      * {@link #topoSort} seeds its ready set from a {@link HashMap}, so without an explicit tiebreak
      * two runs of the same plan submit in different orders; declaration index makes it repeatable.
@@ -517,6 +517,7 @@ public final class BuildPlan {
                 step.name(), this, initialTicks, weight, step.hasExplicitWeight(), expectedNanos, startNanos);
         boolean ticked = ctx.interpolating();
         if (ticked) easing.add(ctx);
+        StepScope.open(ctx);
         try {
             step.execute(ctx);
             // Stop interpolating before auto-fill so no late tick races the top-up.
@@ -579,6 +580,8 @@ public final class BuildPlan {
             stepsComplete.incrementAndGet();
             emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
             return terminal;
+        } finally {
+            StepScope.close();
         }
     }
 

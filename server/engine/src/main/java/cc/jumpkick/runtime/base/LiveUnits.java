@@ -11,8 +11,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * it dispatches.
  *
  * <p>The workspace plans a test-worker share from the graph's widest point, which stops describing
- * the machine as soon as the graph narrows: the last module standing is sharing with nobody. Free
- * {@code PluginSlots} permits look like the same answer and are not — they are an instantaneous
+ * the machine as soon as the graph narrows: the last module standing is sharing with nobody.
+ * Free worker leases look like the same answer and are not — they are an instantaneous
  * reading of a resource that is about to be contended, so sizing from them let mid-build suites take
  * sixteen runners each and starve the compile lanes.
  *

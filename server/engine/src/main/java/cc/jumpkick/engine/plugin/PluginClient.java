@@ -68,9 +68,8 @@ public final class PluginClient {
     }
 
     /**
-     * As {@link #converse(List, BiConsumer)} but the child does not hold a {@link PluginSlots} worker
-     * slot for its lifetime; the caller meters slots per exchange (see {@link
-     * PluginProcess#converseNoSlot}).
+     * As {@link #converse(List, BiConsumer)} for a worker kept across many exchanges. The memory
+     * lease is taken when the process starts and held until it exits.
      */
     public int converseNoSlot(
             List<String> command, WorkerEnv env, BiConsumer<String, PluginProcess.Conversation> onMessage)

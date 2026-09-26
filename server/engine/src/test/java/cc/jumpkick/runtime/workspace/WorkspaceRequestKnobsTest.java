@@ -151,7 +151,7 @@ class WorkspaceRequestKnobsTest {
     /**
      * The memory plan multiplies the resolved per-module workers by the graph width, so the share
      * has to keep that product near the core count rather than blowing past it — that product is
-     * what sizes per-JVM heaps and the {@code PluginSlots} permit count.
+     * what sizes per-JVM heaps.
      */
     @Test
     void the_resolved_share_keeps_the_memory_plan_within_the_core_count() {

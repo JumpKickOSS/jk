@@ -19,9 +19,8 @@ public final class JkThreads {
      * Parallelism for the CPU pool: the machine's cores with a floor of 8. The old
      * {@code min(cores, 8)} capped big machines at 8 concurrent compile/package steps — with 13
      * modules ready at the workspace graph's widest level, a 24-core host ran at a third of its
-     * width. The floor keeps small hosts responsive: CPU steps mostly BLOCK on forked compiler
-     * JVMs, and actual fork concurrency is governed by the memory plan ({@code PluginSlots}), not
-     * by this pool.
+     * width. The floor keeps small hosts responsive: CPU steps mostly block on forked compiler
+     * JVMs, and how many of those run is the worker lease ledger, not this pool.
      */
     public static final int CPU_THREADS = Math.max(Runtime.getRuntime().availableProcessors(), 8);
 

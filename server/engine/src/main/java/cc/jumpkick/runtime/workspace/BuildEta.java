@@ -603,7 +603,7 @@ public final class BuildEta {
         long rawSchedule = base;
         // Learned schedule-contention bias (actual/simulated EWMA from real runs, keyed by build
         // shape): the ideal schedule composes measured step walls with perfect overlap; real
-        // workspaces pay JVM spawn queuing, PluginSlots gating, and IO contention the model cannot
+        // workspaces pay JVM spawn queuing, worker-memory leases, and IO contention the model cannot
         // see.
         //
         // The gate is inside the biased amount on purpose. It is not a constant that deserves to
