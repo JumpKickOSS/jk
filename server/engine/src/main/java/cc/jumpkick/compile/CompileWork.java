@@ -23,6 +23,9 @@ final class CompileWork {
     @Nullable
     Long previousHeapBytes;
 
+    /** Set once this item has been put back because the lane running it died. */
+    boolean revived;
+
     final CompletableFuture<ForkedJavac.Result> compile = new CompletableFuture<>();
     final CompletableFuture<ForkedJavac.Plan> forecast = new CompletableFuture<>();
     final List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
@@ -69,4 +72,16 @@ final class CompileWork {
     }
 
     static final CompileWork POISON = new CompileWork(null, false, null);
+
+    /** Drop a dead lane's partial answer so the next lane compiles this item clean. */
+    void clearAttempt() {
+        diagnostics.clear();
+        generated.clear();
+        compiledSources.clear();
+        whys.clear();
+        spec = null;
+        status = null;
+        outcome = null;
+        reason = null;
+    }
 }

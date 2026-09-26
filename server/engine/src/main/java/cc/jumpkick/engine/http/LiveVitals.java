@@ -238,6 +238,9 @@ public final class LiveVitals implements AutoCloseable {
             int cores,
             long pid,
             String engineEpoch,
+            long workerBudgetMib,
+            long workerLeasedMib,
+            int workerQueued,
             List<Map<String, Object>> jobs) {
 
         static PresentStatus of(StatusSnapshot s) {
@@ -256,6 +259,9 @@ public final class LiveVitals implements AutoCloseable {
                     s.cores(),
                     s.pid(),
                     s.engineEpoch() == null ? "" : s.engineEpoch(),
+                    mib(s.workerBudgetBytes()),
+                    mib(s.workerLeasedBytes()),
+                    s.workerQueued(),
                     s.jobs());
         }
 

@@ -206,6 +206,49 @@ only and remembers why. On any other operating system it does neither, and does 
 when `systemd-run` can reach a user manager, so that cgroup is private; `JK_ENGINE_SCOPE=0`
 starts it in the caller's cgroup instead.
 
+### Worker memory
+
+Every process the engine forks — compiler lanes, Kotlin and Groovy compiles, test JVMs,
+plugin workers, `git`, `docker`, `native-image` — takes a lease before it starts and
+returns it when the process exits, including when the process is killed. The budget is the
+same number written to the workers cgroup `memory.max`: host memory, or the enclosing
+cgroup limit when that is lower, minus the larger of 2 GiB and 10%. `jk engine status`
+prints one line, `13.5 GiB budget, 6.2 GiB leased, 2 queued`.
+
+A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
+resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
+the metaspace and code cache a compiler or test worker holds on top of that. A process
+that is not a JVM leases 64 MiB. `native-image` with no `-J-Xmx` leases 1 GiB plus
+overhead. A lease bigger than the whole budget is not refused. A heap jk chose is lowered
+so the worker still fits, and the engine log says so. A heap you pinned — `[jvm] args`,
+`[test] jvm-args`, a module `-J` flag, `--ram-percent`, or any other `-Xmx` /
+`-XX:MaxRAM*` you passed — is left as you wrote it. That worker leases the whole budget
+and runs once the others have finished, and the engine log names the pin and the budget.
+If the JVM cannot reserve the pin, its own refusal is the result.
+
+A lease that does not fit waits, first in line first. The step shows
+`waiting for memory: need 512 MiB, free 128 MiB`, and a wait of half a second or more is
+recorded on the step as `waited Ns for memory`. Nothing fails for lack of a lease.
+
+An idle compiler lane holds its lease only while nothing else is waiting. When a fork is
+queued, or another job needs a lane and the lane budget is full, the idle lane exits and
+the next compile starts a new one. Lanes are one budget for the whole engine, shared by
+every job: the core count, and how many lane leases fit. A job on its own still gets
+every lane that fits. `JK_COMPILE_LANES` pins the count for measurement.
+
+Forked JVMs that are actually running are also capped at the core count, separate from
+the memory lease, so several jobs cannot start one JVM per core each and thrash. Before
+a job writes anything, the engine checks free space on the project directory and on the
+store. The floor is the larger of 1 GiB and 2% of that volume, and at most 2 GiB. Below
+the floor the job waits up to 15 seconds, then stops with `not enough free space on
+<path>: 400 MiB free, need 1.0 GiB`.
+
+`JK_WORKER_BUDGET_MB` replaces the lease budget for the engine process that reads it. The
+workers cgroup `memory.max` stays the host budget; the variable only changes what the
+ledger will hand out, so a small value queues forks instead of shrinking the kernel cap.
+It is a test and ops knob, not a project setting: stop the engine, then start the next
+command with the variable set. A resident engine keeps the value it was started with.
+
 ### Memory after a build
 
 An idle engine's memory returns to a floor. When the last job finishes the engine drops its
@@ -243,7 +286,8 @@ worker, so a module with a several-hundred-jar test classpath and a large test t
 worker of its own size while modules of about one size share one. A worker that still runs
 out of heap is replaced once by one with twice the heap; a second exhaustion fails the step
 with a message naming the module and both heaps. A pinned worker heap (`--ram-percent`,
-`[jvm] args` with `-Xmx`) switches the sizing and the retry off: your number is the heap.
+`[jvm] args` with `-Xmx`, `[test] jvm-args`, a module `-J` flag) switches the sizing and
+the retry off: your number is the heap, and the worker budget does not rewrite it.
 
 ### Downloads and repository legs
 

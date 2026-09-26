@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.config.AvailableCpus;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JobWorkers;
@@ -8,9 +9,9 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
-import cc.jumpkick.engine.plugin.PluginSlots;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -29,6 +30,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
@@ -40,10 +42,13 @@ import org.jspecify.annotations.Nullable;
  *
  * <p><strong>Lanes.</strong> One worker compiles one module at a time — the wire is a strict
  * {@code READY} / {@code COMPILE} / {@code RESULT} handshake with a single in-flight item, which is
- * what keeps {@link Session}'s diagnostics, transcript and {@link PluginSlots} lease attributable to
- * one module. Concurrency comes from running several such workers against one shared queue rather
- * than from multiplexing one worker, so the protocol is untouched and a lane that dies takes only
- * its own item with it. Lanes start on demand and are reused for the rest of the job.
+ * what keeps {@link Session}'s diagnostics and transcript attributable to one module. Concurrency
+ * comes from running several such workers against one shared queue rather than from multiplexing
+ * one worker, so the protocol is untouched. A lane that dies puts the item it was running back
+ * once, for another lane; a second death fails it. Lanes start on demand. How many may exist at
+ * once is one engine-wide budget, shared by every
+ * job: cores, and how many lane leases fit. An idle lane exits when a fork is waiting for memory
+ * or another job needs the lane, and the next compile starts one again.
  */
 public final class JavaCompilerHost {
 
@@ -62,13 +67,11 @@ public final class JavaCompilerHost {
     /** Monotonic readings: a work item's queue wait, and the teardown join deadline. */
     private static final Clock CLOCK = Clock.SYSTEM;
 
-    /**
-     * Ceiling on lanes per job when the memory plan allows more. Each lane is a resident JVM with a
-     * full compiler heap, so the useful range is bounded by the build graph's width long before it
-     * is bounded by cores: past a handful of lanes the extra JVMs cost cold starts and RSS to sit
-     * idle behind a dependency edge. {@code JK_COMPILE_LANES} overrides for measurement.
-     */
-    static final int DEFAULT_LANE_CAP = 4;
+    /** Live lanes across every job. */
+    private static final AtomicInteger ENGINE_LANES = new AtomicInteger();
+
+    /** Every engine-wide pool, including ones a test built by hand. */
+    private static final Set<Lanes> ENGINE_POOLS = ConcurrentHashMap.newKeySet();
 
     private JavaCompilerHost() {}
 
@@ -157,16 +160,84 @@ public final class JavaCompilerHost {
     }
 
     /**
-     * Lanes this job may run at once: the memory plan's worker budget, capped at {@link
-     * #DEFAULT_LANE_CAP}. Falls back to the core count when no plan has been applied ({@code jk
-     * explain}, tests), which the cap then dominates anyway.
+     * Lanes the engine may run at once, shared by every job: the core count, and how many leases of
+     * one lane's heap fit in the worker budget. A job alone can use all of them. {@code
+     * JK_COMPILE_LANES} overrides for measurement.
      */
     static int laneBudget() {
+        return laneBudget(WorkerLeases.engine());
+    }
+
+    /** As {@link #laneBudget()}, measured against {@code leases}. */
+    static int laneBudget(WorkerLeases.Ledger leases) {
         int override = laneBudgetForTests > 0 ? laneBudgetForTests : envLanes();
         if (override > 0) return override;
+        int cores = Math.max(1, AvailableCpus.count());
         HeapPlan.Plan plan = JvmOptions.processHeapPlan();
-        int budget = plan != null ? plan.parallelism() : Runtime.getRuntime().availableProcessors();
-        return Math.max(1, Math.min(budget, DEFAULT_LANE_CAP));
+        long xmx = plan != null && plan.xmxBytes() > 0 ? plan.xmxBytes() : WorkerHeap.BASE_BYTES;
+        long lease = Math.max(1, WorkerLeases.jvmLease(xmx));
+        int byMemory = (int) Math.max(1, leases.capacityBytes() / lease);
+        return Math.max(1, Math.min(cores, byMemory));
+    }
+
+    /** Reserve one engine-wide lane, or false when the budget is already taken. */
+    static boolean tryTakeLane() {
+        return tryTakeLane(WorkerLeases.engine());
+    }
+
+    /** As {@link #tryTakeLane()}, with {@code leases} sizing the cap. */
+    static boolean tryTakeLane(WorkerLeases.Ledger leases) {
+        int cap = laneBudget(leases);
+        while (true) {
+            int now = ENGINE_LANES.get();
+            if (now >= cap) return false;
+            if (ENGINE_LANES.compareAndSet(now, now + 1)) return true;
+        }
+    }
+
+    /** Return a lane reserved by {@link #tryTakeLane}. */
+    static void releaseLane() {
+        ENGINE_LANES.updateAndGet(n -> Math.max(0, n - 1));
+    }
+
+    /**
+     * An idle lane should exit: a fork is waiting for memory, or the lane budget is full while
+     * some pool still has work queued.
+     */
+    static boolean shouldShedIdleLane() {
+        return shouldShedIdleLane(WorkerLeases.engine());
+    }
+
+    /** As {@link #shouldShedIdleLane()}, watching {@code leases}'s queue. */
+    static boolean shouldShedIdleLane(WorkerLeases.Ledger leases) {
+        if (leases.queued() > 0) return true;
+        if (ENGINE_LANES.get() < laneBudget(leases)) return false;
+        for (Lanes pool : ENGINE_POOLS) {
+            if (pool.queued() > 0) return true;
+        }
+        return false;
+    }
+
+    /** Pools with queued work try to grow after a lane exits. */
+    static void nudgePools() {
+        for (Lanes pool : ENGINE_POOLS) pool.grow();
+    }
+
+    /** Test seam: drop the engine-wide lane count. Pools must already be closed. */
+    static void resetLaneCountForTests() {
+        ENGINE_LANES.set(0);
+        ENGINE_POOLS.clear();
+        onIdleLeaveGap = null;
+    }
+
+    /**
+     * Test seam: runs without the pool lock after an idle lane has noticed it should leave and
+     * before that decision is committed. Assigning work from here keeps the lane.
+     */
+    static volatile @Nullable Runnable onIdleLeaveGap;
+
+    static void onIdleLeaveGapForTests(@Nullable Runnable hook) {
+        onIdleLeaveGap = hook;
     }
 
     private static volatile int laneBudgetForTests;
@@ -247,9 +318,9 @@ public final class JavaCompilerHost {
      * only when the backlog exceeds the lanes that could take it, and never past {@link
      * #laneBudget}.
      *
-     * <p><strong>A dead lane is not a dead pool.</strong> Its in-flight item fails — that work was
-     * being compiled by the process that died and cannot be attributed elsewhere — but queued items
-     * stay queued for the surviving lanes. Only when the last lane goes does the queue drain-fail,
+     * <p><strong>A dead lane is not a dead pool.</strong> The item it was running goes back on the
+     * queue once, for another lane; a second death fails it. Queued items stay queued. Only when
+     * the last lane goes, other than one that left to free memory, does the queue drain-fail,
      * because at that point nothing will ever take those items. That holds after {@link #close} too:
      * job teardown kills the workers <em>before</em> it calls {@code end()}, so the last lane
      * usually dies with the pool already closed, and an item still queued then has no other taker.
@@ -258,6 +329,8 @@ public final class JavaCompilerHost {
 
         private final BlockingQueue<CompileWork> queue = new LinkedBlockingQueue<>();
         private final int budget;
+        private final boolean engineWide;
+        private final WorkerLeases.Ledger leases;
         private final LaneStarter starter;
         final SpecFile specs;
         final HeapRetry retry;
@@ -273,7 +346,8 @@ public final class JavaCompilerHost {
                     (owner, index) ->
                             new Session(owner, id, index, self -> self.converse(template, workerJavaHome, heapBytes)),
                     ForkedJavac::writeSpec,
-                    (failed, bigger) -> retryWithHeap(id, failed, bigger));
+                    (failed, bigger) -> retryWithHeap(id, failed, bigger),
+                    true);
         }
 
         /** Test seam: a pool whose lanes run {@code starter}'s body instead of forking a worker. */
@@ -287,10 +361,33 @@ public final class JavaCompilerHost {
 
         /** Test seam: as above, with the pool's answer to a worker that ran out of heap. */
         Lanes(int budget, LaneStarter starter, SpecFile specs, HeapRetry retry) {
+            this(budget, starter, specs, retry, false);
+        }
+
+        /**
+         * {@code engineWide} counts the lane against the engine budget and exits it when that
+         * budget, or a waiting fork, needs it back. {@code leases} is the queue that waiting fork
+         * is counted on; production passes {@link WorkerLeases#engine()}.
+         */
+        Lanes(
+                int budget,
+                LaneStarter starter,
+                SpecFile specs,
+                HeapRetry retry,
+                boolean engineWide,
+                WorkerLeases.Ledger leases) {
             this.budget = budget;
+            this.engineWide = engineWide;
+            this.leases = leases;
             this.starter = starter;
             this.specs = specs;
             this.retry = retry;
+            if (engineWide) ENGINE_POOLS.add(this);
+        }
+
+        /** As above, leasing from {@link WorkerLeases#engine()}. */
+        Lanes(int budget, LaneStarter starter, SpecFile specs, HeapRetry retry, boolean engineWide) {
+            this(budget, starter, specs, retry, engineWide, WorkerLeases.engine());
         }
 
         ForkedJavac.Result submit(CompileWork w) {
@@ -335,7 +432,11 @@ public final class JavaCompilerHost {
          */
         void enqueue(CompileWork w) {
             w.enqueuedNanos = CLOCK.nanos();
-            queue.add(w);
+            // The add shares the pool lock with the idle-leave check, so a lane cannot observe an
+            // empty queue and commit to leaving while this item is already on it.
+            synchronized (this) {
+                queue.add(w);
+            }
             if (!grow()) drainFailQueued(new IOException("zinc worker exited"));
         }
 
@@ -352,10 +453,39 @@ public final class JavaCompilerHost {
             for (Session lane : lanes) {
                 if (!lane.working()) free++;
             }
-            if (free < queue.size() && lanes.size() < budget) {
-                lanes.add(starter.start(this, lanes.size()));
+            int cap = engineWide ? laneBudget(leases) : budget;
+            if (free < queue.size() && lanes.size() < cap) {
+                // The engine budget is full. Leave the item queued; a lane that exits nudges us.
+                if (engineWide && !tryTakeLane(leases)) return true;
+                try {
+                    lanes.add(starter.start(this, lanes.size()));
+                } catch (RuntimeException e) {
+                    if (engineWide) releaseLane();
+                    throw e;
+                }
             }
             return !lanes.isEmpty();
+        }
+
+        /** An idle engine-wide lane exits when another fork needs its memory or its lane slot. */
+        synchronized boolean idleShouldExit() {
+            return engineWide && !closed && shouldShedIdleLane(leases);
+        }
+
+        /** Under the pool lock: this idle lane should leave, and its queue has nothing for it. */
+        synchronized boolean readyToLeave() {
+            return idleShouldExit() && queue.isEmpty();
+        }
+
+        /**
+         * Under the pool lock: commit to leaving only while the queue is still empty. Work that
+         * arrived since the idle look is taken instead — a lane is never both given an item and
+         * told to exit.
+         */
+        synchronized boolean commitLeave(Session lane) {
+            if (lane.dead || !idleShouldExit() || !queue.isEmpty()) return false;
+            lane.shedding = true;
+            return true;
         }
 
         /** Live lanes, dead ones pruned. */
@@ -382,11 +512,22 @@ public final class JavaCompilerHost {
          */
         void laneDied(Session lane, Throwable cause) {
             boolean last;
+            boolean wide;
+            boolean shed;
             synchronized (this) {
                 lanes.remove(lane);
                 last = lanes.isEmpty();
+                wide = engineWide;
+                shed = lane.shedding;
             }
-            if (last) drainFailQueued(cause);
+            if (wide) {
+                releaseLane();
+                nudgePools();
+            }
+            // A lane that left to free memory is not a crash. Work queued as it left stays queued
+            // and the nudge above starts a replacement; failing it here dropped a compile that
+            // arrived between the idle poll and the exit.
+            if (last && !shed) drainFailQueued(cause);
         }
 
         /**
@@ -416,6 +557,7 @@ public final class JavaCompilerHost {
          * the last one goes; whatever is still queued after the join has no taker and is failed.
          */
         void close() {
+            ENGINE_POOLS.remove(this);
             List<Session> live;
             synchronized (this) {
                 closed = true;
@@ -442,27 +584,29 @@ public final class JavaCompilerHost {
      */
     static final class Session {
         private final Lanes owner;
+        private final long requestId;
         private final Thread io;
         // Atomic because the pump thread that dispatches an item and the io thread that notices
         // the worker's death both try to take it out: whoever swaps it to null owns its fate.
         private final AtomicReference<@Nullable CompileWork> inflight = new AtomicReference<>();
-        // Set the instant an item leaves the queue for this lane, before the slot wait and the spec
-        // write; inflight is set only once the command is on the wire. grow() reads this one:
-        // a lane parked in PluginSlots.acquire() holds an item and is not capacity.
+        // Set the instant an item leaves the queue for this lane, before the spec write; inflight is
+        // set only once the command is on the wire. grow() reads this one: a lane that has taken an
+        // item is not free capacity.
         private volatile boolean busy;
         private volatile boolean dead;
-        // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
-        // PluginSlots permit while idle. A lease is released exactly once, from whichever thread
-        // ends the exchange.
-        private final AtomicReference<PluginSlots.@Nullable Lease> slot = new AtomicReference<>();
         // Bounded record of the worker's non-protocol lines, surfaced on a crash; reset at each
         // dispatch so it describes the work item that died, not the worker's first breath.
         private final WorkerTranscript transcript = new WorkerTranscript();
 
+        /** Set when this lane leaves on purpose so another fork can have its memory. */
+        volatile boolean shedding;
+
         Session(Lanes owner, long id, int lane, LaneBody body) {
             this.owner = owner;
-            // The pool belongs to one job, and a lane is grown by that job's submitting thread: the
-            // lane forks its worker JVM (JvmOptions, JobWorkers) under the session bound there.
+            this.requestId = id;
+            // The pool belongs to one job. A lane is often grown by another job's thread — an idle
+            // lane exiting nudges every pool — so the body binds this job before it forks, rather
+            // than inheriting whoever happened to start the thread.
             io = SessionContext.startVirtual("jk-zinc-host-" + id + "-" + lane, () -> drive(body));
         }
 
@@ -488,14 +632,19 @@ public final class JavaCompilerHost {
 
         /** The lane's whole life: run the body, then tell the pool this lane is gone — once. */
         private void drive(LaneBody body) {
+            Long previous = JobWorkers.bind(requestId);
             Throwable cause = null;
             try {
                 body.run(this);
             } catch (Exception e) {
                 cause = e;
             } finally {
-                dead = true;
-                failAll(cause != null ? cause : new IOException("zinc worker exited"));
+                try {
+                    dead = true;
+                    failAll(cause != null ? cause : new IOException("zinc worker exited"));
+                } finally {
+                    JobWorkers.restore(previous);
+                }
             }
         }
 
@@ -521,7 +670,9 @@ public final class JavaCompilerHost {
                     .passthrough(this::output)
                     .converseNoSlot(
                             command, template.env().withJavaHome(hostJavaHome), (json, convo) -> onLine(json, convo));
-            if (exit != 0) {
+            // A lane that left because another fork needed its memory has no compile in flight.
+            // The process exit is the shutdown we asked for, even when the kill lands first.
+            if (exit != 0 && !(shedding && inflight.get() == null)) {
                 throw new IOException("zinc worker " + WorkerContainment.failure(exit, "exited with status " + exit));
             }
         }
@@ -541,19 +692,48 @@ public final class JavaCompilerHost {
          */
         CompileWork takeNext() throws InterruptedException {
             while (true) {
-                CompileWork next = owner.queue.poll(TAKE_POLL_MS, TimeUnit.MILLISECONDS);
-                if (next == null) {
-                    if (dead) return CompileWork.POISON;
-                    continue;
+                CompileWork next = pollUnderLock();
+                if (next != null) return next;
+                if (dead) return CompileWork.POISON;
+                if (leaveForMemory()) return CompileWork.POISON;
+                next = owner.queue.poll(TAKE_POLL_MS, TimeUnit.MILLISECONDS);
+                if (next == null) continue;
+                synchronized (owner) {
+                    if (dead) {
+                        owner.queue.add(next);
+                        return CompileWork.POISON;
+                    }
+                    if (next != CompileWork.POISON) busy = true;
+                    return next;
                 }
-                if (dead) {
-                    if (next == CompileWork.POISON) owner.queue.add(next);
-                    else owner.enqueue(next);
-                    return CompileWork.POISON;
-                }
+            }
+        }
+
+        /**
+         * The next queued item, taken under the same lock that decides a leave. {@code null} when
+         * the queue is empty. {@link CompileWork#POISON} when this lane is dead or the pool is
+         * closing the lane.
+         */
+        private @Nullable CompileWork pollUnderLock() {
+            synchronized (owner) {
+                if (dead) return CompileWork.POISON;
+                CompileWork next = owner.queue.poll();
+                if (next == null || next == CompileWork.POISON) return next;
                 busy = true;
                 return next;
             }
+        }
+
+        /**
+         * Leave only when, under the pool lock, the queue is still empty. A test hook (and any
+         * enqueue that races it) runs between the two looks, and work that arrived is taken on the
+         * next loop instead of being abandoned on a lane that is exiting.
+         */
+        private boolean leaveForMemory() {
+            if (!owner.readyToLeave()) return false;
+            Runnable gap = onIdleLeaveGap;
+            if (gap != null) gap.run();
+            return owner.commitLeave(this);
         }
 
         void onLine(String json, PluginProcess.Conversation convo) {
@@ -607,11 +787,10 @@ public final class JavaCompilerHost {
             }
         }
 
-        /** The exchange is over: no item, not busy, no worker slot held. */
+        /** The exchange is over: no item, not busy. */
         private void idle() {
             inflight.set(null);
             busy = false;
-            releaseSlot();
         }
 
         /**
@@ -636,24 +815,20 @@ public final class JavaCompilerHost {
                     convo.closeInput();
                     return;
                 }
-                // Take a worker slot only for the duration of this exchange; released on
-                // RESULT/ERROR/failure so an idle session holds none.
-                slot.set(PluginSlots.acquire());
                 try {
                     next.waitNanos = CLOCK.nanos() - next.enqueuedNanos;
                     next.spec = owner.specs.write(next.req);
                     transcript.reset();
                     inflight.set(next);
-                    // The worker may have died during the slot wait or the spec write. inflight is
-                    // published before this read and failAll sets dead before its read, so one of
-                    // the two sides always sees the other; the swap decides which one owns the item.
+                    // The worker may have died during the spec write. inflight is published before
+                    // this read and failAll sets dead before its read, so one of the two sides
+                    // always sees the other; the swap decides which one owns the item.
                     if (dead) {
                         if (inflight.compareAndSet(next, null)) {
                             deleteSpec(next);
                             owner.enqueue(next);
                         }
                         busy = false;
-                        releaseSlot();
                         convo.send("DONE");
                         convo.closeInput();
                         return;
@@ -663,15 +838,9 @@ public final class JavaCompilerHost {
                 } catch (IOException e) {
                     next.compile.completeExceptionally(e);
                     next.forecast.completeExceptionally(e);
-                    releaseSlot();
+                    busy = false;
                 }
             }
-        }
-
-        /** Return the in-flight worker slot to the pool; a lease is closed once, whoever gets there. */
-        private void releaseSlot() {
-            PluginSlots.Lease s = slot.getAndSet(null);
-            if (s != null) s.close();
         }
 
         /** Delete a work item's spec temp file on every terminal path. */
@@ -708,31 +877,36 @@ public final class JavaCompilerHost {
         }
 
         /**
-         * This lane's worker is gone. Fail the item it was compiling — that work died with the
-         * process and cannot be attributed to another lane — and hand the pool the cause so it can
-         * decide whether anything is left to drain the queue.
+         * This lane's worker is gone. The item it was running is tried once on another lane when
+         * this job is still alive; the pool hears about the death either way.
          */
         private void failAll(Throwable e) {
-            releaseSlot();
             CompileWork cur = inflight.getAndSet(null);
             busy = false;
+            // Drop the lane before putting the item back, so a last-lane drain cannot fail the
+            // retry it has not been given yet.
+            owner.laneDied(this, e);
             if (cur != null) {
                 deleteSpec(cur);
                 settle(cur, e);
             }
-            owner.laneDied(this, e);
         }
 
         /**
          * The item the dead worker was compiling. A worker that ran out of heap is answered with a
-         * retry on twice the heap, once: the second exhaustion, or a heap already at the host's
-         * ceiling, fails the item naming the module and the heaps it had. Any other death fails it
-         * with the worker's output attached.
+         * retry on twice the heap, once. Any other death, while this job is still alive, goes back
+         * on the queue once; the second death fails it with the worker's output attached.
          */
         private void settle(CompileWork cur, Throwable e) {
             String output = transcript.render();
             Long heap = cur.heapBytes;
             if (heap == null || !WorkerHeap.outOfMemory(output)) {
+                if (!cur.revived && !owner.closing() && !JobWorkers.ended(requestId)) {
+                    cur.revived = true;
+                    cur.clearAttempt();
+                    owner.enqueue(cur);
+                    return;
+                }
                 fail(cur, withWorkerTail(e));
                 return;
             }

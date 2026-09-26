@@ -269,7 +269,7 @@ class BuildPlanFirstReadyTest {
      * Admission order is longest-weighted-chain first with declaration order as the tiebreak, so
      * two runs of one plan submit in the same order. Before the tiebreak existed, {@code topoSort}
      * seeded its ready set from a {@code HashMap} and independent steps could be submitted in
-     * either order from run to run — which matters because ready steps race for {@code PluginSlots}
+     * either order from run to run — which matters because ready steps race for worker leases
      * permits.
      */
     @Test

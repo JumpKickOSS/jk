@@ -128,6 +128,8 @@ public final class JobEnvelope {
             if (running.isPresent()) return refuseAlreadyRunning(running.get(), eventKind, detached, false, writer);
         }
         long eventRequestId = host.nextRequestId();
+        Long disk = refuseIfNoDisk(eventRequestId, eventKind, eventDir, detached, writer);
+        if (disk != null) return disk;
         boolean claimedBuildPlanSlot = false;
         if (plan) {
             Long refused = admitPlan(eventRequestId, eventKind, eventDir, workspaceStream, detached, writer);
@@ -227,6 +229,19 @@ public final class JobEnvelope {
             if (writer != null) WireWriter.awaitLanded(writer);
         }
         return eventRequestId;
+    }
+
+    /**
+     * The target and the store must have room to write before the job starts. A short volume is
+     * rechecked briefly, then refused by name; a drain during that wait is the usual shutdown refusal.
+     */
+    private @Nullable Long refuseIfNoDisk(
+            long jid, String kind, String dir, boolean detached, @Nullable BufferedWriter writer) {
+        DiskFloor.Outcome disk = DiskFloor.await(DiskFloor.paths(dir), host::draining);
+        if (disk.halted()) return refuseDraining(detached, writer);
+        DiskFloor.Shortage shortage = disk.shortage();
+        if (shortage == null) return null;
+        return refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_DISK, shortage.message());
     }
 
     /**

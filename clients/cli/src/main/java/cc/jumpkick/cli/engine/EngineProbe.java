@@ -82,6 +82,12 @@ public final class EngineProbe {
             @Nullable String containmentReason,
             /** {@code workers/memory.max} in bytes; {@code -1} when unset or not a cgroup. */
             long workerMemoryMax,
+            /** Bytes forked workers may lease; {@code -1} when the engine did not report a budget. */
+            long workerBudgetBytes,
+            /** Bytes held by worker leases; {@code -1} when the engine did not report. */
+            long workerLeasedBytes,
+            /** Forks waiting for a worker lease. */
+            int workerQueued,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
             List<Job> jobs) {
 
@@ -148,6 +154,9 @@ public final class EngineProbe {
                     null,
                     null,
                     -1L,
+                    -1L,
+                    -1L,
+                    0,
                     jobs);
         }
     }
@@ -295,6 +304,9 @@ public final class EngineProbe {
                     Jsonl.str(ack, "containment"),
                     Jsonl.str(ack, "containmentReason"),
                     Jsonl.longValue(ack, "workerMemoryMax", -1),
+                    Jsonl.longValue(ack, "workerBudgetBytes", -1),
+                    Jsonl.longValue(ack, "workerLeasedBytes", -1),
+                    Jsonl.intValue(ack, "workerQueued", 0),
                     Job.decodeAll(ack)));
         } catch (IOException e) {
             return Optional.empty();

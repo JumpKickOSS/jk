@@ -118,6 +118,8 @@ public final class EngineStatusCommand implements CliCommand {
         }
         String containment = describeContainment(s.containment(), s.containmentReason(), s.workerMemoryMax());
         if (containment != null) detail("Containment", containment);
+        String workers = describeWorkers(s.workerBudgetBytes(), s.workerLeasedBytes(), s.workerQueued());
+        if (workers != null) detail("Workers", workers);
         heapDumpRow(paths);
         String memory = formatMemory(s);
         if (memory != null) {
@@ -281,6 +283,9 @@ public final class EngineStatusCommand implements CliCommand {
                 .string("containment", s.containment())
                 .string("containmentReason", s.containmentReason())
                 .number("workerMemoryMax", s.workerMemoryMax())
+                .number("workerBudgetBytes", s.workerBudgetBytes())
+                .number("workerLeasedBytes", s.workerLeasedBytes())
+                .number("workerQueued", s.workerQueued())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
                 .string("mcpUrl", s.mcpUrl());
@@ -363,6 +368,25 @@ public final class EngineStatusCommand implements CliCommand {
             return reason == null || reason.isEmpty() ? "score-only" : "score-only (" + reason + ")";
         }
         return mode;
+    }
+
+    /**
+     * {@code 13.5 GiB budget, 6.2 GiB leased, 1 queued}. Null when the engine did not report a
+     * budget.
+     */
+    static @Nullable String describeWorkers(long budgetBytes, long leasedBytes, int queued) {
+        if (budgetBytes < 0) return null;
+        long leased = leasedBytes < 0 ? 0 : leasedBytes;
+        return bytes(budgetBytes) + " budget, " + bytes(leased) + " leased, " + Math.max(0, queued) + " queued";
+    }
+
+    /** Whole mebibytes under 1 GiB, one decimal gibibyte at or above. */
+    private static String bytes(long n) {
+        long gib = 1024L * 1024L * 1024L;
+        if (n >= gib) {
+            return String.format(Locale.ROOT, "%.1f GiB", n / (double) gib);
+        }
+        return (n / (1024L * 1024L)) + " MiB";
     }
 
     /** One decimal gibibyte, for a cgroup limit. */

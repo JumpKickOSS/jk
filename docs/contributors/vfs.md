@@ -161,7 +161,7 @@ kills SerialGC.
 ### Process-wide pool (the concurrent-job guard)
 
 `InFlightBuilds` only rejects the **same** checkout+kind. Ten worktrees are
-ten jobs, ten trees, and `PluginSlots` / `HeapPlan` size **worker** JVMs — they
+ten jobs, ten trees, and `HeapPlan` sizes **worker** JVM heaps — the lease ledger caps how many run — they
 do not account for engine-heap VFS. Ten × 32 MiB = 320 MiB on a 256 MiB
 SerialGC engine is an OOM; the per-job cap does not see it.
 
