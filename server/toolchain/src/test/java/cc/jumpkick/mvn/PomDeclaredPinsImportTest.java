@@ -158,8 +158,9 @@ class PomDeclaredPinsImportTest {
                     .satisfies(i -> {
                         assertThat(i.severity()).isEqualTo(ImportReport.Severity.WARNING);
                         assertThat(i.message())
+                                .as("whichever walk dials, the row names the dead repository; the other does not ask")
                                 .contains("was not checked against the repositories the lock reads")
-                                .contains("dead could not be reached");
+                                .containsAnyOf("dead could not be reached", "dead was not asked again after it");
                     });
             assertThat(checked.hasErrors()).isFalse();
         }

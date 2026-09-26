@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * {@link Runtime#availableProcessors} when the quota is readable.
  *
  * <p>Always resolves to a positive concurrency. Free-RAM may still reduce live worker JVMs via
- * {@code HeapPlan}/{@code PluginSlots}; this value is the <em>requested</em> ceiling.
+ * {@code HeapPlan} and the worker lease ledger; this value is the <em>requested</em> ceiling.
  */
 public final class Jobs {
 

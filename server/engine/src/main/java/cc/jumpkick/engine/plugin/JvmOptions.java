@@ -12,9 +12,12 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -230,21 +233,51 @@ public final class JvmOptions {
     private static volatile HeapPlan.@Nullable Plan heapPlan;
 
     /**
-     * Probe memory, compute the heap budget for {@code requestedJvms} desired forks, and apply it:
-     * stash it for {@link #workerFlags} and size {@link PluginSlots} so no more than the plan's
-     * parallelism run at once. A no-op (returns {@code null}, opens the worker gate) when the request
-     * supplied explicit heap tuning — those settings then drive sizing as before.
+     * Probe memory, compute the heap budget for {@code requestedJvms} desired forks, and stash it
+     * for {@link #workerFlags}. Each worker's {@code -Xmx} is then lowered, when it has to be, so
+     * that many leases fit in {@link WorkerLeases#engine()}. A no-op (returns {@code null}) when the
+     * request supplied explicit heap tuning — those settings then drive sizing as before.
      */
     public static HeapPlan.@Nullable Plan planAndApply(int requestedJvms) {
+        return planAndApply(requestedJvms, WorkerLeases.engine());
+    }
+
+    /** As {@link #planAndApply(int)}, fitting the plan into {@code leases}. */
+    public static HeapPlan.@Nullable Plan planAndApply(int requestedJvms, WorkerLeases.Ledger leases) {
         if (!autoHeapEnabled(tuning())) {
-            PluginSlots.configure(0); // unbounded: honour the user's relative/explicit sizing
             heapPlan = null;
             return null;
         }
-        HeapPlan.Plan plan = HeapPlan.compute(MemoryProbe.probe().availableBytes(), requestedJvms);
+        HeapPlan.Plan plan =
+                fitWorkerBudget(HeapPlan.compute(MemoryProbe.probe().availableBytes(), requestedJvms), leases);
         heapPlan = plan;
-        PluginSlots.configure(plan.parallelism());
         return plan;
+    }
+
+    /**
+     * {@code plan} with parallelism lowered until that many copies of its heap fit in {@link
+     * WorkerLeases#engine()}. The heap itself shrinks only when one copy is already bigger than the
+     * budget, so a tight budget queues forks instead of handing every worker a heap too small to run.
+     */
+    public static HeapPlan.Plan fitWorkerBudget(HeapPlan.Plan plan) {
+        return fitWorkerBudget(plan, WorkerLeases.engine());
+    }
+
+    /** As {@link #fitWorkerBudget(HeapPlan.Plan)}, measured against {@code leases}. */
+    public static HeapPlan.Plan fitWorkerBudget(HeapPlan.Plan plan, WorkerLeases.Ledger leases) {
+        long budget = leases.capacityBytes();
+        if (budget <= 0) return plan;
+        int n = Math.max(1, plan.parallelism());
+        long xmx = Math.max(0, plan.xmxBytes());
+        if (xmx <= 0 || WorkerLeases.jvmLease(xmx) > budget) {
+            xmx = WorkerLeases.clampXmx(xmx, budget);
+            n = 1;
+        }
+        while (n > 1 && (long) n * WorkerLeases.jvmLease(xmx) > budget) n--;
+        if (n == plan.parallelism() && xmx == plan.xmxBytes()) return plan;
+        long soft = Math.min(plan.softMaxBytes(), xmx);
+        long xms = Math.min(plan.xmsBytes(), xmx);
+        return new HeapPlan.Plan(n, xms, soft, xmx, plan.warning());
     }
 
     /** The applied heap budget, or {@code null} if none (explicit tuning / not yet planned). */
@@ -261,7 +294,8 @@ public final class JvmOptions {
     public static List<String> soleWorkerFlags() {
         PluginTuning s = tuning();
         if (!autoHeapEnabled(s)) return List.of();
-        HeapPlan.Plan plan = HeapPlan.compute(MemoryProbe.probe().availableBytes(), 1);
+        HeapPlan.Plan plan =
+                fitWorkerBudget(HeapPlan.compute(MemoryProbe.probe().availableBytes(), 1));
         List<String> out = new ArrayList<>();
         out.add("-Xms" + HeapPlan.mib(plan.xmsBytes()) + "m");
         out.add("-Xmx" + HeapPlan.mib(plan.xmxBytes()) + "m");
@@ -274,22 +308,19 @@ public final class JvmOptions {
     }
 
     /**
-     * Test-only: undo {@link #planAndApply} — clears the shared heap plan and reopens the {@link
-     * PluginSlots} gate. Production code never calls this (a real process's plan is meant to live for
-     * the process's whole lifetime); it exists because a test that spins up a real {@code
-     * EngineServer} (which calls {@code planAndApply} as a side effect of starting) would otherwise
-     * leak that process-wide static into unrelated tests sharing the same test JVM.
+     * Test-only: undo {@link #planAndApply}. Production code never calls this (a real process's plan
+     * is meant to live for the process's whole lifetime); it exists because a test that spins up a
+     * real {@code EngineServer} (which calls {@code planAndApply} as a side effect of starting)
+     * would otherwise leak that process-wide static into unrelated tests sharing the same test JVM.
      */
     public static void resetSharedPlanForTests() {
         heapPlan = null;
-        PluginSlots.configure(0);
     }
 
     /**
      * True when jk should auto-size worker heaps: the request pinned neither a {@code
-     * --ram-percent} / {@code [jvm] max-ram-percent} nor an explicit heap flag ({@code
-     * -Xmx}/{@code -Xms}/{@code -XX:MaxHeapSize}/ {@code -XX:MaxRAMPercentage}) via {@code --jvm-arg}
-     * / {@code [jvm] args}.
+     * --ram-percent} / {@code [jvm] max-ram-percent} nor an explicit heap flag ({@link #pinsHeap})
+     * via {@code --jvm-arg} / {@code [jvm] args}.
      */
     public static boolean autoHeapEnabled() {
         return autoHeapEnabled(tuning());
@@ -298,16 +329,131 @@ public final class JvmOptions {
     private static boolean autoHeapEnabled(PluginTuning s) {
         if (s.maxRamPercent() != null) return false;
         for (String a : s.extraArgs()) {
-            if (a.startsWith("-Xmx")
-                    || a.startsWith("-Xms")
-                    || a.startsWith("-XX:MaxHeapSize")
-                    || a.startsWith("-XX:MinHeapSize")
-                    || a.startsWith("-XX:MaxRAMPercentage")
-                    || a.startsWith("-XX:SoftMaxHeapSize")) {
-                return false;
-            }
+            if (pinsHeap(a)) return false;
         }
         return true;
+    }
+
+    /**
+     * Who chose the {@code -Xmx} on a fork, read off the command before an argfile shorten can hide
+     * the flags. {@link JobWorkers} rewrites a planned heap that does not fit the budget and leaves
+     * a user pin unchanged.
+     *
+     * @param userPinned the user wrote this heap ({@code --ram-percent}, {@code [jvm] args},
+     *     {@code [test] jvm-args}, a module {@code -J} flag, or another caller {@code -Xmx} /
+     *     {@code -XX:MaxRAM*})
+     * @param xmxBytes the {@code -Xmx} in force, or {@code -1} when the command names none
+     * @param label the pin, for the engine log; empty when {@code userPinned} is false
+     */
+    public record HeapChoice(boolean userPinned, long xmxBytes, String label) {
+
+        /** {@code command} as jk is about to run it, argfile shorten not yet applied. */
+        public static HeapChoice inspect(List<String> command) {
+            long xmx = WorkerLeases.parseXmx(command);
+            if (!userPinnedHeap(command)) return new HeapChoice(false, xmx, "");
+            return new HeapChoice(true, xmx, userPinLabel(command));
+        }
+    }
+
+    /**
+     * {@code -Xmx} values jk chose for a worker after the process-wide plan, so the budget may lower
+     * them. A flag the user wrote is not recorded here.
+     */
+    private static final Set<String> PLANNED_HEAPS = ConcurrentHashMap.newKeySet();
+
+    /** Record an {@code -Xmx} jk chose (a compiler worker's heap) so the budget may lower it. */
+    public static void notePlannedHeap(String flag) {
+        if (flag == null || flag.isEmpty()) return;
+        String bare = bareJvmArg(flag);
+        if (bare.startsWith("-Xmx") || bare.startsWith("-XX:MaxHeapSize")) PLANNED_HEAPS.add(bare);
+    }
+
+    static void forgetPlannedHeapForTests(String flag) {
+        if (flag != null) PLANNED_HEAPS.remove(bareJvmArg(flag));
+    }
+
+    /**
+     * True when the heap on {@code command} belongs to the user. The session pin ({@code
+     * --ram-percent}, {@code [jvm] args} with a heap flag) is one case. A heap flag jk did not emit
+     * — {@code [test] jvm-args}, a module {@code -J} flag, or any other caller {@code -Xmx} /
+     * {@code -XX:MaxRAM*} — is the other.
+     */
+    public static boolean userPinnedHeap(List<String> command) {
+        if (!autoHeapEnabled()) return true;
+        if (command == null || !containsHeapFlag(command)) return false;
+        Set<String> planned = plannedHeapFlags();
+        for (String arg : command) {
+            String bare = bareJvmArg(arg);
+            if (pinsHeap(bare) && !planned.contains(bare)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when {@code arg} sets a heap or a RAM ceiling, with or without a launcher {@code -J}
+     * prefix: {@code -Xmx}, {@code -Xms}, {@code -XX:MaxHeapSize}, {@code -XX:SoftMaxHeapSize},
+     * {@code -XX:MaxRAM*}.
+     */
+    public static boolean pinsHeap(String arg) {
+        if (arg == null || arg.isEmpty()) return false;
+        String bare = bareJvmArg(arg);
+        return bare.startsWith("-Xmx")
+                || bare.startsWith("-Xms")
+                || bare.startsWith("-XX:MaxHeapSize")
+                || bare.startsWith("-XX:MinHeapSize")
+                || bare.startsWith("-XX:InitialHeapSize")
+                || bare.startsWith("-XX:SoftMaxHeapSize")
+                || bare.startsWith("-XX:MaxRAM");
+    }
+
+    /** The user's pin as the log should name it: the flag they wrote, or {@code --ram-percent}. */
+    static String userPinLabel(List<String> command) {
+        Set<String> planned = autoHeapEnabled() && command != null ? plannedHeapFlags() : Set.of();
+        String last = null;
+        String lastUnplanned = null;
+        if (command != null) {
+            for (String arg : command) {
+                String bare = bareJvmArg(arg);
+                if (!pinsHeap(bare)) continue;
+                last = bare;
+                if (!planned.contains(bare)) lastUnplanned = bare;
+            }
+        }
+        if (lastUnplanned != null) return lastUnplanned;
+        if (last != null) return last;
+        PluginTuning s = tuning();
+        if (s.maxRamPercent() != null) return "--ram-percent " + fmt(s.maxRamPercent());
+        return "heap";
+    }
+
+    private static boolean containsHeapFlag(List<String> command) {
+        for (String arg : command) {
+            if (pinsHeap(arg)) return true;
+        }
+        return false;
+    }
+
+    /** Heap flags the plan, the batch/suite/sole forks, and {@link #notePlannedHeap} emit right now. */
+    private static Set<String> plannedHeapFlags() {
+        Set<String> out = new HashSet<>(PLANNED_HEAPS);
+        collectHeapFlags(out, workerFlags(1));
+        collectHeapFlags(out, batchFlags(1));
+        collectHeapFlags(out, suiteFlags(1));
+        collectHeapFlags(out, soleWorkerFlags());
+        return out;
+    }
+
+    private static void collectHeapFlags(Set<String> out, List<String> flags) {
+        for (String flag : flags) {
+            String bare = bareJvmArg(flag);
+            if (pinsHeap(bare)) out.add(bare);
+        }
+    }
+
+    /** Strip one launcher {@code -J} prefix. {@code -javaagent} is not one. */
+    private static String bareJvmArg(String arg) {
+        if (arg.startsWith("-J") && arg.length() > 2 && arg.charAt(2) == '-') return arg.substring(2);
+        return arg;
     }
 
     /**

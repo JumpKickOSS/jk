@@ -544,7 +544,11 @@ public final class ForkedJavac {
         List<String> flags = new ArrayList<>(aot);
         flags.addAll(JdkCompilerAccess.JVM_FLAGS);
         flags.addAll(JvmOptions.batchFlags(1));
-        if (heapBytes != null) flags.add("-Xmx" + WorkerHeap.mib(heapBytes) + "m");
+        if (heapBytes != null) {
+            String heap = "-Xmx" + WorkerHeap.mib(heapBytes) + "m";
+            JvmOptions.notePlannedHeap(heap);
+            flags.add(heap);
+        }
         for (String flag : module) {
             if (!flags.contains(flag)) flags.add(flag);
         }

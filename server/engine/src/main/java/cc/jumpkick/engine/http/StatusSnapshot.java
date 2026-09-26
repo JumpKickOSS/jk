@@ -83,6 +83,12 @@ public record StatusSnapshot(
         String containmentReason,
         /** {@code workers/memory.max} in bytes; {@code -1} unless {@code containment} is {@code cgroup}. */
         long workerMemoryMax,
+        /** Bytes forked workers may lease; {@code -1} when the engine did not report a budget. */
+        long workerBudgetBytes,
+        /** Bytes held by leases right now; {@code -1} when the engine did not report. */
+        long workerLeasedBytes,
+        /** Forks waiting for a lease. */
+        int workerQueued,
         /**
          * Every live and queued job, live first in admission order then queued in arrival order,
          * each as {@code JobRow.toJson()} renders it: {@code jid}, {@code kind}, {@code dir},
@@ -152,6 +158,9 @@ public record StatusSnapshot(
                 "none",
                 "",
                 -1L,
+                -1L,
+                -1L,
+                0,
                 jobs);
     }
 
@@ -206,6 +215,9 @@ public record StatusSnapshot(
                 "none",
                 "",
                 -1L,
+                -1L,
+                -1L,
+                0,
                 List.of());
     }
 
@@ -298,6 +310,9 @@ public record StatusSnapshot(
         m.put("containment", containment);
         m.put("containmentReason", containmentReason);
         m.put("workerMemoryMax", workerMemoryMax);
+        m.put("workerBudgetBytes", workerBudgetBytes);
+        m.put("workerLeasedBytes", workerLeasedBytes);
+        m.put("workerQueued", workerQueued);
         m.put("jobs", jobs);
         return m;
     }

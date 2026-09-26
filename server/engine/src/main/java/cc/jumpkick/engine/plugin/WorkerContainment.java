@@ -92,6 +92,12 @@ public final class WorkerContainment {
         CGROUP
     }
 
+    /**
+     * Test and ops override for {@link #budgetBytes()}, in whole mebibytes. Read from this process,
+     * so a resident engine keeps the value it was started with; {@code jk engine stop} first.
+     */
+    public static final String BUDGET_ENV = "JK_WORKER_BUDGET_MB";
+
     /** {@code memory.max} for the workers group, in bytes. */
     public record Limits(long maxBytes) {}
 
@@ -188,6 +194,35 @@ public final class WorkerContainment {
     public static Report report() {
         State s = state;
         return s == null ? new Report(Mode.NONE, "", -1L) : s.report();
+    }
+
+    /**
+     * Bytes forked workers may use. {@link #BUDGET_ENV} when it is a positive number; otherwise the
+     * workers group's {@code memory.max} when containment installed one, otherwise {@link #budget}
+     * from the host. A host smaller than the reserve still yields a positive budget so one worker
+     * can be clamped down to it.
+     */
+    public static long budgetBytes() {
+        long fromEnv = envBudgetBytes();
+        if (fromEnv > 0) return fromEnv;
+        Report live = report();
+        if (live.mode() == Mode.CGROUP && live.maxBytes() > 0) return live.maxBytes();
+        MemoryProbe.Memory mem = MemoryProbe.current();
+        Limits limits = budget(mem.totalBytes(), -1L);
+        if (limits != null) return limits.maxBytes();
+        return Math.max(32L << 20, mem.totalBytes());
+    }
+
+    /** {@link #BUDGET_ENV} in bytes, or {@code -1} when unset or not a positive integer. */
+    static long envBudgetBytes() {
+        String raw = System.getenv(BUDGET_ENV);
+        if (raw == null || raw.isBlank()) return -1L;
+        try {
+            long mb = Long.parseLong(raw.trim());
+            return mb > 0 ? mb * (1024L * 1024L) : -1L;
+        } catch (NumberFormatException e) {
+            return -1L;
+        }
     }
 
     /** The workers directory {@link #install} is using, or null before install and outside cgroup mode. */

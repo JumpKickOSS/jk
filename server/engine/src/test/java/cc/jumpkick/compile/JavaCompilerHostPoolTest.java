@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -174,8 +175,7 @@ class JavaCompilerHostPoolTest {
 
     @Test
     void a_lane_that_has_taken_an_item_but_not_yet_dispatched_it_is_not_free(@TempDir Path dir) throws Exception {
-        // Between take() and the COMPILE line sits PluginSlots.acquire(), which blocks for as long
-        // as a permit takes. A lane parked there holds an item; growth must not count it as
+        // Between take() and the COMPILE line the lane holds the item. Growth must not count it as
         // capacity, or the next module queues behind a wait a fresh lane would have skipped.
         CountDownLatch release = new CountDownLatch(1);
         AtomicReference<@Nullable Session> first = new AtomicReference<>();
@@ -257,7 +257,7 @@ class JavaCompilerHostPoolTest {
 
     @Test
     void a_lane_whose_worker_dies_between_take_and_dispatch_hands_the_item_back(@TempDir Path dir) throws Exception {
-        // Between takeNext() and the COMPILE line the pump waits for a slot and writes the spec. A
+        // Between takeNext() and the COMPILE line the pump writes the spec. A
         // worker that dies in that window has no in-flight item for failAll to fail, so the pump has
         // to notice on its own and give the item back rather than send it down a closed pipe.
         CountDownLatch specGate = new CountDownLatch(1);
@@ -397,34 +397,49 @@ class JavaCompilerHostPoolTest {
     }
 
     @Test
-    void a_worker_that_dies_without_an_out_of_memory_banner_fails_its_item_at_once(@TempDir Path dir) throws Exception {
-        CountDownLatch dies = new CountDownLatch(1);
-        AtomicReference<@Nullable Session> lane = new AtomicReference<>();
+    void a_worker_that_dies_without_an_out_of_memory_banner_is_tried_once_more(@TempDir Path dir) throws Exception {
+        CountDownLatch killFirst = new CountDownLatch(1);
+        CountDownLatch killSecond = new CountDownLatch(1);
+        AtomicReference<@Nullable Session> first = new AtomicReference<>();
+        AtomicReference<@Nullable Session> second = new AtomicReference<>();
+        AtomicInteger born = new AtomicInteger();
         Lanes pool = new Lanes(
                 1,
                 (owner, index) -> {
+                    int n = born.incrementAndGet();
+                    CountDownLatch kill = n == 1 ? killFirst : killSecond;
                     Session s = new Session(owner, 10L, index, self -> {
-                        dies.await();
+                        kill.await(5, TimeUnit.SECONDS);
                         self.output("Exception in thread main: java.lang.IllegalStateException: boom");
                         throw new IOException("zinc worker exited with status 1");
                     });
-                    lane.set(s);
+                    (n == 1 ? first : second).set(s);
                     return s;
                 },
                 ForkedJavac::writeSpec,
                 (failed, heap) -> {
-                    throw new AssertionError("only an out-of-memory death is retried");
+                    throw new AssertionError("only an out-of-memory death grows the heap");
                 });
         CompileWork w = CompileWork.compile(request(dir, "a"), 512L << 20);
         pool.enqueue(w);
         List<String> sent = new ArrayList<>();
-        Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
+        Thread pump = Thread.ofVirtual().start(() -> requireNonNull(first.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
         awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
         pump.join(TimeUnit.SECONDS.toMillis(10));
 
-        dies.countDown();
-        awaitTrue(w.compile::isDone, "the death fails the item");
+        killFirst.countDown();
+        awaitTrue(() -> second.get() != null, "the death starts another lane");
+        assertThat(w.compile).isNotDone();
+
+        List<String> retried = new ArrayList<>();
+        Thread again = Thread.ofVirtual().start(() -> requireNonNull(second.get())
+                .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(retried)));
+        awaitTrue(() -> retried.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the retry is on the wire");
+        again.join(TimeUnit.SECONDS.toMillis(10));
+
+        killSecond.countDown();
+        awaitTrue(w.compile::isDone, "the second death fails the item");
         assertThatThrownBy(w.compile::join)
                 .cause()
                 .hasMessageContaining("status 1")

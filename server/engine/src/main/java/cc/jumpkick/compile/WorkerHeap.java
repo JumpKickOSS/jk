@@ -21,7 +21,8 @@ import org.jspecify.annotations.Nullable;
  * share a worker.
  *
  * <p>Nothing here applies when the user pinned worker memory ({@code --ram-percent}, {@code [jvm]
- * args} with a heap flag): their number is the worker's heap and a worker that runs out of it is
+ * args} with a heap flag, {@code [test] jvm-args}, or a module {@code -J} flag): their number is
+ * the worker's heap, the worker budget does not rewrite it, and a worker that runs out of it is
  * reported as such.
  */
 final class WorkerHeap {
@@ -88,7 +89,8 @@ final class WorkerHeap {
 
     /** The most a single worker on this host can have: a lone worker's share of the memory plan. */
     static long ceilingBytes() {
-        return HeapPlan.compute(MemoryProbe.probe().availableBytes(), 1).xmxBytes();
+        return JvmOptions.fitWorkerBudget(HeapPlan.compute(MemoryProbe.probe().availableBytes(), 1))
+                .xmxBytes();
     }
 
     /**

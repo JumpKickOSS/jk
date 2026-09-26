@@ -171,10 +171,9 @@ public final class PluginProcess {
     }
 
     /**
-     * As {@link #converse(List, String, BiConsumer, Consumer)} but WITHOUT taking a process-lifetime
-     * worker slot. The caller — the long-lived Zinc pull session — meters {@link PluginSlots} itself,
-     * once per in-flight COMPILE/PLAN exchange, so an idle resident worker does not pin a permit for
-     * the whole job and deadlock nested forks such as the test runner.
+     * As {@link #converse(List, WorkerEnv, String, BiConsumer, Consumer)} for a worker whose caller
+     * keeps the process for many exchanges. The memory lease is still taken when the process is
+     * forked and held until it exits; an idle compiler lane exits when another fork is waiting.
      */
     public static int converseNoSlot(
             List<String> command,
@@ -206,11 +205,7 @@ public final class PluginProcess {
             throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
-        // Hold a worker slot for the child's whole lifetime so no more than the
-        // memory plan's parallelism run at once (open gate when unconfigured).
-        try (PluginSlots.Lease lease = PluginSlots.acquire()) {
-            return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs);
-        }
+        return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs);
     }
 
     /**
@@ -235,12 +230,14 @@ public final class PluginProcess {
             throws IOException, InterruptedException {
         // Every worker forks through here, so this is where it loses the engine's terminal.
         pb.command(WorkerSession.detached(pb.command()));
+        // Read the heap's provenance before an argfile shorten hides the flags that say who chose it.
+        JvmOptions.HeapChoice heap = JvmOptions.HeapChoice.inspect(pb.command());
         // Windows caps the command line; a long one launches through an argfile instead.
         WorkerArgfile argfile = WorkerArgfile.shorten(pb.command());
         pb.command(argfile.command());
         Process process;
         try {
-            process = JobWorkers.start(pb);
+            process = JobWorkers.start(pb, heap);
         } catch (IOException e) {
             argfile.delete();
             throw e;
@@ -373,7 +370,14 @@ public final class PluginProcess {
             try {
                 if (watchdog != null) watchdog.interrupt();
                 if (process.isAlive() || hasLiveDescendant(process)) {
-                    forceStop(process);
+                    // A worker whose stdin we closed is already exiting. Killing it now records
+                    // SIGKILL, and a compiler lane that left to free memory looks like a crash.
+                    try {
+                        if (!process.waitFor(1, TimeUnit.SECONDS)) forceStop(process);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        forceStop(process);
+                    }
                 }
             } finally {
                 JobWorkers.unregister(process);

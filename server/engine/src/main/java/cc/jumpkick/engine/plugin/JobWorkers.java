@@ -6,6 +6,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-request registry of forked worker {@link Process}es (plugin/test JVMs). On cancel or job wall
@@ -138,6 +140,23 @@ public final class JobWorkers {
     }
 
     /**
+     * Forks on this thread register to {@code requestId} until {@link #restore}. Returns the scope
+     * to put back. Does not clear a shutdown tombstone, so a fork for a job that has already ended
+     * is still killed on register.
+     */
+    public static @Nullable Long bind(long requestId) {
+        Long previous = CURRENT.get();
+        CURRENT.set(requestId);
+        return previous;
+    }
+
+    /** Put back the scope {@link #bind} returned. {@code null} clears it. */
+    public static void restore(@Nullable Long requestId) {
+        if (requestId == null) CURRENT.remove();
+        else CURRENT.set(requestId);
+    }
+
+    /**
      * Request id this thread's forks belong to, or {@code null} when no job scope is open
      * (one-shot tests, probes).
      */
@@ -222,7 +241,20 @@ public final class JobWorkers {
      * outside that group for the moment between start and the move.
      */
     public static Process start(ProcessBuilder pb) throws IOException {
-        return launch(pb, true);
+        return start(pb, WorkerLeases.engine());
+    }
+
+    /** As {@link #start(ProcessBuilder)}, taking the lease from {@code leases}. */
+    public static Process start(ProcessBuilder pb, WorkerLeases.Ledger leases) throws IOException {
+        return launch(pb, true, leases, JvmOptions.HeapChoice.inspect(pb.command()));
+    }
+
+    /**
+     * As {@link #start(ProcessBuilder)} with a heap choice measured before an argfile shorten hid
+     * the flags.
+     */
+    public static Process start(ProcessBuilder pb, JvmOptions.HeapChoice choice) throws IOException {
+        return launch(pb, true, WorkerLeases.engine(), choice);
     }
 
     /**
@@ -230,14 +262,54 @@ public final class JobWorkers {
      * trainer outlive the request that spawned them; they are still contained.
      */
     public static Process startDetached(ProcessBuilder pb) throws IOException {
-        return launch(pb, false);
+        return launch(pb, false, WorkerLeases.engine(), JvmOptions.HeapChoice.inspect(pb.command()));
     }
 
-    private static Process launch(ProcessBuilder pb, boolean track) throws IOException {
-        Process p = pb.start();
-        WorkerContainment.contain(p);
-        if (track) register(p);
-        return p;
+    private static Process launch(
+            ProcessBuilder pb, boolean track, WorkerLeases.Ledger leases, JvmOptions.HeapChoice choice)
+            throws IOException {
+        Long request = track ? CURRENT.get() : null;
+        WorkerLeases.Grant grant;
+        try {
+            grant = leases.acquire(pb.command(), request, choice);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("cancelled while waiting for memory");
+        }
+        List<String> command = launchCommand(pb.command(), grant);
+        if (command != pb.command()) {
+            pb.command(command);
+            Log.info("jk engine: lowered -Xmx to " + WorkerLeases.format(grant.xmxBytes()) + " so the worker fits the "
+                    + WorkerLeases.format(leases.capacityBytes()) + " budget");
+        } else if (grant.userPinned() && grant.overBudget()) {
+            String pin = choice.label().isEmpty() ? "heap" : choice.label();
+            Log.info("jk engine: leaving pinned " + pin + " unchanged; leasing the whole "
+                    + WorkerLeases.format(leases.capacityBytes()) + " budget");
+        }
+        Process process;
+        try {
+            process = pb.start();
+        } catch (IOException | RuntimeException e) {
+            grant.close();
+            throw e;
+        }
+        // Released when the process is gone, including a crash or a kill. onExit runs if it has
+        // already exited.
+        process.onExit().whenComplete((code, error) -> grant.close());
+        WorkerContainment.contain(process);
+        if (track) register(process);
+        return process;
+    }
+
+    /**
+     * The command {@code launch} execs. A planned heap that does not fit is lowered; a user pin is
+     * returned unchanged.
+     */
+    static List<String> launchCommand(List<String> command, WorkerLeases.Grant grant) {
+        if (!grant.userPinned() && grant.clamped() && grant.jvm()) {
+            return WorkerLeases.rewriteHeap(command, grant.xmxBytes());
+        }
+        return command;
     }
 
     /** Stop tracking {@code process} (e.g. after it exits normally). */
@@ -281,9 +353,11 @@ public final class JobWorkers {
      * <p>On Windows, step 1 may already be terminal (no SIGTERM); step 2 still bounds our wait.
      */
     public static int shutdownForRequest(long requestId, long graceMs) {
-        // Tombstone FIRST so a register racing us kills its process on arrival.
+        // Tombstone FIRST so a register racing us kills its process on arrival, and drop any
+        // lease still queued for this job so a fork blocked in launch does not outlive the cancel.
         if (TOMBSTONES.size() >= MAX_TOMBSTONES) TOMBSTONES.clear();
         TOMBSTONES.add(requestId);
+        WorkerLeases.engine().cancelRequest(requestId);
         Set<Process> set = BY_REQUEST.remove(requestId);
         if (set == null || set.isEmpty()) return 0;
         int aliveAtStart = 0;
