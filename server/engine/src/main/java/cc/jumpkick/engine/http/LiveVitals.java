@@ -242,6 +242,9 @@ public final class LiveVitals implements AutoCloseable {
             long workerLeasedMib,
             long workerOverbookedMib,
             int workerQueued,
+            int workerRunningJvms,
+            String workerBudgetSource,
+            boolean overbookingOff,
             List<Map<String, Object>> jobs) {
 
         static PresentStatus of(StatusSnapshot s) {
@@ -264,6 +267,9 @@ public final class LiveVitals implements AutoCloseable {
                     mib(s.workerLeasedBytes()),
                     mib(s.workerOverbookedBytes()),
                     s.workerQueued(),
+                    s.workerRunningJvms(),
+                    s.workerBudgetSource() == null ? "" : s.workerBudgetSource(),
+                    s.overbookingOff(),
                     s.jobs());
         }
 

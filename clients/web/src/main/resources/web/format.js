@@ -103,6 +103,42 @@ export function mib(bytes, decimals = 0) {
   return (decimals > 0 ? v.toFixed(decimals) : String(Math.round(v))) + ' MiB';
 }
 
+/**
+ * The workers row, the same sentence as {@code jk engine status}. Empty when the engine did not
+ * report a budget. {@code source} is {@code host}, {@code cgroup}, or {@code override}.
+ */
+export function workerBudgetLine(status) {
+  if (!status || typeof status.workerBudgetBytes !== 'number' || status.workerBudgetBytes < 0) return '';
+  const leased = status.workerLeasedBytes > 0 ? status.workerLeasedBytes : 0;
+  const over = status.workerOverbookedBytes > 0 ? status.workerOverbookedBytes : 0;
+  const queued = status.workerQueued > 0 ? status.workerQueued : 0;
+  let line = budgetBytes(status.workerBudgetBytes) + ' budget';
+  const src = sourcePhrase(status.workerBudgetSource);
+  if (src) line += ' ' + src;
+  line += ', ' + budgetBytes(leased) + ' leased, ' + budgetBytes(over) + ' overbooked, ' + queued + ' queued';
+  const running = status.workerRunningJvms;
+  const cap = status.workerCpuCap;
+  if (typeof running === 'number' && running >= 0 && typeof cap === 'number' && cap >= 0) {
+    line += ', ' + running + '/' + cap + ' JVMs';
+  }
+  if (status.overbookingOff) line += ', overbooking off';
+  return line;
+}
+
+function budgetBytes(n) {
+  const gib = 1024 * 1024 * 1024;
+  if (n >= gib) return (n / gib).toFixed(1) + ' GiB';
+  return Math.trunc(n / (1024 * 1024)) + ' MiB';
+}
+
+function sourcePhrase(source) {
+  if (source == null || String(source).trim() === '') return '';
+  if (source === 'host') return '(host)';
+  if (source === 'cgroup') return '(cgroup)';
+  if (source === 'override') return '(override JK_WORKER_BUDGET_MB)';
+  return '(' + source + ')';
+}
+
 /** Whole-host memory reads naturally in GiB. Em dash for absent, as {@link mib}. */
 export function gib(bytes) {
   return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';

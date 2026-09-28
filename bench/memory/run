@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""The memory acceptance runs: petclinic alone, then four projects at once.
+
+    bench/memory/run
+    bench/memory/run --out "$JK_BENCH_HOME/memory/TABLE.md"
+
+Writes a markdown table: wall, exit, the Workers line from ``jk engine status`` at the
+busiest sample, the workers cgroup ``memory.events`` delta, and per-class peak RSS.
+Projects are the harness scratch trees (see README). One heavy run; leave the host idle.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import runpy
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+import benchtools  # noqa: E402
+
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+LEASED = re.compile(r"([\d.]+) (GiB|MiB) leased")
+EVENT_KEYS = ("low", "high", "max", "oom", "oom_kill", "oom_group_kill")
+
+
+def load_sample():
+    """``sample`` has no ``.py`` suffix, so load it as a namespace instead of a module spec."""
+    try:
+        return runpy.run_path(str(HERE / "sample"))
+    except OSError as exc:
+        raise SystemExit(f"refusing to run: bench/memory/sample cannot be loaded ({exc})") from exc
+
+
+def jk_binary() -> str:
+    override = os.environ.get("JK_BIN")
+    if override:
+        return override
+    candidate = benchtools.jk_home() / "bin" / "jk"
+    return str(candidate) if candidate.is_file() else "jk"
+
+
+def projects() -> dict[str, Path]:
+    wall = benchtools.scratch("WALL_HOME", "wall")
+    corpus = benchtools.scratch("CORPUS_SCRATCH", "maven-corpus")
+    agent = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop")
+    return {
+        "spring-petclinic": wall / "work" / "jk",
+        "TheAlgorithms-Java": corpus / "TheAlgorithms-Java",
+        "gs-rest-service": agent / "baselines" / "jk" / "gs-rest-service",
+        "gs-accessing-data-jpa": agent / "baselines" / "jk" / "gs-accessing-data-jpa",
+    }
+
+
+def require_projects(names: list[str], found: dict[str, Path]) -> None:
+    missing = []
+    for name in names:
+        root = found[name]
+        if not (root / "jk.toml").is_file():
+            missing.append(f"{name}: {root}")
+    if missing:
+        raise SystemExit(
+            "refusing to run: a project has no jk.toml (scratch defaults under $JK_BENCH_HOME):\n  "
+            + "\n  ".join(missing)
+        )
+
+
+def workers_line(jk: str) -> str:
+    proc = subprocess.run([jk, "engine", "status"], capture_output=True, text=True)
+    text = ANSI.sub("", proc.stdout or "")
+    for line in text.splitlines():
+        if "Workers" in line and "budget" in line and ":" in line:
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def leased_bytes(line: str) -> float:
+    match = LEASED.search(line)
+    if not match:
+        return -1.0
+    number = float(match.group(1))
+    scale = 1024**3 if match.group(2) == "GiB" else 1024**2
+    return number * scale
+
+
+def engine_pid(jk: str) -> int | None:
+    proc = subprocess.run([jk, "engine", "status", "--output", "json"], capture_output=True, text=True)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    pid = data.get("pid")
+    return int(pid) if isinstance(pid, int) and pid > 0 else None
+
+
+def events_path(jk: str) -> Path | None:
+    pid = engine_pid(jk)
+    if pid is None:
+        return None
+    try:
+        text = Path(f"/proc/{pid}/cgroup").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    rel = ""
+    for line in text.splitlines():
+        if line.startswith("0::"):
+            rel = line[3:]
+    if not rel:
+        return None
+    if rel.endswith("/engine"):
+        rel = rel[: -len("/engine")]
+    path = Path("/sys/fs/cgroup") / rel.lstrip("/") / "workers" / "memory.events"
+    return path if path.is_file() else None
+
+
+def read_events(path: Path | None) -> dict[str, int] | None:
+    if path is None:
+        return None
+    out: dict[str, int] = {}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] in EVENT_KEYS:
+            try:
+                out[parts[0]] = int(parts[1])
+            except ValueError:
+                return None
+    return out
+
+
+def events_delta(before: dict[str, int] | None, after: dict[str, int] | None) -> str:
+    if before is None or after is None:
+        return "unavailable"
+    parts = []
+    for key in ("oom_kill", "oom", "high", "max"):
+        parts.append(f"{key} +{after.get(key, 0) - before.get(key, 0)}")
+    return ", ".join(parts)
+
+
+def fmt_wall(seconds: float) -> str:
+    whole = int(round(seconds))
+    minutes, secs = divmod(whole, 60)
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
+def await_events(jk: str, timeout: float = 30.0) -> tuple[Path | None, dict[str, int] | None]:
+    """The engine is started by the scenario. Wait until its workers cgroup is readable."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        path = events_path(jk)
+        reading = read_events(path)
+        if reading is not None:
+            return path, reading
+        time.sleep(0.5)
+    return None, None
+
+
+def run_scenario(jk: str, sample, title: str, roots: list[tuple[str, Path]], log_dir: Path) -> dict:
+    print(f"running {title}", file=sys.stderr, flush=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    procs = []
+    logs = []
+    for name, root in roots:
+        log_path = log_dir / f"{name}.log"
+        fh = log_path.open("w", encoding="utf-8")
+        logs.append(fh)
+        procs.append(
+            subprocess.Popen(
+                [jk, "test", "--redo"],
+                cwd=root,
+                stdout=fh,
+                stderr=subprocess.STDOUT,
+            )
+        )
+    state = {"line": "", "leased": -1.0}
+    peaks_kb: dict[str, int] = {}
+    peak_procs: dict[str, int] = {}
+    stop = threading.Event()
+
+    def alive() -> bool:
+        return any(proc.poll() is None for proc in procs)
+
+    def sample_status() -> None:
+        while not stop.is_set() and alive():
+            line = workers_line(jk)
+            leased = leased_bytes(line)
+            if line and leased >= state["leased"]:
+                state["line"] = line
+                state["leased"] = leased
+            by, counts, _used = sample["snapshot"]()
+            for key, value in by.items():
+                if value > peaks_kb.get(key, 0):
+                    peaks_kb[key] = value
+                    peak_procs[key] = counts[key]
+            stop.wait(3)
+
+    started = time.monotonic()
+    thread = threading.Thread(target=sample_status, name="jk-memory-sample", daemon=True)
+    thread.start()
+    events_file, before = await_events(jk)
+    codes = []
+    for proc in procs:
+        codes.append(proc.wait())
+    stop.set()
+    thread.join(timeout=10)
+    # One last sample so a run shorter than the interval still has a row.
+    by, counts, _used = sample["snapshot"]()
+    for key, value in by.items():
+        if value > peaks_kb.get(key, 0):
+            peaks_kb[key] = value
+            peak_procs[key] = counts[key]
+    if not state["line"]:
+        state["line"] = workers_line(jk)
+    wall = time.monotonic() - started
+    for fh in logs:
+        fh.close()
+    after = read_events(events_file)
+    return {
+        "title": title,
+        "wall": fmt_wall(wall),
+        "exit": " ".join(str(code) for code in codes),
+        "workers": state["line"] or "—",
+        "events": events_delta(before, after),
+        "peak_kb": peaks_kb,
+        "peak_procs": peak_procs,
+    }
+
+
+def cell(kb: int) -> str:
+    if kb <= 0:
+        return "0"
+    return f"{kb / 1048576:.2f} GiB"
+
+
+def render(rows: list[dict]) -> str:
+    classes = []
+    for name in ORDER_SAFE:
+        if any(row["peak_kb"].get(name, 0) > 0 for row in rows):
+            classes.append(name)
+    if not classes:
+        classes = ["engine"]
+    header = ["scenario", "wall", "exit", "workers", "memory.events", *classes]
+    lines = [
+        "# Memory",
+        "",
+        benchtools.host_summary(),
+        "",
+        "| " + " | ".join(header) + " |",
+        "|" + "|".join(["---"] * len(header)) + "|",
+    ]
+    for row in rows:
+        values = [
+            row["title"].replace("|", "/"),
+            row["wall"],
+            row["exit"],
+            "`" + row["workers"].replace("|", "/") + "`",
+            row["events"],
+        ]
+        values.extend(cell(row["peak_kb"].get(name, 0)) for name in classes)
+        lines.append("| " + " | ".join(values) + " |")
+    lines.append("")
+    lines.append("Peak RSS is the per-class high during the scenario. Procs at that peak:")
+    lines.append("")
+    for row in rows:
+        bits = [
+            f"{name} {row['peak_procs'].get(name, 0)}"
+            for name in classes
+            if row["peak_kb"].get(name, 0) > 0
+        ]
+        lines.append(f"- {row['title']}: {', '.join(bits) if bits else 'none'}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+# Filled after sample loads; declared here so render can read it.
+ORDER_SAFE = [
+    "engine",
+    "nested-engine",
+    "compiler-worker",
+    "test-jvm",
+    "other-jk-worker",
+    "gradle",
+    "maven",
+    "other-java",
+    "other",
+]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the memory acceptance scenarios and write a markdown table.")
+    parser.add_argument("--out", type=Path, help="markdown path (default: $JK_BENCH_HOME/memory/TABLE.md)")
+    args = parser.parse_args()
+    found = projects()
+    names = list(found)
+    require_projects(names, found)
+    sample = load_sample()
+    jk = jk_binary()
+    home = benchtools.scratch("MEMORY_HOME", "memory")
+    out = args.out if args.out else home / "TABLE.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    log_dir = home / "logs"
+    rows = [
+        run_scenario(jk, sample, "spring-petclinic `jk test --redo`", [("spring-petclinic", found["spring-petclinic"])], log_dir / "petclinic"),
+        run_scenario(
+            jk,
+            sample,
+            "four projects `jk test --redo`",
+            [(name, found[name]) for name in names],
+            log_dir / "four",
+        ),
+    ]
+    text = render(rows)
+    out.write_text(text, encoding="utf-8")
+    sys.stdout.write(text)
+    print(f"wrote {out}", file=sys.stderr)
+    if any(row["exit"].split() != ["0"] and set(row["exit"].split()) != {"0"} for row in rows):
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

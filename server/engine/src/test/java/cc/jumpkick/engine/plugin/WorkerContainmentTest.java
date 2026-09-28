@@ -58,6 +58,16 @@ class WorkerContainmentTest {
     }
 
     @Test
+    void the_budget_source_is_the_enclosing_limit_when_that_limit_is_tighter() {
+        assertThat(WorkerContainment.naturalSource(16 * GIB, -1L)).isEqualTo(WorkerContainment.BudgetSource.HOST);
+        assertThat(WorkerContainment.naturalSource(16 * GIB, 32 * GIB)).isEqualTo(WorkerContainment.BudgetSource.HOST);
+        assertThat(WorkerContainment.naturalSource(16 * GIB, 4 * GIB)).isEqualTo(WorkerContainment.BudgetSource.CGROUP);
+        assertThat(WorkerContainment.naturalSource(-1L, 4 * GIB)).isEqualTo(WorkerContainment.BudgetSource.CGROUP);
+        assertThat(WorkerContainment.naturalSource(16 * GIB, 16 * GIB))
+                .isEqualTo(WorkerContainment.BudgetSource.CGROUP);
+    }
+
+    @Test
     void non_linux_is_none_even_when_the_tree_looks_delegated() throws Exception {
         delegated(16 * GIB, "max");
         WorkerContainment.Plan plan = WorkerContainment.plan(root, false, SELF);

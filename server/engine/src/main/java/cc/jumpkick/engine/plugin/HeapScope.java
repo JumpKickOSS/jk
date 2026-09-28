@@ -29,6 +29,9 @@ public final class HeapScope {
     /** Any other plugin worker. */
     public static final String PLUGIN = "plugin";
 
+    /** The resident Kotlin script host. One engine-wide key, not a module compile. */
+    public static final String KTS_HOST = "kts-host";
+
     private static final ThreadLocal<Key> CURRENT = new ThreadLocal<>();
 
     private HeapScope() {}

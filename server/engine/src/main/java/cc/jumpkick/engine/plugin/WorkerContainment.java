@@ -98,6 +98,30 @@ public final class WorkerContainment {
      */
     public static final String BUDGET_ENV = "JK_WORKER_BUDGET_MB";
 
+    /** Where {@link #leaseBudget()} got its number. */
+    public enum BudgetSource {
+        /** Host {@code MemTotal}, minus the reserve. */
+        HOST("host"),
+        /** The enclosing cgroup's {@code memory.max} was the tighter input. */
+        CGROUP("cgroup"),
+        /** {@link #BUDGET_ENV} replaced the host number for this process. */
+        OVERRIDE("override");
+
+        private final String wire;
+
+        BudgetSource(String wire) {
+            this.wire = wire;
+        }
+
+        /** {@code host}, {@code cgroup}, or {@code override}. */
+        public String wire() {
+            return wire;
+        }
+    }
+
+    /** The lease budget and which input produced it. */
+    public record LeaseBudget(long bytes, BudgetSource source) {}
+
     /** {@code memory.max} for the workers group, in bytes. */
     public record Limits(long maxBytes) {}
 
@@ -203,14 +227,36 @@ public final class WorkerContainment {
      * can be clamped down to it.
      */
     public static long budgetBytes() {
+        return leaseBudget().bytes();
+    }
+
+    /**
+     * {@link #budgetBytes()} plus the input that produced it. {@link BudgetSource#OVERRIDE} wins
+     * over a cgroup limit: the variable changes what the ledger hands out, not {@code memory.max}.
+     */
+    public static LeaseBudget leaseBudget() {
         long fromEnv = envBudgetBytes();
-        if (fromEnv > 0) return fromEnv;
-        Report live = report();
-        if (live.mode() == Mode.CGROUP && live.maxBytes() > 0) return live.maxBytes();
+        if (fromEnv > 0) return new LeaseBudget(fromEnv, BudgetSource.OVERRIDE);
+        State s = state;
+        if (s != null && s.mode == Mode.CGROUP && s.max > 0) {
+            return new LeaseBudget(s.max, s.budgetSource);
+        }
         MemoryProbe.Memory mem = MemoryProbe.current();
         Limits limits = budget(mem.totalBytes(), -1L);
-        if (limits != null) return limits.maxBytes();
-        return Math.max(32L << 20, mem.totalBytes());
+        if (limits != null) return new LeaseBudget(limits.maxBytes(), BudgetSource.HOST);
+        return new LeaseBudget(Math.max(32L << 20, mem.totalBytes()), BudgetSource.HOST);
+    }
+
+    /**
+     * {@link BudgetSource#CGROUP} when {@code enclosingMaxBytes} is a finite limit and it is no
+     * larger than {@code memTotalBytes} (or host memory is unknown). Otherwise {@link
+     * BudgetSource#HOST}.
+     */
+    static BudgetSource naturalSource(long memTotalBytes, long enclosingMaxBytes) {
+        if (enclosingMaxBytes > 0 && (memTotalBytes <= 0 || enclosingMaxBytes <= memTotalBytes)) {
+            return BudgetSource.CGROUP;
+        }
+        return BudgetSource.HOST;
     }
 
     /** {@link #BUDGET_ENV} in bytes, or {@code -1} when unset or not a positive integer. */
@@ -342,7 +388,9 @@ public final class WorkerContainment {
                 return notedScore(note, "could not set the worker memory limit");
             }
             long seen = readCounter(workers.resolve("memory.events"), "oom_kill");
-            return State.cgroup(workers, limits, seen < 0 ? 0 : seen);
+            long memTotal = MemoryProbe.current().totalBytes();
+            long enclosing = parseLimit(readQuiet(own.resolve("memory.max")));
+            return State.cgroup(workers, limits, seen < 0 ? 0 : seen, naturalSource(memTotal, enclosing));
         } catch (IOException e) {
             Log.debug("worker containment setup: " + e.getMessage());
             if (moved) moveBack(own, pid);
@@ -534,22 +582,25 @@ public final class WorkerContainment {
         final String reason;
         final long max;
         final @Nullable Path workers;
+        final BudgetSource budgetSource;
         long oomKills;
 
-        private State(Mode mode, String reason, long max, @Nullable Path workers, long oomKills) {
+        private State(
+                Mode mode, String reason, long max, @Nullable Path workers, long oomKills, BudgetSource budgetSource) {
             this.mode = mode;
             this.reason = reason;
             this.max = max;
             this.workers = workers;
             this.oomKills = oomKills;
+            this.budgetSource = budgetSource;
         }
 
         static State none() {
-            return new State(Mode.NONE, "", -1L, null, 0L);
+            return new State(Mode.NONE, "", -1L, null, 0L, BudgetSource.HOST);
         }
 
         static State scoreOnly(String reason) {
-            return new State(Mode.SCORE_ONLY, reason, -1L, null, 0L);
+            return new State(Mode.SCORE_ONLY, reason, -1L, null, 0L, BudgetSource.HOST);
         }
 
         static State of(Plan plan) {
@@ -560,7 +611,11 @@ public final class WorkerContainment {
         }
 
         static State cgroup(@Nullable Path workers, Limits limits, long seen) {
-            return new State(Mode.CGROUP, "", limits.maxBytes(), workers, seen);
+            return cgroup(workers, limits, seen, BudgetSource.HOST);
+        }
+
+        static State cgroup(@Nullable Path workers, Limits limits, long seen, BudgetSource source) {
+            return new State(Mode.CGROUP, "", limits.maxBytes(), workers, seen, source);
         }
 
         Report report() {

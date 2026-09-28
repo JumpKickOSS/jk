@@ -214,10 +214,18 @@ plugin workers, `git`, `docker`, `native-image` — takes a lease before it star
 returns it when the process exits, including when the process is killed. The budget is the
 same number written to the workers cgroup `memory.max`: host memory, or the enclosing
 cgroup limit when that is lower, minus the larger of 2 GiB and 10%. `jk engine status`
-prints one line, `13.5 GiB budget, 6.2 GiB leased, 2 queued`. When leases sit past that
-budget the line names the extra, `13.5 GiB budget, 14.2 GiB leased (700 MiB overbooked), 2 queued`.
-`--output json` carries the same numbers as `workerBudgetBytes`, `workerLeasedBytes`,
-`workerOverbookedBytes` and `workerQueued`.
+prints one Workers line naming that budget and where it came from — `(host)` when host
+memory set it, `(cgroup)` when the enclosing cgroup's `memory.max` was the tighter input,
+or `(override JK_WORKER_BUDGET_MB)` when that variable replaced the number — then the
+bytes leased, how much of the lease sits past the budget, how many forks are queued, and
+how many JVMs are running against the CPU cap:
+`13.5 GiB budget (cgroup), 6.2 GiB leased, 700 MiB overbooked, 2 queued, 4/16 JVMs`.
+When this engine was started with `CI` set, or with `JK_OVERBOOK` off, the line ends
+with `overbooking off`. A resident engine keeps the environment it was started with, so
+that is how a stale override shows up. `--output json` carries the same facts as
+`workerBudgetBytes`, `workerBudgetSource` (`host`, `cgroup`, or `override`),
+`workerLeasedBytes`, `workerOverbookedBytes`, `workerQueued`, `workerRunningJvms`,
+`workerCpuCap`, and `overbookingOff`. The dashboard's Admin page shows the same line.
 
 A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
 resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
@@ -233,7 +241,11 @@ If the JVM cannot reserve the pin, its own refusal is the result.
 
 A lease that does not fit waits, first in line first. The step shows
 `waiting for memory: need 512 MiB, free 128 MiB`, and a wait of half a second or more is
-recorded on the step as `waited Ns for memory`. Nothing fails for lack of a lease.
+recorded on the step as `waited Ns for memory`. Several waits on one step add up to that
+one line. `target/jk-results.md` and the agent report each carry it, and they carry
+`retried with 1.0 GiB heap after running out of 512 MiB` when a planned heap was retried.
+When the budget is an override, the wait line names it:
+`waited 12s for memory (JK_WORKER_BUDGET_MB)`. Nothing fails for lack of a lease.
 
 On Linux that same lease may start anyway, past the reservation, when the host still has
 room. It does not when this engine was started with `CI` set, or with `JK_OVERBOOK` set to
@@ -300,7 +312,10 @@ inherited from the shell when it sets its own). `jk engine status` shows heap an
 
 Worker JVMs are job-scoped: compiler lanes, test runners and plugin workers exit when their
 job ends. The build-script host (`.jk/*.kts`) is the one worker that outlives a job, and it
-shuts down after ten idle minutes.
+shuts down after ten idle minutes. It starts with a planned heap of 256 MiB — learned after
+that, the same way as other planned workers — so its lease is that heap plus the usual
+overhead instead of the unsized 512 MiB default. The lease is held while the process is
+alive and drops when the idle timeout exits it.
 
 ### Compiler worker heap
 

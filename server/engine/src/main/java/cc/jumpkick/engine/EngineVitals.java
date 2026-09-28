@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.plugin.MemoryProbe;
+import cc.jumpkick.engine.plugin.OverbookSignals;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import com.sun.management.OperatingSystemMXBean;
@@ -44,6 +45,7 @@ public final class EngineVitals {
         int connections = liveConnectionCount();
         peakActiveConnections.accumulateAndGet(connections, Math::max);
         WorkerContainment.Report containment = WorkerContainment.report();
+        WorkerContainment.LeaseBudget budget = WorkerContainment.leaseBudget();
         WorkerLeases.Snapshot workers = WorkerLeases.engine().snapshot();
         return new StatusSnapshot(
                 version,
@@ -76,6 +78,10 @@ public final class EngineVitals {
                 workers.leasedBytes(),
                 workers.overbookedBytes(),
                 workers.queued(),
+                budget.source().wire(),
+                workers.runningJvms(),
+                workers.cpuCap(),
+                OverbookSignals.policyOff(),
                 jobs.get());
     }
 

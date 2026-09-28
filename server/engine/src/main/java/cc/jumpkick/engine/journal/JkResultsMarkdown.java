@@ -131,7 +131,7 @@ public final class JkResultsMarkdown {
         appendDeliverables(sb, record);
         appendFailedSteps(sb, record);
         JkResultsLockNotesSection.append(sb, record);
-        appendWarnings(sb, record);
+        JkResultsWarnings.append(sb, record);
         appendModules(sb, record);
         // Sized over the whole file, this line included: the header is written before the body
         // exists, so the line goes in last, where the headline left room for it.
@@ -698,34 +698,6 @@ public final class JkResultsMarkdown {
         return n;
     }
 
-    private static void appendWarnings(StringBuilder sb, BuildRecord r) {
-        List<BuildRecord.Diag> warnings = new ArrayList<>();
-        for (BuildRecord.Diag d : r.diagnostics()) {
-            if (isWarning(d) && !JkResultsLockNotesSection.isLockNote(d)) warnings.add(d);
-        }
-        if (warnings.isEmpty()) return;
-        sb.append("## Warnings\n\n");
-        int shown = 0;
-        for (BuildRecord.Diag d : warnings) {
-            if (shown >= MAX_WARNINGS) {
-                sb.append("- _+").append(warnings.size() - shown).append(" more — see `details.jsonl`._\n");
-                break;
-            }
-            sb.append("- ");
-            String step = some(d.step());
-            if (step != null) sb.append('`').append(step).append("` ");
-            String loc = locus(d, r.dir());
-            if (!loc.isEmpty()) {
-                sb.append(loc);
-                if (notBlank(d.message())) sb.append(" — ");
-            }
-            if (notBlank(d.message())) sb.append(clipOneLine(firstLine(d.message()), MAX_WARNING_LINE));
-            sb.append('\n');
-            shown++;
-        }
-        sb.append('\n');
-    }
-
     private static void appendModules(StringBuilder sb, BuildRecord r) {
         List<BuildRecord.Module> modules = r.modules();
         if (modules.size() <= 1) return;
@@ -846,7 +818,7 @@ public final class JkResultsMarkdown {
         return leaf(m.dir());
     }
 
-    private static String locus(BuildRecord.Diag d, String projectDir) {
+    static String locus(BuildRecord.Diag d, String projectDir) {
         String file = displayFile(d.file(), projectDir);
         if (file.isEmpty()) return "";
         StringBuilder b = new StringBuilder();
@@ -927,7 +899,7 @@ public final class JkResultsMarkdown {
         return b.toString();
     }
 
-    private static String firstLine(String s) {
+    static String firstLine(String s) {
         if (s == null) return "";
         int n = s.indexOf('\n');
         return n < 0 ? s : s.substring(0, n);
@@ -943,11 +915,11 @@ public final class JkResultsMarkdown {
      * reader the value is usable but tells the nullness checker nothing, so the checker has to be
      * given the value back to narrow on.
      */
-    private static @Nullable String some(@Nullable String s) {
+    static @Nullable String some(@Nullable String s) {
         return s == null || s.isBlank() ? null : s;
     }
 
-    private static boolean notBlank(@Nullable String s) {
+    static boolean notBlank(@Nullable String s) {
         return s != null && !s.isBlank();
     }
 

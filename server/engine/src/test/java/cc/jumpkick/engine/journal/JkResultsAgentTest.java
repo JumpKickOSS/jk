@@ -12,6 +12,29 @@ import org.junit.jupiter.api.Test;
 class JkResultsAgentTest {
 
     @Test
+    void an_ok_run_names_a_memory_wait_once_per_step() {
+        BuildRecord.Diag wait = new BuildRecord.Diag(
+                "warning", "/ws/rest-service", "run-tests", "memory-wait", "waited 12s for memory", null, null);
+        BuildRecord.Diag again = new BuildRecord.Diag(
+                "warning", "/ws/rest-service", "run-tests", "memory-wait", "waited 1s for memory", null, null);
+        BuildRecord.Diag other = new BuildRecord.Diag(
+                "warning",
+                "/ws/rest-service",
+                "compile-java",
+                "memory-wait",
+                "waited 2s for memory (JK_WORKER_BUDGET_MB)",
+                null,
+                null);
+        BuildRecord r = record(
+                "test", true, false, 500, new BuildRecord.Tests(1, 1, 0, 0), List.of(wait, again, other), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                OK test rest-service · 1 test · 500ms
+                waited 12s for memory
+                waited 2s for memory (JK_WORKER_BUDGET_MB)
+                """);
+    }
+
+    @Test
     void an_ok_run_still_names_a_heap_retry() {
         BuildRecord.Diag retry = new BuildRecord.Diag(
                 "warning",

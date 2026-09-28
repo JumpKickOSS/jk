@@ -393,7 +393,9 @@ stays free; open-loop clock/residual fills the gaps between 500 ms samples.
 
 Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields), including
 `availableMemoryBytes`, `systemCpuLoad`, `systemLoadAverage` (1‑minute), and `engineEpoch`
-(process generation id). Config knobs (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only;
+(process generation id). The worker budget is on the same object: `workerBudgetBytes`,
+`workerBudgetSource`, `workerLeasedBytes`, `workerOverbookedBytes`, `workerQueued`,
+`workerRunningJvms`, `workerCpuCap`, and `overbookingOff`. Config knobs (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only;
 the SPA merges SSE into the last REST hydrate.
 
 ### Engine generation (`engineEpoch`)
