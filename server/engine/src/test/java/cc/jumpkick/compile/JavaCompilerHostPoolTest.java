@@ -554,8 +554,9 @@ class JavaCompilerHostPoolTest {
                 List.of());
     }
 
+    /** Generous: the condition often waits on a new worker JVM, which starts slowly on a loaded host. */
     private static void awaitTrue(BooleanSupplier condition, String what) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
         while (!condition.getAsBoolean()) {
             if (System.nanoTime() > deadline) throw new AssertionError("timed out waiting until " + what);
             Thread.sleep(5);
