@@ -109,6 +109,32 @@ public final class PluginLoader {
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
+        return run(
+                javaHome,
+                classpath,
+                jvmFlags,
+                prefix,
+                args,
+                env,
+                workDir,
+                onProtocol,
+                onPassthrough,
+                LearnedHeaps.engine());
+    }
+
+    /** As {@link #run(Path, String, List, String, List, WorkerEnv, Path, Consumer, Consumer)}, recording learned peaks on {@code heaps}. */
+    public static int run(
+            Path javaHome,
+            String classpath,
+            List<String> jvmFlags,
+            String prefix,
+            List<String> args,
+            WorkerEnv env,
+            @Nullable Path workDir,
+            Consumer<String> onProtocol,
+            @Nullable Consumer<String> onPassthrough,
+            LearnedHeaps heaps)
+            throws IOException, InterruptedException {
         // One-shot: close the child's stdin immediately so suite tests that hit Confirm /
         // System.in.readLine() see EOF instead of hanging on an open protocol pipe.
         return PluginProcess.run(
@@ -117,7 +143,8 @@ public final class PluginLoader {
                 workDir,
                 prefix,
                 onProtocol,
-                onPassthrough);
+                onPassthrough,
+                heaps);
     }
 
     /**
@@ -185,6 +212,34 @@ public final class PluginLoader {
             @Nullable Consumer<String> onPassthrough,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
+        return converse(
+                javaHome,
+                classpath,
+                jvmFlags,
+                prefix,
+                args,
+                env,
+                workDir,
+                onProtocol,
+                onPassthrough,
+                idleTimeoutMs,
+                LearnedHeaps.engine());
+    }
+
+    /** As {@link #converse(Path, String, List, String, List, WorkerEnv, Path, BiConsumer, Consumer, long)}, recording learned peaks on {@code heaps}. */
+    public static int converse(
+            Path javaHome,
+            String classpath,
+            List<String> jvmFlags,
+            String prefix,
+            List<String> args,
+            WorkerEnv env,
+            @Nullable Path workDir,
+            BiConsumer<String, PluginProcess.Conversation> onProtocol,
+            @Nullable Consumer<String> onPassthrough,
+            long idleTimeoutMs,
+            LearnedHeaps heaps)
+            throws IOException, InterruptedException {
         return PluginProcess.converse(
                 command(javaHome, classpath, jvmFlags, args),
                 env.withJavaHome(javaHome),
@@ -193,7 +248,8 @@ public final class PluginLoader {
                 onProtocol,
                 onPassthrough,
                 false,
-                idleTimeoutMs);
+                idleTimeoutMs,
+                heaps);
     }
 
     /**

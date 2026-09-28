@@ -361,11 +361,20 @@ public final class JvmOptions {
      */
     private static final Set<String> PLANNED_HEAPS = ConcurrentHashMap.newKeySet();
 
-    /** Record an {@code -Xmx} jk chose (a compiler worker's heap) so the budget may lower it. */
+    /**
+     * Record a heap flag jk chose so the budget may lower it. A flag the user wrote is not recorded
+     * here; {@link #userPinnedHeap} treats an unrecorded heap flag as theirs.
+     */
     public static void notePlannedHeap(String flag) {
         if (flag == null || flag.isEmpty()) return;
         String bare = bareJvmArg(flag);
-        if (bare.startsWith("-Xmx") || bare.startsWith("-XX:MaxHeapSize")) PLANNED_HEAPS.add(bare);
+        if (pinsHeap(bare)) PLANNED_HEAPS.add(bare);
+    }
+
+    /** {@link #notePlannedHeap} for every heap flag on a command jk just rewrote. */
+    public static void notePlannedCommand(List<String> command) {
+        if (command == null) return;
+        for (String arg : command) notePlannedHeap(arg);
     }
 
     static void forgetPlannedHeapForTests(String flag) {
@@ -407,7 +416,7 @@ public final class JvmOptions {
     }
 
     /** The user's pin as the log should name it: the flag they wrote, or {@code --ram-percent}. */
-    static String userPinLabel(List<String> command) {
+    public static String userPinLabel(List<String> command) {
         Set<String> planned = autoHeapEnabled() && command != null ? plannedHeapFlags() : Set.of();
         String last = null;
         String lastUnplanned = null;

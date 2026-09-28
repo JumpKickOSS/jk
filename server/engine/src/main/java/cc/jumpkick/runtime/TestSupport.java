@@ -7,6 +7,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -697,18 +698,23 @@ public final class TestSupport {
                 : CacheTree.GENERATED.under(cacheRoot).resolve(cacheTaskId);
         Files.createDirectories(gen);
         Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
-        JavaCompile.Result r = JavaCompile.run(
-                cacheTaskId,
-                PlannerCompile.compileLabel(ctx, taskId),
-                request,
-                BuildIdentity.cacheKeyVersion(),
-                useCache,
-                actionCache.cas(),
-                actionCache,
-                stateDir,
-                workerJar,
-                gen,
-                env);
+        JavaCompile.Result r;
+        try {
+            r = JavaCompile.run(
+                    cacheTaskId,
+                    PlannerCompile.compileLabel(ctx, taskId),
+                    request,
+                    BuildIdentity.cacheKeyVersion(),
+                    useCache,
+                    actionCache.cas(),
+                    actionCache,
+                    stateDir,
+                    workerJar,
+                    gen,
+                    env);
+        } finally {
+            HeapNotes.flush(ctx);
+        }
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         PlannerCompile.warnMovedSources(ctx, r.movedSources());
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.

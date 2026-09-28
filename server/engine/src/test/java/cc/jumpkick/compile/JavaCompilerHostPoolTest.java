@@ -9,6 +9,8 @@ import cc.jumpkick.compile.JavaCompilerHost.Lanes;
 import cc.jumpkick.compile.JavaCompilerHost.Session;
 import cc.jumpkick.compile.JavaCompilerHost.SpecFile;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
@@ -394,6 +396,80 @@ class JavaCompilerHostPoolTest {
                 .hasMessageContaining("1024 MiB")
                 .hasMessageContaining("2048 MiB")
                 .hasMessageContaining("OutOfMemoryError");
+    }
+
+    @Test
+    void a_memory_kill_is_retried_once_at_the_same_heap(@TempDir Path dir) throws Exception {
+        HeapNotes.clear();
+        JobWorkers.open(11L);
+        try {
+            CountDownLatch dies = new CountDownLatch(1);
+            AtomicReference<@Nullable Session> lane = new AtomicReference<>();
+            AtomicInteger grown = new AtomicInteger();
+            Lanes pool = new Lanes(
+                    1,
+                    (owner, index) -> {
+                        Session s = new Session(owner, 11L, index, self -> {
+                            dies.await();
+                            throw new IOException("zinc worker killed for memory");
+                        });
+                        lane.set(s);
+                        return s;
+                    },
+                    ForkedJavac::writeSpec,
+                    (failed, heap) -> grown.incrementAndGet());
+            long heap = 512L << 20;
+            CompileWork w = CompileWork.compile(request(dir, "a").withLabel("g:app compile-java"), heap);
+            pool.enqueue(w);
+            List<String> sent = new ArrayList<>();
+            Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
+                    .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
+            awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
+            pump.join(TimeUnit.SECONDS.toMillis(10));
+            dies.countDown();
+            awaitTrue(() -> w.revived, "the item is tried again at the same heap");
+            assertThat(HeapNotes.drain())
+                    .anyMatch(line -> line.contains("killed for memory") && line.contains("512 MiB"));
+            assertThat(grown).hasValue(0);
+        } finally {
+            HeapNotes.clear();
+            JobWorkers.close();
+        }
+    }
+
+    @Test
+    void a_pinned_heap_that_runs_out_is_not_retried(@TempDir Path dir) throws Exception {
+        CountDownLatch dies = new CountDownLatch(1);
+        AtomicReference<@Nullable Session> lane = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> {
+                    Session s = new Session(owner, 12L, index, self -> {
+                        dies.await();
+                        self.output("Terminating due to java.lang.OutOfMemoryError: Java heap space");
+                        throw new IOException("zinc worker exited with status 3");
+                    });
+                    lane.set(s);
+                    return s;
+                },
+                ForkedJavac::writeSpec,
+                (failed, heap) -> {
+                    throw new AssertionError("a pinned heap is not grown");
+                });
+        CompileWork w = CompileWork.compile(request(dir, "a").withLabel("g:app compile-java"), null);
+        pool.enqueue(w);
+        List<String> sent = new ArrayList<>();
+        Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
+                .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
+        awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
+        pump.join(TimeUnit.SECONDS.toMillis(10));
+        dies.countDown();
+        awaitTrue(w.compile::isDone, "the pinned exhaustion is the failure");
+        assertThatThrownBy(w.compile::join)
+                .cause()
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("pinned heap")
+                .hasMessageContaining("g:app compile-java");
     }
 
     @Test

@@ -246,7 +246,12 @@ public final class JobWorkers {
 
     /** As {@link #start(ProcessBuilder)}, taking the lease from {@code leases}. */
     public static Process start(ProcessBuilder pb, WorkerLeases.Ledger leases) throws IOException {
-        return launch(pb, true, leases, JvmOptions.HeapChoice.inspect(pb.command()));
+        return start(pb, leases, LearnedHeaps.engine());
+    }
+
+    /** As {@link #start(ProcessBuilder, WorkerLeases.Ledger)}, recording peaks on {@code heaps}. */
+    public static Process start(ProcessBuilder pb, WorkerLeases.Ledger leases, LearnedHeaps heaps) throws IOException {
+        return launch(pb, true, leases, JvmOptions.HeapChoice.inspect(pb.command()), heaps);
     }
 
     /**
@@ -254,7 +259,13 @@ public final class JobWorkers {
      * the flags.
      */
     public static Process start(ProcessBuilder pb, JvmOptions.HeapChoice choice) throws IOException {
-        return launch(pb, true, WorkerLeases.engine(), choice);
+        return start(pb, choice, LearnedHeaps.engine());
+    }
+
+    /** As {@link #start(ProcessBuilder, JvmOptions.HeapChoice)}, recording peaks on {@code heaps}. */
+    public static Process start(ProcessBuilder pb, JvmOptions.HeapChoice choice, LearnedHeaps heaps)
+            throws IOException {
+        return launch(pb, true, WorkerLeases.engine(), choice, heaps);
     }
 
     /**
@@ -262,11 +273,16 @@ public final class JobWorkers {
      * trainer outlive the request that spawned them; they are still contained.
      */
     public static Process startDetached(ProcessBuilder pb) throws IOException {
-        return launch(pb, false, WorkerLeases.engine(), JvmOptions.HeapChoice.inspect(pb.command()));
+        return launch(
+                pb, false, WorkerLeases.engine(), JvmOptions.HeapChoice.inspect(pb.command()), LearnedHeaps.engine());
     }
 
     private static Process launch(
-            ProcessBuilder pb, boolean track, WorkerLeases.Ledger leases, JvmOptions.HeapChoice choice)
+            ProcessBuilder pb,
+            boolean track,
+            WorkerLeases.Ledger leases,
+            JvmOptions.HeapChoice choice,
+            LearnedHeaps heaps)
             throws IOException {
         Long request = track ? CURRENT.get() : null;
         WorkerLeases.Grant grant;
@@ -278,9 +294,8 @@ public final class JobWorkers {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("cancelled while waiting for memory");
         }
-        List<String> command = launchCommand(pb.command(), grant);
-        if (command != pb.command()) {
-            pb.command(command);
+        List<String> sized = launchCommand(pb.command(), grant);
+        if (sized != pb.command()) {
             Log.info("jk engine: lowered -Xmx to " + WorkerLeases.format(grant.xmxBytes()) + " so the worker fits the "
                     + WorkerLeases.format(leases.capacityBytes()) + " budget");
         } else if (grant.userPinned() && grant.overBudget()) {
@@ -288,17 +303,25 @@ public final class JobWorkers {
             Log.info("jk engine: leaving pinned " + pin + " unchanged; leasing the whole "
                     + WorkerLeases.format(leases.capacityBytes()) + " budget");
         }
+        WorkerGc.Watch gc = WorkerGc.watch(sized, choice, heaps);
+        List<String> command = gc.command();
+        if (command != pb.command()) pb.command(command);
         Process process;
         try {
             process = pb.start();
         } catch (IOException | RuntimeException e) {
             grant.close();
+            gc.finish();
             throw e;
         }
         // Released when the process is gone, including a crash or a kill. onExit runs if it has
-        // already exited.
-        process.onExit().whenComplete((code, error) -> grant.close());
+        // already exited. The GC log is read after the process has flushed it.
+        process.onExit().whenComplete((code, error) -> {
+            grant.close();
+            gc.finish();
+        });
         WorkerContainment.contain(process);
+        gc.observe(process);
         if (track) register(process);
         return process;
     }
