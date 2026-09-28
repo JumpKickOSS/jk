@@ -87,8 +87,8 @@ which a test holds to the served list. Ask for every card with `tools/list` para
 `{"extended": true}`, or set `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`) and restart the engine.
 
 **Binding.** `dir` is the project root. An unbound connection is bound by the **first call that
-carries `dir`** — that one result says `bound <dir>` (text and `structuredContent.bound`) — and
-later calls on that connection may omit it. **`bind`** switches. The bind is the connection's
+carries `dir`**, and later calls on that connection may omit it. The reply is the tool's own
+result; it does not announce the bind. **`bind`** switches. The bind is the connection's
 alone (`Mcp-Session-Id`): two agents on one engine each keep their own, every tool and `jk://`
 resource answers for the caller's, and there is no engine-wide default one agent could re-target
 for another. A client that sends no session id has no bind — it passes `dir` on each call, and
