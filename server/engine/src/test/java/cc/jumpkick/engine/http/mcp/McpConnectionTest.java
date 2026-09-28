@@ -116,19 +116,19 @@ class McpConnectionTest {
     }
 
     @Test
-    void the_first_call_that_carries_dir_binds_the_connection_and_says_so_once() {
+    void the_first_call_that_carries_dir_binds_the_connection_without_saying_so() {
         String id = initialize("claude-code");
 
-        // Unbound connection, a read that carries dir: the read runs, and the result says it bound.
+        // Unbound connection, a read that carries dir: the read runs, and the reply is only that read.
         Map<String, Object> first = call(id, "run", "{\"run\":\"latest\",\"dir\":\"/ws\"}");
-        assertThat(object(first, "structuredContent").get("bound")).isEqualTo("/ws");
-        assertThat(text(first)).startsWith("bound /ws (later calls may omit dir)\n");
+        assertThat(object(first, "structuredContent")).doesNotContainKey("bound");
+        assertThat(text(first)).isEqualTo("no matching run\n");
 
-        // Bound: the next call omits dir and still targets /ws, with no announcement.
+        // Bound: the next call omits dir and still targets /ws.
         Map<String, Object> second = call(id, "run", "{\"kind\":\"build\",\"wait\":false}");
         assertThat(specs.getLast().dir()).isEqualTo("/ws");
         assertThat(object(second, "structuredContent")).doesNotContainKey("bound");
-        assertThat(text(second)).doesNotStartWith("bound");
+        assertThat(text(second)).doesNotContain("later calls may omit dir");
 
         // A dir on a later call is that call's target only; the bind stays.
         call(id, "run", "{\"kind\":\"build\",\"wait\":false,\"dir\":\"/elsewhere\"}");
@@ -166,7 +166,8 @@ class McpConnectionTest {
         // An extended tool binds the same way: a direct call carrying dir on a fresh connection.
         String c = initialize("cursor");
         Map<String, Object> viaCatalog = call(c, "history", "{\"dir\":\"/ws-c\"}");
-        assertThat(object(viaCatalog, "structuredContent").get("bound")).isEqualTo("/ws-c");
+        assertThat(object(viaCatalog, "structuredContent")).doesNotContainKey("bound");
+        assertThat(text(viaCatalog)).doesNotContain("later calls may omit dir");
         call(c, "run", "{\"kind\":\"build\",\"wait\":false}");
         assertThat(specs.getLast().dir()).isEqualTo("/ws-c");
     }
