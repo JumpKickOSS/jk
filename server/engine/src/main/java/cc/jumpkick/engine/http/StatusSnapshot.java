@@ -87,6 +87,8 @@ public record StatusSnapshot(
         long workerBudgetBytes,
         /** Bytes held by leases right now; {@code -1} when the engine did not report. */
         long workerLeasedBytes,
+        /** Bytes of those leases above {@link #workerBudgetBytes}; {@code 0} when the reserved total fits. */
+        long workerOverbookedBytes,
         /** Forks waiting for a lease. */
         int workerQueued,
         /**
@@ -160,6 +162,7 @@ public record StatusSnapshot(
                 -1L,
                 -1L,
                 -1L,
+                0L,
                 0,
                 jobs);
     }
@@ -217,6 +220,7 @@ public record StatusSnapshot(
                 -1L,
                 -1L,
                 -1L,
+                0L,
                 0,
                 List.of());
     }
@@ -312,6 +316,7 @@ public record StatusSnapshot(
         m.put("workerMemoryMax", workerMemoryMax);
         m.put("workerBudgetBytes", workerBudgetBytes);
         m.put("workerLeasedBytes", workerLeasedBytes);
+        m.put("workerOverbookedBytes", workerOverbookedBytes);
         m.put("workerQueued", workerQueued);
         m.put("jobs", jobs);
         return m;

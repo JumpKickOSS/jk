@@ -25,8 +25,7 @@ class EngineEnvironmentTest {
             "MAVEN_OPTS",
             "GRADLE_OPTS",
             "AWS_SECRET_ACCESS_KEY",
-            "GITHUB_TOKEN",
-            "CI"
+            "GITHUB_TOKEN"
         }) {
             assertThat(EngineEnvironment.inherited(poison, false)).as(poison).isFalse();
         }
@@ -63,7 +62,9 @@ class EngineEnvironmentTest {
             "JK_REPO_NEXUS_TOKEN",
             "JK_ENGINE_TRANSPORT",
             "JK_RESOLVE_TIMEOUT_MS",
-            "JK_STORE_DIR"
+            "JK_STORE_DIR",
+            "JK_OVERBOOK",
+            "CI"
         }) {
             assertThat(EngineEnvironment.inherited(needed, false)).as(needed).isTrue();
         }
