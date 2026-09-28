@@ -240,6 +240,7 @@ public final class LiveVitals implements AutoCloseable {
             String engineEpoch,
             long workerBudgetMib,
             long workerLeasedMib,
+            long workerOverbookedMib,
             int workerQueued,
             List<Map<String, Object>> jobs) {
 
@@ -261,6 +262,7 @@ public final class LiveVitals implements AutoCloseable {
                     s.engineEpoch() == null ? "" : s.engineEpoch(),
                     mib(s.workerBudgetBytes()),
                     mib(s.workerLeasedBytes()),
+                    mib(s.workerOverbookedBytes()),
                     s.workerQueued(),
                     s.jobs());
         }

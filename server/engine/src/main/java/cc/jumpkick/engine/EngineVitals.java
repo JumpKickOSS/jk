@@ -74,6 +74,7 @@ public final class EngineVitals {
                 containment.maxBytes(),
                 workers.budgetBytes(),
                 workers.leasedBytes(),
+                workers.overbookedBytes(),
                 workers.queued(),
                 jobs.get());
     }

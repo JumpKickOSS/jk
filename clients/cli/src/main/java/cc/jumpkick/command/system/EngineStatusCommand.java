@@ -118,7 +118,8 @@ public final class EngineStatusCommand implements CliCommand {
         }
         String containment = describeContainment(s.containment(), s.containmentReason(), s.workerMemoryMax());
         if (containment != null) detail("Containment", containment);
-        String workers = describeWorkers(s.workerBudgetBytes(), s.workerLeasedBytes(), s.workerQueued());
+        String workers = describeWorkers(
+                s.workerBudgetBytes(), s.workerLeasedBytes(), s.workerOverbookedBytes(), s.workerQueued());
         if (workers != null) detail("Workers", workers);
         heapDumpRow(paths);
         String memory = formatMemory(s);
@@ -285,6 +286,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("workerMemoryMax", s.workerMemoryMax())
                 .number("workerBudgetBytes", s.workerBudgetBytes())
                 .number("workerLeasedBytes", s.workerLeasedBytes())
+                .number("workerOverbookedBytes", s.workerOverbookedBytes())
                 .number("workerQueued", s.workerQueued())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
@@ -371,13 +373,16 @@ public final class EngineStatusCommand implements CliCommand {
     }
 
     /**
-     * {@code 13.5 GiB budget, 6.2 GiB leased, 1 queued}. Null when the engine did not report a
-     * budget.
+     * {@code 13.5 GiB budget, 6.2 GiB leased, 1 queued}, or with reservations past the budget
+     * {@code 13.5 GiB budget, 14.2 GiB leased (700 MiB overbooked), 1 queued}. Null when the engine
+     * did not report a budget.
      */
-    static @Nullable String describeWorkers(long budgetBytes, long leasedBytes, int queued) {
+    static @Nullable String describeWorkers(long budgetBytes, long leasedBytes, long overbookedBytes, int queued) {
         if (budgetBytes < 0) return null;
         long leased = leasedBytes < 0 ? 0 : leasedBytes;
-        return bytes(budgetBytes) + " budget, " + bytes(leased) + " leased, " + Math.max(0, queued) + " queued";
+        String line = bytes(budgetBytes) + " budget, " + bytes(leased) + " leased";
+        if (overbookedBytes > 0) line += " (" + bytes(overbookedBytes) + " overbooked)";
+        return line + ", " + Math.max(0, queued) + " queued";
     }
 
     /** Whole mebibytes under 1 GiB, one decimal gibibyte at or above. */

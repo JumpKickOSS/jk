@@ -86,6 +86,8 @@ public final class EngineProbe {
             long workerBudgetBytes,
             /** Bytes held by worker leases; {@code -1} when the engine did not report. */
             long workerLeasedBytes,
+            /** Bytes of those leases above the budget; {@code 0} when the reserved total fits or was not reported. */
+            long workerOverbookedBytes,
             /** Forks waiting for a worker lease. */
             int workerQueued,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
@@ -156,6 +158,7 @@ public final class EngineProbe {
                     -1L,
                     -1L,
                     -1L,
+                    0L,
                     0,
                     jobs);
         }
@@ -306,6 +309,7 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "workerMemoryMax", -1),
                     Jsonl.longValue(ack, "workerBudgetBytes", -1),
                     Jsonl.longValue(ack, "workerLeasedBytes", -1),
+                    Jsonl.longValue(ack, "workerOverbookedBytes", 0),
                     Jsonl.intValue(ack, "workerQueued", 0),
                     Job.decodeAll(ack)));
         } catch (IOException e) {
