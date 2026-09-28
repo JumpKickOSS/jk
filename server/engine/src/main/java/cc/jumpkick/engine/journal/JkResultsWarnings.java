@@ -41,13 +41,13 @@ final class JkResultsWarnings {
         return "memory-wait".equals(code) || "heap-retry".equals(code);
     }
 
-    /** One memory-wait per step. Distinct heap-retry lines on a step all stay. */
+    /** One memory-wait per module and step. Distinct heap-retry lines on a step all stay. */
     private static List<BuildRecord.Diag> oncePerStep(List<BuildRecord.Diag> memory) {
         List<BuildRecord.Diag> out = new ArrayList<>();
         List<String> waits = new ArrayList<>();
         for (BuildRecord.Diag d : memory) {
             if ("memory-wait".equals(d.code())) {
-                String step = d.step() == null ? "" : d.step();
+                String step = (d.dir() == null ? "" : d.dir()) + "\0" + (d.step() == null ? "" : d.step());
                 if (waits.contains(step)) continue;
                 waits.add(step);
             }
@@ -58,6 +58,8 @@ final class JkResultsWarnings {
 
     private static void line(StringBuilder sb, BuildRecord r, BuildRecord.Diag d) {
         sb.append("- ");
+        String module = JkResultsMarkdown.warningModule(r, d);
+        if (!module.isEmpty()) sb.append('`').append(module).append("` ");
         String step = JkResultsMarkdown.some(d.step());
         if (step != null) sb.append('`').append(step).append("` ");
         String loc = JkResultsMarkdown.locus(d, r.dir());
