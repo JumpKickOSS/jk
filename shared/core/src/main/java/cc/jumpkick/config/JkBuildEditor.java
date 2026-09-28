@@ -52,8 +52,9 @@ public final class JkBuildEditor {
     private JkBuildEditor() {}
 
     /**
-     * Append a dependency to the scope section (creates the section if missing). The entry is
-     * spelled by {@link #renderDependencyEntry} against the bundled catalog.
+     * Add a dependency to the scope section (creates the section if missing). The entry is spelled
+     * by {@link #renderDependencyEntry} against the bundled catalog. A table whose keys are already
+     * in the manifest writer's order takes the new key in that order; any other table appends it.
      *
      * @param versionLiteral the selector as it should appear in the file: {@code "1.2.3"} pins,
      *     {@code "^1.2.3"} floats
@@ -166,7 +167,12 @@ public final class JkBuildEditor {
         return t.startsWith("=") ? t.substring(1).strip() : t;
     }
 
-    /** Insert {@code entryLine} flush at the bottom of the scope's table, creating the table at EOF when absent. */
+    /**
+     * Insert {@code entryLine} into the scope's table, creating the table at EOF when absent.
+     * Keys already in the manifest writer's order (String order, the order a full rewrite emits)
+     * take the new key among them. A table that is not in that order appends, and so does
+     * {@code [platform-dependencies]}: its rows stay in declaration order, because the first BOM wins.
+     */
     private static List<String> insertEntry(List<String> lines, Scope scope, String entryLine) {
         int header = findScopeHeader(lines, scope);
         if (header < 0) {
@@ -175,12 +181,40 @@ public final class JkBuildEditor {
             lines.add(entryLine);
             return lines;
         }
-        int insertAt = endOfTable(lines, header);
-        while (insertAt > header + 1 && lines.get(insertAt - 1).isBlank()) {
-            insertAt--;
+        int end = endOfTable(lines, header);
+        Matcher fresh = DEP_ENTRY.matcher(entryLine);
+        int sorted = fresh.matches() ? sortedInsertAt(lines, header, end, fresh.group(2), scope) : -1;
+        int insertAt = sorted;
+        if (insertAt < 0) {
+            insertAt = end;
+            while (insertAt > header + 1 && lines.get(insertAt - 1).isBlank()) insertAt--;
         }
         lines.add(insertAt, entryLine);
         return lines;
+    }
+
+    /**
+     * Line index for {@code newKey} when the table's keys are strictly increasing, or {@code -1}
+     * to append. A comment or blank line stays with the entry that follows it.
+     */
+    private static int sortedInsertAt(List<String> lines, int header, int end, String newKey, Scope scope) {
+        if (scope == Scope.PLATFORM) return -1;
+        int prev = -1;
+        String prevKey = null;
+        int slot = -1;
+        for (int i = header + 1; i < end; i++) {
+            String line = lines.get(i);
+            if (line.isBlank() || line.stripLeading().startsWith("#")) continue;
+            Matcher m = DEP_ENTRY.matcher(line);
+            if (!m.matches()) return -1;
+            String key = m.group(2);
+            if (prevKey != null && prevKey.compareTo(key) >= 0) return -1;
+            if (slot < 0 && key.compareTo(newKey) > 0) slot = (prev < 0 ? header : prev) + 1;
+            prev = i;
+            prevKey = key;
+        }
+        if (prev < 0) return -1;
+        return slot >= 0 ? slot : prev + 1;
     }
 
     /**

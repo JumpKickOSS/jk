@@ -147,6 +147,61 @@ class JkBuildEditorTest {
     }
 
     @Test
+    void add_inserts_into_a_sorted_table_and_appends_when_it_is_not() {
+        String sorted = """
+                [dependencies]
+                alpha = "com.acme:alpha:1.0"
+                lib.workspace = true
+
+                # zeta
+                zeta = "com.acme:zeta:1.0"
+                """;
+        assertThat(JkBuildEditor.addDependency(sorted, Scope.MAIN, "mid", "com.acme", "mid", "1.0"))
+                .isEqualTo("""
+                [dependencies]
+                alpha = "com.acme:alpha:1.0"
+                lib.workspace = true
+                mid = "com.acme:mid:1.0"
+
+                # zeta
+                zeta = "com.acme:zeta:1.0"
+                """);
+
+        String unsorted = """
+                [dependencies]
+                zeta = "com.acme:zeta:1.0"
+                # stays
+                alpha = "com.acme:alpha:1.0"
+                """;
+        assertThat(JkBuildEditor.addDependency(unsorted, Scope.MAIN, "mid", "com.acme", "mid", "1.0"))
+                .isEqualTo("""
+                [dependencies]
+                zeta = "com.acme:zeta:1.0"
+                # stays
+                alpha = "com.acme:alpha:1.0"
+                mid = "com.acme:mid:1.0"
+                """);
+    }
+
+    /** Platform rows stay in declaration order: the first BOM wins, so a sorted table still appends. */
+    @Test
+    void add_appends_a_platform_row_even_when_the_table_is_sorted() {
+        String start = """
+                [platform-dependencies]
+                jackson = "com.fasterxml.jackson:jackson-bom:2.18.2"
+                spring = "org.springframework.boot:spring-boot-dependencies:3.4.5"
+                """;
+        assertThat(JkBuildEditor.addDependency(
+                        start, Scope.PLATFORM, "micrometer", "io.micrometer", "micrometer-bom", "1.14.1"))
+                .isEqualTo("""
+                [platform-dependencies]
+                jackson = "com.fasterxml.jackson:jackson-bom:2.18.2"
+                spring = "org.springframework.boot:spring-boot-dependencies:3.4.5"
+                micrometer = "io.micrometer:micrometer-bom:1.14.1"
+                """);
+    }
+
+    @Test
     void add_to_existing_scope_appends_under_header() {
         String start = BASE + """
 
