@@ -19,6 +19,7 @@ import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
+import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -527,6 +528,7 @@ public final class PlannerCompile {
                         ctx.require(PROJECT).build().env(),
                         in.dir(),
                         ctx.require(LAYOUT).moduleTargetDir()));
+        HeapNotes.flush(ctx);
         ctx.put(ACTION_KEY, r.actionKey());
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         reportJavacResult(ctx, request, r);

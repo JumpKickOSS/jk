@@ -111,6 +111,7 @@ public final class JkResultsAgent {
         List<Locus> loci = loci(record);
         StringBuilder sb = new StringBuilder();
         sb.append(headline(record, loci, tests)).append('\n');
+        appendRetries(sb, record);
         if (record.success() && !record.cancelled()) return sb.toString();
         sb.append(body(record, loci, tests, opt));
         String delta = deltaLine(record);
@@ -125,6 +126,18 @@ public final class JkResultsAgent {
             int limit) {
         static Options summary() {
             return new Options(true, false, null, MAX_PROBLEMS);
+        }
+    }
+
+    /** Heap retries, one line each, including on a green run. */
+    private static void appendRetries(StringBuilder sb, BuildRecord record) {
+        for (BuildRecord.Diag d : record.diagnostics()) {
+            if (d == null || d.message() == null || d.message().isBlank()) continue;
+            if (!"heap-retry".equals(d.code())) continue;
+            String line = d.message();
+            int nl = line.indexOf('\n');
+            if (nl >= 0) line = line.substring(0, nl);
+            sb.append(line.strip()).append('\n');
         }
     }
 

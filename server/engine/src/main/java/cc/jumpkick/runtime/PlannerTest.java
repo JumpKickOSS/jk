@@ -11,6 +11,7 @@ import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
@@ -625,6 +626,7 @@ public final class PlannerTest {
                             throw e;
                         }
                     } finally {
+                        HeapNotes.flush(ctx);
                         if (gated) TEST_GATE.release();
                     }
                     if (jacoco != null && coverageExec != null) {

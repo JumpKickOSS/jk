@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.MemoryProbe;
+import cc.jumpkick.engine.plugin.WorkerFate;
+import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -84,7 +90,28 @@ final class WorkerHeap {
         if (!JvmOptions.autoHeapEnabled()) return null;
         HeapPlan.Plan plan = JvmOptions.processHeapPlan();
         long floor = plan != null ? plan.xmxBytes() : 0L;
-        return sizeBytes(demandBytes(req), floor, ceilingBytes());
+        long estimated = sizeBytes(demandBytes(req), floor, ceilingBytes());
+        return LearnedHeaps.engine()
+                .choose(
+                        SessionContext.current().workingDir(),
+                        moduleOf(req.label()),
+                        kindOf(req.label()),
+                        JvmOptions.hostFeature(ForkedJavac.workerJavaHome(req)),
+                        estimated);
+    }
+
+    /** {@code group:name} from a compile label, or empty when the label does not carry one. */
+    static String moduleOf(String label) {
+        if (label == null || label.isBlank()) return "";
+        int sp = label.lastIndexOf(' ');
+        String head = (sp < 0 ? label : label.substring(0, sp)).trim();
+        return head.indexOf(':') > 0 ? head : "";
+    }
+
+    /** {@link HeapScope#JAVA_TEST_COMPILE} when the label names a test compile, else java-compile. */
+    static String kindOf(String label) {
+        if (label != null && label.contains(TaskNames.COMPILE_TEST)) return HeapScope.JAVA_TEST_COMPILE;
+        return HeapScope.JAVA_COMPILE;
     }
 
     /** The most a single worker on this host can have: a lone worker's share of the memory plan. */
@@ -94,17 +121,17 @@ final class WorkerHeap {
     }
 
     /**
-     * Twice {@code heapBytes}, capped at the {@linkplain #ceilingBytes() ceiling}; {@code null} when
-     * the cap leaves no room to grow, which is the caller's cue to fail rather than retry.
+     * Twice {@code heapBytes}, clamped so the new lease fits the worker budget; {@code null} when
+     * the budget leaves no room to grow, which is the caller's cue to fail rather than retry.
      */
     static @Nullable Long grown(long heapBytes) {
-        long bigger = Math.min(ceilingBytes(), heapBytes * 2);
+        long bigger = LearnedHeaps.doubled(heapBytes, WorkerLeases.engine().capacityBytes());
         return bigger > heapBytes ? bigger : null;
     }
 
-    /** True when {@code output} carries the JVM's out-of-memory banner or a stack trace naming the error. */
+    /** True when {@code output} names an own-heap exhaustion, including the JVM's terminating banner. */
     static boolean outOfMemory(String output) {
-        return output.contains("java.lang.OutOfMemoryError");
+        return WorkerFate.mentionsHeap(output) || (output != null && output.contains("java.lang.OutOfMemoryError"));
     }
 
     /**
@@ -122,9 +149,23 @@ final class WorkerHeap {
         } else {
             msg.append(", the most this host can give one worker");
         }
-        msg.append("; pin a larger heap with [jvm] args = [\"-Xmx...\"] or free memory on the host");
+        msg.append("; raise it with [jvm] args = [\"-Xmx...\"] or [test] jvm-args = [\"-Xmx...\"]");
         if (!output.isBlank()) msg.append("\n--- zinc worker output ---\n").append(output);
         return new IOException(msg.toString());
+    }
+
+    /**
+     * The failure a compile reports when the user pinned {@code pin} and that heap ran out. The pin
+     * is not changed and the compile is not retried.
+     */
+    static IOException pinned(String label, String pin, String output) {
+        String what = label.isBlank() ? "the compiler worker" : "the compiler worker for " + label;
+        String named = pin == null || pin.isBlank() ? "heap" : pin;
+        String msg = what + " ran out of the pinned heap " + named
+                + "; that setting is the worker's heap — raise it with [jvm] args = [\"-Xmx...\"]"
+                + " or [test] jvm-args = [\"-Xmx...\"]";
+        if (output != null && !output.isBlank()) msg = msg + "\n--- zinc worker output ---\n" + output;
+        return new IOException(msg);
     }
 
     static long mib(long bytes) {

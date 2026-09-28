@@ -88,15 +88,32 @@ public final class TestLauncherFailure extends RuntimeException {
     private final List<String> command;
 
     private TestLauncherFailure(String moduleLabel, String phase, int exit, String output, List<String> command) {
-        super(phase + " "
-                + WorkerContainment.failure(exit, "exited " + exit + signalSuffix(exit))
-                + " before any test ran"
-                + headlineSuffix(output));
+        this(moduleLabel, phase, exit, output, command, null);
+    }
+
+    /**
+     * {@code message} replaces the exit headline when a heap retry already classified the stop.
+     * {@code null} keeps the headline built from the exit.
+     */
+    private TestLauncherFailure(
+            String moduleLabel, String phase, int exit, String output, List<String> command, @Nullable String message) {
+        super(
+                message != null
+                        ? message
+                        : phase + " "
+                                + WorkerContainment.failure(exit, "exited " + exit + signalSuffix(exit))
+                                + " before any test ran"
+                                + headlineSuffix(output));
         this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
         this.phase = phase;
         this.exit = exit;
         this.output = output == null ? "" : output;
         this.command = List.copyOf(command);
+    }
+
+    /** A planned suite ran out of heap, including after the one retry. {@code message} is the whole report. */
+    static TestLauncherFailure heap(String moduleLabel, int exit, String output, List<String> command, String message) {
+        return new TestLauncherFailure(moduleLabel, "test runner", exit, output, command, message);
     }
 
     /** The list-only discovery fork died with nothing named; the command it was started with is not at hand. */

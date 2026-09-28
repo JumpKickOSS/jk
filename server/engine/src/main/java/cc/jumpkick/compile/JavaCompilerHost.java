@@ -3,14 +3,19 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.config.AvailableCpus;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapPlan;
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerFate;
+import cc.jumpkick.engine.plugin.WorkerGc;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
@@ -21,6 +26,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -331,6 +337,7 @@ public final class JavaCompilerHost {
         private final int budget;
         private final boolean engineWide;
         private final WorkerLeases.Ledger leases;
+        private final LearnedHeaps heaps;
         private final LaneStarter starter;
         final SpecFile specs;
         final HeapRetry retry;
@@ -364,11 +371,7 @@ public final class JavaCompilerHost {
             this(budget, starter, specs, retry, false);
         }
 
-        /**
-         * {@code engineWide} counts the lane against the engine budget and exits it when that
-         * budget, or a waiting fork, needs it back. {@code leases} is the queue that waiting fork
-         * is counted on; production passes {@link WorkerLeases#engine()}.
-         */
+        /** Leases from {@code leases} and records peaks on {@link LearnedHeaps#engine()}. */
         Lanes(
                 int budget,
                 LaneStarter starter,
@@ -376,9 +379,26 @@ public final class JavaCompilerHost {
                 HeapRetry retry,
                 boolean engineWide,
                 WorkerLeases.Ledger leases) {
+            this(budget, starter, specs, retry, engineWide, leases, LearnedHeaps.engine());
+        }
+
+        /**
+         * {@code engineWide} counts the lane against the engine budget and exits it when that
+         * budget, or a waiting fork, needs it back. {@code leases} is the queue that waiting fork
+         * is counted on; production passes {@link WorkerLeases#engine()}. Peaks land on {@code heaps}.
+         */
+        Lanes(
+                int budget,
+                LaneStarter starter,
+                SpecFile specs,
+                HeapRetry retry,
+                boolean engineWide,
+                WorkerLeases.Ledger leases,
+                LearnedHeaps heaps) {
             this.budget = budget;
             this.engineWide = engineWide;
             this.leases = leases;
+            this.heaps = heaps;
             this.starter = starter;
             this.specs = specs;
             this.retry = retry;
@@ -601,6 +621,17 @@ public final class JavaCompilerHost {
         /** Set when this lane leaves on purpose so another fork can have its memory. */
         volatile boolean shedding;
 
+        /** GC log of this lane's JVM, parsed once when the process exits. Null for a test lane. */
+        private @Nullable Path gcLog;
+
+        /** Modules this lane compiled, each recorded with the process peak. */
+        private final Set<HeapScope.Key> learned = new LinkedHashSet<>();
+
+        private @Nullable Path learnedHome;
+
+        /** Set by {@link #converse} for the death {@link #settle} is about to read. */
+        private WorkerFate.@Nullable Cause pendingCause;
+
         Session(Lanes owner, long id, int lane, LaneBody body) {
             this.owner = owner;
             this.requestId = id;
@@ -665,15 +696,83 @@ public final class JavaCompilerHost {
                                     ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)),
                     heapBytes,
                     template.jvmArgs());
+            learnedHome = hostJavaHome;
+            if (heapBytes != null) {
+                try {
+                    gcLog = WorkerGc.create();
+                    jvmFlags.add(WorkerGc.flag(gcLog));
+                } catch (IOException e) {
+                    gcLog = null;
+                }
+            }
             List<String> command = PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("--pull"));
-            int exit = new PluginClient(ForkedJavac.PREFIX)
-                    .passthrough(this::output)
-                    .converseNoSlot(
-                            command, template.env().withJavaHome(hostJavaHome), (json, convo) -> onLine(json, convo));
+            int exit;
+            try {
+                exit = new PluginClient(ForkedJavac.PREFIX)
+                        .passthrough(this::output)
+                        .converseNoSlot(
+                                command,
+                                template.env().withJavaHome(hostJavaHome),
+                                (json, convo) -> onLine(json, convo));
+            } finally {
+                recordLearned();
+            }
             // A lane that left because another fork needed its memory has no compile in flight.
             // The process exit is the shutdown we asked for, even when the kill lands first.
             if (exit != 0 && !(shedding && inflight.get() == null)) {
-                throw new IOException("zinc worker " + WorkerContainment.failure(exit, "exited with status " + exit));
+                String output = transcript.render();
+                pendingCause = WorkerFate.classify(exit, output);
+                String how = pendingCause == WorkerFate.Cause.KILLED_FOR_MEMORY
+                        ? WorkerContainment.KILLED_FOR_MEMORY
+                        : "exited with status " + exit;
+                throw new IOException("zinc worker " + how);
+            }
+        }
+
+        /** The lane filled {@code heapBytes}. Remember it against every module this process compiled. */
+        private void noteFilled(long heapBytes) {
+            List<HeapScope.Key> keys;
+            synchronized (learned) {
+                keys = List.copyOf(learned);
+            }
+            for (HeapScope.Key key : keys) owner.heaps.note(key, heapBytes);
+        }
+
+        /** File this lane's peak under every module it compiled. The log is deleted afterwards. */
+        private void recordLearned() {
+            Path log = gcLog;
+            gcLog = null;
+            if (log == null) return;
+            try {
+                long peak = WorkerGc.peak(log);
+                if (peak > 0) {
+                    List<HeapScope.Key> keys;
+                    synchronized (learned) {
+                        keys = List.copyOf(learned);
+                    }
+                    for (HeapScope.Key key : keys) owner.heaps.note(key, peak);
+                }
+            } finally {
+                try {
+                    Files.deleteIfExists(log);
+                } catch (IOException ignored) {
+                    // the temp log is advisory
+                }
+            }
+        }
+
+        /** Remember {@code work}'s module so the process peak is filed against it. */
+        private void remember(CompileWork work) {
+            if (work == null || work.req == null || work.heapBytes == null || learnedHome == null) return;
+            String module = WorkerHeap.moduleOf(work.req.label());
+            if (module.isBlank()) return;
+            HeapScope.Key key = new HeapScope.Key(
+                    SessionContext.current().workingDir(),
+                    module,
+                    WorkerHeap.kindOf(work.req.label()),
+                    JvmOptions.hostFeature(learnedHome));
+            synchronized (learned) {
+                learned.add(key);
             }
         }
 
@@ -833,6 +932,7 @@ public final class JavaCompilerHost {
                         convo.closeInput();
                         return;
                     }
+                    remember(next);
                     convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
                     return;
                 } catch (IOException e) {
@@ -893,34 +993,86 @@ public final class JavaCompilerHost {
         }
 
         /**
-         * The item the dead worker was compiling. A worker that ran out of heap is answered with a
-         * retry on twice the heap, once. Any other death, while this job is still alive, goes back
-         * on the queue once; the second death fails it with the worker's output attached.
+         * The item the dead worker was compiling. A jk-planned worker that ran out of heap is
+         * answered once on twice the heap. A worker the kernel killed for memory is answered once
+         * on the same heap, after a new lease. A pinned heap is not resized. Any other death, while
+         * this job is still alive, goes back on the queue once; the second death fails it.
          */
         private void settle(CompileWork cur, Throwable e) {
             String output = transcript.render();
+            WorkerFate.Cause cause = causeOf(e, output);
             Long heap = cur.heapBytes;
-            if (heap == null || !WorkerHeap.outOfMemory(output)) {
-                if (!cur.revived && !owner.closing() && !JobWorkers.ended(requestId)) {
-                    cur.revived = true;
-                    cur.clearAttempt();
-                    owner.enqueue(cur);
+            boolean alive = !owner.closing() && !JobWorkers.ended(requestId);
+            if (cause == WorkerFate.Cause.HEAP_EXHAUSTED && heap != null) {
+                noteFilled(heap);
+                String label = cur.req == null ? "" : cur.req.label();
+                if (cur.previousHeapBytes != null) {
+                    fail(cur, WorkerHeap.exhausted(label, cur.previousHeapBytes, heap, output));
                     return;
                 }
-                fail(cur, withWorkerTail(e));
+                Long bigger = WorkerHeap.grown(heap);
+                if (bigger == null) {
+                    fail(cur, WorkerHeap.exhausted(label, heap, null, output));
+                    return;
+                }
+                HeapNotes.note(HeapNotes.line(bigger, heap, false));
+                owner.retry.retry(cur, bigger);
                 return;
             }
-            String label = cur.req == null ? "" : cur.req.label();
-            if (cur.previousHeapBytes != null) {
-                fail(cur, WorkerHeap.exhausted(label, cur.previousHeapBytes, heap, output));
+            if (cause == WorkerFate.Cause.HEAP_EXHAUSTED && heap == null) {
+                String label = cur.req == null ? "" : cur.req.label();
+                String pin = cur.req == null ? "" : pinOf(cur.req);
+                fail(cur, WorkerHeap.pinned(label, pin, output));
                 return;
             }
-            Long bigger = WorkerHeap.grown(heap);
-            if (bigger == null) {
-                fail(cur, WorkerHeap.exhausted(label, heap, null, output));
+            if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY && heap != null && alive && !cur.revived) {
+                HeapNotes.note(HeapNotes.line(heap, heap, true));
+                cur.revived = true;
+                cur.clearAttempt();
+                owner.enqueue(cur);
                 return;
             }
-            owner.retry.retry(cur, bigger);
+            if (!cur.revived && alive) {
+                cur.revived = true;
+                cur.clearAttempt();
+                owner.enqueue(cur);
+                return;
+            }
+            fail(cur, withWorkerTail(e));
+        }
+
+        private static String pinOf(ForkedJavac.Request req) {
+            for (String arg : req.jvmArgs()) {
+                if (JvmOptions.pinsHeap(arg)) return arg;
+            }
+            return JvmOptions.userPinLabel(List.of());
+        }
+
+        /** The death's cause: the lane's own classification, else the output and the message. */
+        private WorkerFate.Cause causeOf(Throwable e, String output) {
+            if (pendingCause != null) {
+                WorkerFate.Cause cause = pendingCause;
+                pendingCause = null;
+                return cause;
+            }
+            String msg = e == null || e.getMessage() == null ? "" : e.getMessage();
+            boolean killed = msg.contains(WorkerContainment.KILLED_FOR_MEMORY);
+            int exit = exitOf(msg);
+            return WorkerFate.classify(exit, output + "\n" + msg, killed);
+        }
+
+        private static int exitOf(String msg) {
+            int at = msg.indexOf("status ");
+            if (at < 0) return 0;
+            String rest = msg.substring(at + "status ".length()).trim();
+            int end = 0;
+            while (end < rest.length() && Character.isDigit(rest.charAt(end))) end++;
+            if (end == 0) return 0;
+            try {
+                return Integer.parseInt(rest.substring(0, end));
+            } catch (NumberFormatException e) {
+                return 0;
+            }
         }
 
         private static void fail(CompileWork w, Throwable cause) {

@@ -7,6 +7,9 @@ import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
@@ -388,6 +391,33 @@ public final class PlannerPlugin {
         return tokens;
     }
 
+    /** Fork the plugin worker under this module's learned-heap key and flush any retry line. */
+    private static void runPluginWorker(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            ActivePlugin active,
+            Path spec,
+            JkBuild project,
+            Path javaHome,
+            AtomicBoolean reported,
+            String step)
+            throws IOException, InterruptedException {
+        HeapScope.Key previous = HeapScope.bind(new HeapScope.Key(
+                in.dir(),
+                project.project().group() + ":" + project.project().name(),
+                HeapScope.PLUGIN,
+                JvmOptions.hostFeature(javaHome)));
+        try {
+            PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, line -> {
+                reported.set(true);
+                forwardStepDiagnostic(ctx, step, line);
+            });
+        } finally {
+            HeapScope.restore(previous);
+            HeapNotes.flush(ctx);
+        }
+    }
+
     /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
@@ -520,10 +550,7 @@ public final class PlannerPlugin {
                                     repositories),
                             toolExtras);
                     try {
-                        PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, line -> {
-                            reported.set(true);
-                            forwardStepDiagnostic(ctx, step.name(), line);
-                        });
+                        runPluginWorker(ctx, in, active, spec, project, javaHome, reported, step.name());
                     } catch (IOException e) {
                         ctx.error(step.name(), Errors.text(e));
                         throw e;

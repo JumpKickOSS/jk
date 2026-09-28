@@ -2,6 +2,8 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -217,18 +219,43 @@ final class PullWorkerPool {
             WorkerEnv env = totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
             command.set(PluginLoader.command(javaHome, classpath, flags, args));
-            return PluginLoader.converse(
-                    javaHome,
-                    classpath,
-                    // N test JVMs run at once → divide the heap cap by N so they fit.
-                    flags,
-                    JUnitLauncher.PROTOCOL_PREFIX,
-                    args,
-                    env,
-                    launcher.workDir(),
-                    handler,
-                    passthrough,
-                    TestWorkerEnv.idleTimeoutMs());
+            HeapScope.Key key = SuiteRetry.key(
+                    SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
+            if (key == null) {
+                return PluginLoader.converse(
+                        javaHome,
+                        classpath,
+                        // N test JVMs run at once → divide the heap cap by N so they fit.
+                        flags,
+                        JUnitLauncher.PROTOCOL_PREFIX,
+                        args,
+                        env,
+                        launcher.workDir(),
+                        handler,
+                        passthrough,
+                        TestWorkerEnv.idleTimeoutMs(),
+                        launcher.heaps());
+            }
+            try {
+                return HeapScope.call(
+                        key,
+                        () -> PluginLoader.converse(
+                                javaHome,
+                                classpath,
+                                flags,
+                                JUnitLauncher.PROTOCOL_PREFIX,
+                                args,
+                                env,
+                                launcher.workDir(),
+                                handler,
+                                passthrough,
+                                TestWorkerEnv.idleTimeoutMs(),
+                                launcher.heaps()));
+            } catch (IOException | InterruptedException | RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IOException(e);
+            }
         } catch (PluginProcess.HandlerFailure e) {
             handlerFailure.set(e.handler());
             listener.onUserOutput(workerId, Objects.requireNonNull(e.getMessage()));

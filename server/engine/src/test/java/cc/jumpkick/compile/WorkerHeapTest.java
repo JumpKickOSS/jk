@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,13 +67,14 @@ class WorkerHeapTest {
     }
 
     @Test
-    void the_retry_heap_is_double_until_the_ceiling_leaves_no_room() {
-        long ceiling = WorkerHeap.ceilingBytes();
-        assertThat(ceiling).isGreaterThan(32L << 20);
-        Long grown = WorkerHeap.grown(ceiling / 4);
-        assertThat(grown).isNotNull().isEqualTo(Math.min(ceiling, ceiling / 4 * 2));
-        assertThat(WorkerHeap.grown(ceiling))
-                .as("at the ceiling there is nothing left to try")
+    void the_retry_heap_is_double_until_the_budget_leaves_no_room() {
+        long budget = WorkerLeases.engine().capacityBytes();
+        long cap = WorkerLeases.clampXmx(Long.MAX_VALUE / 4, budget);
+        assertThat(cap).isGreaterThan(32L << 20);
+        long small = 128 * MIB;
+        assertThat(WorkerHeap.grown(small)).isEqualTo(LearnedHeaps.doubled(small, budget));
+        assertThat(WorkerHeap.grown(cap))
+                .as("at the budget there is nothing left to try")
                 .isNull();
     }
 

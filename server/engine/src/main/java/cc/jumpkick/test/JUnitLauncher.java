@@ -3,12 +3,17 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
@@ -72,6 +77,9 @@ public final class JUnitLauncher {
 
     /** When non-empty, run only these class FQCNs ({@code --affected}). */
     private List<String> classNames = List.of();
+
+    /** Set while a retry runs a subset of classes; {@code null} uses {@link #classNames}. */
+    private @Nullable List<String> onlyClasses;
 
     public JUnitLauncher withClassNames(List<String> names) {
         this.classNames = names == null ? List.of() : List.copyOf(names);
@@ -141,7 +149,7 @@ public final class JUnitLauncher {
      * and the JaCoCo agent on every test-running JVM of a coverage run.
      */
     List<String> jvmFlags(JvmRole role, int concurrency, @Nullable Path tmpDir) {
-        List<String> flags = new ArrayList<>(runnerFlags(concurrency, tmpDir));
+        List<String> flags = new ArrayList<>(runnerFlags(concurrency, tmpDir, role));
         if (role == JvmRole.SUITE && debug != null) flags.add(debug.agentArg());
         if (role != JvmRole.DISCOVERY && coverage != null) flags.add(coverage.agentArg());
         return flags;
@@ -173,6 +181,25 @@ public final class JUnitLauncher {
 
     /** {@code [test] jvm-args}, its system properties and the active profile's {@code jvm-args}. */
     private List<String> jvmArgs = List.of();
+
+    /** JDK the suite JVM is launched with; set for the duration of {@link #run}. */
+    private @Nullable Path launchJavaHome;
+
+    /** Non-null only while a heap retry is re-running an item at this {@code -Xmx}. */
+    private @Nullable Long heapOverride;
+
+    /** Where this launcher reads and records learned heaps. */
+    private LearnedHeaps heaps = LearnedHeaps.engine();
+
+    /** Record and size from {@code heaps} instead of {@link LearnedHeaps#engine()}. */
+    public JUnitLauncher withHeaps(LearnedHeaps heaps) {
+        this.heaps = heaps == null ? LearnedHeaps.engine() : heaps;
+        return this;
+    }
+
+    LearnedHeaps heaps() {
+        return heaps;
+    }
 
     /**
      * Extra flags for every JVM this launcher forks, after jk's own tuning so the module's or a
@@ -207,8 +234,16 @@ public final class JUnitLauncher {
      * table's and the active profile's {@code jvm-args}, the {@code jk.plugin.class} selector for the runner, and any
      * {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
-    private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir) {
-        List<String> flags = new ArrayList<>(JvmOptions.suiteFlags(concurrency));
+    private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir, JvmRole role) {
+        List<String> planned = new ArrayList<>(JvmOptions.suiteFlags(concurrency));
+        if (role != JvmRole.DISCOVERY && SuiteRetry.planned(jvmArgs)) {
+            int jdk = launchJavaHome != null
+                    ? JvmOptions.hostFeature(launchJavaHome)
+                    : Runtime.version().feature();
+            planned = SuiteRetry.tune(
+                    planned, SuiteRetry.project(inferredModuleDir), moduleLabel, jdk, heapOverride, heaps);
+        }
+        List<String> flags = new ArrayList<>(planned);
         // Surefire and Gradle fork test JVMs with assertions on; a Java or Kotlin `assert` in a
         // test is a check the author wrote to run.
         if (assertions) flags.add("-ea");
@@ -510,6 +545,7 @@ public final class JUnitLauncher {
         Objects.requireNonNull(runtimeClasspath, "runtimeClasspath");
         Objects.requireNonNull(cacheRoot, "cacheRoot");
         Objects.requireNonNull(listener, "listener");
+        this.launchJavaHome = javaHome;
         // workers: 0 = auto (Mill-like min(jobs, classes) + heap clamp); ≥1 = explicit.
         if (workers < 0) throw new IllegalArgumentException("workers must be >= 0 (0 = auto)");
         // One debugger, one JVM: a pool would have every shard contend for the same port.
@@ -605,23 +641,185 @@ public final class JUnitLauncher {
         // of surfacing only as "runner exited N".
         var crash = new CaptureBuffer();
         List<String> flags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
-        List<String> args = withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, classNames));
+        List<String> names = onlyClasses != null ? onlyClasses : classNames;
+        List<String> args = withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, names));
         TestSummary result;
         try {
-            int exit = PluginLoader.run(
-                    javaHome, classpath, flags, PROTOCOL_PREFIX, args, testEnv, workDir(), aggregator::accept, line -> {
-                        crash.add(line);
-                        aggregator.userOutput(line);
-                    });
-            result = aggregator.toResult(exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
-        } catch (PluginProcess.HandlerFailure e) {
-            // The parent's own decoder ended the fork: the pool's handler row, not an IOException.
-            listener.onUserOutput(WorkerFailureRow.SINGLE_WORKER, Objects.requireNonNull(e.getMessage()));
-            result = WorkerFailureRow.singleFork(aggregator, moduleLabel, e.handler());
+            result = forkSuite(javaHome, classpath, flags, args, aggregator, crash, listener);
+        } catch (TestLauncherFailure e) {
+            if (heapOverride != null) throw e;
+            result = retryLaunch(javaHome, classpath, flags, listener, e);
         }
+        if (heapOverride == null) result = retrySuite(javaHome, classpath, flags, listener, result);
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir);
         return result;
+    }
+
+    /** One suite JVM. A launcher failure propagates; a handler failure is a summary row. */
+    private TestSummary forkSuite(
+            Path javaHome,
+            String classpath,
+            List<String> flags,
+            List<String> args,
+            ResultAggregator aggregator,
+            CaptureBuffer crash,
+            TestProgressListener listener)
+            throws IOException, InterruptedException {
+        HeapScope.Key key = SuiteRetry.key(
+                SuiteRetry.project(inferredModuleDir),
+                moduleLabel,
+                javaHome != null
+                        ? JvmOptions.hostFeature(javaHome)
+                        : Runtime.version().feature());
+        try {
+            int exit = key == null
+                    ? launch(javaHome, classpath, flags, args, aggregator, crash)
+                    : HeapScope.call(key, () -> launch(javaHome, classpath, flags, args, aggregator, crash));
+            return aggregator.toResult(exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
+        } catch (PluginProcess.HandlerFailure e) {
+            listener.onUserOutput(WorkerFailureRow.SINGLE_WORKER, Objects.requireNonNull(e.getMessage()));
+            return WorkerFailureRow.singleFork(aggregator, moduleLabel, e.handler());
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
+    }
+
+    private int launch(
+            Path javaHome,
+            String classpath,
+            List<String> flags,
+            List<String> args,
+            ResultAggregator aggregator,
+            CaptureBuffer crash)
+            throws IOException, InterruptedException {
+        return PluginLoader.run(
+                javaHome,
+                classpath,
+                flags,
+                PROTOCOL_PREFIX,
+                args,
+                testEnv,
+                workDir(),
+                aggregator::accept,
+                line -> {
+                    crash.add(line);
+                    aggregator.userOutput(line);
+                },
+                heaps);
+    }
+
+    /**
+     * Re-run a suite that died of its own heap or a memory kill, once. {@code flags} is the heap
+     * the first fork used. A pinned heap is reported with the pin named.
+     */
+    private TestSummary retrySuite(
+            Path javaHome, String classpath, List<String> flags, TestProgressListener listener, TestSummary first) {
+        if (!SuiteRetry.planned(jvmArgs)) return first;
+        // A suite JVM that dies after reporting tests leaves no class name. Run the selection again.
+        boolean whole = SuiteRetry.wholeSuite(first) && SuiteRetry.onlyHeap(first);
+        List<String> again = whole ? (onlyClasses != null ? onlyClasses : classNames) : SuiteRetry.classes(first);
+        if (!whole && again.isEmpty()) return first;
+        boolean killed = first.failures().stream().filter(SuiteRetry::retryable).allMatch(SuiteRetry::killed);
+        TestSummary second = rerun(javaHome, classpath, flags, again, listener, killed, whole ? null : first);
+        return second == null ? first : second;
+    }
+
+    private TestSummary retryLaunch(
+            Path javaHome, String classpath, List<String> flags, TestProgressListener listener, TestLauncherFailure e)
+            throws IOException, InterruptedException {
+        if (!SuiteRetry.planned(jvmArgs)) {
+            if (WorkerFate.heapExhausted(e.exit(), e.output())) {
+                throw TestLauncherFailure.heap(
+                        moduleLabel,
+                        e.exit(),
+                        e.output(),
+                        e.command(),
+                        SuiteRetry.pinned("test runner", SuiteRetry.pin(jvmArgs)));
+            }
+            throw e;
+        }
+        WorkerFate.Cause cause = SuiteRetry.cause(e);
+        if (cause != WorkerFate.Cause.HEAP_EXHAUSTED && cause != WorkerFate.Cause.KILLED_FOR_MEMORY) throw e;
+        boolean killed = cause == WorkerFate.Cause.KILLED_FOR_MEMORY;
+        List<String> again = onlyClasses != null ? onlyClasses : classNames;
+        TestSummary second = rerun(javaHome, classpath, flags, again, listener, killed, null);
+        if (second == null) throw e;
+        return second;
+    }
+
+    private HeapScope.@Nullable Key filledKey(@Nullable Path javaHome) {
+        int jdk = javaHome == null ? Runtime.version().feature() : JvmOptions.hostFeature(javaHome);
+        return SuiteRetry.key(SuiteRetry.project(inferredModuleDir), moduleLabel, jdk);
+    }
+
+    /**
+     * One more suite JVM for {@code classes} ({@code null} classes means the same selection).
+     * {@code first} is folded in when a class-level retry replaces failures; a launcher retry
+     * passes {@code null} and returns only the second run.
+     */
+    private @Nullable TestSummary rerun(
+            Path javaHome,
+            String classpath,
+            List<String> flags,
+            List<String> classes,
+            TestProgressListener listener,
+            boolean killed,
+            @Nullable TestSummary first) {
+        long heap = WorkerLeases.parseXmx(flags);
+        Long next = killed ? heap : SuiteRetry.grown(heap);
+        if (!killed && next == null) return first;
+        long used = next == null ? heap : next;
+        if (!killed) {
+            // It filled this heap. Remember that, so the next plan starts above the cap that failed.
+            heaps.note(filledKey(javaHome), heap);
+        }
+        HeapNotes.note(HeapNotes.line(used, heap, killed));
+        Long previous = heapOverride;
+        List<String> previousOnly = onlyClasses;
+        heapOverride = used;
+        if (classes != null && !classes.isEmpty()) onlyClasses = classes;
+        try {
+            XmlTestReport xml = null;
+            MarkdownTestReport md = new MarkdownTestReport();
+            var aggregator = new ResultAggregator(listener, 0, xml, md, moduleLabel);
+            var crash = new CaptureBuffer();
+            List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
+            List<String> names = onlyClasses != null ? onlyClasses : classNames;
+            Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
+            List<String> args = withTagArgs(JUnitClassFilter.singleWorkerArgs(classesDir, names));
+            try {
+                TestSummary second = forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
+                if (!killed && SuiteRetry.onlyHeap(second)) {
+                    heaps.note(filledKey(javaHome), used);
+                    throw TestLauncherFailure.heap(
+                            moduleLabel,
+                            WorkerFate.EXIT_ON_OUT_OF_MEMORY,
+                            crash.text(),
+                            List.of(),
+                            SuiteRetry.exhausted("test runner", heap, used));
+                }
+                if (first == null) return second;
+                return SuiteRetry.merge(first, classes, second);
+            } catch (TestLauncherFailure e) {
+                if (killed) throw e;
+                heaps.note(filledKey(javaHome), used);
+                throw TestLauncherFailure.heap(
+                        moduleLabel,
+                        e.exit(),
+                        e.output(),
+                        e.command(),
+                        SuiteRetry.exhausted("test runner", heap, used));
+            }
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            return first;
+        } finally {
+            heapOverride = previous;
+            onlyClasses = previousOnly;
+        }
     }
 
     // -------- parallel pull-queue ---------------------------------------
@@ -672,8 +870,28 @@ public final class JUnitLauncher {
         MarkdownTestReport md = new MarkdownTestReport();
 
         PullWorkerPool pool = new PullWorkerPool(this, javaHome, classpath, testClassesDir, listener);
-        TestSummary summary =
-                classes.isEmpty() ? new TestSummary(0, 0, 0, 0, List.of()) : pool.run(workers, classes, xml, md, 0);
+        TestSummary summary;
+        try {
+            summary =
+                    classes.isEmpty() ? new TestSummary(0, 0, 0, 0, List.of()) : pool.run(workers, classes, xml, md, 0);
+        } catch (TestLauncherFailure e) {
+            if (!SuiteRetry.planned(jvmArgs) || heapOverride != null) {
+                if (WorkerFate.heapExhausted(e.exit(), e.output())) {
+                    throw TestLauncherFailure.heap(
+                            moduleLabel,
+                            e.exit(),
+                            e.output(),
+                            e.command(),
+                            SuiteRetry.pinned("test runner", SuiteRetry.pin(jvmArgs)));
+                }
+                throw e;
+            }
+            summary = retryLaunch(javaHome, classpath, jvmFlags(JvmRole.SUITE, 1, testTmpDir), listener, e);
+        }
+        if (SuiteRetry.planned(jvmArgs) && heapOverride == null) {
+            summary = retrySuite(
+                    javaHome, classpath, jvmFlags(JvmRole.PULL_WORKER, workers, testTmpDir), listener, summary);
+        }
         // A runner-crash sentinel means the fork itself is broken — don't fork it again.
         boolean crashed = summary.failures().stream().anyMatch(f -> "(test run)".equals(f.method()));
         if (!serialClasses.isEmpty() && !crashed) {
@@ -749,7 +967,8 @@ public final class JUnitLauncher {
                     testEnv,
                     workDir(),
                     Discovery.handler(classes, listener),
-                    crash::add);
+                    crash::add,
+                    heaps);
         } catch (PluginProcess.HandlerFailure e) {
             // The parent's own decoder ended the listing: a handler row, and no trust in the list.
             return Discovery.handlerFailed(List.copyOf(classes), crash.text(), e.handler());
