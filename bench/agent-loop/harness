@@ -18,9 +18,11 @@ A Gradle run stops that Gradle's daemons after the rerun. `--render` recomputes 
 from transcripts and sandboxes already on disk and rewrites the table; it does not run an agent.
 
 Drivers: `scripted` (an oracle that reads the results file and applies the class's known fix;
-costs nothing and proves the plumbing), `claude-code` (`claude -p` with the MCP server and file
-tools), `grok` (`grok -p` the same way; file tools only, throwaway `GROK_HOME`), `api` (a
-Messages-API tool-use loop; needs ANTHROPIC_API_KEY and the anthropic SDK).
+costs nothing and proves the plumbing), `claude-code` (`claude -p` with the MCP server, file
+tools, and `--effort`), `grok` (`grok -p` the same way; file tools only, throwaway `GROK_HOME`),
+`agy` (`agy -p`; file tools via a custom agent, throwaway `HOME`), `muse` (`muse exec`; file
+tools via settings, throwaway XDG roots), `api` (a Messages-API tool-use loop; needs
+ANTHROPIC_API_KEY and the anthropic SDK). `--subset NAME` runs one named slice of the matrix.
 
 Rows go to `results/<date>/rows.jsonl` beside this script and the table to `TABLE.md` there;
 sandboxes and transcripts live under `$AGENT_LOOP_HOME/harness/<date>/` (default
@@ -40,6 +42,7 @@ import os
 import shutil
 import sys
 import time
+import tomllib
 import traceback
 from pathlib import Path
 
@@ -52,10 +55,22 @@ from harnesslib import agents, metrics, oracle, report  # noqa: E402
 from harnesslib.session import Session, open_mcp, results_ok  # noqa: E402
 
 HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop")
-DRIVERS = ("scripted", "claude-code", "api", "grok")
-DEFAULT_MODEL = "claude-sonnet-5"
-DEFAULT_GROK_MODEL = "grok-4.7"
-DEFAULT_EFFORT = "high"
+DRIVERS = ("scripted", "claude-code", "api", "grok", "agy", "muse")
+# Flag values the harness passes when --model / --effort are omitted. The table header prints them.
+DEFAULT_MODEL = {
+    "claude-code": "claude-opus-5-5",
+    "api": "claude-sonnet-5",
+    "grok": "grok-4.7",
+    "agy": "gemini-3.8-flash-high",
+    "muse": "muse-spark-1.3-contributor",
+}
+DEFAULT_EFFORT = {
+    "claude-code": "medium",
+    "api": "medium",
+    "grok": "high",
+    "agy": "high",
+    "muse": "xhigh",
+}
 # Real runs stop Gradle on the way out. --help, --dry-run, and --render do not.
 _stop_gradle_on_exit = True
 
@@ -65,7 +80,13 @@ def resolve_model(driver: str, model: str | None) -> str | None:
         return None
     if model:
         return model
-    return DEFAULT_GROK_MODEL if driver == "grok" else DEFAULT_MODEL
+    return DEFAULT_MODEL[driver]
+
+
+def resolve_effort(driver: str, effort: str | None) -> str | None:
+    if driver == "scripted":
+        return None
+    return effort or DEFAULT_EFFORT[driver]
 
 
 def load_scenario_module():
@@ -83,19 +104,45 @@ scenario = load_scenario_module()
 # ------------------------------------------------------------------------------ matrix
 
 
-def matrix(repos: dict, tools: list[str], only: str | None) -> list[tuple]:
+def load_subset(name: str) -> list[tuple[str, str]]:
+    """`(repo, failure)` pairs for one `[subsets.<name>]` table in scenarios.toml."""
+    data = tomllib.loads((HERE / "scenarios.toml").read_text(encoding="utf-8"))
+    subsets = data.get("subsets") or {}
+    if name not in subsets:
+        known = ", ".join(sorted(subsets)) or "(none)"
+        sys.exit(f"unknown subset {name}; known: {known}")
+    pairs = []
+    for item in subsets[name].get("scenarios") or []:
+        repo, sep, failure = str(item).partition(":")
+        if not sep or not repo or not failure:
+            sys.exit(f"subset {name}: {item} is not REPO:FAILURE")
+        pairs.append((repo, failure))
+    if not pairs:
+        sys.exit(f"subset {name} is empty")
+    return pairs
+
+
+def matrix(repos: dict, tools: list[str], only: str | None, subset: list[tuple[str, str]] | None = None) -> list[tuple]:
     want = None
     if only:
         repo_name, _, failure = only.partition(":")
         if repo_name not in repos:
             sys.exit(f"unknown repo {repo_name}; known: {', '.join(repos)}")
         want = (repo_name, failure or None)
+    chosen = set(subset) if subset else None
+    if chosen:
+        for repo_name, failure in chosen:
+            repo = repos.get(repo_name)
+            if repo is None or failure not in repo.failures:
+                sys.exit(f"subset names unknown scenario {repo_name}:{failure}")
     work = []
     for repo in repos.values():
         if want and repo.name != want[0]:
             continue
         for failure in repo.failures:
             if want and want[1] and failure != want[1]:
+                continue
+            if chosen is not None and (repo.name, failure) not in chosen:
                 continue
             for tool in scenario.TOOLS:
                 if tool in tools and tool in repo.tools and tool in repo.failures[failure].get("tools", repo.tools):
@@ -126,9 +173,10 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
         "edits": 0, "wrong_edits": 0, "reads_before_fix": 0, "fix_quality": None,
         "sandbox": str(sandbox), "transcript": str(transcript),
     }
+    if ns.subset:
+        row["subset"] = ns.subset
     if ns.driver != "scripted":
         row["reasoning_tokens"] = 0
-    if ns.driver == "grok":
         row["effort"] = ns.effort
     row.update(benchtools.stamp(ns.tools))
     try:
@@ -154,9 +202,11 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
             transcript.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in res.transcript), encoding="utf-8")
             row.update(turns=res.turns, fix_sources=res.fix_sources, finding=res.finding, claims_green=res.green)
         else:
-            run = {"claude-code": agents.claude_code, "api": agents.api, "grok": agents.grok}[ns.driver]
-            kwargs = {"effort": ns.effort} if ns.driver == "grok" else {}
-            res = run(tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript, **kwargs)
+            run = {
+                "claude-code": agents.claude_code, "api": agents.api, "grok": agents.grok,
+                "agy": agents.agy, "muse": agents.muse,
+            }[ns.driver]
+            res = run(tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript, effort=ns.effort)
             usage = res.usage
             row.update(
                 turns=res.turns, finding=res.finding,
@@ -168,9 +218,17 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
             )
             if res.extra.get("tools"):
                 row["tools"] = res.extra["tools"]
+            if "file_tools_only" in res.extra:
+                row["file_tools_only"] = bool(res.extra["file_tools_only"])
+            if res.extra.get("abort"):
+                row["abort"] = True
             row["tokens"] = row["input_tokens"] + row["output_tokens"] + row["cache_read_tokens"] + row["cache_write_tokens"]
             (run_dir / "agent.json").write_text(json.dumps({"summary": res.transcript, "extra": res.extra}, indent=1, ensure_ascii=False), encoding="utf-8")
         row["wall_ms"] = int((time.monotonic() - started) * 1000)
+        if row.get("abort"):
+            # The CLI rejected the model or the login. The scenario was not attempted.
+            row["outcome"] = "error"
+            return row
         # The harness's own rerun decides: an agent's claim, or a results file from a partial run, is not green.
         code, out, verify_wall = scenario.run_tool(sandbox, tool)
         (run_dir / "verify.log").write_text(scenario.strip_ansi(out), encoding="utf-8")
@@ -237,13 +295,16 @@ def print_row(row: dict) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0], formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__.split("\n\n", 1)[1])
+    effort_defaults = ", ".join(f"{name} {level}" for name, level in DEFAULT_EFFORT.items())
+    model_defaults = ", ".join(f"{name} {model}" for name, model in DEFAULT_MODEL.items())
     ap.add_argument("--driver", choices=DRIVERS, default="scripted")
     ap.add_argument("--model", default=None,
-                    help=f"model for the LLM drivers (default {DEFAULT_MODEL}; {DEFAULT_GROK_MODEL} for --driver grok)")
-    ap.add_argument("--effort", default=DEFAULT_EFFORT,
-                    help=f"reasoning effort for --driver grok, passed as --reasoning-effort (default {DEFAULT_EFFORT})")
+                    help=f"model id (default by driver: {model_defaults})")
+    ap.add_argument("--effort", default=None,
+                    help=f"reasoning effort (default by driver: {effort_defaults})")
     ap.add_argument("--tool", choices=scenario.TOOLS, action="append", help="restrict to a tool (repeatable; default all three)")
     ap.add_argument("--only", metavar="REPO[:FAILURE]", help="one repo, or one repo × failure")
+    ap.add_argument("--subset", metavar="NAME", help="a named slice of the matrix from scenarios.toml [subsets]")
     ap.add_argument("--max-turns", type=int, default=16, help="turn budget per run (default 16)")
     ap.add_argument("--max-minutes", type=float, default=10, help="wall budget per run in minutes (default 10)")
     ap.add_argument("--jobs", type=int, default=2, help="runs in parallel (default 2)")
@@ -260,18 +321,20 @@ def main() -> int:
     if ns.render:
         return render_existing(ns)
     ns.model = resolve_model(ns.driver, ns.model)
+    ns.effort = resolve_effort(ns.driver, ns.effort)
     benchtools.use_flags(ns)
     repos = scenario.load_config()
     tools = ns.tool or list(scenario.TOOLS)
-    work = matrix(repos, tools, ns.only)
+    subset = load_subset(ns.subset) if ns.subset else None
+    work = matrix(repos, tools, ns.only, subset)
     if ns.dry_run:
         for repo, failure, tool in work:
             print(f"{repo.name:28} {failure:20} {tool}")
         detail = ""
         if ns.driver != "scripted":
-            detail += f" · {ns.model}"
-        if ns.driver == "grok":
-            detail += f" · effort {ns.effort}"
+            detail += f" · {ns.model} · effort {ns.effort}"
+        if ns.subset:
+            detail += f" · subset {ns.subset}"
         print(f"\n{len({(r.name, f) for r, f, _ in work})} scenarios · {len(work)} (scenario × tool) runs · driver {ns.driver}"
               + detail + f" · budget {ns.max_turns} turns / {ns.max_minutes:g} min")
         return 0
@@ -285,13 +348,22 @@ def main() -> int:
     run_root.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = []
     started = time.time()
-    jobs = 1 if ns.driver != "scripted" else ns.jobs
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        futures = [pool.submit(run_guarded, repo, failure, tool, ns, run_root) for repo, failure, tool in work]
-        for fut in concurrent.futures.as_completed(futures):
-            row = fut.result()
+    if ns.driver == "scripted":
+        with concurrent.futures.ThreadPoolExecutor(max_workers=ns.jobs) as pool:
+            futures = [pool.submit(run_guarded, repo, failure, tool, ns, run_root) for repo, failure, tool in work]
+            for fut in concurrent.futures.as_completed(futures):
+                row = fut.result()
+                rows.append(row)
+                print_row(row)
+    else:
+        # One scenario at a time. A login or model-id rejection stops the driver before the next one.
+        for repo, failure, tool in work:
+            row = run_guarded(repo, failure, tool, ns, run_root)
             rows.append(row)
             print_row(row)
+            if row.get("abort"):
+                print(f"stopped {ns.driver}: {row['finding']}", flush=True)
+                break
     rows_path = results_dir / "rows.jsonl"
     merged = report.merge(report.load_rows(rows_path), rows)
     refresh_metrics(merged)
