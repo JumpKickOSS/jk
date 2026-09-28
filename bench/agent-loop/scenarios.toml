@@ -443,3 +443,18 @@ coordinate = "org.junit.jupiter:junit-jupiter-api:5.0.0"
 # JUnit engine fails to start; the results must say so, since no test can be named.
 kind = "resolve"
 pattern = "(?i)failed to discover tests|cannot create launcher|discovery exited|junit-jupiter-api|cannot resolve|version constraint"
+
+# agent-subset: 8 (repo, failure) pairs. Each one is supported by jk, mvn, and gradle, so the
+# slice is 24 (scenario × tool) runs. Every failure class is present. Both repos that carry
+# version-conflict on all three tools are here, and both that carry missing-resource on all three.
+[subsets.agent-subset]
+scenarios = [
+  "gs-rest-service:version-conflict",
+  "gs-spring-boot:version-conflict",
+  "gs-accessing-data-r2dbc:missing-resource",
+  "gs-batch-processing:missing-resource",
+  "gs-testing-web:compile-error",
+  "gs-accessing-data-jpa:failing-assertion",
+  "gs-actuator-service:failing-assertion",
+  "gs-consuming-rest:missing-dependency",
+]
