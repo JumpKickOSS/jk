@@ -1171,6 +1171,7 @@ table.stats.history td.ok { color: var(--ok); }
 
 .panel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 11px; }
 .panel-head .mono { font-size: 11px; }
+.worker-budget .panel-head { margin-bottom: 0; }
 
 .meter {
   display: block;

@@ -377,7 +377,7 @@ public final class JvmOptions {
         for (String arg : command) notePlannedHeap(arg);
     }
 
-    static void forgetPlannedHeapForTests(String flag) {
+    public static void forgetPlannedHeapForTests(String flag) {
         if (flag != null) PLANNED_HEAPS.remove(bareJvmArg(flag));
     }
 

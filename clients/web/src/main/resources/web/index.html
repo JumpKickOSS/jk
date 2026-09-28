@@ -513,6 +513,16 @@
           </div>
         </div>
 
+        <div class="panels" v-if="workerBudgetLine()">
+          <div class="panel wide worker-budget">
+            <div class="panel-head">
+              <span class="lbl">workers</span>
+              <span class="spacer"></span>
+              <span class="mono">{{ workerBudgetLine() }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Running build stats (docs/metrics.md): KPI tiles here; the tasks table is last. -->
         <template v-if="metrics && metrics.length">
           <div class="tiles">

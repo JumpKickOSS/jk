@@ -63,6 +63,7 @@ class CommandJsonFrozenBytesTest {
                         + "\"ignoredSignals\":\"\",\"installSource\":\"/home/me/src/jk\","
                         + "\"containment\":null,\"containmentReason\":null,\"workerMemoryMax\":-1,"
                         + "\"workerBudgetBytes\":-1,\"workerLeasedBytes\":-1,\"workerOverbookedBytes\":0,\"workerQueued\":0,"
+                        + "\"workerBudgetSource\":null,\"workerRunningJvms\":-1,\"workerCpuCap\":-1,\"overbookingOff\":false,"
                         + "\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
                         + "\"mcpUrl\":\"http://127.0.0.1:8910/mcp\",\"engines\":[]}");
         EngineProbe.Status withVfs = new EngineProbe.Status(

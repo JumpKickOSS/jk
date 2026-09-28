@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.time.Clock;
@@ -96,6 +99,12 @@ final class KtsSession {
 
     /** How long the host may sit without a script before the reaper shuts it down. */
     static final Duration IDLE_TIMEOUT = Duration.ofMinutes(10);
+
+    /** First {@code -Xmx} when this host has no learned peak yet. */
+    static final long FIRST_HEAP_BYTES = 256L << 20;
+
+    /** Learned-heap module name. The host is engine-wide, so the key is not a project module. */
+    static final String HEAP_MODULE = "kts-host";
 
     /** How long a cancelled script may take to stop before its host is killed instead. */
     static final Duration CANCEL_GRACE = Duration.ofSeconds(2);
@@ -371,6 +380,7 @@ final class KtsSession {
         cmd.add("-cp");
         cmd.add(Classpaths.join(cp));
         cmd.add("cc.jumpkick.kts.JkKtsHostKt");
+        cmd = withPlannedHeap(cmd, plannedHeapFlag(LearnedHeaps.engine(), heapKey()));
 
         ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
         // Not redirectErrorStream: the child's stdout carries the protocol, and a JVM warning on
@@ -382,9 +392,50 @@ final class KtsSession {
         return pb;
     }
 
+    /**
+     * {@code -Xmx} for {@code key}: the learned peak when one is stored, otherwise {@link
+     * #FIRST_HEAP_BYTES}.
+     */
+    static String plannedHeapFlag(LearnedHeaps heaps, HeapScope.Key key) {
+        long bytes = heaps.choose(key.project(), key.module(), key.kind(), key.jdk(), FIRST_HEAP_BYTES);
+        long mib = Math.max(1, bytes / (1024L * 1024L));
+        return "-Xmx" + mib + "m";
+    }
+
+    /** Insert a jk-planned heap and {@code ExitOnOutOfMemoryError} after the java binary. */
+    static List<String> withPlannedHeap(List<String> command, String flag) {
+        JvmOptions.notePlannedHeap(flag);
+        List<String> out = new ArrayList<>(command.size() + 2);
+        out.add(command.get(0));
+        out.add(flag);
+        out.add("-XX:+ExitOnOutOfMemoryError");
+        if (command.size() > 1) out.addAll(command.subList(1, command.size()));
+        return out;
+    }
+
+    /** The key the host's GC log is filed under. The project is the state dir, stable per machine. */
+    static HeapScope.Key heapKey() {
+        return new HeapScope.Key(
+                JkDirs.state(),
+                HEAP_MODULE,
+                HeapScope.KTS_HOST,
+                Runtime.version().feature());
+    }
+
     private static KtsSession start() throws IOException, InterruptedException {
         // Not registered for request cancel: this host outlives the build that started it and is
         // reused by later builds. The idle reaper and the shutdown hook own it. It is still contained.
+        // The scope is what files the host's peak when it exits, so the next start is learned.
+        HeapScope.Key key = heapKey();
+        HeapScope.Key previous = HeapScope.bind(key);
+        try {
+            return startBound();
+        } finally {
+            HeapScope.restore(previous);
+        }
+    }
+
+    private static KtsSession startBound() throws IOException, InterruptedException {
         Process p = JobWorkers.startDetached(hostProcess());
         registerShutdownHook();
         KtsSession session = new KtsSession(p);
