@@ -105,9 +105,11 @@ surface, real lockfile, agent-readable outcomes.
 **Coming from Gradle:** keep warm/incremental ambition without “your build is a second
 program.” Agents should not write Kotlin DSL to add Jackson.
 
-**Speed (honest):** on that one project, clean, warm and no-op builds are faster than Gradle
-and Maven; a one-file edit is slower than Gradle, and the test run is slower than both. The table — walls and peak RSS — is in
-[docs/user/performance.md](docs/user/performance.md). Peak RSS there is higher than both.
+**Speed and memory (honest):** on that one project, clean, warm and no-op builds are faster
+than Gradle and Maven, the test run is on par (slightly faster), and a one-file edit is slower
+than Gradle. Whole-tree peak RSS is about a third of Gradle's on a build and in Maven's range;
+on the test run it is under Gradle's and above Maven's. The table is in
+[docs/user/performance.md](docs/user/performance.md).
 The feature matrix, including where JumpKick loses, is in
 [docs/user/comparison.md](docs/user/comparison.md).
 

@@ -78,24 +78,24 @@ See [Why JumpKick](why.md) and [Agents](agents.md).
 ## Speed and memory
 
 On [spring-petclinic](https://github.com/spring-projects/spring-petclinic), one module, measured
-2026-09-16. Figures, machine, and what each row actually runs: [Performance](performance.md).
+2026-09-28 (Gradle 9.8.0, Maven 3.9.16). Figures, machine, and what each row actually runs: [Performance](performance.md).
 Gradle was run with the configuration cache and the build cache on. Maven has neither in stock
 form, and the row says so.
 
 | | Against Gradle | Against Maven |
 |---|---|---|
-| Clean build | Faster (0.90 s vs 2.04 s median) | Faster (vs 2.26 s) |
-| Warm rebuild | Faster (0.10 s vs 0.43 s) | Faster (vs 2.40 s). Maven recompiles. |
-| No-op | Faster (0.09 s vs 0.44 s) | Faster (vs 1.84 s) |
-| One-file edit | Slower (0.64 s vs 0.52 s) | Faster (vs 2.23 s) |
-| Test run | Close, slightly slower (26.15 s vs 24.45 s) | Close, slightly slower (vs 23.66 s) |
-| Peak RSS, build | Higher (about 2.7 GiB vs 1.7 GiB) | Much higher (vs about 0.4 GiB) |
-| Peak RSS, test | Higher (about 7.5 GiB vs 2.9 GiB) | Much higher (vs about 1.1 GiB) |
+| Clean build | Faster (1.29 s vs 2.75 s median) | Faster (vs 3.21 s) |
+| Warm rebuild | Faster (0.21 s vs 0.60 s) | Faster (vs 3.18 s). Maven recompiles. |
+| No-op | Faster (0.19 s vs 0.52 s) | Faster (vs 2.42 s) |
+| One-file edit | Slower (0.93 s vs 0.62 s) | Faster (vs 3.15 s) |
+| Test run | Close, slightly faster (28.33 s vs 30.64 s) | Close, slightly faster (vs 29.60 s) |
+| Peak RSS, build | Lower (about 0.3–0.6 GiB vs 1.3–1.5 GiB) | Close (vs about 0.4 GiB) |
+| Peak RSS, test | Lower (about 1.5 GiB vs 1.7 GiB) | Higher (vs about 1.2 GiB) |
 
-The engine's own heap defaults to **256 MiB** (512 MiB when `CI=1`). A job that does not fit
-queues instead of taking the process down. That cap is the coordinator. The RSS column is the
-whole tree: client, engine, and every compiler and test worker. On this project the workers
-dominate, and JumpKick's test run shards across forks sized from the host. The cap is real.
+The engine's own heap defaults to **256 MiB** (512 MiB when `CI=1`); the RSS column is the whole
+tree: client, engine, and every compiler and test worker. Workers lease their heap from one
+engine memory budget, test JVMs are sharded only as wide as the measured class times make useful,
+and heaps are learned from what each worker really used ([Engine](engine.md)).
 "Uses less memory than Maven" is not.
 
 ## Batteries
@@ -133,9 +133,8 @@ When a row is won, change its score here and the matching cell above in the same
 | **Open the project in an IDE** | Maven and Gradle | Opening a `jk.toml` workspace in IntelliJ or VS Code needs no generated project files and no install-from-disk step. Today the plugin is an external system (live model, gutter run and debug) packaged from this repository. Without it, `jk ide` writes files. |
 | **Plugin ecosystem** | Maven and Gradle | A third-party plugin is as ordinary to add as a dependency. The SDK is publishable with `jk publish --central` and is not on Central yet; a plugin is a pinned jar. There is no marketplace. The common server-side batteries are already first-party. |
 | **Remote cache** | Gradle, and Maven's Build Cache Extension | A second machine restores an action-cache hit. Local keys are already shaped for that. The remote layer is not a product yet. |
-| **Memory of a build** | Maven, then Gradle | Peak RSS of the whole process tree on the [petclinic](performance.md) run is in Maven's range, or at least Gradle's. The 256 MiB figure is the engine heap cap. The measured tree is about 2.7 GiB on a build and about 7.5 GiB on the test run. |
-| **One-file edit** | Gradle | Median at or under Gradle's 0.52 s on that run (JumpKick is 0.64 s). |
-| **Test wall** | Maven, then Gradle | Median at or under Maven's 23.66 s on that run (JumpKick is 26.15 s), without the 7.5 GiB RSS. |
+| **Memory of a test run** | Maven | Peak RSS of the whole process tree on the [petclinic](performance.md) test run at or under Maven's (JumpKick is about 1.5 GiB against 1.2 GiB; builds are already in Maven's range and about a third of Gradle's). |
+| **One-file edit** | Gradle | Median at or under Gradle's 0.62 s on that run (JumpKick is 0.93 s). |
 | **Import fidelity** | — | An imported Maven or Gradle build builds the same artifact without a fidelity-report row for the common plugins. Today Failsafe's `*IT.java` layout, an arbitrary exec, the release plugin, `war`, Tycho, OSGi, and a non-standard filtered resource directory are reports. |
 | **Measured agent loop** | jk ahead on one agent and one host | The table holds across a second agent, Maven-first and multi-module scenarios, and Kotlin. Results, MCP, `jk mvn` and the agent report are already real. |
 

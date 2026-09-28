@@ -166,9 +166,6 @@ dependency treadmill on a network surface that is on by default. The same-facts 
 
 **Open**
 
-- A worker heap ceiling. Compiler workers are sized per module up to what the host can give one
-  worker ([Engine](../user/engine.md#compiler-worker-heap)); test JVMs are sized from the host.
-  The banked test run peaks at 7,479 MiB. Nothing caps that tree.
 - A guard that fails a speed or memory sentence the table does not support.
 
 ## Cross-cutting
