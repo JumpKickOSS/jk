@@ -19,7 +19,399 @@
 
 
 # The three-tool table behind docs/user/performance.md, banked by bench/wall/measure --bank:
-# one entry per tool and scenario, from the run named by its date, commit and host.
+# one entry per tool and scenario for this host. Other-host entries follow and are not compared.
+
+[[wall.jk.clean]]
+median-s = 1.29
+p90-s = 4.30
+peak-rss-mb = 502
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.14.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "jk build --skip-tests --no-ansi -r"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.jk.rebuild]]
+median-s = 0.21
+p90-s = 0.26
+peak-rss-mb = 406
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.14.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "jk build --skip-tests --no-ansi"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.jk.noop]]
+median-s = 0.19
+p90-s = 0.20
+peak-rss-mb = 313
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.14.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "jk build --skip-tests --no-ansi"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.jk.edit]]
+median-s = 0.93
+p90-s = 1.01
+peak-rss-mb = 594
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.14.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "jk build --skip-tests --no-ansi"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.jk.test]]
+median-s = 28.33
+p90-s = 28.79
+peak-rss-mb = 1487
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.14.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "jk test -r --no-ansi"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.gradle.clean]]
+median-s = 2.75
+p90-s = 10.09
+peak-rss-mb = 1307
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.8.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 0.7 at start, engine live jobs 0"
+
+[[wall.gradle.rebuild]]
+median-s = 0.60
+p90-s = 0.61
+peak-rss-mb = 1364
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.8.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 0.7 at start, engine live jobs 0"
+
+[[wall.gradle.noop]]
+median-s = 0.52
+p90-s = 0.54
+peak-rss-mb = 1363
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.8.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 0.7 at start, engine live jobs 0"
+
+[[wall.gradle.edit]]
+median-s = 0.62
+p90-s = 0.67
+peak-rss-mb = 1497
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.8.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 0.7 at start, engine live jobs 0"
+
+[[wall.gradle.test]]
+median-s = 30.64
+p90-s = 38.06
+peak-rss-mb = 1703
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.8.0"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "gradle test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 0.7 at start, engine live jobs 0"
+
+[[wall.maven.clean]]
+median-s = 3.21
+p90-s = 4.50
+peak-rss-mb = 439
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.maven.rebuild]]
+median-s = 3.18
+p90-s = 3.24
+peak-rss-mb = 446
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.maven.noop]]
+median-s = 2.42
+p90-s = 2.45
+peak-rss-mb = 374
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.maven.edit]]
+median-s = 3.15
+p90-s = 3.20
+peak-rss-mb = 423
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+[[wall.maven.test]]
+median-s = 29.60
+p90-s = 31.64
+peak-rss-mb = 1201
+runs = 5
+date = "2026-09-28"
+commit = "c3cd4139a"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+host-id = "1a8c211a203d"
+host-cpu = "12th Gen Intel(R) Core(TM) i9-12900KF"
+host-logical-cpus = 24
+host-ram-gib = 16
+host-os = "ubuntu-26.04"
+host-kernel = "6.6.87.2-microsoft-standard-WSL2"
+host-wsl = true
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16"
+maven-version = "3.9.16"
+gradle-version = "9.8.0"
+maven-binary = "/home/bsant/.jk/store/tools/maven/3.9.16/bin/mvn"
+gradle-binary = "/home/bsant/.jk/store/tools/gradle/9.8.0/bin/gradle"
+stale-tools = false
+offline-tools = false
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+load = "loadavg 1.1 at start, engine live jobs ?"
+
+# Other host entries. Not compared with the rows above.
 
 [[wall.jk.clean]]
 median-s = 0.90
