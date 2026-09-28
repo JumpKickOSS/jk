@@ -244,6 +244,7 @@ A lease that does not fit waits, first in line first. The step shows
 recorded on the step as `waited Ns for memory`. Several waits on one step add up to that
 one line. `target/jk-results.md` and the agent report each carry it, and they carry
 `retried with 1.0 GiB heap after running out of 512 MiB` when a planned heap was retried.
+A workspace names the module on both lines.
 When the budget is an override, the wait line names it:
 `waited 12s for memory (JK_WORKER_BUDGET_MB)`. Nothing fails for lack of a lease.
 
@@ -359,7 +360,9 @@ you pinned is never learned and never resized; that failure is reported immediat
 names your setting.
 
 A retry that then passes stays a green build. The results and the agent report each carry
-one line, `retried with 1.0 GiB heap after running out of 512 MiB`.
+one line, `retried with 1.0 GiB heap after running out of 512 MiB`. In a workspace that line
+names the module: `` `jk-engine` `run-tests` retried with … `` in the results,
+`W jk-engine run-tests: retried with …` in the agent report. A single module stays the one line.
 
 ### Downloads and repository legs
 

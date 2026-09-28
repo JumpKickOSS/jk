@@ -133,7 +133,8 @@ public final class JkResultsAgent {
 
     /**
      * A memory wait and a heap retry, one line each, including on a green run. A wait is once per
-     * step; a second note of the same retry text on that step is dropped.
+     * module and step; a second note of the same retry text on that step is dropped. A workspace
+     * names the module: {@code W jk-engine run-tests: retried with …}.
      */
     private static void appendMemoryEvents(StringBuilder sb, BuildRecord record) {
         Set<String> seen = new HashSet<>();
@@ -146,9 +147,17 @@ public final class JkResultsAgent {
             if (nl >= 0) line = line.substring(0, nl);
             line = line.strip();
             if (line.isEmpty()) continue;
+            String where = d.dir() == null ? "" : d.dir();
             String step = d.step() == null ? "" : d.step();
-            String key = "memory-wait".equals(code) ? code + "\0" + step : code + "\0" + step + "\0" + line;
+            String key = code + "\0" + where + "\0" + step;
+            if (!"memory-wait".equals(code)) key = key + "\0" + line;
             if (!seen.add(key)) continue;
+            String module = JkResultsMarkdown.warningModule(record, d);
+            if (!module.isEmpty()) {
+                sb.append("W ").append(module);
+                if (!step.isBlank()) sb.append(' ').append(step.strip());
+                sb.append(": ");
+            }
             sb.append(line).append('\n');
         }
     }
