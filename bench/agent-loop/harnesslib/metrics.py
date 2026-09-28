@@ -6,15 +6,17 @@ version conflict, and the two classes with no corpus rows). For jk, ``jk-lock.to
 build-file locus, because applying a dependency writes it.
 
 ``edits`` counts successful mutations: ``search_replace``, ``Edit``, ``Write``, ``edit_file``,
-``write_file``, ``jk_deps`` with ``apply: true``, and a scripted ``fix`` event. A tool result with
+``write_file``, ``replace_file_content``, ``multi_replace_file_content``, ``write_to_file``,
+``sed_file``, ``jk_deps`` with ``apply: true``, and a scripted ``fix`` event. A tool result with
 ``is_error`` is not an edit. ``wrong_edits`` counts edits that touch a file outside the locus. That
 includes an edit still visible in the final diff and an edit the agent later reverted; both are
 wrong edits. An edit that only touches the locus is not wrong.
 
-``reads_before_fix`` counts ``read_file`` / ``Read`` plus results, diagnostics, and manual calls
-that occur before the first locus edit. ``grep``, directory listings, and build reruns are not
-reads. The scripted oracle has no tool calls; each of its turns counts as one results read placed
-before that turn's fix. When the locus is never edited, the count is every such call in the run.
+``reads_before_fix`` counts ``read_file`` / ``Read`` / ``view_file`` plus results, diagnostics, and
+manual calls that occur before the first locus edit. ``grep``, directory listings, and build
+reruns are not reads. The scripted oracle has no tool calls; each of its turns counts as one
+results read placed before that turn's fix. When the locus is never edited, the count is every
+such call in the run.
 
 ``fix_quality`` compares the sandbox to the green baseline (``HEAD``), tracked files and untracked
 files, ignoring ``target/``, ``build/``, ``.gradle/``, and ``.kotlin/``:
@@ -45,13 +47,18 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-LLM_DRIVERS = ("grok", "claude-code", "api")
+LLM_DRIVERS = ("grok", "claude-code", "api", "agy", "muse")
 OUTPUT_ROOTS = {"target", "build", ".gradle", ".kotlin"}
 
 _EDIT_LEAVES = {
     "search_replace", "edit", "edit_file", "write", "write_file", "multiedit", "apply_patch",
+    "replace_file_content", "multi_replace_file_content", "write_to_file", "sed_file",
 }
-_READ_LEAVES = {"read_file", "read"}
+_READ_LEAVES = {"read_file", "read", "view_file"}
+_PATH_KEYS = (
+    "file_path", "path", "target_file", "file", "notebook_path",
+    "absolutepath", "targetfile", "targetpath", "directorypath", "searchdirectory", "searchpath",
+)
 _RESULTS_LEAVES = {"jk_results", "results"}
 _DIAG_LEAVES = {"jk_diagnostics", "diagnostics"}
 _MANUAL_LEAVES = {"jk_manual", "manual", "skill"}
@@ -118,11 +125,12 @@ def rel_path(sandbox: Path | None, raw: str) -> str:
 
 def _paths_from_input(inp: dict, sandbox: Path | None) -> list[str]:
     found: list[str] = []
-    for key in ("file_path", "path", "target_file", "file", "notebook_path"):
-        value = inp.get(key)
+    lowered = {str(k).lower(): v for k, v in inp.items()}
+    for key in _PATH_KEYS:
+        value = lowered.get(key)
         if isinstance(value, str) and value.strip():
             found.append(rel_path(sandbox, value))
-    for edit in inp.get("edits") or []:
+    for edit in inp.get("edits") or inp.get("ReplacementChunks") or []:
         if isinstance(edit, dict):
             found.extend(_paths_from_input(edit, sandbox))
     out: list[str] = []
@@ -164,17 +172,30 @@ def _in_locus(path: str, locus: list[str]) -> bool:
     return False
 
 
+def _as_dict(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
 def _unwrap(name: str, inp: dict) -> tuple[str, dict]:
-    if _leaf(name).lower() == "use_tool" and isinstance(inp, dict) and inp.get("tool_name"):
-        inner = inp.get("tool_input") or {}
-        if isinstance(inner, str):
-            try:
-                inner = json.loads(inner)
-            except json.JSONDecodeError:
-                inner = {}
-        if not isinstance(inner, dict):
-            inner = {}
-        return str(inp["tool_name"]), inner
+    """Open a meta-tool call into the tool the model actually invoked."""
+    leaf = _leaf(name).lower()
+    if leaf == "use_tool" and isinstance(inp, dict) and inp.get("tool_name"):
+        return str(inp["tool_name"]), _as_dict(inp.get("tool_input"))
+    if leaf == "call_mcp_tool" and isinstance(inp, dict):
+        tool = inp.get("ToolName") or inp.get("tool_name") or inp.get("name")
+        if tool:
+            inner = _as_dict(inp.get("Arguments") if inp.get("Arguments") is not None else inp.get("arguments"))
+            server = inp.get("ServerName") or inp.get("server_name") or ""
+            full = f"{server}__{tool}" if server else str(tool)
+            return full, inner
     return name, inp if isinstance(inp, dict) else {}
 
 
@@ -269,6 +290,89 @@ def _stream_calls(events: list[dict], sandbox: Path | None, tool: str) -> list[C
     return calls
 
 
+def _agy_calls(events: list[dict], sandbox: Path | None, tool: str) -> list[Call]:
+    """One model step is an ``agent_response`` step that reached ``DONE``. Tool steps hang off it.
+
+    ``call_mcp_tool`` is unwrapped to ``ServerName__ToolName``. A ``DONE`` tool step counts; the
+    matching ``ACTIVE`` line is the same call and is skipped.
+    """
+    calls: list[Call] = []
+    turn = 0
+    for ev in events:
+        step = ev.get("step_update") if ev.get("event") == "step_update" else None
+        if not isinstance(step, dict) or step.get("state") != "DONE":
+            continue
+        if step.get("step_type") == "agent_response":
+            turn += 1
+            continue
+        if step.get("step_type") != "tool":
+            continue
+        info = step.get("tool_info") if isinstance(step.get("tool_info"), dict) else {}
+        params = info.get("parameters") if isinstance(info.get("parameters"), dict) else {}
+        call = _call_from_tool(turn, str(step.get("tool_name") or ""), params, sandbox, tool)
+        if info.get("error") or step.get("error"):
+            call.ok = False
+        calls.append(call)
+    return calls
+
+
+def _muse_payload(ev: dict) -> tuple[dict, dict, str]:
+    payload = ev.get("payload") if isinstance(ev.get("payload"), dict) else {}
+    event = payload.get("event") if isinstance(payload.get("event"), dict) else {}
+    kind = str(event.get("kind") or payload.get("kind") or "")
+    return payload, event, kind
+
+
+def _muse_tool_args(payload: dict) -> tuple[str, dict, bool]:
+    """Name, path args, and success from a ``--json`` ``tool.result``."""
+    facts = payload.get("correlation_facts") if isinstance(payload.get("correlation_facts"), dict) else {}
+    name = str(facts.get("tool_name") or "")
+    edit = payload.get("edit_facts") if isinstance(payload.get("edit_facts"), dict) else {}
+    args: dict = {}
+    path = edit.get("path")
+    if isinstance(path, str) and path:
+        args["path"] = path
+    elif name == "read_file":
+        match = re.search(r"Read text file `([^`]+)`", str(payload.get("text") or ""))
+        if match:
+            args["path"] = match.group(1)
+    ok = facts.get("outcome") != "failure"
+    return name, args, ok
+
+
+def _muse_calls(events: list[dict], sandbox: Path | None, tool: str) -> list[Call]:
+    """A turn is a model-response task (``task_kind`` containing ``model`` and ``response``).
+
+    On ``--json``, tool calls are ``tool.result`` events that follow that task. The session log's
+    ``assistant_tool_calls_committed`` shape is used only when the stream has no ``tool.result``.
+    """
+    calls: list[Call] = []
+    turn = 0
+    saw_result = any(ev.get("payload_type") == "tool.result" for ev in events)
+    for ev in events:
+        payload, event, kind = _muse_payload(ev)
+        task_kind = str(event.get("task_kind") or "")
+        if ev.get("payload_type") == "task.lifecycle.proposed" and "model" in task_kind and "response" in task_kind:
+            turn += 1
+        if saw_result:
+            if ev.get("payload_type") != "tool.result":
+                continue
+            name, args, ok = _muse_tool_args(payload)
+            if not name:
+                continue
+            made = _call_from_tool(turn, name, args, sandbox, tool)
+            made.ok = ok
+            calls.append(made)
+            continue
+        if kind == "assistant_tool_calls_committed":
+            for call in event.get("tool_calls") or []:
+                if not isinstance(call, dict):
+                    continue
+                args = call.get("args") if call.get("args") is not None else call.get("arguments")
+                calls.append(_call_from_tool(turn, str(call.get("name") or ""), _as_dict(args), sandbox, tool))
+    return calls
+
+
 def parse_calls(transcript: Path, driver: str, sandbox: Path | None, tool: str) -> list[Call]:
     events = _load_events(transcript)
     if not events:
@@ -277,6 +381,10 @@ def parse_calls(transcript: Path, driver: str, sandbox: Path | None, tool: str) 
         return _scripted_calls(events)
     if "assistant" in events[0] and "turn" in events[0] and events[0].get("type") is None:
         return _api_calls(events, sandbox, tool)
+    if any(ev.get("event") in {"init", "step_update", "result"} for ev in events[:8]):
+        return _agy_calls(events, sandbox, tool)
+    if any(ev.get("payload_type") for ev in events[:8]):
+        return _muse_calls(events, sandbox, tool)
     return _stream_calls(events, sandbox, tool)
 
 

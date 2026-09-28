@@ -23,14 +23,17 @@ def load_rows(path: Path) -> list[dict]:
 
 
 def key(row: dict) -> tuple:
-    return row["driver"], row["tool"], row["repo"], row["failure"]
+    return row["driver"], row.get("model") or "", row.get("effort") or "", row["tool"], row["repo"], row["failure"]
 
 
 def merge(existing: list[dict], new: list[dict]) -> list[dict]:
     """A re-run replaces its own rows and keeps the rest."""
     merged = {key(r): r for r in existing}
     merged.update({key(r): r for r in new})
-    return sorted(merged.values(), key=lambda r: (r["driver"], r["repo"], r["failure"], TOOLS.index(r["tool"]) if r["tool"] in TOOLS else 9))
+    return sorted(merged.values(), key=lambda r: (
+        r["driver"], r.get("model") or "", r.get("effort") or "", r["repo"], r["failure"],
+        TOOLS.index(r["tool"]) if r["tool"] in TOOLS else 9,
+    ))
 
 
 def write_rows(path: Path, rows: list[dict]) -> None:
@@ -100,20 +103,32 @@ def outcome_cell(r: dict) -> str:
     return cell
 
 
+def _section_key(row: dict) -> tuple[str, str, str]:
+    return row["driver"], row.get("model") or "", row.get("effort") or ""
+
+
 def _driver_sections(rows: list[dict]) -> list[str]:
     lines: list[str] = []
-    drivers = sorted({r["driver"] for r in rows})
-    for driver in drivers:
-        sub = [r for r in rows if r["driver"] == driver]
-        models = sorted({r.get("model") or "" for r in sub} - {""})
-        efforts = sorted({r.get("effort") or "" for r in sub} - {""})
+    order: list[tuple[str, str, str]] = []
+    for row in rows:
+        k = _section_key(row)
+        if k not in order:
+            order.append(k)
+    for driver, model, effort in order:
+        sub = [r for r in rows if _section_key(r) == (driver, model, effort)]
         budgets = sorted({f"{r['max_turns']} turns / {r['max_minutes']} min" for r in sub})
+        subsets = sorted({r.get("subset") or "" for r in sub} - {""})
         title = f"## `{driver}`"
-        if models:
-            title += f" · {', '.join(models)}"
-        if efforts:
-            title += f" · effort {', '.join(efforts)}"
-        lines.append(title + f" · budget {', '.join(budgets)}")
+        if model:
+            title += f" · {model}"
+        if effort:
+            title += f" · effort {effort}"
+        if subsets:
+            title += f" · subset {', '.join(subsets)}"
+        title += f" · budget {', '.join(budgets)}"
+        if any(r.get("file_tools_only") is False for r in sub):
+            title += " · built-in shell is not restricted to file tools"
+        lines.append(title)
         lines.append("")
         lines.append(
             "| Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost "
@@ -174,11 +189,15 @@ def render(rows: list[dict], jk_version: str) -> str:
         if host != hid:
             others.setdefault(host, []).append(row)
     drivers = sorted({r["driver"] for r in current}) or sorted({r["driver"] for r in rows})
+    subsets = sorted({r.get("subset") or "" for r in current} - {""})
     lines = ["# Agent loop: turns, tokens and wall to green", ""]
-    lines.append(
+    header = (
         f"Date: {dt.date.today().isoformat()} · {jk_version} · host `{hid}` · {benchtools.host_summary(info)} · "
         f"drivers: {', '.join(drivers) if drivers else '—'} · {len(current)} (scenario × tool) runs on this host"
     )
+    if subsets:
+        header += f" · subset {', '.join(subsets)}"
+    lines.append(header)
     lines.append("")
     lines.append("A run materialises one (repo × failure) for one tool, runs the tool once so the results file is red, "
                  "then lets the agent loop through that tool's MCP server until the results say OK or the budget ends. "
