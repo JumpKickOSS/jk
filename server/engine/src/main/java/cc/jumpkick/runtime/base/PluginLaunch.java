@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -59,7 +62,22 @@ public final class PluginLaunch {
                 extraJvmArgs,
                 mainClassOf(workerJar),
                 List.of(spec.toAbsolutePath().toString()));
-        return JvmOptions.javaCommand(javaHome, 1, command.subList(1, command.size()));
+        return learned(JvmOptions.javaCommand(javaHome, 1, command.subList(1, command.size())));
+    }
+
+    /** A planned plugin worker's {@code -Xmx} is the learned peak when this module has one. */
+    private static List<String> learned(List<String> command) {
+        HeapScope.Key key = HeapScope.get();
+        if (key == null || !HeapScope.PLUGIN.equals(key.kind()) || JvmOptions.userPinnedHeap(command)) {
+            return command;
+        }
+        long current = WorkerLeases.parseXmx(command);
+        if (current <= 0) return command;
+        long chosen = LearnedHeaps.engine().choose(key.project(), key.module(), key.kind(), key.jdk(), current);
+        if (chosen <= 0 || chosen == current) return command;
+        List<String> rewritten = new ArrayList<>(WorkerLeases.rewriteHeap(command, chosen));
+        JvmOptions.notePlannedCommand(rewritten);
+        return rewritten;
     }
 
     /**

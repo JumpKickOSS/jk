@@ -2,12 +2,18 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
@@ -339,26 +345,82 @@ public final class ForkedJavac {
     }
 
     /**
-     * One-shot fork, sized by {@link WorkerHeap}: a worker that runs out of heap is forked once more
-     * at twice the size, and a second exhaustion is the failure, naming the module and both heaps.
+     * One-shot fork, sized by {@link WorkerHeap}. A jk-planned worker that runs out of heap is
+     * forked once more at twice the size; one the kernel killed for memory is forked once more at
+     * the same size. A second exhaustion is the failure, naming the module and both heaps. A pinned
+     * heap is not resized.
      */
     private static Result run(Request req) throws IOException, InterruptedException {
         Long heap = WorkerHeap.forRequest(req);
+        HeapScope.Key key = heapKey(req, heap);
         WorkerTranscript transcript = new WorkerTranscript();
-        Attempt first = run(req, heap, transcript);
-        if (first.answered || heap == null || !WorkerHeap.outOfMemory(transcript.render())) return first.result;
+        Attempt first = scoped(key, () -> run(req, heap, transcript));
+        String output = transcript.render();
+        if (first.result.success()) return first.result;
+        WorkerFate.Cause cause = WorkerFate.classify(first.exit, output);
+        if (heap == null) {
+            if (cause == WorkerFate.Cause.HEAP_EXHAUSTED && !first.answered) {
+                throw WorkerHeap.pinned(req.label(), pinOf(req), output);
+            }
+            return first.result;
+        }
+        if (first.answered && cause != WorkerFate.Cause.HEAP_EXHAUSTED) return first.result;
+        if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
+            HeapNotes.note(HeapNotes.line(heap, heap, true));
+            transcript.reset();
+            Attempt again = scoped(key, () -> run(req, heap, transcript));
+            return again.result;
+        }
+        if (cause != WorkerFate.Cause.HEAP_EXHAUSTED) return first.result;
+        LearnedHeaps.engine().note(key, heap);
         Long bigger = WorkerHeap.grown(heap);
-        if (bigger == null) throw WorkerHeap.exhausted(req.label(), heap, null, transcript.render());
+        if (bigger == null) throw WorkerHeap.exhausted(req.label(), heap, null, output);
+        HeapNotes.note(HeapNotes.line(bigger, heap, false));
         transcript.reset();
-        Attempt second = run(req, bigger, transcript);
-        if (!second.answered && WorkerHeap.outOfMemory(transcript.render())) {
+        Attempt second = scoped(heapKey(req, bigger), () -> run(req, bigger, transcript));
+        if (!second.answered && WorkerFate.heapExhausted(second.exit, transcript.render())) {
             throw WorkerHeap.exhausted(req.label(), heap, bigger, transcript.render());
         }
         return second.result;
     }
 
+    private static Attempt scoped(HeapScope.@Nullable Key key, ScopedAttempt body)
+            throws IOException, InterruptedException {
+        try {
+            if (key == null) return body.get();
+            return HeapScope.call(key, body::get);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
+    }
+
+    @FunctionalInterface
+    private interface ScopedAttempt {
+        Attempt get() throws Exception;
+    }
+
+    private static HeapScope.@Nullable Key heapKey(Request req, @Nullable Long heap) {
+        if (heap == null) return null;
+        String module = WorkerHeap.moduleOf(req.label());
+        if (module.isBlank()) return null;
+        return new HeapScope.Key(
+                SessionContext.current().workingDir(),
+                module,
+                WorkerHeap.kindOf(req.label()),
+                JvmOptions.hostFeature(workerJavaHome(req)));
+    }
+
+    private static String pinOf(Request req) {
+        for (String arg : req.jvmArgs()) {
+            if (JvmOptions.pinsHeap(arg)) return arg;
+        }
+        return JvmOptions.userPinLabel(List.of());
+    }
+
     /** One fork's outcome; {@code answered} is false when the worker died before its RESULT line. */
-    private record Attempt(Result result, boolean answered) {}
+    private record Attempt(Result result, boolean answered, int exit) {}
 
     private static Attempt run(Request req, @Nullable Long heapBytes, WorkerTranscript transcript)
             throws IOException, InterruptedException {
@@ -420,7 +482,9 @@ public final class ForkedJavac {
                     .run(command, req.env().withJavaHome(hostJavaHome));
             boolean success = exit == 0 && "OK".equals(status[0]);
             return new Attempt(
-                    new Result(success, diagnostics, generated, compiledSources, 0L), exit == 0 || status[0] != null);
+                    new Result(success, diagnostics, generated, compiledSources, 0L),
+                    exit == 0 || status[0] != null,
+                    exit);
         } finally {
             Files.deleteIfExists(spec);
         }
@@ -545,9 +609,10 @@ public final class ForkedJavac {
         flags.addAll(JdkCompilerAccess.JVM_FLAGS);
         flags.addAll(JvmOptions.batchFlags(1));
         if (heapBytes != null) {
-            String heap = "-Xmx" + WorkerHeap.mib(heapBytes) + "m";
-            JvmOptions.notePlannedHeap(heap);
-            flags.add(heap);
+            // The plan's -Xms and SoftMaxHeapSize can sit above a learned -Xmx; HotSpot refuses that.
+            flags.add("-Xmx" + WorkerHeap.mib(heapBytes) + "m");
+            flags = new ArrayList<>(WorkerLeases.rewriteHeap(flags, heapBytes));
+            JvmOptions.notePlannedCommand(flags);
         }
         for (String flag : module) {
             if (!flags.contains(flag)) flags.add(flag);

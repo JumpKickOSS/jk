@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerFate;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
@@ -89,12 +94,29 @@ public final class WorkerCompileDriver {
 
     private static CompileResult compile(Job job) {
         try {
-            return run(job);
+            Outcome first = run(job, null);
+            if (first.result.success() || !first.planned) return first.pinnedOr(first.result);
+            if (first.cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
+                LearnedHeaps.engine().note(HeapScope.get(), first.xmx);
+                Long bigger = WorkerHeap.grown(first.xmx);
+                if (bigger == null) return first.exhausted(null);
+                HeapNotes.note(HeapNotes.line(bigger, first.xmx, false));
+                Outcome second = run(job, bigger);
+                if (!second.result.success() && second.cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
+                    return second.exhausted(first.xmx);
+                }
+                return second.result;
+            }
+            if (first.cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
+                HeapNotes.note(HeapNotes.line(first.xmx, first.xmx, true));
+                return run(job, first.xmx).result;
+            }
+            return first.result;
         } catch (IOException e) {
             // One retry when the worker pipe closes mid-compile (flake).
             if (PluginProcess.isPipeClosed(e)) {
                 try {
-                    return run(job);
+                    return run(job, null).result;
                 } catch (IOException e2) {
                     throw new UncheckedIOException(
                             job.tool() + " compile failed after pipe-closed retry: " + e2.getMessage(), e2);
@@ -159,7 +181,8 @@ public final class WorkerCompileDriver {
         };
     }
 
-    private static CompileResult run(Job job) throws IOException, InterruptedException {
+    /** One fork. {@code overrideXmx} replaces the planned heap; {@code null} keeps learned-or-estimate. */
+    private static Outcome run(Job job, @Nullable Long overrideXmx) throws IOException, InterruptedException {
         Path hostJavaHome = JavaHomes.runningJavaHome();
         Fork fork = plan(job, hostJavaHome);
         try {
@@ -174,6 +197,21 @@ public final class WorkerCompileDriver {
                     jvmFlags,
                     List.of("@" + fork.spec().toAbsolutePath()));
             List<String> cmd = JvmOptions.javaCommand(hostJavaHome, 1, assembled.subList(1, assembled.size()));
+            boolean planned = JvmOptions.autoHeapEnabled() && !JvmOptions.userPinnedHeap(cmd);
+            HeapScope.Key key = HeapScope.get();
+            long xmx = WorkerLeases.parseXmx(cmd);
+            if (planned && overrideXmx != null && overrideXmx > 0) {
+                xmx = overrideXmx;
+                cmd = WorkerLeases.rewriteHeap(cmd, xmx);
+                JvmOptions.notePlannedCommand(cmd);
+            } else if (planned && key != null && xmx > 0) {
+                long chosen = LearnedHeaps.engine().choose(key.project(), key.module(), key.kind(), key.jdk(), xmx);
+                if (chosen > 0 && chosen != xmx) {
+                    xmx = chosen;
+                    cmd = WorkerLeases.rewriteHeap(cmd, xmx);
+                    JvmOptions.notePlannedCommand(cmd);
+                }
+            }
 
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             @Nullable String[] status = {null};
@@ -193,18 +231,44 @@ public final class WorkerCompileDriver {
                     })
                     .run(cmd, job.env().withJavaHome(hostJavaHome));
             boolean success = exit == 0 && "COMPILATION_SUCCESS".equals(status[0]);
+            String output = String.join("\n", chatter);
+            WorkerFate.Cause cause = success ? WorkerFate.Cause.OTHER : WorkerFate.classify(exit, output);
             if (!success && diagnostics.isEmpty() && !chatter.isEmpty()) {
-                StringBuilder tail = new StringBuilder(job.tool()
-                        + " worker "
-                        + WorkerContainment.failure(exit, "exited " + exit + " without diagnostics")
-                        + "; last output:");
+                String how = cause == WorkerFate.Cause.KILLED_FOR_MEMORY
+                        ? WorkerContainment.KILLED_FOR_MEMORY
+                        : "exited " + exit + " without diagnostics";
+                StringBuilder tail = new StringBuilder(job.tool() + " worker " + how + "; last output:");
                 for (String line : chatter) tail.append('\n').append(line);
                 diagnostics.add(
                         new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, tail.toString()));
             }
-            return new CompileResult(success, diagnostics);
+            return new Outcome(new CompileResult(success, diagnostics), cause, xmx, planned, job.tool());
         } finally {
             Files.deleteIfExists(fork.spec());
+        }
+    }
+
+    /** One fork's answer, plus what a heap retry needs from it. */
+    private record Outcome(CompileResult result, WorkerFate.Cause cause, long xmx, boolean planned, String tool) {
+
+        /** A pinned heap that ran out, named; otherwise {@code plain}. */
+        CompileResult pinnedOr(CompileResult plain) {
+            if (planned || cause != WorkerFate.Cause.HEAP_EXHAUSTED) return plain;
+            String pin = JvmOptions.userPinLabel(List.of());
+            String msg = tool + " ran out of the pinned heap " + pin
+                    + "; that setting is the worker's heap — raise it with [jvm] args = [\"-Xmx...\"]";
+            return new CompileResult(
+                    false, List.of(new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, msg)));
+        }
+
+        /** The second exhaustion, naming both heaps. {@code first} is null when the budget could not grow. */
+        CompileResult exhausted(@Nullable Long first) {
+            long ran = first != null ? first : xmx;
+            Long again = first != null ? xmx : null;
+            String msg = WorkerHeap.exhausted(tool, ran, again, "").getMessage();
+            if (msg == null) msg = tool + " ran out of heap";
+            return new CompileResult(
+                    false, List.of(new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, msg)));
         }
     }
 }

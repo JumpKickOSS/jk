@@ -8,11 +8,14 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.KotlincSnapshots;
+import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
@@ -38,6 +41,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
@@ -415,16 +419,20 @@ public final class PlannerLang {
                 Log.debug("compileKotlinSources: keep the up-front estimate", e);
             }
         }
-        return LangCompile.run(
-                taskId,
-                req,
-                BuildIdentity.cacheKeyVersion(),
-                !rerun,
-                !in.ephemeralActions(), // verify-scratch: no persistent residue
-                actionCache.cas(),
-                actionCache,
-                worker.env(),
-                snapshotter);
+        return learning(
+                ctx,
+                in.dir(),
+                HeapScope.KOTLIN_COMPILE,
+                () -> LangCompile.run(
+                        taskId,
+                        req,
+                        BuildIdentity.cacheKeyVersion(),
+                        !rerun,
+                        !in.ephemeralActions(), // verify-scratch: no persistent residue
+                        actionCache.cas(),
+                        actionCache,
+                        worker.env(),
+                        snapshotter));
     }
 
     /**
@@ -544,14 +552,39 @@ public final class PlannerLang {
                 Log.debug("compileGroovySources: keep the up-front estimate", e);
             }
         }
-        return LangCompile.run(
-                taskId,
-                req,
-                BuildIdentity.cacheKeyVersion(),
-                !rerun,
-                !in.ephemeralActions(), // verify-scratch: no persistent residue
-                actionCache.cas(),
-                actionCache,
-                WorkerEnv.forModule(ctx.require(PROJECT).build().env(), in.dir(), null));
+        return learning(
+                ctx,
+                in.dir(),
+                HeapScope.GROOVY_COMPILE,
+                () -> LangCompile.run(
+                        taskId,
+                        req,
+                        BuildIdentity.cacheKeyVersion(),
+                        !rerun,
+                        !in.ephemeralActions(), // verify-scratch: no persistent residue
+                        actionCache.cas(),
+                        actionCache,
+                        WorkerEnv.forModule(ctx.require(PROJECT).build().env(), in.dir(), null)));
+    }
+
+    /** Fork {@code body} under this module's learned-heap key and flush any retry line onto {@code ctx}. */
+    private static <T> T learning(TaskContext ctx, Path project, String kind, Callable<T> body) throws IOException {
+        JkBuild build = ctx.require(PROJECT);
+        HeapScope.Key key = new HeapScope.Key(
+                project,
+                build.project().group() + ":" + build.project().name(),
+                kind,
+                JvmOptions.hostFeature(JavaHomes.runningJavaHome()));
+        HeapScope.Key previous = HeapScope.bind(key);
+        try {
+            return body.call();
+        } catch (IOException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        } finally {
+            HeapScope.restore(previous);
+            HeapNotes.flush(ctx);
+        }
     }
 }

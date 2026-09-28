@@ -101,6 +101,19 @@ public final class PluginProcess {
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
+        return run(command, env, workDir, prefix, onProtocol, onPassthrough, LearnedHeaps.engine());
+    }
+
+    /** As {@link #run(List, WorkerEnv, Path, String, Consumer, Consumer)}, recording learned peaks on {@code heaps}. */
+    public static int run(
+            List<String> command,
+            WorkerEnv env,
+            @Nullable Path workDir,
+            String prefix,
+            Consumer<String> onProtocol,
+            @Nullable Consumer<String> onPassthrough,
+            LearnedHeaps heaps)
+            throws IOException, InterruptedException {
         return converse(
                 command,
                 env,
@@ -108,7 +121,9 @@ public final class PluginProcess {
                 prefix,
                 (json, convo) -> onProtocol.accept(json),
                 onPassthrough,
-                /* closeStdinImmediately */ true);
+                /* closeStdinImmediately */ true,
+                0L,
+                heaps);
     }
 
     /**
@@ -167,7 +182,16 @@ public final class PluginProcess {
             @Nullable Consumer<String> onPassthrough,
             boolean closeStdinImmediately)
             throws IOException, InterruptedException {
-        return converse(command, env, workDir, prefix, onProtocol, onPassthrough, closeStdinImmediately, 0L);
+        return converse(
+                command,
+                env,
+                workDir,
+                prefix,
+                onProtocol,
+                onPassthrough,
+                closeStdinImmediately,
+                0L,
+                LearnedHeaps.engine());
     }
 
     /**
@@ -203,9 +227,33 @@ public final class PluginProcess {
             boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
+        return converse(
+                command,
+                env,
+                workDir,
+                prefix,
+                onProtocol,
+                onPassthrough,
+                closeStdinImmediately,
+                idleTimeoutMs,
+                LearnedHeaps.engine());
+    }
+
+    /** As {@link #converse(List, WorkerEnv, Path, String, BiConsumer, Consumer, boolean, long)}, recording learned peaks on {@code heaps}. */
+    public static int converse(
+            List<String> command,
+            WorkerEnv env,
+            @Nullable Path workDir,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            @Nullable Consumer<String> onPassthrough,
+            boolean closeStdinImmediately,
+            long idleTimeoutMs,
+            LearnedHeaps heaps)
+            throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
-        return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs);
+        return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs, heaps);
     }
 
     /**
@@ -228,6 +276,19 @@ public final class PluginProcess {
             boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
+        return converse(
+                pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs, LearnedHeaps.engine());
+    }
+
+    private static int converse(
+            ProcessBuilder pb,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            @Nullable Consumer<String> onPassthrough,
+            boolean closeStdinImmediately,
+            long idleTimeoutMs,
+            LearnedHeaps heaps)
+            throws IOException, InterruptedException {
         // Every worker forks through here, so this is where it loses the engine's terminal.
         pb.command(WorkerSession.detached(pb.command()));
         // Read the heap's provenance before an argfile shorten hides the flags that say who chose it.
@@ -237,7 +298,7 @@ public final class PluginProcess {
         pb.command(argfile.command());
         Process process;
         try {
-            process = JobWorkers.start(pb, heap);
+            process = JobWorkers.start(pb, heap, heaps);
         } catch (IOException e) {
             argfile.delete();
             throw e;

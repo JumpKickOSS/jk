@@ -12,6 +12,35 @@ import org.junit.jupiter.api.Test;
 class JkResultsAgentTest {
 
     @Test
+    void an_ok_run_still_names_a_heap_retry() {
+        BuildRecord.Diag retry = new BuildRecord.Diag(
+                "warning",
+                "/ws/rest-service",
+                "run-tests",
+                "heap-retry",
+                "retried with 1.0 GiB heap after running out of 512 MiB",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0,
+                "");
+        BuildRecord r = record("test", true, false, 500, new BuildRecord.Tests(1, 1, 0, 0), List.of(retry), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                OK test rest-service · 1 test · 500ms
+                retried with 1.0 GiB heap after running out of 512 MiB
+                """);
+    }
+
+    @Test
     void an_ok_test_run_is_one_line() {
         BuildRecord r = record("test", true, false, 500, new BuildRecord.Tests(2, 2, 0, 0), List.of(), List.of());
         assertThat(JkResultsAgent.render(r)).isEqualTo("OK test rest-service · 2 tests · 500ms\n");
