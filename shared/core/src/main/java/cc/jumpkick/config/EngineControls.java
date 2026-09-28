@@ -126,7 +126,13 @@ public final class EngineControls {
                     "JK_ENGINE_SCOPE",
                     "delegated scope when reachable",
                     ENGINE_START,
-                    "0 keeps the engine in the caller's cgroup. Otherwise Linux starts it in a delegated systemd user scope when one is reachable."));
+                    "0 keeps the engine in the caller's cgroup. Otherwise Linux starts it in a delegated systemd user scope when one is reachable."),
+            control(
+                    "",
+                    "JK_OVERBOOK",
+                    "on; off when CI is set",
+                    ENGINE_START,
+                    "0 disables leasing past the worker budget. Unset overbooks on Linux while pressure is low. CI disables it."));
 
     /** TomlScan keys: {@code engine.max-heap-mb}, … */
     public static String[] tomlScanKeys() {

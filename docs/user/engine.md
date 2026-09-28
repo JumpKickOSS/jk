@@ -148,8 +148,9 @@ column says when a change takes effect: keys read at *engine start* need `jk eng
 file between builds. Precedence is **env > file > default**, resolved at that moment.
 `jobs` also has CLI `-j` / `--jobs`, which wins over env.
 
-`CI=1` / `true` raises the *unset* heap default 256 → 512 and the *unset* `continue`
-default fail-fast → keep-going. An explicit file or env value still wins. `vfs-max-mb`
+`CI=1` / `true` (also `yes` / `on`) raises the *unset* heap default 256 → 512 and the
+*unset* `continue` default fail-fast → keep-going, and it turns worker-lease overbooking off.
+An explicit file or env value still wins for the heap and for `continue`. `vfs-max-mb`
 and `auto-warmup` do not follow CI.
 
 <!-- engine-config:start -->
@@ -213,7 +214,10 @@ plugin workers, `git`, `docker`, `native-image` — takes a lease before it star
 returns it when the process exits, including when the process is killed. The budget is the
 same number written to the workers cgroup `memory.max`: host memory, or the enclosing
 cgroup limit when that is lower, minus the larger of 2 GiB and 10%. `jk engine status`
-prints one line, `13.5 GiB budget, 6.2 GiB leased, 2 queued`.
+prints one line, `13.5 GiB budget, 6.2 GiB leased, 2 queued`. When leases sit past that
+budget the line names the extra, `13.5 GiB budget, 14.2 GiB leased (700 MiB overbooked), 2 queued`.
+`--output json` carries the same numbers as `workerBudgetBytes`, `workerLeasedBytes`,
+`workerOverbookedBytes` and `workerQueued`.
 
 A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
 resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
@@ -223,12 +227,31 @@ overhead. A lease bigger than the whole budget is not refused. A heap jk chose i
 so the worker still fits, and the engine log says so. A heap you pinned — `[jvm] args`,
 `[test] jvm-args`, a module `-J` flag, `--ram-percent`, or any other `-Xmx` /
 `-XX:MaxRAM*` you passed — is left as you wrote it. That worker leases the whole budget
-and runs once the others have finished, and the engine log names the pin and the budget.
+and runs once the others have finished — or sooner, when overbooking below has room for
+its worst case — and the engine log names the pin and the budget.
 If the JVM cannot reserve the pin, its own refusal is the result.
 
 A lease that does not fit waits, first in line first. The step shows
 `waiting for memory: need 512 MiB, free 128 MiB`, and a wait of half a second or more is
 recorded on the step as `waited Ns for memory`. Nothing fails for lack of a lease.
+
+On Linux that same lease may start anyway, past the reservation, when the host still has
+room. It does not when this engine was started with `CI` set, or with `JK_OVERBOOK` set to
+`0` (`false`, `no` and `off` count too; anything else, including leaving it unset, leaves
+overbooking on). In cgroup mode the free memory is the workers group's `memory.max` minus
+`memory.current`. Otherwise it is host `MemAvailable`, which requires `/proc/pressure/memory`
+to be readable as well. That free memory has to cover the new lease's full worst case plus
+a headroom of the larger of 1 GiB and 10% of the budget. Forks already running count at the
+usage in that sample, not at the reservation they hold. Pressure has to be low:
+`some` `avg10` below 5 and `full` `avg10` below 1, on `/proc/pressure/memory` and on the
+workers group's `memory.pressure` when that file is present. The reserved total, including
+the new lease, stays at or under twice the budget, so a run of grants between samples cannot
+grow without a bound. The sample is reused for 250 ms. When the pressure rises or the free
+memory falls short, further leases wait in the same queue. A running fork is never killed to
+make room. The engine log records each grant that started past the budget. `JK_OVERBOOK` is
+read from the engine process, the same way as `JK_WORKER_BUDGET_MB`: `jk engine stop`, then
+start the next command with the variable set. `CI` is inherited by that process for the same
+reason; a worker does not see it unless the module inherits the engine's whole environment.
 
 An idle compiler lane holds its lease only while nothing else is waiting. When a fork is
 queued, or another job needs a lane and the lane budget is full, the idle lane exits and
@@ -347,7 +370,7 @@ jobs run inside it.
 The engine itself starts from an allow-list of the spawning shell, not from the shell: `PATH`,
 `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `TMPDIR` / `TMP` / `TEMP`, `TZ`, `LANG` / `LANGUAGE` /
 `LC_*`, `JAVA_HOME`, `GRAALVM_HOME`, `SSH_AUTH_SOCK`, `ANDROID_HOME` / `ANDROID_SDK_ROOT`,
-`MISE_DATA_DIR`, `NO_COLOR`, `NERD_FONT`, every `JK_*` variable, the proxy variables
+`MISE_DATA_DIR`, `NO_COLOR`, `NERD_FONT`, `CI`, every `JK_*` variable, the proxy variables
 `http_proxy` / `https_proxy` / `no_proxy` in either case — as the fallback only: they ride each
 request from the shell running `jk`, and the request's values win
 ([Config § Network](config.md#network)) — and on Windows the system roots (`SystemRoot`,
@@ -368,6 +391,7 @@ inherited once would be every later terminal's truth. Workers are narrowed again
 | `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |
 | `JK_CANCEL_GRACE_MS` | 500 | Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000. |
 | `JK_ENGINE_SCOPE` | delegated scope when reachable | 0 keeps the engine in the caller's cgroup. Otherwise Linux starts it in a delegated systemd user scope when one is reachable. |
+| `JK_OVERBOOK` | on; off when CI is set | 0 disables leasing past the worker budget. Unset overbooks on Linux while pressure is low. CI disables it. |
 <!-- engine-process:end -->
 
 A resident engine keeps that environment for its whole life, so anything that must follow the

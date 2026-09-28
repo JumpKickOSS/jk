@@ -12,6 +12,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntSupplier;
@@ -35,12 +36,15 @@ import org.jspecify.annotations.Nullable;
  * covers that, and 12% covers the measured GC fraction with margin. A lease bigger than the whole
  * budget still runs, alone: a heap jk planned is lowered so it fits, and a heap the user pinned
  * keeps its flags and leases the whole budget. A lease that does not fit yet waits, first in line
- * first.
+ * first. On Linux it may instead be granted past the budget while {@link OverbookSignals} say the
+ * host has room; {@code CI} and {@code JK_OVERBOOK=0} turn that off. A running fork is never killed
+ * to make the room.
  *
  * <p>The queue and the counters live on a {@link Ledger}. {@link #engine()} is the one this process
  * uses: its capacity supplier is {@link WorkerContainment#budgetBytes()}, so {@code
- * JK_WORKER_BUDGET_MB} applies to that instance, its CPU cap is the host's core count, and a
- * waiting lease is abandoned once {@link JobWorkers#ended} says the request was shut down.
+ * JK_WORKER_BUDGET_MB} applies to that instance, its CPU cap is the host's core count, a waiting
+ * lease is abandoned once {@link JobWorkers#ended} says the request was shut down, and a lease past
+ * the budget is granted only when {@link OverbookSignals#live()} says the host has room.
  */
 public final class WorkerLeases {
 
@@ -81,6 +85,12 @@ public final class WorkerLeases {
     /** A finished wait shorter than this is recorded and not printed. */
     private static final long OUTPUT_AFTER_NANOS = 500_000_000L;
 
+    /**
+     * Reserved bytes, including the lease being granted, stay at or under this many times the
+     * budget. The cap is what stops a burst of grants on one cached sample.
+     */
+    public static final int OVERBOOK_CAP_FACTOR = 2;
+
     private static final Pattern XMX = Pattern.compile("^(?<prefix>-J)?-Xmx(?<size>\\d+[kKmMgGtT]?)$");
     private static final Pattern XMS = Pattern.compile("^(?<prefix>-J)?-Xms(?<size>\\d+[kKmMgGtT]?)$");
     private static final Pattern XX_HEAP = Pattern.compile(
@@ -90,8 +100,8 @@ public final class WorkerLeases {
      * This process's ledger. Capacity is re-read from {@link WorkerContainment#budgetBytes()} at
      * most every two seconds; that read honors {@code JK_WORKER_BUDGET_MB}.
      */
-    private static final Ledger ENGINE =
-            new Ledger(new ProcessBudget(), () -> Math.max(1, AvailableCpus.count()), JobWorkers::ended);
+    private static final Ledger ENGINE = new Ledger(
+            new ProcessBudget(), () -> Math.max(1, AvailableCpus.count()), JobWorkers::ended, OverbookSignals.live());
 
     private WorkerLeases() {}
 
@@ -133,6 +143,15 @@ public final class WorkerLeases {
         }
         if (ask > 0) fit = Math.min(ask, fit);
         return Math.max(MIB, fit);
+    }
+
+    /**
+     * Headroom that must remain after a new lease's worst case. The larger of 1 GiB and 10% of
+     * {@code budgetBytes}.
+     */
+    public static long headroomBytes(long budgetBytes) {
+        long tenth = budgetBytes > 0 ? budgetBytes / 10 : 0;
+        return Math.max(GIB, tenth);
     }
 
     /** {@code waited 3s for memory}, or {@code waited 1.5s for memory}. */
@@ -282,8 +301,12 @@ public final class WorkerLeases {
         return Math.max(1, bytes / MIB);
     }
 
-    /** What {@code jk engine status} prints. */
-    public record Snapshot(long budgetBytes, long leasedBytes, int queued, int runningJvms, int cpuCap) {}
+    /**
+     * What {@code jk engine status} prints. {@code overbookedBytes} is the part of {@code
+     * leasedBytes} above {@code budgetBytes}, or {@code 0} when the reserved total fits.
+     */
+    public record Snapshot(
+            long budgetBytes, long leasedBytes, long overbookedBytes, int queued, int runningJvms, int cpuCap) {}
 
     /**
      * One queue of waiters and the bytes and JVM slots currently handed out. {@code capacityBytes}
@@ -294,6 +317,7 @@ public final class WorkerLeases {
         private final LongSupplier capacity;
         private final IntSupplier cpus;
         private final LongPredicate ended;
+        private final OverbookSignals.Source signals;
         private final Object lock = new Object();
         private final ArrayDeque<Waiter> queue = new ArrayDeque<>();
         private final ConcurrentHashMap<Long, AtomicLong> waited = new ConcurrentHashMap<>();
@@ -303,11 +327,23 @@ public final class WorkerLeases {
         /**
          * {@code ended} is true once that request has been shut down. A lease waiting for it is
          * abandoned instead of staying queued. The engine ledger passes {@link JobWorkers#ended}.
+         * Overbooking is off: a lease that does not fit the reservation waits.
          */
         public Ledger(LongSupplier capacityBytes, IntSupplier cpuCap, LongPredicate ended) {
+            this(capacityBytes, cpuCap, ended, OverbookSignals.off());
+        }
+
+        /**
+         * As {@link #Ledger(LongSupplier, IntSupplier, LongPredicate)} with {@code signals} consulted
+         * when a lease does not fit the reservation. The source is read under this ledger's lock, so
+         * a cached source is what keeps that off the syscall path.
+         */
+        public Ledger(
+                LongSupplier capacityBytes, IntSupplier cpuCap, LongPredicate ended, OverbookSignals.Source signals) {
             this.capacity = capacityBytes;
             this.cpus = cpuCap;
             this.ended = ended;
+            this.signals = Objects.requireNonNull(signals, "signals");
         }
 
         /** Bytes this ledger will hand out. */
@@ -322,7 +358,9 @@ public final class WorkerLeases {
 
         public Snapshot snapshot() {
             synchronized (lock) {
-                return new Snapshot(capacityBytes(), leased, queue.size(), jvmRunning, cpuCap());
+                long budget = capacityBytes();
+                long over = leased > budget ? leased - budget : 0;
+                return new Snapshot(budget, leased, over, queue.size(), jvmRunning, cpuCap());
             }
         }
 
@@ -445,7 +483,7 @@ public final class WorkerLeases {
 
         /** Under the lock: grant {@code candidate} when it is the only waiter and it fits. */
         private boolean grantIfHead(Waiter candidate) {
-            if (!queue.isEmpty() || !fits(candidate)) return false;
+            if (!queue.isEmpty() || !admit(candidate)) return false;
             take(candidate);
             return true;
         }
@@ -458,22 +496,69 @@ public final class WorkerLeases {
                     queue.pollFirst();
                     continue;
                 }
-                if (!fits(head)) return;
+                if (!admit(head)) return;
                 queue.pollFirst();
                 take(head);
             }
         }
 
-        private boolean fits(Waiter waiter) {
+        /**
+         * Under the lock. A JVM still needs a free core. Memory fits the reservation, or — when this
+         * ledger has signals — the host sample covers the new lease's worst case and the reserved
+         * total stays inside {@link #OVERBOOK_CAP_FACTOR} times the budget. Existing forks are not
+         * re-charged here: the sample's free bytes are their real usage.
+         */
+        private boolean admit(Waiter waiter) {
+            if (waiter.demand.jvm && jvmRunning >= cpuCap()) return false;
             long cap = capacityBytes();
-            if (leased > cap || waiter.demand.bytes > cap - leased) return false;
-            return !waiter.demand.jvm || jvmRunning < cpuCap();
+            if (leased <= cap && waiter.demand.bytes <= cap - leased) {
+                waiter.overbooked = false;
+                return true;
+            }
+            return overbook(waiter, cap);
+        }
+
+        private boolean overbook(Waiter waiter, long cap) {
+            if (cap <= 0) return false;
+            long bytes = waiter.demand.bytes;
+            long ceiling =
+                    cap > Long.MAX_VALUE / OVERBOOK_CAP_FACTOR ? Long.MAX_VALUE : cap * (long) OVERBOOK_CAP_FACTOR;
+            if (bytes > ceiling || leased > ceiling - bytes) return false;
+            OverbookSignals.Reading reading = readSignals();
+            if (!reading.enabled() || !reading.pressureLow()) return false;
+            if (!reading.covers(bytes, headroomBytes(cap))) return false;
+            waiter.overbooked = true;
+            waiter.sampleFree = reading.freeBytes();
+            waiter.sampleSome = reading.someAvg10();
+            waiter.sampleFull = reading.fullAvg10();
+            return true;
+        }
+
+        private OverbookSignals.Reading readSignals() {
+            try {
+                return signals.read();
+            } catch (RuntimeException e) {
+                Log.debug("overbook signals: unreadable", e);
+                return OverbookSignals.Reading.closed();
+            }
         }
 
         private void take(Waiter waiter) {
             leased += waiter.demand.bytes;
             if (waiter.demand.jvm) jvmRunning++;
             waiter.granted = true;
+            if (waiter.overbooked) logOverbook(waiter);
+        }
+
+        private void logOverbook(Waiter waiter) {
+            long cap = capacityBytes();
+            Log.info("jk engine: "
+                    + overbookedLine(
+                            waiter.demand.bytes,
+                            leased,
+                            cap,
+                            new OverbookSignals.Reading(
+                                    true, waiter.sampleFree, waiter.sampleSome, waiter.sampleFull)));
         }
 
         private void release(Waiter waiter) {
@@ -542,6 +627,17 @@ public final class WorkerLeases {
         if (ctx != null) ctx.output(line);
     }
 
+    /** The engine-log line for one overbooked grant, after the bytes have been taken. */
+    static String overbookedLine(long grantBytes, long leasedBytes, long budgetBytes, OverbookSignals.Reading reading) {
+        long over = Math.max(0, leasedBytes - Math.max(0, budgetBytes));
+        return "overbooked " + format(grantBytes)
+                + " (leased " + format(leasedBytes)
+                + " of " + format(budgetBytes)
+                + ", " + format(over) + " over the budget, free " + format(Math.max(0, reading.freeBytes()))
+                + ", psi some " + String.format(Locale.ROOT, "%.2f", reading.someAvg10())
+                + " full " + String.format(Locale.ROOT, "%.2f", reading.fullAvg10()) + ")";
+    }
+
     private static void noteGranted(Waiter waiter, long waitedNanos) {
         TaskContext ctx = StepScope.current();
         if (waitedNanos <= 0) return;
@@ -561,6 +657,10 @@ public final class WorkerLeases {
         boolean cancelled;
         boolean granted;
         boolean released;
+        boolean overbooked;
+        long sampleFree;
+        double sampleSome;
+        double sampleFull;
 
         Waiter(Demand demand, @Nullable Long requestId) {
             this.demand = demand;
@@ -603,6 +703,11 @@ public final class WorkerLeases {
         /** The pin's natural lease was larger than the budget, so the grant is the whole budget. */
         public boolean overBudget() {
             return waiter.demand.overBudget;
+        }
+
+        /** Granted past the reservation budget, on a host sample that said it was safe. */
+        public boolean overbooked() {
+            return waiter.overbooked;
         }
 
         @Override

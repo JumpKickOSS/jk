@@ -24,10 +24,14 @@ class EngineStatusContainmentTest {
 
     @Test
     void the_worker_line_names_budget_leased_and_queued() {
-        assertThat(EngineStatusCommand.describeWorkers(-1, 0, 0)).isNull();
-        assertThat(EngineStatusCommand.describeWorkers(14 * GIB, 3 * GIB + GIB / 2, 2))
+        assertThat(EngineStatusCommand.describeWorkers(-1, 0, 0, 0)).isNull();
+        assertThat(EngineStatusCommand.describeWorkers(14 * GIB, 3 * GIB + GIB / 2, 0, 2))
                 .isEqualTo("14.0 GiB budget, 3.5 GiB leased, 2 queued");
-        assertThat(EngineStatusCommand.describeWorkers(512L << 20, 64L << 20, 0))
+        assertThat(EngineStatusCommand.describeWorkers(512L << 20, 64L << 20, 0, 0))
                 .isEqualTo("512 MiB budget, 64 MiB leased, 0 queued");
+        assertThat(EngineStatusCommand.describeWorkers(14 * GIB, 15 * GIB, GIB / 2, 2))
+                .isEqualTo("14.0 GiB budget, 15.0 GiB leased (512 MiB overbooked), 2 queued");
+        assertThat(EngineStatusCommand.describeWorkers(14 * GIB, 15 * GIB, -1, 0))
+                .isEqualTo("14.0 GiB budget, 15.0 GiB leased, 0 queued");
     }
 }
