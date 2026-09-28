@@ -249,6 +249,10 @@ class WorkerLeasesOverbookTest {
         assertThat(allowed(true, true, true, true, null, "1")).isTrue();
         assertThat(allowed(true, true, true, true, null, "maybe")).isTrue();
         assertThat(allowed(true, true, true, true, "", null)).isTrue();
+        assertThat(OverbookSignals.policyOff(null, null)).isFalse();
+        assertThat(OverbookSignals.policyOff("1", "1")).isTrue();
+        assertThat(OverbookSignals.policyOff(null, "0")).isTrue();
+        assertThat(OverbookSignals.policyOff("false", null)).isFalse();
     }
 
     @Test

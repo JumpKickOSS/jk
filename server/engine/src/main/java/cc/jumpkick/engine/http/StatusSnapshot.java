@@ -92,6 +92,17 @@ public record StatusSnapshot(
         /** Forks waiting for a lease. */
         int workerQueued,
         /**
+         * Where {@link #workerBudgetBytes} came from: {@code host}, {@code cgroup}, or {@code
+         * override}. {@code ""} when the engine did not report a source.
+         */
+        String workerBudgetSource,
+        /** Forked JVMs running against {@link #workerCpuCap}. {@code -1} when not reported. */
+        int workerRunningJvms,
+        /** How many forked JVMs may run at once. {@code -1} when not reported. */
+        int workerCpuCap,
+        /** This process was started with {@code CI} set or {@code JK_OVERBOOK} off. */
+        boolean overbookingOff,
+        /**
          * Every live and queued job, live first in admission order then queued in arrival order,
          * each as {@code JobRow.toJson()} renders it: {@code jid}, {@code kind}, {@code dir},
          * {@code state} ({@code live} | {@code queued}), {@code since}, {@code workers},
@@ -164,6 +175,10 @@ public record StatusSnapshot(
                 -1L,
                 0L,
                 0,
+                "",
+                -1,
+                -1,
+                false,
                 jobs);
     }
 
@@ -222,6 +237,10 @@ public record StatusSnapshot(
                 -1L,
                 0L,
                 0,
+                "",
+                -1,
+                -1,
+                false,
                 List.of());
     }
 
@@ -318,6 +337,10 @@ public record StatusSnapshot(
         m.put("workerLeasedBytes", workerLeasedBytes);
         m.put("workerOverbookedBytes", workerOverbookedBytes);
         m.put("workerQueued", workerQueued);
+        m.put("workerBudgetSource", workerBudgetSource == null ? "" : workerBudgetSource);
+        m.put("workerRunningJvms", workerRunningJvms);
+        m.put("workerCpuCap", workerCpuCap);
+        m.put("overbookingOff", overbookingOff);
         m.put("jobs", jobs);
         return m;
     }

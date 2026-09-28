@@ -667,13 +667,23 @@ public final class WorkerLeases {
     }
 
     private static void noteGranted(Waiter waiter, long waitedNanos) {
-        TaskContext ctx = StepScope.current();
         if (waitedNanos <= 0) return;
-        String phrase = waitedPhrase(waitedNanos);
-        Log.info("jk engine: " + phrase);
+        Log.info("jk engine: " + waitedPhrase(waitedNanos));
+        TaskContext ctx = StepScope.current();
         if (ctx == null) return;
+        recordWait(ctx, waitedNanos);
+    }
+
+    /**
+     * Count {@code waitedNanos} on {@code ctx}. Half a second or more is also a line on the step's
+     * output and one share of the results' single wait line.
+     */
+    static void recordWait(TaskContext ctx, long waitedNanos) {
+        if (ctx == null || waitedNanos <= 0) return;
         ctx.waited(Duration.ofNanos(waitedNanos));
-        if (waitedNanos >= OUTPUT_AFTER_NANOS) ctx.output(phrase);
+        if (waitedNanos < OUTPUT_AFTER_NANOS) return;
+        ctx.output(waitedPhrase(waitedNanos));
+        MemoryNotes.add(ctx, waitedNanos);
     }
 
     /** {@code cpuSlot}: counts against the running-JVM cap; a resident helper between requests does not. */

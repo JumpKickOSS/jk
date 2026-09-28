@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Sample resident memory by process class until a pid exits, and print the peaks.
+
+    bench/memory/sample <pid> <out.json> [interval_seconds]
+
+``interval_seconds`` defaults to 3. RSS is ``VmRSS`` in KiB, summed per class. The JSON file is
+one object, ``{"rows": [{"t", "used_kb", "by", "n"}, ...]}``. Classes, first match wins:
+
+    engine, nested-engine, compiler-worker, test-jvm, other-jk-worker,
+    gradle, maven, other-java, other
+
+An engine whose command line contains ``/tmp`` is a nested engine.
+"""
+
+from __future__ import annotations
+
+import collections
+import json
+import os
+import re
+import sys
+import time
+
+CLASSES = [
+    ("engine", re.compile(r"cc\.jumpkick\.engine\.EngineMain")),
+    ("test-jvm", re.compile(r"jk-test-runner|JUnitLauncher|junit-platform|TestRunnerMain|cc\.jumpkick\.test\.")),
+    ("compiler-worker", re.compile(r"jk-(java|kotlin|groovy)-compiler|zinc|CompilerWorker")),
+    ("other-jk-worker", re.compile(r"cc\.jumpkick\.|jk-[a-z-]+-\d+\.\d+\.\d+\.jar")),
+    ("gradle", re.compile(r"GradleDaemon|gradle-worker")),
+    ("maven", re.compile(r"plexus-classworlds|org\.codehaus\.plexus")),
+    ("other-java", re.compile(r"/bin/java ")),
+]
+
+# Stable column order for the harness table. ``snapshot`` may also return nothing for a class.
+ORDER = [name for name, _pattern in CLASSES] + ["nested-engine", "other"]
+
+
+def snapshot():
+    """``(rss_kb_by_class, process_count_by_class, used_kb)``. ``used_kb`` is MemTotal − MemAvailable."""
+    by = collections.Counter()
+    counts = collections.Counter()
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            cmd = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode("utf-8", "replace")
+            rss = 0
+            for line in open(f"/proc/{pid}/status"):
+                if line.startswith("VmRSS:"):
+                    rss = int(line.split()[1])
+                    break
+        except OSError:
+            continue
+        if not cmd or not rss:
+            continue
+        cls = next((name for name, pattern in CLASSES if pattern.search(cmd)), "other")
+        if cls == "engine" and "/tmp" in cmd:
+            cls = "nested-engine"
+        by[cls] += rss
+        counts[cls] += 1
+    mem = {}
+    for line in open("/proc/meminfo"):
+        key = line.split(":", 1)[0]
+        if key in ("MemTotal", "MemAvailable"):
+            mem[key] = int(line.split()[1])
+    return by, counts, mem["MemTotal"] - mem["MemAvailable"]
+
+
+def gib(kb: int) -> str:
+    return f"{kb / 1048576:.2f} GiB"
+
+
+def watch(pid: int, every: float = 3.0):
+    """Sample until ``pid`` is gone. Returns peaks and the raw rows."""
+    peak_total = 0
+    peak_at = {}
+    peak_cls = collections.Counter()
+    peak_cnt = collections.Counter()
+    rows = []
+    while os.path.exists(f"/proc/{pid}"):
+        by, counts, used = snapshot()
+        rows.append({"t": time.time(), "used_kb": used, "by": dict(by), "n": dict(counts)})
+        if used > peak_total:
+            peak_total = used
+            peak_at = dict(by)
+        for key, value in by.items():
+            if value > peak_cls[key]:
+                peak_cls[key] = value
+                peak_cnt[key] = counts[key]
+        time.sleep(every)
+    return {
+        "peak_used_kb": peak_total,
+        "at_peak": peak_at,
+        "peak_kb": dict(peak_cls),
+        "peak_procs": dict(peak_cnt),
+        "rows": rows,
+    }
+
+
+def print_peaks(result: dict) -> None:
+    print(f"peak system used: {gib(result['peak_used_kb'])}; at that moment by class:")
+    for key, value in sorted(result["at_peak"].items(), key=lambda kv: -kv[1]):
+        print(f"  {key:16} {gib(value)}")
+    print("per-class peaks (count of processes at that peak):")
+    for key, value in sorted(result["peak_kb"].items(), key=lambda kv: -kv[1]):
+        print(f"  {key:16} {gib(value)}  ({result['peak_procs'].get(key, 0)} procs)")
+
+
+def main(argv: list[str]) -> None:
+    if len(argv) < 3:
+        sys.exit("usage: bench/memory/sample <pid> <out.json> [interval_seconds]")
+    watch_pid = int(argv[1])
+    out = argv[2]
+    every = float(argv[3]) if len(argv) > 3 else 3.0
+    result = watch(watch_pid, every)
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"rows": result["rows"]}, fh)
+    print_peaks(result)
+
+
+if __name__ == "__main__":
+    main(sys.argv)

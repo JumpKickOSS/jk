@@ -2,6 +2,8 @@
 package cc.jumpkick.run;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -13,6 +15,9 @@ import org.jspecify.annotations.Nullable;
 public final class StepScope {
 
     private static final InheritableThreadLocal<TaskContext> CURRENT = new InheritableThreadLocal<>();
+
+    /** Told when a step's scope closes, on the thread that closed it. */
+    private static final CopyOnWriteArrayList<Consumer<TaskContext>> ON_CLOSE = new CopyOnWriteArrayList<>();
 
     static {
         ContextPropagator.add(new ContextPropagator.Propagator() {
@@ -46,9 +51,26 @@ public final class StepScope {
         else CURRENT.set(ctx);
     }
 
-    /** Drop this thread's step. */
+    /**
+     * Run {@code listener} when a step's scope closes. A listener that throws is ignored: closing
+     * the scope must not fail the step.
+     */
+    public static void onClose(Consumer<TaskContext> listener) {
+        if (listener != null) ON_CLOSE.addIfAbsent(listener);
+    }
+
+    /** Drop this thread's step and tell {@link #onClose} listeners which step it was. */
     public static void close() {
+        TaskContext ctx = CURRENT.get();
         CURRENT.remove();
+        if (ctx == null) return;
+        for (Consumer<TaskContext> listener : ON_CLOSE) {
+            try {
+                listener.accept(ctx);
+            } catch (RuntimeException ignored) {
+                // a note must not fail the step
+            }
+        }
     }
 
     /** The step on this thread, or {@code null} outside one. */

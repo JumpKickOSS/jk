@@ -90,6 +90,17 @@ public final class EngineProbe {
             long workerOverbookedBytes,
             /** Forks waiting for a worker lease. */
             int workerQueued,
+            /**
+             * {@code host}, {@code cgroup}, or {@code override}; {@code null} when the engine did
+             * not report a source.
+             */
+            @Nullable String workerBudgetSource,
+            /** Forked JVMs running. {@code -1} when the engine did not report. */
+            int workerRunningJvms,
+            /** How many forked JVMs may run at once. {@code -1} when the engine did not report. */
+            int workerCpuCap,
+            /** This engine was started with {@code CI} set or {@code JK_OVERBOOK} off. */
+            boolean overbookingOff,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
             List<Job> jobs) {
 
@@ -160,6 +171,10 @@ public final class EngineProbe {
                     -1L,
                     0L,
                     0,
+                    null,
+                    -1,
+                    -1,
+                    false,
                     jobs);
         }
     }
@@ -311,6 +326,10 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "workerLeasedBytes", -1),
                     Jsonl.longValue(ack, "workerOverbookedBytes", 0),
                     Jsonl.intValue(ack, "workerQueued", 0),
+                    Jsonl.str(ack, "workerBudgetSource"),
+                    Jsonl.intValue(ack, "workerRunningJvms", -1),
+                    Jsonl.intValue(ack, "workerCpuCap", -1),
+                    Jsonl.bool(ack, "overbookingOff", false),
                     Job.decodeAll(ack)));
         } catch (IOException e) {
             return Optional.empty();

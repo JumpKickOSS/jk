@@ -99,6 +99,20 @@ public final class OverbookSignals {
      * not the variable names. A set {@code CI} (the jk-wide truth set) disables it, and so does an
      * explicit off on the knob. Unrecognized knob text leaves the default, which is on.
      */
+    /**
+     * True when this process was started with {@code CI} set or {@code JK_OVERBOOK} off. Read from
+     * the engine process: {@code jk engine stop} first.
+     */
+    public static boolean policyOff() {
+        return policyOff(System.getenv("CI"), System.getenv(ENV));
+    }
+
+    /** {@code ci} and {@code knob} are the raw values, not the variable names. */
+    static boolean policyOff(@Nullable String ci, @Nullable String knob) {
+        if (EnvValues.isCi(name -> "CI".equals(name) ? ci : null)) return true;
+        return !EnvValues.parseBool(knob).orElse(true);
+    }
+
     static boolean allowed(
             boolean linux,
             boolean cgroup,
@@ -107,8 +121,7 @@ public final class OverbookSignals {
             @Nullable String ci,
             @Nullable String knob) {
         if (!linux) return false;
-        if (EnvValues.isCi(name -> "CI".equals(name) ? ci : null)) return false;
-        if (!EnvValues.parseBool(knob).orElse(true)) return false;
+        if (policyOff(ci, knob)) return false;
         if (cgroup) return true;
         return pressureReadable && availableReadable;
     }

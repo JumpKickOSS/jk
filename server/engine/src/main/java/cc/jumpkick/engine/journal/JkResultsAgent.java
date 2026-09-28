@@ -9,9 +9,11 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -111,7 +113,7 @@ public final class JkResultsAgent {
         List<Locus> loci = loci(record);
         StringBuilder sb = new StringBuilder();
         sb.append(headline(record, loci, tests)).append('\n');
-        appendRetries(sb, record);
+        appendMemoryEvents(sb, record);
         if (record.success() && !record.cancelled()) return sb.toString();
         sb.append(body(record, loci, tests, opt));
         String delta = deltaLine(record);
@@ -129,15 +131,25 @@ public final class JkResultsAgent {
         }
     }
 
-    /** Heap retries, one line each, including on a green run. */
-    private static void appendRetries(StringBuilder sb, BuildRecord record) {
+    /**
+     * A memory wait and a heap retry, one line each, including on a green run. A wait is once per
+     * step; a second note of the same retry text on that step is dropped.
+     */
+    private static void appendMemoryEvents(StringBuilder sb, BuildRecord record) {
+        Set<String> seen = new HashSet<>();
         for (BuildRecord.Diag d : record.diagnostics()) {
             if (d == null || d.message() == null || d.message().isBlank()) continue;
-            if (!"heap-retry".equals(d.code())) continue;
+            String code = d.code();
+            if (!"heap-retry".equals(code) && !"memory-wait".equals(code)) continue;
             String line = d.message();
             int nl = line.indexOf('\n');
             if (nl >= 0) line = line.substring(0, nl);
-            sb.append(line.strip()).append('\n');
+            line = line.strip();
+            if (line.isEmpty()) continue;
+            String step = d.step() == null ? "" : d.step();
+            String key = "memory-wait".equals(code) ? code + "\0" + step : code + "\0" + step + "\0" + line;
+            if (!seen.add(key)) continue;
+            sb.append(line).append('\n');
         }
     }
 

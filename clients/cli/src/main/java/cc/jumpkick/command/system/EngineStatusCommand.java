@@ -119,7 +119,14 @@ public final class EngineStatusCommand implements CliCommand {
         String containment = describeContainment(s.containment(), s.containmentReason(), s.workerMemoryMax());
         if (containment != null) detail("Containment", containment);
         String workers = describeWorkers(
-                s.workerBudgetBytes(), s.workerLeasedBytes(), s.workerOverbookedBytes(), s.workerQueued());
+                s.workerBudgetBytes(),
+                s.workerLeasedBytes(),
+                s.workerOverbookedBytes(),
+                s.workerQueued(),
+                s.workerBudgetSource(),
+                s.workerRunningJvms(),
+                s.workerCpuCap(),
+                s.overbookingOff());
         if (workers != null) detail("Workers", workers);
         heapDumpRow(paths);
         String memory = formatMemory(s);
@@ -288,6 +295,10 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("workerLeasedBytes", s.workerLeasedBytes())
                 .number("workerOverbookedBytes", s.workerOverbookedBytes())
                 .number("workerQueued", s.workerQueued())
+                .string("workerBudgetSource", s.workerBudgetSource())
+                .number("workerRunningJvms", s.workerRunningJvms())
+                .number("workerCpuCap", s.workerCpuCap())
+                .bool("overbookingOff", s.overbookingOff())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
                 .string("mcpUrl", s.mcpUrl());
@@ -373,16 +384,51 @@ public final class EngineStatusCommand implements CliCommand {
     }
 
     /**
-     * {@code 13.5 GiB budget, 6.2 GiB leased, 1 queued}, or with reservations past the budget
-     * {@code 13.5 GiB budget, 14.2 GiB leased (700 MiB overbooked), 1 queued}. Null when the engine
-     * did not report a budget.
+     * {@code 13.5 GiB budget (cgroup), 6.2 GiB leased, 0 MiB overbooked, 1 queued, 4/16 JVMs}.
+     * {@code source} is {@code host}, {@code cgroup}, or {@code override}; blank omits the
+     * parenthetical. {@code runningJvms} and {@code cpuCap} below zero omit the JVM clause.
+     * {@code overbookingOff} appends {@code overbooking off}. Null when the engine did not report
+     * a budget.
      */
-    static @Nullable String describeWorkers(long budgetBytes, long leasedBytes, long overbookedBytes, int queued) {
+    static @Nullable String describeWorkers(
+            long budgetBytes,
+            long leasedBytes,
+            long overbookedBytes,
+            int queued,
+            @Nullable String source,
+            int runningJvms,
+            int cpuCap,
+            boolean overbookingOff) {
         if (budgetBytes < 0) return null;
         long leased = leasedBytes < 0 ? 0 : leasedBytes;
-        String line = bytes(budgetBytes) + " budget, " + bytes(leased) + " leased";
-        if (overbookedBytes > 0) line += " (" + bytes(overbookedBytes) + " overbooked)";
-        return line + ", " + Math.max(0, queued) + " queued";
+        long over = overbookedBytes > 0 ? overbookedBytes : 0;
+        StringBuilder line = new StringBuilder();
+        line.append(bytes(budgetBytes)).append(" budget");
+        String src = sourcePhrase(source);
+        if (!src.isEmpty()) line.append(' ').append(src);
+        line.append(", ")
+                .append(bytes(leased))
+                .append(" leased, ")
+                .append(bytes(over))
+                .append(" overbooked, ")
+                .append(Math.max(0, queued))
+                .append(" queued");
+        if (runningJvms >= 0 && cpuCap >= 0) {
+            line.append(", ").append(runningJvms).append('/').append(cpuCap).append(" JVMs");
+        }
+        if (overbookingOff) line.append(", overbooking off");
+        return line.toString();
+    }
+
+    /** {@code (host)}, {@code (cgroup)}, or {@code (override JK_WORKER_BUDGET_MB)}. Empty when unknown. */
+    private static String sourcePhrase(@Nullable String source) {
+        if (source == null || source.isBlank()) return "";
+        return switch (source) {
+            case "host" -> "(host)";
+            case "cgroup" -> "(cgroup)";
+            case "override" -> "(override JK_WORKER_BUDGET_MB)";
+            default -> "(" + source + ")";
+        };
     }
 
     /** Whole mebibytes under 1 GiB, one decimal gibibyte at or above. */

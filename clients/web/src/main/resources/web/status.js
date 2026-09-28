@@ -4,7 +4,7 @@
 // storage and system meters those payloads drive. Spread into the root component's `methods`.
 
 import { get, getText, hardRefreshForEpoch, noteEngineEpoch } from './api.js';
-import { ago } from './format.js';
+import { ago, workerBudgetLine as workerBudgetText } from './format.js';
 import { outcomeOf } from './outcome.js';
 
 export const statusMethods = {
@@ -324,6 +324,10 @@ export const statusMethods = {
   buildsRunning() {
     if (this.connection === 'live') return this.runningCardCount();
     return this.status?.activeBuildPlans ?? 0;
+  },
+  /** The workers budget row, same words as {@code jk engine status}. Empty when unreported. */
+  workerBudgetLine() {
+    return workerBudgetText(this.status);
   },
   heapUsedPercent() {
     return this.percentOfMax(this.status?.heapUsedBytes);

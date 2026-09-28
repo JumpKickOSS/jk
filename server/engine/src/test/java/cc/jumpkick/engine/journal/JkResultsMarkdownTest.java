@@ -417,6 +417,28 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void a_memory_wait_and_a_heap_retry_are_named_once_per_step() {
+        BuildRecord.Diag wait =
+                new BuildRecord.Diag("warning", "", "run-tests", "memory-wait", "waited 12s for memory", "", "");
+        BuildRecord.Diag again =
+                new BuildRecord.Diag("warning", "", "run-tests", "memory-wait", "waited 1s for memory", "", "");
+        BuildRecord.Diag retry = new BuildRecord.Diag(
+                "warning",
+                "",
+                "compile-java",
+                "heap-retry",
+                "retried with 256 MiB heap after running out of 128 MiB",
+                "",
+                "");
+        BuildRecord r = record(true, List.of(), List.of(wait, again, retry), List.of());
+        String md = JkResultsMarkdown.render(r);
+        assertThat(md).contains("- `run-tests` waited 12s for memory\n");
+        assertThat(md).doesNotContain("waited 1s for memory");
+        assertThat(md).contains("- `compile-java` retried with 256 MiB heap after running out of 128 MiB\n");
+        assertThat(md.indexOf("waited 12s for memory")).isLessThan(md.indexOf("retried with 256 MiB"));
+    }
+
+    @Test
     void warnings_and_cancelled_show_up() {
         BuildRecord.Diag warn = new BuildRecord.Diag("warning", "", "compile-java", "javac", "deprecated API", "", "");
         BuildRecord r = new BuildRecord(
