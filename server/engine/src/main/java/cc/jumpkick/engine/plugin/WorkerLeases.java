@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.AvailableCpus;
+import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.StepScope;
@@ -100,14 +101,32 @@ public final class WorkerLeases {
      * This process's ledger. Capacity is re-read from {@link WorkerContainment#budgetBytes()} at
      * most every two seconds; that read honors {@code JK_WORKER_BUDGET_MB}.
      */
-    private static final Ledger ENGINE = new Ledger(
-            new ProcessBudget(), () -> Math.max(1, AvailableCpus.count()), JobWorkers::ended, OverbookSignals.live());
+    private static final Ledger ENGINE =
+            new Ledger(new ProcessBudget(), WorkerLeases::forkCpuCap, JobWorkers::ended, OverbookSignals.live());
 
     private WorkerLeases() {}
 
     /** The ledger {@link JobWorkers}, the compiler host, and {@code jk engine status} share. */
     public static Ledger engine() {
         return ENGINE;
+    }
+
+    /**
+     * How many forked JVMs may run at once: the host's processors, narrowed to a finite cgroup CPU
+     * quota. {@link Runtime#availableProcessors()} is the wrong reading. Test workers pin
+     * {@code -XX:ActiveProcessorCount} to their share of the host, and with no quota
+     * {@link AvailableCpus#count()} reports that pin. A cap of one lets a resident script host or
+     * compiler hold the only slot until its idle timeout, and the next fork waits out that timeout.
+     */
+    static int forkCpuCap() {
+        return forkCpuCap(HostProcessors.count(), AvailableCpus.quota());
+    }
+
+    /** {@link #forkCpuCap()} for a known host size and quota. {@code quota <= 0} means unlimited. */
+    static int forkCpuCap(int hostProcessors, int cgroupQuota) {
+        int host = Math.max(1, hostProcessors);
+        if (cgroupQuota > 0) return Math.min(host, cgroupQuota);
+        return host;
     }
 
     /** Resident bytes above {@code xmxBytes} that the lease reserves. */
@@ -397,6 +416,15 @@ public final class WorkerLeases {
             return acquire(demand(command, choice), requestId);
         }
 
+        /**
+         * As {@link #acquire(List, Long, JvmOptions.HeapChoice)} for a helper that stays resident
+         * between requests (the build-script host): it leases its memory but takes no CPU slot, so an
+         * idle helper never holds back a fork that has work to run.
+         */
+        public Grant acquireResident(List<String> command, JvmOptions.HeapChoice choice) throws InterruptedException {
+            return acquire(demand(command, choice).resident(), null);
+        }
+
         /** As {@link #acquire(List, Long)} for a lease already measured in bytes. */
         public Grant acquireBytes(long bytes, boolean jvm, @Nullable Long requestId) throws InterruptedException {
             long cap = capacityBytes();
@@ -509,7 +537,7 @@ public final class WorkerLeases {
          * re-charged here: the sample's free bytes are their real usage.
          */
         private boolean admit(Waiter waiter) {
-            if (waiter.demand.jvm && jvmRunning >= cpuCap()) return false;
+            if (waiter.demand.cpuSlot && jvmRunning >= cpuCap()) return false;
             long cap = capacityBytes();
             if (leased <= cap && waiter.demand.bytes <= cap - leased) {
                 waiter.overbooked = false;
@@ -545,7 +573,7 @@ public final class WorkerLeases {
 
         private void take(Waiter waiter) {
             leased += waiter.demand.bytes;
-            if (waiter.demand.jvm) jvmRunning++;
+            if (waiter.demand.cpuSlot) jvmRunning++;
             waiter.granted = true;
             if (waiter.overbooked) logOverbook(waiter);
         }
@@ -566,7 +594,7 @@ public final class WorkerLeases {
             waiter.released = true;
             leased -= waiter.demand.bytes;
             if (leased < 0) leased = 0;
-            if (waiter.demand.jvm) jvmRunning = Math.max(0, jvmRunning - 1);
+            if (waiter.demand.cpuSlot) jvmRunning = Math.max(0, jvmRunning - 1);
         }
 
         private void close(Waiter waiter) {
@@ -648,8 +676,23 @@ public final class WorkerLeases {
         if (waitedNanos >= OUTPUT_AFTER_NANOS) ctx.output(phrase);
     }
 
+    /** {@code cpuSlot}: counts against the running-JVM cap; a resident helper between requests does not. */
     private record Demand(
-            long bytes, long xmxBytes, boolean jvm, boolean clamped, boolean userPinned, boolean overBudget) {}
+            long bytes,
+            long xmxBytes,
+            boolean jvm,
+            boolean clamped,
+            boolean userPinned,
+            boolean overBudget,
+            boolean cpuSlot) {
+        Demand(long bytes, long xmxBytes, boolean jvm, boolean clamped, boolean userPinned, boolean overBudget) {
+            this(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, jvm);
+        }
+
+        Demand resident() {
+            return new Demand(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, false);
+        }
+    }
 
     private static final class Waiter {
         final Demand demand;

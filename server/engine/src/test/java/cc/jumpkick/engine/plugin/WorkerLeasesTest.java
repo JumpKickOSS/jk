@@ -31,6 +31,19 @@ class WorkerLeasesTest {
     }
 
     @Test
+    void fork_cap_follows_the_host_when_nothing_quotas_the_cgroup() {
+        assertThat(WorkerLeases.forkCpuCap(24, -1)).isEqualTo(24);
+        assertThat(WorkerLeases.forkCpuCap(24, 0)).isEqualTo(24);
+        assertThat(WorkerLeases.forkCpuCap(0, -1)).isEqualTo(1);
+    }
+
+    @Test
+    void fork_cap_narrows_to_a_finite_cgroup_quota() {
+        assertThat(WorkerLeases.forkCpuCap(24, 2)).isEqualTo(2);
+        assertThat(WorkerLeases.forkCpuCap(4, 8)).isEqualTo(4);
+    }
+
+    @Test
     void overhead_is_the_larger_of_the_floor_and_twelve_percent() {
         assertThat(WorkerLeases.overheadBytes(128L << 20)).isEqualTo(WorkerLeases.OVERHEAD_FLOOR_BYTES);
         assertThat(WorkerLeases.overheadBytes(4L << 30))
@@ -173,6 +186,25 @@ class WorkerLeasesTest {
             assertThat(ledger.snapshot().leasedBytes()).isEqualTo(held.bytes());
         }
         assertThat(ledger.snapshot().leasedBytes()).isZero();
+    }
+
+    @Test
+    void a_resident_helper_leases_memory_but_leaves_the_core_to_running_work() throws Exception {
+        WorkerLeases.Ledger ledger = ledger(8L << 30, 1);
+        List<String> helper = List.of("java", "-Xmx64m", "-version");
+        try (WorkerLeases.Grant resident = ledger.acquireResident(helper, JvmOptions.HeapChoice.inspect(helper))) {
+            assertThat(ledger.snapshot().leasedBytes()).isEqualTo(resident.bytes());
+            CompletableFuture<WorkerLeases.Grant> work = new CompletableFuture<>();
+            Thread.ofVirtual().start(() -> {
+                try {
+                    work.complete(ledger.acquireBytes(1, true, 9L));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    work.completeExceptionally(e);
+                }
+            });
+            work.get(5, TimeUnit.SECONDS).close();
+        }
     }
 
     @Test

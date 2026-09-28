@@ -173,10 +173,12 @@ class WorkerLeasesOverbookTest {
             awaitQueued(ledger, 2);
             assertThat(head).isNotDone();
             assertThat(behind).isNotDone();
-            ledger.cancelRequest(1);
+            // Drop the waiter that fits first. Cancelling the head grants the next lease that
+            // fits, so the fitting waiter would already be running by the time it was cancelled.
             ledger.cancelRequest(2);
-            assertThatThrownBy(() -> head.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(InterruptedException.class);
+            ledger.cancelRequest(1);
             assertThatThrownBy(() -> behind.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(InterruptedException.class);
+            assertThatThrownBy(() -> head.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(InterruptedException.class);
             assertThat(ledger.snapshot().leasedBytes()).isEqualTo(held.bytes());
         }
     }
