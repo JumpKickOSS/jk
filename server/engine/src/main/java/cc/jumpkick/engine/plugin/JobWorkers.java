@@ -271,7 +271,9 @@ public final class JobWorkers {
         Long request = track ? CURRENT.get() : null;
         WorkerLeases.Grant grant;
         try {
-            grant = leases.acquire(pb.command(), request, choice);
+            grant = track
+                    ? leases.acquire(pb.command(), request, choice)
+                    : leases.acquireResident(pb.command(), choice);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("cancelled while waiting for memory");

@@ -64,6 +64,15 @@ public final class AvailableCpus {
         return jvm;
     }
 
+    /**
+     * Cgroup CPU quota in whole cores, or {@code -1} when the quota is unlimited or cannot be
+     * read. Unlike {@link #count()}, this never falls back to {@link Runtime#availableProcessors()},
+     * which a {@code -XX:ActiveProcessorCount} pin clamps.
+     */
+    public static int quota() {
+        return fromCgroup(SYS_FS_CGROUP, PROC_SELF_CGROUP);
+    }
+
     /** Quota-derived cores, or {@code -1} if unlimited / unreadable. */
     static int fromCgroup(Path cgroupRoot, Path procSelfCgroup) {
         if (cgroupRoot == null || !Files.isDirectory(cgroupRoot)) return -1;

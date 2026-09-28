@@ -259,8 +259,11 @@ the next compile starts a new one. Lanes are one budget for the whole engine, sh
 every job: the core count, and how many lane leases fit. A job on its own still gets
 every lane that fits. `JK_COMPILE_LANES` pins the count for measurement.
 
-Forked JVMs that are actually running are also capped at the core count, separate from
-the memory lease, so several jobs cannot start one JVM per core each and thrash. Before
+Forked JVMs that are actually running are also capped at the machine's online processors,
+or at the cgroup CPU quota when that quota is finite, separate from the memory lease, so
+several jobs cannot start one JVM per core each and thrash. A process's
+`-XX:ActiveProcessorCount` is its own share of the machine and does not lower this cap.
+Before
 a job writes anything, the engine checks free space on the project directory and on the
 store. The floor is the larger of 1 GiB and 2% of that volume, and at most 2 GiB. Below
 the floor the job waits up to 15 seconds, then stops with `not enough free space on
