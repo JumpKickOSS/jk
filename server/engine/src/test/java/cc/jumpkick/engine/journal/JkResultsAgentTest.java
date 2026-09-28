@@ -64,6 +64,34 @@ class JkResultsAgentTest {
     }
 
     @Test
+    void a_workspace_names_the_module_on_a_heap_retry_and_a_memory_wait() {
+        List<BuildRecord.Module> modules = List.of(
+                new BuildRecord.Module("cc.jumpkick:jk-engine", "/ws/server/engine", true, 0, 10, List.of()),
+                new BuildRecord.Module("cc.jumpkick:jk-cli", "/ws/clients/cli", true, 0, 10, List.of()));
+        BuildRecord.Diag engineWait = new BuildRecord.Diag(
+                "warning", "/ws/server/engine", "run-tests", "memory-wait", "waited 12s for memory", null, null);
+        BuildRecord.Diag engineAgain = new BuildRecord.Diag(
+                "warning", "/ws/server/engine", "run-tests", "memory-wait", "waited 1s for memory", null, null);
+        BuildRecord.Diag cliWait = new BuildRecord.Diag(
+                "warning", "/ws/clients/cli", "run-tests", "memory-wait", "waited 3s for memory", null, null);
+        BuildRecord.Diag retry = new BuildRecord.Diag(
+                "warning",
+                "/ws/server/engine",
+                "run-tests",
+                "heap-retry",
+                "retried with 256 MiB heap after running out of 128 MiB",
+                null,
+                null);
+        BuildRecord r = workspace(modules, List.of(engineWait, engineAgain, cliWait, retry));
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                OK test rest-service · 1 test · 500ms
+                W jk-engine run-tests: waited 12s for memory
+                W jk-cli run-tests: waited 3s for memory
+                W jk-engine run-tests: retried with 256 MiB heap after running out of 128 MiB
+                """);
+    }
+
+    @Test
     void an_ok_test_run_is_one_line() {
         BuildRecord r = record("test", true, false, 500, new BuildRecord.Tests(2, 2, 0, 0), List.of(), List.of());
         assertThat(JkResultsAgent.render(r)).isEqualTo("OK test rest-service · 2 tests · 500ms\n");
@@ -358,6 +386,37 @@ class JkResultsAgentTest {
                 snippet,
                 0,
                 key);
+    }
+
+    private static BuildRecord workspace(List<BuildRecord.Module> modules, List<BuildRecord.Diag> diags) {
+        return new BuildRecord(
+                "id",
+                1,
+                BuildRecord.SCHEMA,
+                "test",
+                "/ws/rest-service",
+                "com.example:rest-service",
+                "pid",
+                1_000,
+                1_500,
+                500,
+                true,
+                false,
+                0,
+                "0.14.0",
+                new BuildRecord.Tests(1, 1, 0, 0),
+                modules,
+                List.of(),
+                diags,
+                "cli",
+                null,
+                null,
+                null,
+                false,
+                null,
+                7,
+                null,
+                List.of());
     }
 
     private static BuildRecord record(

@@ -806,6 +806,47 @@ public final class JkResultsMarkdown {
         return test == null ? "" : test;
     }
 
+    /**
+     * Short module name for a warning with no file locus, when the build has more than one module.
+     * Empty for a single-module build and for a warning that is not one module's.
+     */
+    static String warningModule(BuildRecord r, BuildRecord.Diag d) {
+        if (r == null || d == null || r.modules().size() <= 1) return "";
+        if (!locus(d, r.dir()).isEmpty()) return "";
+        String dir = normDir(d.dir());
+        if (dir.isEmpty() || dir.equals(normDir(r.dir()))) return "";
+        for (BuildRecord.Module m : r.modules()) {
+            if (!dir.equals(normDir(m.dir()))) continue;
+            return moduleName(m);
+        }
+        return leaf(dir);
+    }
+
+    /** Artifact of a module coordinate ({@code g:jk-engine} or {@code g:jk-engine:1}), else the directory leaf. */
+    private static String moduleName(BuildRecord.Module m) {
+        String coord = some(m.coord());
+        if (coord != null) {
+            String artifact = artifactOf(coord);
+            if (!artifact.isEmpty()) return artifact;
+        }
+        return leaf(m.dir());
+    }
+
+    /** {@code g:artifact} or {@code g:artifact:version} → {@code artifact}. */
+    private static String artifactOf(String coord) {
+        String[] p = coord.split(":", -1);
+        if (p.length >= 2 && !p[1].isBlank()) return p[1];
+        return p[0].isBlank() ? "" : p[0];
+    }
+
+    private static String normDir(@Nullable String dir) {
+        if (dir == null || dir.isBlank()) return "";
+        String s = DirKeys.key(dir);
+        if (s == null || s.isBlank()) return "";
+        while (s.length() > 1 && (s.endsWith("/") || s.endsWith("\\"))) s = s.substring(0, s.length() - 1);
+        return s;
+    }
+
     private static String moduleLabel(BuildRecord.Diag d) {
         String module = some(d.module());
         if (module != null) return module;
