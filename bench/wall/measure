@@ -149,14 +149,25 @@ def engine_pids() -> set[int]:
     return pids
 
 
+def _in_gradle_home(pid: int) -> bool:
+    try:
+        cwd = os.readlink(f"/proc/{pid}/cwd")
+    except OSError:
+        return False
+    home = str(gradle_home())
+    return cwd == home or cwd.startswith(home + "/")
+
+
 def resident_roots(tool: str, procs: dict[int, tuple[int, int]]) -> set[int]:
     """Processes the command does not own but the tool's memory bill includes."""
     if tool == "jk":
         return engine_pids() | {pid for pid in procs if "jk-engine" in cmdline(pid) and "java" in cmdline(pid)[:200]}
     if tool == "gradle":
-        # Only daemons of the harness's own Gradle home: another checkout's daemon is not this bill.
+        # Only daemons of the harness's own Gradle home: another checkout's daemon is not this bill. A
+        # daemon runs in <gradle home>/daemon/<version>; the pinned distribution lives outside that home,
+        # so its command line does not name it.
         return {pid for pid in procs
-                if "org.gradle.launcher.daemon.bootstrap.GradleDaemon" in cmdline(pid) and str(gradle_home()) in cmdline(pid)}
+                if "org.gradle.launcher.daemon.bootstrap.GradleDaemon" in cmdline(pid) and _in_gradle_home(pid)}
     return set()
 
 
@@ -587,19 +598,15 @@ def _table(entries: dict[tuple[str, str], dict]) -> str:
 
 
 def render_table() -> str:
-    """The markdown the docs carry between the wall-table markers. Only this host's cells are the table."""
+    """The markdown the docs carry between the wall-table markers: the most recently banked host's
+    cells. Another host's rows stay in wall-baseline.toml and are not published beside them."""
     grouped: dict[str, dict[tuple[str, str], dict]] = {}
     for tool, scenario, entry in _all_banked():
         grouped.setdefault(_entry_host(entry), {})[(tool, scenario)] = entry
     if not grouped:
         return "_No banked wall yet: run `bench/wall/measure --bank`._"
-    current = benchtools.host_id()
-    parts = [_table(grouped[current]) if current in grouped else f"_No wall rows for this host (`{current}`)._"]
-    for host, entries in sorted(grouped.items()):
-        if host == current:
-            continue
-        parts.append(f"## Other host `{host}`\n\nThese rows are not compared with this host.\n\n{_table(entries)}")
-    return "\n\n".join(parts)
+    latest = max(grouped, key=lambda host: max(str(e.get("date", "")) for e in grouped[host].values()))
+    return _table(grouped[latest])
 
 
 def render_docs() -> None:
