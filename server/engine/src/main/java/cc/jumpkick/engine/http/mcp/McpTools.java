@@ -223,8 +223,8 @@ public final class McpTools {
 
     /**
      * Dispatch one {@code tools/call}; {@code connection} is the caller's, or null when it sent no
-     * session id. An unbound connection whose call carries {@code dir} is bound to it first, and
-     * the result says so.
+     * session id. An unbound connection whose call carries {@code dir} is bound to it. The reply is
+     * the tool's own result.
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> call(McpContext ctx, Map<String, Object> params, @Nullable McpConnection connection) {
@@ -234,16 +234,15 @@ public final class McpTools {
         McpTool tool = byName.get(name);
         if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
-        String bound = BIND.equals(name) ? null : implicitBind(connection, args.get("dir"));
-        Map<String, Object> result = tool.call(new McpCall(ctx, args, progressTokenOf(params), connection));
-        return bound == null ? result : announceBind(result, bound);
+        if (!BIND.equals(name)) implicitBind(connection, args.get("dir"));
+        return tool.call(new McpCall(ctx, args, progressTokenOf(params), connection));
     }
 
-    /** Bind an unbound connection to the call's {@code dir}; the dir it was bound to, or null when nothing changed. */
-    private static @Nullable String implicitBind(@Nullable McpConnection connection, @Nullable Object rawDir) {
-        if (connection == null || connection.dir() != null) return null;
+    /** Bind an unbound connection to the call's {@code dir}. A connection that already has one is left alone. */
+    private static void implicitBind(@Nullable McpConnection connection, @Nullable Object rawDir) {
+        if (connection == null || connection.dir() != null) return;
         String dir = rawDir == null ? null : String.valueOf(rawDir);
-        if (dir == null || dir.isBlank()) return null;
+        if (dir == null || dir.isBlank()) return;
         String abs;
         try {
             abs = McpHistoryViews.dirKey(dir);
@@ -251,33 +250,6 @@ public final class McpTools {
             throw new McpError(-32602, "invalid dir: " + e.getMessage());
         }
         connection.bind(abs);
-        return abs;
-    }
-
-    /** The tool's own result plus the one-time note that this call bound the connection. */
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> announceBind(Map<String, Object> result, String dir) {
-        Map<String, Object> out = new LinkedHashMap<>(result);
-        String note = "bound " + dir + " (later calls may omit dir)";
-        List<Map<String, Object>> content = new ArrayList<>();
-        if (result.get("content") instanceof List<?> items) {
-            for (Object item : items) {
-                if (item instanceof Map<?, ?> m) content.add(new LinkedHashMap<>((Map<String, Object>) m));
-            }
-        }
-        if (!content.isEmpty() && "text".equals(content.getFirst().get("type"))) {
-            Object text = content.getFirst().get("text");
-            content.getFirst().put("text", note + "\n" + (text == null ? "" : text));
-        } else {
-            content.addFirst(new LinkedHashMap<>(Map.of("type", "text", "text", note)));
-        }
-        out.put("content", content);
-        if (result.get("structuredContent") instanceof Map<?, ?> structured) {
-            Map<String, Object> copy = new LinkedHashMap<>((Map<String, Object>) structured);
-            copy.put("bound", dir);
-            out.put("structuredContent", copy);
-        }
-        return out;
     }
 
     /**
