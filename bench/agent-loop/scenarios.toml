@@ -444,6 +444,230 @@ coordinate = "org.junit.jupiter:junit-jupiter-api:5.0.0"
 kind = "resolve"
 pattern = "(?i)failed to discover tests|cannot create launcher|discovery exited|junit-jupiter-api|cannot resolve|version constraint"
 
+# ---------------------------------------------------------------- beyond the Gradle guides
+# Maven-first (jk imports the pom), multi-module, and Kotlin repos. Probed 2026-09-29: green under
+# their own tool (pinned Maven/Gradle) and under jk after `jk import`, no hand edits.
+
+[repos.gs-multi-module]
+source = "https://github.com/spring-guides/gs-multi-module"
+commit = "d88a2b721bda3798a6a934987157498e66da06c5"
+subdir = "complete"
+tool = "mvn"
+build = "pom.xml"
+tools = ["jk", "mvn", "gradle"]
+modules = 2
+
+[repos.gs-multi-module.failures.compile-error]
+file = "library/src/main/java/com/example/multimodule/service/MyService.java"
+find = "return this.serviceProperties.getMessage();"
+
+[repos.gs-multi-module.failures.failing-assertion]
+file = "library/src/test/java/com/example/multimodule/service/MyServiceTest.java"
+find = "assertThat(myService.message()).isNotNull();"
+replace = 'assertThat(myService.message()).isEqualTo("Hello, World");'
+tests = ["com.example.multimodule.service.MyServiceTest"]
+
+# No missing-dependency yet: jk compiles a workspace module against its siblings' dependencies, so
+# removing `spring-boot` from `library` stays green under jk while Maven and Gradle go red.
+
+# Not on Maven: without `clean` it keeps the deleted file in target/classes and stays green.
+[repos.gs-multi-module.failures.missing-resource]
+file = "application/src/main/resources/application.properties"
+tools = ["jk", "gradle"]
+tests = ["com.example.multimodule.application.DemoApplicationTest"]
+
+[repos.gs-multi-module.failures.version-conflict]
+coordinate = "org.springframework:spring-core:6.0.0"
+jk = "application/jk.toml"
+pom = "application/pom.xml"
+gradle = "application/build.gradle"
+# Imported from Maven, jk keeps nearest-wins pins (`pins = "nearest"`), so the old spring-core
+# wins on every tool and the Boot context fails at test time. MyServiceTest fails only under jk,
+# whose library test classpath sees the application's pin.
+kind = "test"
+tests = ["com.example.multimodule.application.DemoApplicationTest", "com.example.multimodule.service.MyServiceTest"]
+
+[repos.junit-starter-maven]
+source = "https://github.com/junit-team/junit-examples"
+commit = "bb7eb03dc51dc8ea9ddebe8022e4362d0d427174"
+subdir = "junit-jupiter-starter-maven"
+tool = "mvn"
+build = "pom.xml"
+tools = ["jk", "mvn"]
+
+[repos.junit-starter-maven.failures.compile-error]
+file = "src/main/java/com/example/project/Calculator.java"
+find = "return a + b;"
+
+[repos.junit-starter-maven.failures.failing-assertion]
+file = "src/test/java/com/example/project/CalculatorTests.java"
+find = 'assertEquals(2, calculator.add(1, 1), "1 + 1 should equal 2");'
+replace = 'assertEquals(3, calculator.add(1, 1), "1 + 1 should equal 2");'
+tests = ["com.example.project.CalculatorTests"]
+
+# No missing-dependency: without a declared test framework jk supplies JUnit, so removing the
+# only test dependency stays green.
+
+[repos.commons-cli]
+source = "https://github.com/apache/commons-cli"
+commit = "340b50c30ef3774403518e4210c17bbf61572635"
+tool = "mvn"
+build = "pom.xml"
+tools = ["jk", "mvn"]
+
+[repos.commons-cli.failures.compile-error]
+file = "src/main/java/org/apache/commons/cli/Util.java"
+find = "return str.substring(2);"
+
+[repos.commons-cli.failures.failing-assertion]
+file = "src/test/java/org/apache/commons/cli/UtilTest.java"
+find = 'assertEquals("foo", Util.stripLeadingAndTrailingQuotes("\"foo\""));'
+replace = 'assertEquals("fo", Util.stripLeadingAndTrailingQuotes("\"foo\""));'
+tests = ["org.apache.commons.cli.UtilTest"]
+
+[repos.commons-cli.failures.missing-dependency]
+artifact = "commons-text"
+files = ["src/test/**"]
+
+[repos.spring-petclinic]
+source = "https://github.com/spring-projects/spring-petclinic"
+commit = "f3c74834e31079f69855e9c9eddb34fceb40a8d9"
+tool = "mvn"
+build = "pom.xml"
+tools = ["jk", "mvn"]
+
+[repos.spring-petclinic.failures.compile-error]
+file = "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+find = "this.address = address;"
+
+[repos.spring-petclinic.failures.failing-assertion]
+file = "src/test/java/org/springframework/samples/petclinic/owner/PetTypeFormatterTests.java"
+find = 'isEqualTo("Hamster")'
+replace = 'isEqualTo("Hamster!")'
+# PostgresIntegrationTests starts Postgres through Docker Compose and can fail on a loaded host.
+tests = ["org.springframework.samples.petclinic.owner.PetTypeFormatterTests", "org.springframework.samples.petclinic.PostgresIntegrationTests"]
+
+[repos.spring-petclinic.failures.missing-dependency]
+artifact = "cache-api"
+files = ["src/main/**"]
+
+[repos.spring-petclinic.failures.missing-resource]
+file = "src/main/resources/db/h2/schema.sql"
+tests = [
+  "org.springframework.samples.petclinic.service.ClinicServiceTests",
+  "org.springframework.samples.petclinic.PetClinicIntegrationTests",
+  "org.springframework.samples.petclinic.PetClinicConcurrencyTests",
+]
+
+[repos.junit-starter-maven-kotlin]
+source = "https://github.com/junit-team/junit-examples"
+commit = "bb7eb03dc51dc8ea9ddebe8022e4362d0d427174"
+subdir = "junit-jupiter-starter-maven-kotlin"
+tool = "mvn"
+build = "pom.xml"
+tools = ["jk", "mvn"]
+language = "kotlin"
+
+[repos.junit-starter-maven-kotlin.failures.compile-error]
+file = "src/main/kotlin/com/example/project/Calculator.kt"
+find = "return a + b"
+replace = "return a + c"
+
+[repos.junit-starter-maven-kotlin.failures.failing-assertion]
+file = "src/test/kotlin/com/example/project/CalculatorTests.kt"
+find = '"49,  51, 100"'
+replace = '"49,  51, 101"'
+tests = ["com.example.project.CalculatorTests"]
+
+[repos.junit-starter-maven-kotlin.failures.missing-dependency]
+artifact = "junit-jupiter"
+files = ["src/test/**"]
+
+[repos.junit-starter-gradle-kotlin]
+source = "https://github.com/junit-team/junit-examples"
+commit = "bb7eb03dc51dc8ea9ddebe8022e4362d0d427174"
+subdir = "junit-jupiter-starter-gradle-kotlin"
+tool = "gradle"
+build = "build.gradle.kts"
+tools = ["jk", "gradle"]
+language = "kotlin"
+
+[repos.junit-starter-gradle-kotlin.failures.compile-error]
+file = "src/main/kotlin/com/example/project/Calculator.kt"
+find = "return a + b"
+replace = "return a + c"
+
+[repos.junit-starter-gradle-kotlin.failures.failing-assertion]
+file = "src/test/kotlin/com/example/project/CalculatorTests.kt"
+find = '"49,  51, 100"'
+replace = '"49,  51, 101"'
+tests = ["com.example.project.CalculatorTests"]
+
+[repos.junit-starter-gradle-kotlin.failures.missing-dependency]
+artifact = "junit-jupiter"
+files = ["src/test/**"]
+
+[repos.spring-petclinic-kotlin]
+source = "https://github.com/spring-petclinic/spring-petclinic-kotlin"
+commit = "c77f77ba5d43c2dbff7fa777c40be1d7ec321e40"
+tool = "gradle"
+build = "build.gradle.kts"
+tools = ["jk", "gradle"]
+language = "kotlin"
+
+[repos.spring-petclinic-kotlin.failures.compile-error]
+file = "src/main/kotlin/org/springframework/samples/petclinic/vet/Vet.kt"
+find = "specialties.size"
+replace = "specialties.count"
+
+[repos.spring-petclinic-kotlin.failures.failing-assertion]
+file = "src/test/kotlin/org/springframework/samples/petclinic/vet/VetTest.kt"
+find = "assertThat(other.firstName).isEqualTo(vet.firstName)"
+replace = "assertThat(other.firstName).isEqualTo(vet.lastName)"
+tests = ["org.springframework.samples.petclinic.vet.VetTest"]
+
+[repos.spring-petclinic-kotlin.failures.missing-dependency]
+artifact = "cache-api"
+handle = "jcache-api"
+files = ["src/main/**"]
+
+[repos.spring-petclinic-kotlin.failures.missing-resource]
+file = "src/main/resources/db/h2/schema.sql"
+tests = [
+  "org.springframework.samples.petclinic.owner.OwnerRepositoryTest",
+  "org.springframework.samples.petclinic.owner.PetRepositoryTest",
+  "org.springframework.samples.petclinic.vet.VetRepositoryTest",
+  "org.springframework.samples.petclinic.visit.VisitRepositoryTest",
+  "org.springframework.samples.petclinic.PetclinicIntegrationTests",
+]
+
+[repos.tut-spring-boot-kotlin]
+source = "https://github.com/spring-guides/tut-spring-boot-kotlin"
+commit = "a599cbd44f5ec108c402e9967309ead7008b2212"
+tool = "gradle"
+build = "build.gradle.kts"
+tools = ["jk", "gradle"]
+language = "kotlin"
+
+[repos.tut-spring-boot-kotlin.failures.compile-error]
+file = "src/main/kotlin/com/example/blog/Extensions.kt"
+find = 'n in 11..13 -> "${n}th"'
+replace = 'n in 11..13 -> "${n}th" + x'
+
+[repos.tut-spring-boot-kotlin.failures.failing-assertion]
+file = "src/test/kotlin/com/example/blog/IntegrationTests.kt"
+find = '"<h1>Blog</h1>", "Lorem"'
+replace = '"<h1>Blog!</h1>", "Lorem"'
+tests = ["com.example.blog.IntegrationTests"]
+
+[repos.tut-spring-boot-kotlin.failures.missing-dependency]
+artifact = "springmockk"
+files = ["src/test/**"]
+
+[repos.tut-spring-boot-kotlin.failures.missing-resource]
+file = "src/main/resources/schema.sql"
+tests = ["com.example.blog.RepositoriesTests", "com.example.blog.BlogApplicationTests", "com.example.blog.IntegrationTests"]
+
 # agent-subset: 8 (repo, failure) pairs. Each one is supported by jk, mvn, and gradle, so the
 # slice is 24 (scenario × tool) runs. Every failure class is present. Both repos that carry
 # version-conflict on all three tools are here, and both that carry missing-resource on all three.
@@ -457,4 +681,36 @@ scenarios = [
   "gs-accessing-data-jpa:failing-assertion",
   "gs-actuator-service:failing-assertion",
   "gs-consuming-rest:missing-dependency",
+]
+
+# beyond-guides: every scenario of the Maven-first, multi-module and Kotlin repos.
+[subsets.beyond-guides]
+scenarios = [
+  "gs-multi-module:compile-error",
+  "gs-multi-module:failing-assertion",
+  "gs-multi-module:missing-resource",
+  "gs-multi-module:version-conflict",
+  "junit-starter-maven:compile-error",
+  "junit-starter-maven:failing-assertion",
+  "commons-cli:compile-error",
+  "commons-cli:failing-assertion",
+  "commons-cli:missing-dependency",
+  "spring-petclinic:compile-error",
+  "spring-petclinic:failing-assertion",
+  "spring-petclinic:missing-dependency",
+  "spring-petclinic:missing-resource",
+  "junit-starter-maven-kotlin:compile-error",
+  "junit-starter-maven-kotlin:failing-assertion",
+  "junit-starter-maven-kotlin:missing-dependency",
+  "junit-starter-gradle-kotlin:compile-error",
+  "junit-starter-gradle-kotlin:failing-assertion",
+  "junit-starter-gradle-kotlin:missing-dependency",
+  "spring-petclinic-kotlin:compile-error",
+  "spring-petclinic-kotlin:failing-assertion",
+  "spring-petclinic-kotlin:missing-dependency",
+  "spring-petclinic-kotlin:missing-resource",
+  "tut-spring-boot-kotlin:compile-error",
+  "tut-spring-boot-kotlin:failing-assertion",
+  "tut-spring-boot-kotlin:missing-dependency",
+  "tut-spring-boot-kotlin:missing-resource",
 ]
