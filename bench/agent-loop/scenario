@@ -538,8 +538,20 @@ def loci(text: str) -> list[tuple[str, int]]:
 
 
 def failing_classes(text: str) -> list[str]:
+    """Classes under `## Tests`, else the entries under `## Failures` → `### Tests`.
+
+    A class whose setup failed (`Class.Class (container)`) has no `## Tests` row, only the entry.
+    """
     tests = section(text, "Tests")
-    return [m.group(1) for m in re.finditer(r"^#### (\S+)", tests, re.M)]
+    named = [m.group(1) for m in re.finditer(r"^#### (\S+)", tests, re.M)]
+    if named:
+        return named
+    failures = re.search(r"^### Tests\n(.*?)(?=^##+ |\Z)", section(text, "Failures"), re.S | re.M)
+    out: list[str] = []
+    for m in re.finditer(r"^- `(?:[^`]*? :: )?([\w.$]+?)\.[^.`]+?(?: \(container\))?`", failures.group(1) if failures else "", re.M):
+        if m.group(1) not in out:
+            out.append(m.group(1))
+    return out
 
 
 def matches(path: str, patterns: list[str]) -> bool:

@@ -62,8 +62,11 @@ def open_mcp(tool: str, sandbox: Path) -> McpClient:
 
 
 def results_ok(text: str) -> bool:
-    """The results page headline (the comparators' wrappers) or jk's agent verdict line says OK."""
-    return bool(re.match(r"(?:# jk results — OK|OK )", text))
+    """The results page headline (the comparators' wrappers) or jk's agent verdict line says OK.
+
+    jk's page leads with a UTF-8 byte-order mark; the wrappers' pages do not.
+    """
+    return bool(re.match(r"(?:# jk results — OK|OK )", text.removeprefix("\ufeff")))
 
 
 @dataclass
