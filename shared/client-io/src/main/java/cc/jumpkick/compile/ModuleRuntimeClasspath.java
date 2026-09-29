@@ -2,37 +2,27 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
-import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.Workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * Runtime jars for one module: lockfile transitive closure of declared external deps (and of
- * workspace siblings' main/export/runtime externals) plus sibling thin jars — a relocating
- * sibling's fat jar in place of both its thin jar and its externals. Shared by packaging
- * (assembly) and thin-worker install — never the whole workspace lock.
+ * Runtime jars for one module: its runtime classpath from the lock ({@link
+ * ClasspathResolver#classpathFor(Lockfile, Set, boolean, JkBuild, Path)}) plus sibling thin jars —
+ * a relocating sibling's fat jar in place of both its thin jar and its externals. Shared by
+ * packaging (assembly) and thin-worker install.
  */
 public final class ModuleRuntimeClasspath {
 
@@ -82,19 +72,7 @@ public final class ModuleRuntimeClasspath {
         Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-
-        LinkedHashSet<String> roots = new LinkedHashSet<>();
-        roots.addAll(ClasspathResolver.declaredExternalRoots(project, ClasspathResolver.RUNTIME));
-        // Language runtimes are lock-injected (LockOrchestrator) but not always declared in
-        // jk.toml — seed them so assembly/fat jars nest groovy/kotlin-stdlib.
-        seedLanguageRuntimeRoots(moduleDir, project, roots);
-        for (JkBuild sib : siblingBuilds(moduleDir, project, siblings.siblingCoords())) {
-            // A relocating sibling's fat jar bundles its rows; the jar rides below, its rows do not.
-            if (sib.relocates()) continue;
-            roots.addAll(
-                    ClasspathResolver.inheritedExternalRoots(sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
-        }
-        depJars.addAll(resolver.classpathClosure(lock, roots, ClasspathResolver.RUNTIME));
+        depJars.addAll(resolver.classpathFor(lock, ClasspathResolver.RUNTIME, false, project, moduleDir));
         for (Path j : siblings.siblingClosureJars()) {
             if (present.test(j) && !depJars.contains(j)) depJars.add(j);
         }
@@ -104,53 +82,5 @@ public final class ModuleRuntimeClasspath {
     /** Convenience when the lock path should be derived via {@link LockPaths#lockFile}. */
     public static List<Path> jars(Path moduleDir, JkBuild project, Cas cas) throws IOException {
         return jars(moduleDir, project, LockPaths.lockFile(moduleDir), cas);
-    }
-
-    /**
-     * Seed lock GAs for language runtimes when the module uses that language (inject-only deps).
-     * Missing lock rows are skipped by {@link ClasspathResolver#classpathClosure}.
-     */
-    static void seedLanguageRuntimeRoots(Path moduleDir, JkBuild project, Set<String> roots) {
-        if (project == null || roots == null) return;
-        Languages langs = Languages.resolve(project.project(), moduleDir);
-        if (langs.groovy()) roots.add("org.apache.groovy:groovy");
-        if (langs.kotlin()) roots.add("org.jetbrains.kotlin:kotlin-stdlib");
-        if (langs.scala()) roots.add("org.scala-lang:scala3-library_3");
-    }
-
-    static List<JkBuild> siblingBuilds(Path moduleDir, JkBuild project, List<String> siblingCoords) throws IOException {
-        if (siblingCoords == null || siblingCoords.isEmpty()) return List.of();
-        Set<String> want = new HashSet<>(siblingCoords);
-        Path root;
-        JkBuild rootManifest;
-        if (project.isWorkspaceRoot()) {
-            root = moduleDir;
-            rootManifest = project;
-        } else {
-            var rootOpt = WorkspaceLocator.findRoot(moduleDir);
-            if (rootOpt.isEmpty()) return List.of();
-            root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
-            if (!rootManifest.isWorkspaceRoot()) return List.of();
-        }
-        Workspace workspace = Objects.requireNonNull(rootManifest.workspace(), "workspace root without [workspace]");
-        List<JkBuild> out = new ArrayList<>();
-        for (String moduleName : WorkspaceModules.expand(root, workspace.modules())) {
-            Path unitDir = root.resolve(moduleName);
-            Path manifest = ManifestPaths.manifestIn(unitDir);
-            if (!Files.isRegularFile(manifest)) continue;
-            JkBuild unit;
-            try {
-                unit = JkBuildParser.parse(manifest);
-            } catch (RuntimeException e) {
-                continue;
-            }
-            String coord = unit.project().group() + ":" + unit.project().name();
-            if (want.contains(coord)) out.add(unit);
-        }
-        String rootCoord =
-                rootManifest.project().group() + ":" + rootManifest.project().name();
-        if (want.contains(rootCoord)) out.add(rootManifest);
-        return out;
     }
 }

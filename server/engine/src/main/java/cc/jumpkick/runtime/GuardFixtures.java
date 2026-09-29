@@ -371,7 +371,8 @@ public final class GuardFixtures {
         Lockfile lock = Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile) : null;
         ClasspathResolver resolver = new ClasspathResolver(cas);
         List<Path> testRuntime = new ArrayList<>();
-        if (lock != null) testRuntime.addAll(resolver.classpathFor(lock, ClasspathResolver.TEST, false, build));
+        if (lock != null)
+            testRuntime.addAll(resolver.classpathFor(lock, ClasspathResolver.TEST, false, build, moduleDir));
         Path library = GuardSuiteLibrary.locate(root, cas).path();
         List<Path> runtimeCp = PlannerGuardSuite.classpath(build, layout, testRuntime, library);
         Path report = GuardSuites.report(work);
@@ -417,7 +418,8 @@ public final class GuardFixtures {
             Lockfile lock = LockfileReader.read(lockFile);
             WorkspaceClasspath.Result siblings =
                     WorkspaceClasspath.resolve(moduleDir, build, WorkspaceClasspath.COMPILE_SCOPES);
-            for (Path p : PlannerSupport.mainCompileClasspath(build, lock, new ClasspathResolver(cas), siblings, false))
+            for (Path p : PlannerSupport.mainCompileClasspath(
+                    moduleDir, build, lock, new ClasspathResolver(cas), siblings, false))
                 if (!cp.contains(p)) cp.add(p);
         }
         return cp;

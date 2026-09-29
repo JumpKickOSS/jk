@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.14.0"
-generated-by-build = "89791e6a9500"
-generated-by-build-time = "2026-09-24T16:42:44Z"
+generated-by-build = "5140b725b57b"
+generated-by-build-time = "2026-09-29T15:16:09Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "4c5fed382156517ea784b9531bbe2b3f304ab02070428b85e285ea86f63631f9"
+manifests-sha256 = "e893967226100654cbd371af340c47e0d8d59eccddcd41d9f76ac15265bfba5d"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -407,7 +407,7 @@ members  = ["plugins/quarkus"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:failureaccess:jar:@1.0.1",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 excluded-by = [
   "com.google.errorprone:error_prone_annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
@@ -2824,15 +2824,6 @@ scopes   = ["test"]
 deps = [
   "io.r2dbc:r2dbc-spi:jar:@1.0.0.RELEASE",
 ]
-
-[[artifact]]
-name     = "org.jspecify:jspecify:jar:"
-version  = "1.0.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided", "test", "processor"]
-members  = ["plugins/quarkus"]
 
 [[artifact]]
 name     = "org.jspecify:jspecify:jar:"

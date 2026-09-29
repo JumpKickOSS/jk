@@ -113,43 +113,38 @@ public final class PlannerSupport {
     }
 
     /**
-     * The {@code -processorpath} / KSP processor classpath: the lock's rows in {@code scopes} —
-     * {@link Scope#PROCESSOR} alone for compile-main, with {@link Scope#TEST_PROCESSOR} for
-     * compile-test — plus any workspace siblings declared in those tables and their own external
-     * closures.
+     * The {@code -processorpath} / KSP processor classpath: the module's classpath over {@code
+     * scopes} — {@link Scope#PROCESSOR} alone for compile-main, with {@link Scope#TEST_PROCESSOR}
+     * for compile-test — then the classes trees of the workspace siblings declared in those tables.
      *
-     * <p>A processor runs as a program, so it needs its own dependencies (a KSP processor needs
-     * {@code symbol-processing-api}, an emitter library, …) — hence the sibling-lockfile loop,
-     * mirroring {@link #mainCompileClasspath}. A sibling processor enters through its classes tree,
-     * like every compile-time sibling: the tree carries the service registration once the sibling's
-     * resources are copied, and is whole before the sibling packages. The declared closure rather
-     * than the built set, so {@code jk explain} reproduces the same action key after a clean.
+     * <p>A processor runs as a program, so a sibling processor's own runtime closure rides with it
+     * ({@link ClasspathResolver#classpathFor(Lockfile, Set, boolean, JkBuild, Path)}). A sibling
+     * processor enters through its classes tree, like every compile-time sibling: the tree carries
+     * the service registration once the sibling's resources are copied, and is whole before the
+     * sibling packages. The declared closure rather than the built set, so {@code jk explain}
+     * reproduces the same action key after a clean.
      */
     public static List<Path> processorClasspath(
+            Path dir,
             JkBuild project,
             Lockfile lock,
             ClasspathResolver resolver,
             WorkspaceClasspath.Result siblings,
-            boolean requirePresent)
-            throws IOException {
-        return processorClasspath(project, lock, resolver, siblings, Set.of(Scope.PROCESSOR), requirePresent);
+            boolean requirePresent) {
+        return processorClasspath(dir, project, lock, resolver, siblings, Set.of(Scope.PROCESSOR), requirePresent);
     }
 
     public static List<Path> processorClasspath(
+            Path dir,
             JkBuild project,
             Lockfile lock,
             ClasspathResolver resolver,
             WorkspaceClasspath.Result siblings,
             Set<Scope> scopes,
-            boolean requirePresent)
-            throws IOException {
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, scopes, requirePresent, project));
+            boolean requirePresent) {
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, scopes, requirePresent, project, dir));
         for (Path classes : siblings.siblingClosureClasses()) {
             if (!cp.contains(classes)) cp.add(classes);
-        }
-        for (Path p :
-                resolver.siblingClasspath(siblings.siblingLocks(), ClasspathResolver.COMPILE_MAIN, requirePresent)) {
-            if (!cp.contains(p)) cp.add(p);
         }
         return cp;
     }
@@ -187,28 +182,25 @@ public final class PlannerSupport {
         return missing;
     }
 
-    /** Lock rows in the module's declaration order, then sibling classes trees, then sibling lock rows. */
+    /**
+     * The module's compile classpath from the lock — its own rows, then those its siblings pass on
+     * — then the siblings' classes trees.
+     */
     public static List<Path> mainCompileClasspath(
+            Path dir,
             JkBuild project,
             Lockfile lock,
             ClasspathResolver resolver,
             WorkspaceClasspath.Result siblings,
-            boolean requirePresent)
-            throws IOException {
-        List<Path> cp =
-                new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN, requirePresent, project));
+            boolean requirePresent) {
+        List<Path> cp = new ArrayList<>(
+                resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN, requirePresent, project, dir));
         // The siblings' classes trees, as the declared closure (deterministic paths) — not the
         // built set — so the action key is stable whether or not target/ is currently populated.
         // A tree is whole once its module has compiled, which is what admits this module to the
         // schedule: javac compiles against these paths while the sibling may still be packaging.
         // After `jk clean` they still let `jk explain` reproduce the build's key.
         cp.addAll(siblings.siblingClosureClasses());
-        // A sibling's lock is read like this module's — its own declarations first — and under
-        // requirePresent a row that is not on disk fails by name rather than leaving the classpath short.
-        for (Path p :
-                resolver.siblingClasspath(siblings.siblingLocks(), ClasspathResolver.COMPILE_MAIN, requirePresent)) {
-            if (!cp.contains(p)) cp.add(p);
-        }
         return cp;
     }
 
@@ -802,16 +794,9 @@ public final class PlannerSupport {
     static List<Path> testCompileClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws IOException {
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, false, project));
+        List<Path> cp =
+                new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, false, project, dir));
         cp.addAll(sib.siblingClosureClasses());
-        try {
-            for (Path p : resolver.siblingClasspath(sib.siblingLocks(), ClasspathResolver.COMPILE_MAIN, false)) {
-                if (!cp.contains(p)) cp.add(p);
-            }
-        } catch (Exception e) {
-            /* best-effort */
-            Log.debug("testStampExtras: best-effort", e);
-        }
         return cp;
     }
 
@@ -819,16 +804,8 @@ public final class PlannerSupport {
     static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws IOException {
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, false, project));
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, false, project, dir));
         cp.addAll(sib.siblingClosureJars());
-        try {
-            for (Path p : resolver.siblingClasspath(sib.siblingLocks(), ClasspathResolver.RUNTIME, false)) {
-                if (!cp.contains(p)) cp.add(p);
-            }
-        } catch (Exception e) {
-            /* best-effort */
-            Log.debug("testStampExtras: best-effort", e);
-        }
         return cp;
     }
 

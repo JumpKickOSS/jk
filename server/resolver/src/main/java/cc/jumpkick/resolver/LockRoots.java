@@ -4,7 +4,6 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -47,27 +46,6 @@ final class LockRoots {
         TEST,
         PROCESSOR
     }
-
-    /**
-     * jk test infrastructure: always injected into the TEST classpath via {@code putIfAbsent} so
-     * {@code jk test} (which forks {@code jk-test-runner} over the JUnit Platform Launcher API)
-     * works regardless of which test framework the user chose. Injected on the declared Jupiter's
-     * Platform line ({@link JupiterLine}); {@code latest} is the selector when no Jupiter names
-     * one. The engines a declared framework needs ride beside it: {@link TestEngines}.
-     */
-    static final Dependency JUNIT_LAUNCHER = new Dependency(JupiterLine.LAUNCHER, VersionSelector.parse("latest"));
-
-    /**
-     * Passive JUnit 5 default: injected only when the user declared no {@code [test-dependencies]}
-     * section, so that a bare project gets a working test framework out of the box. Once the user
-     * owns the section — even if they don't list JUnit — jk leaves the framework choice to them.
-     *
-     * <p>Declared as {@code latest}: {@code jk lock} pins today's latest stable release (reproducible
-     * builds), and {@code jk update} advances it — "jk defaults to the latest stable JUnit" stays
-     * evergreen without manual bumps.
-     */
-    static final Dependency JUNIT_JUPITER =
-            new Dependency("org.junit.jupiter:junit-jupiter", VersionSelector.parse("latest"));
 
     private LockRoots() {}
 
@@ -164,22 +142,8 @@ final class LockRoots {
             }
         }
         // junit infrastructure rides the test graph only.
-        for (Dependency d : injectedTestRoots(project)) testDeduped.putIfAbsent(d.packageKey(), d);
+        for (Dependency d : TestEngines.injectedRoots(project)) testDeduped.putIfAbsent(d.packageKey(), d);
         return new Declared(mainDeduped, testDeduped, processorDeduped);
-    }
-
-    /**
-     * What jk adds to the test graph beyond the declaration: the launcher always, on the declared
-     * Jupiter's Platform line; Jupiter when the user declared no test dependencies; and the engine
-     * of every declared framework that has no engine of its own. One list, so the solve and the
-     * lockfile's scope tagging see the same roots.
-     */
-    static List<Dependency> injectedTestRoots(JkBuild project) {
-        List<Dependency> roots = new ArrayList<>();
-        roots.add(new Dependency(JUNIT_LAUNCHER.module(), JupiterLine.launcherSelector(project)));
-        if (project.dependencies().of(Scope.TEST).isEmpty()) roots.add(JUNIT_JUPITER);
-        roots.addAll(TestEngines.injected(project));
-        return roots;
     }
 
     /** The graph a scope's roots are solved in: processor (with test-processor), test (with test-dev), else main. */

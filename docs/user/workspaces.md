@@ -120,6 +120,10 @@ on the compile classpath, its jar and those libraries at runtime — and never a
 [`optional = true`](dependencies.md#optional-dependencies) entries, external or sibling: those are
 the sibling's own, as a POM's `<optional>` dependencies are under Maven. A starter's optional
 integrations stay out of every module that depends on the starter until that module declares them.
+What a module neither declares nor inherits is not on its classpaths, though the one lock holds it
+for a sibling: a library whose `[dependencies]` lose `spring-boot` fails to compile even beside an
+application that declares `spring-boot-starter-web`, and `jk tree <module>` draws the same
+artifacts the module compiles against.
 
 Sibling **fixtures** (Gradle `testFixtures`) are a directory, not a second artifact. The
 producer declares `[test] fixtures = true` (default root `src/fixtures/java`); a consumer

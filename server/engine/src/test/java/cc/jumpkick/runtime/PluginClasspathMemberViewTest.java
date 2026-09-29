@@ -85,6 +85,9 @@ class PluginClasspathMemberViewTest {
                 group   = "com.example"
                 name    = "%s"
                 version = "1.0.0"
+
+                [dependencies]
+                protobuf-java = { group = "com.google.protobuf", version = "2.5.0" }
                 """.formatted(name));
         return dir;
     }

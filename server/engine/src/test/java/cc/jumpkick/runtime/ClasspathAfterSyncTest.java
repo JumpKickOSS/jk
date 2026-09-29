@@ -74,6 +74,11 @@ class ClasspathAfterSyncTest {
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
+
+                [dependencies]
+                kept = { group = "com.foo", version = "1.0" }
+                gone = { group = "com.foo", version = "2.0" }
+                lost = { group = "com.foo", version = "3.0" }
                 """);
         JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
         Path lockFile = module.resolve("jk-lock.toml");
@@ -239,44 +244,50 @@ class ClasspathAfterSyncTest {
     }
 
     /**
-     * A sibling's own lock is judged like this module's: a row whose file has left the store fails
-     * the classpaths by name, in the same words, instead of the whole sibling lock being skipped and
-     * the compile or the packaged closure running short of a jar.
+     * A row a sibling passes on is judged like the module's own: one whose file has left the store
+     * fails the classpaths by name, in the same words, instead of the compile or the packaged closure
+     * running short of a jar.
      */
     @Test
     void a_sibling_lock_row_that_is_not_on_disk_fails_by_name(@TempDir Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
         Workspace ws = twoModules(tmp, "");
+        Files.writeString(ws.root.resolve("lib/jk.toml"), """
+                group   = "com.example"
+                name    = "lib"
+                version = "1.0.0"
+
+                [dependencies]
+                gone = { group = "com.foo", version = "2.0" }
+                """);
         Files.createDirectories(ws.libLayout.classesDir());
         Cas cas = new Cas(store);
-        Path siblingLock = ws.root.resolve("jk-lock.toml");
-        LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "jk test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        List.of(materialized(tmp, store, "com.foo:gone", "2.0"))),
-                siblingLock);
+        Path workspaceLock = ws.root.resolve("jk-lock.toml");
+        Lockfile lock = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk test",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(materialized(tmp, store, "com.foo:gone", "2.0")));
+        LockfileWriter.write(lock, workspaceLock);
         JkBuild app = JkBuildParser.parse(ws.app.resolve("jk.toml"));
-        Path noOwnLock = ws.app.resolve("jk-lock.toml");
 
-        StashContext whole = ws.context();
+        StashContext whole = ws.context(lock);
         PlannerSetup.publishClasspaths(whole, ws.inputs(store, false), cas, new PluginBuild.StepTools());
         assertThat(whole.require(BuildPlanner.CLASSPATH))
                 .as("the sibling lock's row rides the compile classpath while its jar is on disk")
                 .anyMatch(p -> p.getFileName().toString().equals("gone-2.0.jar"));
-        assertThat(PluginBuild.productionClasspath(ws.app, cas, noOwnLock, app))
+        assertThat(PluginBuild.productionClasspath(ws.app, cas, workspaceLock, app))
                 .anyMatch(p -> p.getFileName().toString().equals("gone-2.0.jar"));
 
         Files.delete(store.resolve("repos/central/com/foo/gone/2.0/gone-2.0.jar"));
 
-        StashContext ctx = ws.context();
+        StashContext ctx = ws.context(lock);
         assertThatThrownBy(() ->
                         PlannerSetup.publishClasspaths(ctx, ws.inputs(store, false), cas, new PluginBuild.StepTools()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.foo:gone:2.0")
                 .hasMessageContaining("not on disk after sync");
-        assertThatThrownBy(() -> PluginBuild.productionClasspath(ws.app, cas, noOwnLock, app))
+        assertThatThrownBy(() -> PluginBuild.productionClasspath(ws.app, cas, workspaceLock, app))
                 .as("the runtime classpath a step or packager ships is judged the same way")
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.foo:gone:2.0")
@@ -317,8 +328,12 @@ class ClasspathAfterSyncTest {
 
     private record Workspace(Path root, Path app, BuildLayout libLayout) {
         StashContext context() throws Exception {
+            return context(emptyLock());
+        }
+
+        StashContext context(Lockfile lock) throws Exception {
             StashContext ctx = new StashContext();
-            ctx.put(BuildPlanner.LOCKFILE, emptyLock());
+            ctx.put(BuildPlanner.LOCKFILE, lock);
             ctx.put(BuildPlanner.PROJECT, JkBuildParser.parse(app.resolve("jk.toml")));
             return ctx;
         }
@@ -354,6 +369,9 @@ class ClasspathAfterSyncTest {
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
+
+                [dependencies]
+                lib = { group = "com.foo", version = "1.0" }
                 """);
 
         Path jarSrc = tmp.resolve("lib.bin");
