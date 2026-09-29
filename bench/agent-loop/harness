@@ -56,6 +56,8 @@ from harnesslib.session import Session, open_mcp, results_ok  # noqa: E402
 
 HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop")
 DRIVERS = ("scripted", "claude-code", "api", "grok", "agy", "muse")
+# Seconds to wait before each relaunch after a startup failure; None is the last attempt.
+STARTUP_RETRY_S = (30, 120, None)
 # Flag values the harness passes when --model / --effort are omitted. The table header prints them.
 DEFAULT_MODEL = {
     "claude-code": "claude-opus-5-5",
@@ -206,7 +208,13 @@ def run_one(repo, failure: str, tool: str, ns, run_root: Path) -> dict:
                 "claude-code": agents.claude_code, "api": agents.api, "grok": agents.grok,
                 "agy": agents.agy, "muse": agents.muse,
             }[ns.driver]
-            res = run(tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript, effort=ns.effort)
+            # A rejected login or model id is the CLI's hiccup, not the scenario: wait and relaunch.
+            for backoff in STARTUP_RETRY_S:
+                res = run(tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript, effort=ns.effort)
+                if not res.extra.get("abort") or backoff is None:
+                    break
+                time.sleep(backoff)
+                started = time.monotonic()
             usage = res.usage
             row.update(
                 turns=res.turns, finding=res.finding,
