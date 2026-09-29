@@ -68,20 +68,19 @@ their import failures). Both injectors exist so a repo that imports later can us
 
 ## The corpus
 
-Nineteen repositories, [`scenarios.toml`](scenarios.toml), all Gradle single-module Java
-projects: eighteen Spring guides (`complete/` of each) and the JUnit 5 Gradle starter. Thirteen of
-the guides also ship a `pom.xml`, so they have a Maven baseline too. Every repo compiles and
-tests green under the pinned Gradle, under the pinned Maven where listed, and under jk after
-`jk import` of its `build.gradle` with no hand edits.
+Twenty-seven repositories, [`scenarios.toml`](scenarios.toml). Nineteen are Gradle
+single-module Java projects: eighteen Spring guides (`complete/` of each) and the JUnit 5 Gradle
+starter; thirteen of the guides also ship a `pom.xml`, so they have a Maven baseline too. Eight go
+beyond them: Maven-first repos that jk imports from the `pom.xml` (`gs-multi-module`, which is also
+multi-module and has a Gradle baseline, the JUnit Maven starter, `commons-cli`,
+`spring-petclinic`), and Kotlin repos (the JUnit Maven and Gradle Kotlin starters,
+`spring-petclinic-kotlin`, `tut-spring-boot-kotlin`). Every repo compiles and tests green under
+the pinned Gradle or Maven, and under jk after `jk import` of its own build file with no hand
+edits. `harness --subset beyond-guides` runs just those eight.
 
-The selection is one repository short of twenty and narrower than the design asked for (a mix of
-Maven and Gradle, single- and multi-module, Kotlin). That is the honest result of the filter, not a
-choice: fifty-two candidates were tried and thirty-three are rejected in
-[CANDIDATES.md](CANDIDATES.md) with the exact reason. Almost every Maven project with a parent or
-an imported BOM imports into jk with `version = "unresolved"` and cannot resolve; every Gradle file
-with a `$property` version imports it literally; JUnit 4 suites do not run. Those rejects are the
-import work the corpus waits on, and the matrix grows as they land — add the repo table, its
-failures, run `scenario --baseline` and `--verify`.
+[CANDIDATES.md](CANDIDATES.md) lists every repository tried and why each reject failed. The
+jk-side rejects are the import work the corpus waits on, and the matrix grows as they land — add
+the repo table, its failures, run `scenario --baseline` and `--verify`.
 
 Each baseline keeps only its own tool's build: a jk tree has neither Maven's nor Gradle's files,
 a Maven tree has no Gradle build and a Gradle tree no `pom.xml`, so no agent can read the answer
