@@ -79,6 +79,7 @@ def _startup_failure(text: str) -> bool:
         "invalid model",
         "unknown model",
         "model id",
+        "billing",
     ))
 
 
@@ -640,6 +641,10 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
             return AgentResult(False, turns, usage, _grok_cost(None, persisted), summarize(events), finding, extra)
         if result.get("num_turns"):
             turns = int(result["num_turns"])
+        errors = "; ".join(str(e) for e in result.get("errors") or [])
+        if not turns and _startup_failure(errors):
+            extra["abort"] = True
+            return AgentResult(False, 0, usage, _grok_cost(result, persisted), summarize(events), errors[:300], extra)
         text = result.get("result") or ""
         claimed = bool(re.match(r"\s*GREEN\b", text))
         finding = "" if claimed else (f"agent stopped: {text.strip()[:200]}" if text.strip() else f"agent stopped ({result.get('subtype')})")
