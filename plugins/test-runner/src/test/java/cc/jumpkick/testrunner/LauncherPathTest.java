@@ -334,6 +334,16 @@ class LauncherPathTest {
                 .isFalse();
     }
 
+    @Test
+    void a_test_that_catches_its_own_out_of_memory_error_passes() {
+        var events = new Recorder();
+        assertThat(LauncherPath.runClass(
+                        CaughtOutOfMemoryFixture.class.getName(), List.of(), List.of(), List.of(), 0, events))
+                .isFalse();
+        assertThat(events.finishedTests()).singleElement().satisfies(e -> assertThat(e)
+                .containsEntry("status", "SUCCESSFUL"));
+    }
+
     // --- a method selection ------------------------------------------------------
 
     @Test

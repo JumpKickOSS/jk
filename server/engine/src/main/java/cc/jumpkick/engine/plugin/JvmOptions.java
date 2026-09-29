@@ -69,7 +69,10 @@ public final class JvmOptions {
     private enum Stack {
         /** {@code -Xss} at {@link #DEFAULT_STACK_KB} and the metaspace cap unless the tuning pins them. */
         BATCH,
-        /** No {@code -Xss}, no metaspace cap: the platform defaults, as Surefire's and Gradle's test forks run. */
+        /**
+         * No {@code -Xss}, no metaspace cap and no {@code ExitOnOutOfMemoryError}: the platform
+         * defaults, as Surefire's and Gradle's test forks run.
+         */
         PLATFORM
     }
 
@@ -146,7 +149,9 @@ public final class JvmOptions {
 
     /**
      * {@link #workerFlags} for the JVMs that run a module's test suite: the same heap, GC and
-     * hardening, without jk's {@code -Xss} reserve and without its metaspace cap. A test thread
+     * hardening, without jk's {@code -Xss} reserve, its metaspace cap or {@code
+     * -XX:+ExitOnOutOfMemoryError}. A test may provoke an {@link OutOfMemoryError} and catch it;
+     * one that escapes is that test's failure, not the JVM's exit. A test thread
      * gets the JVM's platform default stack and the suite the JVM's own metaspace, exactly what
      * Surefire's and Gradle's forks give them, so a recursive test that passes under Maven passes
      * here and a framework that keeps an augmented application per test profile resident — a
@@ -515,9 +520,8 @@ public final class JvmOptions {
     static final int ZGC_UNCOMMIT_DELAY_SECONDS = 10;
 
     /**
-     * CPU share, the batch metaspace cap and stack when {@code stack} asks for them, IPv4
-     * preference, and {@code ExitOnOutOfMemoryError} for workers, unless already set in {@code
-     * extraArgs}.
+     * CPU share, IPv4 preference, and for a batch worker the metaspace cap, the stack and {@code
+     * ExitOnOutOfMemoryError}, each unless already set in {@code extraArgs}.
      */
     private static void addHardening(List<String> out, PluginTuning s, int concurrency, Stack stack) {
         List<String> extra = s.extraArgs();
@@ -534,8 +538,12 @@ public final class JvmOptions {
         if (!hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) {
             out.add(PreferIpv4.JVM_FLAG);
         }
-        if (!hasArgPrefix(
-                extra, "-XX:+ExitOnOutOfMemoryError", "-XX:-ExitOnOutOfMemoryError", "-XX:+CrashOnOutOfMemoryError")) {
+        if (stack == Stack.BATCH
+                && !hasArgPrefix(
+                        extra,
+                        "-XX:+ExitOnOutOfMemoryError",
+                        "-XX:-ExitOnOutOfMemoryError",
+                        "-XX:+CrashOnOutOfMemoryError")) {
             out.add("-XX:+ExitOnOutOfMemoryError");
         }
     }

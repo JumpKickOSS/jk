@@ -529,7 +529,10 @@ names classes and runs nothing, so the launcher it lists with fires none of the 
 or execution listeners the classpath registers — those are how a framework readies a JVM for the
 tests it is about to run, and `@QuarkusTest`'s would otherwise augment one application per test
 profile as the classes load and keep each resident, which over hundreds of classes is a heap the
-listing does not have. The suite JVMs run the full launcher, listeners included. jk caps no test
+listing does not have. The suite JVMs run the full launcher, listeners included. Neither JVM
+exits on an `OutOfMemoryError`: a test that provokes one and catches it passes, as under
+Surefire, and one for the heap that escapes a test fails it and re-runs its class on a larger
+heap ([Engine](engine.md#learned-heaps)). jk caps no test
 JVM's metaspace: the limit is the JVM's own, as under Surefire and Gradle, unless `[test] jvm-args`
 or the profile's `jvm-args` sets `-XX:MaxMetaspaceSize=…`, and that flag binds the discovery JVM as
 well. A discovery JVM that dies of it says so, naming the frames that filled it and the flag to
