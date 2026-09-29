@@ -128,6 +128,8 @@ MVN_REACTOR = re.compile(
 )
 MVN_JAVAC = re.compile(rf"^\[(ERROR|WARNING)\] (/\S+?\.{SOURCE_EXT}):\[(\d+),(\d+)\] (.*)$")
 MVN_KOTLINC = re.compile(rf"^\[(ERROR|WARNING)\] (/\S+?\.{SOURCE_EXT}): \((\d+), (\d+)\):? (.*)$")
+# Kotlin 2: `[ERROR] file:///abs/X.kt:16:20 message`.
+MVN_KOTLINC_URL = re.compile(rf"^\[(ERROR|WARNING)\] file://(/\S+?\.{SOURCE_EXT}):(\d+):(\d+) (.*)$")
 MVN_CONT = re.compile(r"^\[(?:ERROR|WARNING)\] {2,}(\S.*)$")
 MVN_GOAL_FAIL = re.compile(
     r"^\[ERROR\] Failed to execute goal (?:(\S+?) \((\S+)\) )?on project (\S+?): (.*)$"
@@ -172,7 +174,7 @@ def parse_maven_log(text: str, report: Report) -> None:
             total_ms = int(float(m.group(1)) * (60 if m.group(2) == "min" else 1) * 1000)
             i += 1
             continue
-        m = MVN_JAVAC.match(line) or MVN_KOTLINC.match(line)
+        m = MVN_JAVAC.match(line) or MVN_KOTLINC.match(line) or MVN_KOTLINC_URL.match(line)
         if m:
             sev = "error" if m.group(1) == "ERROR" else "warning"
             file, ln, col, msg = m.group(2), int(m.group(3)), int(m.group(4)), m.group(5)

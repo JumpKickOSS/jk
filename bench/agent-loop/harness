@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import datetime as dt
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -352,7 +353,10 @@ def main() -> int:
     if ns.driver == "api" and not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("the api driver needs ANTHROPIC_API_KEY")
     results_dir = ns.results or HERE / "results" / ns.date
-    run_root = HOME / "harness" / ns.date / ns.driver
+    # One directory per results directory, so two matrices on one day never share transcripts. A short
+    # hash keeps the sandbox path, which every jk tool call carries, the same length for every run.
+    run_key = hashlib.sha256(str(results_dir.resolve()).encode()).hexdigest()[:6]
+    run_root = HOME / "harness" / ns.date / f"{ns.driver}-{run_key}"
     run_root.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = []
     started = time.time()
