@@ -16,7 +16,7 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 0. Playbook                  jk skill             or MCP skill
 1. Name the project          dir={root} on the first MCP call binds it (or just cd and use the CLI)
 2. What happened?            MCP run (the reply is the verdict) or jk --agent test
-3. Past the cap              MCP diagnostics(file=…)
+3. Past the cap              jk results --all      or MCP diagnostics
 4. Raw step log (optional)   jk results --details  or MCP details
 5. Rebuild                   same selection as the failure (jk test, not --all)
 6. Graph / ETA               jk why / jk explain   or MCP why / explain (extended tools/list)

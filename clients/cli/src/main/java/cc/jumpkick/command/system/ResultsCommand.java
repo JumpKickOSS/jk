@@ -26,9 +26,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk results} — print the latest run's {@code jk-results.md} (journal copy under the state
- * dir, with a {@code target/jk-results.md} fallback). {@code --details} prints that run's {@code
- * details.jsonl} instead. No engine round-trip: the files are already on disk. MCP: {@code
- * run} / {@code details}.
+ * dir, with a {@code target/jk-results.md} fallback). {@code --all} prints every problem in the
+ * agent format, {@code --details} that run's {@code details.jsonl}. No engine round-trip: the
+ * files are already on disk. MCP: {@code run} / {@code diagnostics} / {@code details}.
  */
 public final class ResultsCommand implements CliCommand {
 
@@ -44,7 +44,9 @@ public final class ResultsCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Print the latest run's details.jsonl transcript instead.", "--details"));
+        return List.of(
+                Opt.flag("Print every problem of the latest run, with source lines, in the agent format.", "--all"),
+                Opt.flag("Print the latest run's details.jsonl transcript instead.", "--details"));
     }
 
     @Override
@@ -52,8 +54,9 @@ public final class ResultsCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         boolean details = in.isSet("details");
         Path root = projectRoot(global.workingDir());
-        if (global.agent && !details) {
-            Optional<Path> agent = AgentMode.find(root);
+        boolean all = in.isSet("all");
+        if ((global.agent || all) && !details) {
+            Optional<Path> agent = AgentMode.find(root, all ? ProjectBuilds.AGENT_ALL : ProjectBuilds.AGENT);
             if (agent.isEmpty()) {
                 CommandWedge.printFail("results", "no run report for this project (run a build first)");
                 return Exit.FAILURE;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp.tools;
 
+import cc.jumpkick.engine.http.mcp.McpAgentText;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
@@ -10,20 +11,20 @@ import cc.jumpkick.engine.journal.JkResultsAgent;
 import java.util.Map;
 
 /**
- * {@code diagnostics} — the problems past the run reply's cap, or every problem in one file with
- * its source lines. {@code run} selects a history id (default: the newest run); {@code file} or
- * {@code module} narrows to a path.
+ * {@code diagnostics} — every problem of a run with its source lines (the headline's line past the
+ * cap), or the problems in one file. {@code run} selects a history id (default: the newest run).
  */
 public final class DiagnosticsTool implements McpTool {
 
-    static final String DESCRIPTION = "Problems past the verdict cap, or one file (file=) with full snippets.";
+    static final String DESCRIPTION = "Every problem with source lines; file= for one file.";
 
     @Override
     public Spec spec() {
         return new Spec(
                 "diagnostics",
                 DESCRIPTION,
-                McpSchemas.object(Map.of("file", McpSchemas.string(), "dir", McpSchemas.string())),
+                McpSchemas.object(
+                        Map.of("file", McpSchemas.string(), "limit", McpSchemas.integer(), "dir", McpSchemas.string())),
                 McpSchemas.READ_ONLY);
     }
 
@@ -33,14 +34,15 @@ public final class DiagnosticsTool implements McpTool {
         Map<String, Object> rec = run == null || run.isBlank()
                 ? McpDiagnostics.findNewest(in.ctx().history(), in.dir())
                 : McpDiagnostics.findRun(in.ctx().history(), run, in.dir());
-        BuildRecord record = JkResultsAgent.recordOf(rec);
-        if (record == null) {
-            return in.text("0 diagnostics\n");
-        }
         String file = in.str("file");
         if (file == null || file.isBlank()) file = in.str("module");
-        int limit = in.count("limit", 20, 1, 200);
-        String text = JkResultsAgent.renderDetails(record, file, limit, true);
-        return in.text(text);
+        if (file == null || file.isBlank()) {
+            String all = McpAgentText.all(in.ctx(), rec);
+            return in.text(all == null ? "0 diagnostics\n" : all);
+        }
+        BuildRecord record = JkResultsAgent.recordOf(rec);
+        if (record == null) return in.text("0 diagnostics\n");
+        int limit = in.count("limit", 20, 1, JkResultsAgent.MAX_ALL);
+        return in.text(JkResultsAgent.renderDetails(record, file, limit, true));
     }
 }

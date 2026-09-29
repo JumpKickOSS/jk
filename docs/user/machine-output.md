@@ -23,6 +23,7 @@ JUnit pass rate. Written so you do not need to tail the TTY.
 
 ```bash
 jk results              # print the latest report
+jk results --all        # every problem, with source lines, in the agent format
 jk results --details    # print that run's details.jsonl
 ```
 

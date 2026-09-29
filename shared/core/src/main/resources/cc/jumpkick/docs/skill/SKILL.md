@@ -17,7 +17,7 @@ Run, read the verdict, edit, run again. The verdict is the whole answer; do not 
 | build | `jk --agent build` | `run(kind=build)` |
 | add / remove a dependency | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
 | why this version | `jk why g:a` | `why(coord=g:a)` |
-| every problem, full snippets | `jk results` | `diagnostics(file=…)` |
+| every problem, with source lines | `jk results --all` | `diagnostics()` (`file=` for one) |
 | one topic of this skill | `jk skill <topic>` | `skill(topic=…)` |
 
 A dependency edit relocks in the same call; the next test needs no separate lock. With MCP, pass `dir` (the project root) on the first call.
@@ -31,7 +31,7 @@ E src/main/java/app/Web.java:3:8 package org.springframework.web.bind.annotation
 FIX deps(add, org.springframework.boot:spring-boot-starter-web)
 ```
 
-One line per problem: `E path:line:col message` (paths relative to the project), `T Class#method` for a failed test with its expectation and `at File.java:line`, `FIX` when jk knows the edit (`deps(add, g:a)` is `jk add g:a` in a shell), and `+K more: diagnostics(file=…)` past the cap (`jk results` in a shell). An OK run is one line: `OK test app · 2 tests · 0.5s`.
+One line per problem: `E path:line:col message` (paths relative to the project), `T Class#method` for a failed test with its expectation and `at File.java:line`, `FIX` when jk knows the edit (`deps(add, g:a)` is `jk add g:a` in a shell), and `+K more: jk results --all | diagnostics(file=…)` past the cap (the shell command, then the MCP call). An OK run is one line: `OK test app · 2 tests · 0.5s`.
 
 ## Topics
 

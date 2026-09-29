@@ -37,8 +37,11 @@ public final class JkResultsAgent {
     /** Snippet lines when a caller asks for the lines around an error, not only the offending one. */
     static final int MAX_SNIPPET = 3;
 
-    /** Tool name in the continuation line. The card is {@code diagnostics}. */
-    public static final String DIAGNOSTICS_TOOL = "diagnostics";
+    /** Problems in the all-problems report. Past it, the human markdown has the rest. */
+    public static final int MAX_ALL = 200;
+
+    /** Written beside {@link #FILE_NAME}: every problem with its source lines, the cap's continuation. */
+    public static final String ALL_FILE_NAME = ProjectBuilds.AGENT_ALL;
 
     private static final Pattern FRAME =
             Pattern.compile("^at\\s+(?:[\\w.$]+/)?([\\w.$]+)\\.([\\w$<>]+)\\(([^():]+):(\\d+)\\)");
@@ -88,12 +91,19 @@ public final class JkResultsAgent {
     }
 
     /**
-     * Problems past the headline cap, or the problems in one file. {@code fullSnippets} prints up
-     * to three source lines; the headline report prints only the offending line.
+     * Every problem, up to {@link #MAX_ALL}, with up to three source lines each: what {@code jk
+     * results --all} and {@code diagnostics} print. {@code 0 diagnostics} on a clean run.
      */
+    public static String renderAll(BuildRecord record, @Nullable List<MarkdownTestReport.ModuleRun> tests) {
+        if (record == null) return "0 diagnostics\n";
+        String body = body(record, loci(record), tests, new Options(Next.MARKDOWN, true, null, MAX_ALL));
+        return body.isBlank() ? "0 diagnostics\n" : body;
+    }
+
+    /** The problems in one file, with up to three source lines each. */
     public static String renderDetails(BuildRecord record, @Nullable String file, int limit, boolean fullSnippets) {
         if (record == null) return "0 diagnostics\n";
-        Options opt = new Options(false, fullSnippets, file, Math.max(1, limit));
+        Options opt = new Options(Next.FILE, fullSnippets, file, Math.max(1, limit));
         String body = body(record, loci(record), List.of(), opt);
         return body.isBlank() ? "0 diagnostics\n" : body;
     }
@@ -121,13 +131,20 @@ public final class JkResultsAgent {
         return sb.toString();
     }
 
+    /** What the line past the cap points at. */
+    private enum Next {
+        /** The headline report: the all-problems report, by CLI and by MCP. */
+        ALL,
+        /** The all-problems report: the human markdown. */
+        MARKDOWN,
+        /** One file's problems: the same call with a higher limit. */
+        FILE
+    }
+
     private record Options(
-            boolean headlineCap,
-            boolean fullSnippets,
-            @Nullable String file,
-            int limit) {
+            Next next, boolean fullSnippets, @Nullable String file, int limit) {
         static Options summary() {
-            return new Options(true, false, null, MAX_PROBLEMS);
+            return new Options(Next.ALL, false, null, MAX_PROBLEMS);
         }
     }
 
@@ -247,9 +264,8 @@ public final class JkResultsAgent {
         seenTests(r, loci, tests, opt, blocks, files);
         seenSteps(r, loci, opt, blocks, files);
         if (blocks.isEmpty()) return "";
-        int cap = opt.headlineCap ? MAX_PROBLEMS : opt.limit;
         StringBuilder sb = new StringBuilder();
-        int shown = Math.min(cap, blocks.size());
+        int shown = Math.min(opt.limit, blocks.size());
         for (int i = 0; i < shown; i++) sb.append(blocks.get(i));
         int hidden = blocks.size() - shown;
         if (hidden > 0) {
@@ -260,11 +276,25 @@ public final class JkResultsAgent {
                     break;
                 }
             }
-            sb.append('+').append(hidden).append(" more: ").append(DIAGNOSTICS_TOOL);
-            if (!file.isEmpty()) sb.append("(file=").append(file).append(')');
-            sb.append('\n');
+            sb.append('+')
+                    .append(hidden)
+                    .append(" more: ")
+                    .append(next(opt, file))
+                    .append('\n');
         }
         return sb.toString();
+    }
+
+    /** The continuation for {@code opt}'s report. {@code file} is the first hidden problem's, or empty. */
+    private static String next(Options opt, String file) {
+        return switch (opt.next) {
+            case ALL -> "jk results --all | diagnostics" + (file.isEmpty() ? "" : "(file=" + file + ")");
+            case MARKDOWN -> "jk results";
+            case FILE ->
+                opt.file == null
+                        ? "jk results --all | diagnostics"
+                        : "diagnostics(file=" + opt.file + ", limit=" + MAX_ALL + ")";
+        };
     }
 
     /** A diagnostic with its locus filled in from the message when the record left the fields empty. */
