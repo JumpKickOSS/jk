@@ -1,7 +1,6 @@
-"""Two small MCP clients: newline-delimited JSON-RPC over stdio, and Streamable HTTP with a bearer token.
+"""A small MCP client: newline-delimited JSON-RPC over stdio (`jk mcp`, `wrappers/results-mcp`).
 
-Both expose the same three calls (`tools`, `call`, `close`) so a driver never knows which
-transport the tool under test speaks. `call` returns the text content joined, the
+It exposes three calls (`tools`, `call`, `close`). `call` returns the text content joined, the
 `structuredContent` when the server sent one, and the `isError` flag.
 """
 
@@ -9,8 +8,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -93,38 +90,6 @@ class StdioMcp(McpClient):
             self.proc.wait(timeout=10)
         except Exception:
             self.proc.kill()
-
-
-class HttpMcp(McpClient):
-    """Streamable HTTP: POST every message; echo the `Mcp-Session-Id` the server minted."""
-
-    def __init__(self, url: str, token: str, timeout_s: int = 3600):
-        super().__init__()
-        self.url, self.token, self.timeout_s = url, token, timeout_s
-        self.session: str | None = None
-        self.initialize()
-
-    def _send(self, payload: dict) -> dict:
-        headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json", "Accept": "application/json"}
-        if self.session:
-            headers["Mcp-Session-Id"] = self.session
-        req = urllib.request.Request(self.url, data=json.dumps(payload).encode(), headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as r:
-                self.session = r.headers.get("Mcp-Session-Id", self.session)
-                body = r.read()
-        except urllib.error.HTTPError as e:
-            raise RuntimeError(f"mcp http {e.code}: {e.read().decode(errors='replace')[:200]}") from None
-        return json.loads(body) if body.strip() else {}
-
-    def close(self) -> None:
-        if not self.session:
-            return
-        req = urllib.request.Request(self.url, method="DELETE", headers={"Authorization": f"Bearer {self.token}", "Mcp-Session-Id": self.session})
-        try:
-            urllib.request.urlopen(req, timeout=10).close()
-        except Exception:
-            pass
 
 
 def anthropic_tools(client: McpClient, prefix: str = "") -> list[dict]:

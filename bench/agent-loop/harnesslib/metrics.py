@@ -584,6 +584,22 @@ def fix_quality(sandbox: Path, tool: str, failure: str, spec: dict, locus: list[
     return None
 
 
+def output_split(events: list[dict]) -> dict:
+    """What the agent wrote that the transcript shows, in characters: tool-call arguments and visible
+    text. The rest of ``output_tokens`` is reasoning the transcript does not carry.
+    """
+    args = text = 0
+    for ev in events:
+        if ev.get("type") != "assistant":
+            continue
+        for block in _content_blocks(ev):
+            if block.get("type") == "tool_use":
+                args += len(json.dumps(block.get("input") or {}, ensure_ascii=False, separators=(",", ":")))
+            elif block.get("type") == "text":
+                text += len(str(block.get("text") or ""))
+    return {"out_arg_chars": args, "out_text_chars": text}
+
+
 def enrich(row: dict, spec: dict) -> dict:
     """Fill signal-quality fields from the row's transcript and sandbox. Token fields on an LLM row stay."""
     driver = row.get("driver") or ""
@@ -598,6 +614,8 @@ def enrich(row: dict, spec: dict) -> dict:
     if transcript is not None and transcript.is_file():
         calls = parse_calls(transcript, driver, sandbox, tool)
         row.update(_signal(calls, locus))
+        if driver in ("claude-code", "grok"):
+            row.update(output_split(_load_events(transcript)))
     else:
         row.update(first_edit_turn=None, first_correct_edit_turn=None, edits=None, wrong_edits=None, reads_before_fix=None)
     if sandbox is not None and sandbox.is_dir():
