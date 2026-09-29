@@ -81,6 +81,9 @@ product and epic 1 absorbs it.
   model and an effort. `--subset agent-subset` runs a balanced 24-run slice for a cheap agent.
 - **Results file:** a compiler diagnostic carries a repair hint (`JkResultsHints`); the header
   reports `tokens ≈ N` (`JkResultsTokens`).
+- **Corpus beyond the guides:** Maven-first (imported from the `pom.xml`), multi-module and
+  Kotlin repos; `--subset beyond-guides` runs them. Rejects and why:
+  [CANDIDATES.md](../../bench/agent-loop/CANDIDATES.md).
 - **Published table:** five agents from three vendors over the matrix
   ([Why JumpKick](../user/why.md#making-the-north-star-true); rows under
   `bench/agent-loop/results/2026-09-2{8,9}-*`), refreshed each release. `scripted` stays the
@@ -88,8 +91,11 @@ product and epic 1 absorbs it.
 
 **Open**
 
-- Scenarios beyond Gradle single-module Java guides (Maven-first, multi-module, Kotlin).
-- Output tokens: two vendors' agents write slightly more on jk than on the wrappers.
+- Output tokens: two vendors' agents write more on jk than on the wrappers.
+- Kotlin repos built with Gradle: jk is faster, but agents spend more turns and tokens than on
+  Gradle.
+- A workspace module compiles against its siblings' dependencies, so the multi-module repo has no
+  `missing-dependency` scenario yet.
 
 ### 3. IntelliJ just works (P0)
 
