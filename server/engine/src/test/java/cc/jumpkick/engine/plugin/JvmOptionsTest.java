@@ -51,15 +51,52 @@ class JvmOptionsTest {
     }
 
     @Test
-    void suite_flags_keep_the_platform_thread_stack_and_metaspace() {
+    void suite_flags_keep_the_platform_thread_stack_metaspace_and_out_of_memory_handling() {
         // Test suites run on the JVM's default stack and metaspace, as Surefire's and Gradle's
-        // forks do; the batch reserve and the metaspace cap are for compilers and plugin tools.
+        // forks do; the batch reserve, the metaspace cap and exit-on-OOM are for compilers and
+        // plugin tools. A test may provoke an OutOfMemoryError and catch it.
         List<String> suite = JvmOptions.suiteFlags(1);
-        assertThat(suite).noneMatch(f -> f.startsWith("-Xss")).noneMatch(f -> f.startsWith("-XX:MaxMetaspaceSize"));
+        assertThat(suite)
+                .noneMatch(f -> f.startsWith("-Xss"))
+                .noneMatch(f -> f.startsWith("-XX:MaxMetaspaceSize"))
+                .noneMatch(f -> f.contains("OnOutOfMemoryError"));
         List<String> expected = new ArrayList<>(JvmOptions.workerFlags(1));
         expected.remove("-Xss512k");
         expected.remove("-XX:MaxMetaspaceSize=256m");
+        expected.remove("-XX:+ExitOnOutOfMemoryError");
         assertThat(suite).containsExactlyElementsOf(expected);
+    }
+
+    @Test
+    void a_suite_jvm_survives_a_caught_out_of_memory_error_and_a_batch_worker_exits_on_it(@TempDir Path dir)
+            throws Exception {
+        Path program = dir.resolve("CatchesOom.java");
+        Files.writeString(program, """
+                public class CatchesOom {
+                    public static void main(String[] args) {
+                        try {
+                            long[] huge = new long[Integer.MAX_VALUE];
+                            System.exit(huge.length == 0 ? 1 : 2);
+                        } catch (OutOfMemoryError e) {
+                            System.exit(0);
+                        }
+                    }
+                }
+                """);
+        assertThat(fork(JvmOptions.suiteFlags(1), program)).isZero();
+        assertThat(fork(JvmOptions.workerFlags(1), program)).isEqualTo(WorkerFate.EXIT_ON_OUT_OF_MEMORY);
+    }
+
+    private static int fork(List<String> flags, Path program) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        command.addAll(flags);
+        command.add(program.toString());
+        Process process = new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        return process.waitFor();
     }
 
     @Test
