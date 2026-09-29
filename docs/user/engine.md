@@ -337,7 +337,10 @@ does not rewrite it.
 ### Learned heaps
 
 jk-planned workers — compiler lanes, Kotlin and Groovy compiles, test JVMs, and other plugin
-workers — start with `-XX:+ExitOnOutOfMemoryError` and write a GC log. When the process
+workers — write a GC log, and all but the test JVMs start with `-XX:+ExitOnOutOfMemoryError`.
+A test may provoke an `OutOfMemoryError` and catch it, as under Surefire and Gradle; one for
+the heap that escapes a test fails that test, and its class is what the retry ladder below
+re-runs. When the process
 exits, jk remembers the larger of the log's biggest heap occupancy and the process high-water
 RSS minus a non-heap allowance (a spike between collections is still counted). The key is the
 module coordinate, the task (`java-compile`, `java-test-compile`, `kotlin-compile`,

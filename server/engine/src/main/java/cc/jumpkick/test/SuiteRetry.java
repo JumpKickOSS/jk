@@ -78,13 +78,25 @@ final class SuiteRetry {
                 failure.exit(), failure.output() + "\n" + msg, msg.contains(WorkerContainment.KILLED_FOR_MEMORY));
     }
 
-    /** A failure row that is this suite running out of heap, or a worker killed for memory. */
+    /**
+     * A failure row that is this suite running out of heap — an {@link OutOfMemoryError} for the
+     * heap that escaped a test, or a runner that died of one — or a worker killed for memory. An
+     * error for the array size limit, metaspace or direct buffers is an ordinary failure.
+     */
     static boolean retryable(TestFailureInfo failure) {
         if (failure == null) return false;
+        if (escapedHeapError(failure)) return true;
         String text = failure.message() + "\n" + failure.stack();
         if (WorkerFate.mentionsHeap(text)) return true;
         if (text.contains(WorkerContainment.KILLED_FOR_MEMORY)) return true;
         return text.contains("exited " + WorkerFate.EXIT_ON_OUT_OF_MEMORY);
+    }
+
+    /** A test's own uncaught {@code java.lang.OutOfMemoryError: Java heap space} or GC-overhead error. */
+    static boolean escapedHeapError(TestFailureInfo failure) {
+        if (!OutOfMemoryError.class.getName().equals(failure.exceptionClass())) return false;
+        String message = failure.message();
+        return message.contains("Java heap space") || message.contains("GC overhead limit exceeded");
     }
 
     static boolean killed(TestFailureInfo failure) {

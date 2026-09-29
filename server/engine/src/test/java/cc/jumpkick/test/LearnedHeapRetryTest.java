@@ -64,6 +64,7 @@ class LearnedHeapRetryTest {
         assertThat(Files.readString(home.resolve("heaps")))
                 .contains("-Xmx" + (next >> 20) + "m")
                 .doesNotContain("-Xmx128m");
+        awaitPeaks(state, 3);
     }
 
     @Test
@@ -95,6 +96,24 @@ class LearnedHeapRetryTest {
         assertThat(second.failed()).isZero();
         assertThat(HeapNotes.drain()).isEmpty();
         assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx512m").doesNotContain("-Xmx256m");
+        awaitPeaks(state, 4);
+    }
+
+    @Test
+    void a_test_whose_heap_error_escapes_is_rerun_on_the_next_heap(@TempDir Path dir) throws Exception {
+        Path home = fakeJdk(dir, "escaped");
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        JUnitLauncher launcher = new JUnitLauncher()
+                .withModuleLabel("g:app")
+                .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
+        TestSummary first = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
+        assertThat(first.failed()).isZero();
+        assertThat(first.succeeded()).isEqualTo(1);
+        assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
+        assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
+        awaitPeaks(dir.resolve("state"), 2);
     }
 
     @Test
@@ -133,6 +152,7 @@ class LearnedHeapRetryTest {
         assertThat(first.succeeded()).isEqualTo(1);
         assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
         assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
+        awaitPeaks(dir.resolve("state"), 2);
     }
 
     @Test
@@ -156,6 +176,31 @@ class LearnedHeapRetryTest {
                         "retried with 1.0 GiB heap after running out of 512 MiB");
     }
 
+    /**
+     * Wait until {@code g:app}'s test row holds {@code count} peaks, so a GC log folded in after
+     * {@code run} returned does not write into a temp directory that is being deleted.
+     */
+    private static void awaitPeaks(Path state, int count) throws Exception {
+        for (int i = 0; i < 100; i++) {
+            if (Files.isDirectory(state)) {
+                try (var files = Files.list(state)) {
+                    for (Path file : files.toList()) {
+                        for (String line : Files.readAllLines(file)) {
+                            String[] fields = line.split("\t", -1);
+                            if (fields.length > 3
+                                    && fields[0].equals("g:app")
+                                    && fields[1].equals(HeapScope.TEST)
+                                    && fields[3].split(",").length >= count) {
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            Thread.sleep(50);
+        }
+    }
+
     /** The GC log is folded in when the process exits, which can land just after {@code run} returns. */
     private static long awaitPeak(LearnedHeaps heaps, Path project, long atLeast) throws InterruptedException {
         long peak = 0;
@@ -175,8 +220,10 @@ class LearnedHeapRetryTest {
 
     /**
      * {@code die} exits 3 before any test. {@code after} reports one success, then exits 3.
-     * {@code always} does that at every heap. {@code big} dies as {@code die} does below 512 MiB. A
-     * heap of 256 MiB or more passes, except {@code always} and {@code big}.
+     * {@code always} does that at every heap. {@code big} dies as {@code die} does below 512 MiB.
+     * {@code escaped} reports the test failed with {@code java.lang.OutOfMemoryError: Java heap
+     * space} and exits 1, as a test JVM without exit-on-OOM does. A heap of 256 MiB or more passes,
+     * except {@code always} and {@code big}.
      */
     private static Path fakeJdk(Path dir, String mode) throws Exception {
         Path home = dir.resolve("jdk");
@@ -199,6 +246,10 @@ class LearnedHeapRetryTest {
                   -Xmx128m|-Xmx64m) small=1 ;;
                   -Xmx256m) [ "$mode" = "big" ] && small=1 ;;
                 esac
+                if [ "$mode" = "escaped" ] && [ "$small" = 1 ]; then
+                  printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"FAILED","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1,"throwable":{"class":"java.lang.OutOfMemoryError","message":"Java heap space","stack":""}}'
+                  exit 1
+                fi
                 if [ "$mode" = "always" ] || [ "$small" = 1 ]; then
                   if [ "$mode" = "after" ] || [ "$mode" = "always" ]; then
                     printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","id":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","display":"alloc()","duration_ms":1}'

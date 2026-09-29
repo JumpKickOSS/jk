@@ -7,10 +7,11 @@ import org.jspecify.annotations.Nullable;
  * Why a forked worker stopped, in one place: it ran out of its own {@code -Xmx}, the kernel killed
  * it for memory, or something else.
  *
- * <p>A jk-planned JVM is started with {@code -XX:+ExitOnOutOfMemoryError}, which exits {@value
- * #EXIT_ON_OUT_OF_MEMORY}. A worker that catches the error and keeps running — a test, a compiler
- * that reports it — still names {@code Java heap space} or {@code GC overhead limit exceeded} in
- * its output. {@link WorkerContainment#killedForMemory} is the cgroup signal and consumes one
+ * <p>A jk-planned batch JVM is started with {@code -XX:+ExitOnOutOfMemoryError}, which exits
+ * {@value #EXIT_ON_OUT_OF_MEMORY}. A test JVM is not, since a test may provoke and catch the error;
+ * one that escapes a test is that test's failure. A worker that keeps running after the error — a
+ * test, a compiler that reports it — still names {@code Java heap space} or {@code GC overhead
+ * limit exceeded} in its output. {@link WorkerContainment#killedForMemory} is the cgroup signal and consumes one
  * {@code oom_kill}; callers that already observed it pass that boolean in.
  */
 public final class WorkerFate {
