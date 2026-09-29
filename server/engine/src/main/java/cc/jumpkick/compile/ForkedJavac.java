@@ -2,7 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -346,13 +346,13 @@ public final class ForkedJavac {
 
     /**
      * One-shot fork, sized by {@link WorkerHeap}. A jk-planned worker that runs out of heap is
-     * forked once more at twice the size; one the kernel killed for memory is forked once more at
-     * the same size. A second exhaustion is the failure, naming the module and both heaps. A pinned
-     * heap is not resized.
+     * forked again up the {@link HeapLadder}; one the kernel killed for memory is forked once more
+     * at the same size. Running out of the last rung is the failure, naming the module and every
+     * heap tried. A pinned heap is not resized.
      */
     private static Result run(Request req) throws IOException, InterruptedException {
         Long heap = WorkerHeap.forRequest(req);
-        HeapScope.Key key = heapKey(req, heap);
+        HeapScope.Key key = heap == null ? null : WorkerHeap.key(req);
         WorkerTranscript transcript = new WorkerTranscript();
         Attempt first = scoped(key, () -> run(req, heap, transcript));
         String output = transcript.render();
@@ -372,16 +372,21 @@ public final class ForkedJavac {
             return again.result;
         }
         if (cause != WorkerFate.Cause.HEAP_EXHAUSTED) return first.result;
-        LearnedHeaps.engine().note(key, heap);
-        Long bigger = WorkerHeap.grown(heap);
-        if (bigger == null) throw WorkerHeap.exhausted(req.label(), heap, null, output);
-        HeapNotes.note(HeapNotes.line(bigger, heap, false));
-        transcript.reset();
-        Attempt second = scoped(heapKey(req, bigger), () -> run(req, bigger, transcript));
-        if (!second.answered && WorkerFate.heapExhausted(second.exit, transcript.render())) {
-            throw WorkerHeap.exhausted(req.label(), heap, bigger, transcript.render());
+        List<Long> ranOut = new ArrayList<>(List.of(heap));
+        while (true) {
+            long failed = ranOut.getLast();
+            LearnedHeaps.engine().note(key, failed);
+            Long bigger = HeapLadder.next(ranOut);
+            if (bigger == null) throw WorkerHeap.exhausted(req.label(), ranOut, transcript.render());
+            HeapNotes.note(HeapNotes.line(bigger, failed, false));
+            transcript.reset();
+            Attempt next = scoped(key, () -> run(req, bigger, transcript));
+            if (next.answered || !WorkerFate.heapExhausted(next.exit, transcript.render())) {
+                LearnedHeaps.engine().good(key, bigger);
+                return next.result;
+            }
+            ranOut.add(bigger);
         }
-        return second.result;
     }
 
     private static Attempt scoped(HeapScope.@Nullable Key key, ScopedAttempt body)
@@ -399,17 +404,6 @@ public final class ForkedJavac {
     @FunctionalInterface
     private interface ScopedAttempt {
         Attempt get() throws Exception;
-    }
-
-    private static HeapScope.@Nullable Key heapKey(Request req, @Nullable Long heap) {
-        if (heap == null) return null;
-        String module = WorkerHeap.moduleOf(req.label());
-        if (module.isBlank()) return null;
-        return new HeapScope.Key(
-                SessionContext.current().workingDir(),
-                module,
-                WorkerHeap.kindOf(req.label()),
-                JvmOptions.hostFeature(workerJavaHome(req)));
     }
 
     private static String pinOf(Request req) {

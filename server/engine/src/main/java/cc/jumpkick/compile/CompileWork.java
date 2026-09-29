@@ -19,9 +19,8 @@ final class CompileWork {
     final boolean plan;
     /** The heap of the worker this item is for; null when the user pinned worker memory. */
     final @Nullable Long heapBytes;
-    /** Set on a retry: the heap the first worker ran out of. */
-    @Nullable
-    Long previousHeapBytes;
+    /** On a heap retry: every heap this item's earlier workers ran out of, oldest first. */
+    final List<Long> ranOut = new ArrayList<>();
 
     /** Set once this item has been put back because the lane running it died. */
     boolean revived;

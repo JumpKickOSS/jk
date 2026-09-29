@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -712,8 +713,8 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Re-run a suite that died of its own heap or a memory kill, once. {@code flags} is the heap
-     * the first fork used. A pinned heap is reported with the pin named.
+     * Re-run a suite that died of its own heap or a memory kill ({@link #rerun}). {@code flags} is
+     * the heap the first fork used. A pinned heap is reported with the pin named.
      */
     private TestSummary retrySuite(
             Path javaHome, String classpath, List<String> flags, TestProgressListener listener, TestSummary first) {
@@ -756,9 +757,11 @@ public final class JUnitLauncher {
     }
 
     /**
-     * One more suite JVM for {@code classes} ({@code null} classes means the same selection).
-     * {@code first} is folded in when a class-level retry replaces failures; a launcher retry
-     * passes {@code null} and returns only the second run.
+     * Suite JVMs for {@code classes} until they stop running out of heap. A memory kill runs once
+     * more at the same heap. Heap exhaustion climbs the {@link HeapLadder}, each rung re-running the
+     * classes that still ran out. {@code first} is folded in when a class-level retry replaces
+     * failures; a launcher retry passes {@code null} and gets only the retries' runs. Returns
+     * {@code first} when the heap cannot grow at all.
      */
     private @Nullable TestSummary rerun(
             Path javaHome,
@@ -769,53 +772,94 @@ public final class JUnitLauncher {
             boolean killed,
             @Nullable TestSummary first) {
         long heap = WorkerLeases.parseXmx(flags);
-        Long next = killed ? heap : SuiteRetry.grown(heap);
-        if (!killed && next == null) return first;
-        long used = next == null ? heap : next;
-        if (!killed) {
-            // It filled this heap. Remember that, so the next plan starts above the cap that failed.
-            heaps.note(filledKey(javaHome), heap);
+        try {
+            if (killed) {
+                HeapNotes.note(HeapNotes.line(heap, heap, true));
+                TestSummary again = rung(javaHome, classpath, classes, listener, heap, new CaptureBuffer());
+                return first == null ? again : SuiteRetry.merge(first, classes, again);
+            }
+            HeapScope.Key key = filledKey(javaHome);
+            List<Long> ranOut = new ArrayList<>(List.of(heap));
+            TestSummary settled = first;
+            @Nullable TestSummary partial = null;
+            List<String> selection = classes;
+            int diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
+            String diedOutput = "";
+            List<String> diedCommand = List.of();
+            while (true) {
+                long failed = ranOut.getLast();
+                // It filled this heap. Remember that, so the next plan starts above the cap that failed.
+                heaps.note(key, failed);
+                Long next = HeapLadder.next(ranOut);
+                if (next == null) {
+                    if (ranOut.size() == 1) return first;
+                    if (partial != null) return partial;
+                    throw TestLauncherFailure.heap(
+                            moduleLabel,
+                            diedExit,
+                            diedOutput,
+                            diedCommand,
+                            SuiteRetry.exhausted("test runner", ranOut));
+                }
+                HeapNotes.note(HeapNotes.line(next, failed, false));
+                ranOut.add(next);
+                var crash = new CaptureBuffer();
+                TestSummary run;
+                try {
+                    run = rung(javaHome, classpath, selection, listener, next, crash);
+                } catch (TestLauncherFailure e) {
+                    if (SuiteRetry.cause(e) != WorkerFate.Cause.HEAP_EXHAUSTED) throw e;
+                    diedExit = e.exit();
+                    diedOutput = e.output();
+                    diedCommand = e.command();
+                    continue;
+                }
+                if (SuiteRetry.onlyHeap(run)) {
+                    diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
+                    diedOutput = crash.text();
+                    diedCommand = List.of();
+                    continue;
+                }
+                TestSummary merged = settled == null ? run : SuiteRetry.merge(settled, selection, run);
+                List<String> still = SuiteRetry.heapClasses(run);
+                if (still.isEmpty() && !SuiteRetry.wholeSuite(run)) {
+                    heaps.good(key, next);
+                    return merged;
+                }
+                partial = merged;
+                if (!SuiteRetry.wholeSuite(run)) {
+                    settled = merged;
+                    selection = still;
+                }
+            }
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            return first;
         }
-        HeapNotes.note(HeapNotes.line(used, heap, killed));
+    }
+
+    /** One suite JVM for {@code classes} at {@code heap}; its non-protocol output lands in {@code crash}. */
+    private TestSummary rung(
+            Path javaHome,
+            String classpath,
+            List<String> classes,
+            TestProgressListener listener,
+            long heap,
+            CaptureBuffer crash)
+            throws IOException, InterruptedException {
         Long previous = heapOverride;
         List<String> previousOnly = onlyClasses;
-        heapOverride = used;
+        heapOverride = heap;
         if (classes != null && !classes.isEmpty()) onlyClasses = classes;
         try {
             XmlTestReport xml = null;
             MarkdownTestReport md = new MarkdownTestReport();
             var aggregator = new ResultAggregator(listener, 0, xml, md, moduleLabel);
-            var crash = new CaptureBuffer();
             List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
             List<String> names = onlyClasses != null ? onlyClasses : classNames;
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
             List<String> args = withTagArgs(JUnitClassFilter.singleWorkerArgs(classesDir, names));
-            try {
-                TestSummary second = forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
-                if (!killed && SuiteRetry.onlyHeap(second)) {
-                    heaps.note(filledKey(javaHome), used);
-                    throw TestLauncherFailure.heap(
-                            moduleLabel,
-                            WorkerFate.EXIT_ON_OUT_OF_MEMORY,
-                            crash.text(),
-                            List.of(),
-                            SuiteRetry.exhausted("test runner", heap, used));
-                }
-                if (first == null) return second;
-                return SuiteRetry.merge(first, classes, second);
-            } catch (TestLauncherFailure e) {
-                if (killed) throw e;
-                heaps.note(filledKey(javaHome), used);
-                throw TestLauncherFailure.heap(
-                        moduleLabel,
-                        e.exit(),
-                        e.output(),
-                        e.command(),
-                        SuiteRetry.exhausted("test runner", heap, used));
-            }
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return first;
+            return forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
         } finally {
             heapOverride = previous;
             onlyClasses = previousOnly;

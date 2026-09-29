@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -97,15 +98,21 @@ public final class WorkerCompileDriver {
             Outcome first = run(job, null);
             if (first.result.success() || !first.planned) return first.pinnedOr(first.result);
             if (first.cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
-                LearnedHeaps.engine().note(HeapScope.get(), first.xmx);
-                Long bigger = WorkerHeap.grown(first.xmx);
-                if (bigger == null) return first.exhausted(null);
-                HeapNotes.note(HeapNotes.line(bigger, first.xmx, false));
-                Outcome second = run(job, bigger);
-                if (!second.result.success() && second.cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
-                    return second.exhausted(first.xmx);
+                HeapScope.Key key = HeapScope.get();
+                Outcome last = first;
+                List<Long> ranOut = new ArrayList<>();
+                while (true) {
+                    ranOut.add(last.xmx);
+                    LearnedHeaps.engine().note(key, last.xmx);
+                    Long bigger = HeapLadder.next(ranOut);
+                    if (bigger == null) return last.exhausted(ranOut);
+                    HeapNotes.note(HeapNotes.line(bigger, last.xmx, false));
+                    last = run(job, bigger);
+                    if (last.result.success() || last.cause != WorkerFate.Cause.HEAP_EXHAUSTED) {
+                        LearnedHeaps.engine().good(key, bigger);
+                        return last.result;
+                    }
                 }
-                return second.result;
             }
             if (first.cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
                 HeapNotes.note(HeapNotes.line(first.xmx, first.xmx, true));
@@ -261,11 +268,9 @@ public final class WorkerCompileDriver {
                     false, List.of(new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, msg)));
         }
 
-        /** The second exhaustion, naming both heaps. {@code first} is null when the budget could not grow. */
-        CompileResult exhausted(@Nullable Long first) {
-            long ran = first != null ? first : xmx;
-            Long again = first != null ? xmx : null;
-            String msg = WorkerHeap.exhausted(tool, ran, again, "").getMessage();
+        /** The last exhaustion, naming every heap in {@code ranOut}. */
+        CompileResult exhausted(List<Long> ranOut) {
+            String msg = WorkerHeap.exhausted(tool, ranOut, "").getMessage();
             if (msg == null) msg = tool + " ran out of heap";
             return new CompileResult(
                     false, List.of(new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, msg)));

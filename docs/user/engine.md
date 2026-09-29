@@ -326,9 +326,10 @@ base, one MiB per classpath entry, one byte per eight bytes of jar and 96 bytes 
 source — rounded up to a multiple of 256 MiB and capped at what the host can give a single
 worker, so a module with a several-hundred-jar test classpath and a large test tree gets a
 worker of its own size while modules of about one size share one. Once a module has been
-compiled here before, that estimate gives way to the learned heap below. A worker that still
-runs out of heap is replaced once by one with twice the heap; a second exhaustion fails the
-step with a message naming the module, both heaps, and how to raise the heap. A pinned
+compiled here before, that estimate gives way to the learned heap below; the first time, the
+worker starts at least at the generous first heap below. A worker that still runs out of heap
+climbs the retry ladder below; running out of the last rung fails the step with a message
+naming the module, every heap tried, and how to raise the heap. A pinned
 worker heap (`--ram-percent`, `[jvm] args` with `-Xmx`, `[test] jvm-args`, a module `-J`
 flag) switches the sizing and the retry off: your number is the heap, and the worker budget
 does not rewrite it.
@@ -343,24 +344,33 @@ module coordinate, the task (`java-compile`, `java-test-compile`, `kotlin-compil
 `groovy-compile`, `test`, or `plugin`), and the JDK major the worker ran on. The record is
 one file per project, `<state>/worker-heaps/<project-id>` (the same project id as the build
 history under `~/.jk/state`). It is not in the source tree. Delete that file to forget every
-peak and go back to the estimate.
+peak and go back to the first heap.
 
-The next planned `-Xmx` is the largest of the last five observed peaks times 1.3, rounded up
-to 64 MiB, at least 128 MiB, and never larger than the worker budget can lease. A spike ages
-out after five runs. A smaller truthful reservation is a smaller lease, so more workers fit
-at once. With no record yet, the compiler estimate and the memory plan are unchanged.
+A compile or test worker jk has not seen before starts at a quarter of the worker budget, at
+most 2 GiB, and never below the compiler estimate or the memory plan's share. `-Xmx` is what
+the ledger admits against, not what the worker occupies: planned JVMs give unused heap back,
+so a generous first heap costs parallelism on the first run, not RAM. The build-script host
+and other plugin workers start from the plan's heap.
 
-A jk-planned item that runs out of its own heap is run once more at twice that `-Xmx` (still
-inside the budget; the new lease waits in line like any other). An item the kernel killed
-for memory — host or cgroup pressure, not its own heap — is run once more at the same heap
-once its lease can be taken again. The item is a compile, or a test class (pull mode) or the
-whole suite (one JVM). Only the second failure reaches you, and it names the heap that ran
-out and how to raise it: `[jvm] args = ["-Xmx…"]` or `[test] jvm-args = ["-Xmx…"]`. A heap
-you pinned is never learned and never resized; that failure is reported immediately and
-names your setting.
+The next planned `-Xmx` is the largest of the last ten observed peaks times 1.3 (1.5 when
+`CI` is set, since a CI host sees the same suites grow run after run), rounded up to 64 MiB,
+at least 256 MiB, and never larger than the worker budget can lease. A spike ages out after
+ten runs. A smaller truthful reservation is a smaller lease, so more workers fit at once. A
+worker that ran out of one heap and then finished at a larger one keeps that larger heap as
+its floor from then on.
 
-A retry that then passes stays a green build. The results and the agent report each carry
-one line, `retried with 1.0 GiB heap after running out of 512 MiB`. In a workspace that line
+A jk-planned item that runs out of its own heap is run again at twice that `-Xmx`, up to
+three times (512 MiB, 1 GiB, 2 GiB after a 256 MiB start), each rung still inside the budget;
+the new lease waits in line like any other, and a rung the budget cannot grow ends the
+ladder. An item the kernel killed for memory — host or cgroup pressure, not its own heap — is
+run once more at the same heap once its lease can be taken again. The item is a compile, or
+a test class (pull mode) or the whole suite (one JVM). Only the last failure reaches you, and
+it names every heap that ran out and how to raise it: `[jvm] args = ["-Xmx…"]` or `[test]
+jvm-args = ["-Xmx…"]`. A heap you pinned is never learned and never resized; that failure is
+reported immediately and names your setting.
+
+A retry that then passes stays a green build. The results and the agent report carry one
+line per rung, `retried with 1.0 GiB heap after running out of 512 MiB`. In a workspace that line
 names the module: `` `jk-engine` `run-tests` retried with … `` in the results,
 `W jk-engine run-tests: retried with …` in the agent report. A single module stays the one line.
 
