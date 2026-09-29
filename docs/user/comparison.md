@@ -69,10 +69,10 @@ Details: [Install](install.md), [JDK](jdk.md), [Cache](cache.md), [Repositories]
 | **Before the rewrite** | `jk mvn` / `jk gradle` run the real build, wrapper-aware. `jk mvn` writes the same results file from Maven's events, Surefire and Failsafe XML, and compiler diagnostics. `jk build` can run an unmodified `pom.xml` from the effective POM. | — | — |
 | **Import** | `jk import` writes `jk.toml` and a fidelity report graded per plugin. Common compiler, jar, Surefire, Boot, shade, and Kotlin mappings land. The report names what did not. | — | — |
 
-The agent loop is measured: over 165 broken-build scenarios, one coding agent, the same
-prompt and budget for each tool, every tool fixes every scenario and jk takes 6 turns
-against 7, 47k input tokens against 64k and 63k, and 21 s against 29 s (medians; one agent,
-one host, Gradle single-module guides — [the table](why.md#making-the-north-star-true)).
+The agent loop is measured: over 165 broken-build scenarios, five coding agents from three
+vendors, the same prompt and budget for each tool. On the four agents that fix every scenario jk
+takes 5–6 turns against 5–8, 23–46k input tokens against 25–69k, and 11–19 s against 14–32 s
+(medians; one host, Gradle single-module guides — [the table](why.md#making-the-north-star-true)).
 See [Why JumpKick](why.md) and [Agents](agents.md).
 
 ## Speed and memory
@@ -136,7 +136,7 @@ When a row is won, change its score here and the matching cell above in the same
 | **Memory of a test run** | Maven | Peak RSS of the whole process tree on the [petclinic](performance.md) test run at or under Maven's (JumpKick is about 1.5 GiB against 1.2 GiB; builds are already in Maven's range and about a third of Gradle's). |
 | **One-file edit** | Gradle | Median at or under Gradle's 0.62 s on that run (JumpKick is 0.93 s). |
 | **Import fidelity** | — | An imported Maven or Gradle build builds the same artifact without a fidelity-report row for the common plugins. Today Failsafe's `*IT.java` layout, an arbitrary exec, the release plugin, `war`, Tycho, OSGi, and a non-standard filtered resource directory are reports. |
-| **Measured agent loop** | jk ahead on one agent and one host | The table holds across a second agent, Maven-first and multi-module scenarios, and Kotlin. Results, MCP, `jk mvn` and the agent report are already real. |
+| **Measured agent loop** | jk ahead on five agents, one host | The table holds on Maven-first and multi-module scenarios, and Kotlin. Results, MCP, `jk mvn` and the agent report are already real. |
 
 ### Held
 

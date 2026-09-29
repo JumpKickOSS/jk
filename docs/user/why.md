@@ -315,24 +315,27 @@ and success rate**.
 If that number does not win, polish the Tier 0 surfaces until it does. Feature count will
 not save it.
 
-Measured 2026-09-25 with jk at `4415e1ae2` (0.14.0 plus the agent report and the five-tool
+Measured 2026-09-28/29 with jk at `8457c2286` (0.14.0 plus the agent report and the five-tool
 MCP surface), Maven 3.9.16 and Gradle 9.8.0: 165 scenarios over 19 Spring guides and the JUnit
-5 starter, one coding agent driving all three tools with the same prompt and a 16-turn budget,
-on one host ([results](../../bench/agent-loop/results/2026-09-25-agent-mode/TABLE.md)). Maven and Gradle run through the
-wrappers in `bench/agent-loop` — the same results file and MCP tools jk offers, built
-deliberately well — so the comparison is the output and the hints, not the presence of an agent
-surface.
+5 starter, each agent driving all three tools with the same prompt and a 16-turn budget, on one
+host. Maven and Gradle run through the wrappers in `bench/agent-loop` — the same results file
+and MCP tools jk offers, built deliberately well — so the comparison is the output and the
+hints, not the presence of an agent surface. Five agents from three vendors, each at one model
+and reasoning effort ([results](../../bench/agent-loop/results/)):
 
-| Median per scenario | jk | Maven | Gradle |
-|---|---:|---:|---:|
-| Fixed | 100% | 100% | 100% |
-| Turns | 6 | 7 | 7 |
-| Turn of the first correct edit | 4 | 5 | 5 |
-| Reads before the fix | 2 | 4 | 4 |
-| Input + cache tokens | 47k | 64k | 63k |
-| Output + reasoning tokens | 1.6k | 2.2k | 2.0k |
-| Wall to green | 21.4 s | 29.5 s | 29.3 s |
-| Cost to green | $0.024 | $0.030 | $0.029 |
+| Median per scenario, jk / Maven / Gradle | Fixed | Turns | Input + cache tokens | Output tokens | Wall to green |
+|---|---|---|---|---|---|
+| Vendor A, frontier | 100 / 100 / 100% | 5 / 5 / 6 | 23k / 25k / 31k | 0.6k / 0.5k / 0.5k | 11 / 14 / 15 s |
+| Vendor A, mid-tier | 100 / 97 / 100% | 5 / 6 / 6 | 34k / 44k / 43k | 0.7k / 0.7k / 0.6k | 12 / 15 / 14 s |
+| Vendor B, frontier | 100 / 100 / 100% | 6 / 8 / 7 | 46k / 69k / 62k | 1.5k / 2.6k / 2.2k | 19 / 32 / 28 s |
+| Vendor B, budget | 100 / 100 / 100% | 6 / 7 / 7 | 39k / 46k / 52k | 0.9k / 1.2k / 1.2k | 14 / 22 / 22 s |
+| Vendor C, fast (24-run subset) | 62 / 62 / 75% | 10 / 10 / 10 | 101k / 101k / 97k | 2.9k / 2.4k / 2.2k | 36 / 42 / 50 s |
+
+jk has the shortest wall on all five agents and the fewest input tokens on four, and ties or
+beats the incumbents on turns. Output tokens are not a win yet: Vendor A's and Vendor C's
+agents write slightly more on jk than on the wrappers. The fast agent runs out of its turn
+budget at about the same rate on all three tools, so its row measures the agent more than the
+build.
 
 On jk 0.14.0, before the agent report, the same matrix fixed 65% within 8 turns at 85k input
 tokens. The table is re-run each release ([Releases](../contributors/releases.md#benchmarks-each-release)).
@@ -343,9 +346,9 @@ effective-POM import with profiles and plugin mapping, `jk mvn` writing
 `target/jk-results.md`, a build over an unmodified `pom.xml`, and the IntelliJ
 external-system model. What is still open, in [the 1.0 plan](../contributors/plan-1.0.md):
 
-- **Turns-to-green is one agent, one host and one kind of project.** The corpus is Gradle
-  single-module Java guides; a second agent, Maven-first and multi-module scenarios, and
-  Kotlin are not measured yet.
+- **Turns-to-green is one host and one kind of project.** The corpus is Gradle
+  single-module Java guides; Maven-first and multi-module scenarios, and Kotlin, are not
+  measured yet.
 - **IntelliJ and VS Code are not on their marketplaces.** The IntelliJ plugin is an external
   system packaged from this repository.
 - **The plugin SDK is not on Maven Central.** `jk publish --central` can publish it; a release
