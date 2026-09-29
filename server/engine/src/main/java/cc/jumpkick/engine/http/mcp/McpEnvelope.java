@@ -7,8 +7,10 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * MCP tool payload: {@code schema}/{@code type}/{@code truncated}/{@code next} plus fields, served
- * as {@code structuredContent}. {@code content[0].text} is a short summary for dumb clients.
+ * MCP tool payloads. The loop tools answer {@link #text} alone: hosts that see a {@code
+ * structuredContent} show the model that instead of {@code content}, which would hide the verdict.
+ * The extended tools answer {@link #toolResult}: the envelope ({@code schema}/{@code type}/{@code
+ * truncated}/{@code next} plus fields) with a one-line summary.
  */
 public final class McpEnvelope {
 
@@ -34,6 +36,17 @@ public final class McpEnvelope {
             }
         }
         return m;
+    }
+
+    /** A text-only tools/call result; {@code error} sets {@code isError}. */
+    public static Map<String, Object> text(String text, boolean error) {
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("type", "text");
+        content.put("text", text);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("content", List.of(content));
+        if (error) result.put("isError", true);
+        return result;
     }
 
     /**

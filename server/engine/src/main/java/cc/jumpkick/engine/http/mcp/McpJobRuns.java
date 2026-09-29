@@ -78,25 +78,18 @@ public final class McpJobRuns {
         int timeoutS = in.count("timeout_s", 600, 1, MAX_WAIT_S);
         long triggeredAt = System.currentTimeMillis();
         long jid = acceptedJid(in, spec);
-        Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("kind", spec.kind());
-        fields.put("jid", jid);
-        fields.put("dir", spec.dir());
-        putSelection(fields, spec);
         if (!wait) {
-            return in.ok(McpEnvelope.of("job-accepted", fields), McpAgentText.running(spec.kind(), jid));
+            return in.text(McpAgentText.running(spec.kind(), jid));
         }
         // Parked waits yield their RPC admission permit — 16 waiting agents must not 503 the surface.
         boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * 1000L));
-        fields.put("finished", done);
         if (!done) {
-            return in.ok(McpEnvelope.of("job", fields), McpAgentText.timeout(spec.kind(), jid));
+            return in.text(McpAgentText.timeout(spec.kind(), jid));
         }
         Map<String, Object> last = ctx.admissionYield().yielding(() -> finishedJob(ctx, jid, in.dir(), triggeredAt));
         String text = McpAgentText.of(ctx, last);
         if (text == null) text = "FAIL " + spec.kind() + " jid=" + jid + "\nno run record\n";
-        if (last != null && last.get("success") != null) fields.put("success", last.get("success"));
-        return in.ok(McpEnvelope.of("job", fields), text);
+        return in.text(text);
     }
 
     /** {@code job}: get / wait / cancel, defaulting to the latest live job for the bound dir. */
@@ -116,44 +109,35 @@ public final class McpJobRuns {
             return cancel(in, jid.longValue(), null);
         }
         if (jid == null) {
-            return in.ok(McpEnvelope.of("job", Map.of("live", false)), "no live job");
+            return in.text("no live job\n");
         }
         if ("wait".equals(action)) {
             int timeoutS = in.count("timeout_s", 600, 1, MAX_WAIT_S);
             long waitJid = jid.longValue();
             boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, waitJid, timeoutS * 1000L));
-            Map<String, Object> fields = new LinkedHashMap<>();
-            fields.put("jid", jid);
-            fields.put("finished", done);
             if (!done) {
-                return in.ok(McpEnvelope.of("job", fields), McpAgentText.timeout("job", jid));
+                return in.text(McpAgentText.timeout("job", jid));
             }
             Map<String, Object> last = McpDiagnostics.findByRequestId(ctx.history(), jid);
             if (last == null)
                 last = ctx.finishedRecords().apply(jid) instanceof String raw ? McpHistoryViews.parseRecord(raw) : null;
             String text = McpAgentText.of(ctx, last);
             if (text == null) text = "FAIL job jid=" + jid + "\nno run record\n";
-            return in.ok(McpEnvelope.of("job", fields), text);
+            return in.text(text);
         }
         boolean live = McpVitals.isLive(ctx, jid.longValue());
-        Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("jid", jid);
-        fields.put("live", live);
-        return in.ok(McpEnvelope.of("job", fields), live ? "running " + jid : "jid " + jid + " not live");
+        return in.text((live ? "running " + jid : "jid " + jid + " not live") + "\n");
     }
 
     /**
-     * Cancel one jid and answer the {@code cancel} envelope. {@code noteWhenMissed} is the
+     * Cancel one jid. {@code noteWhenMissed} is the
      * explanation a caller who typed the jid needs; a jid resolved from the live set passes
      * {@code null} because there is nothing to explain.
      */
     public static Map<String, Object> cancel(McpCall in, long jid, @Nullable String noteWhenMissed) {
-        boolean ok = in.ctx().jobs().cancel(jid);
-        Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("jid", jid);
-        fields.put("cancelled", ok);
-        if (!ok && noteWhenMissed != null) fields.put("note", noteWhenMissed);
-        return in.ok(McpEnvelope.of("cancel", fields), ok ? "cancelled " + jid : "jid " + jid + " not cancelled");
+        if (in.ctx().jobs().cancel(jid)) return in.text("cancelled " + jid + "\n");
+        String missed = "jid " + jid + " not cancelled" + (noteWhenMissed == null ? "" : ": " + noteWhenMissed);
+        return in.error(missed + "\n");
     }
 
     /**

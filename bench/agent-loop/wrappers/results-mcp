@@ -87,10 +87,8 @@ def run_tool(project: Path, tool: str, args: dict) -> dict:
     except subprocess.TimeoutExpired:
         exit_code, note = 124, f"timed out after {timeout}s"
     text = read_text(project / "target" / "jk-results.md") or f"{tool}-results wrote no results file\n{note}"
-    return {
-        "content": [{"type": "text", "text": text}],
-        "structuredContent": {"schema": 1, "type": "job", "tool": tool, "exitCode": exit_code, "success": exit_code == 0},
-    }
+    # Text only, like jk's loop tools: a host that sees structuredContent shows it instead of the text.
+    return {"content": [{"type": "text", "text": text}]}
 
 
 def call_tool(project: Path, tool: str, name: str, args: dict) -> dict:

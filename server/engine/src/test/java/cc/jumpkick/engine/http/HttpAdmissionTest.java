@@ -253,7 +253,7 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
             live.set(false); // job "finishes"; the parked wait completes and reacquires
             HttpResponse<String> done = parked.get(10, TimeUnit.SECONDS);
             assertThat(done.statusCode()).isEqualTo(200);
-            assertThat(done.body()).contains("\"finished\":true");
+            assertThat(done.body()).contains("jid=7").doesNotContain("TIMEOUT");
         } finally {
             tiny.close();
         }

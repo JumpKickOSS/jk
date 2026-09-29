@@ -84,7 +84,7 @@ class McpJobCancelTest {
                         session)
                 .body();
         assertThat(cancelled).containsExactly(7L);
-        assertThat(body).contains("\"cancelled\":true");
+        assertThat(body).contains("cancelled 7");
     }
 
     @Test

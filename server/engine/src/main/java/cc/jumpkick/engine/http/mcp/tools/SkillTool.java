@@ -3,7 +3,6 @@ package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.engine.http.mcp.McpCall;
-import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpError;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
@@ -25,10 +24,10 @@ public final class SkillTool implements McpTool {
     public Map<String, Object> call(McpCall in) {
         String topic = in.str("topic");
         if (topic == null || topic.isBlank()) {
-            return in.ok(McpEnvelope.of("skill", Map.of("resource", "jk://skill")), JkSkill.core());
+            return in.text(JkSkill.core());
         }
         String text = JkSkill.topic(topic);
         if (text == null) throw new McpError(-32602, "unknown skill topic: " + topic);
-        return in.ok(McpEnvelope.of("skill", Map.of("topic", topic, "resource", "jk://skill/" + topic)), text);
+        return in.text(text);
     }
 }
