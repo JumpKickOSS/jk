@@ -18,7 +18,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+import sys
 import threading
+import time
 import tomllib
 import urllib.error
 import urllib.request
@@ -154,10 +156,26 @@ def version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
 
+_RETRY_STATUS = {429, 502, 503, 504}
+
+
 def _fetch(url: str) -> str:
+    """GET with backoff on a throttled or briefly unavailable server (up to about 16 minutes)."""
     req = urllib.request.Request(url, headers={"User-Agent": "jk-bench"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return resp.read().decode("utf-8", "replace")
+    delay = 30.0
+    for attempt in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            if e.code not in _RETRY_STATUS or attempt == 5:
+                raise
+            after = e.headers.get("Retry-After") if e.headers else None
+            wait = float(after) if after and after.isdigit() else delay
+            print(f"{url}: HTTP {e.code}, retrying in {wait:.0f}s", file=sys.stderr, flush=True)
+            time.sleep(wait)
+            delay = min(delay * 2, 480.0)
+    raise RuntimeError(f"{url}: no answer after retries")
 
 
 def latest_maven() -> str:
