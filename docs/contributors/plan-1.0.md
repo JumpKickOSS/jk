@@ -76,21 +76,20 @@ product and epic 1 absorbs it.
   single-module Java; 13 also ship a `pom.xml`.
   [bench/agent-loop](../../bench/agent-loop/README.md).
 - **Wrappers:** `wrappers/mvn-results`, `wrappers/gradle-results`, and `wrappers/results-mcp`.
-- **Harness,** three drivers: `scripted` (a deterministic oracle; a plumbing proof, not a
-  result), `claude-code`, and `api`.
+- **Harness,** six drivers: `scripted` (a deterministic oracle; a plumbing proof, not a
+  result), and five LLM drivers (`claude-code`, `api`, `grok`, `agy`, `muse`), each taking a
+  model and an effort. `--subset agent-subset` runs a balanced 24-run slice for a cheap agent.
 - **Results file:** a compiler diagnostic carries a repair hint (`JkResultsHints`); the header
   reports `tokens ≈ N` (`JkResultsTokens`).
+- **Published table:** five agents from three vendors over the matrix
+  ([Why JumpKick](../user/why.md#making-the-north-star-true); rows under
+  `bench/agent-loop/results/2026-09-2{8,9}-*`), refreshed each release. `scripted` stays the
+  plumbing proof.
 
 **Open**
 
-- A second LLM driver over the same matrix, and scenarios beyond Gradle single-module Java
-  guides (Maven-first, multi-module, Kotlin). The published table
-  ([`results/2026-09-25-agent-mode/TABLE.md`](../../bench/agent-loop/results/2026-09-25-agent-mode/TABLE.md))
-  is one driver on one host.
-
-The published table is the two LLM drivers (`claude-code`, `api`) over the scenario matrix,
-three tools, against a named commit, refreshed each release. `scripted` stays the plumbing
-proof.
+- Scenarios beyond Gradle single-module Java guides (Maven-first, multi-module, Kotlin).
+- Output tokens: two vendors' agents write slightly more on jk than on the wrappers.
 
 ### 3. IntelliJ just works (P0)
 
