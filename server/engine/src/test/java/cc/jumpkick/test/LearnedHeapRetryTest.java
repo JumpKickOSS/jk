@@ -21,8 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A suite whose first planned heap is too small passes on one retry, and the next run uses the
- * peak that retry recorded. A pinned heap is not retried.
+ * A suite whose planned heap is too small climbs the heap ladder until it passes, and the next run
+ * starts at the heap that passed. A pinned heap is not retried.
  */
 class LearnedHeapRetryTest {
 
@@ -52,12 +52,49 @@ class LearnedHeapRetryTest {
         assertThat(peak).isEqualTo(180L << 20);
 
         Files.writeString(home.resolve("heaps"), "");
-        launcher.withHeaps(new LearnedHeaps(state));
+        LearnedHeaps learned = new LearnedHeaps(state);
+        long next =
+                learned.choose(dir, "g:app", HeapScope.TEST, Runtime.version().feature(), 128L << 20);
+        assertThat(next).as("at least the heap that passed").isGreaterThanOrEqualTo(256L << 20);
+        launcher.withHeaps(learned);
         TestSummary second = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
         assertThat(second.failed()).isZero();
         assertThat(second.succeeded()).isEqualTo(1);
         assertThat(HeapNotes.drain()).isEmpty();
-        assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx256m").doesNotContain("-Xmx128m");
+        assertThat(Files.readString(home.resolve("heaps")))
+                .contains("-Xmx" + (next >> 20) + "m")
+                .doesNotContain("-Xmx128m");
+    }
+
+    @Test
+    void a_suite_that_needs_two_doublings_climbs_the_ladder_and_starts_there_next_time(@TempDir Path dir)
+            throws Exception {
+        Path home = fakeJdk(dir, "big");
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        Path state = dir.resolve("state");
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        JUnitLauncher launcher =
+                new JUnitLauncher().withModuleLabel("g:app").withHeaps(new LearnedHeaps(state, 128L << 20));
+        TestSummary first = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
+        assertThat(first.failed()).isZero();
+        assertThat(first.succeeded()).isEqualTo(1);
+        assertThat(HeapNotes.drain())
+                .containsExactly(
+                        "retried with 256 MiB heap after running out of 128 MiB",
+                        "retried with 512 MiB heap after running out of 256 MiB");
+        assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m", "-Xmx512m");
+        LearnedHeaps learned = new LearnedHeaps(state);
+        assertThat(learned.good(new HeapScope.Key(
+                        dir, "g:app", HeapScope.TEST, Runtime.version().feature())))
+                .isEqualTo(512L << 20);
+
+        Files.writeString(home.resolve("heaps"), "");
+        launcher.withHeaps(learned);
+        TestSummary second = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
+        assertThat(second.failed()).isZero();
+        assertThat(HeapNotes.drain()).isEmpty();
+        assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx512m").doesNotContain("-Xmx256m");
     }
 
     @Test
@@ -99,7 +136,7 @@ class LearnedHeapRetryTest {
     }
 
     @Test
-    void a_second_heap_exhaustion_names_both_heaps(@TempDir Path dir) throws Exception {
+    void a_heap_that_never_suffices_climbs_three_rungs_and_names_every_heap(@TempDir Path dir) throws Exception {
         Path home = fakeJdk(dir, "always");
         Path classes = Files.createDirectories(dir.resolve("classes"));
         Path cache = Files.createDirectories(dir.resolve("cache"));
@@ -110,10 +147,13 @@ class LearnedHeapRetryTest {
         assertThatThrownBy(
                         () -> launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop()))
                 .isInstanceOfSatisfying(TestLauncherFailure.class, failure -> assertThat(failure.getMessage())
-                        .contains("128 MiB")
-                        .contains("256 MiB")
+                        .contains("ran out of heap at 128 MiB, 256 MiB, 512 MiB and 1.0 GiB;")
                         .contains("[test] jvm-args"));
-        assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
+        assertThat(HeapNotes.drain())
+                .containsExactly(
+                        "retried with 256 MiB heap after running out of 128 MiB",
+                        "retried with 512 MiB heap after running out of 256 MiB",
+                        "retried with 1.0 GiB heap after running out of 512 MiB");
     }
 
     /** The GC log is folded in when the process exits, which can land just after {@code run} returns. */
@@ -135,7 +175,8 @@ class LearnedHeapRetryTest {
 
     /**
      * {@code die} exits 3 before any test. {@code after} reports one success, then exits 3.
-     * {@code always} does that at every heap. A heap of 256 MiB or more passes, except {@code always}.
+     * {@code always} does that at every heap. {@code big} dies as {@code die} does below 512 MiB. A
+     * heap of 256 MiB or more passes, except {@code always} and {@code big}.
      */
     private static Path fakeJdk(Path dir, String mode) throws Exception {
         Path home = dir.resolve("jdk");
@@ -156,6 +197,7 @@ class LearnedHeapRetryTest {
                 small=0
                 case "$mx" in
                   -Xmx128m|-Xmx64m) small=1 ;;
+                  -Xmx256m) [ "$mode" = "big" ] && small=1 ;;
                 esac
                 if [ "$mode" = "always" ] || [ "$small" = 1 ]; then
                   if [ "$mode" = "after" ] || [ "$mode" = "always" ]; then

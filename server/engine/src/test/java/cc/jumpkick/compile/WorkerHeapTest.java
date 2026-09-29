@@ -67,18 +67,6 @@ class WorkerHeapTest {
     }
 
     @Test
-    void the_retry_heap_is_double_until_the_budget_leaves_no_room() {
-        long budget = WorkerLeases.engine().capacityBytes();
-        long cap = WorkerLeases.clampXmx(Long.MAX_VALUE / 4, budget);
-        assertThat(cap).isGreaterThan(32L << 20);
-        long small = 128 * MIB;
-        assertThat(WorkerHeap.grown(small)).isEqualTo(LearnedHeaps.doubled(small, budget));
-        assertThat(WorkerHeap.grown(cap))
-                .as("at the budget there is nothing left to try")
-                .isNull();
-    }
-
-    @Test
     void a_user_who_pinned_worker_memory_keeps_it(@TempDir Path dir) {
         SessionContext.install(SessionContext.current().withJvm(new PluginTuning(null, null, null, List.of("-Xmx2g"))));
         assertThat(WorkerHeap.forRequest(request(dir, List.of()))).isNull();
@@ -98,7 +86,11 @@ class WorkerHeapTest {
         assertThat(WorkerHeap.demandBytes(request(dir, jars))).isEqualTo(expected);
         Long heap = WorkerHeap.forRequest(request(dir, jars));
         assertThat(heap).isNotNull();
-        assertThat(heap).isEqualTo(WorkerHeap.sizeBytes(expected, 0L, WorkerHeap.ceilingBytes()));
+        assertThat(heap)
+                .as("a compile jk has not seen starts generously above its estimate")
+                .isEqualTo(LearnedHeaps.firstHeap(
+                        WorkerHeap.sizeBytes(expected, 0L, WorkerHeap.ceilingBytes()),
+                        WorkerLeases.engine().capacityBytes()));
     }
 
     @Test
@@ -111,16 +103,15 @@ class WorkerHeapTest {
     }
 
     @Test
-    void the_failure_names_the_module_and_both_heaps() {
-        IOException twice =
-                WorkerHeap.exhausted("g:app compile-test", 1024 * MIB, 2048 * MIB, "Terminating due to OOM");
-        assertThat(twice.getMessage())
+    void the_failure_names_the_module_and_every_heap() {
+        IOException spent = WorkerHeap.exhausted(
+                "g:app compile-test", List.of(256 * MIB, 512 * MIB, 1024 * MIB, 2048 * MIB), "Terminating due to OOM");
+        assertThat(spent.getMessage())
                 .contains("g:app compile-test")
-                .contains("1024 MiB")
-                .contains("2048 MiB")
+                .contains("ran out of heap at 256 MiB, 512 MiB, 1.0 GiB and 2.0 GiB;")
                 .contains("Terminating due to OOM");
-        IOException capped = WorkerHeap.exhausted("g:app compile-test", 4096 * MIB, null, "");
-        assertThat(capped.getMessage()).contains("4096 MiB").contains("the most this host can give");
+        IOException capped = WorkerHeap.exhausted("g:app compile-test", List.of(4096 * MIB), "");
+        assertThat(capped.getMessage()).contains("4.0 GiB").contains("the most this host can give");
     }
 
     private static ForkedJavac.Request request(Path dir, List<Path> classpath) {

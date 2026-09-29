@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.config.AvailableCpus;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.HeapScope;
@@ -128,17 +129,24 @@ public final class JavaCompilerHost {
     }
 
     /**
-     * The worker compiling {@code failed} ran out of heap: compile it once more on a worker started
-     * with {@code heapBytes}, and let that attempt's outcome be the caller's. The retry remembers the
-     * heap that failed, so a second exhaustion names both.
+     * The worker compiling {@code failed} ran out of heap: compile it again on a worker started with
+     * {@code heapBytes}, and let that attempt's outcome be the caller's. The retry carries every heap
+     * that ran out, so the next rung and the final failure can name them; an answer on it makes
+     * {@code heapBytes} the module's known-good heap.
      */
     private static void retryWithHeap(long id, CompileWork failed, long heapBytes) {
         ForkedJavac.Request req = Objects.requireNonNull(failed.req, "a retried item carries its request");
         CompileWork again = failed.plan ? CompileWork.plan(req, heapBytes) : CompileWork.compile(req, heapBytes);
-        again.previousHeapBytes = failed.heapBytes;
+        again.ranOut.addAll(failed.ranOut);
+        if (failed.heapBytes != null) again.ranOut.add(failed.heapBytes);
+        HeapScope.Key key = WorkerHeap.key(req);
         again.compile.whenComplete((r, e) -> {
-            if (e != null) failed.compile.completeExceptionally(e);
-            else failed.compile.complete(r);
+            if (e != null) {
+                failed.compile.completeExceptionally(e);
+                return;
+            }
+            LearnedHeaps.engine().good(key, heapBytes);
+            failed.compile.complete(r);
         });
         again.forecast.whenComplete((r, e) -> {
             if (e != null) failed.forecast.completeExceptionally(e);
@@ -994,7 +1002,7 @@ public final class JavaCompilerHost {
 
         /**
          * The item the dead worker was compiling. A jk-planned worker that ran out of heap is
-         * answered once on twice the heap. A worker the kernel killed for memory is answered once
+         * answered on the next {@link HeapLadder} rung. A worker the kernel killed for memory is answered once
          * on the same heap, after a new lease. A pinned heap is not resized. Any other death, while
          * this job is still alive, goes back on the queue once; the second death fails it.
          */
@@ -1006,13 +1014,11 @@ public final class JavaCompilerHost {
             if (cause == WorkerFate.Cause.HEAP_EXHAUSTED && heap != null) {
                 noteFilled(heap);
                 String label = cur.req == null ? "" : cur.req.label();
-                if (cur.previousHeapBytes != null) {
-                    fail(cur, WorkerHeap.exhausted(label, cur.previousHeapBytes, heap, output));
-                    return;
-                }
-                Long bigger = WorkerHeap.grown(heap);
+                List<Long> ranOut = new ArrayList<>(cur.ranOut);
+                ranOut.add(heap);
+                Long bigger = HeapLadder.next(ranOut);
                 if (bigger == null) {
-                    fail(cur, WorkerHeap.exhausted(label, heap, null, output));
+                    fail(cur, WorkerHeap.exhausted(label, ranOut, output));
                     return;
                 }
                 HeapNotes.note(HeapNotes.line(bigger, heap, false));

@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
@@ -19,8 +20,8 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One retry of a test item whose jk-planned heap ran out, or whose worker was killed for memory.
- * A user-pinned heap is left alone.
+ * Retries of a test item whose jk-planned heap ran out, up the {@link HeapLadder}, or whose worker
+ * was killed for memory, once at the same heap. A user-pinned heap is left alone.
  */
 final class SuiteRetry {
 
@@ -124,19 +125,21 @@ final class SuiteRetry {
         return true;
     }
 
-    /** Twice {@code heap}, or {@code null} when the budget cannot grow it. */
-    static @Nullable Long grown(long heap) {
-        if (heap <= 0) return null;
-        long bigger = LearnedHeaps.doubled(heap, WorkerLeases.engine().capacityBytes());
-        return bigger > heap ? bigger : null;
+    /** Classes whose failure is running out of heap, not a memory kill. */
+    static List<String> heapClasses(TestSummary summary) {
+        Set<String> out = new LinkedHashSet<>();
+        if (summary == null) return List.of();
+        for (TestFailureInfo failure : summary.failures()) {
+            if (!retryable(failure) || killed(failure)) continue;
+            if (!failure.className().isBlank()) out.add(failure.className());
+        }
+        return List.copyOf(out);
     }
 
-    static String exhausted(String who, long first, @Nullable Long second) {
-        StringBuilder msg =
-                new StringBuilder(who).append(" ran out of heap at ").append(WorkerLeases.format(first));
-        if (second != null) msg.append(" and again at ").append(WorkerLeases.format(second));
-        msg.append("; raise it with [test] jvm-args = [\"-Xmx...\"] or [jvm] args = [\"-Xmx...\"]");
-        return msg.toString();
+    /** {@code who} ran out of every heap in {@code ranOut}, oldest first. */
+    static String exhausted(String who, List<Long> ranOut) {
+        return who + " " + HeapLadder.ranOut(ranOut)
+                + "; raise it with [test] jvm-args = [\"-Xmx...\"] or [jvm] args = [\"-Xmx...\"]";
     }
 
     static String pinned(String who, String pin) {
