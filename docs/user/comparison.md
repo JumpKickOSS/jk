@@ -136,7 +136,7 @@ When a row is won, change its score here and the matching cell above in the same
 | **Memory of a test run** | Maven | Peak RSS of the whole process tree on the [petclinic](performance.md) test run at or under Maven's (JumpKick is about 1.5 GiB against 1.2 GiB; builds are already in Maven's range and about a third of Gradle's). |
 | **One-file edit** | Gradle | Median at or under Gradle's 0.62 s on that run (JumpKick is 0.93 s). |
 | **Import fidelity** | — | An imported Maven or Gradle build builds the same artifact without a fidelity-report row for the common plugins. Today Failsafe's `*IT.java` layout, an arbitrary exec, the release plugin, `war`, Tycho, OSGi, and a non-standard filtered resource directory are reports. |
-| **Measured agent loop** | jk ahead on five agents, one host | The table holds on Maven-first and multi-module scenarios, and Kotlin. Results, MCP, `jk mvn` and the agent report are already real. |
+| **Measured agent loop** | jk ahead on five agents, one host; ahead of Maven on Maven-first repos | jk ahead of Gradle on Kotlin repos in turns and tokens, not only wall. Results, MCP, `jk mvn` and the agent report are already real. |
 
 ### Held
 

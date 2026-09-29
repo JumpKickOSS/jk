@@ -321,7 +321,8 @@ MCP surface), Maven 3.9.16 and Gradle 9.8.0: 165 scenarios over 19 Spring guides
 host. Maven and Gradle run through the wrappers in `bench/agent-loop` — the same results file
 and MCP tools jk offers, built deliberately well — so the comparison is the output and the
 hints, not the presence of an agent surface. Five agents from three vendors, each at one model
-and reasoning effort ([results](../../bench/agent-loop/results/)):
+and reasoning effort ([results](../../bench/agent-loop/results/); the fast agent's subset and the
+second table below were measured later the same day with jk at `54c3a62a2`):
 
 | Median per scenario, jk / Maven / Gradle | Fixed | Turns | Input + cache tokens | Output tokens | Wall to green |
 |---|---|---|---|---|---|
@@ -329,13 +330,34 @@ and reasoning effort ([results](../../bench/agent-loop/results/)):
 | Vendor A, mid-tier | 100 / 97 / 100% | 5 / 6 / 6 | 34k / 44k / 43k | 0.7k / 0.7k / 0.6k | 12 / 15 / 14 s |
 | Vendor B, frontier | 100 / 100 / 100% | 6 / 8 / 7 | 46k / 69k / 62k | 1.5k / 2.6k / 2.2k | 19 / 32 / 28 s |
 | Vendor B, budget | 100 / 100 / 100% | 6 / 7 / 7 | 39k / 46k / 52k | 0.9k / 1.2k / 1.2k | 14 / 22 / 22 s |
-| Vendor C, fast (24-run subset) | 62 / 62 / 75% | 10 / 10 / 10 | 101k / 101k / 97k | 2.9k / 2.4k / 2.2k | 36 / 42 / 50 s |
+| Vendor C, fast (24-run subset) | 88 / 75 / 62% | 11 / 11.5 / 11 | 115k / 125k / 115k | 3.6k / 3.0k / 2.3k | 38 / 39 / 36 s |
 
-jk has the shortest wall on all five agents and the fewest input tokens on four, and ties or
-beats the incumbents on turns. Output tokens are not a win yet: Vendor A's and Vendor C's
-agents write slightly more on jk than on the wrappers. The fast agent runs out of its turn
-budget at about the same rate on all three tools, so its row measures the agent more than the
-build.
+jk has the shortest wall on four of the five agents and the fewest input tokens on four, and
+ties or beats the incumbents on turns. Output tokens are not a win yet: Vendor A's and Vendor
+C's agents write more on jk than on the wrappers. The fast agent runs out of its turn budget on
+every tool, so its row measures the agent more than the build.
+
+Beyond the Gradle guides: eight more repos, Maven-first (jk imports the `pom.xml`: the JUnit Maven
+starter, commons-cli, spring-petclinic, and gs-multi-module with two modules) and Kotlin (the JUnit
+Maven and Gradle Kotlin starters, spring-petclinic-kotlin, tut-spring-boot-kotlin), 27 scenarios.
+Each repo builds with Maven or Gradle, not both, so jk is compared with each on the scenarios they
+share (15 each), same date, commit and budget:
+
+| Median, jk / other on the same scenarios | vs | Fixed | Turns | Input + cache | Output | Wall |
+|---|---|---|---|---|---|---|
+| Vendor A, frontier | Maven | 15 / 15 | 5 / 6 | 24k / 26k | 0.6k / 0.6k | 14 / 19 s |
+| Vendor A, frontier | Gradle | 15 / 15 | 7 / 6 | 36k / 31k | 1.0k / 0.6k | 15 / 19 s |
+| Vendor A, mid-tier | Maven | 14 / 14 | 5 / 5 | 35k / 42k | 0.7k / 0.7k | 11 / 16 s |
+| Vendor A, mid-tier | Gradle | 13 / 14 | 8 / 6.5 | 61k / 52k | 1.2k / 0.6k | 16 / 18 s |
+| Vendor B, frontier | Maven | 15 / 12 | 6 / 8 | 74k / 100k | 3.7k / 3.7k | 35 / 52 s |
+| Vendor B, frontier | Gradle | 15 / 15 | 7 / 8 | 101k / 119k | 4.5k / 5.5k | 51 / 56 s |
+| Vendor B, budget | Maven | 15 / 12 | 6 / 7.5 | 42k / 56k | 1.1k / 1.3k | 18 / 43 s |
+| Vendor B, budget | Gradle | 13 / 14 | 7 / 7 | 56k / 63k | 2.1k / 1.4k | 28 / 34 s |
+
+Against Maven jk wins or ties every column on every agent. Against Gradle on the Kotlin repos jk
+is faster but not yet cheaper: Vendor A's agents take a turn or two more and more tokens, most of
+it in one scenario where the agent guessed a dependency's group from its Kotlin package and jk's
+replies did not steer it to the real coordinate.
 
 On jk 0.14.0, before the agent report, the same matrix fixed 65% within 8 turns at 85k input
 tokens. The table is re-run each release ([Releases](../contributors/releases.md#benchmarks-each-release)).
@@ -346,9 +368,8 @@ effective-POM import with profiles and plugin mapping, `jk mvn` writing
 `target/jk-results.md`, a build over an unmodified `pom.xml`, and the IntelliJ
 external-system model. What is still open, in [the 1.0 plan](../contributors/plan-1.0.md):
 
-- **Turns-to-green is one host and one kind of project.** The corpus is Gradle
-  single-module Java guides; Maven-first and multi-module scenarios, and Kotlin, are not
-  measured yet.
+- **Turns-to-green is one host.** On Kotlin repos built with Gradle, jk is faster but its agents
+  spend more turns and tokens than Gradle's (the second table).
 - **IntelliJ and VS Code are not on their marketplaces.** The IntelliJ plugin is an external
   system packaged from this repository.
 - **The plugin SDK is not on Maven Central.** `jk publish --central` can publish it; a release
