@@ -446,9 +446,9 @@ public final class PluginBuild {
 
     /**
      * The module's compile classpath as a step body sees it: the lock's COMPILE_MAIN closure
-     * ({@code provided} included, runtime-only absent) followed by the workspace siblings' jars and
-     * their compile closures, a provided sibling among them — {@link #productionClasspath} over the
-     * other scope sets.
+     * ({@code provided} included, runtime-only absent, the siblings' compile closures with it)
+     * followed by the workspace siblings' jars, a provided sibling among them — {@link
+     * #productionClasspath} over the other scope sets.
      */
     public static List<Path> compileClasspath(Path projectDir, Cas cas, Path lockFile, JkBuild project)
             throws IOException {
@@ -457,8 +457,8 @@ public final class PluginBuild {
     }
 
     /**
-     * The lock's closure under {@code scopes}, then the siblings' jars and their closures,
-     * deduplicated in order. The siblings are the edges {@code siblingScopes} names: the compile
+     * The module's lock rows under {@code scopes} — its own and those its siblings pass on — then
+     * the siblings' jars, deduplicated in order. The siblings are the edges {@code siblingScopes} names: the compile
      * view reads a provided sibling as Maven's compile classpath holds a {@code provided} jar,
      * the runtime view leaves it to the platform.
      */
@@ -468,14 +468,12 @@ public final class PluginBuild {
         List<Path> classpath = new ArrayList<>();
         var resolver = new ClasspathResolver(cas);
         if (Files.exists(lockFile)) {
-            classpath.addAll(resolver.classpathFor(memberLock(lockFile, projectDir), scopes, true, project));
+            classpath.addAll(
+                    resolver.classpathFor(memberLock(lockFile, projectDir), scopes, true, project, projectDir));
         }
         WorkspaceClasspath.Result siblings = siblingsOrNone(projectDir, project, siblingScopes);
         for (Path jar : siblings.jars()) {
             if (!classpath.contains(jar)) classpath.add(jar);
-        }
-        for (Path pth : resolver.siblingClasspath(siblings.siblingLocks(), scopes, true)) {
-            if (!classpath.contains(pth)) classpath.add(pth);
         }
         return classpath;
     }
@@ -524,8 +522,8 @@ public final class PluginBuild {
         List<ProdEntry> out = new ArrayList<>();
         if (Files.exists(lockFile)) {
             var resolver = new ClasspathResolver(cas);
-            for (var entry :
-                    resolver.entriesFor(memberLock(lockFile, projectDir), ClasspathResolver.RUNTIME, true, project)) {
+            for (var entry : resolver.entriesFor(
+                    memberLock(lockFile, projectDir), ClasspathResolver.RUNTIME, true, project, projectDir)) {
                 var a = entry.artifact();
                 String ext = entry.container() != null ? ".aar" : ".jar";
                 out.add(new ProdEntry(
@@ -568,8 +566,8 @@ public final class PluginBuild {
         List<ProdEntry> out = new ArrayList<>();
         if (Files.exists(lockFile)) {
             var resolver = new ClasspathResolver(cas);
-            for (var entry :
-                    resolver.entriesFor(memberLock(lockFile, projectDir), ClasspathResolver.TEST, false, project)) {
+            for (var entry : resolver.entriesFor(
+                    memberLock(lockFile, projectDir), ClasspathResolver.TEST, false, project, projectDir)) {
                 var a = entry.artifact();
                 out.add(new ProdEntry(
                         a.moduleArtifact() + "-" + a.version() + ".jar",

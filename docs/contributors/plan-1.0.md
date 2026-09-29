@@ -94,8 +94,6 @@ product and epic 1 absorbs it.
 - Output tokens: two vendors' agents write more on jk than on the wrappers.
 - Kotlin repos built with Gradle: jk is faster, but agents spend more turns and tokens than on
   Gradle.
-- A workspace module compiles against its siblings' dependencies, so the multi-module repo has no
-  `missing-dependency` scenario yet.
 
 ### 3. IntelliJ just works (P0)
 

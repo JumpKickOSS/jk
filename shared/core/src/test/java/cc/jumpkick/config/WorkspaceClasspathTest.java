@@ -423,7 +423,7 @@ class WorkspaceClasspathTest {
      * for classes, and does not take the sibling's own lock rows — the jar carries them.
      */
     @Test
-    void a_relocating_sibling_is_its_shaded_jar_in_both_views_and_brings_no_lock(@TempDir Path root) throws Exception {
+    void a_relocating_sibling_is_its_shaded_jar_in_both_views(@TempDir Path root) throws Exception {
         scaffold(root);
         Files.writeString(root.resolve("lib/jk.toml"), """
                 group = "com.ex"
@@ -434,7 +434,6 @@ class WorkspaceClasspathTest {
                 [library]
                 relocate = { "com.ex.lib" = "com.ex.shaded.lib" }
                 """);
-        Files.writeString(root.resolve("lib/jk-lock.toml"), "version = 1\n");
         Files.createDirectories(root.resolve("lib/src/com/ex/lib"));
         Files.writeString(root.resolve("lib/src/com/ex/lib/Util.java"), "package com.ex.lib; public class Util {}");
         BuildLayout lib = BuildLayout.of(root.resolve("lib"), JkBuildParser.parse(root.resolve("lib/jk.toml")));
@@ -451,9 +450,6 @@ class WorkspaceClasspathTest {
                 .asString()
                 .contains("expected its relocating jar at")
                 .contains("lib-0.1.0-all.jar");
-        assertThat(before.siblingLocks())
-                .as("the jar bundles the sibling's dependencies")
-                .isEmpty();
 
         Files.createDirectories(requireNonNull(lib.assemblyJar().getParent()));
         Files.writeString(lib.assemblyJar(), "jar");
@@ -597,10 +593,12 @@ class WorkspaceClasspathTest {
         assertThat(result.siblingCoords()).containsExactly("com.ex:lib");
         assertThat(result.siblingClosureClasses())
                 .anyMatch(p -> p.toString().replace('\\', '/').contains("/lib/"));
-        assertThat(result.siblingLocks()).singleElement().satisfies(lock -> assertThat(
-                        lock.build().dependencies().of(Scope.MAIN))
-                .extracting(Dependency::module)
-                .contains("com.foo:leaf"));
+        assertThat(WorkspaceClasspath.closureSiblings(root.resolve("app"), app, Set.of(Scope.MAIN))
+                        .values())
+                .singleElement()
+                .satisfies(lib -> assertThat(lib.dependencies().of(Scope.MAIN))
+                        .extracting(Dependency::module)
+                        .contains("com.foo:leaf"));
         assertThat(result.siblingCoords()).doesNotContain("com.foo:published-only");
     }
 }

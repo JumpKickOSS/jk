@@ -6,6 +6,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.version.Versions;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,33 @@ import org.jspecify.annotations.Nullable;
 public final class TestEngines {
 
     private TestEngines() {}
+
+    /**
+     * The JUnit Platform launcher: always on the test graph, since {@code jk test} runs every suite
+     * through the launcher API whatever framework the module chose.
+     */
+    public static final Dependency LAUNCHER = new Dependency(JupiterLine.LAUNCHER, VersionSelector.parse("latest"));
+
+    /**
+     * JUnit Jupiter, on the test graph of a module that declares no {@code [test-dependencies]} at
+     * all. {@code latest} is pinned by {@code jk lock} and advanced by {@code jk update}.
+     */
+    public static final Dependency JUPITER =
+            new Dependency("org.junit.jupiter:junit-jupiter", VersionSelector.parse("latest"));
+
+    /**
+     * What jk adds to a module's test graph beyond its declarations: the launcher on the declared
+     * Jupiter's Platform line ({@link JupiterLine}), Jupiter when the module declares no test
+     * dependencies, and the engine of every declared framework that has none of its own. The lock
+     * solves these and the module's test classpaths read them, so both see the same roots.
+     */
+    public static List<Dependency> injectedRoots(JkBuild project) {
+        List<Dependency> roots = new ArrayList<>();
+        roots.add(new Dependency(LAUNCHER.module(), JupiterLine.launcherSelector(project)));
+        if (project.dependencies().of(Scope.TEST).isEmpty()) roots.add(JUPITER);
+        roots.addAll(injected(project));
+        return roots;
+    }
 
     /**
      * One framework the launcher needs an engine for.
@@ -136,7 +164,7 @@ public final class TestEngines {
      * Platform-line engine on the declared Jupiter's line, another at its own selector. Refuses a
      * declared exact framework pin below its engine's floor.
      */
-    static List<Dependency> injected(JkBuild project) {
+    private static List<Dependency> injected(JkBuild project) {
         VersionSelector line = JupiterLine.engineSelector(project);
         return ROWS.stream()
                 .filter(row -> {
@@ -157,7 +185,7 @@ public final class TestEngines {
      * the declared pin. A platform-managed trigger pins nothing here — its BOM's version is already
      * in the table.
      */
-    static Map<String, String> declaredTriggerPins(JkBuild project) {
+    public static Map<String, String> declaredTriggerPins(JkBuild project) {
         Map<String, String> pins = new LinkedHashMap<>();
         for (Row row : ROWS) {
             Dependency declared = row.declaredIn(project);
@@ -171,7 +199,7 @@ public final class TestEngines {
      * Refuse every platform-managed trigger whose BOM supplies a version below its engine's floor;
      * {@code managed} is the platform table once every BOM has been read.
      */
-    static void checkManagedFloors(JkBuild project, Map<String, String> managed) {
+    public static void checkManagedFloors(JkBuild project, Map<String, String> managed) {
         for (Row row : ROWS) {
             Dependency declared = row.declaredIn(project);
             if (declared != null) row.checkManagedFloor(declared, managed);

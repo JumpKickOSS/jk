@@ -44,7 +44,8 @@ final class GroovyForecastStamps {
         try {
             WorkspaceClasspath.Result sib =
                     WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-            List<Path> cp = PlannerSupport.mainCompileClasspath(project, lock, new ClasspathResolver(cas), sib, false);
+            List<Path> cp = PlannerSupport.mainCompileClasspath(
+                    moduleDir, project, lock, new ClasspathResolver(cas), sib, false);
             GroovycRequest req = PlannerLang.groovyRequest(
                     project,
                     lock,

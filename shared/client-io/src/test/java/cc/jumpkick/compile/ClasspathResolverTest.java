@@ -5,10 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -183,7 +181,7 @@ class ClasspathResolverTest {
     }
 
     @Test
-    void classpath_closure_only_includes_reachable_runtime_deps(@TempDir Path tempDir) throws Exception {
+    void a_module_classpath_holds_only_the_rows_its_declarations_reach(@TempDir Path tempDir) throws Exception {
         Path app = putJar(tempDir, "com/foo/app/1.0/app-1.0.jar", "app");
         Path lib = putJar(tempDir, "com/foo/lib/1.0/lib-1.0.jar", "lib");
         putJar(tempDir, "com/other/noise/9.0/noise-9.0.jar", "noise");
@@ -209,9 +207,15 @@ class ClasspathResolverTest {
         ClasspathResolver resolver = new ClasspathResolver(tempDir);
         assertThat(resolver.classpathFor(lock, ClasspathResolver.RUNTIME)).hasSize(3);
 
-        List<Path> closure = resolver.classpathClosure(lock, List.of("com.foo:app"), ClasspathResolver.RUNTIME);
+        JkBuild module = JkBuildParser.parse("""
+                name = "m"
+                [dependencies]
+                app = { group = "com.foo", version = "1.0" }
+                """);
+        List<Path> closure =
+                resolver.classpathFor(lock, ClasspathResolver.RUNTIME, false, module, tempDir.resolve("m"));
         assertThat(closure)
-                .containsExactlyInAnyOrder(
+                .containsExactly(
                         app.toAbsolutePath().normalize(), lib.toAbsolutePath().normalize());
     }
 
@@ -228,7 +232,7 @@ class ClasspathResolverTest {
                         pkg("a:other:jar:", "1", "sha256:dd", List.of()),
                         pkg("z:unrelated:jar:", "1", "sha256:ee", List.of())));
 
-        List<Lockfile.Artifact> reached = ClasspathResolver.reachableArtifacts(lock, List.of("a:root"));
+        List<Lockfile.Artifact> reached = ClasspathResolver.reachableArtifacts(lock.artifacts(), List.of("a:root"));
         assertThat(reached)
                 .extracting(Lockfile.Artifact::packageKey)
                 .containsExactlyInAnyOrder("a:root:jar:", "a:mid:jar:", "a:leaf:jar:", "a:other:jar:");
@@ -248,8 +252,8 @@ class ClasspathResolverTest {
         Path direct = putJarWithEntry(tempDir, "com/caucho/hessian/4.0.63/hessian-4.0.63.jar", split, "direct");
         Path lib = putJar(tempDir, "org/example/lib/1.0/lib-1.0.jar", "lib");
         Path noise = putJar(tempDir, "aa/noise/1.0/noise-1.0.jar", "noise");
-        // Lock order is by name: the fork, the unreached row and the transitive's parent all sort
-        // ahead of the direct declaration.
+        // Lock order is by name: the fork and the transitive's parent sort ahead of the direct
+        // declaration, and a row nothing declared reaches sorts first.
         Lockfile lock = lock(
                 pkg("aa:noise:jar:", "1.0", Hashing.sha256Hex(noise)),
                 pkg("com.alipay.sofa:hessian:jar:", "3.5.5", Hashing.sha256Hex(fork)),
@@ -266,15 +270,15 @@ class ClasspathResolverTest {
                 hessian = { group = "com.caucho", version = "4.0.63" }
                 """);
 
-        List<Path> cp =
-                new ClasspathResolver(tempDir).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, false, module);
+        List<Path> cp = new ClasspathResolver(tempDir)
+                .classpathFor(lock, ClasspathResolver.COMPILE_MAIN, false, module, tempDir.resolve("m"));
 
         assertThat(cp)
                 .containsExactly(
                         lib.toAbsolutePath().normalize(),
                         direct.toAbsolutePath().normalize(),
-                        fork.toAbsolutePath().normalize(),
-                        noise.toAbsolutePath().normalize());
+                        fork.toAbsolutePath().normalize())
+                .doesNotContain(noise.toAbsolutePath().normalize());
         URL[] urls = new URL[cp.size()];
         for (int i = 0; i < urls.length; i++) urls[i] = cp.get(i).toUri().toURL();
         try (URLClassLoader loader = new URLClassLoader(urls, null)) {
@@ -282,48 +286,6 @@ class ClasspathResolverTest {
             assertThat(winner).isNotNull();
             assertThat(winner.toString()).contains("hessian-4.0.63.jar");
         }
-    }
-
-    /**
-     * A composite sibling's lock joins the classpath in the order the sibling's own classpath has:
-     * the sibling's declarations first, their transitives breadth-first, then the rest of its lock
-     * — not the lock's on-disk order, which sorts a transitive's fork ahead of the declaration.
-     */
-    @Test
-    void a_sibling_lock_joins_in_the_siblings_own_direct_first_order(@TempDir Path tempDir) throws Exception {
-        Path fork = putJar(tempDir, "com/alipay/sofa/hessian/3.5.5/hessian-3.5.5.jar", "fork");
-        Path direct = putJar(tempDir, "com/caucho/hessian/4.0.63/hessian-4.0.63.jar", "direct");
-        Path lib = putJar(tempDir, "org/example/lib/1.0/lib-1.0.jar", "lib");
-        Path sibling = Files.createDirectories(tempDir.resolve("sibling"));
-        Path lockFile = sibling.resolve("jk-lock.toml");
-        LockfileWriter.write(
-                lock(
-                        pkg("com.alipay.sofa:hessian:jar:", "3.5.5", Hashing.sha256Hex(fork)),
-                        pkg("com.caucho:hessian:jar:", "4.0.63", Hashing.sha256Hex(direct)),
-                        pkg(
-                                "org.example:lib:jar:",
-                                "1.0",
-                                Hashing.sha256Hex(lib),
-                                List.of("com.alipay.sofa:hessian:jar:@3.5.5"))),
-                lockFile);
-        JkBuild module = JkBuildParser.parse("""
-                name = "sibling"
-                [dependencies]
-                hessian = { group = "com.caucho", version = "4.0.63" }
-                lib = { group = "org.example", version = "1.0" }
-                """);
-
-        List<Path> cp = new ClasspathResolver(tempDir)
-                .siblingClasspath(
-                        List.of(new WorkspaceClasspath.SiblingLock(lockFile, sibling, module)),
-                        ClasspathResolver.COMPILE_MAIN,
-                        false);
-
-        assertThat(cp)
-                .containsExactly(
-                        direct.toAbsolutePath().normalize(),
-                        lib.toAbsolutePath().normalize(),
-                        fork.toAbsolutePath().normalize());
     }
 
     private static Path putJarWithEntry(Path store, String relative, String entry, String payload) throws Exception {

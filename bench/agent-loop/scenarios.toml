@@ -467,8 +467,13 @@ find = "assertThat(myService.message()).isNotNull();"
 replace = 'assertThat(myService.message()).isEqualTo("Hello, World");'
 tests = ["com.example.multimodule.service.MyServiceTest"]
 
-# No missing-dependency yet: jk compiles a workspace module against its siblings' dependencies, so
-# removing `spring-boot` from `library` stays green under jk while Maven and Gradle go red.
+# The library's only main dependency: the application's starters are not on its classpath.
+[repos.gs-multi-module.failures.missing-dependency]
+artifact = "spring-boot"
+jk = "library/jk.toml"
+pom = "library/pom.xml"
+gradle = "library/build.gradle"
+files = ["library/src/main/**"]
 
 # Not on Maven: without `clean` it keeps the deleted file in target/classes and stays green.
 [repos.gs-multi-module.failures.missing-resource]
@@ -688,6 +693,7 @@ scenarios = [
 scenarios = [
   "gs-multi-module:compile-error",
   "gs-multi-module:failing-assertion",
+  "gs-multi-module:missing-dependency",
   "gs-multi-module:missing-resource",
   "gs-multi-module:version-conflict",
   "junit-starter-maven:compile-error",

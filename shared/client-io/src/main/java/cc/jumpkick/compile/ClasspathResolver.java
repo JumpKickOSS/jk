@@ -4,11 +4,8 @@ package cc.jumpkick.compile;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.ExplodedArchives;
 import cc.jumpkick.config.JkM2Config;
-import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
@@ -47,13 +44,10 @@ import org.jspecify.annotations.Nullable;
  * exist". Soft-skip remains the default for forecasting / explain on a cold store.
  *
  * <p>Paths are Maven-layout names (local repo or {@code repos/<name>/}), never hash-named CAS
- * blobs. Workspace locks are a <strong>union</strong> of every module's graph — prefer
- * {@link #classpathClosure} / {@link #entriesForClosure} for packaging (assembly, native-image)
- * so a fat jar only embeds the module's runtime closure — not the whole monorepo lock.
- *
- * <p>A classpath handed to a compiler or a JVM is built with the module's manifest ({@link
- * #classpathFor(Lockfile, Set, boolean, JkBuild)}), which puts the module's own declarations
- * first; the manifest-less overloads list the lock's rows in lock order and serve bills of
+ * blobs. A workspace lock holds every member's rows, so a classpath handed to a compiler, a JVM or
+ * a packager is a module's ({@link #classpathFor(Lockfile, Set, boolean, JkBuild, Path)}): the rows
+ * its own roots and its siblings' reach ({@link ModuleRoots}), never the whole lock. The
+ * manifest-less overloads list every row in the scopes, in lock order, and serve bills of
  * materials and diagnostics.
  */
 public final class ClasspathResolver {
@@ -147,114 +141,50 @@ public final class ClasspathResolver {
     }
 
     /**
-     * A module's classpath over {@code scopes}, in the order Maven hands javac and the JVM: the
-     * module's own declarations first, in manifest order ({@code [dependencies]} before
-     * {@code [provided-dependencies]} and the test tables), then their transitives breadth-first
-     * through the lock graph, then every other row of the lock in {@code scopes} in lock order (a
-     * workspace lock is the union of its members' graphs). A package two jars carry resolves to
-     * the jar the module declared.
+     * A module's classpath over {@code scopes}: the rows the module's own roots reach, in the
+     * order Maven hands javac and the JVM — its declarations first, in manifest order ({@code
+     * [dependencies]} before {@code [provided-dependencies]} and the test tables), then their
+     * transitives breadth-first through the lock graph — followed by the rows its workspace
+     * siblings pass on, walked the same way. A row nothing the module depends on reaches is not
+     * on it, though another member of the workspace put it in the lock. A package two jars carry
+     * resolves to the jar the module declared.
+     *
+     * @param moduleDir the module's directory, which places it in its workspace and names the
+     *     language runtime its sources need
      */
-    public List<Path> classpathFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module) {
+    public List<Path> classpathFor(
+            Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module, Path moduleDir) {
         List<Path> result = new ArrayList<>(lock.artifacts().size());
-        for (Entry entry : entriesFor(lock, scopes, requirePresent, module)) {
+        for (Entry entry : entriesFor(lock, scopes, requirePresent, module, moduleDir)) {
             if (entry.jar() != null) result.add(entry.jar());
         }
         return result;
     }
 
-    /**
-     * The rows of every composite sibling's lock in {@code scopes}, each lock read as its own module
-     * reads it (a member's rows of a shared workspace lock) and in the order that module's own
-     * classpath has — its declarations first, their transitives breadth-first, then the rest of its
-     * lock — so a package a sibling's transitive and its declaration both carry resolves to the jar
-     * the sibling declared. Deduplicated across siblings; a caller appends it after the module's
-     * own rows.
-     */
-    public List<Path> siblingClasspath(
-            List<WorkspaceClasspath.SiblingLock> siblings, Set<Scope> scopes, boolean requirePresent)
-            throws IOException {
-        List<Path> out = new ArrayList<>();
-        for (WorkspaceClasspath.SiblingLock sibling : siblings) {
-            Lockfile lock = MemberRows.view(LockfileReader.read(sibling.lockFile()), sibling.lockFile(), sibling.dir());
-            for (Path p : classpathFor(lock, scopes, requirePresent, sibling.build())) {
-                if (!out.contains(p)) out.add(p);
-            }
-        }
-        return out;
-    }
-
-    /** As {@link #classpathFor(Lockfile, Set, boolean, JkBuild)}, each path paired with its lock row. */
-    public List<Entry> entriesFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module) {
-        List<Lockfile.Artifact> rows = ordered(lock, selected(lock, scopes), declaredExternalRoots(module, scopes));
-        return resolveEntries(lock, rows, Missing.of(requirePresent), effectiveLocator(lock));
+    /** As {@link #classpathFor(Lockfile, Set, boolean, JkBuild, Path)}, each path paired with its lock row. */
+    public List<Entry> entriesFor(
+            Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module, Path moduleDir) {
+        return resolveEntries(
+                lock, moduleRows(lock, scopes, module, moduleDir), Missing.of(requirePresent), effectiveLocator(lock));
     }
 
     /**
-     * {@code selected} reordered for a module whose direct declarations are {@code directRoots}:
-     * the rows the roots reach, in the breadth-first order of {@link #reachableArtifacts}, then
-     * the rest in their given order. One row per module name, as {@code selected} already is.
+     * The rows of a module's classpath over {@code scopes}, one per module name: its own roots'
+     * closure within the rows {@code scopes} select, then its siblings' closure within the rows of
+     * the scopes a sibling passes on ({@link ModuleRoots#inheritedScopes}).
      */
-    static List<Lockfile.Artifact> ordered(
-            Lockfile lock, List<Lockfile.Artifact> selected, Collection<String> directRoots) {
-        Map<String, Lockfile.Artifact> byName = new LinkedHashMap<>();
-        for (Lockfile.Artifact row : selected) byName.put(row.name(), row);
-        List<Lockfile.Artifact> out = new ArrayList<>(selected.size());
-        Set<String> placed = new HashSet<>();
-        for (Lockfile.Artifact reached : reachableArtifacts(lock, directRoots)) {
-            Lockfile.Artifact row = byName.get(reached.name());
-            if (row != null && placed.add(row.name())) out.add(row);
+    static List<Lockfile.Artifact> moduleRows(Lockfile lock, Set<Scope> scopes, JkBuild module, Path moduleDir) {
+        Map<String, Lockfile.Artifact> rows = new LinkedHashMap<>();
+        for (Lockfile.Artifact row :
+                reachableArtifacts(selected(lock, scopes), ModuleRoots.own(module, moduleDir, scopes))) {
+            rows.putIfAbsent(row.name(), row);
         }
-        for (Lockfile.Artifact row : selected) {
-            if (placed.add(row.name())) out.add(row);
+        Set<String> inherited = ModuleRoots.inherited(module, moduleDir, scopes);
+        if (!inherited.isEmpty()) {
+            List<Lockfile.Artifact> passed = selected(lock, ModuleRoots.inheritedScopes(scopes));
+            for (Lockfile.Artifact row : reachableArtifacts(passed, inherited)) rows.putIfAbsent(row.name(), row);
         }
-        return out;
-    }
-
-    /**
-     * Transitive closure of {@code rootModules} walked through the lockfile dependency graph,
-     * then resolved to jar paths. Roots may be bare {@code g:a} or full package keys; workspace /
-     * git / path refs are ignored. Used by assembly and native-image packaging so a monorepo lock
-     * does not dump every module's deps into one fat jar.
-     */
-    public List<Path> classpathClosure(Lockfile lock, Collection<String> rootModules, Set<Scope> scopes) {
-        List<Path> result = new ArrayList<>();
-        for (Entry entry : entriesForClosure(lock, rootModules, scopes)) {
-            if (entry.jar() != null) result.add(entry.jar());
-        }
-        return result;
-    }
-
-    /**
-     * Declared external dependency modules on {@code project} in {@code scopes} (skips workspace /
-     * git / path). Suitable seeds for {@link #classpathClosure}.
-     */
-    public static Set<String> declaredExternalRoots(JkBuild project, Set<Scope> scopes) {
-        LinkedHashSet<String> roots = new LinkedHashSet<>();
-        for (Scope scope : scopes) {
-            for (Dependency dep : project.dependencies().of(scope)) {
-                if (dep.isWorkspace() || dep.isGit() || dep.isPath()) continue;
-                String module = dep.module();
-                if (module != null && !module.isBlank()) roots.add(module);
-            }
-        }
-        return roots;
-    }
-
-    /**
-     * The external modules a consumer inherits from {@code sibling} in {@code scopes}: {@link
-     * #declaredExternalRoots} without the sibling's optional dependencies, which are the sibling's
-     * own as a POM's optional edges are.
-     */
-    public static Set<String> inheritedExternalRoots(JkBuild sibling, Set<Scope> scopes) {
-        LinkedHashSet<String> roots = new LinkedHashSet<>();
-        for (Scope scope : scopes) {
-            for (Dependency dep : sibling.dependencies().of(scope)) {
-                if (dep.optional() || dep.isWorkspace() || dep.isGit() || dep.isPath()) continue;
-                String module = dep.module();
-                if (module != null && !module.isBlank()) roots.add(module);
-            }
-        }
-        return roots;
+        return new ArrayList<>(rows.values());
     }
 
     /**
@@ -337,19 +267,6 @@ public final class ClasspathResolver {
     }
 
     /**
-     * As {@link #classpathClosure}, but keeping each path paired with its lockfile artifact.
-     */
-    public List<Entry> entriesForClosure(Lockfile lock, Collection<String> rootModules, Set<Scope> scopes) {
-        List<Lockfile.Artifact> closure = reachableArtifacts(lock, rootModules);
-        List<Lockfile.Artifact> matched = new ArrayList<>();
-        for (Lockfile.Artifact pkg : closure) {
-            if (pkg.inAnyScope(scopes)) matched.add(pkg);
-        }
-        // Prefer main-scoped dual rows when the walk hit both; same collapse as the full-lock path.
-        return resolveEntries(lock, selectPerModule(matched, scopes), Missing.WARN, effectiveLocator(lock));
-    }
-
-    /**
      * Honor the project's {@code [m2] integration = false} recorded in the lock: use a store-only
      * locator so {@code ~/.m2} is not consulted for the compile/runtime classpath, matching sync and
      * the reference gate in {@code MavenRepo}. Any module opting out disables it.
@@ -366,14 +283,14 @@ public final class ClasspathResolver {
     }
 
     /**
-     * BFS from {@code rootModules} through lock {@code deps} edges: the roots in the order given,
-     * then each row's edges by name, so the walk is the same however a row's edges were listed.
-     * Roots that do not resolve in the lock are skipped (caller may still surface missing-dep
-     * diagnostics elsewhere).
+     * BFS from {@code rootModules} through the {@code deps} edges of {@code rows}: the roots in the
+     * order given, then each row's edges by name, so the walk is the same however a row's edges
+     * were listed. A root or edge with no row among {@code rows} is skipped (caller may still
+     * surface missing-dep diagnostics elsewhere).
      */
-    static List<Lockfile.Artifact> reachableArtifacts(Lockfile lock, Collection<String> rootModules) {
-        if (rootModules == null || rootModules.isEmpty()) return List.of();
-        Map<String, Lockfile.Artifact> byKey = indexArtifacts(lock);
+    static List<Lockfile.Artifact> reachableArtifacts(List<Lockfile.Artifact> rows, Collection<String> rootModules) {
+        if (rootModules.isEmpty()) return List.of();
+        Map<String, Lockfile.Artifact> byKey = indexArtifacts(rows);
         LinkedHashSet<Lockfile.Artifact> visited = new LinkedHashSet<>();
         Queue<String> queue = new ArrayDeque<>();
         Set<String> enqueued = new HashSet<>();
@@ -402,9 +319,9 @@ public final class ClasspathResolver {
     }
 
     /** Index lock rows by package key, bare name, and default-jar GA for declared-root lookup. */
-    static Map<String, Lockfile.Artifact> indexArtifacts(Lockfile lock) {
+    static Map<String, Lockfile.Artifact> indexArtifacts(List<Lockfile.Artifact> rows) {
         Map<String, Lockfile.Artifact> result = new HashMap<>();
-        for (Lockfile.Artifact pkg : lock.artifacts()) {
+        for (Lockfile.Artifact pkg : rows) {
             result.put(pkg.name(), pkg);
             result.put(pkg.packageKey(), pkg);
             if (PackageId.isMavenPackageKey(pkg.name())) {

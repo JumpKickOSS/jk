@@ -145,7 +145,7 @@ public final class ExecPlans {
         Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
         Cas cas = JkStores.storeCas();
         List<Path> depCp =
-                new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, false, project);
+                new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, false, project, dir);
         List<String> paths = new ArrayList<>();
         paths.add(classes.toAbsolutePath().toString());
         int missing = 0;
@@ -414,7 +414,7 @@ public final class ExecPlans {
         if (Files.exists(lockFile)) {
             Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
             classpath.addAll(new ClasspathResolver(JkStores.storeCas())
-                    .classpathFor(lock, ClasspathResolver.RUN, false, project));
+                    .classpathFor(lock, ClasspathResolver.RUN, false, project, dir));
             if (dev) hotReload = locksDevtools(lock);
         }
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(dir, project, ClasspathResolver.RUN);
@@ -866,9 +866,9 @@ public final class ExecPlans {
         List<String> libPaths = new ArrayList<>();
         Path lockFile = LockPaths.lockFile(dir);
         if (Files.exists(lockFile)) {
-            Lockfile lock = LockfileReader.read(lockFile);
+            Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
             for (ClasspathResolver.Entry entry : new ClasspathResolver(JkStores.storeCas())
-                    .entriesFor(lock, ClasspathResolver.RUNTIME, false, project)) {
+                    .entriesFor(lock, ClasspathResolver.RUNTIME, false, project, dir)) {
                 Path jar = entry.jar();
                 if (jar == null || !Files.exists(jar)) continue;
                 libNames.add(entry.artifact().moduleArtifact() + "-"

@@ -344,9 +344,9 @@ public final class PlannerSetup {
         WorkspaceClasspath.Result mainSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.COMPILE_SCOPES);
         requireSiblingsCompiled(ctx, mainSiblings, "sibling not compiled — ");
-        // Lockfile + sibling classes trees + siblings' transitive lockfile deps — the
-        // exact classpath `jk explain` re-derives, so the action keys match.
-        List<Path> mainCp = PlannerSupport.mainCompileClasspath(project, lock, resolver, mainSiblings, true);
+        // The module's lock rows (its own and those its siblings pass on) + sibling classes
+        // trees — the exact classpath `jk explain` re-derives, so the action keys match.
+        List<Path> mainCp = PlannerSupport.mainCompileClasspath(in.dir(), project, lock, resolver, mainSiblings, true);
         // Plugin-contributed PROVIDED classpath (an Android platform jar): javac
         // sees it, runtime/packaging never do. Resolved through the same engine
         // fetch the steps use, so the compile action key fingerprints it.
@@ -384,11 +384,19 @@ public final class PlannerSetup {
                                 + " run `jk lock`");
             throw new RuntimeException("unresolved processor dependencies");
         }
-        ctx.put(PROCESSOR_CP, PlannerSupport.processorClasspath(project, lock, resolver, processorSiblings, true));
+        ctx.put(
+                PROCESSOR_CP,
+                PlannerSupport.processorClasspath(in.dir(), project, lock, resolver, processorSiblings, true));
         ctx.put(
                 TEST_PROCESSOR_CP,
                 PlannerSupport.processorClasspath(
-                        project, lock, resolver, testProcessorSiblings, ClasspathResolver.PROCESSOR_PATH, true));
+                        in.dir(),
+                        project,
+                        lock,
+                        resolver,
+                        testProcessorSiblings,
+                        ClasspathResolver.PROCESSOR_PATH,
+                        true));
 
         WorkspaceClasspath.Result testSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
@@ -402,19 +410,11 @@ public final class PlannerSetup {
         // and jar may still be on their way when this step runs, and a list filtered to what is
         // on disk now would silently drop them from the tests.
         List<Path> compileTestCp =
-                new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true, project));
+                new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true, project, in.dir()));
         compileTestCp.addAll(testSiblings.siblingClosureClasses());
-        List<Path> testRuntimeCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, true, project));
+        List<Path> testRuntimeCp =
+                new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, true, project, in.dir()));
         testRuntimeCp.addAll(testSiblings.siblingClosureJars());
-        // A sibling's own external deps (e.g. resolver's maven-artifact) must also reach the test
-        // classpath, or tests exercising sibling code hit NoClassDefFoundError. Its rows are held to
-        // the same bar as this module's: one not on disk fails here by name.
-        for (Path p : resolver.siblingClasspath(testSiblings.siblingLocks(), ClasspathResolver.COMPILE_MAIN, true)) {
-            if (!compileTestCp.contains(p)) compileTestCp.add(p);
-        }
-        for (Path p : resolver.siblingClasspath(testSiblings.siblingLocks(), ClasspathResolver.RUNTIME, true)) {
-            if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
-        }
         // A plugin's contributed provided classpath is provided scope by another door: on both test
         // classpaths, as a [provided-dependencies] row is, and in no artifact.
         compileTestCp.addAll(contributedProvided);

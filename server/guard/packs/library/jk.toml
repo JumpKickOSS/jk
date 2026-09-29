@@ -3,6 +3,9 @@ javadoc = false   # a rule pack has no API to document
 name = "library"
 description = "Library house rules: locale- and charset-explicit JDK calls, @NullMarked packages, no snapshots, converged versions, a file-size ratchet."
 
+[provided-dependencies]
+jspecify = "1.0.1"
+
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
 nullaway = { group = "com.uber.nullaway", version = "0.14.1" }
