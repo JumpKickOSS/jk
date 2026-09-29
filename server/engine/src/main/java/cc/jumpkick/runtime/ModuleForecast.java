@@ -260,7 +260,7 @@ final class ModuleForecast {
         // included — or the forecast hashes a different -processorpath than the
         // build and every KSP module forecasts a phantom rebuild.
         List<Path> processorCp = PlannerSupport.processorClasspath(
-                project, lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)), false);
+                dir, project, lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)), false);
         List<Path> testProcessorCp = ProcessorPaths.forecastTest(project, lock, resolver, dir, processorCp);
 
         // Only compile-scope dirty siblings force main recompile (and package/native cascade).
@@ -332,7 +332,7 @@ final class ModuleForecast {
         boolean mixedGroovy = prepared.mixedGroovy();
         if (!mainSrc.isEmpty()) {
             WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
-            List<Path> cp = PlannerSupport.mainCompileClasspath(project, lock, resolver, sib, false);
+            List<Path> cp = PlannerSupport.mainCompileClasspath(dir, project, lock, resolver, sib, false);
             mainCp = cp;
             Path out = layout.classesDir();
             // Same stamp gate as BuildPlanner compile-main: a post-rebuild tree with a

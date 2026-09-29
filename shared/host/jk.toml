@@ -3,6 +3,11 @@ description = "Host leaf: JSONL/MiniJson codec, Hashing, PathUtil, Errors, Os, E
 # Workers load on user JVMs (JDK 17+); stay on release 17.
 java = 17
 
+# The nullness annotations every module's @NullMarked packages carry; each module that depends on
+# jk-host compiles against them through this edge.
+[dependencies]
+jspecify = "1.0.1"
+
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
 nullaway = { group = "com.uber.nullaway", version = "0.14.1" }

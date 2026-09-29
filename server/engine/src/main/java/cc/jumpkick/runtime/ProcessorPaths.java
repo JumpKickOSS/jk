@@ -36,6 +36,7 @@ final class ProcessorPaths {
             JkBuild project, Lockfile lock, ClasspathResolver resolver, Path dir, List<Path> shared)
             throws IOException {
         List<Path> test = PlannerSupport.processorClasspath(
+                dir,
                 project,
                 lock,
                 resolver,

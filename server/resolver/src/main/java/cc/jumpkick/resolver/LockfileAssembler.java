@@ -162,7 +162,7 @@ final class LockfileAssembler {
                 rootModules.add(d.packageKey());
             }
             if (includeJunitSeeds && scope == Scope.TEST) {
-                for (Dependency d : LockRoots.injectedTestRoots(project)) rootModules.add(d.packageKey());
+                for (Dependency d : TestEngines.injectedRoots(project)) rootModules.add(d.packageKey());
             }
             if (rootModules.isEmpty()) continue;
             for (String module : reachableFrom(rootModules, resolution)) {

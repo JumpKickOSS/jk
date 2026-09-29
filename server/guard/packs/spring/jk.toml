@@ -3,6 +3,9 @@ javadoc = false   # a rule pack has no API to document
 name = "spring"
 description = "Spring Boot house rules: one logger, Jakarta EE, Lombok as a processor, test libraries in the test scope, java.time, a file-size ratchet."
 
+[provided-dependencies]
+jspecify = "1.0.1"
+
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
 nullaway = { group = "com.uber.nullaway", version = "0.14.1" }

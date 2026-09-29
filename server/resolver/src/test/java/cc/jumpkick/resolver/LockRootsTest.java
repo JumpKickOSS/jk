@@ -41,7 +41,7 @@ class LockRootsTest {
 
         LockRoots.Declared plain = LockRoots.partition(project, List.of(), true);
         assertThat(plain.main().keySet()).containsExactly("com.foo:core:jar:");
-        assertThat(plain.test().keySet()).containsExactly("com.foo:truth:jar:", LockRoots.JUNIT_LAUNCHER.packageKey());
+        assertThat(plain.test().keySet()).containsExactly("com.foo:truth:jar:", TestEngines.LAUNCHER.packageKey());
         assertThat(plain.processor()).isEmpty();
 
         LockRoots.Declared withDb = LockRoots.partition(project, List.of("db"), true);
@@ -99,7 +99,7 @@ class LockRootsTest {
                 """);
         LockRoots.Declared declared = LockRoots.partition(bare, List.of(), true);
         assertThat(declared.test().keySet())
-                .containsExactly(LockRoots.JUNIT_LAUNCHER.packageKey(), LockRoots.JUNIT_JUPITER.packageKey());
+                .containsExactly(TestEngines.LAUNCHER.packageKey(), TestEngines.JUPITER.packageKey());
         assertThat(declared.test().values())
                 .allMatch(d -> "latest".equals(d.version().raw()));
     }
@@ -118,14 +118,14 @@ class LockRootsTest {
         assertThat(declared.test().keySet())
                 .containsExactly(
                         "junit:junit:jar:",
-                        LockRoots.JUNIT_LAUNCHER.packageKey(),
+                        TestEngines.LAUNCHER.packageKey(),
                         TestEngines.JUNIT4.engine().packageKey());
         assertThat(requireNonNull(
                                 declared.test().get(TestEngines.JUNIT4.engine().packageKey()))
                         .version()
                         .raw())
                 .as("the engine rides the launcher's selector so both land on one Platform line")
-                .isEqualTo(LockRoots.JUNIT_LAUNCHER.version().raw());
+                .isEqualTo(TestEngines.LAUNCHER.version().raw());
         assertThat(TestEngines.declaredTriggerPins(junit4)).containsExactly(Map.entry("junit:junit", "4.13.2"));
 
         JkBuild jupiterOnly = JkBuildParser.parse(MANIFEST);
@@ -146,7 +146,7 @@ class LockRootsTest {
                 junit         = { group = "junit", name = "junit", version = "4.13.2" }
                 """);
         LockRoots.Declared declared = LockRoots.partition(old, List.of(), true);
-        assertThat(requireNonNull(declared.test().get(LockRoots.JUNIT_LAUNCHER.packageKey()))
+        assertThat(requireNonNull(declared.test().get(TestEngines.LAUNCHER.packageKey()))
                         .version()
                         .raw())
                 .as("Jupiter 5.9.0 ships with Platform 1.9.0")
@@ -168,7 +168,7 @@ class LockRootsTest {
                 """);
         assertThat(requireNonNull(LockRoots.partition(caret, List.of(), true)
                                 .test()
-                                .get(LockRoots.JUNIT_LAUNCHER.packageKey()))
+                                .get(TestEngines.LAUNCHER.packageKey()))
                         .version()
                         .raw())
                 .isEqualTo("^1.10");
@@ -181,16 +181,15 @@ class LockRootsTest {
                 [test-dependencies]
                 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
                 """);
-        assertThat(requireNonNull(LockRoots.partition(six, List.of(), true)
-                                .test()
-                                .get(LockRoots.JUNIT_LAUNCHER.packageKey()))
+        assertThat(requireNonNull(
+                                LockRoots.partition(six, List.of(), true).test().get(TestEngines.LAUNCHER.packageKey()))
                         .version()
                         .raw())
                 .as("from Jupiter 6 the two share one number")
                 .isEqualTo("6.1.3");
         assertThat(requireNonNull(LockRoots.partition(JkBuildParser.parse(MANIFEST), List.of(), true)
                                 .test()
-                                .get(LockRoots.JUNIT_LAUNCHER.packageKey()))
+                                .get(TestEngines.LAUNCHER.packageKey()))
                         .version()
                         .raw())
                 .as("no Jupiter declared: the launcher stays at latest")

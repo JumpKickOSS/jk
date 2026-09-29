@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
-import cc.jumpkick.layout.Languages;
-import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.layout.LanguageRuntimes;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
@@ -74,32 +73,25 @@ public final class LanguageRuntimeInject {
         Project p = project.project();
         // Same inference the engine uses to enable lanes: an unpinned project with
         // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too —
-        // jk run and packaging read the lock only. Pin-only keying shipped jars that died with
-        // NoClassDefFoundError: groovy/lang/GroovyObject.
-        Languages langs = projectDir != null
-                ? Languages.resolve(p, projectDir)
-                : new Languages(true, p.isKotlin(), p.isGroovy(), p.isScala());
-        // Only when the language has actual sources (src/ or plugin-contributed roots like
-        // grails-app/): a bare `kotlin = "2.1.0"` pin on a sourceless module pins the COMPILER
-        // (lock.kotlin) but produces no classes — injecting its runtime made such locks fail
-        // against repos that don't host the stdlib.
-        if (langs.groovy() && hasLangSources(projectDir, ".groovy")) {
+        // jk run and packaging read the lock only.
+        LanguageRuntimes langs = LanguageRuntimes.of(project, projectDir);
+        if (langs.groovy()) {
             VersionSelector groovy = ToolVersions.exactOr(tools.groovy(), p.groovy());
-            addRuntime(bomConstraints, mainDeduped, added, "org.apache.groovy:groovy", groovy, "5");
+            addRuntime(bomConstraints, mainDeduped, added, LanguageRuntimes.GROOVY, groovy, "5");
         }
-        if (langs.kotlin() && hasLangSources(projectDir, ".kt")) {
+        if (langs.kotlin()) {
             if (tools.kotlin() != null) alignKotlinFamily(bomConstraints, mainDeduped, tools.kotlin(), notes);
             VersionSelector kotlin = ToolVersions.exactOr(tools.kotlin(), p.kotlin());
-            addRuntime(bomConstraints, mainDeduped, added, "org.jetbrains.kotlin:kotlin-stdlib", kotlin, "2");
+            addRuntime(bomConstraints, mainDeduped, added, LanguageRuntimes.KOTLIN, kotlin, "2");
         }
-        if (langs.scala() && hasLangSources(projectDir, ".scala")) {
+        if (langs.scala()) {
             VersionSelector scala = ToolVersions.exactOr(tools.scala(), p.scala());
-            addRuntime(bomConstraints, mainDeduped, added, "org.scala-lang:scala3-library_3", scala, "3");
+            addRuntime(bomConstraints, mainDeduped, added, LanguageRuntimes.SCALA, scala, "3");
             // On 3.8+ the stub's own `scala-library` edge is the real stdlib, declared as a Maven soft
             // version that highest-wins would float past the compiler (3.8.4 stub, 3.9.0 library).
             // Root it exactly too, so the lock carries one Scala version.
             if (tools.scala() != null && ScalaVersions.stdlibIsScalaLibrary(tools.scala())) {
-                addRuntime(bomConstraints, mainDeduped, added, "org.scala-lang:scala-library", scala, "3");
+                addRuntime(bomConstraints, mainDeduped, added, LanguageRuntimes.SCALA_LIBRARY, scala, "3");
             }
         }
         return new Injected(added, notes);
@@ -177,18 +169,6 @@ public final class LanguageRuntimeInject {
                 return false;
             }
         }
-    }
-
-    /** True when any {@code ext} source exists under src/ or a plugin-contributed root. */
-    private static boolean hasLangSources(@Nullable Path projectDir, String ext) {
-        if (projectDir == null) return true; // no dir context — keep the inject (fail-safe)
-        if (Languages.anySourceUnder(projectDir.resolve("src"), ext)) return true;
-        for (var root : ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
-            if (Languages.anySourceUnder(projectDir.resolve(root.relative()), ext)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /** Inject one runtime; BOM-following injects (no exact pin) join the strip skip-list. */
