@@ -125,33 +125,31 @@ class McpContractTest {
 
     @Test
     void diagnostics_unique_last_fail() {
-        call("diagnostics", "{}"); // mint the session the next call rides
+        text("diagnostics", "{}"); // mint the session the next call rides
         String body = mcp.handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                                 + "\"params\":{\"name\":\"diagnostics\",\"arguments\":{}}}",
                         session)
                 .body();
-        assertThat(body).contains("\"type\":\"diagnostics\"");
+        assertThat(body).doesNotContain("structuredContent");
         assertThat(body).contains("A.java").contains("+1 more in A.java").contains("B.java");
         assertThat(body).doesNotContain("/ws/A.java");
         assertThat(body.length()).isLessThan(4_096);
     }
 
     @Test
-    void run_wait_returns_job_envelope() {
-        Map<String, Object> r = call("run", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
-        assertThat(r.get("type")).isIn("job", "job-accepted", "test-accepted");
-        assertThat(r.get("jid")).isNotNull();
+    void run_wait_returns_the_verdict_text() {
+        String r = text("run", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
+        assertThat(r).containsPattern("^(OK|FAIL|TIMEOUT) test");
     }
 
     @Test
     void run_hosts_format_and_applies_tags() {
-        Map<String, Object> r = call("run", "{\"kind\":\"format\",\"dir\":\"/tmp\",\"wait\":false}");
-        assertThat(r.get("type")).isEqualTo("job-accepted");
-        assertThat(number(r, "jid").longValue()).isEqualTo(45L);
+        String r = text("run", "{\"kind\":\"format\",\"dir\":\"/tmp\",\"wait\":false}");
+        assertThat(r).startsWith("RUNNING format jid=45\n");
         assertThat(requireNonNull(lastSpec).kind()).isEqualTo("format");
 
-        call(
+        text(
                 "run",
                 "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":false,\"include_tags\":[\"network\"],\"modules\":[\"api\"]}");
         assertThat(requireNonNull(lastSpec).kind()).isEqualTo("test");
@@ -329,7 +327,19 @@ class McpContractTest {
     /** The one connection this test's calls ride on, minted by {@code initialize} on first use. */
     private @Nullable String session;
 
+    /** An extended tool's envelope. */
     private Map<String, Object> call(String name, String argsJson) {
+        return object(result(name, argsJson), "structuredContent");
+    }
+
+    /** A loop tool's reply: {@code content[0].text}, the only thing it sends. */
+    private String text(String name, String argsJson) {
+        Map<String, Object> result = result(name, argsJson);
+        assertThat(result).doesNotContainKey("structuredContent");
+        return String.valueOf(objects(result, "content").getFirst().get("text"));
+    }
+
+    private Map<String, Object> result(String name, String argsJson) {
         if (session == null) {
             session = requireNonNull(
                     mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
@@ -344,8 +354,6 @@ class McpContractTest {
                                 + "}}",
                         session)
                 .body();
-        Map<String, Object> resp = JsonFields.parseObject(body);
-        Map<String, Object> result = object(resp, "result");
-        return object(result, "structuredContent");
+        return object(JsonFields.parseObject(body), "result");
     }
 }

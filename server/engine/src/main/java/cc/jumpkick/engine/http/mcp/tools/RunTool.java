@@ -4,8 +4,6 @@ package cc.jumpkick.engine.http.mcp.tools;
 import cc.jumpkick.engine.http.mcp.McpAgentText;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpDiagnostics;
-import cc.jumpkick.engine.http.mcp.McpEnvelope;
-import cc.jumpkick.engine.http.mcp.McpHistoryViews;
 import cc.jumpkick.engine.http.mcp.McpJobRuns;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
@@ -54,11 +52,9 @@ public final class RunTool implements McpTool {
                 ? McpDiagnostics.findNewest(in.ctx().history(), dir)
                 : McpDiagnostics.findRun(in.ctx().history(), run, dir);
         if (rec == null) {
-            return in.ok(McpEnvelope.of("run", Map.of("error", "no matching run")), "no matching run\n");
+            return in.error("no matching run\n");
         }
         String text = McpAgentText.of(in.ctx(), rec);
-        if (text == null) text = "no matching run\n";
-        String id = McpHistoryViews.str(rec, "id");
-        return in.ok(McpEnvelope.of("run", Map.of("run", id)), text);
+        return text == null ? in.error("no matching run\n") : in.text(text);
     }
 }

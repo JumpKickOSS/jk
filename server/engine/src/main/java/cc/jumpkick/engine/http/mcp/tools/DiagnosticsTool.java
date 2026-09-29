@@ -3,7 +3,6 @@ package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpDiagnostics;
-import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import cc.jumpkick.engine.journal.BuildRecord;
@@ -36,12 +35,12 @@ public final class DiagnosticsTool implements McpTool {
                 : McpDiagnostics.findRun(in.ctx().history(), run, in.dir());
         BuildRecord record = JkResultsAgent.recordOf(rec);
         if (record == null) {
-            return in.ok(McpEnvelope.of("diagnostics", Map.of("count", 0)), "0 diagnostics\n");
+            return in.text("0 diagnostics\n");
         }
         String file = in.str("file");
         if (file == null || file.isBlank()) file = in.str("module");
         int limit = in.count("limit", 20, 1, 200);
         String text = JkResultsAgent.renderDetails(record, file, limit, true);
-        return in.ok(McpEnvelope.of("diagnostics", Map.of("count", text.startsWith("0 ") ? 0 : 1)), text);
+        return in.text(text);
     }
 }

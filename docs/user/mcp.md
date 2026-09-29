@@ -40,9 +40,12 @@ Disable MCP only: `[mcp] enabled = false` in `~/.jk/config.toml` (or
 
 SSE budget: `[mcp] max-event-streams` / `JK_MCP_MAX_EVENT_STREAMS` (default **16**).
 
-Results use MCP `structuredContent` plus `content` text. For `run` and `diagnostics` that text
-**is** the verdict (below). Tool JSON uses `schema` + `type` like the rest of the machine model
-(`schema` stays **1** until 1.0).
+The five loop tools (`run`, `diagnostics`, `deps`, `why`, `skill`) answer `content` text only;
+for `run` and `diagnostics` that text **is** the verdict (below). They send no
+`structuredContent`, because hosts that get one show the model that instead of the text. A
+failure the agent must act on (a bad `deps` coord, a failed relock) sets `isError`. The extended
+tools answer `structuredContent` (`schema` + `type`, like the rest of the machine model;
+`schema` stays **1** until 1.0) with a one-line text summary.
 
 `run` waits by default and the reply is the run. `run=<id>` (no `kind`) reads an earlier verdict.
 It does not carry a dashboard link, a session id, or a trigger. The journal still records who
