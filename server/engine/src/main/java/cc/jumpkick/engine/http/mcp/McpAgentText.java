@@ -31,17 +31,27 @@ public final class McpAgentText {
      */
     public static @Nullable String of(McpContext ctx, @Nullable Map<String, Object> rec) {
         if (rec == null) return null;
-        String filed = filed(ctx, rec);
+        String filed = filed(ctx, rec, JkResultsAgent.FILE_NAME);
         if (filed != null) return filed;
         BuildRecord record = JkResultsAgent.recordOf(rec);
         return record == null ? null : JkResultsAgent.render(record);
     }
 
-    private static @Nullable String filed(McpContext ctx, Map<String, Object> rec) {
+    /** Every problem of the run: the filed all-problems report, else the renderer over the journal row. */
+    public static @Nullable String all(McpContext ctx, @Nullable Map<String, Object> rec) {
+        if (rec == null) return null;
+        String filed = filed(ctx, rec, JkResultsAgent.ALL_FILE_NAME);
+        if (filed != null) return filed;
+        BuildRecord record = JkResultsAgent.recordOf(rec);
+        return record == null ? null : JkResultsAgent.renderAll(record, null);
+    }
+
+    /** {@code name} beside the run's {@code jk-results.md}, or {@code null} when it is not on disk. */
+    private static @Nullable String filed(McpContext ctx, Map<String, Object> rec, String name) {
         String id = McpHistoryViews.str(rec, "id");
         Path markdown = McpResults.locate(rec, id.isEmpty() ? null : id, ctx.detailsFile());
         if (markdown == null) return null;
-        Path agent = markdown.resolveSibling(JkResultsAgent.FILE_NAME);
+        Path agent = markdown.resolveSibling(name);
         if (!Files.isRegularFile(agent)) return null;
         try {
             String text = Files.readString(agent, StandardCharsets.UTF_8);

@@ -180,7 +180,7 @@ The oracle is the plumbing proof and the results-file audit in one. It never rea
 to decide what is wrong; the results text has to say. Maven and Gradle still return the markdown
 page. jk's `run` returns the agent verdict (`OK`/`FAIL` headline, `E path:line:col message`,
 `T Class#method` with its expectation and `at File:line`, `E step: cause` for resolve and lock,
-`FIX` when jk knows the edit, `+K more: diagnostics(file=…)` past the cap). A compile locus with
+`FIX` when jk knows the edit, `+K more: jk results --all | diagnostics(file=…)` past the cap). A compile locus with
 `';' expected` (or a `FIX insert ';' at line:col` line) gets its semicolon; `package X does not exist`
 maps the package to the artifact and declares it in the tool's build file (Boot 3 and Boot 4 starter
 names both known); a `FIX deps(add|pin|remove, g:a…)` line is applied through jk's `deps` tool; a

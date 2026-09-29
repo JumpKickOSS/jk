@@ -63,6 +63,18 @@ class ResultsCommandTest {
     }
 
     @Test
+    void all_prints_every_problem_in_the_agent_format() throws Exception {
+        Path proj = project();
+        ProjectBuilds.RunDir run = open(proj);
+        Files.writeString(run.resultsFile(), "# human\n");
+        Files.writeString(run.runDir().resolve(ProjectBuilds.AGENT), "FAIL build app\n+2 more: jk results --all\n");
+        Files.writeString(run.runDir().resolve(ProjectBuilds.AGENT_ALL), "E src/A.java:1:1 a\nE src/F.java:6:1 f\n");
+
+        String out = Capture.stdout(() -> Jk.execute("-C", proj.toString(), "results", "--all"));
+        assertThat(out).isEqualTo("E src/A.java:1:1 a\nE src/F.java:6:1 f\n");
+    }
+
+    @Test
     void details_prints_latest_jsonl() throws Exception {
         Path proj = project();
         ProjectBuilds.RunDir older = open(proj);

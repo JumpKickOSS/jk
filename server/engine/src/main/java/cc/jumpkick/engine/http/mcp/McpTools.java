@@ -84,7 +84,7 @@ public final class McpTools {
             "JumpKick (jk) is not Maven or Gradle: the manifest is jk.toml, the lock is jk-lock.toml, "
                     + "never add pom.xml or Gradle files. "
                     + "Loop: run(kind=test, dir=<project>) returns the verdict → edit → run again. "
-                    + "diagnostics(file=…) is the rest. deps adds, removes, or pins and relocks. "
+                    + "diagnostics is every problem past the cap (file= for one). deps adds, removes, or pins and relocks. "
                     + "why(coord) is the path and the rule that picked the version. skill is the playbook. "
                     + "The first call that carries dir binds the connection. "
                     + "Other tools: tools/list with extended=true.";

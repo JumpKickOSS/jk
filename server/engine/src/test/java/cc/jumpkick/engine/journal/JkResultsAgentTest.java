@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.test.MarkdownTestReport;
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -298,7 +299,7 @@ class JkResultsAgentTest {
     }
 
     @Test
-    void the_sixth_problem_points_at_diagnostics() {
+    void the_sixth_problem_names_the_shell_command_and_the_tool() {
         List<BuildRecord.Diag> diags = List.of(
                 diag("compile-java", "javac", "a", "src/A.java", 1, 1, 0, List.of(), ""),
                 diag("compile-java", "javac", "b", "src/B.java", 2, 1, 0, List.of(), ""),
@@ -308,8 +309,44 @@ class JkResultsAgentTest {
                 diag("compile-java", "javac", "f", "src/F.java", 6, 1, 0, List.of(), ""),
                 diag("compile-java", "javac", "g", "src/G.java", 7, 1, 0, List.of(), ""));
         String text = JkResultsAgent.render(record("build", false, false, 100, null, diags, List.of()));
-        assertThat(text).contains("+2 more: diagnostics(file=src/F.java)\n");
+        assertThat(text).contains("+2 more: jk results --all | diagnostics(file=src/F.java)\n");
         assertThat(text).doesNotContain("src/G.java:");
+    }
+
+    @Test
+    void the_all_report_is_every_problem_with_source_lines_and_no_headline() {
+        List<BuildRecord.Diag> diags = new ArrayList<>();
+        for (int i = 1; i <= 7; i++) {
+            diags.add(diag("compile-java", "javac", "e" + i, "src/F" + i + ".java", i, 1, 1, List.of("line " + i), ""));
+        }
+        String text = JkResultsAgent.renderAll(record("build", false, false, 100, null, diags, List.of()), null);
+        assertThat(text).doesNotContain("FAIL build", "more:");
+        assertThat(text)
+                .contains("E src/F1.java:1:1 e1")
+                .contains("E src/F7.java:7:1 e7")
+                .contains("line 7");
+    }
+
+    @Test
+    void the_all_report_of_a_green_run_says_so() {
+        BuildRecord ok = record("build", true, false, 100, null, List.of(), List.of());
+        assertThat(JkResultsAgent.renderAll(ok, null)).isEqualTo("0 diagnostics\n");
+    }
+
+    @Test
+    void the_all_report_includes_test_failures_only_the_module_runs_carry() {
+        MarkdownTestReport.Entry fail = new MarkdownTestReport.Entry(
+                "com.example.AppTests",
+                "adds()",
+                10,
+                "expected: 3 but was: 4",
+                "\tat com.example.AppTests.adds(AppTests.java:9)\n",
+                null);
+        var run = new MarkdownTestReport.ModuleRun("/ws", "app", List.of(fail));
+        BuildRecord r = record("test", false, false, 100, new BuildRecord.Tests(1, 0, 1, 0), List.of(), List.of());
+        assertThat(JkResultsAgent.renderAll(r, List.of(run)))
+                .contains("T com.example.AppTests#adds")
+                .contains("expected: 3 but was: 4");
     }
 
     @Test

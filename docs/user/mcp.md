@@ -55,7 +55,9 @@ asked; the human report is `target/jk-results.md` and [Web](web.md). `details` a
 ## Verdict
 
 An OK run is one line. A failure adds one line per problem, capped at five, then
-`+K more: diagnostics(file=<path>)`.
+`+K more: jk results --all | diagnostics(file=<path>)`: the shell command, then this tool. With no
+`file`, `diagnostics` returns every problem with its source lines (the same text as `jk results
+--all`); with `file`, that file's.
 
 ```
 OK test rest-service · 2 tests · 500ms

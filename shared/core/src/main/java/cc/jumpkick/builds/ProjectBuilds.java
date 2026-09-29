@@ -61,6 +61,9 @@ public final class ProjectBuilds {
     /** Terse run report written beside {@link #RESULTS}. Agents read this; humans keep the markdown. */
     public static final String AGENT = "jk-agent.txt";
 
+    /** Every problem of the run in the agent format, beside {@link #AGENT}: its line past the cap. */
+    public static final String AGENT_ALL = "jk-agent-all.txt";
+
     public static final String METRICS = "metrics.toml";
 
     private ProjectBuilds() {}

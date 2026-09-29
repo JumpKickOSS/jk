@@ -259,7 +259,8 @@ public final class JournalWriter {
                 log.accept("jk engine: jk-results.md write failed: " + e);
             }
             try {
-                writeAgent(runDir, latest, JkResultsAgent.render(record, tests));
+                writeAgent(runDir, latest, JkResultsAgent.FILE_NAME, JkResultsAgent.render(record, tests));
+                writeAgent(runDir, latest, JkResultsAgent.ALL_FILE_NAME, JkResultsAgent.renderAll(record, tests));
             } catch (IOException | RuntimeException e) {
                 log.accept("jk engine: agent report write failed: " + e);
             }
@@ -352,16 +353,18 @@ public final class JournalWriter {
         return out;
     }
 
-    /** The agent report beside the markdown, in the run directory and as {@code target/jk-agent.txt}. */
-    private static void writeAgent(@Nullable Path runDir, @Nullable Path latestMarkdown, String text)
+    /**
+     * An agent report beside the markdown, in the run directory and under {@code target/}. Written on
+     * every run, so a green run leaves no stale problems behind.
+     */
+    private static void writeAgent(@Nullable Path runDir, @Nullable Path latestMarkdown, String name, String text)
             throws IOException {
         String body = text.endsWith("\n") ? text : text + "\n";
         if (runDir != null) {
-            Files.writeString(runDir.resolve(JkResultsAgent.FILE_NAME), body, StandardCharsets.UTF_8);
+            Files.writeString(runDir.resolve(name), body, StandardCharsets.UTF_8);
         }
         if (latestMarkdown != null && latestMarkdown.getParent() != null) {
-            Files.writeString(
-                    latestMarkdown.getParent().resolve(JkResultsAgent.FILE_NAME), body, StandardCharsets.UTF_8);
+            Files.writeString(latestMarkdown.getParent().resolve(name), body, StandardCharsets.UTF_8);
         }
     }
 
