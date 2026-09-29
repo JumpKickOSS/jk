@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
-import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.http.EngineHttpJobs;
@@ -51,9 +50,7 @@ class McpJobRunsWaitTest {
         Map<String, Object> result =
                 McpJobRuns.job(new McpCall(ctx, Map.of("action", "wait", "jid", 7L, "timeout_s", 5), null));
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> envelope = (Map<String, Object>) requireNonNull(result.get("structuredContent"));
-        assertThat(envelope.get("finished")).isEqualTo(true);
+        assertThat(String.valueOf(result.get("content"))).doesNotContain("TIMEOUT");
         assertThat(snapshots).as("the wait loop never took a live-run snapshot").hasValue(0);
     }
 

@@ -2,7 +2,6 @@
 package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.engine.http.mcp.McpCall;
-import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpError;
 import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
@@ -49,17 +48,16 @@ public final class DepsTool implements McpTool {
         Map<String, Object> data =
                 McpManifest.deps(in.requiredDir(), action, in.strings("coords"), in.str("scope"), !preview);
         if (data.get("error") != null) {
-            return in.ok(McpEnvelope.of("deps", data), String.valueOf(data.get("error")) + "\n");
+            return in.error(data.get("error") + "\n");
         }
         String changed = DepsLock.changedLine(data);
         if (preview || !Boolean.TRUE.equals(data.get("applied"))) {
             String text = preview ? changed + "\npreview\n" : changed + "\n";
-            return in.ok(McpEnvelope.of("deps", data), text);
+            return in.text(text);
         }
         Path dir = PathUtil.resolveUserPath(in.requiredDir());
         String lock = DepsLock.relock(dir);
-        data.put("lock", "lock ok".equals(lock) ? "ok" : "fail");
-        if (!"ok".equals(data.get("lock"))) data.put("error", lock);
-        return in.ok(McpEnvelope.of("deps", data), changed + "\n" + lock + "\n");
+        String text = changed + "\n" + lock + "\n";
+        return "lock ok".equals(lock) ? in.text(text) : in.error(text);
     }
 }

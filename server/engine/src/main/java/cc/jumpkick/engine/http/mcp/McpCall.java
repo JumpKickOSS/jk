@@ -116,6 +116,16 @@ public record McpCall(
         return dir;
     }
 
+    /** A text-only {@code tools/call} result — what every loop tool answers. */
+    public Map<String, Object> text(String text) {
+        return McpEnvelope.text(text, false);
+    }
+
+    /** A text-only {@code tools/call} result flagged {@code isError}. */
+    public Map<String, Object> error(String text) {
+        return McpEnvelope.text(text, true);
+    }
+
     /** Wrap an {@link McpEnvelope} as the {@code tools/call} result. */
     public Map<String, Object> ok(Map<String, Object> envelope, String summary) {
         return McpEnvelope.toolResult(envelope, summary);

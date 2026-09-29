@@ -2,7 +2,6 @@
 package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.engine.http.mcp.McpCall;
-import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpError;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
@@ -37,6 +36,6 @@ public final class WhyTool implements McpTool {
                 coord,
                 FeatureSelection.DEFAULTS,
                 RepoGroupBuilder::buildFor);
-        return in.ok(McpEnvelope.of("why", report.toStructured()), WhyLines.of(report, coord));
+        return in.text(WhyLines.of(report, coord));
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
-import static cc.jumpkick.engine.http.JsonFields.number;
 import static cc.jumpkick.engine.http.JsonFields.object;
 import static cc.jumpkick.engine.http.JsonFields.objects;
 import static java.util.Objects.requireNonNull;
@@ -90,13 +89,6 @@ class McpRunWaitTest {
                 finishedRecords);
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> structured(String body) {
-        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
-        Map<String, Object> result = object(resp, "result");
-        return object(result, "structuredContent");
-    }
-
     private static String runWait(McpHandler mcp) {
         return mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"run\",\"arguments\":"
@@ -112,10 +104,6 @@ class McpRunWaitTest {
                 },
                 jid -> jid == JID ? FINISHED_OK : null);
         String body = runWait(mcp);
-        Map<String, Object> fields = structured(body);
-        assertThat(fields.get("finished")).isEqualTo(true);
-        assertThat(fields.get("success")).isEqualTo(true);
-        assertThat(number(fields, "jid").longValue()).isEqualTo(JID);
         assertThat(textOf(body)).startsWith("OK build a ·");
         assertThat(historyScans).hasValue(0);
     }
@@ -126,9 +114,7 @@ class McpRunWaitTest {
         String stale = "{\"id\":\"old\",\"kind\":\"build\",\"dir\":\"/ws\",\"success\":true,"
                 + "\"exitCode\":0,\"startedAt\":1700000000000,\"modules\":[],\"diagnostics\":[]}";
         McpHandler mcp = handler(() -> List.of(stale), jid -> null);
-        Map<String, Object> fields = structured(runWait(mcp));
-        assertThat(fields.get("finished")).isEqualTo(true);
-        assertThat(fields).doesNotContainKey("success");
+        assertThat(textOf(runWait(mcp))).contains("no run record").doesNotStartWith("OK");
     }
 
     @Test
@@ -137,10 +123,7 @@ class McpRunWaitTest {
                 + "\"exitCode\":0,\"startedAt\":" + (System.currentTimeMillis() + 60_000)
                 + ",\"modules\":[],\"diagnostics\":[]}";
         McpHandler mcp = handler(() -> List.of(fresh), jid -> null);
-        String body = runWait(mcp);
-        Map<String, Object> fields = structured(body);
-        assertThat(fields.get("success")).isEqualTo(true);
-        assertThat(textOf(body)).startsWith("OK build");
+        assertThat(textOf(runWait(mcp))).startsWith("OK build");
     }
 
     @Test
@@ -164,6 +147,7 @@ class McpRunWaitTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void failed_wait_outside_the_bound_dir_still_attaches_diagnostics() {
         String failed = "{\"id\":\"rf\",\"kind\":\"build\",\"dir\":\"/ws/b\",\"success\":false,"
                 + "\"exitCode\":1,\"requestId\":45,\"startedAt\":1700000000000,\"modules\":[],"
@@ -175,10 +159,13 @@ class McpRunWaitTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,"
                 + "\"method\":\"tools/call\",\"params\":{\"name\":\"run\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/ws/b\",\"wait\":true,\"timeout_s\":2}}}");
-        Map<String, Object> fields = structured(body);
-        assertThat(fields.get("success")).isEqualTo(false);
-        assertThat(fields).doesNotContainKeys("diagnostics", "dashboard", "session");
-        assertThat(textOf(body)).contains("Bad.java").contains("cannot find symbol");
+        assertThat(object((Map<String, Object>) requireNonNull(MiniJson.parse(body)), "result"))
+                .doesNotContainKey("structuredContent");
+        assertThat(textOf(body))
+                .startsWith("FAIL")
+                .contains("Bad.java")
+                .contains("cannot find symbol")
+                .doesNotContain("dashboard", "session");
     }
 
     @SuppressWarnings("unchecked")

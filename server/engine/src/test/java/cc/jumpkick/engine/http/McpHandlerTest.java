@@ -149,8 +149,8 @@ class McpHandlerTest {
 
         String cancelBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"cancel\",\"arguments\":{\"jid\":42}}}");
-        assertThat(cancelBody).contains("cancelled");
-        assertThat(cancelBody).contains("true");
+        assertThat(cancelBody).contains("cancelled 42");
+        assertThat(cancelBody).doesNotContain("isError");
     }
 
     /**
@@ -261,7 +261,7 @@ class McpHandlerTest {
                 null);
         String body = waiting.handleBody("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"wait\":true}}}");
-        assertThat(body).contains("\"finished\":true");
+        assertThat(body).contains("no run record");
         // Both the live-run park and the journal lookup ran with the RPC permit yielded.
         assertThat(yields.get()).isGreaterThanOrEqualTo(2);
     }
@@ -343,14 +343,13 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"publish\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"wait\":false}}}");
-        assertThat(body).contains("\"kind\":\"publish\"");
-        assertThat(body).contains("\"jid\"");
+        assertThat(body).contains("RUNNING publish jid=");
 
         String install = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"import\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"wait\":false}}}");
-        assertThat(install).contains("\"kind\":\"import\"");
+        assertThat(install).contains("RUNNING import jid=");
     }
 
     @Test
@@ -466,7 +465,7 @@ class McpHandlerTest {
         String body = h.handleBody("{\"jsonrpc\":\"2.0\",\"id\":28,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"run\",\"arguments\":{\"run\":\"latest\"}}}");
         assertThat(body).contains("FAIL build");
-        assertThat(body).contains("\"type\":\"run\"");
+        assertThat(body).doesNotContain("structuredContent");
         assertThat(body).doesNotContain("\"isError\":true");
     }
 
@@ -531,9 +530,7 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{}}}");
         assertThat(body).contains("name: jk");
         assertThat(body).contains("jk.toml");
-        assertThat(body).contains("\"type\":\"skill\"");
-        assertThat(body).contains("jk://skill");
-        assertThat(body).doesNotContain("\"isError\":true");
+        assertThat(body).doesNotContain("structuredContent", "\"isError\":true");
         String resource = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":33,\"method\":\"resources/read\","
                 + "\"params\":{\"uri\":\"jk://skill\"}}");
         assertThat(resource).contains("text/markdown");
