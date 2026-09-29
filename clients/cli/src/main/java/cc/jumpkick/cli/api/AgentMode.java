@@ -81,9 +81,17 @@ public final class AgentMode {
 
     /** Latest agent report for {@code project}, journal copy first, then {@code target/}. */
     public static Optional<Path> find(Path project) {
-        Optional<Path> journal = ProjectBuilds.latestRunFile(ProjectBuilds.buildsRoot(), project, ProjectBuilds.AGENT);
+        return find(project, ProjectBuilds.AGENT);
+    }
+
+    /**
+     * Latest {@code name} ({@link ProjectBuilds#AGENT} or {@link ProjectBuilds#AGENT_ALL}) for {@code
+     * project}, journal copy first, then {@code target/}.
+     */
+    public static Optional<Path> find(Path project, String name) {
+        Optional<Path> journal = ProjectBuilds.latestRunFile(ProjectBuilds.buildsRoot(), project, name);
         if (journal.isPresent()) return journal;
-        Path latest = project.resolve(BuildLayout.TARGET).resolve(ProjectBuilds.AGENT);
+        Path latest = project.resolve(BuildLayout.TARGET).resolve(name);
         return Files.isRegularFile(latest) ? Optional.of(latest) : Optional.empty();
     }
 }
