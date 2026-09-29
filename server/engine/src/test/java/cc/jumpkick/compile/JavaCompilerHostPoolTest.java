@@ -358,7 +358,7 @@ class JavaCompilerHostPoolTest {
     }
 
     @Test
-    void a_second_exhaustion_fails_the_item_naming_the_module_and_both_heaps(@TempDir Path dir) throws Exception {
+    void the_last_rung_fails_the_item_naming_the_module_and_every_heap(@TempDir Path dir) throws Exception {
         CountDownLatch dies = new CountDownLatch(1);
         AtomicReference<@Nullable Session> lane = new AtomicReference<>();
         Lanes pool = new Lanes(
@@ -374,10 +374,10 @@ class JavaCompilerHostPoolTest {
                 },
                 ForkedJavac::writeSpec,
                 (failed, heap) -> {
-                    throw new AssertionError("a retried item is not retried again");
+                    throw new AssertionError("an item past the last rung is not retried again");
                 });
         CompileWork retry = CompileWork.compile(request(dir, "a").withLabel("g:app compile-test"), 2048L << 20);
-        retry.previousHeapBytes = 1024L << 20;
+        retry.ranOut.addAll(List.of(256L << 20, 512L << 20, 1024L << 20));
         pool.enqueue(retry);
         List<String> sent = new ArrayList<>();
         Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
@@ -386,15 +386,14 @@ class JavaCompilerHostPoolTest {
         pump.join(TimeUnit.SECONDS.toMillis(10));
 
         dies.countDown();
-        awaitTrue(retry.compile::isDone, "the second exhaustion is the failure");
+        awaitTrue(retry.compile::isDone, "the last exhaustion is the failure");
 
         assertThat(retry.compile).isCompletedExceptionally();
         assertThatThrownBy(retry.compile::join)
                 .cause()
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("g:app compile-test")
-                .hasMessageContaining("1024 MiB")
-                .hasMessageContaining("2048 MiB")
+                .hasMessageContaining("ran out of heap at 256 MiB, 512 MiB, 1.0 GiB and 2.0 GiB;")
                 .hasMessageContaining("OutOfMemoryError");
     }
 

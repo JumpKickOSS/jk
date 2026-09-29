@@ -2,13 +2,13 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.plugin.WorkerFate;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -120,38 +120,34 @@ final class WorkerHeap {
                 .xmxBytes();
     }
 
-    /**
-     * Twice {@code heapBytes}, clamped so the new lease fits the worker budget; {@code null} when
-     * the budget leaves no room to grow, which is the caller's cue to fail rather than retry.
-     */
-    static @Nullable Long grown(long heapBytes) {
-        long bigger = LearnedHeaps.doubled(heapBytes, WorkerLeases.engine().capacityBytes());
-        return bigger > heapBytes ? bigger : null;
-    }
-
     /** True when {@code output} names an own-heap exhaustion, including the JVM's terminating banner. */
     static boolean outOfMemory(String output) {
         return WorkerFate.mentionsHeap(output) || (output != null && output.contains("java.lang.OutOfMemoryError"));
     }
 
     /**
-     * The failure a compile of {@code label} reports after the worker ran out of heap at {@code
-     * firstBytes} and, when {@code secondBytes} is set, again after one retry at that size.
+     * The failure a compile of {@code label} reports after its worker ran out of every heap in
+     * {@code ranOut}, oldest first.
      */
-    static IOException exhausted(String label, long firstBytes, @Nullable Long secondBytes, String output) {
+    static IOException exhausted(String label, List<Long> ranOut, String output) {
         String what = label.isBlank() ? "the compiler worker" : "the compiler worker for " + label;
         StringBuilder msg = new StringBuilder(what)
-                .append(" ran out of heap at ")
-                .append(mib(firstBytes))
-                .append(" MiB");
-        if (secondBytes != null) {
-            msg.append(" and again at ").append(mib(secondBytes)).append(" MiB");
-        } else {
-            msg.append(", the most this host can give one worker");
-        }
-        msg.append("; raise it with [jvm] args = [\"-Xmx...\"] or [test] jvm-args = [\"-Xmx...\"]");
+                .append(' ')
+                .append(HeapLadder.ranOut(ranOut))
+                .append("; raise it with [jvm] args = [\"-Xmx...\"] or [test] jvm-args = [\"-Xmx...\"]");
         if (!output.isBlank()) msg.append("\n--- zinc worker output ---\n").append(output);
         return new IOException(msg.toString());
+    }
+
+    /** The learned-heap key of a compile of {@code req}, or {@code null} when its label names no module. */
+    static HeapScope.@Nullable Key key(ForkedJavac.Request req) {
+        String module = moduleOf(req.label());
+        if (module.isBlank()) return null;
+        return new HeapScope.Key(
+                SessionContext.current().workingDir(),
+                module,
+                kindOf(req.label()),
+                JvmOptions.hostFeature(ForkedJavac.workerJavaHome(req)));
     }
 
     /**

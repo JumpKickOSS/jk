@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -13,23 +14,37 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Learned heaps of jk-planned workers, one file per project under {@code <state>/worker-heaps/}.
- * A key keeps the last five peaks, newest first, and the next {@code -Xmx} is {@link #size} of
- * their maximum. Deleting the project's file forgets them. A user-pinned heap is never written.
+ * A key keeps its last {@value #WINDOW} peaks, newest first, and a known-good heap: the largest one
+ * it finished at after running out of a smaller one. The next {@code -Xmx} is {@link #size} of the
+ * peaks' maximum, never below the known-good heap. A key with no record starts at {@link
+ * #firstHeap}. Deleting the project's file forgets them. A user-pinned heap is never written.
  */
 public final class LearnedHeaps {
 
     /** Smallest planned heap a learned size will ask for. */
-    public static final long FLOOR_BYTES = 128L << 20;
+    public static final long FLOOR_BYTES = 256L << 20;
+
+    /** The most {@link #firstHeap} asks for, however large the budget. */
+    public static final long FIRST_CAP_BYTES = 2L << 30;
 
     /** Learned sizes round up to a multiple of this. */
     public static final long STEP_BYTES = 64L << 20;
 
     /** A key keeps this many peaks, newest first. {@link #size} uses their maximum. */
-    static final int WINDOW = 5;
+    static final int WINDOW = 10;
+
+    /** Headroom over the learned peak, in percent, on a developer host. */
+    static final int HEADROOM_PERCENT = 130;
+
+    /** Headroom over the learned peak, in percent, on a CI host. */
+    static final int CI_HEADROOM_PERCENT = 150;
+
+    private static final boolean CI = EnvValues.isCi(System::getenv);
 
     private static final LearnedHeaps ENGINE =
             new LearnedHeaps(() -> JkDirs.state().resolve("worker-heaps"), null, true);
@@ -63,28 +78,53 @@ public final class LearnedHeaps {
         this(() -> Objects.requireNonNull(stateDir, "stateDir"), forcedBytes, false);
     }
 
-    /**
-     * -Xmx is the learned peak × 1.3, rounded up to 64 MiB, at least 128 MiB, and no larger than the
-     * budget can lease.
-     */
+    /** {@link #size(long, long, boolean)} with the headroom of this process's host. */
     public static long size(long peakBytes, long budgetBytes) {
-        long scaled = (Math.max(0, peakBytes) * 13L + 9L) / 10L;
+        return size(peakBytes, budgetBytes, CI);
+    }
+
+    /**
+     * -Xmx is the learned peak × 1.3 (× 1.5 on a CI host, whose suites grow between runs it has
+     * already learned), rounded up to 64 MiB, at least 256 MiB, and no larger than the budget can
+     * lease.
+     */
+    public static long size(long peakBytes, long budgetBytes, boolean ci) {
+        long percent = ci ? CI_HEADROOM_PERCENT : HEADROOM_PERCENT;
+        long scaled = (Math.max(0, peakBytes) * percent + 99L) / 100L;
         long rounded = ((scaled + STEP_BYTES - 1) / STEP_BYTES) * STEP_BYTES;
-        long sized = Math.max(FLOOR_BYTES, rounded);
-        if (budgetBytes <= 0) return sized;
-        long fit = WorkerLeases.clampXmx(sized, budgetBytes);
-        return fit > 0 ? fit : sized;
+        return fit(Math.max(FLOOR_BYTES, rounded), budgetBytes);
+    }
+
+    /**
+     * The heap of a worker jk has not seen: a quarter of the worker budget, at most {@link
+     * #FIRST_CAP_BYTES}, never below {@code plannedBytes} and never more than the budget can lease.
+     * The ledger admits against {@code -Xmx}, while the worker's resident memory tracks what it
+     * uses, so a generous first heap costs parallelism, not RAM.
+     */
+    public static long firstHeap(long plannedBytes, long budgetBytes) {
+        if (budgetBytes <= 0) return plannedBytes;
+        long quarter = (Math.min(budgetBytes / 4, FIRST_CAP_BYTES) / STEP_BYTES) * STEP_BYTES;
+        return fit(Math.max(plannedBytes, quarter), budgetBytes);
     }
 
     /**
      * The heap a planned worker should start with: the sizing override when one was given, else
-     * {@link #size} of the stored maximum, else {@code fallback}.
+     * {@link #size} of the stored maximum raised to the known-good heap, else {@link #firstHeap} of
+     * {@code fallback}. The build-script host and plugin workers, which are not re-run on a larger
+     * heap, start an unseen key at {@code fallback} as it is.
      */
     public long choose(Path project, String module, String kind, int jdk, long fallback) {
-        if (forcedBytes != null) return fit(forcedBytes);
-        long seen = peak(project, module, kind, jdk);
-        if (seen <= 0) return fallback;
-        return size(seen, budget());
+        long budget = budget();
+        if (forcedBytes != null) return fit(forcedBytes, budget);
+        Row row = stored(project, module, kind, jdk);
+        if (row == null) return generousFirst(kind) ? firstHeap(fallback, budget) : fallback;
+        long sized = row.peaks().length == 0 ? 0L : size(max(row.peaks()), budget);
+        return fit(Math.max(sized, row.good()), budget);
+    }
+
+    /** The kinds re-run on a larger heap when they run out, and so the kinds sized generously first. */
+    static boolean generousFirst(String kind) {
+        return !HeapScope.KTS_HOST.equals(kind) && !HeapScope.PLUGIN.equals(kind);
     }
 
     /** Largest stored peak for {@code key}, or {@code 0} when this project has not seen that worker. */
@@ -95,13 +135,23 @@ public final class LearnedHeaps {
 
     /** Largest stored peak, or {@code 0} when there is no record. */
     public long peak(Path project, String module, String kind, int jdk) {
-        if (project == null || module == null || module.isBlank()) return 0L;
+        Row row = stored(project, module, kind, jdk);
+        return row == null ? 0L : max(row.peaks());
+    }
+
+    /** The known-good heap for {@code key}, or {@code 0} when it has none. */
+    public long good(HeapScope.@Nullable Key key) {
+        if (key == null) return 0L;
+        Row row = stored(key.project(), key.module(), key.kind(), key.jdk());
+        return row == null ? 0L : row.good();
+    }
+
+    private @Nullable Row stored(Path project, String module, String kind, int jdk) {
+        if (project == null || module == null || module.isBlank()) return null;
         Path file = file(project);
-        if (!Files.isRegularFile(file)) return 0L;
-        String row = row(module, kind, jdk);
+        if (!Files.isRegularFile(file)) return null;
         synchronized (lock(file)) {
-            long[] stored = read(file).get(row);
-            return stored == null ? 0L : max(stored);
+            return read(file).get(row(module, kind, jdk));
         }
     }
 
@@ -114,12 +164,26 @@ public final class LearnedHeaps {
     /** As {@link #note(HeapScope.Key, long)}. */
     public void note(Path project, String module, String kind, int jdk, long peakBytes) {
         if (project == null || module == null || module.isBlank() || peakBytes <= 0) return;
+        update(project, row(module, kind, jdk), stored -> new Row(prepend(stored.peaks(), peakBytes), stored.good()));
+    }
+
+    /**
+     * {@code key}'s worker finished at {@code heapBytes} after running out of a smaller heap. It is
+     * never sized below the largest such heap again.
+     */
+    public void good(HeapScope.@Nullable Key key, long heapBytes) {
+        if (key == null || heapBytes <= 0 || key.module().isBlank()) return;
+        update(
+                key.project(),
+                row(key.module(), key.kind(), key.jdk()),
+                stored -> new Row(stored.peaks(), Math.max(stored.good(), heapBytes)));
+    }
+
+    private void update(Path project, String row, UnaryOperator<Row> change) {
         Path file = file(project);
-        String row = row(module, kind, jdk);
         synchronized (lock(file)) {
-            Map<String, long[]> all = read(file);
-            long[] stored = all.get(row);
-            all.put(row, prepend(stored == null ? new long[0] : stored, peakBytes));
+            Map<String, Row> all = read(file);
+            all.put(row, change.apply(all.getOrDefault(row, Row.EMPTY)));
             try {
                 Files.createDirectories(file.getParent());
                 AtomicWrites.replace(file, write(all));
@@ -134,17 +198,10 @@ public final class LearnedHeaps {
         return stateDir.get().resolve(id(project));
     }
 
-    /** Twice {@code heapBytes}, clamped so the lease fits {@code budgetBytes}. */
-    public static long doubled(long heapBytes, long budgetBytes) {
-        long twice = Math.max(0, heapBytes) * 2L;
-        if (budgetBytes <= 0) return twice;
-        return WorkerLeases.clampXmx(twice, budgetBytes);
-    }
-
-    private long fit(long bytes) {
-        long budget = budget();
-        if (budget <= 0) return bytes;
-        long clamped = WorkerLeases.clampXmx(bytes, budget);
+    /** {@code bytes} lowered so its lease fits {@code budgetBytes}; unchanged when there is no budget. */
+    private static long fit(long bytes, long budgetBytes) {
+        if (budgetBytes <= 0) return bytes;
+        long clamped = WorkerLeases.clampXmx(bytes, budgetBytes);
         return clamped > 0 ? clamped : bytes;
     }
 
@@ -190,8 +247,8 @@ public final class LearnedHeaps {
         return best;
     }
 
-    private static Map<String, long[]> read(Path file) {
-        Map<String, long[]> out = new LinkedHashMap<>();
+    private static Map<String, Row> read(Path file) {
+        Map<String, Row> out = new LinkedHashMap<>();
         if (!Files.isRegularFile(file)) return out;
         String text;
         try {
@@ -202,10 +259,11 @@ public final class LearnedHeaps {
         for (String line : text.split("\n", -1)) {
             if (line.isBlank() || line.charAt(0) == '#') continue;
             String[] p = line.split("\t", -1);
-            if (p.length != 4) continue;
+            if (p.length != 5) continue;
             long[] peaks = parse(p[3]);
-            if (peaks.length == 0) continue;
-            out.put(p[0] + "\t" + p[1] + "\t" + p[2], peaks);
+            long good = positive(p[4]);
+            if (peaks.length == 0 && good == 0) continue;
+            out.put(p[0] + "\t" + p[1] + "\t" + p[2], new Row(peaks, good));
         }
         return out;
     }
@@ -217,30 +275,40 @@ public final class LearnedHeaps {
         int n = 0;
         for (String part : parts) {
             if (n == WINDOW) break;
-            try {
-                long v = Long.parseLong(part.trim());
-                if (v > 0) tmp[n++] = v;
-            } catch (NumberFormatException ignored) {
-                // a torn token is skipped; the next write replaces the file
-            }
+            long v = positive(part);
+            if (v > 0) tmp[n++] = v;
         }
         long[] peaks = new long[n];
         System.arraycopy(tmp, 0, peaks, 0, n);
         return peaks;
     }
 
-    private static String write(Map<String, long[]> rows) {
+    /** {@code token} as a positive long, else {@code 0}. A torn token is dropped; the next write replaces it. */
+    private static long positive(String token) {
+        try {
+            return Math.max(0L, Long.parseLong(token.trim()));
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    private static String write(Map<String, Row> rows) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# module\tkind\tjdk\tpeaks\n");
+        sb.append("# module\tkind\tjdk\tpeaks\tgood\n");
         for (var e : rows.entrySet()) {
             sb.append(e.getKey()).append('\t');
-            long[] peaks = e.getValue();
+            long[] peaks = e.getValue().peaks();
             for (int i = 0; i < peaks.length; i++) {
                 if (i > 0) sb.append(',');
                 sb.append(peaks[i]);
             }
-            sb.append('\n');
+            sb.append('\t').append(e.getValue().good()).append('\n');
         }
         return sb.toString();
+    }
+
+    /** One key's peaks, newest first, and its known-good heap ({@code 0} when it has none). */
+    private record Row(long[] peaks, long good) {
+        static final Row EMPTY = new Row(new long[0], 0L);
     }
 }
