@@ -8,20 +8,20 @@ A run materialises one (repo × failure) for one tool, runs the tool once so the
 
 | Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost | First correct edit | Reads before fix | Output+reasoning | Input (uncached) | Cache read | Cost to green | Fix quality |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| jk | 8 | 5 | 62% | 14 | 16 | 153,964 | 195,027 | 55.5s | 72.8s | — | 10 | 6 | 3,554 | 131,983 | 0 | — | 4 exact · 3 equivalent · 0 collateral · 0 cheat |
-| mvn | 8 | 5 | 62% | 11 | 16 | 114,302 | 277,701 | 43.5s | 62.6s | — | 8 | 5.5 | 2,748 | 111,560 | 4,049 | — | 5 exact · 0 equivalent · 0 collateral · 0 cheat |
-| gradle | 8 | 6 | 75% | 10 | 16 | 101,534 | 309,097 | 54.3s | 65.0s | — | 7.5 | 5 | 2,342 | 99,192 | 2,025 | — | 6 exact · 0 equivalent · 0 collateral · 0 cheat |
+| jk | 8 | 7 | 88% | 12.5 | 16 | 132,351 | 172,781 | 41.6s | 74.4s | — | 9 | 4.5 | 3,419 | 126,544 | 0 | — | 4 exact · 3 equivalent · 0 collateral · 0 cheat |
+| mvn | 8 | 6 | 75% | 13 | 16 | 148,982 | 240,340 | 39.3s | 44.8s | — | 9.5 | 8 | 2,831 | 124,352 | 0 | — | 5 exact · 1 equivalent · 0 collateral · 0 cheat |
+| gradle | 8 | 5 | 62% | 11 | 16 | 117,143 | 228,260 | 40.5s | 51.7s | — | 9 | 6 | 2,523 | 114,831 | 0 | — | 6 exact · 0 equivalent · 0 collateral · 0 cheat |
 
 | Repo | Failure | jk | mvn | gradle |
 |---|---|---|---|---|
-| gs-accessing-data-jpa | failing-assertion | green · 12t · 50.9s · 138,613 tok | green · 12t · 45.3s · 125,516 tok | green · 10t · 55.6s · 102,285 tok |
-| gs-accessing-data-r2dbc | missing-resource | **red** · 16t · 72.5s · 246,911 tok | **red** · 16t · 62.3s · 323,144 tok | **red** · 16t · 53.1s · 309,097 tok |
-| gs-actuator-service | failing-assertion | green · 10t · 36.5s · 100,741 tok | green · 10t · 41.7s · 100,589 tok | green · 10t · 41.5s · 100,783 tok |
-| gs-batch-processing | missing-resource | **red** · 16t · 72.8s · 195,027 tok | **red** · 16t · 69.9s · 277,701 tok | **red** · 16t · 73.2s · 339,087 tok |
-| gs-consuming-rest | missing-dependency | green · 9t · 31.2s · 86,329 tok | **red** · 16t · 41.7s · 240,551 tok | green · 14t · 56.5s · 225,205 tok |
-| gs-rest-service | version-conflict | green · 16t · 60.1s · 178,576 tok | green · 9t · 37.7s · 92,659 tok | green · 8t · 44.0s · 75,218 tok |
-| gs-spring-boot | version-conflict | **red** · 16t · 78.7s · 169,315 tok | green · 10t · 62.6s · 103,089 tok | green · 9t · 65.0s · 92,678 tok |
-| gs-testing-web | compile-error | green · 6t · 23.4s · 51,585 tok | green · 7t · 33.1s · 60,330 tok | green · 7t · 28.0s · 60,225 tok |
+| gs-accessing-data-jpa | failing-assertion | green · 11t · 28.1s · 115,022 tok | green · 12t · 38.0s · 133,101 tok | green · 11t · 36.5s · 114,588 tok |
+| gs-accessing-data-r2dbc | missing-resource | green · 16t · 50.1s · 214,102 tok | **red** · 16t · 44.8s · 444,055 tok | **red** · 16t · 57.1s · 227,700 tok |
+| gs-actuator-service | failing-assertion | green · 9t · 37.9s · 96,473 tok | green · 11t · 39.8s · 116,126 tok | green · 10t · 47.3s · 102,479 tok |
+| gs-batch-processing | missing-resource | green · 14t · 74.4s · 168,780 tok | **red** · 16t · 36.0s · 225,284 tok | **red** · 16t · 39.8s · 256,969 tok |
+| gs-consuming-rest | missing-dependency | green · 11t · 27.7s · 105,511 tok | green · 16t · 47.0s · 240,340 tok | **red** · 16t · 51.7s · 228,260 tok |
+| gs-rest-service | version-conflict | **red** · 16t · 83.5s · 172,781 tok | green · 8t · 38.8s · 76,275 tok | green · 11t · 41.2s · 118,050 tok |
+| gs-spring-boot | version-conflict | green · 14t · 45.2s · 149,681 tok | green · 14t · 44.1s · 164,864 tok | green · 11t · 33.1s · 116,236 tok |
+| gs-testing-web | compile-error | green · 6t · 21.5s · 51,904 tok | green · 8t · 23.8s · 69,718 tok | green · 5t · 18.7s · 41,707 tok |
 
 ### Findings
 
@@ -29,11 +29,9 @@ What the results file did not say, per run: the oracle records where it needed m
 
 | Repo | Failure | Tool | Outcome | Fix source | Finding |
 |---|---|---|---|---|---|
-| gs-accessing-data-r2dbc | missing-resource | jk | red | — | turn budget exhausted (16) |
 | gs-accessing-data-r2dbc | missing-resource | mvn | red | — | turn budget exhausted (16) |
 | gs-accessing-data-r2dbc | missing-resource | gradle | red | — | turn budget exhausted (16) |
-| gs-batch-processing | missing-resource | jk | red | — | turn budget exhausted (16); the tree is green although the agent did not report it |
 | gs-batch-processing | missing-resource | mvn | red | — | turn budget exhausted (16) |
 | gs-batch-processing | missing-resource | gradle | red | — | turn budget exhausted (16) |
-| gs-consuming-rest | missing-dependency | mvn | red | — | turn budget exhausted (16) |
-| gs-spring-boot | version-conflict | jk | red | — | turn budget exhausted (16); the tree is green although the agent did not report it |
+| gs-consuming-rest | missing-dependency | gradle | red | — | turn budget exhausted (16); the tree is green although the agent did not report it |
+| gs-rest-service | version-conflict | jk | red | — | turn budget exhausted (16) |
