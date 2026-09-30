@@ -379,6 +379,140 @@ class GradleModelImporterTest {
                 .contains("`_`");
     }
 
+    /**
+     * junit-multiple-engines: Kotlin and Groovy plugins over Java test sources, {@code --release}
+     * set on every JavaCompile. The module declares java at that release so its Java compiles; a jk
+     * module compiles Groovy or Kotlin, so Kotlin is written and the Groovy sources are a row.
+     */
+    @Test
+    void a_kotlin_and_groovy_project_with_java_sources_declares_java_and_kotlin(@TempDir Path dir) throws Exception {
+        Path test = dir.resolve("src/test/java/junit/JupiterTests.java");
+        Files.createDirectories(test.getParent());
+        Files.writeString(test, "package junit; class JupiterTests {}");
+        String model = """
+                {"gradle":"9.8.0","rootName":"junit-multiple-engines","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"junit-multiple-engines","dir":"","group":"","version":"unspecified",
+                   "plugins":["java","groovy","org.jetbrains.kotlin.jvm"],"pluginClasses":["org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapper"],
+                   "pluginVersions":{"org.jetbrains.kotlin.jvm":"2.4.20"},"kotlinVersion":"2.4.20","kotlinJvmTarget":"17",
+                   "java":{"sourceCompatibility":"25","targetCompatibility":"25","release":17},"bootBuildInfo":false,"repositories":[],
+                   "sourceSets":[{"name":"test","java":["src/test/java"],"resources":["src/test/resources"],"kotlin":["src/test/kotlin","src/test/java"]}],
+                   "configurations":[
+                     {"name":"testImplementation","dependencies":[
+                       {"kind":"module","group":"org.spockframework","artifact":"spock-core","version":"2.4-groovy-5.0","excludes":[]},
+                       {"kind":"module","group":"org.apache.groovy","artifact":"groovy-bom","version":"5.1.2","category":"platform","excludes":[]}],"constraints":[]}],
+                   "resolved":["org.apache.groovy:groovy@5.1.2","org.spockframework:spock-core@2.4-groovy-5.0"],
+                   "tasks":[]}]}
+                """;
+
+        GradleBuildImport.Result result = GradleModelImporter.importModel(model, dir, RefreshVersions.NONE);
+
+        JkBuild build = result.root();
+        assertThat(build.project().java()).isEqualTo(17);
+        assertThat(Objects.requireNonNull(build.project().kotlin()).raw()).isEqualTo("2.4.20");
+        assertThat(build.project().groovy()).isNull();
+        assertThat(messages(result.report()))
+                .anySatisfy(m -> assertThat(m).contains("plugin `groovy`").contains("groovy = \"5.1.2\""));
+    }
+
+    /** A Groovy module over Java sources declares the Groovy its classpath resolves and java at the release. */
+    @Test
+    void a_groovy_project_declares_the_resolved_groovy(@TempDir Path dir) throws Exception {
+        Path source = dir.resolve("src/main/java/a/A.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package a; class A {}");
+        String model = """
+                {"gradle":"9.8.0","rootName":"g","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"g","dir":"","group":"com.acme","version":"1.0",
+                   "plugins":["java","groovy"],"pluginClasses":[],"pluginVersions":{},
+                   "java":{"sourceCompatibility":"21","targetCompatibility":"21"},"bootBuildInfo":false,"repositories":[],
+                   "configurations":[{"name":"implementation","dependencies":[
+                     {"kind":"module","group":"org.apache.groovy","artifact":"groovy","version":"","excludes":[]}],"constraints":[]}],
+                   "resolved":["org.apache.groovy:groovy@5.0.2"],
+                   "tasks":[]}]}
+                """;
+
+        GradleBuildImport.Result result = GradleModelImporter.importModel(model, dir, RefreshVersions.NONE);
+
+        assertThat(Objects.requireNonNull(result.root().project().groovy()).raw())
+                .isEqualTo("5.0.2");
+        assertThat(result.root().project().java()).isEqualTo(21);
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("plugin `groovy`"));
+    }
+
+    /**
+     * junit-pioneer: {@code useJUnitJupiter()} adds junit-jupiter at Gradle's default, and the
+     * project's junit-bom lifts it; the pin is the version Gradle resolves.
+     */
+    @Test
+    void a_declared_version_below_what_gradle_resolves_is_pinned_at_the_resolved_one() {
+        String model = """
+                {"gradle":"9.8.0","rootName":"junit-pioneer","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"junit-pioneer","dir":"","group":"org.junit-pioneer","version":"unspecified",
+                   "plugins":["java"],"pluginClasses":[],"pluginVersions":{},
+                   "java":{"sourceCompatibility":"17","targetCompatibility":"17"},"bootBuildInfo":false,"repositories":[],
+                   "configurations":[
+                     {"name":"implementation","dependencies":[
+                       {"kind":"module","group":"org.junit","artifact":"junit-bom","version":"6.1.0","category":"platform","excludes":[]}],"constraints":[]},
+                     {"name":"testImplementation","dependencies":[
+                       {"kind":"module","group":"org.junit.jupiter","artifact":"junit-jupiter","version":"5.12.2","excludes":[]},
+                       {"kind":"module","group":"org.strict","artifact":"pinned","version":"1.0","strict":"1.0","excludes":[]}],"constraints":[]}],
+                   "resolved":["org.junit.jupiter:junit-jupiter@6.1.0","org.strict:pinned@1.0"],
+                   "tasks":[]}]}
+                """;
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/pioneer"), RefreshVersions.NONE);
+
+        assertThat(result.root().dependencies().of(Scope.TEST))
+                .extracting(d -> d.module() + ":" + d.version().raw())
+                .containsExactly("org.junit.jupiter:junit-jupiter:6.1.0", "org.strict:pinned:1.0");
+        assertThat(messages(result.report()))
+                .anySatisfy(m -> assertThat(m).contains("declared at 5.12.2").contains("resolves 6.1.0"));
+    }
+
+    /**
+     * gs-producing-web-service: the xjc plugin adds jakarta.xml.bind-api at its own version, below
+     * the one Boot's BOM manages, and dependency-management lets it stand. The import leaves the
+     * version to the platform, and the plugin's extension is the [jaxb] table.
+     */
+    @Test
+    void a_declared_version_below_the_boms_is_platform_managed_and_xjc_is_the_jaxb_table() {
+        String model = """
+                {"gradle":"9.8.0","rootName":"producing-web-service","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"producing-web-service","dir":"","group":"com.example","version":"0.0.1-SNAPSHOT",
+                   "plugins":["java","org.springframework.boot","io.spring.dependency-management","com.github.bjornvester.xjc"],
+                   "pluginClasses":["org.springframework.boot.gradle.plugin.SpringBootPlugin","com.github.bjornvester.xjc.XjcPlugin"],
+                   "pluginVersions":{"org.springframework.boot":"4.0.8"},"java":{"toolchain":17,"sourceCompatibility":"17","targetCompatibility":"17"},
+                   "bootBuildInfo":false,"repositories":[],
+                   "configurations":[
+                     {"name":"implementation","dependencies":[
+                       {"kind":"module","group":"org.springframework.boot","artifact":"spring-boot-starter-webservices","version":"","excludes":[]},
+                       {"kind":"module","group":"jakarta.xml.bind","artifact":"jakarta.xml.bind-api","version":"4.0.4","excludes":[]}],"constraints":[]},
+                     {"name":"xjc","dependencies":[{"kind":"module","group":"org.glassfish.jaxb","artifact":"jaxb-xjc","version":"4.0.4","excludes":[]}],"constraints":[]}],
+                   "managedVersions":{"org.springframework.boot:spring-boot-starter-webservices":"4.0.8","jakarta.xml.bind:jakarta.xml.bind-api":"4.0.5"},
+                   "springBootBom":"org.springframework.boot:spring-boot-dependencies:4.0.8",
+                   "xjc":{"xsdDir":"src/main/resources/META-INF/schemas","bindingFiles":[],"options":[]},
+                   "resolved":["jakarta.xml.bind:jakarta.xml.bind-api@4.0.4"],
+                   "tasks":[]}]}
+                """;
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/gs"), RefreshVersions.NONE);
+
+        JkBuild build = result.root();
+        Dependency bind = build.dependencies().of(Scope.MAIN).stream()
+                .filter(d -> d.module().equals("jakarta.xml.bind:jakarta.xml.bind-api"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(bind.isPlatformManaged()).isTrue();
+        assertThat(build.pluginConfig("jaxb").orElseThrow().string("src"))
+                .isEqualTo("src/main/resources/META-INF/schemas");
+        assertThat(messages(result.report()))
+                .anySatisfy(m -> assertThat(m).contains("declared at 4.0.4").contains("4.0.5 its BOM manages"))
+                .noneMatch(m -> m.contains("`xjc`"))
+                .noneMatch(m -> m.contains("com.github.bjornvester.xjc.XjcPlugin"));
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

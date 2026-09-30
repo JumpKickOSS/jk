@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// jk import's model query. Gradle evaluates the build with this init script and runs the one task
-// it registers on the root project, `jkImportModel`, which writes what the import maps — every
+// jk import's model query. Gradle evaluates the build with this init script and runs the task it
+// registers on the root project, `jkImportModel`, which writes what the import maps — every
 // project, the plugins it applies, the dependencies each configuration declares, its source roots,
-// toolchain, repositories and script-declared tasks — as JSON to the file `-Pjk.import.out` names.
+// toolchain, repositories, script-declared tasks and the versions its classpaths resolve to — as
+// JSON to the file `-Pjk.import.out` names. Each project's own `jkImportProject` task describes it
+// first, beside that file: Gradle resolves a project's configurations only in its own context, and
+// the declared dependencies are read before resolving, which adds the ones plugins add lazily.
 // `-Pjk.import.plugins` is the comma-separated list of plugin ids the import knows how to map;
 // each project answers which of them it applies.
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import groovy.transform.Field
 import org.gradle.api.Project
 import org.gradle.api.Task
@@ -15,6 +19,7 @@ import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
 import org.gradle.api.attributes.Category
 
@@ -24,11 +29,28 @@ def probeIds = (gradle.startParameter.projectProperties['jk.import.plugins'] ?: 
 // One line per evaluated project: the import's progress counter.
 gradle.afterProject { Project p -> println("jk-import: evaluated " + p.path) }
 
+// The classpaths whose resolved versions the import compares declared versions against.
+@Field final List<String> RESOLVED_CLASSPATHS = ['compileClasspath', 'runtimeClasspath', 'testCompileClasspath', 'testRuntimeClasspath']
+
+gradle.allprojects { Project p ->
+    p.tasks.register('jkImportProject') { Task t ->
+        if (t.metaClass.respondsTo(t, 'notCompatibleWithConfigurationCache', String)) {
+            t.notCompatibleWithConfigurationCache('reads the evaluated project model')
+        }
+        t.doLast {
+            def m = describeProject(p, p.rootProject, probeIds)
+            m.resolved = resolvedVersions(p)
+            projectFile(p).text = JsonOutput.toJson(m)
+        }
+    }
+}
+
 gradle.rootProject { Project root ->
     root.tasks.register('jkImportModel') { Task t ->
         if (t.metaClass.respondsTo(t, 'notCompatibleWithConfigurationCache', String)) {
             t.notCompatibleWithConfigurationCache('reads the evaluated project model')
         }
+        t.dependsOn(root.allprojects.collect { it.tasks.named('jkImportProject') })
         t.doLast {
             def settingsRepos = []
             try {
@@ -41,7 +63,7 @@ gradle.rootProject { Project root ->
                 gradle: gradle.gradleVersion,
                 rootName: root.name,
                 settingsRepositories: settingsRepos,
-                projects: root.allprojects.sort { it.path }.collect { describeProject(it, root, probeIds) },
+                projects: root.allprojects.sort { it.path }.collect { new JsonSlurper().parse(projectFile(it)) },
             ]
             new File(outPath).text = JsonOutput.toJson(model)
         }
@@ -56,7 +78,8 @@ gradle.rootProject { Project root ->
     'distZip', 'distTar', 'installDist', 'assembleDist', 'startScripts', 'run',
     'bootDistZip', 'bootDistTar', 'bootStartScripts', 'bootRun', 'bootJar', 'bootBuildInfo',
     'publish', 'publishToMavenLocal', 'generatePomFileForMavenPublication', 'sourcesJar', 'javadocJar',
-    'kotlinSourcesJar', 'allTests', 'apiCheck', 'apiBuild', 'apiDump', 'jkImportModel', 'prepareKotlinBuildScriptModel',
+    'kotlinSourcesJar', 'allTests', 'apiCheck', 'apiBuild', 'apiDump', 'jkImportModel', 'jkImportProject',
+    'prepareKotlinBuildScriptModel',
 ] as Set
 @Field final Set<String> PLUGIN_TASK_PREFIXES = ['spotless', 'publish', 'generateMetadataFileFor', 'generatePomFileFor',
     'sign', 'dokka', 'kotlin', 'compileKotlin', 'kapt', 'ksp', 'checkstyle', 'pmd', 'jacoco', 'japicmp',
@@ -69,6 +92,29 @@ gradle.rootProject { Project root ->
     'org.gradle.api.tasks.Exec', 'org.gradle.api.tasks.JavaExec', 'org.gradle.api.tasks.bundling.Zip',
     'org.gradle.api.tasks.bundling.Tar', 'org.gradle.api.tasks.Delete', 'org.gradle.api.tasks.WriteProperties',
 ] as Set
+
+// Where a project's `jkImportProject` writes: beside the model file, named by the project path.
+def projectFile(Project p) {
+    def out = new File(gradle.startParameter.projectProperties['jk.import.out'])
+    return new File(out.parentFile, 'project' + p.path.replace(':', '_') + '.json')
+}
+
+// Every module version the project's classpaths resolve, as `group:artifact@version`.
+def resolvedVersions(Project p) {
+    def resolved = [] as Set
+    for (String name : RESOLVED_CLASSPATHS) {
+        def c = p.configurations.findByName(name)
+        if (c == null || !c.canBeResolved) continue
+        try {
+            c.incoming.resolutionResult.allComponents.each { component ->
+                def id = component.id
+                if (id instanceof ModuleComponentIdentifier) resolved << (id.group + ':' + id.module + '@' + id.version)
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+    return resolved.sort()
+}
 
 def describeProject(Project p, Project root, List<String> probeIds) {
     def m = [:]
@@ -103,8 +149,26 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     def kotlinExt = p.extensions.findByName('kotlin')
     if (kotlinExt != null) {
         try { m.kotlinVersion = kotlinExt.coreLibrariesVersion } catch (Throwable ignored) { }
-        try { def jt = kotlinExt.jvmToolchain; } catch (Throwable ignored) { }
+        try {
+            def target = p.tasks.findByName('compileKotlin')?.compilerOptions?.jvmTarget?.orNull?.target
+            if (target) m.kotlinJvmTarget = target
+        } catch (Throwable ignored) { }
     }
+    try {
+        // The xjc plugin (com.github.bjornvester.xjc): the schemas it compiles and how.
+        def xjc = p.extensions.findByName('xjc')
+        if (xjc != null) {
+            def x = [:]
+            def xsd = xjc.xsdDir.orNull
+            if (xsd != null) x.xsdDir = relDirs(p, [xsd.asFile])[0]
+            def pkg = xjc.defaultPackage.orNull
+            if (pkg) x.defaultPackage = pkg.toString()
+            x.bindingFiles = relDirs(p, xjc.bindingFiles.files)
+            x.options = (xjc.options.orNull ?: []).collect { it.toString() }
+            m.xjc = x
+        }
+    } catch (Throwable ignored) { }
+
     try { m.mainClass = p.extensions.findByName('application')?.mainClass?.orNull } catch (Throwable ignored) { }
     if (!m.mainClass) {
         try { m.mainClass = p.extensions.findByName('springBoot')?.mainClass?.orNull } catch (Throwable ignored) { }
@@ -150,10 +214,10 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     def dm = p.extensions.findByName('dependencyManagement')
     if (dm != null) {
         try {
-            // Only the versions the plugin supplies to this project's own version-less dependencies.
-            def versionless = [] as Set
-            m.configurations.each { c -> c.dependencies.each { d -> if (d.kind == 'module' && !d.version) versionless << (d.group + ':' + d.artifact) } }
-            m.managedVersions = dm.managedVersions.findAll { k, v -> versionless.contains(k.toString()) }.collectEntries { k, v -> [k.toString(), v.toString()] }
+            // Only the versions the plugin manages for this project's own declared dependencies.
+            def declared = [] as Set
+            m.configurations.each { c -> c.dependencies.each { d -> if (d.kind == 'module') declared << (d.group + ':' + d.artifact) } }
+            m.managedVersions = dm.managedVersions.findAll { k, v -> declared.contains(k.toString()) }.collectEntries { k, v -> [k.toString(), v.toString()] }
         } catch (Throwable ignored) {
         }
         try {

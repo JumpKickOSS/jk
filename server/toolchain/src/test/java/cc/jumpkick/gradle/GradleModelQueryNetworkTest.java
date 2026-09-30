@@ -207,6 +207,62 @@ class GradleModelQueryNetworkTest {
                 .containsExactly("org.junit:junit-bom");
     }
 
+    /**
+     * A subproject whose declared jakarta.xml.bind-api is below the one jakarta.xml.ws-api asks
+     * for, compiled by the groovy plugin over Java sources with a release set on every JavaCompile:
+     * the pin is the version Gradle resolves, the Groovy the one its classpath resolves, and java
+     * the release.
+     */
+    @Test
+    void resolved_versions_raise_a_low_pin_and_name_the_groovy_a_groovy_module_compiles_with(@TempDir Path tmp)
+            throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        Files.createDirectories(root.resolve("gradle/wrapper"));
+        Files.writeString(
+                root.resolve("gradle/wrapper/gradle-wrapper.properties"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-" + GradleResolver.DEFAULT_VERSION
+                        + "-bin.zip\n");
+        Files.writeString(root.resolve("settings.gradle.kts"), """
+                rootProject.name = "ws"
+                include("app")
+                """);
+        Files.writeString(root.resolve("build.gradle.kts"), "");
+        Path app = Files.createDirectories(root.resolve("app"));
+        Files.writeString(app.resolve("build.gradle.kts"), """
+                plugins { groovy }
+                repositories { mavenCentral() }
+                dependencies {
+                    implementation("jakarta.xml.ws:jakarta.xml.ws-api:4.0.3")
+                    implementation("jakarta.xml.bind:jakarta.xml.bind-api:4.0.4")
+                    testImplementation(platform("org.apache.groovy:groovy-bom:5.0.2"))
+                    testImplementation("org.apache.groovy:groovy")
+                }
+                tasks.withType<JavaCompile>().configureEach { options.release = 17 }
+                """);
+        Path source = app.resolve("src/test/java/ws/WsTest.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package ws; class WsTest {}");
+        GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle.kts"), progress -> {});
+
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+        assertThat(result.report().hasErrors())
+                .as("Gradle evaluated the build: " + rows)
+                .isFalse();
+        JkBuild appBuild = module(result, "app");
+        Dependency bind = appBuild.dependencies().of(Scope.MAIN).stream()
+                .filter(d -> d.module().equals("jakarta.xml.bind:jakarta.xml.bind-api"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(bind.version().raw()).as(rows.toString()).isEqualTo("4.0.5");
+        assertThat(Objects.requireNonNull(appBuild.project().groovy()).raw()).isEqualTo("5.0.2");
+        assertThat(appBuild.project().java()).isEqualTo(17);
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }
