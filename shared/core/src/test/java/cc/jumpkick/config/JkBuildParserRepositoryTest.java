@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.RepositorySpec;
 import java.util.List;
 import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
@@ -121,6 +122,18 @@ class JkBuildParserRepositoryTest {
                 """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("repositories.nm-repo is blocked and says allow-insecure = true");
+    }
+
+    @Test
+    void optional_is_parsed_and_defaults_to_false() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories]
+                vendor = { url = "https://vendor.example/maven/", optional = true }
+                corp = "https://nexus.corp.example/maven/"
+                """);
+        assertThat(parsed.repositories())
+                .extracting(RepositorySpec::name, RepositorySpec::optional)
+                .containsExactly(Tuple.tuple("vendor", true), Tuple.tuple("corp", false));
     }
 
     @Test

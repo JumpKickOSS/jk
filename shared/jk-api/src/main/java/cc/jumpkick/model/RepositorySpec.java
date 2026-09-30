@@ -42,7 +42,13 @@ public record RepositorySpec(
          * plaintext {@code http://} repository. A package no other repository serves fails naming
          * it; {@code jk import} writes a POM's plaintext repository this way.
          */
-        boolean blocked) {
+        boolean blocked,
+        /**
+         * {@code optional = true}: a repository the lock can do without. Once nothing answers at its
+         * address it is passed over like a blocked one, and named when a package resolves nowhere,
+         * instead of stopping the resolve; {@code jk import} writes a POM's repositories this way.
+         */
+        boolean optional) {
 
     /**
      * The one name Maven Central answers to inside jk — the {@code repos/<name>/} store directory,
@@ -171,16 +177,43 @@ public record RepositorySpec(
                 allowUnverified,
                 releases,
                 snapshots,
-                blocked);
+                blocked,
+                optional);
     }
 
     /** This repository blocked: kept in the manifest, never asked, named when nothing else serves a package. */
     public RepositorySpec withBlocked() {
         return new RepositorySpec(
-                name, url, credential, objectStore, groups, allowInsecure, allowUnverified, releases, snapshots, true);
+                name,
+                url,
+                credential,
+                objectStore,
+                groups,
+                allowInsecure,
+                allowUnverified,
+                releases,
+                snapshots,
+                true,
+                optional);
     }
 
-    /** Convenience: a repository that is asked — the ten-component form with {@code blocked} off. */
+    /** This repository {@link #optional}: passed over rather than stopping the resolve when nothing answers at it. */
+    public RepositorySpec withOptional() {
+        return new RepositorySpec(
+                name,
+                url,
+                credential,
+                objectStore,
+                groups,
+                allowInsecure,
+                allowUnverified,
+                releases,
+                snapshots,
+                blocked,
+                true);
+    }
+
+    /** Convenience: a repository that is asked and required — {@code blocked} and {@code optional} off. */
     public RepositorySpec(
             String name,
             URI url,
@@ -191,7 +224,18 @@ public record RepositorySpec(
             boolean allowUnverified,
             boolean releases,
             boolean snapshots) {
-        this(name, url, credential, objectStore, groups, allowInsecure, allowUnverified, releases, snapshots, false);
+        this(
+                name,
+                url,
+                credential,
+                objectStore,
+                groups,
+                allowInsecure,
+                allowUnverified,
+                releases,
+                snapshots,
+                false,
+                false);
     }
 
     /** True when a version of the given kind is asked of this repository. */

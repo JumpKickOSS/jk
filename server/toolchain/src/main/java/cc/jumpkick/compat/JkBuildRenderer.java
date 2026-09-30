@@ -511,14 +511,15 @@ public final class JkBuildRenderer {
         sb.append("[repositories]\n");
         for (RepositorySpec r : repos) {
             sb.append(safeKey(r.name())).append(" = ");
-            if (r.releases() && r.snapshots() && !r.blocked()) {
+            if (r.releases() && r.snapshots() && !r.blocked() && !r.optional()) {
                 sb.append(quote(r.url().toString()));
             } else {
-                // A policy other than Maven's default, or a block, needs the table form.
+                // A policy other than Maven's default, a block or an optional repository needs the table form.
                 sb.append("{ url = ").append(quote(r.url().toString()));
                 if (!r.releases()) sb.append(", releases = false");
                 if (!r.snapshots()) sb.append(", snapshots = false");
                 if (r.blocked()) sb.append(", blocked = true");
+                if (r.optional()) sb.append(", optional = true");
                 sb.append(" }");
             }
             sb.append('\n');

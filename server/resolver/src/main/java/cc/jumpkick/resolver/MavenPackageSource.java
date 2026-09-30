@@ -5,6 +5,7 @@ import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.host.Interned;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.InFlightRequests;
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.MavenMetaversion;
@@ -410,6 +411,7 @@ public final class MavenPackageSource implements PackageSource {
         List<String> out = new ArrayList<>();
         RepoGroup group = declared.reposFor(pkg);
         for (RepositorySpec spec : group.blocked()) out.add(blockedNote(spec));
+        for (MavenRepo repo : group.passedOver()) out.add(passedOverNote(repo));
         for (String wanted : wantedVersions(pkg)) {
             if (!Versions.isSnapshot(wanted)) continue;
             List<MavenRepo> asked = group.repositoriesFor(withVersion(pkg, wanted));
@@ -446,6 +448,16 @@ public final class MavenPackageSource implements PackageSource {
                 + (plaintext
                         ? ": " + RepositoryToml.plaintextRefusal(where, url)
                         : "; drop blocked = true on [" + where + "] to ask it");
+    }
+
+    /**
+     * The line a passable repository nothing answered at earns when a package resolves nowhere: it
+     * was passed over, as a blocked one is, with what it met and the ways out.
+     */
+    static String passedOverNote(MavenRepo repo) {
+        return "repository `" + repo.name() + "` at " + SafeUri.forMessage(repo.baseUrl()) + " answered nothing ("
+                + repo.unreachableFault() + ") and was passed over; start it or fix its url if it serves this"
+                + " package, or remove it from [repositories]";
     }
 
     /** Every transitive constraint a nearest pin overrode so far, one rendered line each, sorted. */

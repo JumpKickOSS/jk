@@ -1007,7 +1007,8 @@ public final class PomImporter {
     /**
      * Every repository the effective model declares or inherits, with its {@code <releases>} /
      * {@code <snapshots>} policy; Central is the implicit default. A plaintext {@code http://}
-     * repository is written {@code blocked}, as Maven 3.9 blocks it, and is a row.
+     * repository is written {@code blocked}, as Maven 3.9 blocks it, and is a row; every other one
+     * {@code optional}, as Maven falls through a repository that answers nothing.
      */
     static List<RepositorySpec> mapRepositories(List<Repository> repositories, ImportReport.Builder report) {
         Map<String, RepositorySpec> deduped = new LinkedHashMap<>();
@@ -1033,6 +1034,8 @@ public final class PomImporter {
                             + " 3.9 blocks by default: it is written `blocked = true` under [repositories], so the"
                             + " lock never asks it and names it when an artifact resolves nowhere else. Set"
                             + " `allow-insecure = true` in place of `blocked` to ask it.");
+                } else {
+                    spec = spec.withOptional();
                 }
                 deduped.put(name, spec);
             } catch (URISyntaxException e) {
