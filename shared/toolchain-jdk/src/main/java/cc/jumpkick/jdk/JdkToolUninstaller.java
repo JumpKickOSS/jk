@@ -1,24 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Best-effort "good neighbor" delegation for {@code jk jdk uninstall}.
+ * Delegation to the owning tool for {@code jk jdk uninstall}.
  *
- * <p>When a JDK comes from a tool that manages its own state (SDKMAN, mise, jbang, jenv, asdf,
- * Homebrew), removing the install directory out from under it leaves the tool's manifest / shims /
- * version index out of sync. So we shell out to the owning tool's uninstall command first —
- * non-interactive, with a short timeout — and fall back to the direct {@code rm -rf} purge only
- * when that fails (binary not on PATH, command errored, install dir still present after).
- *
- * <p>{@code intellij} (jk's own {@code ~/.jdks}) and {@code java-home} don't go through here —
- * those are direct deletes. IntelliJ recovers from a missing JDK on its own.
+ * <p>A JDK from a tool that keeps its own index (SDKMAN, mise, JBang, jenv, asdf, Homebrew, Jabba)
+ * is removed through that tool's uninstall command, non-interactive and with a timeout, so the
+ * tool's manifest stays in sync. When that leaves the directory in place, the caller purges it,
+ * except for a {@link #TOOL_ONLY} source, whose directory jk never deletes.
  */
 public final class JdkToolUninstaller {
 
@@ -28,24 +26,27 @@ public final class JdkToolUninstaller {
     /** Outcome label used by the caller for the {@code "✓ … via <tool>"} line. */
     public enum Outcome {
         HANDLED_BY_TOOL,
-        FALL_THROUGH
+        /** The caller may purge the directory itself. */
+        FALL_THROUGH,
+        /** The tool left the directory, and it is not jk's to delete. */
+        LEFT_BY_TOOL
     }
+
+    /** Sources whose directory only the owning tool may remove. */
+    static final Set<String> TOOL_ONLY = Set.of("jabba");
 
     private JdkToolUninstaller() {}
 
     /**
-     * Attempt to uninstall {@code hit} via its owning tool. Returns {@link Outcome#HANDLED_BY_TOOL}
-     * when the tool ran cleanly and the install directory is gone afterwards; {@link
-     * Outcome#FALL_THROUGH} otherwise (caller should run the direct {@code purge} fallback).
+     * Uninstall {@code hit} via its owning tool. {@link Outcome#HANDLED_BY_TOOL} when the tool ran
+     * cleanly and the directory is gone; otherwise {@link Outcome#LEFT_BY_TOOL} for a {@link
+     * #TOOL_ONLY} source and {@link Outcome#FALL_THROUGH} for the rest.
      */
     public static Outcome tryUninstall(JdkHit hit, String identifier) {
         List<String> command = commandFor(hit, identifier);
-        if (command == null) return Outcome.FALL_THROUGH;
-        if (!runQuietly(command)) return Outcome.FALL_THROUGH;
-        // Some tools say "OK" without actually deleting (e.g. wrong identifier
-        // shape, force flag missing). Verify the install dir is gone before
-        // claiming success.
-        return Files.exists(hit.home()) ? Outcome.FALL_THROUGH : Outcome.HANDLED_BY_TOOL;
+        // Some tools exit 0 without deleting, so the directory is the verdict.
+        if (command != null && runQuietly(command) && !Files.exists(hit.home())) return Outcome.HANDLED_BY_TOOL;
+        return TOOL_ONLY.contains(hit.source()) ? Outcome.LEFT_BY_TOOL : Outcome.FALL_THROUGH;
     }
 
     /**
@@ -76,6 +77,7 @@ public final class JdkToolUninstaller {
             // what we want.
             case "jenv" -> List.of("jenv", "remove", identifier);
             case "asdf" -> List.of("asdf", "uninstall", "java", identifier);
+            case "jabba" -> jabbaCommand(hit.home());
             // Homebrew installs land in {Cellar}/<formula>/<version>; the
             // formula name (e.g. "openjdk@21") is what `brew uninstall`
             // takes, not the install-folder name.
@@ -85,6 +87,23 @@ public final class JdkToolUninstaller {
             }
             default -> null;
         };
+    }
+
+    /**
+     * {@code <JABBA_HOME>/bin/jabba uninstall <name>} for a home at {@code <JABBA_HOME>/jdk/<name>}
+     * (or its {@code Contents/Home}); {@code jabba} from the PATH when that binary is absent.
+     */
+    private static @Nullable List<String> jabbaCommand(Path home) {
+        Path install = IntellijJdkDir.installDirOf(home);
+        Path jdkDir = install.getParent();
+        Path name = install.getFileName();
+        if (jdkDir == null || name == null || jdkDir.getFileName() == null) return null;
+        if (!"jdk".equals(jdkDir.getFileName().toString())) return null;
+        Path jabbaHome = jdkDir.getParent();
+        Path binary =
+                jabbaHome == null ? null : jabbaHome.resolve("bin").resolve(Os.isWindows() ? "jabba.exe" : "jabba");
+        String exe = binary != null && Files.isRegularFile(binary) ? binary.toString() : "jabba";
+        return List.of(exe, "uninstall", name.toString());
     }
 
     /**

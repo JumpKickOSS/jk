@@ -100,7 +100,7 @@ public final class JdkUninstallCommand implements CliCommand {
     }
 
     private static final Set<String> KNOWN_SOURCES =
-            Set.of("jk", "intellij", "jdks", "sdkman", "jbang", "mise", "asdf", "jenv", "homebrew", "path");
+            Set.of("jk", "intellij", "jdks", "sdkman", "jbang", "mise", "asdf", "jenv", "homebrew", "jabba", "path");
 
     @Nullable
     String argument;
@@ -356,10 +356,14 @@ public final class JdkUninstallCommand implements CliCommand {
                                 Theme.active().path())
                         + "...")) {
             // Try the owning tool first so its manifest stays consistent
-            // (sdkman, mise, jbang, jenv, asdf, brew). Anything left on disk
+            // (sdkman, mise, jbang, jenv, asdf, brew, jabba). Anything left on disk
             // after — including the intellij / java-home sources, which
-            // have no owning tool — gets the direct purge.
+            // have no owning tool — gets the direct purge, except what Jabba left.
             var outcome = JdkToolUninstaller.tryUninstall(hit, identifier);
+            if (outcome == JdkToolUninstaller.Outcome.LEFT_BY_TOOL) {
+                throw new IOException(hit.source() + " did not remove " + installDir + ", and jk does not delete a "
+                        + hit.source() + " install itself");
+            }
             if (outcome == JdkToolUninstaller.Outcome.FALL_THROUGH) {
                 registry.purge(installed);
             }
