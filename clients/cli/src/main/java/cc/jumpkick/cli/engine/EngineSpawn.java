@@ -699,10 +699,11 @@ public final class EngineSpawn {
      */
     private static boolean writeSpawnHeader(Path log, EngineArtifact engine, boolean fresh) {
         try {
-            Files.writeString(
+            OwnerOnlyFiles.writeString(
                     log,
                     EngineLogRotation.header(engine.path(), engine.how(), Clock.SYSTEM) + System.lineSeparator(),
                     StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE,
                     fresh ? StandardOpenOption.TRUNCATE_EXISTING : StandardOpenOption.APPEND);
             return true;
         } catch (IOException e) {
@@ -772,10 +773,11 @@ public final class EngineSpawn {
     /** Append a diagnostic to the engine log only — never the user's terminal. */
     private static void logReason(EnginePaths.Paths paths, String message) {
         try {
-            Files.writeString(
+            OwnerOnlyFiles.writeString(
                     paths.log(),
                     "jk engine: " + message + System.lineSeparator(),
                     StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE,
                     StandardOpenOption.APPEND);
         } catch (IOException ignored) {
             // best-effort

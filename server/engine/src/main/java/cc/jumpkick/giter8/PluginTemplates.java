@@ -6,6 +6,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -125,7 +126,7 @@ public final class PluginTemplates {
                 throw missing(pluginId, l, fw, n);
             }
             Path tmp = JkDirs.tmp();
-            Files.createDirectories(tmp);
+            OwnerOnlyFiles.createDirectories(tmp);
             Path dest = Files.createTempDirectory(tmp, "jk-g8-");
             try {
                 // Cross-provider copy (zipfs -> default): PathUtil resolves by string, so the

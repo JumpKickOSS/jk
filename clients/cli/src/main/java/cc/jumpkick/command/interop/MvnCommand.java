@@ -15,6 +15,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import java.io.IOException;
@@ -133,7 +134,7 @@ public final class MvnCommand implements CliCommand {
 
     /** An empty file under jk's tmp dir for the spy to append to; deleted once journaled. */
     private static Path eventsFile() throws IOException {
-        Files.createDirectories(JkDirs.tmp());
+        OwnerOnlyFiles.createDirectories(JkDirs.tmp());
         return Files.createTempFile(JkDirs.tmp(), "mvn-events-", ".tsv");
     }
 

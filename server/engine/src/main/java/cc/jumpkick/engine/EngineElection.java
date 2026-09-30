@@ -108,7 +108,7 @@ final class EngineElection {
         // The Unix socket is trusted on this directory's permissions alone: owner-only, always.
         OwnerOnlyFiles.directory(paths.dir());
         // Startup mutex: serializes concurrent spawns/takeovers through bind + endpoint write.
-        lockChannel = FileChannel.open(paths.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        lockChannel = OwnerOnlyFiles.channel(paths.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
         try {
             lock = lockChannel.tryLock();
         } catch (OverlappingFileLockException e) {
@@ -148,7 +148,7 @@ final class EngineElection {
         // life; a crashed engine's stale gen files are reclaimed here by winning its lock.
         for (int n = 1; n < MAX_GENERATIONS && active == null; n++) {
             EnginePaths.Paths cand = EnginePaths.generation(paths, n);
-            FileChannel gc = FileChannel.open(cand.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            FileChannel gc = OwnerOnlyFiles.channel(cand.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             FileLock gl;
             try {
                 gl = gc.tryLock();
@@ -187,7 +187,7 @@ final class EngineElection {
             // umask on a shared machine.
             OwnerOnlyFiles.write(
                     Objects.requireNonNull(active.token().getParent(), "token dir"), active.token(), token);
-            Files.writeString(active.socket(), Integer.toString(port));
+            OwnerOnlyFiles.writeString(active.socket(), Integer.toString(port));
         } else {
             listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
             listener.bind(UnixDomainSocketAddress.of(active.socket()));
@@ -195,7 +195,7 @@ final class EngineElection {
             OwnerOnlyFiles.setOwnerOnly(active.socket(), "rw-------");
         }
         // The pid file is the pid and nothing else: a script reads it whole as a process id.
-        Files.writeString(active.pid(), pid + "\n", StandardCharsets.UTF_8);
+        OwnerOnlyFiles.writeString(active.pid(), pid + "\n");
 
         // TAKEOVER: from this write on, every new connection resolves to this generation.
         EnginePaths.writeEndpoint(paths, active.socket());

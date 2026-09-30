@@ -8,6 +8,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.DeclaredPins;
 import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.util.MarkdownReports;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -114,7 +115,7 @@ public final class ProjectImport {
             }
             if (reportTarget != null) {
                 Path rDir = reportTarget.getParent();
-                if (rDir != null) Files.createDirectories(rDir);
+                if (rDir != null) OwnerOnlyFiles.createDirectories(rDir);
                 MarkdownReports.write(reportTarget, importReport.renderMarkdown(source.toString()));
                 wrote.add(reportTarget);
             }

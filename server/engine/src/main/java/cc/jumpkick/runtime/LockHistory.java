@@ -5,11 +5,11 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -37,8 +37,7 @@ final class LockHistory {
         if (scopes(disk).equals(scopes(next))) return;
         Path dest = file(id);
         try {
-            Files.createDirectories(dest.getParent());
-            Files.copy(LockPaths.lockFile(lockDir), dest, StandardCopyOption.REPLACE_EXISTING);
+            AtomicWrites.replace(dest, Files.readAllBytes(LockPaths.lockFile(lockDir)));
         } catch (IOException e) {
             // The hint falls through to the jars and the catalog; the rewrite still proceeds.
         }

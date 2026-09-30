@@ -34,8 +34,10 @@ import cc.jumpkick.tool.ToolProvenance;
 import cc.jumpkick.tool.ToolTarget;
 import cc.jumpkick.tool.TrustedSources;
 import cc.jumpkick.tool.UrlRewriter;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import java.io.IOException;
@@ -43,7 +45,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -439,11 +440,10 @@ public final class ToolInstallCommand implements CliCommand {
             // Kotlin script: snapshot a neutralized copy (jk resolved its @file:DependsOn) and
             // write a kotlinc -script launcher over it + the resolved dep classpath.
             if (prep.kotlincBin() == null) return 1;
-            Files.createDirectories(envDir);
             String source = Files.readString(file, StandardCharsets.UTF_8);
             String neutralized = ScriptHeaderParser.neutralizeKotlinAnnotations(source);
             Path scriptCopy = envDir.resolve(name);
-            Files.writeString(scriptCopy, neutralized != null ? neutralized : source);
+            AtomicWrites.replace(scriptCopy, neutralized != null ? neutralized : source);
             ToolEnv ktsEnv = new ToolEnv(bin, Coordinate.of("script", bin, "local"), "kotlin-script", prep.classpath());
             Path ktsLauncher = ToolLauncher.installKotlinScript(
                     envsRoot, binDir, JavaHomes.runningJavaHome(), prep.kotlincBin(), scriptCopy, ktsEnv, provenance);
@@ -455,15 +455,15 @@ public final class ToolInstallCommand implements CliCommand {
             return 0;
         }
         if ("jar".equals(mode)) {
-            Files.createDirectories(envDir);
             Path jarCopy = envDir.resolve(name);
-            Files.copy(file, jarCopy, StandardCopyOption.REPLACE_EXISTING);
+            AtomicWrites.replace(jarCopy, Files.readAllBytes(file));
             classpath.add(jarCopy);
             // prep.classpath() leads with the source jar; keep only the resolved deps.
             prep.classpath().stream().skip(1).forEach(classpath::add);
         } else {
             Path classesCopy = envDir.resolve("classes");
             copyTree(prep.classesDir(), classesCopy);
+            if (OwnerOnlyFiles.inState(classesCopy)) OwnerOnlyFiles.seal(classesCopy);
             classpath.add(classesCopy);
             classpath.addAll(prep.classpath());
             if (prep.stdlib() != null) classpath.add(prep.stdlib());

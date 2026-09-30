@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.net.URI;
@@ -252,7 +253,6 @@ public final class TrustedSources {
             sb.append("  ").append(MinimalToml.quote(p)).append(",\n");
         }
         sb.append("]\n");
-        Files.createDirectories(file.getParent());
-        Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
+        AtomicWrites.replace(file, sb.toString());
     }
 }

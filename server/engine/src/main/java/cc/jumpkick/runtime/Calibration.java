@@ -14,6 +14,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
@@ -689,8 +690,7 @@ public final class Calibration {
 
     private static void recordFailure() {
         try {
-            Files.createDirectories(failureMarker().getParent());
-            Files.writeString(failureMarker(), Long.toString(clock.millis()));
+            OwnerOnlyFiles.writeString(failureMarker(), Long.toString(clock.millis()));
         } catch (IOException ignored) {
         }
     }
