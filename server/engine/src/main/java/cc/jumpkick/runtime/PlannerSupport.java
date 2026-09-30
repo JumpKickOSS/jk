@@ -72,7 +72,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -1025,20 +1024,15 @@ public final class PlannerSupport {
      * Class dirs of workspace MAIN dependencies to vendor into a plugin-worker jar (plugin-sdk +
      * host). External deps stay on the sidecar POM.
      *
+     * <p>The set is the manifests' MAIN closure, whatever is on disk: every sibling in it is one
+     * package-jar waits on, so the build and the forecast list the same trees and a missing one
+     * hashes as missing rather than dropping out of the packaging key.
+     *
      * <p>{@link cc.jumpkick.config.JkBuildParser#parse(Path)} rewrites {@code workspace:}
      * placeholders to real {@code group:artifact} coordinates before packaging runs, so sibling
      * lookup must accept both forms.
      */
     static List<Path> workerCodecClassDirs(Path moduleDir, JkBuild project) {
-        return workerCodecClassDirs(moduleDir, project, Files::isDirectory);
-    }
-
-    /**
-     * As above with {@code present} deciding which sibling trees are listed: the build lists the
-     * trees on disk when it packages, and the forecast lists those plus the wiped trees it knows
-     * the build restores first, so both hash the same set.
-     */
-    static List<Path> workerCodecClassDirs(Path moduleDir, JkBuild project, Predicate<Path> present) {
         if (moduleDir == null || project == null || !PluginModule.isWorker(moduleDir)) {
             return List.of();
         }
@@ -1085,8 +1079,7 @@ public final class PlannerSupport {
                 if (!seen.add(seenKey)) continue;
                 JkBuild sib = byDir.get(dir);
                 if (sib == null) continue;
-                Path classes = BuildLayout.of(dir, sib).classesDir();
-                if (present.test(classes)) out.add(classes);
+                out.add(BuildLayout.of(dir, sib).classesDir());
                 q.addLast(sib);
             }
         }
