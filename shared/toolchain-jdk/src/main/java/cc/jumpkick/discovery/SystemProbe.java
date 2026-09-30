@@ -2,41 +2,63 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.host.Os;
-import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
-import java.util.stream.Stream;
+import java.util.Set;
 
 /**
- * Catch-all for OS package-manager JDK locations:
+ * The OS's own JDK locations, the set Gradle's auto-detection covers:
  *
  * <ul>
- *   <li>macOS: {@code /Library/Java/JavaVirtualMachines/<id>.jdk/Contents/Home/}
- *   <li>Linux: {@code /usr/lib/jvm/<id>/} (Debian/Ubuntu, Fedora, Arch)
- *   <li>Linux: {@code /usr/java/<id>/} (RHEL family)
+ *   <li>Linux: every JDK under {@code /usr/lib/jvm}, {@code /usr/java}, {@code /usr/lib64/jvm},
+ *       {@code /usr/local/java} and {@code /opt/java}
+ *   <li>macOS: every bundle under {@code /Library/Java/JavaVirtualMachines}, plus each home {@code
+ *       /usr/libexec/java_home -V} lists ({@link MacJavaHomes})
+ *   <li>Windows: the homes the registry names ({@link WindowsJavaRegistry})
  * </ul>
  *
- * <p>JDKs only — system package managers rarely ship Maven/Gradle/Kotlin in standardised paths.
+ * <p>Every hit is source {@code system}, which {@code jk jdk uninstall} refuses.
  */
-public final class SystemProbe implements LocalToolProbe {
+public final class SystemProbe extends HomeListProbe {
 
-    private final List<Path> roots;
-    private final boolean macOs;
+    static final List<Path> LINUX_ROOTS = List.of(
+            Path.of("/usr/lib/jvm"),
+            Path.of("/usr/java"),
+            Path.of("/usr/lib64/jvm"),
+            Path.of("/usr/local/java"),
+            Path.of("/opt/java"));
 
-    public SystemProbe() {
-        this.macOs = Os.isDarwin();
-        this.roots = macOs
-                ? List.of(Path.of("/Library/Java/JavaVirtualMachines"))
-                : List.of(Path.of("/usr/lib/jvm"), Path.of("/usr/java"));
+    static final List<Path> MAC_ROOTS = List.of(Path.of("/Library/Java/JavaVirtualMachines"));
+
+    /** Homes the OS reports rather than a directory listing; empty when it reports none. */
+    @FunctionalInterface
+    interface ListedHomes {
+        List<Path> homes() throws IOException;
     }
 
-    SystemProbe(List<Path> roots, boolean macOs) {
+    private final List<Path> roots;
+    private final ListedHomes listed;
+
+    public SystemProbe() {
+        this(Os.name());
+    }
+
+    private SystemProbe(String osName) {
+        this(
+                Os.isDarwin(osName) ? MAC_ROOTS : Os.isWindows(osName) ? List.of() : LINUX_ROOTS,
+                Os.isDarwin(osName)
+                        ? MacJavaHomes::list
+                        : Os.isWindows(osName)
+                                ? () -> WindowsJavaRegistry.homes(WindowsJavaRegistry.REG_QUERY)
+                                : List::of);
+    }
+
+    SystemProbe(List<Path> roots, ListedHomes listed) {
         this.roots = roots;
-        this.macOs = macOs;
+        this.listed = listed;
     }
 
     @Override
@@ -45,39 +67,10 @@ public final class SystemProbe implements LocalToolProbe {
     }
 
     @Override
-    public Optional<DiscoveredTool> find(ToolSpec spec) throws IOException {
-        if (!"java".equals(spec.kind())) return Optional.empty();
-        for (Path root : roots) {
-            if (!Files.isDirectory(root)) continue;
-            try (Stream<Path> entries = Files.list(root)) {
-                Optional<DiscoveredTool> hit = entries.filter(Files::isDirectory)
-                        .map(this::asJdkHome)
-                        .filter(home -> ToolHealth.isHealthy(spec, home))
-                        .findFirst()
-                        .map(home -> new DiscoveredTool(home, spec.version(), name()));
-                if (hit.isPresent()) return hit;
-            }
-        }
-        return Optional.empty();
-    }
-
-    /** macOS JDK bundles wrap the real home in {@code Contents/Home}. */
-    private Path asJdkHome(Path topLevel) {
-        Path mac = topLevel.resolve("Contents").resolve("Home");
-        if (macOs && Files.isDirectory(mac)) return mac;
-        return topLevel;
-    }
-
-    @Override
-    public List<JdkHit> discoverAllJdks() throws IOException {
-        List<JdkHit> hits = new ArrayList<>();
-        for (Path root : roots) {
-            if (!Files.isDirectory(root)) continue; // fail fast per root
-            try (Stream<Path> entries = Files.list(root)) {
-                entries.filter(Files::isDirectory).map(this::asJdkHome).forEach(p -> ProbeSupport.discoverJdk(p, name())
-                        .ifPresent(hits::add));
-            }
-        }
-        return hits;
+    List<Path> candidateHomes() throws IOException {
+        Set<Path> homes = new LinkedHashSet<>();
+        for (Path root : roots) homes.addAll(childHomes(root));
+        homes.addAll(listed.homes());
+        return new ArrayList<>(homes);
     }
 }
