@@ -19,7 +19,9 @@ public final class JdkUninstallPolicy {
             "intellij",
             "it is registered in your IDE (remove it in IntelliJ under Project Structure ▸ SDKs)",
             "maven-toolchains",
-            "it is listed in Maven's toolchains.xml, which jk only reads");
+            "it is listed in Maven's toolchains.xml, which jk only reads",
+            "coursier",
+            "it is in Coursier's JVM cache, which Coursier and Mill own and Coursier has no uninstall for");
 
     private JdkUninstallPolicy() {}
 

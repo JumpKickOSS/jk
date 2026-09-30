@@ -32,6 +32,7 @@ Discovery looks at existing installs before downloading from the JetBrains JDK f
 | `gradle` | `~/.gradle/jdks` (Gradle's provisioned JDKs) | Deletes it |
 | `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew` | That tool's install directory | Runs that tool's uninstall first |
 | `jabba` | `$JABBA_HOME/jdk`, else `~/.jabba/jdk` | Runs `jabba uninstall`; never deletes what Jabba leaves |
+| `coursier` | `$COURSIER_JVM_CACHE`, else Coursier's JVM cache: `~/.cache/coursier/jvm` (Linux), `~/Library/Caches/Coursier/jvm` (macOS), `~\AppData\Local\Coursier\Cache\jvm` (Windows) | Refused: Coursier has no uninstall |
 | `system` | Linux `/usr/lib/jvm`, `/usr/java`, `/usr/lib64/jvm`, `/usr/local/java`, `/opt/java`; macOS `/Library/Java/JavaVirtualMachines` and `/usr/libexec/java_home -V`; the Windows registry (JavaSoft `JavaHome`, AdoptOpenJDK / Eclipse Adoptium / Eclipse Foundation `hotspot\MSI` `Path`) | Refused |
 | `maven-toolchains` | Every `jdkHome` of type `jdk` in `~/.m2/toolchains.xml`, `${env.NAME}` expanded | Refused: a pointer |
 | `path` | `JAVA_HOME` when no source above owns it | Deletes it |
