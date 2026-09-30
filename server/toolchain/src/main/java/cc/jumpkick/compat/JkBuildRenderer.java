@@ -78,8 +78,8 @@ public final class JkBuildRenderer {
     }
 
     /**
-     * {@code [build] extra-src}; {@code [test]} extra source roots, the baseline tag filters, and
-     * the test JVM's flags and system properties.
+     * {@code [build] extra-src}; {@code [test]} extra source roots and source excludes, the baseline
+     * tag filters, the excluded classes, and the test JVM's flags and system properties.
      */
     private static void renderBuild(StringBuilder sb, BuildBlock build) {
         if (!build.extraSrc().isEmpty()) {
@@ -88,16 +88,24 @@ public final class JkBuildRenderer {
         if (build.testExtraSrc().isEmpty()
                 && build.testIncludeTags().isEmpty()
                 && build.testExcludeTags().isEmpty()
+                && build.testExcludeClasses().isEmpty()
+                && build.testExcludeSrc().isEmpty()
                 && build.testJvm().isEmpty()) {
             return;
         }
         sb.append("\n[test]\n");
         if (!build.testExtraSrc().isEmpty())
             sb.append("extra-src = ").append(list(build.testExtraSrc())).append('\n');
+        if (!build.testExcludeSrc().isEmpty())
+            sb.append("exclude-src = ").append(list(build.testExcludeSrc())).append('\n');
         if (!build.testIncludeTags().isEmpty())
             sb.append("include-tags = ").append(list(build.testIncludeTags())).append('\n');
         if (!build.testExcludeTags().isEmpty())
             sb.append("exclude-tags = ").append(list(build.testExcludeTags())).append('\n');
+        if (!build.testExcludeClasses().isEmpty())
+            sb.append("exclude-classes = ")
+                    .append(list(build.testExcludeClasses()))
+                    .append('\n');
         if (!build.testJvm().jvmArgs().isEmpty())
             sb.append("jvm-args = ").append(list(build.testJvm().jvmArgs())).append('\n');
         if (!build.testJvm().systemProperties().isEmpty()) {

@@ -339,9 +339,9 @@ final class TestLaunch {
     }
 
     /**
-     * The launcher for this module's suite: its label, the selection's tag and class filters, the
-     * module's {@code [test] serial-tags} (those classes run on one trailing worker while the rest
-     * shard) and assertions, the fork's JVM args, the debug port, the coverage agent when the run
+     * The launcher for this module's suite: its label, the selection's tag and class filters less
+     * the module's {@code [test] exclude-classes}, its {@code [test] serial-tags} (those classes run
+     * on one trailing worker while the rest shard) and assertions, the fork's JVM args, the debug port, the coverage agent when the run
      * measures coverage, and the affected class names when the session ranked them.
      */
     static JUnitLauncher launcher(
@@ -361,6 +361,7 @@ final class TestLaunch {
                 .withAssertions(projectUnderTest.build().testAssertions())
                 .withJvmArgs(testJvmArgs)
                 .withClassPatterns(effectiveSel.classes())
+                .withExcludedClasses(projectUnderTest.build().testExcludeClasses())
                 .withDebug(in.session().debugJvm());
         if (jacoco != null && coverageExec != null) {
             launcher.withCoverage(new CoverageAgent(jacoco.agentJar(), coverageExec));

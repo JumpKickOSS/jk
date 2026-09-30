@@ -19,18 +19,19 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The plugins that run tests. Surefire's {@code <groups>} / {@code <excludedGroups>} are {@code
- * [test] include-tags} / {@code exclude-tags}, its {@code <argLine>} is {@code [test] jvm-args} and
- * its system properties are {@code [test] system-properties}; its class patterns and a skip flag
- * have no {@code [test]} key and are rows saying where each lands. Failsafe defines jk's {@code
- * integration} suite, which is a directory, so its patterns are a row telling the user which
- * classes to move; its JVM settings land in the same keys when Surefire set none. JaCoCo is
- * {@code jk test --coverage}, a run flag.
+ * [test] include-tags} / {@code exclude-tags}, its {@code <excludes>} are {@code [test]
+ * exclude-classes}, its {@code <argLine>} is {@code [test] jvm-args} and its system properties are
+ * {@code [test] system-properties}; its {@code <includes>} and a skip flag have no {@code [test]}
+ * key and are rows saying where each lands. Failsafe defines jk's {@code integration} suite, which
+ * is a directory, so its patterns are a row telling the user which classes to move; its JVM
+ * settings land in the same keys when Surefire set none. JaCoCo is {@code jk test --coverage}, a
+ * run flag.
  */
 final class TestPlugins {
 
-    /** The {@code [test]} tag filters and test JVM settings a POM's test plugins declare. */
-    record TestSettings(List<String> includeTags, List<String> excludeTags, TestJvm jvm) {
-        static final TestSettings NONE = new TestSettings(List.of(), List.of(), TestJvm.EMPTY);
+    /** The {@code [test]} tag filters, excluded classes and test JVM settings a POM's test plugins declare. */
+    record TestSettings(List<String> includeTags, List<String> excludeTags, List<String> excludeClasses, TestJvm jvm) {
+        static final TestSettings NONE = new TestSettings(List.of(), List.of(), List.of(), TestJvm.EMPTY);
     }
 
     private static final String SUREFIRE = "maven-surefire-plugin";
@@ -53,20 +54,22 @@ final class TestPlugins {
                     + " `jk test --coverage` runs every suite JVM under the JaCoCo agent and writes"
                     + " `reports/jacoco.xml` per module.");
         }
-        return new TestSettings(tags.includeTags(), tags.excludeTags(), jvm.toTestJvm());
+        return new TestSettings(tags.includeTags(), tags.excludeTags(), tags.excludeClasses(), jvm.toTestJvm());
     }
 
     private static TestSettings mapSurefire(Plugin surefire, Model model, ImportReport.Builder report, Jvm jvm) {
         Set<String> include = new LinkedHashSet<>();
         Set<String> exclude = new LinkedHashSet<>();
+        Set<String> excludeClasses = new LinkedHashSet<>();
         for (Xpp3Dom config : PluginFacts.configurations(surefire)) {
             tags(config, "groups", SUREFIRE, report).ifPresent(include::addAll);
             tags(config, "excludedGroups", SUREFIRE, report).ifPresent(exclude::addAll);
-            reportPatterns(config, SUREFIRE, report);
+            reportIncludes(config, report);
+            excludeClasses.addAll(excludes(config, report));
         }
         jvm.take(surefire, SUREFIRE, model, report);
         reportSkip(surefire, model, report);
-        return new TestSettings(List.copyOf(include), List.copyOf(exclude), TestJvm.EMPTY);
+        return new TestSettings(List.copyOf(include), List.copyOf(exclude), List.copyOf(excludeClasses), TestJvm.EMPTY);
     }
 
     /**
@@ -90,16 +93,63 @@ final class TestPlugins {
         return Optional.of(tags);
     }
 
-    /** Class patterns have no key: jk runs every class of the suite directory and selects with {@code --class}. */
-    private static void reportPatterns(Xpp3Dom config, String plugin, ImportReport.Builder report) {
-        for (String element : new String[] {"includes", "excludes"}) {
-            List<String> patterns = children(config.getChild(element));
-            if (patterns.isEmpty()) continue;
-            report.warning("`" + plugin + "` `<" + element + ">` " + String.join(", ", patterns)
-                    + " — jk runs every test class in the suite directory; select classes at run time with"
-                    + " `jk test --class '<pattern>'`, or tag them and filter with `[test] include-tags` /"
-                    + " `exclude-tags`.");
+    /** Includes have no key: jk runs every class of the suite directory and selects with {@code --class}. */
+    private static void reportIncludes(Xpp3Dom config, ImportReport.Builder report) {
+        List<String> patterns = children(config.getChild("includes"));
+        if (patterns.isEmpty()) return;
+        report.warning("`" + SUREFIRE + "` `<includes>` " + String.join(", ", patterns)
+                + " — jk runs every test class in the suite directory; select classes at run time with"
+                + " `jk test --class '<pattern>'`, or tag them and filter with `[test] include-tags` /"
+                + " `exclude-tags`.");
+    }
+
+    /**
+     * {@code <excludes>} as {@code [test] exclude-classes} patterns; a pattern jk's class syntax
+     * cannot spell ({@code %regex[…]}, {@code ?}, a method selector) and {@code <excludesFile>}
+     * are a row.
+     */
+    private static List<String> excludes(Xpp3Dom config, ImportReport.Builder report) {
+        List<String> out = new ArrayList<>();
+        List<String> unmapped = new ArrayList<>();
+        for (String declared : children(config.getChild("excludes"))) {
+            for (String pattern : declared.split(",")) {
+                if (pattern.isBlank()) continue;
+                String mapped = classPattern(pattern.trim());
+                if (mapped == null) {
+                    unmapped.add(pattern.trim());
+                } else if (!out.contains(mapped)) {
+                    out.add(mapped);
+                }
+            }
         }
+        if (!unmapped.isEmpty()) {
+            report.warning("`" + SUREFIRE + "` `<excludes>` " + String.join(", ", unmapped)
+                    + " — `[test] exclude-classes` takes class names with `*` wildcards; add the classes by hand.");
+        }
+        String file = PluginFacts.child(config, "excludesFile");
+        if (file != null) {
+            report.warning("`" + SUREFIRE + "` `<excludesFile>" + file + "</excludesFile>` — list those classes"
+                    + " under `[test] exclude-classes`.");
+        }
+        return out;
+    }
+
+    /**
+     * A Surefire file pattern as a class pattern: {@code **}{@code /*PerformanceTest.java} is
+     * {@code *PerformanceTest} (that simple name in any package), {@code org/acme/**}{@code /*IT}
+     * is {@code org.acme.*IT}. Null when the pattern is a regex or uses a wildcard jk has not.
+     */
+    static @Nullable String classPattern(String pattern) {
+        String p = pattern;
+        if (p.startsWith("%ant[") && p.endsWith("]")) p = p.substring(5, p.length() - 1);
+        if (p.startsWith("%regex[") || p.contains("?") || p.contains("[") || p.contains("{") || p.contains("#")) {
+            return null;
+        }
+        if (p.endsWith(".java")) p = p.substring(0, p.length() - ".java".length());
+        else if (p.endsWith(".class")) p = p.substring(0, p.length() - ".class".length());
+        while (p.startsWith("**/")) p = p.substring(3);
+        p = p.replace("**/", "*").replace("**", "*").replace('/', '.').replace('\\', '.');
+        return p.isEmpty() ? null : p;
     }
 
     /**

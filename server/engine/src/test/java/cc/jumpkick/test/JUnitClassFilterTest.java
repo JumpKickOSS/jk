@@ -56,6 +56,34 @@ class JUnitClassFilterTest {
     }
 
     @Test
+    void excluded_classes_and_their_nested_classes_drop_out_of_every_selection() {
+        String body = JUnitClassFilter.excludeBody(List.of("*PerformanceTest"));
+        Pattern all = Pattern.compile(JUnitClassFilter.filter(null, body));
+        assertThat(all.matcher("com.acme.CodecTest").matches()).isTrue();
+        assertThat(all.matcher("com.acme.PhoneticPerformanceTest").matches()).isFalse();
+        assertThat(all.matcher("com.acme.PhoneticPerformanceTest$Inner").matches())
+                .isFalse();
+        assertThat(all.matcher("com.acme.PerformanceTestSupport").matches()).isTrue();
+
+        Pattern narrowed =
+                Pattern.compile(JUnitClassFilter.filter(JUnitClassFilter.patternRegex(List.of("com.acme.*")), body));
+        assertThat(narrowed.matcher("com.acme.CodecTest").matches()).isTrue();
+        assertThat(narrowed.matcher("com.acme.PhoneticPerformanceTest").matches())
+                .isFalse();
+        assertThat(narrowed.matcher("org.other.CodecTest").matches()).isFalse();
+
+        assertThat(JUnitClassFilter.filter(null, JUnitClassFilter.excludeBody(List.of())))
+                .isNull();
+    }
+
+    @Test
+    void the_launcher_hands_discovery_and_pull_workers_the_exclusion() {
+        JUnitLauncher launcher = new JUnitLauncher().withExcludedClasses(List.of("*PerformanceTest"));
+        assertThat(launcher.pullWorkerArgs(1, Path.of("classes")))
+                .anyMatch(a -> a.startsWith("--filter=^(?!(?:(.*\\.)?.*\\QPerformanceTest\\E(\\$.*)?)$).*$"));
+    }
+
+    @Test
     void wildcards_and_several_patterns_union() {
         Pattern re = Pattern.compile(JUnitClassFilter.patternRegex(List.of("*IT", "com.acme.db.*")));
         assertThat(re.matcher("com.acme.OrdersIT").matches()).isTrue();

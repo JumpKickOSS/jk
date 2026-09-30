@@ -46,6 +46,8 @@ final class ManifestBuildTable {
         Integer testWorkers;
 
         final List<String> testSerialTags = new ArrayList<>();
+        final List<String> testExcludeClasses = new ArrayList<>();
+        final List<String> testExcludeSrc = new ArrayList<>();
         boolean testAssertions = true;
         boolean testCoverage = false;
         final List<String> testTools = new ArrayList<>();
@@ -197,6 +199,14 @@ final class ManifestBuildTable {
                 if (!str.isBlank()) s.testSerialTags.add(str);
             }
         }
+        // [test] exclude-classes — class patterns no suite runs, in --class syntax.
+        readStrings(
+                test,
+                "exclude-classes",
+                "class patterns: exclude-classes = [\"*PerformanceTest\"]",
+                s.testExcludeClasses);
+        // [test] exclude-src — globs over a test source's path under its root; matches are not compiled.
+        readStrings(test, "exclude-src", "source globs: exclude-src = [\"**/*Benchmark*\"]", s.testExcludeSrc);
         // [test] assertions — -ea on every forked test JVM unless the module turns it off.
         if (test.contains("assertions")) {
             if (!(test.get("assertions") instanceof Boolean assertions)) {
@@ -231,6 +241,20 @@ final class ManifestBuildTable {
             }
         }
         readTestJvm(test, s);
+    }
+
+    /** A non-blank string array under {@code [test].<key>}, appended to {@code out} without repeats. */
+    private static void readStrings(TomlTable test, String key, String expected, List<String> out) {
+        if (!test.contains(key)) return;
+        if (!(test.get(key) instanceof TomlArray values)) {
+            throw new JkBuildParseException("[test]." + key + " must be an array of " + expected);
+        }
+        for (int i = 0; i < values.size(); i++) {
+            if (!(values.get(i) instanceof String str) || str.isBlank()) {
+                throw new JkBuildParseException("[test]." + key + " must be an array of " + expected);
+            }
+            if (!out.contains(str.trim())) out.add(str.trim());
+        }
     }
 
     /**

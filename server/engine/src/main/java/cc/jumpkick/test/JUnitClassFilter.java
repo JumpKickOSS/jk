@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Class-name filters for {@link JUnitLauncher}: exact names ({@code --affected}) and {@code --class}
- * patterns, each a class pattern or {@code <class pattern>#<method>}.
+ * Class-name filters for {@link JUnitLauncher}: exact names ({@code --affected}), {@code --class}
+ * patterns, each a class pattern or {@code <class pattern>#<method>}, and {@code [test]
+ * exclude-classes}, which narrows every selection.
  */
 final class JUnitClassFilter {
 
@@ -31,6 +32,39 @@ final class JUnitClassFilter {
             re.append(classRegex(p));
         }
         return re.append(")$").toString();
+    }
+
+    /**
+     * The alternation of {@code [test] exclude-classes} patterns, each also matching the nested
+     * classes of the class it names; null when there are none.
+     */
+    static @Nullable String excludeBody(List<String> patterns) {
+        List<String> parts = new ArrayList<>();
+        for (String raw : patterns) {
+            String p = classPart(raw);
+            if (!p.isEmpty()) parts.add(classRegex(p) + "(\\$.*)?");
+        }
+        return parts.isEmpty() ? null : String.join("|", parts);
+    }
+
+    /** One anchored regex over exactly {@code classNames}. */
+    static String exactRegex(List<String> classNames) {
+        StringBuilder re = new StringBuilder("^(");
+        for (int i = 0; i < classNames.size(); i++) {
+            if (i > 0) re.append('|');
+            re.append(Pattern.quote(classNames.get(i)));
+        }
+        return re.append(")$").toString();
+    }
+
+    /**
+     * The runner's {@code --filter}: the anchored {@code include} regex (null for every class) less
+     * the classes {@code excludeBody} names, or null when neither narrows anything.
+     */
+    static @Nullable String filter(@Nullable String include, @Nullable String excludeBody) {
+        if (excludeBody == null) return include;
+        String kept = include == null ? ".*" : include.substring(1, include.length() - 1);
+        return "^(?!(?:" + excludeBody + ")$)" + kept + "$";
     }
 
     /**
@@ -79,19 +113,5 @@ final class JUnitClassFilter {
             if (!literals[i].isEmpty()) out.append(Pattern.quote(literals[i]));
         }
         return out.toString();
-    }
-
-    static List<String> singleWorkerArgs(Path testClassesDir, List<String> classNames) {
-        List<String> args = new ArrayList<>();
-        args.add("--scan-classpath=" + testClassesDir);
-        if (classNames == null || classNames.isEmpty()) return args;
-        StringBuilder re = new StringBuilder("^(");
-        for (int i = 0; i < classNames.size(); i++) {
-            if (i > 0) re.append('|');
-            re.append(Pattern.quote(classNames.get(i)));
-        }
-        re.append(")$");
-        args.add("--filter=" + re);
-        return args;
     }
 }

@@ -105,6 +105,27 @@ same cone for `jk build` and `jk test`. To reach one module's class from the wor
 name the class: `jk test -m clients/cli --class SelfNukeCommandTest` runs it in `clients/cli`
 and skips the prerequisites, whose suites match nothing.
 
+## Leave classes and sources out (`[test] exclude-classes`, `exclude-src`)
+
+```toml
+[test]
+exclude-classes = ["*PerformanceTest"]   # never run: no suite, no --class, no --affected reaches them
+exclude-src     = ["**/*Benchmark*"]     # never compiled by compile-test
+```
+
+`exclude-classes` takes `--class` patterns (fully qualified, simple name in any package, `*`
+wildcards; no `#method`) and removes those classes, with their nested classes, from every
+suite of the module, whatever the tags, `--class` or `--affected` select. It is Surefire's
+`<excludes>`: a class that stays in the tree for hand runs or benchmarks but is not part of the
+suite. It is part of the run's stamp. To run one, take it off the list; `--class`
+does not override it.
+
+`exclude-src` takes globs over a test source's path under its source root
+(`src/test/java`, a `[test] extra-src` root, …), `**/` also matching at the root, and leaves the
+matching `.java` / `.kt` / `.groovy` / `.scala` files out of compile-test and out of the
+suite's stamp. It is the compiler plugin's `<testExcludes>`: sources that need a dependency only
+an opt-in feature brings, such as JMH benchmarks.
+
 ## An empty run is not green
 
 A workspace `jk test` in which no module ran a test fails with **exit 2** and the reason

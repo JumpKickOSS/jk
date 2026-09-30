@@ -323,8 +323,8 @@ public final class PomImporter {
     /**
      * {@code [javac] args} from {@code <compilerArgs>}, with a {@code [javac.test]} table when a
      * compiler execution reached one compile step alone; {@code [build]} / {@code [test]} extra
-     * source roots; {@code [test]} tag filters, JVM flags and system properties from Surefire and
-     * Failsafe.
+     * source roots; {@code [test] exclude-src} from {@code <testExcludes>}; {@code [test]} tag
+     * filters, excluded classes, JVM flags and system properties from Surefire and Failsafe.
      */
     private static BuildBlock buildBlock(
             Model model,
@@ -358,8 +358,25 @@ public final class PomImporter {
         if (!tests.includeTags().isEmpty() || !tests.excludeTags().isEmpty()) {
             build = build.withTestTags(tests.includeTags(), tests.excludeTags());
         }
+        if (!tests.excludeClasses().isEmpty()) build = build.withTestExcludeClasses(tests.excludeClasses());
         if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
+        List<String> testExcludes = PluginFacts.compilerSourceGlobs(model, "testExcludes", true);
+        if (!testExcludes.isEmpty()) build = build.withTestExcludeSrc(testExcludes);
+        reportCompilerGlobs(model, "testIncludes", true, report);
+        reportCompilerGlobs(model, "excludes", false, report);
+        reportCompilerGlobs(model, "includes", false, report);
         return build;
+    }
+
+    /** Compiler source globs with no jk key: every source under a root compiles, so each is a row. */
+    private static void reportCompilerGlobs(Model model, String element, boolean test, ImportReport.Builder report) {
+        List<String> globs = PluginFacts.compilerSourceGlobs(model, element, test);
+        if (globs.isEmpty()) return;
+        report.warning("`maven-compiler-plugin` `<" + element + ">` " + String.join(", ", globs) + " — jk compiles"
+                + " every " + (test ? "test" : "main") + " source under its roots"
+                + (test
+                        ? "; leave sources out with `[test] exclude-src`."
+                        : "; move the sources the build leaves out."));
     }
 
     /** {@code com.sun.tools.javac.api} out of {@code -J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED}. */

@@ -20,6 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -62,7 +63,8 @@ public final class AffectedTestRun {
         Map<String, ClassAbi.Kind> foreign = AffectedChangedPublish.foreignFor(in.session(), current.keySet());
         Set<String> production = new LinkedHashSet<>(current.keySet());
         production.addAll(foreign.keySet());
-        List<TestClassIndex.Entry> tests = TestClassIndex.scan(testClasses, production);
+        List<TestClassIndex.Entry> tests = runnable(
+                TestClassIndex.scan(testClasses, production), project.build().testExcludeClasses());
         // run-tests only executes when test sources exist (NO_TEST_SOURCES short-circuits), so an
         // empty scan after compile-test means the classes are missing — refuse, don't guess.
         if (tests.isEmpty()) {
@@ -110,6 +112,14 @@ public final class AffectedTestRun {
         }
         ctx.label("affected " + report.ranked().size() + " classes");
         return new Outcome(report, report.classNames(), report.identityToken());
+    }
+
+    /** {@code tests} less the classes {@code [test] exclude-classes} keeps out of every run. */
+    static List<TestClassIndex.Entry> runnable(List<TestClassIndex.Entry> tests, List<String> excluded) {
+        String body = JUnitClassFilter.excludeBody(excluded);
+        if (body == null) return tests;
+        Pattern out = Pattern.compile(body);
+        return tests.stream().filter(t -> !out.matcher(t.className()).matches()).toList();
     }
 
     /** Distinct workspace modules owning dirty paths; 1 when not a workspace or unreadable. */
