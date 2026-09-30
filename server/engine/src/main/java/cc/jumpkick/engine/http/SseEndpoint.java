@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -124,16 +125,18 @@ final class SseEndpoint {
      * _meta.progressToken}).
      */
     void serveMcp(HttpExchange exchange) throws IOException {
-        Long filter = resolveMcpEventFilter(exchange.getRequestURI().getRawQuery());
+        Supplier<@Nullable Long> filter =
+                mcpEventFilter(exchange.getRequestURI().getRawQuery());
+        Long jid = filter == null ? null : filter.get();
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        if (filter != null) {
-            exchange.getResponseHeaders().set("X-Jk-Jid", Long.toString(filter));
+        if (jid != null) {
+            exchange.getResponseHeaders().set("X-Jk-Jid", Long.toString(jid));
         }
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
-        String hello = filter == null ? ": mcp-events connected\n\n" : ": mcp-events connected jid=" + filter + "\n\n";
-        try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP, filter)) {
+        String hello = jid == null ? ": mcp-events connected\n\n" : ": mcp-events connected jid=" + jid + "\n\n";
+        try (HttpEvents.Subscription subscription = events.subscribeFollowing(HttpEvents.FrameStyle.MCP, filter)) {
             out.write(hello.getBytes(StandardCharsets.UTF_8));
             out.flush();
             while (true) {
@@ -149,26 +152,25 @@ final class SseEndpoint {
     }
 
     /**
-     * Resolve optional SSE filter from query string. {@code jid} wins over {@code
-     * progressToken}. An unknown progress token filters to a never-matching id (no wrong-job
-     * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
+     * The optional SSE filter a query names; {@code null} is every job. {@code jid} wins over {@code
+     * progressToken}. A token is resolved per event, so a stream opened before the {@code
+     * tools/call} that binds it follows that job once it starts, and never another job before.
      */
     @Nullable
-    Long resolveMcpEventFilter(@Nullable String query) {
+    Supplier<@Nullable Long> mcpEventFilter(@Nullable String query) {
         String rid = HttpQuery.queryParamLenient(query, "jid");
         if (rid != null && !rid.isBlank()) {
             try {
-                return Long.parseLong(rid.trim());
+                long jid = Long.parseLong(rid.trim());
+                return () -> jid;
             } catch (NumberFormatException e) {
                 return null;
             }
         }
         String tok = HttpQuery.queryParamLenient(query, "progressToken");
         if (tok != null && !tok.isBlank()) {
-            Long bound = progressTokens.resolve(tok.trim());
-            // -1 never appears as a real requestId; filtered stream stays quiet until bind lands
-            // on a later reconnect, or the agent switches to ?requestId=.
-            return bound != null ? bound : -1L;
+            String token = tok.trim();
+            return () -> progressTokens.resolve(token);
         }
         return null;
     }

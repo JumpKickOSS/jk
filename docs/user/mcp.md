@@ -97,8 +97,22 @@ Paths are relative to the project directory. A quoted source row is its line num
 tab, then the line exactly as the file has it, indentation included: everything after the first
 tab is an Edit's `old_string`. When that line occurs more than once in the file, the rows on
 either side come with it so the quote is unique. `wait=false` answers `RUNNING build jid=42` and
-`job action=wait jid=42`. A wait that expires answers `TIMEOUT build jid=42` with the same
-continuation; that wait returns the verdict when the job finishes.
+`run(jid=42)`. A wait that expires answers `TIMEOUT build jid=42` with the same continuation:
+`run(jid=42)` waits on that job again, starts nothing, and returns the verdict when it finishes.
+
+## Waits and keep-alive
+
+`run` waits up to `timeout_s` (default **240**, at most 3600), then answers `TIMEOUT` and the job
+keeps going. The default sits under the shortest tool-call timeout among common MCP clients
+(some stop a call after 300 s whatever it reports), so a default wait always answers before the
+client gives up. A client with a longer timeout can pass a larger `timeout_s`.
+
+When a `tools/call` carries `_meta.progressToken`, `jk mcp` follows that job's progress and writes
+`notifications/progress` for the token while the call is outstanding: the step, the running test
+and the percent (`progress` of `total` 100), at least every 5 s, with the last known state when
+the engine is quiet. MCP clients that reset their timeout on progress (the spec allows it) keep a
+long wait alive; the rest still get the `TIMEOUT` continuation. Over HTTP, read the same facts
+from the event stream (below).
 
 The CLI prints the same text with `--agent` or `JK_AGENT=1`, and when stdout is not a terminal
 and the process was spawned by a coding-agent CLI. Human terminals keep today's output.
@@ -128,9 +142,8 @@ The whole registry:
 | **`bind`** | Set or switch the connection's project dir; returns a project card. Not on the default list: the first call that carries `dir` binds |
 | **`status`** | Engine vitals (pid, version, heap) and the `jobs` array — every live and queued job as the same row `jk engine status --output json` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
 | **`project`** | Project card (coord, java, members, last run) |
-| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). `kind` is `build` (default) \| `test` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. Publish is **always a dry-run**. `only` limits modules. `run=<id>` with no `kind` reads an earlier verdict. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s`. `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
+| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). `jid` waits on a job already started instead. `kind` is `test` (default) \| `build` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. Publish is **always a dry-run**. `only` limits modules. `run=<id>` with no `kind` reads an earlier verdict. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (default 240). `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`build`** / **`test`** / **`lock`** | Async convenience aliases (return `jid` immediately) |
-| **`job`** | `get` \| `wait` \| `cancel`; omit `jid` → latest live job for bound dir |
 | **`cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
 | **`diagnostics`** | Problems past the verdict cap, or one file with full snippets (`file`) |
@@ -183,7 +196,7 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 | `recover-disk` | `disk usage` then clean/nuke with confirm |
 | `setup-ci` | `config apply_preset=ci` |
 | `upgrade-deps` | `outdated`, read its `file`, then `update` (preview), then `update apply=true` |
-| `stall-or-cancel` | `status` then `job cancel` |
+| `stall-or-cancel` | `status` then `cancel` |
 
 ## Live progress
 
@@ -194,7 +207,7 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 | Query | Effect |
 |-------|--------|
 | `?jid=N` | Only that job (from the tool result) |
-| `?progressToken=T` | Same, after `tools/call` with `"_meta":{"progressToken":"T"}` |
+| `?progressToken=T` | The job a `tools/call` with `"_meta":{"progressToken":"T"}` runs or waits on; the stream may open before that call |
 
 Unfiltered `GET /mcp` still receives every job.
 

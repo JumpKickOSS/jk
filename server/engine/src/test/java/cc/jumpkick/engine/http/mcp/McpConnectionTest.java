@@ -81,7 +81,7 @@ class McpConnectionTest {
         assertThat(result).doesNotContainKey("structuredContent");
         assertThat(text(result))
                 .contains("RUNNING build jid=")
-                .contains("job action=wait jid=")
+                .contains("run(jid=")
                 .doesNotContain("dashboard", "session", "trigger");
         // Who asked is still on the job the engine journals, not in the reply.
         assertThat(specs.getLast().origin().trigger()).isEqualTo("mcp");

@@ -10,14 +10,14 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
 /**
- * {@code run} — start a job and wait, or read an earlier verdict. {@code run} (a history id) with
- * no {@code kind} is the read; otherwise it starts a job, {@code test} unless {@code kind} says
- * otherwise. {@code only} limits modules.
+ * {@code run} — start a job and wait, keep waiting on one, or read an earlier verdict. {@code jid}
+ * waits on that job; {@code run} (a history id) with no {@code kind} is the read; otherwise it
+ * starts a job, {@code test} unless {@code kind} says otherwise. {@code only} limits modules.
  */
 public final class RunTool implements McpTool {
 
     static final String DESCRIPTION =
-            "Run and wait; the reply is the verdict. kind=test (default)|build|lock|…; only=modules; suites=[integration]; run=<id> rereads a run.";
+            "Run and wait; the reply is the verdict. kind=test (default)|build|lock|…; only=modules; jid=N waits; run=<id> rereads.";
 
     @Override
     public Spec spec() {
@@ -33,12 +33,16 @@ public final class RunTool implements McpTool {
                         McpSchemas.string(),
                         "run",
                         McpSchemas.string(),
+                        "jid",
+                        McpSchemas.integer(),
                         "suites",
                         McpSchemas.strings())));
     }
 
     @Override
     public Map<String, Object> call(McpCall in) {
+        Long jid = in.num("jid");
+        if (jid != null) return McpJobRuns.await(in, jid);
         String kind = in.str("kind");
         String run = in.str("run");
         if ((kind == null || kind.isBlank()) && run != null && !run.isBlank()) return earlier(in, run);

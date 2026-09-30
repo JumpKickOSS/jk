@@ -3,12 +3,13 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.jobs.JobSpec;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Numeric MCP progress tokens must match their SSE query text form. */
+/** MCP progress tokens: numeric ones match their SSE query text form, and a stream may open before the bind. */
 class McpProgressTokenTest {
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
@@ -57,6 +58,25 @@ class McpProgressTokenTest {
         assertThat(tokens.resolve("5")).isEqualTo(42L); // raw SSE query text
         assertThat(body).contains("jid=42");
         assertThat(body).doesNotContain("5.0");
+    }
+
+    @Test
+    void a_stream_opened_before_the_call_binds_its_token_follows_that_job_and_no_other() throws Exception {
+        ProgressTokenRegistry tokens = new ProgressTokenRegistry();
+        HttpEvents hub = new HttpEvents();
+        try (LiveVitals vitals = new LiveVitals(hub, () -> null, () -> null)) {
+            SseEndpoint sse = new SseEndpoint(hub, vitals, tokens, line -> {});
+            try (HttpEvents.Subscription s =
+                    hub.subscribeFollowing(HttpEvents.FrameStyle.MCP, sse.mcpEventFilter("progressToken=t-1"))) {
+                hub.publish("eta", JsonOut.object().put("jid", 42L));
+                assertThat(s.next(20)).as("unbound token delivers nothing").isNull();
+                tokens.bind("t-1", 42L);
+                hub.publish("eta", JsonOut.object().put("jid", 41L));
+                hub.publish("eta", JsonOut.object().put("jid", 42L));
+                assertThat(s.next(1_000)).contains("\"jid\":42");
+                assertThat(s.next(20)).isNull();
+            }
+        }
     }
 
     @Test
