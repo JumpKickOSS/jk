@@ -9,14 +9,14 @@ import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Where a forked test JVM writes its temporary files: under the module's build output, not the
+ * Where a forked test JVM writes its temporary files: the module's jk-owned temp root, not the
  * host's temp dir.
  *
  * <p>{@link cc.jumpkick.runtime.base.TestEnv} decides the directory and puts it in {@code TMPDIR};
  * this makes it exist, splits it per worker, and hands {@link JUnitLauncher} the path to mirror
  * into {@code java.io.tmpdir}. Its own owner because those are three steps on one fact, spread
  * across a launcher that is already at its size baseline, and because the second of them —
- * isolation without leaving {@code target/} — is a rule that reads as an implementation detail
+ * isolation without leaving the module's root — is a rule that reads as an implementation detail
  * right up until someone reaches for {@code createTempDirectory} again.
  */
 final class TestTmpDir {
@@ -68,10 +68,9 @@ final class TestTmpDir {
      * split, the module's itself when it is not.
      *
      * <p>Mill-class isolation, but a subdirectory rather than a fresh directory under the
-     * host temp dir. The point of pointing the temp root into {@code target/} is that nothing a
-     * suite writes escapes the build output — where {@code jk clean} can reach it, and where no
-     * other checkout shares it — and splitting the pool is not a reason to leave. Isolation is
-     * best-effort: when the subdirectory cannot be made, the shared module root is still the better
+     * host temp dir: nothing a suite writes escapes the module's root, which {@code jk clean}
+     * reaches and no other checkout shares, and splitting the pool is not a reason to leave.
+     * Isolation is best-effort: when the subdirectory cannot be made, the shared module root is still the better
      * of the two answers available, so it is the one the worker gets.
      */
     static @Nullable Path forWorker(@Nullable Path moduleTmp, int workerId, int totalWorkers) {
