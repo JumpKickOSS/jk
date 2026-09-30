@@ -100,6 +100,9 @@ public final class MavenRepo {
      */
     private final AtomicReference<@Nullable String> unreachable = new AtomicReference<>();
 
+    /** {@code optional = true} on the declaring table, or a repository a dependency's POM declares. */
+    private final boolean optional;
+
     /** A settings.xml mirror standing in for a repository: the URL its requests open, the mirror's credential, its label. */
     public record Mirror(String id, URI url, RepoCredential credential, String label) {}
 
@@ -167,7 +170,29 @@ public final class MavenRepo {
                 allowInsecure,
                 releases,
                 snapshots,
-                mirror);
+                mirror,
+                optional);
+    }
+
+    /**
+     * This repository as one the resolve can do without ({@code optional = true}): once nothing
+     * answers at its address it is passed over like a blocked one instead of stopping the resolve.
+     */
+    public MavenRepo withOptional(boolean optional) {
+        return new MavenRepo(
+                name,
+                baseUrl,
+                transport,
+                cas,
+                credential,
+                http,
+                m2integration,
+                allowUnverified,
+                allowInsecure,
+                servesReleases,
+                servesSnapshots,
+                mirror,
+                optional);
     }
 
     /**
@@ -191,7 +216,8 @@ public final class MavenRepo {
                 allowInsecure,
                 servesReleases,
                 servesSnapshots,
-                mirror);
+                mirror,
+                optional);
     }
 
     /** The settings.xml mirror this repository's requests go through, when one applies. */
@@ -241,7 +267,8 @@ public final class MavenRepo {
                 allowInsecure,
                 true,
                 true,
-                null);
+                null,
+                false);
     }
 
     /** As above, with the release/snapshot policy — Maven's default is both on — and the mirror, if any. */
@@ -257,7 +284,8 @@ public final class MavenRepo {
             boolean allowInsecure,
             boolean servesReleases,
             boolean servesSnapshots,
-            @Nullable Mirror mirror) {
+            @Nullable Mirror mirror,
+            boolean optional) {
         this.name = Objects.requireNonNull(name, "name");
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
         this.mirror = mirror;
@@ -274,6 +302,7 @@ public final class MavenRepo {
         this.allowInsecure = allowInsecure;
         this.servesReleases = servesReleases;
         this.servesSnapshots = servesSnapshots;
+        this.optional = optional;
         this.http = httpOrNull;
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
@@ -292,11 +321,12 @@ public final class MavenRepo {
     /**
      * A repository a dependency's POM declares, over this repository's store and client: anonymous,
      * with neither {@code allow-unverified} nor {@code allow-insecure} — a POM has no table to opt in
-     * with, so its repository is held to the rule a project-declared one meets by default — and
-     * with the {@code <releases>} / {@code <snapshots>} policy the POM wrote.
+     * with, so its repository is held to the rule a project-declared one meets by default — with
+     * the {@code <releases>} / {@code <snapshots>} policy the POM wrote, and {@linkplain #passable
+     * passable}, as Maven falls through a POM's repository that answers nothing.
      */
     public MavenRepo declaredByPom(String name, URI url, boolean releases, boolean snapshots) {
-        Http client = http != null ? http : Http.forRepositories();
+        Http client = (http != null ? http : Http.forRepositories()).withoutSilenceRetries();
         return new MavenRepo(
                 name,
                 url,
@@ -309,7 +339,31 @@ public final class MavenRepo {
                 false,
                 releases,
                 snapshots,
-                null);
+                null,
+                true);
+    }
+
+    /**
+     * True when the resolve passes this repository over once nothing answers at its address, as
+     * it does a blocked one, instead of stopping: one declared {@code optional}, and any at a
+     * loopback address — a developer's local Nexus no other machine runs.
+     */
+    public boolean passable() {
+        return passable(optional, baseUrl);
+    }
+
+    /**
+     * {@link #passable()} for a repository declared {@code optional} or not at {@code url}; such a
+     * repository is built over {@link Http#withoutSilenceRetries()}, so it is passed over after one
+     * silent attempt rather than the whole ladder.
+     */
+    public static boolean passable(boolean optional, URI url) {
+        return optional || RepositorySpec.loopback(url.getHost());
+    }
+
+    /** The connect-level fault that made this repository unreachable for the rest of the job, or null. */
+    public @Nullable String unreachableFault() {
+        return unreachable.get();
     }
 
     /** True when {@code version} is of a kind this repository is asked for; see {@link #servesSnapshots()}. */
@@ -556,14 +610,29 @@ public final class MavenRepo {
     }
 
     /**
-     * {@code transport} as this repository's unreachable failure when its cause is connect-level —
-     * remembered, so the repository is asked nothing more — else {@code transport} itself.
+     * {@code transport} as this repository's unreachable failure when its cause is connect-level,
+     * or — for a {@linkplain #passable passable} one — when it got no HTTP answer at all (reset,
+     * dropped, timed out): remembered, so the repository is asked nothing more. Else {@code
+     * transport} itself.
      */
     private IOException unreachableOr(IOException transport) {
         String fault = ConnectFaults.describe(transport);
+        if (fault == null && passable()) fault = silence(transport);
         if (fault == null) return transport;
         unreachable.compareAndSet(null, fault);
         return new RepositoryUnreachableException(name, baseUrl, fault, transport);
+    }
+
+    /** The no-answer failure in {@code failure}'s cause chain as one line naming what it met, or null. */
+    private static @Nullable String silence(Throwable failure) {
+        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof Http.NoAnswerException noAnswer) {
+                Throwable met = noAnswer.getCause() == null ? noAnswer : noAnswer.getCause();
+                String detail = met.getMessage();
+                return met.getClass().getSimpleName() + (detail == null || detail.isBlank() ? "" : ": " + detail);
+            }
+        }
+        return null;
     }
 
     /**

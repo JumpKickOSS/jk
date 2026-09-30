@@ -229,7 +229,8 @@ public final class RepoGroupBuilder {
             // credentials do: they are secrets, so they must not be committed literally, and
             // expansion belongs where the request's environment is in scope — and under the
             // resolver's provenance rule, so a project names only its own variables.
-            RepoTransport transport = RepoTransports.forUrl(spec.url(), http, expandObjectStore(spec, creds, env));
+            Http repoHttp = MavenRepo.passable(spec.optional(), spec.url()) ? http.withoutSilenceRetries() : http;
+            RepoTransport transport = RepoTransports.forUrl(spec.url(), repoHttp, expandObjectStore(spec, creds, env));
             // Hand the client through, not just the transport: the transport-only constructor nulls it,
             // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
             // build.
@@ -239,11 +240,12 @@ public final class RepoGroupBuilder {
                             transport,
                             cas,
                             cred,
-                            http,
+                            repoHttp,
                             mirrorToM2,
                             spec.allowUnverified(),
                             spec.allowInsecure())
-                    .withPolicy(spec.releases(), spec.snapshots());
+                    .withPolicy(spec.releases(), spec.snapshots())
+                    .withOptional(spec.optional());
             repos.add(RepoMirrors.apply(repo, settings, creds));
             exclusiveGroups.add(exclusiveGroupsFor(spec));
             routedGroups.add(routedGroupsFor(spec));

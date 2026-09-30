@@ -103,7 +103,8 @@ public final class RepositoryToml {
             "allow-unverified",
             "releases",
             "snapshots",
-            "blocked");
+            "blocked",
+            "optional");
 
     /** One entry; {@code null} when it is malformed and the layer skips rather than rejects. */
     private static @Nullable RepositorySpec entry(String name, @Nullable Object value, VarPolicy vars, OnBad onBad) {
@@ -117,6 +118,7 @@ public final class RepositoryToml {
         boolean releases = true;
         boolean snapshots = true;
         boolean blocked = false;
+        boolean optional = false;
         if (value instanceof String s) {
             url = s;
         } else if (value instanceof TomlTable t) {
@@ -142,6 +144,7 @@ public final class RepositoryToml {
                 releases = flag(t, "releases", where, true);
                 snapshots = flag(t, "snapshots", where, true);
                 blocked = flag(t, "blocked", where);
+                optional = flag(t, "optional", where);
             } catch (IllegalArgumentException e) {
                 if (onBad == OnBad.SKIP) return null;
                 throw new JkBuildParseException(e.getMessage(), e);
@@ -187,7 +190,8 @@ public final class RepositoryToml {
                 allowUnverified,
                 releases,
                 snapshots,
-                blocked);
+                blocked,
+                optional);
     }
 
     /**

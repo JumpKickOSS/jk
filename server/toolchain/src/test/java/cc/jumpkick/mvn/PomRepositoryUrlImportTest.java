@@ -46,12 +46,13 @@ class PomRepositoryUrlImportTest {
                         Tuple.tuple("confluent", "https://packages.confluent.io/maven/"),
                         Tuple.tuple("nexus", "https://nexus.example:8081/repository/releases/"));
         assertThat(JkBuildRenderer.render(result.jkBuild()))
-                .contains("confluent = \"https://packages.confluent.io/maven/\"");
+                .contains("confluent = { url = \"https://packages.confluent.io/maven/\", optional = true }");
     }
 
     /**
      * Maven 3.9 blocks a plaintext {@code http://} repository and builds on while nothing needs it;
-     * the import writes it blocked and says so, and the manifest it writes parses.
+     * the import writes it blocked and says so, and the manifest it writes parses. Every other
+     * repository is written {@code optional}, as Maven falls through one that answers nothing.
      */
     @Test
     void a_plaintext_http_repository_is_written_blocked_and_is_a_row(@TempDir Path tempDir) throws Exception {
@@ -75,8 +76,8 @@ class PomRepositoryUrlImportTest {
                 """);
 
         assertThat(result.jkBuild().repositories())
-                .extracting(RepositorySpec::name, RepositorySpec::blocked)
-                .containsExactly(Tuple.tuple("nm-repo", true), Tuple.tuple("local", false));
+                .extracting(RepositorySpec::name, RepositorySpec::blocked, RepositorySpec::optional)
+                .containsExactly(Tuple.tuple("nm-repo", true, false), Tuple.tuple("local", false, true));
         assertThat(result.report().issues())
                 .filteredOn(i -> i.severity() == ImportReport.Severity.WARNING)
                 .extracting(ImportReport.Issue::message)
@@ -87,9 +88,9 @@ class PomRepositoryUrlImportTest {
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered)
                 .contains("nm-repo = { url = \"http://repo.numericalmethod.com/maven/\", blocked = true }")
-                .contains("local = \"http://localhost:8081/maven/\"");
+                .contains("local = { url = \"http://localhost:8081/maven/\", optional = true }");
         assertThat(JkBuildParser.parse(rendered).repositories())
-                .extracting(RepositorySpec::name, RepositorySpec::blocked)
-                .containsExactly(Tuple.tuple("nm-repo", true), Tuple.tuple("local", false));
+                .extracting(RepositorySpec::name, RepositorySpec::blocked, RepositorySpec::optional)
+                .containsExactly(Tuple.tuple("nm-repo", true, false), Tuple.tuple("local", false, true));
     }
 }
