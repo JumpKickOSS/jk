@@ -715,6 +715,62 @@ final class ParityRules {
         v.population(3);
     }
 
+    // ---- G111 --------------------------------------------------------------------------------
+
+    private static final List<String> CLAIM_DOCS = List.of("README.md", "docs/user/why.md", "docs/user/comparison.md");
+
+    /** A link to the measured tables, or the banked table itself. */
+    private static final Pattern EVIDENCE =
+            Pattern.compile("performance\\.md|making-the-north-star-true|wall-table:|\\| jk peak RSS \\|");
+
+    /** Faster, slower, peak RSS, a MiB/GiB figure, a multiple, or a percentage against another tool. */
+    private static final Pattern CLAIM = Pattern.compile(
+            "(?i:\\b(?:faster|slower|quicker|speed-?ups?|wall[- ]clock|cold start|peak RSS|whole-tree RSS"
+                    + "|(?:less|more|lower|higher) memory|(?:competitive|parity) with)\\b)"
+                    + "|\\b\\d[\\d,.]*\\s?[KMG]i?B\\b"
+                    + "|\\d\\s?×"
+                    + "|\\d\\s?%\\s+(?i:less|more|lower|higher|fewer|smaller|faster|slower)\\b"
+                    + "|(?i:\\bbeats?\\b)[^\\n]{0,40}\\d\\s?%");
+
+    @Guard(
+            id = "speed-claims-cite-the-table",
+            why = "a speed or memory sentence without the table behind it drifts from the numbers the harness banks",
+            instead =
+                    "link docs/user/performance.md (the wall and RSS table) or why.md#making-the-north-star-true in the same paragraph or table, and say what that table shows")
+    @Fixture("server/guard/fixtures/speed-claims-cite-the-table")
+    void speedClaimsCiteTheTable(Text text, Violations v) {
+        int population = 0;
+        for (String doc : CLAIM_DOCS) {
+            String body = textOrNull(text, doc);
+            if (body == null) continue;
+            List<String> lines = List.of(body.split("\n", -1));
+            int start = 0;
+            while (start < lines.size()) {
+                if (lines.get(start).isBlank()) {
+                    start++;
+                    continue;
+                }
+                int end = start;
+                while (end < lines.size() && !lines.get(end).isBlank()) end++;
+                population++;
+                List<String> paragraph = lines.subList(start, end);
+                if (paragraph.stream().noneMatch(l -> EVIDENCE.matcher(l).find())) {
+                    for (int i = 0; i < paragraph.size(); i++) {
+                        Matcher m = CLAIM.matcher(paragraph.get(i));
+                        if (!m.find()) continue;
+                        v.add(
+                                new TextSite(doc, start + i + 1, m.group()),
+                                doc + ":" + (start + i + 1) + " claims `" + m.group()
+                                        + "` in a paragraph that cites no measured table");
+                        break;
+                    }
+                }
+                start = end;
+            }
+        }
+        v.population(population);
+    }
+
     // ---- G63 ---------------------------------------------------------------------------------
 
     private static final String REGISTRY = "curated-integration.txt";
