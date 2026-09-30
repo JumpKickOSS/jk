@@ -22,8 +22,20 @@ jk jdk verify                  # fingerprint managed trees (`jk jdks verify`)
 jk shell                       # subshell with the project JDK
 ```
 
-Discovery looks at existing installs (IntelliJ shared root, SDKMAN, mise, asdf, Homebrew,
-system, `JAVA_HOME`) before downloading from the JetBrains JDK feed. Managed write root:
+Discovery looks at existing installs before downloading from the JetBrains JDK feed. Each JDK
+`jk jdk list` shows carries the source that found it:
+
+| Source | Where it looks | `jk jdk uninstall` |
+|---|---|---|
+| `jk` | The managed write root below | Deletes it |
+| `intellij` / `jdks` | IntelliJ's shared root; `intellij` when an IDE registered the JDK | `intellij`: refused; `jdks`: deletes it |
+| `gradle` | `~/.gradle/jdks` (Gradle's provisioned JDKs) | Deletes it |
+| `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew` | That tool's install directory | Runs that tool's uninstall first |
+| `system` | OS package locations | Refused |
+| `maven-toolchains` | Every `jdkHome` of type `jdk` in `~/.m2/toolchains.xml`, `${env.NAME}` expanded | Refused: a pointer |
+| `path` | `JAVA_HOME` when no source above owns it | Deletes it |
+
+`JK_JDK_PROBES` ([Install](install.md)) narrows discovery to the named sources. Managed write root:
 [Install](install.md) (IntelliJ-shared `~/.jdks` / macOS Library JVMs). JumpKick's inventory of
 those trees (defaults + SHA-256 fingerprints) lives in **`$JK_STATE_DIR/jk-jdks.toml`**
 (`~/.jk/state/jk-jdks.toml` on Linux), not next to the installs — the jdks directory is

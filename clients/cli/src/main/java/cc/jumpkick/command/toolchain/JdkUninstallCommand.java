@@ -24,6 +24,7 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkToolUninstaller;
+import cc.jumpkick.jdk.JdkUninstallPolicy;
 import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -101,31 +102,6 @@ public final class JdkUninstallCommand implements CliCommand {
     private static final Set<String> KNOWN_SOURCES =
             Set.of("jk", "intellij", "jdks", "sdkman", "jbang", "mise", "asdf", "jenv", "homebrew", "path");
 
-    /**
-     * Sources jk refuses to uninstall from — the install's lifecycle belongs to another owner. {@code
-     * system} is the OS package manager; {@code intellij} is a JDK an IDE has registered in its
-     * {@code jdk.table.xml} (an unmanaged JDK merely sitting in {@code ~/.jdks} is labelled {@code
-     * jdks} and stays removable). See {@link #forbiddenSourceMessage}.
-     */
-    private static final Set<String> UNINSTALL_FORBIDDEN_SOURCES = Set.of("system", "intellij");
-
-    /** Explain why a forbidden {@code source} can't be removed by jk. */
-    private static String forbiddenSourceMessage(String source) {
-        return switch (source) {
-            case "intellij" ->
-                "jk jdk uninstall: `"
-                        + source
-                        + "` JDKs are managed by your IDE — "
-                        + "remove this one through IntelliJ (Project Structure ▸ SDKs, or the "
-                        + "Download JDK list), not jk.";
-            default ->
-                "jk jdk uninstall: refusing to remove `"
-                        + source
-                        + "` installs — they're managed by the OS package manager "
-                        + "(use your distro's tooling, e.g. apt/dnf/brew, to remove them).";
-        };
-    }
-
     @Nullable
     String argument;
 
@@ -184,8 +160,9 @@ public final class JdkUninstallCommand implements CliCommand {
 
         // Validate an explicitly-supplied source up front.
         if (source != null) {
-            if (UNINSTALL_FORBIDDEN_SOURCES.contains(source)) {
-                CliOutput.err(forbiddenSourceMessage(source));
+            Optional<String> refused = JdkUninstallPolicy.refusal(source);
+            if (refused.isPresent()) {
+                CliOutput.err(refused.get());
                 return Exit.USAGE;
             }
             if (!KNOWN_SOURCES.contains(source)) {
@@ -227,11 +204,10 @@ public final class JdkUninstallCommand implements CliCommand {
         }
 
         JdkHit hit = match.get();
-        // A bare spec can resolve to a protected install (an OS `system` JDK, or
-        // an IDE-registered `intellij` one). Refuse it the same way an explicit
-        // `<source>/...` would be — naming the source so the reason is clear.
-        if (UNINSTALL_FORBIDDEN_SOURCES.contains(hit.source())) {
-            CliOutput.err(forbiddenSourceMessage(hit.source()));
+        // A bare spec can resolve to a refused install; name its source and home.
+        Optional<String> refused = JdkUninstallPolicy.refusal(hit);
+        if (refused.isPresent()) {
+            CliOutput.err(refused.get());
             return Exit.USAGE;
         }
 
@@ -247,15 +223,14 @@ public final class JdkUninstallCommand implements CliCommand {
     // --- wizard path --------------------------------------------------------
 
     private Integer runWizard(JdkRegistry registry, JdkInventory defaults) throws IOException {
-        // Installs jk can't remove — OS-package-manager (`system`) and
-        // IDE-registered (`intellij`) JDKs — don't belong in the checklist.
+        // Installs jk refuses to remove don't belong in the checklist.
         List<JdkHit> installed = registry.listHits().stream()
-                .filter(h -> !UNINSTALL_FORBIDDEN_SOURCES.contains(h.source()))
+                .filter(h -> JdkUninstallPolicy.removable(h.source()))
                 .toList();
         if (installed.isEmpty()) {
             CommandWedge.printFail(
                     "JDK",
-                    "no removable JDKs installed " + "(system- and IDE-managed installs aren't removable here).");
+                    "no removable JDKs installed (JDKs another tool owns or only points at aren't removable here).");
             return 0;
         }
         Optional<String> currentDefault = defaults.defaultId();
