@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.JavaRelease;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -39,6 +40,9 @@ public record CompileRequest(
         processorPath = List.copyOf(processorPath);
         if (compilerClasspath == null) compilerClasspath = List.of();
         compilerClasspath = List.copyOf(compilerClasspath);
+        // A module that declares neither java nor jdk compiles at the level of the JDK compiling it,
+        // as javac does without --release.
+        if (release == 0) release = javaHome == null ? Runtime.version().feature() : JvmOptions.hostFeature(javaHome);
         if (release < JavaRelease.OLDEST) {
             throw new IllegalArgumentException("release must be >= " + JavaRelease.OLDEST + ", got: " + release);
         }

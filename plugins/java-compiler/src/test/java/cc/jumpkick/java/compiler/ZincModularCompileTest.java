@@ -92,6 +92,46 @@ class ZincModularCompileTest {
         assertThat(dir.resolve("app/test-classes/com/acme/app/AppTest.class")).isRegularFile();
     }
 
+    @Test
+    void a_test_descriptor_for_the_main_module_compiles_with_the_main_classes_patched_in(@TempDir Path dir)
+            throws Exception {
+        Path lib = explicitModule(dir);
+        Path src = dir.resolve("app/src");
+        write(src, "module-info.java", "module com.acme.app { requires com.acme.lib; exports com.acme.app; }");
+        write(src, "com/acme/app/App.java", """
+                package com.acme.app;
+                public class App {
+                    static String secret() { return com.acme.lib.Lib.hi(); }
+                }
+                """);
+        Path classes = dir.resolve("app/classes");
+        assertThat(ZincJavaCompiler.compileJava(job(src, List.of(lib), classes, dir.resolve("app/zinc"), List.of()))
+                        .success())
+                .isTrue();
+        Path helper = classpathOnlyJar(dir);
+        Path testSrc = dir.resolve("app/test");
+        write(testSrc, "module-info.java", """
+                module com.acme.app { requires com.acme.lib; requires helper; exports com.acme.app; }
+                """);
+        write(testSrc, "com/acme/app/AppTest.java", """
+                package com.acme.app;
+                public class AppTest {
+                    public static String t() { return App.secret() + org.helper.Helper.h(); }
+                }
+                """);
+        List<String> patch = List.of("--patch-module", "com.acme.app=" + classes.toAbsolutePath());
+
+        ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(job(
+                testSrc,
+                List.of(classes, lib, helper),
+                dir.resolve("app/test-classes"),
+                dir.resolve("app/zinc-test"),
+                patch));
+
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(dir.resolve("app/test-classes/com/acme/app/AppTest.class")).isRegularFile();
+    }
+
     /** {@code com.acme.lib}, an explicit module compiled to a classes directory. */
     private static Path explicitModule(Path dir) throws IOException {
         Path src = dir.resolve("lib/src");
