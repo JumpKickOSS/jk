@@ -139,7 +139,7 @@ public final class LintPlugin implements Plugin, BuildExtension {
                 config.stringOpt("pmd-exclude").ifPresent(files::add);
                 yield files;
             }
-            case SPOTBUGS -> config.stringOpt("spotbugs-exclude").map(List::of).orElse(List.of());
+            case SPOTBUGS -> config.stringList("spotbugs-exclude");
             case DETEKT -> config.stringOpt("detekt-config").map(List::of).orElse(List.of());
         };
     }

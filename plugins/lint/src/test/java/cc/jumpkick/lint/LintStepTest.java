@@ -397,6 +397,29 @@ class LintStepTest {
                 .doesNotContain("-maxRank", "-omitVisitors", "-visitors", "-pluginList");
     }
 
+    /** Every {@code spotbugs-exclude} filter file is its own {@code -exclude}, so a finding any matches is left out. */
+    @Test
+    void every_spotbugs_filter_file_is_an_exclude(@TempDir Path tmp) throws Exception {
+        Path module = tmp.resolve("m");
+        FakeBuildIo io = new FakeBuildIo(module, "lint")
+                .config(Map.of(
+                        "spotbugs",
+                        true,
+                        "spotbugs-exclude",
+                        List.of("src/main/findbugs/exclude.xml", "../dev-support/findbugs-exclude-global.xml")));
+
+        List<String> args = LintStep.arguments(LintTool.SPOTBUGS, io, List.of(), tmp.resolve("report.xml"));
+
+        assertThat(args)
+                .containsSequence(
+                        "-exclude",
+                        module.resolve("src/main/findbugs/exclude.xml").toString())
+                .containsSequence(
+                        "-exclude",
+                        module.resolve("../dev-support/findbugs-exclude-global.xml")
+                                .toString());
+    }
+
     /** {@code exclude} globs reach Checkstyle as {@code -x} path patterns and detekt as {@code --excludes}. */
     @Test
     void exclude_globs_are_passed_the_way_each_tool_leaves_paths_out(@TempDir Path tmp) throws Exception {

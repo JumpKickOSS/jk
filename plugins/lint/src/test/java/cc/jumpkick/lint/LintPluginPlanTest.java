@@ -155,12 +155,19 @@ class LintPluginPlanTest {
     void the_spotbugs_step_reads_the_compile_classpath_too() {
         TaskSpec spec = LintPlugin.task(
                 LintTool.SPOTBUGS,
-                new PluginConfig("lint", Map.of("spotbugs", true, "spotbugs-exclude", "config/spotbugs-exclude.xml")));
+                new PluginConfig(
+                        "lint",
+                        Map.of(
+                                "spotbugs",
+                                true,
+                                "spotbugs-exclude",
+                                List.of("config/spotbugs-exclude.xml", "dev/global.xml"))));
 
         assertThat(spec.declaredInputs())
                 .containsExactly(
                         In.projectFiles("src/main/java"),
                         In.projectFiles("config/spotbugs-exclude.xml"),
+                        In.projectFiles("dev/global.xml"),
                         In.classes(),
                         In.compileClasspath(),
                         In.config());
