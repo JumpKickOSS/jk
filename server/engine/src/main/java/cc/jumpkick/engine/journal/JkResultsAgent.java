@@ -7,8 +7,10 @@ import cc.jumpkick.test.MarkdownTestReport;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -34,8 +36,14 @@ public final class JkResultsAgent {
     /** Project stack frames under one test failure. */
     public static final int MAX_FRAMES = 3;
 
-    /** Snippet lines when a caller asks for the lines around an error, not only the offending one. */
+    /** Source rows in a window: the offending line and one on each side. */
     static final int MAX_SNIPPET = 3;
+
+    /** A source line longer than this is not quoted: it would swamp the report. */
+    static final int MAX_QUOTE = 400;
+
+    /** A source file larger than this is not read for a quote. */
+    private static final long MAX_SOURCE_BYTES = 2L << 20;
 
     /** Problems in the all-problems report. Past it, the human markdown has the rest. */
     public static final int MAX_ALL = 200;
@@ -317,9 +325,15 @@ public final class JkResultsAgent {
                     if (col <= 0) col = loc.col();
                 }
             }
+            boolean test = JkResultsMarkdown.isTest(d);
+            // A test failure's file is module-relative; the report's paths are project-relative.
+            if (test
+                    && !file.isBlank()
+                    && !isAbsolute(file.replace('\\', '/'))
+                    && d.dir() != null
+                    && !d.dir().isBlank()) file = Path.of(d.dir()).resolve(file).toString();
             file = rel(file, r.dir());
             String text = JkResultsHints.firstLine(message);
-            boolean test = JkResultsMarkdown.isTest(d);
             String step = d.step() == null ? "" : d.step();
             out.add(new Locus(d, file, line, col, text, test, step));
         }
@@ -357,7 +371,7 @@ public final class JkResultsAgent {
             if (head.col() > 0) sb.append(':').append(head.col());
             if (!head.message().isEmpty()) sb.append(' ').append(one(head.message(), r.dir()));
             sb.append('\n');
-            appendSnippet(sb, head, opt.fullSnippets, r.dir());
+            appendRows(sb, rows(head.diag(), head.file(), head.line(), r.dir(), opt.fullSnippets));
             if (!more.isEmpty()) {
                 boolean sameFile = true;
                 for (Locus m : more) if (!m.file().equals(head.file())) sameFile = false;
@@ -389,8 +403,9 @@ public final class JkResultsAgent {
             if (id.isEmpty()) continue;
             if (!matches(d.file(), opt.file) && !matches(id, opt.file)) continue;
             seen.add(id);
+            List<Row> rows = rows(d.diag(), d.file(), d.line(), r.dir(), opt.fullSnippets);
             blocks.add(testBlock(
-                    id, d.message(), d.diag().stack(), d.diag().exceptionClass(), d.file(), d.line(), r.dir()));
+                    id, d.message(), d.diag().stack(), d.diag().exceptionClass(), d.file(), d.line(), rows, r.dir()));
             files.add(d.file());
         }
         if (tests == null) return;
@@ -401,7 +416,8 @@ public final class JkResultsAgent {
                 String id = testId(e.className(), e.displayName());
                 if (id.isEmpty() || seen.contains(id)) continue;
                 String message = e.failureMessage() == null ? "" : e.failureMessage();
-                blocks.add(testBlock(id, JkResultsHints.firstLine(message), e.failureStack(), null, "", 0, r.dir()));
+                blocks.add(testBlock(
+                        id, JkResultsHints.firstLine(message), e.failureStack(), null, "", 0, List.of(), r.dir()));
                 files.add("");
             }
         }
@@ -435,6 +451,7 @@ public final class JkResultsAgent {
             @Nullable String exception,
             String file,
             int line,
+            List<Row> rows,
             String projectDir) {
         StringBuilder sb = new StringBuilder();
         sb.append("T ").append(id).append('\n');
@@ -442,6 +459,8 @@ public final class JkResultsAgent {
         if (detail.isEmpty() && exception != null && !exception.isBlank()) detail = exception.strip();
         if (!detail.isEmpty()) sb.append("  ").append(detail).append('\n');
         int frames = 0;
+        boolean quoted = false;
+        boolean located = line > 0 && !file.isEmpty();
         if (stack != null && !stack.isBlank()) {
             for (String raw : stack.split("\n", -1)) {
                 if (frames >= MAX_FRAMES) break;
@@ -451,12 +470,19 @@ public final class JkResultsAgent {
                 String src = m.group(3);
                 int at = Integer.parseInt(m.group(4));
                 if (!projectFrame(cls, src)) continue;
-                sb.append("  at ").append(leaf(src)).append(':').append(at).append('\n');
                 frames++;
+                if (!quoted && located && at == line && leaf(src).equals(leaf(file))) {
+                    sb.append("  at ").append(file).append(':').append(at).append('\n');
+                    appendRows(sb, rows);
+                    quoted = true;
+                    continue;
+                }
+                sb.append("  at ").append(leaf(src)).append(':').append(at).append('\n');
             }
         }
-        if (frames == 0 && line > 0 && !file.isEmpty()) {
-            sb.append("  at ").append(leaf(file)).append(':').append(line).append('\n');
+        if (frames == 0 && located) {
+            sb.append("  at ").append(file).append(':').append(line).append('\n');
+            appendRows(sb, rows);
         }
         if (stack != null) {
             String hint = JkResultsCause.hint(stack);
@@ -523,70 +549,108 @@ public final class JkResultsAgent {
         return null;
     }
 
-    private static void appendSnippet(StringBuilder sb, Locus d, boolean full, String projectDir) {
-        List<String> snip = d.diag().snippet();
-        if (snip == null || snip.isEmpty()) {
-            if (d.line() <= 0) return;
-            if (!full) {
-                String line = readSourceLine(projectDir, d.file(), d.line());
-                if (line != null)
-                    sb.append("  ").append(d.line()).append("| ").append(line).append('\n');
-                return;
-            }
-            int from = Math.max(1, d.line() - 1);
-            for (int n = from; n < from + MAX_SNIPPET; n++) {
-                String line = readSourceLine(projectDir, d.file(), n);
-                if (line == null) break;
-                sb.append("  ").append(n).append("| ").append(line).append('\n');
-            }
-            return;
-        }
-        int start = d.diag().snippetStart();
-        int idx = 0;
-        if (start > 0 && d.line() >= start) idx = d.line() - start;
-        if (idx < 0 || idx >= snip.size()) idx = 0;
-        if (!full) {
-            String line = sourceLine(snip.get(idx));
-            if (!line.isEmpty())
-                sb.append("  ").append(d.line()).append("| ").append(line).append('\n');
-            return;
-        }
-        int from = Math.max(0, idx - 1);
-        int to = Math.min(snip.size(), from + MAX_SNIPPET);
-        for (int i = from; i < to; i++) {
-            int n = start > 0 ? start + i : d.line();
-            String line = sourceLine(snip.get(i));
-            if (line.isEmpty()) continue;
-            sb.append("  ").append(n).append("| ").append(line).append('\n');
-        }
+    /** One quoted source row: its line number and the line exactly as the file has it. */
+    private record Row(int n, String text) {}
+
+    /**
+     * {@code  16|}, a tab, then the line verbatim: an agent drops everything through the first
+     * tab and has an Edit {@code old_string}, indentation included.
+     */
+    private static void appendRows(StringBuilder sb, List<Row> rows) {
+        for (Row r : rows)
+            sb.append("  ").append(r.n()).append("|\t").append(r.text()).append('\n');
     }
 
-    /** The one source line a compile error points at, when the diagnostic stored no snippet. */
-    private static @Nullable String readSourceLine(String projectDir, String file, int line) {
-        if (line <= 0 || file.isEmpty() || projectDir == null || projectDir.isBlank()) return null;
-        Path path = Path.of(projectDir, file);
-        if (!Files.isRegularFile(path)) return null;
-        try {
-            String raw;
-            try (var lines = Files.lines(path)) {
-                raw = lines.skip(line - 1L).findFirst().orElse(null);
+    /**
+     * The offending line, or the window of {@link #MAX_SNIPPET} around it when {@code full} or when
+     * the line alone occurs more than once in its file and would not be a unique Edit target. Rows
+     * come from the diagnostic's snippet, else from the file on disk.
+     */
+    private static List<Row> rows(BuildRecord.Diag d, String file, int line, String projectDir, boolean full) {
+        if (line <= 0) return List.of();
+        String disk = readSource(projectDir, file);
+        Map<Integer, String> src = snippetRows(d, line);
+        if (src.isEmpty() && disk != null) src = diskRows(disk, line);
+        String hit = src.get(line);
+        if (hit != null && hit.length() > MAX_QUOTE) return List.of();
+        boolean wide = full || (hit != null && !hit.isBlank() && disk != null && occurrences(disk, hit) > 1);
+        if (!wide) {
+            if (hit == null || hit.isBlank()) return List.of();
+            return List.of(new Row(line, hit));
+        }
+        int from = Math.max(1, line - 1);
+        List<Row> out = new ArrayList<>();
+        for (int n = from; n < from + MAX_SNIPPET; n++) {
+            String text = src.get(n);
+            if (text == null || text.length() > MAX_QUOTE) {
+                if (n < line) {
+                    out.clear();
+                    continue;
+                }
+                break;
             }
-            if (raw == null) return null;
-            String text = one(raw, "");
-            return text.isEmpty() ? null : text;
-        } catch (IOException | UncheckedIOException e) {
+            out.add(new Row(n, text));
+        }
+        return out;
+    }
+
+    /**
+     * The diagnostic's snippet by line number. A row is the source itself or {@code @@src N|source}
+     * / {@code @@src N*|source}; with no {@code snippetStart} the one row is the offending line.
+     */
+    private static Map<Integer, String> snippetRows(BuildRecord.Diag d, int line) {
+        List<String> snip = d.snippet();
+        Map<Integer, String> out = new HashMap<>();
+        if (snip == null || snip.isEmpty()) return out;
+        int start = d.snippetStart();
+        int n = start > 0 ? start : line;
+        for (String raw : snip) {
+            if (raw == null) continue;
+            String s = raw;
+            if (s.startsWith("@@src ")) {
+                int bar = s.indexOf('|');
+                if (bar < 0) continue;
+                s = s.substring(bar + 1);
+            } else if (s.startsWith("@@")) {
+                continue;
+            }
+            out.put(n, verbatim(s));
+            if (start <= 0) break;
+            n++;
+        }
+        return out;
+    }
+
+    /** The lines of {@code text} around {@code line}, by line number. */
+    private static Map<Integer, String> diskRows(String text, int line) {
+        Map<Integer, String> out = new HashMap<>();
+        String[] lines = text.split("\n", -1);
+        int from = Math.max(1, line - 1);
+        for (int n = from; n < from + MAX_SNIPPET && n <= lines.length; n++) out.put(n, verbatim(lines[n - 1]));
+        return out;
+    }
+
+    /** The line without its line terminator; leading and trailing whitespace stay. */
+    private static String verbatim(String raw) {
+        return raw.endsWith("\r") ? raw.substring(0, raw.length() - 1) : raw;
+    }
+
+    private static int occurrences(String text, String needle) {
+        int count = 0;
+        for (int i = text.indexOf(needle); i >= 0; i = text.indexOf(needle, i + 1)) count++;
+        return count;
+    }
+
+    /** The source file a problem points at, when it is on disk under {@code projectDir}. */
+    private static @Nullable String readSource(String projectDir, String file) {
+        if (file.isEmpty() || projectDir == null || projectDir.isBlank()) return null;
+        Path path = Path.of(projectDir, file);
+        try {
+            if (!Files.isRegularFile(path) || Files.size(path) > MAX_SOURCE_BYTES) return null;
+            return Files.readString(path);
+        } catch (IOException | UncheckedIOException | InvalidPathException e) {
             return null;
         }
-    }
-
-    /** A snippet row is either the source itself or {@code @@src N|source} / {@code @@src N*|source}. */
-    private static String sourceLine(String raw) {
-        if (raw == null) return "";
-        String s = raw.stripTrailing();
-        if (s.startsWith("@@")) return "";
-        int bar = s.indexOf('|');
-        if (s.startsWith("@@src ") && bar > 0) s = s.substring(bar + 1);
-        return one(s.strip(), "");
     }
 
     private static void appendFix(StringBuilder sb, BuildRecord.Diag d) {

@@ -4,10 +4,13 @@ package cc.jumpkick.engine.journal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.test.MarkdownTestReport;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The agent report: one line when the run is OK, one problem per line when it is not. */
 class JkResultsAgentTest {
@@ -114,8 +117,67 @@ class JkResultsAgentTest {
         assertThat(JkResultsAgent.render(r)).isEqualTo("""
                         FAIL build rest-service · 1 error · 700ms
                         E src/main/java/com/example/restservice/RestServiceApplication.java:3:50 ';' expected
-                          3| public class RestServiceApplication {
+                          3|\tpublic class RestServiceApplication {
                         """);
+    }
+
+    @Test
+    void the_quoted_line_keeps_its_indentation_and_inner_whitespace() {
+        BuildRecord.Diag err = diag(
+                "compile-java",
+                "javac",
+                "';' expected",
+                "src/main/java/app/Calc.java",
+                16,
+                21,
+                15,
+                List.of("    int add(int a, int b) {", "        return a  +\tb", "    }"),
+                "");
+        BuildRecord r = record("build", false, false, 700, null, List.of(err), List.of());
+        assertThat(JkResultsAgent.render(r))
+                .contains("E src/main/java/app/Calc.java:16:21 ';' expected\n  16|\t        return a  +\tb\n")
+                .doesNotContain("15|");
+    }
+
+    @Test
+    void a_line_that_is_not_unique_in_its_file_is_quoted_with_its_neighbors(@TempDir Path dir) throws Exception {
+        String source = """
+                class A {
+                    int one() {
+                        return 1
+                    }
+
+                    int two() {
+                        return 1
+                    }
+                }
+                """;
+        Path file = dir.resolve("src/main/java/A.java");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, source);
+        BuildRecord.Diag err =
+                diag("compile-java", "javac", "';' expected", "src/main/java/A.java", 7, 17, 0, List.of(), "");
+        BuildRecord r = record(dir.toString(), "build", false, false, 700, null, List.of(err), List.of());
+        assertThat(JkResultsAgent.render(r)).contains("""
+                E src/main/java/A.java:7:17 ';' expected
+                  6|\t    int two() {
+                  7|\t        return 1
+                  8|\t    }
+                """);
+    }
+
+    @Test
+    void a_unique_line_on_disk_is_quoted_alone(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("src/main/java/A.java");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "class A {\r\n    int x = 1\r\n}\r\n");
+        BuildRecord.Diag err =
+                diag("compile-java", "javac", "';' expected", "src/main/java/A.java", 2, 14, 0, List.of(), "");
+        BuildRecord r = record(dir.toString(), "build", false, false, 700, null, List.of(err), List.of());
+        assertThat(JkResultsAgent.render(r)).endsWith("""
+                E src/main/java/A.java:2:14 ';' expected
+                  2|\t    int x = 1
+                """);
     }
 
     @Test
@@ -141,8 +203,12 @@ class JkResultsAgentTest {
                 "src/test/java/com/example/restservice/GreetingControllerTests.java",
                 44,
                 0,
-                0,
-                List.of(),
+                43,
+                List.of(
+                        "@@source line=44 start=43 lang=java path=src/test/java/com/example/restservice/GreetingControllerTests.java",
+                        "@@src 43|\t\tvar body = get(\"/greeting\");",
+                        "@@src 44*|\t\tassertThat(body).isEqualTo(\"Hello, World!\");",
+                        "@@src-end"),
                 0,
                 "");
         BuildRecord r = record("test", false, false, 1_200, new BuildRecord.Tests(2, 1, 1, 0), List.of(err), List.of());
@@ -150,7 +216,37 @@ class JkResultsAgentTest {
                         FAIL test rest-service · 1 of 2 failed · 1.2s
                         T com.example.restservice.GreetingControllerTests#noParamGreetingShouldReturnDefaultMessage
                           expected: "Hello, World!" but was: "Hello, Wrld!"
-                          at GreetingControllerTests.java:44
+                          at src/test/java/com/example/restservice/GreetingControllerTests.java:44
+                          44|\t\t\tassertThat(body).isEqualTo("Hello, World!");
+                        """);
+    }
+
+    @Test
+    void a_module_test_failure_is_located_from_the_project_root() {
+        BuildRecord.Diag err = new BuildRecord.Diag(
+                "error",
+                "/ws/rest-service/app",
+                "run-tests",
+                "test-failure",
+                "expected: 3 but was: 4",
+                null,
+                "org.opentest4j.AssertionFailedError",
+                null,
+                "junit",
+                "app.CalcTest",
+                "adds",
+                "\tat app.CalcTest.adds(CalcTest.java:9)\n",
+                "src/test/java/app/CalcTest.java",
+                9,
+                0,
+                9,
+                List.of("        assertEquals(3, calc.add(1, 2));"),
+                0,
+                "");
+        BuildRecord r = record("test", false, false, 100, new BuildRecord.Tests(1, 0, 1, 0), List.of(err), List.of());
+        assertThat(JkResultsAgent.render(r)).endsWith("""
+                          at app/src/test/java/app/CalcTest.java:9
+                          9|\t        assertEquals(3, calc.add(1, 2));
                         """);
     }
 
@@ -329,7 +425,7 @@ class JkResultsAgentTest {
     void the_all_report_is_every_problem_with_source_lines_and_no_headline() {
         List<BuildRecord.Diag> diags = new ArrayList<>();
         for (int i = 1; i <= 7; i++) {
-            diags.add(diag("compile-java", "javac", "e" + i, "src/F" + i + ".java", i, 1, 1, List.of("line " + i), ""));
+            diags.add(diag("compile-java", "javac", "e" + i, "src/F" + i + ".java", i, 1, i, List.of("line " + i), ""));
         }
         String text = JkResultsAgent.renderAll(record("build", false, false, 100, null, diags, List.of()), null);
         assertThat(text).doesNotContain("FAIL build", "more:");
@@ -367,7 +463,7 @@ class JkResultsAgentTest {
                 "compile-java", "javac", "';' expected", "src/A.java", 2, 1, 1, List.of("class A {", "int x", "}"), "");
         BuildRecord r = record("build", false, false, 100, null, List.of(err), List.of());
         String text = JkResultsAgent.renderDetails(r, "src/A.java", 20, true);
-        assertThat(text).contains("  1| class A {").contains("  2| int x").doesNotContain("FAIL build");
+        assertThat(text).contains("  1|\tclass A {\n  2|\tint x\n  3|\t}\n").doesNotContain("FAIL build");
     }
 
     @Test
@@ -476,12 +572,24 @@ class JkResultsAgentTest {
             BuildRecord.@Nullable Tests tests,
             List<BuildRecord.Diag> diags,
             List<BuildRecord.Task> steps) {
+        return record("/ws/rest-service", kind, success, cancelled, millis, tests, diags, steps);
+    }
+
+    private static BuildRecord record(
+            String dir,
+            String kind,
+            boolean success,
+            boolean cancelled,
+            long millis,
+            BuildRecord.@Nullable Tests tests,
+            List<BuildRecord.Diag> diags,
+            List<BuildRecord.Task> steps) {
         return new BuildRecord(
                 "id",
                 1,
                 BuildRecord.SCHEMA,
                 kind,
-                "/ws/rest-service",
+                dir,
                 "com.example:rest-service",
                 "pid",
                 1_000,
