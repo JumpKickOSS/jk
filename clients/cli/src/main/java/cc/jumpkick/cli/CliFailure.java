@@ -7,10 +7,9 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
@@ -112,15 +111,14 @@ final class CliFailure {
     static void appendLog(String[] args, Throwable t) {
         try {
             Path log = JkDirs.state().resolve(LOG_NAME);
-            Files.createDirectories(log.getParent());
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
             pw.println(Instant.now() + "  jk " + String.join(" ", args));
             t.printStackTrace(pw);
             pw.println();
             pw.flush();
-            Files.writeString(
-                    log, sw.toString(), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            OwnerOnlyFiles.writeString(
+                    log, sw.toString(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
         } catch (Throwable ignored) {
             // The failure the user sees is the one that matters; the log is the durable copy.
         }

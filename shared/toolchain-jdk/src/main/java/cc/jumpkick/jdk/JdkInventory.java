@@ -6,6 +6,7 @@ import cc.jumpkick.discovery.ToolHealth;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalToml;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -441,7 +442,6 @@ public final class JdkInventory {
     }
 
     private void writeLocked(Snapshot snap) throws IOException {
-        if (file.getParent() != null) Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, render(snap));
         synchronized (this) {
             cachedSnapshot = null; // the (size, mtime) key alone could false-hit a same-second write
@@ -570,8 +570,8 @@ public final class JdkInventory {
         Object jvmLock =
                 JVM_LOCKS.computeIfAbsent(lockFile.toAbsolutePath().normalize().toString(), k -> new Object());
         synchronized (jvmLock) {
-            if (lockFile.getParent() != null) Files.createDirectories(lockFile.getParent());
-            try (FileChannel channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            try (FileChannel channel =
+                            OwnerOnlyFiles.channel(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                     FileLock lock = channel.lock()) {
                 return body.get();
             }

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -66,7 +67,7 @@ public final class WorkerGc {
     /** A log file under the state temp dir, created empty. */
     public static Path create() throws IOException {
         Path dir = JkDirs.tmp().resolve("worker-gc");
-        Files.createDirectories(dir);
+        OwnerOnlyFiles.createDirectories(dir);
         return Files.createTempFile(dir, "gc-", ".log");
     }
 

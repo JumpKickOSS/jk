@@ -11,6 +11,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.MinimalToml;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -578,7 +579,7 @@ public record ProjectIdentity(
         }
 
         public static void write(Path projectHome, ProjectIdentity identity, Clock clock) throws IOException {
-            Files.createDirectories(projectHome);
+            OwnerOnlyFiles.createDirectories(projectHome);
             Path file = projectHome.resolve(ProjectBuilds.IDENTITY);
             FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> fold(projectHome, file, identity, clock));
         }

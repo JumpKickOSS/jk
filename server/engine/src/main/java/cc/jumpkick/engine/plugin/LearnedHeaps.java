@@ -6,6 +6,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -185,7 +186,7 @@ public final class LearnedHeaps {
             Map<String, Row> all = read(file);
             all.put(row, change.apply(all.getOrDefault(row, Row.EMPTY)));
             try {
-                Files.createDirectories(file.getParent());
+                OwnerOnlyFiles.createDirectories(Objects.requireNonNull(file.getParent(), "a file has a directory"));
                 AtomicWrites.replace(file, write(all));
             } catch (IOException e) {
                 Log.debug("learned heap " + file + ": " + e.getMessage());

@@ -10,9 +10,11 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -203,7 +205,6 @@ public final class CliSessionTranscript {
 
     private void openFile(Path detailsFile) throws IOException {
         if (detailsFile == null) return;
-        Files.createDirectories(detailsFile.getParent());
         if (out != null) {
             try {
                 flushPending();
@@ -213,8 +214,11 @@ public final class CliSessionTranscript {
             out = null;
         }
         this.file = detailsFile;
-        this.out = Files.newOutputStream(
-                detailsFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+        this.out = Channels.newOutputStream(OwnerOnlyFiles.channel(
+                detailsFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE));
         this.bound = true;
         // Re-write any pending records (session-start etc.) that arrived before bind.
         flushPending();

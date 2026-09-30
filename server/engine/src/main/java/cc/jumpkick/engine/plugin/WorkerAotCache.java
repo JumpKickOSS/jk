@@ -11,6 +11,7 @@ import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.io.InputStream;
@@ -232,7 +233,7 @@ public final class WorkerAotCache {
         Path scratch = null;
         Process p = null;
         try {
-            Files.createDirectories(Objects.requireNonNull(cache.getParent(), "cache dir"));
+            OwnerOnlyFiles.createDirectories(Objects.requireNonNull(cache.getParent(), "cache dir"));
             scratch = Files.createTempDirectory("jk-worker-aot-");
             Files.createDirectories(scratch.resolve("out"));
             // Not registered for request cancel: a cancelled build must not kill the recording the
@@ -249,6 +250,7 @@ public final class WorkerAotCache {
                 return;
             }
             if (p.exitValue() == 0 && usable(tmp)) {
+                if (OwnerOnlyFiles.inState(cache)) OwnerOnlyFiles.setOwnerOnly(tmp, "rw-------");
                 AtomicWrites.moveInto(tmp, cache);
                 sweepSiblings(cache);
                 Log.info("jk engine: startup cache ready for the " + what + " (" + cache.getFileName() + ")");
