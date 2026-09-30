@@ -69,7 +69,11 @@ class WireKeyClosureTest {
             // The dashboard SPA writes this one, in JavaScript, as a query param and a POST body field.
             "project", "written by clients/web, not by Java: HttpProjectApi request field",
             // A POST /api/build body field an HTTP client sets; the engine only ever reads it.
-            "deadlineMs", "written by HTTP clients, not by Java: the job's wall deadline on POST /api/build");
+            "deadlineMs", "written by HTTP clients, not by Java: the job's wall deadline on POST /api/build",
+            // jk-import-model.init.gradle writes the xjc plugin's settings, in Groovy.
+            "xsdDir", "written by jk-import-model.init.gradle, read by GradleModel",
+            "defaultPackage", "written by jk-import-model.init.gradle, read by GradleModel",
+            "bindingFiles", "written by jk-import-model.init.gradle, read by GradleModel");
 
     /**
      * Production sources on the day this landed (re-measured at 1,244 once the walk stopped
