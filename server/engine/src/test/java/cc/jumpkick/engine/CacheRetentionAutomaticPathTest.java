@@ -44,6 +44,8 @@ class CacheRetentionAutomaticPathTest {
 
         System.setProperty("jk.env.JK_HOME", home.toAbsolutePath().toString());
         System.setProperty("jk.env.JK_AUTO_PRUNE", "true");
+        // No host calibration after the prune: it would run a real warmup on this machine.
+        Files.writeString(home.resolve("config.toml"), "[engine]\nauto-warmup = false\n");
         try {
             IdleHousekeeping housekeeping = idle(cache, log);
             housekeeping.maybeEnqueuePrune(cache);
@@ -65,10 +67,6 @@ class CacheRetentionAutomaticPathTest {
         assertThat(log).anyMatch(line -> line.contains("idle-boundary cache prune removed"));
     }
 
-    /**
-     * Draining, so the warmup that would otherwise follow the prune stays out of the way; the
-     * prune itself is the first thing {@code run()} does and is unaffected.
-     */
     private static IdleHousekeeping idle(Path cache, List<String> log) {
         return new IdleHousekeeping(
                 new AtomicInteger(0),
@@ -80,7 +78,7 @@ class CacheRetentionAutomaticPathTest {
                 System::currentTimeMillis,
                 log::add,
                 () -> false,
-                () -> true,
+                () -> false,
                 () -> {});
     }
 

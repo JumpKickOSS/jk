@@ -61,7 +61,9 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   version-skew replacement. **No idle timeout**: the dashboard is written against that guarantee, and
   a browser tab cannot respawn an engine the way the CLI can — see [http.md](http.md). A displaced
   predecessor yields UDS / wire / HTTP immediately, drains in-flight jobs, and reports
-  `drain-status` to the successor. The one exception is an *orphaned* engine (no endpoint pointer
+  `drain-status` to the successor. It runs no idle chores while it drains: the cache prune and the
+  journal, metrics and heap-dump retention are the successor's, whose builds the predecessor's
+  cache gate does not cover. The one exception is an *orphaned* engine (no endpoint pointer
   names it, so nothing can reach it), which exits once it has no in-flight jobs and no attached
   event stream.
 - **JDK inventory** — managed installs live in the IntelliJ shared root (`~/.jdks`); JumpKick's

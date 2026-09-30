@@ -37,7 +37,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Idle-boundary chores: cache prune, journal/metrics/heap-dump retention, host warmup, trailing
  * GC and native-heap trim ({@link HeapTrim}). Exactly-once at the build boundary; GC is always
- * last, and a settled trim follows once the engine has been idle for {@link HeapTrim#SETTLE}.
+ * last, and a settled trim follows once the engine has been idle for {@link HeapTrim#SETTLE}. A
+ * draining engine prunes and warms nothing: its successor owns the shared stores.
  */
 @RequiredArgsConstructor
 public final class IdleHousekeeping {
@@ -107,10 +108,15 @@ public final class IdleHousekeeping {
         if (!running.compareAndSet(false, true)) return;
         try {
             if (activeBuildPlans.get() != 0) return;
-            drainPendingPrune();
-            pruneJournal();
-            pruneMetrics();
-            pruneHeapDumps();
+            // A draining engine's successor is already building out of the same cache, journal
+            // and metrics, and this engine's cache gate does not reach that one's jobs: pruning
+            // under them is the successor's chore, at its own boundary.
+            if (!draining.getAsBoolean()) {
+                drainPendingPrune();
+                pruneJournal();
+                pruneMetrics();
+                pruneHeapDumps();
+            }
             try {
                 MetricsHarvest.get().awaitIdle(30_000L);
             } catch (RuntimeException e) {
