@@ -135,8 +135,9 @@ swap a worker or its dependency list under it.
 root (`~/.jdks`, or `~/Library/Java/JavaVirtualMachines` on macOS) so the IDE and JumpKick
 share runtimes. JumpKick records those installs in `~/.jk/state/jk-jdks.toml` (defaults +
 fingerprints). Access times are not tracked: jk never removes a JDK on its own, so
-`jk jdk uninstall` is the only path. Discovery still picks up SDKMAN, mise, Homebrew,
-`JAVA_HOME`, and system installs before downloading. See [JDK](jdk.md).
+`jk jdk uninstall` is the only path. Discovery still picks up JDKs other tools installed or point at (SDKMAN, mise,
+Jabba, Coursier, Maven `toolchains.xml`, Gradle properties, system installs, and more) before
+downloading. See [JDK](jdk.md).
 
 ## Environment overrides
 
@@ -149,7 +150,9 @@ Five names, and `JK_HOME` is the only one most people need.
 | `JK_CACHE_DIR` | Cache root only. Same reason, plus isolating the action cache without forcing a cold store. |
 | `JK_STATE_DIR` | State root only (engine sockets, build history, JDK inventory). |
 | `JK_JDKS_DIR` | Managed JDK **write** root. Set it with `JK_HOME` for hermetic JDK isolation. |
-| `JK_JDK_PROBES` | Comma-separated names of the JDK probes jk may consult (`java-home`, `jk`, `intellij`, `gradle`, `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew`, `jabba`, `coursier`, `system`, `maven-toolchains`). Unset is all of them; the test tiers run with `java-home,jk`. |
+| `JK_JDK_PROBES` | Comma-separated names of the JDK probes jk may consult (`java-home`, `jk`, `intellij`, `gradle`, `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew`, `jabba`, `coursier`, `system`, `maven-toolchains`, `gradle-properties`, `jdk-paths`). Unset is all of them; the test tiers run with `java-home,jk`. |
+| `JK_JDK_PATHS` | Comma-separated JDK homes discovery adds (source `jdk-paths`); each is the home itself, not a directory to search. A missing path is skipped. |
+| `JK_JDK_FROM_ENV` | Comma-separated names of environment variables whose values are JDK homes discovery adds (source `jdk-paths`) |
 | `JK_WORKER_AOT=off` | The java-compiler and kotlinc workers neither map nor record their JEP 514 startup cache (CI and short-lived engines) |
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
 | `JK_M2_INTEGRATION` | `false` skips the Maven local repo for third-party jars (same as `[m2] integration = false`) |

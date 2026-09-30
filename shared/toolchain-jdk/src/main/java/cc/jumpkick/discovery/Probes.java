@@ -35,7 +35,7 @@ public final class Probes {
     private Probes() {}
 
     public static List<LocalToolProbe> defaultChain() {
-        return restrict(fullChain(new JkProbe()), JkDirs.env(ALLOWLIST_ENV));
+        return restrict(fullChain(new JkProbe(), null), JkDirs.env(ALLOWLIST_ENV));
     }
 
     /**
@@ -43,15 +43,23 @@ public final class Probes {
      * managed JDK root rather than this process's — and every other probe as usual.
      */
     public static List<LocalToolProbe> defaultChain(Path sharedRoot) {
-        return restrict(fullChain(JkProbe.sharedRoot(sharedRoot)), JkDirs.env(ALLOWLIST_ENV));
+        return defaultChain(sharedRoot, null);
+    }
+
+    /**
+     * As {@link #defaultChain(Path)}, also reading the {@code gradle.properties} in {@code
+     * buildRoot}, the root of the build being run, when it is not null.
+     */
+    public static List<LocalToolProbe> defaultChain(Path sharedRoot, @Nullable Path buildRoot) {
+        return restrict(fullChain(JkProbe.sharedRoot(sharedRoot), buildRoot), JkDirs.env(ALLOWLIST_ENV));
     }
 
     /** The built-in order plus ServiceLoader extensions, before any allowlist applies. */
     static List<LocalToolProbe> fullChain() {
-        return fullChain(new JkProbe());
+        return fullChain(new JkProbe(), null);
     }
 
-    private static List<LocalToolProbe> fullChain(JkProbe jk) {
+    private static List<LocalToolProbe> fullChain(JkProbe jk, @Nullable Path buildRoot) {
         List<LocalToolProbe> chain = new ArrayList<>();
         chain.add(new EnvVarProbe());
         chain.add(jk); // jk-owned installs under the shared JDK root
@@ -68,6 +76,8 @@ public final class Probes {
         chain.add(new SystemProbe());
         // Pointers last, so a home an owner above also reports keeps the owner's label.
         chain.add(new MavenToolchainsProbe());
+        chain.add(new GradlePropertiesProbe(buildRoot));
+        chain.add(new JdkPathsProbe());
         for (LocalToolProbe extension : ServiceLoader.load(LocalToolProbe.class)) {
             chain.add(extension);
         }

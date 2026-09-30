@@ -21,6 +21,15 @@ class ProbesTest {
     }
 
     @Test
+    void every_discovery_source_is_on_the_default_chain_with_pointers_after_the_owners() {
+        List<String> all = names(Probes.fullChain());
+        assertThat(all).contains("jabba", "coursier", "maven-toolchains", "gradle-properties", "jdk-paths");
+        assertThat(all.indexOf("maven-toolchains")).isGreaterThan(all.indexOf("system"));
+        assertThat(all.indexOf("gradle-properties")).isGreaterThan(all.indexOf("system"));
+        assertThat(all.indexOf("jdk-paths")).isGreaterThan(all.indexOf("system"));
+    }
+
+    @Test
     void an_allowlist_keeps_the_named_probes_in_chain_order_whatever_order_it_names_them() {
         List<LocalToolProbe> chain = Probes.fullChain();
         assertThat(names(Probes.restrict(chain, " jk , java-home "))).containsExactly("java-home", "jk");

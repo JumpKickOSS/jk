@@ -29,12 +29,14 @@ Discovery looks at existing installs before downloading from the JetBrains JDK f
 |---|---|---|
 | `jk` | The managed write root below | Deletes it |
 | `intellij` / `jdks` | IntelliJ's shared root; `intellij` when an IDE registered the JDK | `intellij`: refused; `jdks`: deletes it |
-| `gradle` | `~/.gradle/jdks` (Gradle's provisioned JDKs) | Deletes it |
+| `gradle` | `$GRADLE_USER_HOME/jdks`, default `~/.gradle/jdks` (Gradle's provisioned JDKs) | Deletes it |
 | `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew` | That tool's install directory | Runs that tool's uninstall first |
 | `jabba` | `$JABBA_HOME/jdk`, else `~/.jabba/jdk` | Runs `jabba uninstall`; never deletes what Jabba leaves |
 | `coursier` | `$COURSIER_JVM_CACHE`, else Coursier's JVM cache: `~/.cache/coursier/jvm` (Linux), `~/Library/Caches/Coursier/jvm` (macOS), `~\AppData\Local\Coursier\Cache\jvm` (Windows) | Refused: Coursier has no uninstall |
 | `system` | Linux `/usr/lib/jvm`, `/usr/java`, `/usr/lib64/jvm`, `/usr/local/java`, `/opt/java`; macOS `/Library/Java/JavaVirtualMachines` and `/usr/libexec/java_home -V`; the Windows registry (JavaSoft `JavaHome`, AdoptOpenJDK / Eclipse Adoptium / Eclipse Foundation `hotspot\MSI` `Path`) | Refused |
 | `maven-toolchains` | Every `jdkHome` of type `jdk` in `~/.m2/toolchains.xml`, `${env.NAME}` expanded | Refused: a pointer |
+| `gradle-properties` | Homes named by `org.gradle.java.installations.paths` and `fromEnv`, and the `toolchains.xml` named by `maven-toolchains-file`, in `$GRADLE_USER_HOME/gradle.properties` (default `~/.gradle`) and, during a build, the build root's `gradle.properties`. `auto-detect=false` turns nothing off | Refused: a pointer |
+| `jdk-paths` | Homes named by `JK_JDK_PATHS` and by the variables `JK_JDK_FROM_ENV` names ([Install](install.md)) | Refused: a pointer |
 | `path` | `JAVA_HOME` when no source above owns it | Deletes it |
 
 `JK_JDK_PROBES` ([Install](install.md)) narrows discovery to the named sources. Managed write root:
