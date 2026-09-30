@@ -16,6 +16,7 @@ import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.model.BuildBlock;
@@ -157,6 +158,8 @@ final class TestLaunch {
     static List<Path> testRuntimeClasspath(TaskContext ctx, @Nullable PluginDeclarations pluginDecls) throws Exception {
         List<Path> testRtCp = new ArrayList<>(ctx.require(TEST_RUNTIME_CP));
         testRtCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), testRtCp);
+        testRtCp =
+                new ArrayList<>(PlannerVersions.withOwnVersions(ctx.require(PROJECT), ctx.require(LAYOUT), testRtCp));
         testRtCp.addAll(pluginTestClasspath(ctx.require(LAYOUT), pluginDecls));
         testRtCp.addAll(contributedProvidedFor(ctx));
         return testRtCp;
@@ -281,9 +284,13 @@ final class TestLaunch {
      */
     static List<Path> testRuntimeCpWithLanguageRuntimes(
             TaskContext ctx, BuildPlanner.Ctx cx, Cas cas, List<Path> testRtCp, List<Path> testSrcs) throws Exception {
-        List<Path> runtimeCp = new ArrayList<>();
-        runtimeCp.add(ctx.require(MAIN_CLASSES));
-        runtimeCp.addAll(testRtCp);
+        int feature = JavaHomes.featureVersion(ctx.require(JAVA_HOME));
+        List<Path> runtimeCp = new ArrayList<>(PlannerVersions.launchClasspath(
+                ctx.require(PROJECT),
+                ctx.require(LAYOUT),
+                feature > 0 ? feature : Integer.MAX_VALUE,
+                ctx.require(MAIN_CLASSES),
+                testRtCp));
         boolean ktTestSources = testSrcs.stream()
                 .anyMatch(p -> p.toString().endsWith(".kt") || p.toString().endsWith(".kts"));
         boolean gvTestSources = testSrcs.stream().anyMatch(p -> p.toString().endsWith(".groovy"));

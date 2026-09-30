@@ -7,7 +7,7 @@ import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
-import static cc.jumpkick.runtime.PlannerSupport.existingContributedDirs;
+import static cc.jumpkick.runtime.PlannerSupport.packagedDirs;
 import static cc.jumpkick.runtime.PlannerSupport.pluginDeclarationsFor;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
 import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
@@ -230,7 +230,7 @@ public final class PlannerTails {
                     // plugin worker while merely *planning*. PluginBuild.declarations is
                     // file-cached under the module target, so this is a read, not a fork.
                     List<Path> contributed =
-                            existingContributedDirs(pluginDeclarationsFor(project, layout, cache), layout);
+                            packagedDirs(pluginDeclarationsFor(project, layout, cache), layout, project);
                     Path assemblyJar = layout.assemblyJar();
                     // Module-scoped runtime closure (not the whole workspace lock).
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
@@ -298,6 +298,7 @@ public final class PlannerTails {
      */
     static Map<String, String> assemblyAttributes(JkBuild project, Optional<GitFetcher.Worktree> worktree) {
         Map<String, String> attrs = new LinkedHashMap<>(project.manifest());
+        if (PlannerVersions.declared(project)) attrs.putIfAbsent(PlannerVersions.MULTI_RELEASE, "true");
         JkBuild.Install install = project.install();
         if (install != null && install.productLib() != null && worktree.isPresent()) {
             attrs.put(

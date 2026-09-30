@@ -8,7 +8,7 @@ import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
-import static cc.jumpkick.runtime.PlannerSupport.existingContributedDirs;
+import static cc.jumpkick.runtime.PlannerSupport.packagedDirs;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
 import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
 import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
@@ -53,7 +53,8 @@ public final class PlannerPackage {
             BuildPlanner.Ctx cx,
             @Nullable ActivePlugin pluginActive,
             @Nullable PluginDeclarations pluginDecls,
-            Map<String, String> variantSecrets) {
+            Map<String, String> variantSecrets,
+            boolean multiRelease) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -73,7 +74,7 @@ public final class PlannerPackage {
                 .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
-                .requires(packageRequires(in, pluginDecls, javaStamp, kotlinModule, groovyModule))
+                .requires(packageRequires(in, pluginDecls, javaStamp, kotlinModule, groovyModule, multiRelease))
                 .weight(() -> plan.get().pkg())
                 .ticks(1)
                 .execute(ctx -> {
@@ -107,7 +108,7 @@ public final class PlannerPackage {
                     // custom packagers (boot-jar) merge step outputs themselves. The dirs are only
                     // *listed* here — staging them is a copy, and it must not happen before the
                     // cache check below.
-                    List<Path> contributed = new ArrayList<>(existingContributedDirs(pluginDecls, layout));
+                    List<Path> contributed = new ArrayList<>(packagedDirs(pluginDecls, layout, project));
                     contributed.addAll(PlannerSupport.workerCodecClassDirs(in.dir(), project));
                     Files.createDirectories(jarPath.getParent());
                     String mainClass = PluginModule.mainClass(in.dir(), project);
@@ -142,6 +143,7 @@ public final class PlannerPackage {
                     JarPackager.JarRequest jarRequest = JarPackager.JarRequest.of(classes, jarPath);
                     if (mainClass != null && !mainClass.isBlank()) jarRequest = jarRequest.withMainClass(mainClass);
                     Map<String, String> jarAttrs = new LinkedHashMap<>(project.manifest());
+                    if (PlannerVersions.declared(project)) jarAttrs.putIfAbsent(PlannerVersions.MULTI_RELEASE, "true");
                     if (sbom != null) {
                         jarAttrs.put("Sbom-Format", "CycloneDX");
                         jarAttrs.put("Sbom-Location", SBOM_JAR_ENTRY);
@@ -190,9 +192,11 @@ public final class PlannerPackage {
             @Nullable PluginDeclarations decls,
             boolean useJava,
             boolean useKotlin,
-            boolean useGroovy) {
+            boolean useGroovy,
+            boolean multiRelease) {
         List<String> requires = new ArrayList<>();
         requires.add(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        if (multiRelease) requires.add(TaskNames.COMPILE_VERSIONS);
         // Freshness stamps must stay on the package path so target-closure prune retains them.
         if (useJava) requires.add(TaskNames.WRITE_STAMP);
         if (useKotlin) requires.add(TaskNames.WRITE_STAMP_KOTLIN);

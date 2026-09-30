@@ -164,7 +164,7 @@ public final class PackagingKeys {
                 dir,
                 project,
                 classesTok,
-                PlannerSupport.contributionsToken(PlannerSupport.existingContributedDirs(pkgDecls, layout)),
+                PlannerSupport.contributionsToken(PlannerSupport.packagedDirs(pkgDecls, layout, project)),
                 fingerprintDepJars(depJars, actionCache, restoredJarShas));
         boolean hit = ForecastSteps.present(actionCache, keyed.key());
         if (Perf.enabled() && !hit) {
