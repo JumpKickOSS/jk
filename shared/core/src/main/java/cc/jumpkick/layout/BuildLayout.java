@@ -308,6 +308,20 @@ public final class BuildLayout {
         return classesDir();
     }
 
+    /**
+     * {@code target/versions/} — the {@code [multi-release]} compiles' outputs, laid out as the jar
+     * carries them: {@code META-INF/versions/<N>/} under this root, which packaging merges over
+     * {@link #classesDir}.
+     */
+    public Path versionedClassesRoot() {
+        return buildDir().resolve("versions");
+    }
+
+    /** {@code target/versions/META-INF/versions/<release>/} — one {@code [multi-release]} compile's output. */
+    public Path versionedClassesDir(int release) {
+        return versionedClassesRoot().resolve("META-INF").resolve("versions").resolve(Integer.toString(release));
+    }
+
     /** {@code target/classes/test/} — final assembled test classes. */
     public Path testClassesDir() {
         return buildDir().resolve(CLASSES).resolve(TEST);

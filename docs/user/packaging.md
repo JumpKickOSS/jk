@@ -9,6 +9,7 @@ R8 minification is **opt-in**, never the default.
 | Artifact | Config | Command |
 |----------|--------|---------|
 | Thin jar `target/<name>-<version>.jar` | always | `jk build` |
+| Multi-release entries `META-INF/versions/<N>/` | `[multi-release]` | `jk build` |
 | Sources jar `*-sources.jar` | library (no `[application]`), or `sources = "always"` | `jk build` / `jk package` |
 | Javadoc jar `*-javadoc.jar` | library, unless `javadoc = false` | `jk build` / `jk package` |
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
@@ -107,6 +108,41 @@ outside a git checkout (an exported tree) builds with a warning and no `git.prop
 
 `jk import` writes the table for `git-commit-id-maven-plugin`, `pl.project13.maven:git-commit-id-plugin`,
 Boot's `build-info` goal, `com.gorylenko.gradle-git-properties` and `springBoot { buildInfo() }`.
+
+## Multi-release jars
+
+```toml
+java = 17
+
+[multi-release]
+21 = "src/main/java21"                        # a source root, or an array of them
+25 = ["src/main/java25", "src/gen/java25"]
+```
+
+Each key is a Java release (9 or newer) and each value the source roots compiled for it. The
+`compile-versions` step compiles every entry after the main classes and against them, at
+`--release N` — or at the module's `java` level when that is higher, since javac cannot read the
+main classes below it and a JDK that loads the jar is already at that level. The output lands in
+`target/versions/META-INF/versions/<N>/`, and every jar jk writes from the classes — the thin jar
+and the fat jar — carries it under `META-INF/versions/<N>/` with `Multi-Release: true` in its
+manifest. An entry may replace a main class (same name, newer API) or add classes the main
+sources only reach reflectively.
+
+A `module-info.java` in an entry's roots is that release's module descriptor: the main classes
+patch the module it names (`--patch-module`), as Maven's compiler plugin compiles one, and it lands
+at `META-INF/versions/<N>/module-info.class`.
+
+The module's own tests run on a directory classpath, which has no `META-INF/versions` lookup, so
+jk orders it the way the JDK reads the jar: every entry whose release the test JDK reaches comes
+ahead of the main classes, highest release first, and an entry for a newer release than that JDK
+stays off the classpath. The suite sees the classes the packaged jar would give it. A workspace
+sibling runs against the jar itself. An edit to an entry's sources recompiles that entry,
+repackages the jar and re-runs the suite.
+
+`jk import` writes the table for each `maven-compiler-plugin` execution with
+`<multiReleaseOutput>true</multiReleaseOutput>`: its `<compileSourceRoots>` at its `<release>`,
+including one in a profile the host JDK activates. Surefire's `<additionalClasspathElement>` for
+`META-INF/versions/<N>` is what the suite's classpath already does.
 
 ## One-off CLI override
 

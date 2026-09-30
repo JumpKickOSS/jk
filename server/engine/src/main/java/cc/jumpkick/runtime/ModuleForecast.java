@@ -212,6 +212,14 @@ final class ModuleForecast {
             compileMain(prepared);
             if (!prepared.mixedKotlin()) compileKotlin(prepared);
             compileGroovy(prepared);
+            compileDirty |= PlannerVersions.addForecast(
+                    steps,
+                    compileDirty,
+                    project,
+                    dir,
+                    prepared,
+                    mainCp,
+                    new PlannerVersions.ForecastEnv(cache, actionCache, workerJar, restored, resolver));
             projectOwnOutputs(prepared);
             compileTest(prepared);
             guard(prepared);
@@ -882,7 +890,7 @@ final class ModuleForecast {
             // every module forecast permanent "repackage", cascade depDirty, and price a full
             // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED. A
             // worker's vendored sibling class dirs are read as the trees the build restores.
-            List<Path> contributed = new ArrayList<>(PlannerSupport.existingContributedDirs(pkgDecls, layout));
+            List<Path> contributed = new ArrayList<>(PlannerSupport.packagedDirs(pkgDecls, layout, project));
             contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project, restored::willBePresent));
             String contribTok = PlannerSupport.contributionsToken(contributed, restored.identity());
             List<String> tokens = List.of(

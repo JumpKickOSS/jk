@@ -56,6 +56,7 @@ final class BuildFields {
 
     BuildBlock.@Nullable BuildInfo buildInfo;
     BuildBlock.Dokka dokka;
+    List<ReleaseSources> multiRelease;
 
     private BuildFields(BuildBlock b) {
         orderAfter = b.orderAfter();
@@ -88,6 +89,7 @@ final class BuildFields {
         env = b.env();
         buildInfo = b.buildInfo();
         dokka = b.dokka();
+        multiRelease = b.multiRelease();
     }
 
     BuildBlock build() {
@@ -121,6 +123,7 @@ final class BuildFields {
                 auditIgnores,
                 env,
                 buildInfo,
-                dokka);
+                dokka,
+                multiRelease);
     }
 }

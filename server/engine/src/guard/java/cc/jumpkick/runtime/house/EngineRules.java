@@ -97,12 +97,18 @@ final class EngineRules {
             List.of(
                     "compile-guard",
                     "PlannerGuardSuite.java|CompileRequest request = guardCompileRequest(",
-                    "PlannerGuardSuite.java|CompileRequest req = guardCompileRequest("));
+                    "PlannerGuardSuite.java|CompileRequest req = guardCompileRequest("),
+            "PlannerVersions.java|public static CompileRequest versionsCompileRequest(",
+            List.of(
+                    "compile-versions",
+                    "PlannerVersions.java|CompileRequest request = versionsCompileRequest(",
+                    "PlannerVersions.java|CompileRequest req = versionsCompileRequest("));
 
     private static final Map<String, Integer> REQUEST_SITES = Map.of(
             "PlannerCompile.java", 2,
             "PlannerFixtures.java", 1,
             "PlannerGuardSuite.java", 1,
+            "PlannerVersions.java", 1,
             "LocalProjectBuilder.java", 1,
             "ScriptPlans.java", 1);
 

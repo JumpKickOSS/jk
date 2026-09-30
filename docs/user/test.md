@@ -591,7 +591,9 @@ lock's rows in every scope a test can reach: `[dependencies]`, `[export-dependen
 `[test-dev-dependencies]`, then the workspace siblings those scopes reach and their closures. A
 `provided` row is on the test classpath as it is under Maven — the container or framework API a
 test reaches for is there at test time and still absent from the packaged artifact — and a
-plugin's contributed provided classpath rides the same way.
+plugin's contributed provided classpath rides the same way. A `[multi-release]` module's
+versioned classes come ahead of its main classes for every release the test JDK reaches
+([Packaging](packaging.md#multi-release-jars)).
 
 ## Isolation contract
 

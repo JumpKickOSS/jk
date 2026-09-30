@@ -17,6 +17,7 @@ import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.model.ReleaseSources;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
@@ -70,6 +71,7 @@ public final class JkBuildRenderer {
         renderDokka(sb, jkBuild.build().dokka());
         renderResolve(sb, jkBuild.build());
         renderJavac(sb, jkBuild.build().javac());
+        renderMultiRelease(sb, jkBuild.build().multiRelease());
         renderProfiles(sb, jkBuild);
         renderFeatures(sb, jkBuild);
         renderRepositories(sb, jkBuild.repositories());
@@ -134,6 +136,18 @@ public final class JkBuildRenderer {
         }
         if (dokka.format() != BuildBlock.Dokka.DEFAULT.format()) {
             sb.append("format = ").append(quote(dokka.format().wireName())).append('\n');
+        }
+    }
+
+    /** {@code [multi-release]} — one key per release; a single source root is written as a string. */
+    private static void renderMultiRelease(StringBuilder sb, List<ReleaseSources> releases) {
+        if (releases.isEmpty()) return;
+        sb.append("\n[multi-release]\n");
+        for (ReleaseSources r : releases) {
+            sb.append(r.release())
+                    .append(" = ")
+                    .append(r.src().size() == 1 ? quote(r.src().get(0)) : list(r.src()))
+                    .append('\n');
         }
     }
 
