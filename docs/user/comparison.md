@@ -82,7 +82,7 @@ On [spring-petclinic](https://github.com/spring-projects/spring-petclinic), one 
 Gradle was run with the configuration cache and the build cache on. Maven has neither in stock
 form, and the row says so.
 
-| | Against Gradle | Against Maven |
+| [Measured](performance.md) | Against Gradle | Against Maven |
 |---|---|---|
 | Clean build | Faster (1.29 s vs 2.75 s median) | Faster (vs 3.21 s) |
 | Warm rebuild | Faster (0.21 s vs 0.60 s) | Faster (vs 3.18 s). Maven recompiles. |
@@ -95,8 +95,9 @@ form, and the row says so.
 The engine's own heap defaults to **256 MiB** (512 MiB when `CI=1`); the RSS column is the whole
 tree: client, engine, and every compiler and test worker. Workers lease their heap from one
 engine memory budget, test JVMs are sharded only as wide as the measured class times make useful,
-and heaps are learned from what each worker really used ([Engine](engine.md)).
-"Uses less memory than Maven" is not.
+and heaps are learned from what each worker really used ([Engine](engine.md)). On
+[the table](performance.md) jk uses less memory than Gradle on every row. Against Maven it is
+lower on the warm rebuild and no-op, higher on the clean build, one-file edit and test run.
 
 ## Batteries
 
