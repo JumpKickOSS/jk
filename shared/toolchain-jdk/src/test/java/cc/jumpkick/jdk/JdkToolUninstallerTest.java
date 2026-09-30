@@ -3,9 +3,16 @@ package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.FakeJdk;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Exercise the source → command-line mapping. We can't safely run the real subprocesses in a unit
@@ -81,6 +88,44 @@ class JdkToolUninstallerTest {
         // Some non-brew path under /opt — we shouldn't claim to handle it.
         var home = Path.of("/opt/jdk/temurin-21/Contents/Home");
         assertThat(commandFor(hit(home, "homebrew"), "temurin-21")).isNull();
+    }
+
+    @Test
+    void jabba_command_names_the_install_under_the_jdk_dir() {
+        var hit = hit(Path.of("/nowhere/.jabba/jdk/zulu@1.21.0"), "jabba");
+        assertThat(commandFor(hit, "ignored")).containsExactly("jabba", "uninstall", "zulu@1.21.0");
+        var mac = hit(Path.of("/nowhere/.jabba/jdk/zulu@1.21.0/Contents/Home"), "jabba");
+        assertThat(commandFor(mac, "ignored")).containsExactly("jabba", "uninstall", "zulu@1.21.0");
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS) // the fake jabba is a POSIX shell script
+    void jabba_is_invoked_and_what_it_leaves_is_not_jks_to_delete(@TempDir Path tmp) throws IOException {
+        Path jabbaHome = tmp.resolve(".jabba");
+        Path install = FakeJdk.create(jabbaHome.resolve("jdk/zulu@1.21.0"), "21.0.5");
+        Path log = tmp.resolve("jabba.log");
+        Path jabba = Files.createDirectories(jabbaHome.resolve("bin")).resolve("jabba");
+        Files.writeString(jabba, "#!/bin/sh\necho \"$@\" > '" + log + "'\n");
+        Files.setPosixFilePermissions(jabba, PosixFilePermissions.fromString("rwxr-xr-x"));
+
+        var outcome = JdkToolUninstaller.tryUninstall(hit(install, "jabba"), "zulu@1.21.0");
+
+        assertThat(outcome).isEqualTo(JdkToolUninstaller.Outcome.LEFT_BY_TOOL);
+        assertThat(Files.readString(log).strip()).isEqualTo("uninstall zulu@1.21.0");
+        assertThat(install).isDirectory();
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS) // the fake jabba is a POSIX shell script
+    void jabba_removing_the_install_is_handled(@TempDir Path tmp) throws IOException {
+        Path jabbaHome = tmp.resolve(".jabba");
+        Path install = FakeJdk.create(jabbaHome.resolve("jdk/zulu@1.21.0"), "21.0.5");
+        Path jabba = Files.createDirectories(jabbaHome.resolve("bin")).resolve("jabba");
+        Files.writeString(jabba, "#!/bin/sh\nrm -rf '" + install + "'\n");
+        Files.setPosixFilePermissions(jabba, PosixFilePermissions.fromString("rwxr-xr-x"));
+
+        assertThat(JdkToolUninstaller.tryUninstall(hit(install, "jabba"), "zulu@1.21.0"))
+                .isEqualTo(JdkToolUninstaller.Outcome.HANDLED_BY_TOOL);
     }
 
     // --- helpers ----------------------------------------------------------

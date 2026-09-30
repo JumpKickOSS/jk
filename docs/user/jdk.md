@@ -31,6 +31,7 @@ Discovery looks at existing installs before downloading from the JetBrains JDK f
 | `intellij` / `jdks` | IntelliJ's shared root; `intellij` when an IDE registered the JDK | `intellij`: refused; `jdks`: deletes it |
 | `gradle` | `~/.gradle/jdks` (Gradle's provisioned JDKs) | Deletes it |
 | `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew` | That tool's install directory | Runs that tool's uninstall first |
+| `jabba` | `$JABBA_HOME/jdk`, else `~/.jabba/jdk` | Runs `jabba uninstall`; never deletes what Jabba leaves |
 | `system` | OS package locations | Refused |
 | `maven-toolchains` | Every `jdkHome` of type `jdk` in `~/.m2/toolchains.xml`, `${env.NAME}` expanded | Refused: a pointer |
 | `path` | `JAVA_HOME` when no source above owns it | Deletes it |

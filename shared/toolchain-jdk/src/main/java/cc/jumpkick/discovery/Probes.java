@@ -63,6 +63,7 @@ public final class Probes {
         chain.add(new AsdfProbe());
         chain.add(new JenvProbe());
         chain.add(new HomebrewProbe());
+        chain.add(new JabbaProbe());
         chain.add(new SystemProbe());
         // Pointers last, so a home an owner above also reports keeps the owner's label.
         chain.add(new MavenToolchainsProbe());
