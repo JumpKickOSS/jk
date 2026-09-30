@@ -720,3 +720,35 @@ scenarios = [
   "tut-spring-boot-kotlin:missing-dependency",
   "tut-spring-boot-kotlin:missing-resource",
 ]
+
+# compile-errors: every compile-error scenario, for experiments on how a verdict names a compile fix.
+[subsets.compile-errors]
+scenarios = [
+  "gs-rest-service:compile-error",
+  "gs-spring-boot:compile-error",
+  "gs-accessing-data-jpa:compile-error",
+  "gs-accessing-data-r2dbc:compile-error",
+  "gs-accessing-data-rest:compile-error",
+  "gs-actuator-service:compile-error",
+  "gs-batch-processing:compile-error",
+  "gs-consuming-rest:compile-error",
+  "gs-graphql-server:compile-error",
+  "gs-handling-form-submission:compile-error",
+  "gs-reactive-rest-service:compile-error",
+  "gs-securing-web:compile-error",
+  "gs-serving-web-content:compile-error",
+  "gs-testing-web:compile-error",
+  "gs-uploading-files:compile-error",
+  "gs-validating-form-input:compile-error",
+  "gs-rest-hateoas:compile-error",
+  "gs-scheduling-tasks:compile-error",
+  "junit-starter-gradle:compile-error",
+  "gs-multi-module:compile-error",
+  "junit-starter-maven:compile-error",
+  "commons-cli:compile-error",
+  "spring-petclinic:compile-error",
+  "junit-starter-maven-kotlin:compile-error",
+  "junit-starter-gradle-kotlin:compile-error",
+  "spring-petclinic-kotlin:compile-error",
+  "tut-spring-boot-kotlin:compile-error",
+]
