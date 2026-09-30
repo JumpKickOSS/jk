@@ -4,6 +4,8 @@ package cc.jumpkick.gradle;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ImportedKotlin;
 import cc.jumpkick.compat.RelocationRules;
+import cc.jumpkick.groovy.GroovyResolver;
+import cc.jumpkick.layout.Languages;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -14,6 +16,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.mvn.ModuleRows;
+import cc.jumpkick.version.Versions;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
@@ -38,6 +41,9 @@ import org.jspecify.annotations.Nullable;
  * naming it at the module that has it.
  */
 final class GradleModelImporter {
+
+    /** The xjc schema-compiler plugin, whose extension is the {@code [jaxb]} table. */
+    static final String XJC_PLUGIN = "com.github.bjornvester.xjc";
 
     /** The plugin ids every project is asked about, beside the installed plugins' import rules. */
     private static final List<String> KNOWN_PLUGINS = List.of(
@@ -66,7 +72,8 @@ final class GradleModelImporter {
             GradleImporter.GIT_PROPERTIES_PLUGIN,
             "com.gradleup.shadow",
             "com.github.johnrengelman.shadow",
-            "io.github.goooler.shadow");
+            "io.github.goooler.shadow",
+            XJC_PLUGIN);
 
     /** Plugin ids whose effect needs no row: implicit in jk, or absorbed by another mapping. */
     private static final Set<String> SILENT_PLUGINS = Set.of(
@@ -87,7 +94,8 @@ final class GradleModelImporter {
             "io.github.goooler.shadow",
             "com.google.devtools.ksp",
             GradleImporter.DOKKA_PLUGIN,
-            GradleImporter.GIT_PROPERTIES_PLUGIN);
+            GradleImporter.GIT_PROPERTIES_PLUGIN,
+            XJC_PLUGIN);
 
     /** Plugin class-name prefixes the probed ids already account for. */
     private static final List<String> MAPPED_PLUGIN_CLASSES = List.of(
@@ -99,7 +107,8 @@ final class GradleModelImporter {
             "com.gorylenko",
             "io.quarkus",
             "com.diffplug.gradle.spotless",
-            "com.github.jengelman.gradle.plugins.shadow");
+            "com.github.jengelman.gradle.plugins.shadow",
+            "com.github.bjornvester.xjc");
 
     /** Configurations Gradle and its plugins declare for their own tooling, not the build's dependencies. */
     private static final List<String> TOOL_CONFIGURATION_PREFIXES = List.of(
@@ -117,9 +126,13 @@ final class GradleModelImporter {
             "animalsniffer",
             "signatures",
             "japicmp",
+            "xjc",
             "bootArchives",
             "default",
             "archives");
+
+    /** The groups whose {@code groovy} artifact is the Groovy compiler a Gradle {@code groovy} plugin runs. */
+    private static final List<String> GROOVY_GROUPS = List.of("org.apache.groovy", "org.codehaus.groovy");
 
     private final GradleModel model;
     private final Path buildRoot;
@@ -288,8 +301,20 @@ final class GradleModelImporter {
         boolean platformed = bomPlatforms(p, applied, deps, local);
         for (GradleModel.Configuration c : p.configurations()) mapConfiguration(p, c, deps, local, platformed);
         for (String url : p.repositories()) repository(url);
-        List<PluginConfig> plugins = GradleImporter.mapPluginTables(applied, p.pluginVersions(), importRules, local);
-        reportPlugins(p, applied, local);
+        List<PluginConfig> plugins =
+                new ArrayList<>(GradleImporter.mapPluginTables(applied, p.pluginVersions(), importRules, local));
+        GradleModel.Xjc xjc = p.xjc();
+        if (xjc != null) plugins.add(jaxbTable(xjc, local));
+        String groovy = applied.contains("groovy") ? groovyVersion(p, local) : null;
+        Set<String> unreported = new LinkedHashSet<>(applied);
+        unreported.remove("groovy");
+        if (groovy != null && p.kotlinVersion() != null) {
+            local.warning("plugin `groovy` is applied beside Kotlin, and a jk module compiles Groovy or Kotlin, not"
+                    + " both: the Groovy sources are not compiled — move them into a module of their own with"
+                    + " `groovy = \"" + groovy + "\"`.");
+            groovy = null;
+        }
+        reportPlugins(p, unreported, local);
         reportTasks(p, local);
         reportSourceSets(p, local);
 
@@ -301,11 +326,18 @@ final class GradleModelImporter {
                         name,
                         versionOf(p.version()) == null ? "0.1.0" : p.version())
                 .kotlin(kotlin == null ? null : ImportedKotlin.floored(VersionSelector.parse(kotlin), local))
+                .groovy(groovy == null ? null : VersionSelector.parse(groovy))
                 .description(p.description());
         // A toolchain is a JDK the build asks for; source, target and --release are language levels
-        // the host JDK compiles to, so only the former is a `jdk` pin.
+        // the host JDK compiles to, so only the former is a `jdk` pin. A Kotlin or Groovy module
+        // compiles Java only when `java` is declared, as Gradle compiles its src/*/java: written
+        // when the module has Java sources, at the level of the JDK compiling when Gradle names none.
         if (toolchain > 0) project.jdkMajor(toolchain);
-        if (kotlin == null && java > 0) project.java(java);
+        if (kotlin == null && groovy == null) {
+            if (java > 0) project.java(java);
+        } else if (hasJavaSources(p)) {
+            project.java(java > 0 ? java : Runtime.version().feature());
+        }
         Map<String, String> manifest = new LinkedHashMap<>(p.manifest());
         manifest.remove("Manifest-Version");
         String mainClass = p.mainClass() != null ? p.mainClass() : manifest.remove("Main-Class");
@@ -351,15 +383,84 @@ final class GradleModelImporter {
         return java == null ? 0 : java.toolchain();
     }
 
-    /** The language level the project compiles to: {@code --release}, else source, else target, else its toolchain. */
+    /**
+     * The language level the project compiles to: {@code --release}, else Kotlin's {@code
+     * jvmTarget}, else source, else target, else its toolchain.
+     */
     private static int javaRelease(GradleModel.Project p) {
         GradleModel.Java java = p.java();
-        if (java == null) return 0;
+        if (java == null) return p.kotlinJvmTarget();
         if (java.release() > 0) return java.release();
+        if (p.kotlinJvmTarget() > 0) return p.kotlinJvmTarget();
         if (java.source() > 0) return java.source();
         if (java.target() > 0) return java.target();
         return java.toolchain();
     }
+
+    /** Whether a {@code .java} file sits under the project's main or test Java roots, or anywhere under its src/. */
+    private boolean hasJavaSources(GradleModel.Project p) {
+        Path dir = buildRoot.resolve(p.dir());
+        for (GradleModel.SourceSet s : p.sourceSets()) {
+            for (String root : s.java()) {
+                if (Languages.anySourceUnder(dir.resolve(root), ".java")) return true;
+            }
+        }
+        return Languages.anySourceUnder(dir.resolve("src"), ".java");
+    }
+
+    /**
+     * The Groovy a {@code groovy} plugin compiles with: the {@code groovy} artifact the classpaths
+     * resolve, else one a dependency declares, else a declared Groovy BOM's version; failing all
+     * three, jk's default with a row. A version below jk's floor is written as jk's default with a row.
+     */
+    private static String groovyVersion(GradleModel.Project p, ImportReport.Builder local) {
+        String version = null;
+        for (String group : GROOVY_GROUPS) {
+            if (version == null) version = p.resolved().get(group + ":groovy");
+        }
+        for (GradleModel.Configuration c : p.configurations()) {
+            for (GradleModel.Dependency d : c.dependencies()) {
+                if (version != null) break;
+                if (!d.kind().equals("module") || !GROOVY_GROUPS.contains(d.group())) continue;
+                String declared = d.effectiveVersion();
+                if (declared.isBlank()
+                        || !(d.artifact().equals("groovy") || d.artifact().equals("groovy-bom"))) continue;
+                version = declared;
+            }
+        }
+        if (version == null) {
+            local.warning("plugin `groovy` is applied and no Groovy version could be read from the build; `groovy = \""
+                    + GroovyResolver.DEFAULT_VERSION
+                    + "\"` (jk's default) is written — set the version the build uses.");
+            return GroovyResolver.DEFAULT_VERSION;
+        }
+        if (GroovyResolver.belowFloor(version)) {
+            local.warning(GroovyResolver.floorNote(version));
+            return GroovyResolver.DEFAULT_VERSION;
+        }
+        return version;
+    }
+
+    /**
+     * The xjc plugin's extension as the {@code [jaxb]} table: {@code xsdDir} is {@code src}, {@code
+     * defaultPackage} is {@code package}, {@code bindingFiles} are {@code bindings} and {@code
+     * options} are {@code arguments}.
+     */
+    private static PluginConfig jaxbTable(GradleModel.Xjc xjc, ImportReport.Builder local) {
+        Map<String, Object> table = new LinkedHashMap<>();
+        String src = xjc.xsdDir() == null ? "src/main/resources" : xjc.xsdDir();
+        if (!src.equals(JAXB_DEFAULT_SRC)) table.put("src", src);
+        if (xjc.defaultPackage() != null) table.put("package", xjc.defaultPackage());
+        if (!xjc.bindingFiles().isEmpty()) table.put("bindings", xjc.bindingFiles());
+        if (!xjc.options().isEmpty()) table.put("arguments", xjc.options());
+        local.warning("plugin `" + XJC_PLUGIN + "` is `[jaxb]`: xjc generates the classes into the compile from the"
+                + " schemas under `" + src + "`; the module keeps `jakarta.xml.bind:jakarta.xml.bind-api` for the"
+                + " compile and a JAXB runtime (`org.glassfish.jaxb:jaxb-runtime`) for run time.");
+        return new PluginConfig("jaxb", table);
+    }
+
+    /** The {@code [jaxb]} table's own default schema directory. */
+    private static final String JAXB_DEFAULT_SRC = "src/main/xsd";
 
     /**
      * The BOMs the project's {@code dependencyManagement { imports { mavenBom … } } } block names are
@@ -532,8 +633,15 @@ final class GradleModelImporter {
             local.warning("dependency `" + module + "` has the dynamic version `" + version
                     + "`; written as `latest`, which the first `jk lock` pins.");
             dep = Dependency.of(shortName, module, VersionSelector.parse("latest"));
+        } else if (platformed && managedAbove(p, module, version)) {
+            // Gradle's dependency-management lets a declared version undercut the BOM; a jk pin below
+            // the version the platform aligns the rest of the graph on does not resolve.
+            local.warning("`" + module + "` is declared at " + version + ", below the "
+                    + p.managedVersions().get(module) + " its BOM manages; written as `managed` so it resolves"
+                    + " with the rest of the platform.");
+            dep = Dependency.platformManaged(shortName, module);
         } else {
-            dep = Dependency.of(shortName, module, VersionSelector.parse(version));
+            dep = Dependency.of(shortName, module, VersionSelector.parse(raised(p, d, version, local)));
         }
         if (d.classifier() != null && !d.classifier().isBlank()) dep = dep.withClassifier(d.classifier());
         if (d.type() != null && !d.type().isBlank()) {
@@ -542,6 +650,27 @@ final class GradleModelImporter {
         List<String> exclusions = exclusions(d);
         if (!exclusions.isEmpty()) dep = dep.withExclusions(exclusions);
         deps.computeIfAbsent(target, s -> new ArrayList<>()).add(dep);
+    }
+
+    /** Whether the dependency-management plugin manages {@code module} at a version above {@code version}. */
+    private static boolean managedAbove(GradleModel.Project p, String module, String version) {
+        String managed = p.managedVersions().get(module);
+        return managed != null && !managed.isBlank() && Versions.compare(managed, version) > 0;
+    }
+
+    /**
+     * The version to pin for a declared {@code version}: Gradle's resolved one when a dependency
+     * of the graph asks for a higher one and Gradle's conflict resolution took it. A strict version
+     * is what Gradle resolves already. jk pins what it writes, so a pin below what the graph needs
+     * would not resolve.
+     */
+    private static String raised(
+            GradleModel.Project p, GradleModel.Dependency d, String version, ImportReport.Builder local) {
+        String resolved = p.resolved().get(d.module());
+        if (resolved == null || d.strict() != null || Versions.compare(resolved, version) <= 0) return version;
+        local.warning("`" + d.module() + "` is declared at " + version + " and Gradle resolves " + resolved
+                + ", which a dependency of the graph asks for; written as " + resolved + ".");
+        return resolved;
     }
 
     private static List<String> exclusions(GradleModel.Dependency d) {

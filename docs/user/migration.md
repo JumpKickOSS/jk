@@ -539,6 +539,18 @@ nothing defines is a row. A task the build script registers (`tasks.register("re
 naming the task, never an error; a source set other than `main` and `test`, or a source root
 outside jk's layout, is a row; a plugin nothing maps is a row naming its id or class.
 
+Each project also reports the versions its classpaths resolve to, read after its declared
+dependencies so a plugin's lazily added ones (Kotlin's stdlib) are not written. A declared version
+below the one Gradle resolves — a dependency of the graph asks for more — is written at the
+resolved version with a row; a declared version below the one its `dependencyManagement` BOM
+manages (a plugin's own default, say) is written `managed`, since a jk pin below the platform's
+version does not resolve with the rest of it. The language level is `--release`, else Kotlin's
+`jvmTarget`, else source/target compatibility; a Kotlin or Groovy module with Java sources gets
+`java = N` so its Java compiles, as Gradle's does. The `groovy` plugin writes `groovy =` at the
+Groovy the classpath resolves — beside Kotlin it is a row instead, since a jk module compiles one
+of the two. The xjc plugin (`com.github.bjornvester.xjc`) is `[jaxb]`: `xsdDir` is `src`,
+`defaultPackage` is `package`, `bindingFiles` are `bindings`, `options` are `arguments`.
+
 When Gradle cannot evaluate the build — no network for a download, a plugin the build cannot
 resolve — the import falls back to scanning the root build script
 alone and says so in a Tier-3 row; a `settings.gradle` with no build script beside it is then

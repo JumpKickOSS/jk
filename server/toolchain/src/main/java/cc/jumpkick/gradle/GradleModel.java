@@ -3,7 +3,9 @@ package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.version.Versions;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -30,6 +32,8 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
             Map<String, String> pluginVersions,
             @Nullable Java java,
             @Nullable String kotlinVersion,
+            /** The {@code compileKotlin} task's {@code jvmTarget} as a major; {@code 0} when unset. */
+            int kotlinJvmTarget,
             @Nullable String mainClass,
             boolean bootBuildInfo,
             Map<String, String> manifest,
@@ -41,7 +45,11 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
             List<String> importedBoms,
             List<Task> tasks,
             /** The {@code shadowJar} task's relocators, in order; empty without the Shadow plugin. */
-            List<RelocationRules.Relocation> relocations) {
+            List<RelocationRules.Relocation> relocations,
+            /** The xjc plugin's configuration; null when the project does not apply it. */
+            @Nullable Xjc xjc,
+            /** {@code group:artifact} → the highest version the project's classpaths resolve it to. */
+            Map<String, String> resolved) {
 
         boolean isRoot() {
             return dir.isEmpty();
@@ -73,6 +81,17 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
 
     /** The java extension: toolchain language version, source/target compatibility, {@code --release}. */
     record Java(int toolchain, int source, int target, int release) {}
+
+    /**
+     * The {@code com.github.bjornvester.xjc} extension: the schema directory, the one package the
+     * generated classes go to (null for the namespace-derived ones), binding files and xjc options.
+     * Paths are project-relative.
+     */
+    record Xjc(
+            @Nullable String xsdDir,
+            @Nullable String defaultPackage,
+            List<String> bindingFiles,
+            List<String> options) {}
 
     record SourceSet(String name, List<String> java, List<String> resources, List<String> kotlin) {}
 
@@ -140,6 +159,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
     static final String INTRANSITIVE = "intransitive";
     static final String JAVA = "java";
     static final String KOTLIN = "kotlin";
+    static final String KOTLIN_JVM_TARGET = "kotlinJvmTarget";
     static final String KOTLIN_VERSION = "kotlinVersion";
     static final String MAIN_CLASS = "mainClass";
     static final String MANAGED_VERSIONS = "managedVersions";
@@ -153,6 +173,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
     static final String RAW_STRING = "rawString";
     static final String RELEASE = "release";
     static final String RELOCATIONS = "relocations";
+    static final String RESOLVED = "resolved";
     static final String REPOSITORIES = "repositories";
     static final String REQUIRED = "required";
     static final String RESOURCES = "resources";
@@ -168,6 +189,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
     static final String TEXT = "text";
     static final String TOOLCHAIN = "toolchain";
     static final String TYPE = "type";
+    static final String XJC = "xjc";
 
     /** Parse the JSON the init script wrote. */
     static GradleModel parse(String json) {
@@ -230,6 +252,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
                 Jsonl.strMap(p, PLUGIN_VERSIONS),
                 java,
                 Jsonl.topStr(p, KOTLIN_VERSION),
+                major(Jsonl.topStr(p, KOTLIN_JVM_TARGET)),
                 Jsonl.topStr(p, MAIN_CLASS),
                 Jsonl.bool(p, BOOT_BUILD_INFO, false),
                 Jsonl.strMap(p, MANIFEST),
@@ -240,7 +263,29 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
                 Jsonl.topStr(p, SPRING_BOOT_BOM),
                 Jsonl.strArray(p, IMPORTED_BOMS),
                 tasks,
-                relocations);
+                relocations,
+                xjc(Jsonl.nested(p, XJC)),
+                resolved(Jsonl.strArray(p, RESOLVED)));
+    }
+
+    private static @Nullable Xjc xjc(@Nullable String json) {
+        if (json == null) return null;
+        return new Xjc(
+                Jsonl.topStr(json, "xsdDir"),
+                Jsonl.topStr(json, "defaultPackage"),
+                Jsonl.strArray(json, "bindingFiles"),
+                Jsonl.strArray(json, "options"));
+    }
+
+    /** {@code group:artifact@version} rows as each module's highest version. */
+    private static Map<String, String> resolved(List<String> rows) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String row : rows) {
+            int at = row.lastIndexOf('@');
+            if (at <= 0 || at == row.length() - 1) continue;
+            out.merge(row.substring(0, at), row.substring(at + 1), (a, b) -> Versions.compare(a, b) >= 0 ? a : b);
+        }
+        return out;
     }
 
     private static Dependency parseDependency(String d) {
