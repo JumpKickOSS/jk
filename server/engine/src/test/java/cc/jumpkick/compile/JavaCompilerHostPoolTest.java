@@ -258,6 +258,41 @@ class JavaCompilerHostPoolTest {
     }
 
     @Test
+    void an_item_enqueued_once_the_last_lane_is_dead_gets_a_new_lane_not_its_drain(@TempDir Path dir) throws Exception {
+        // The dead lane's drain and the enqueue race: the item must either miss the drain or see
+        // the replacement lane the enqueue grew, never be failed by a lane already gone.
+        for (int round = 0; round < 500; round++) {
+            CountDownLatch firstDies = new CountDownLatch(1);
+            AtomicInteger started = new AtomicInteger();
+            Lanes pool = new Lanes(
+                    1,
+                    (owner, index) -> started.getAndIncrement() == 0
+                            ? new Session(owner, 10L, index, self -> {
+                                self.takeNext();
+                                firstDies.await();
+                            })
+                            : new Session(owner, 10L, index, self -> {
+                                for (CompileWork w = self.takeNext(); w != CompileWork.POISON; w = self.takeNext()) {
+                                    w.compile.complete(ok());
+                                }
+                            }),
+                    ForkedJavac::writeSpec);
+            pool.enqueue(CompileWork.compile(request(dir, "a")));
+            awaitTrue(() -> pool.queued() == 0, "the first lane took the item");
+
+            firstDies.countDown();
+            while (pool.liveLanes() != 0) Thread.onSpinWait();
+            CompileWork b = CompileWork.compile(request(dir, "b"));
+            pool.enqueue(b);
+            awaitTrue(b.compile::isDone, "the replacement lane completes the item");
+            assertThat(b.compile)
+                    .as("round %d: the item enqueued after the death is compiled", round)
+                    .isCompletedWithValueMatching(ForkedJavac.Result::success);
+            pool.close();
+        }
+    }
+
+    @Test
     void a_lane_whose_worker_dies_between_take_and_dispatch_hands_the_item_back(@TempDir Path dir) throws Exception {
         // Between takeNext() and the COMPILE line the pump writes the spec. A
         // worker that dies in that window has no in-flight item for failAll to fail, so the pump has
