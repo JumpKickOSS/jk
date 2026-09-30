@@ -9,6 +9,22 @@ Fix a failing build: [Troubleshooting](troubleshooting.md).
 
 ## Connect
 
+**Per project (preferred): `jk mcp`.** Register jk as a stdio server whose command is `jk mcp`.
+MCP clients start a stdio server in the project they are working on; `jk mcp` finds the project
+root from its working directory (the workspace root for a member), starts the engine if needed,
+and forwards to it. The connection is pinned to that project, so the tools take no `dir`, the
+instructions do not mention it, and no token goes in the client's config.
+
+```bash
+claude mcp add jk -- jk mcp                  # Claude Code
+codex mcp add jk -- jk mcp                   # Codex
+```
+
+Or in a project's `.mcp.json`: `{"mcpServers": {"jk": {"command": "jk", "args": ["mcp"]}}}`.
+Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
+
+**Over HTTP**, for a client registered once for every project:
+
 | Item | Value |
 |------|--------|
 | Endpoint | `POST {httpUrl}/mcp` (JSON-RPC 2.0; single object or batch) |
@@ -47,7 +63,7 @@ failure the agent must act on (a bad `deps` coord, a failed relock) sets `isErro
 tools answer `structuredContent` (`schema` + `type`, like the rest of the machine model;
 `schema` stays **1** until 1.0) with a one-line text summary.
 
-`run` waits by default and the reply is the run. `run=<id>` (no `kind`) reads an earlier verdict.
+`run` runs the tests (`kind` defaults to `test`), waits, and the reply is the run. `run=<id>` (no `kind`) reads an earlier verdict.
 It does not carry a dashboard link, a session id, or a trigger. The journal still records who
 asked; the human report is `target/jk-results.md` and [Web](web.md). `details` and
 `jk://runs/latest/*` answer for the bound `dir`, never a sibling worktree's run.
@@ -91,7 +107,8 @@ Every tool card an agent's host shows the model is paid for on every turn. The d
 which a test holds to the served list. Ask for every card with `tools/list` params
 `{"extended": true}`, or set `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`) and restart the engine.
 
-**Binding.** `dir` is the project root. An unbound connection is bound by the **first call that
+**Binding.** `dir` is the project root. A `jk mcp` connection is pinned to its project and has no
+`dir` (the `Jk-Project` header it sends does the same for any HTTP client). An unbound connection is bound by the **first call that
 carries `dir`**, and later calls on that connection may omit it. The reply is the tool's own
 result; it does not announce the bind. **`bind`** switches. The bind is the connection's
 alone (`Mcp-Session-Id`): two agents on one engine each keep their own, every tool and `jk://`

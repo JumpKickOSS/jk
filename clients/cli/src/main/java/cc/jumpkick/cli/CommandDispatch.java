@@ -21,6 +21,7 @@ import cc.jumpkick.command.interop.ExportCommand;
 import cc.jumpkick.command.interop.GradleCommand;
 import cc.jumpkick.command.interop.IdeCommand;
 import cc.jumpkick.command.interop.ImportCommand;
+import cc.jumpkick.command.interop.McpCommand;
 import cc.jumpkick.command.interop.MvnCommand;
 import cc.jumpkick.command.interop.VscodeCommand;
 import cc.jumpkick.command.pipeline.AssemblyCommand;
@@ -177,6 +178,7 @@ public final class CommandDispatch {
             new BuildCommand(),
             new AssemblyCommand(),
             new BspCommand(),
+            new McpCommand(),
             new SelectiveCommand(Jk::execute),
             new TestCommand(),
             new FormatCommand(),

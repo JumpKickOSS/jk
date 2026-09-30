@@ -46,7 +46,7 @@ public final class McpJobRuns {
     /**
      * {@code run}: start a job and, unless {@code wait=false}, park for it and attach the
      * outcome. {@code pinnedKind} is set by the thin aliases ({@code publish} and friends);
-     * {@code null} reads {@code arguments.kind}, defaulting to {@code build}.
+     * {@code null} reads {@code arguments.kind}, defaulting to {@code test}: the agent loop's step.
      */
     public static Map<String, Object> run(McpCall in, @Nullable String pinnedKind) {
         if (in.args().containsKey("aot_cache")) {
@@ -56,7 +56,7 @@ public final class McpJobRuns {
         McpContext ctx = in.ctx();
         String kind = pinnedKind;
         if (kind == null) kind = in.str("kind");
-        if (kind == null || kind.isBlank()) kind = "build";
+        if (kind == null || kind.isBlank()) kind = "test";
         List<String> modules = in.strings("modules");
         if (modules.isEmpty()) modules = only(in);
         boolean affected = in.flag("affected");

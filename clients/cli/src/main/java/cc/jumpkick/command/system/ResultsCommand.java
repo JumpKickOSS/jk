@@ -5,9 +5,8 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.api.AgentMode;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.ProjectRoots;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.config.ConfigSources;
-import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -20,7 +19,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -106,13 +104,7 @@ public final class ResultsCommand implements CliCommand {
         Path abs = start == null
                 ? Path.of("").toAbsolutePath().normalize()
                 : start.toAbsolutePath().normalize();
-        Path toml = ConfigSources.findProjectConfig(abs);
-        Path dir = toml != null ? Objects.requireNonNull(toml.getParent(), "jk.toml dir") : abs;
-        try {
-            return WorkspaceLocator.findRoot(dir).orElse(dir);
-        } catch (IOException e) {
-            return dir;
-        }
+        return ProjectRoots.find(abs).orElse(abs);
     }
 
     /**

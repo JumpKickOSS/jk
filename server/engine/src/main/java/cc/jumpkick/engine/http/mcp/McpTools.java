@@ -80,14 +80,22 @@ public final class McpTools {
      * The system prompt an MCP host shows the model. Every tool it names is on the default list —
      * a playbook pointing at a tool the default list does not serve is worse than no playbook.
      */
-    public static final String INSTRUCTIONS =
-            "JumpKick (jk) is not Maven or Gradle: the manifest is jk.toml, the lock is jk-lock.toml, "
-                    + "never add pom.xml or Gradle files. "
-                    + "Loop: run(kind=test, dir=<project>) returns the verdict → edit → run again. "
-                    + "diagnostics is every problem past the cap (file= for one). deps adds, removes, or pins and relocks. "
-                    + "why(coord) is the path and the rule that picked the version. skill is the playbook. "
-                    + "The first call that carries dir binds the connection. "
-                    + "Other tools: tools/list with extended=true.";
+    public static final String INSTRUCTIONS = instructions(false);
+
+    /** {@link #INSTRUCTIONS} for a {@link McpConnection#pinned() pinned} connection: no {@code dir}. */
+    public static final String PINNED_INSTRUCTIONS = instructions(true);
+
+    private static String instructions(boolean pinned) {
+        return "JumpKick (jk) is not Maven or Gradle: the manifest is jk.toml, the lock is jk-lock.toml, "
+                + "never add pom.xml or Gradle files. "
+                + (pinned
+                        ? "Loop: run() tests and returns the verdict → edit → run() again. "
+                        : "Loop: run(dir=<project>) tests and returns the verdict → edit → run again. ")
+                + "diagnostics is every problem past the cap (file= for one). deps adds, removes, or pins and relocks. "
+                + "why(coord) is the path and the rule that picked the version. skill is the playbook. "
+                + (pinned ? "" : "The first call that carries dir binds the connection. ")
+                + "Other tools: tools/list with extended=true.";
+    }
 
     private final Map<String, McpTool> byName;
 
@@ -198,12 +206,39 @@ public final class McpTools {
      * The configured surface still applies when the client does not ask.
      */
     public Map<String, Object> listing(Surface surface, @Nullable Map<String, Object> params) {
+        return listing(surface, params, false);
+    }
+
+    /** As {@link #listing(Surface, Map)}; a {@code pinned} connection's cards carry no {@code dir}. */
+    public Map<String, Object> listing(Surface surface, @Nullable Map<String, Object> params, boolean pinned) {
         boolean all = surface == Surface.ALL || extended(params) || loop.isEmpty();
         List<Map<String, Object>> rows = new ArrayList<>();
         for (String name : all ? names() : loop) {
-            rows.add(Objects.requireNonNull(byName.get(name)).spec().listed());
+            Map<String, Object> card =
+                    Objects.requireNonNull(byName.get(name)).spec().listed();
+            rows.add(pinned ? withoutDir(card) : card);
         }
         return Map.of("tools", rows);
+    }
+
+    /** {@code card} with {@code dir} gone from its input schema's properties and required list. */
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> withoutDir(Map<String, Object> card) {
+        if (!(card.get("inputSchema") instanceof Map<?, ?> raw)) return card;
+        Map<String, Object> schema = new LinkedHashMap<>((Map<String, Object>) raw);
+        if (schema.get("properties") instanceof Map<?, ?> props && props.containsKey("dir")) {
+            Map<String, Object> kept = new LinkedHashMap<>((Map<String, Object>) props);
+            kept.remove("dir");
+            schema.put("properties", kept);
+        }
+        if (schema.get("required") instanceof List<?> req && req.contains("dir")) {
+            List<Object> kept = new ArrayList<>(req);
+            kept.remove("dir");
+            schema.put("required", kept);
+        }
+        Map<String, Object> out = new LinkedHashMap<>(card);
+        out.put("inputSchema", schema);
+        return out;
     }
 
     /** {@code extended: true} on a {@code tools/list} request — the client asked for every tool. */

@@ -42,7 +42,7 @@ public final class UsageGroups {
                             "new", "init", "add", "remove", "lock", "update", "sync", "deny", "tree", "why", "explain",
                             "audit", "verify")),
             new CommandGroup("Toolchain commands:", List.of("jdk", "tool", "trust", "shell", "activate", "deactivate")),
-            new CommandGroup("Interop commands:", List.of("import", "mvn", "gradle", "export", "ide", "bsp")),
+            new CommandGroup("Interop commands:", List.of("import", "mvn", "gradle", "export", "ide", "bsp", "mcp")),
             new CommandGroup(
                     "System commands:",
                     List.of("skill", "doctor", "cache", "storage", "repo", "env", "jobs", "results", "engine", "web")));
