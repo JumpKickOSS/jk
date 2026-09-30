@@ -103,6 +103,12 @@ public record StatusSnapshot(
         /** This process was started with {@code CI} set or {@code JK_OVERBOOK} off. */
         boolean overbookingOff,
         /**
+         * What the head of the worker lease queue needs and who holds the memory, as {@code job #7
+         * needs 13.2 GiB (12.9 GiB free); held by build-script host 608 MiB (asked to exit)}.
+         * {@code ""} when nothing is queued.
+         */
+        String workerWaiting,
+        /**
          * Every live and queued job, live first in admission order then queued in arrival order,
          * each as {@code JobRow.toJson()} renders it: {@code jid}, {@code kind}, {@code dir},
          * {@code state} ({@code live} | {@code queued}), {@code since}, {@code workers},
@@ -179,6 +185,7 @@ public record StatusSnapshot(
                 -1,
                 -1,
                 false,
+                "",
                 jobs);
     }
 
@@ -241,6 +248,7 @@ public record StatusSnapshot(
                 -1,
                 -1,
                 false,
+                "",
                 List.of());
     }
 
@@ -341,6 +349,7 @@ public record StatusSnapshot(
         m.put("workerRunningJvms", workerRunningJvms);
         m.put("workerCpuCap", workerCpuCap);
         m.put("overbookingOff", overbookingOff);
+        m.put("workerWaiting", workerWaiting == null ? "" : workerWaiting);
         m.put("jobs", jobs);
         return m;
     }

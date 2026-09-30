@@ -104,8 +104,8 @@ export function mib(bytes, decimals = 0) {
 }
 
 /**
- * The workers row, the same sentence as {@code jk engine status}. Empty when the engine did not
- * report a budget. {@code source} is {@code host}, {@code cgroup}, or {@code override}.
+ * The workers row, the same sentence as {@code jk engine status}, then its waiting row. Empty when
+ * the engine did not report a budget. {@code source} is {@code host}, {@code cgroup}, or {@code override}.
  */
 export function workerBudgetLine(status) {
   if (!status || typeof status.workerBudgetBytes !== 'number' || status.workerBudgetBytes < 0) return '';
@@ -122,6 +122,7 @@ export function workerBudgetLine(status) {
     line += ', ' + running + '/' + cap + ' JVMs';
   }
   if (status.overbookingOff) line += ', overbooking off';
+  if (status.workerWaiting) line += '; waiting: ' + status.workerWaiting;
   return line;
 }
 
