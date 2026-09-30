@@ -113,20 +113,25 @@ class TestEnvTest {
     }
 
     @Test
-    void the_temp_root_is_sandboxed_under_the_module_by_default(@TempDir Path tmp) throws Exception {
-        // Not the host's. A forked test JVM inherits the engine's temp dir otherwise, and then
-        // @TempDir writes where jk neither cleans nor controls the shape of the path — which is how
-        // the /var -> /private/var link on macOS got into a comparison in jk-java-compiler that a
-        // module-owned temp root keeps out of reach.
+    void the_temp_root_is_jk_owned_outside_the_project_in_its_real_spelling(@TempDir Path tmp) throws Exception {
+        // Not the host's: jk cleans it and controls the path's shape, so a /var -> /private/var
+        // link cannot split one directory into two spellings. Not under the project either: a
+        // test may assume, as under Surefire, that @TempDir is outside its working directory.
         JkBuild project = project(tmp, "");
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
 
-        Path expected = tmp.resolve("target/tmp").toAbsolutePath();
+        Path expected = TestHomes.slotFor(tmp).toRealPath().resolve("tmp");
         assertThat(Path.of(env.get("TMPDIR"))).isEqualTo(expected);
         // All three, because a suite that forks a process hands it the environment: TMP and TEMP
         // are what a Windows child reads, and disagreeing with TMPDIR would put its files elsewhere.
         assertThat(Path.of(env.get("TMP"))).isEqualTo(expected);
         assertThat(Path.of(env.get("TEMP"))).isEqualTo(expected);
+        assertThat(expected.startsWith(tmp.toRealPath()))
+                .as("outside the project")
+                .isFalse();
+        assertThat(expected.startsWith(Path.of(env.get("JK_HOME"))))
+                .as("outside the sandboxed product home")
+                .isFalse();
         assertThat(env.get("TMPDIR")).isNotEqualTo(System.getProperty("java.io.tmpdir"));
     }
 

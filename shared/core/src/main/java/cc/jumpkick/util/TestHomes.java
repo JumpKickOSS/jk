@@ -60,7 +60,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p><b>A slot, not just a home.</b> {@code JK_HOME} is {@code <slot>/home} rather than the slot
  * itself because the launcher derives the shared test cache as a <em>sibling</em> of {@code JK_HOME},
- * so wiping the home does not wipe the cache. Flattening this would turn a per-module cache into one
+ * so wiping the home does not wipe the cache. The test JVMs' temp root ({@link #tmpFor}) is another
+ * sibling. Flattening this would turn a per-module cache into one
  * shared by every module on the machine.
  */
 public final class TestHomes {
@@ -148,6 +149,25 @@ public final class TestHomes {
      */
     public static Path pathFor(Path moduleDir) {
         return slotFor(moduleDir).resolve("home");
+    }
+
+    /** The test temp root's name inside a slot, beside {@code home}. */
+    public static final String TMP = "tmp";
+
+    /**
+     * {@code <slot>/tmp}: the temp root this module's test JVMs get. Outside the project like the
+     * home, beside it rather than inside it so the sandboxed product layout never sees it, and taken
+     * with the slot by the reaper and {@code jk clean}. The slot's real spelling once it exists, so
+     * a temp path never differs from its canonical form. Pure: the launcher creates and empties it.
+     */
+    public static Path tmpFor(Path moduleDir) {
+        Path slot = slotFor(moduleDir);
+        try {
+            slot = slot.toRealPath();
+        } catch (IOException notYetOnDisk) {
+            // The configured spelling until the slot exists.
+        }
+        return slot.resolve(TMP);
     }
 
     /** {@link #pathFor} with the directory created and the slot stamped, stale slots reaped first. */

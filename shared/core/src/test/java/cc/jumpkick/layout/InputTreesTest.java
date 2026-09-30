@@ -370,11 +370,7 @@ class InputTreesTest {
                 .isFalse();
     }
 
-    /**
-     * The scratch carve-out, which is why the fixtures above can be {@code @TempDir} at all: under
-     * {@code jk test} a forked worker's temp root is {@code <module>/target/tmp/}, so a name-only
-     * rule answered "build output" for every tree a test builds.
-     */
+    /** The scratch carve-out: a tree under a module's {@code target/tmp/} is not build output. */
     @Test
     void the_declared_scratch_root_is_not_this_jobs_writing(@TempDir Path w) throws Exception {
         Files.writeString(w.resolve("jk.toml"), "[workspace]\nmodules = ['shared/core']\n");
@@ -382,7 +378,7 @@ class InputTreesTest {
         Path fixture = Files.createDirectories(w.resolve("target/tmp/junit123/fx"));
         Files.writeString(fixture.resolve("jk.toml"), "[project]\nname='fx'\n");
         assertThat(InputTrees.isBuildOutput(w.resolve("target/tmp/junit123/src")))
-                .as("a forked test JVM's temp root is scratch, not output")
+                .as("the scratch root is not output")
                 .isFalse();
         assertThat(InputTrees.isBuildOutput(w.resolve("target/shared/core/tmp/junit123/src")))
                 .as("a workspace member's scratch sits a module path deeper")

@@ -31,7 +31,7 @@ import org.jspecify.annotations.Nullable;
  * for exactly that reason; the machine seed is the matching answer for tools on {@code PATH}.
  *
  * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR} and {@code JK_M2_LOCAL} point at the module's throwaway
- * sandbox ({@link TestHomes}) and the temp root at the module's build output, unless the module says
+ * sandbox ({@link TestHomes}) and the temp root at that sandbox's slot, unless the module says
  * otherwise. The three roots with their own override — {@code JK_STATE_DIR}, {@code JK_STORE_DIR},
  * {@code JK_CACHE_DIR} — are pinned under that home too: {@link WorkerEnv} lets the engine's own
  * spellings of them through, and an engine started with {@code JK_STATE_DIR} in its shell would
@@ -65,17 +65,16 @@ public final class TestEnv {
     static final String JK_M2_LOCAL = "JK_M2_LOCAL";
 
     /**
-     * The temp root, under the module's build output rather than the host's.
+     * The temp root: {@link TestHomes#tmpFor}, jk-owned and emptied at every launch, rather than the
+     * host's.
      *
-     * <p>Same argument as the sandbox above, one step further: a forked test JVM inherits the
-     * engine's temp dir, so {@code @TempDir} and every {@code createTempFile} land in a directory
-     * jk neither owns nor cleans. Two costs followed. Leftovers accumulate on a shared tmpfs until
-     * a later suite cannot allocate an inode — the reason {@code jk-cli} carries its own deletion
-     * strategy. And the host temp root is not a neutral path: on macOS it sits under the
-     * {@code /var} → {@code /private/var} link, so any code that compares a temp path against a
-     * path it was configured with is comparing two spellings of one directory. That is a real
-     * defect, found in {@code jk-java-compiler} by a run whose temp root was the host's; a temp
-     * root the module owns is what lets a gate see it.
+     * <p>A forked test JVM would otherwise inherit the engine's temp dir, one jk neither owns nor
+     * cleans: leftovers pile up on a shared tmpfs until a later suite cannot allocate an inode, and
+     * on macOS it sits under the {@code /var} → {@code /private/var} link, so code comparing a temp
+     * path with a configured one compares two spellings of one directory. The root is handed out in
+     * its real spelling for that reason. It is outside the project tree, as Surefire's is: a test
+     * may assume {@code @TempDir} is not under its working directory, and a fixture there would find
+     * the project's {@code jk.toml} walking up.
      *
      * <p>All three names, because a test that forks a process hands it the environment, not this
      * JVM's system properties. {@link cc.jumpkick.test.JUnitLauncher} mirrors the same directory
@@ -173,10 +172,10 @@ public final class TestEnv {
         Map<String, String> out = new LinkedHashMap<>();
         // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
         out.putAll(BuildEnv.machine());
-        // Sandbox next so a declared value replaces it. The home is outside the project (TestHomes);
-        // the temp root below stays under the build output. Prepared here — created and stamped as
-        // in use — so anything the build stages into it before the suite launches survives the
-        // reaper another module's preparation may run meanwhile.
+        // Sandbox next so a declared value replaces it. The home and the temp root are outside the
+        // project (TestHomes). Prepared here — created and stamped as in use — so anything the
+        // build stages into it before the suite launches survives the reaper another module's
+        // preparation may run meanwhile.
         Path sandboxHome = TestHomes.prepare(moduleDir);
         Path m2 = sandboxM2(moduleDir);
         warmStore(sandboxHome, m2);
@@ -186,9 +185,9 @@ public final class TestEnv {
         out.put(JK_CACHE_DIR, sandboxHome.resolve("cache").toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
         out.put(JK_M2_LOCAL, m2.toString());
-        // Created at launch, not here: this method answers what the environment is, and the
-        // directory has to exist before a worker starts. JUnitLauncher makes it.
-        String testTmp = target.resolve("tmp").toAbsolutePath().toString();
+        // Created and emptied at launch, not here: JUnitLauncher makes it. The slot already exists,
+        // so its real spelling can be had now.
+        String testTmp = TestHomes.tmpFor(moduleDir).toString();
         out.put(TMPDIR, testTmp);
         out.put(TMP, testTmp);
         out.put(TEMP, testTmp);
