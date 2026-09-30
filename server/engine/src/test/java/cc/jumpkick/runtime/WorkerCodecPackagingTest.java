@@ -52,6 +52,42 @@ class WorkerCodecPackagingTest {
                         hostClasses.toAbsolutePath().normalize());
     }
 
+    /**
+     * The vendored set is the declared closure, so the packaging token over it names the same trees
+     * whether or not a sibling has compiled yet when the step lists them.
+     */
+    @Test
+    void the_vendored_set_is_declared_not_whatever_is_on_disk(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("ws");
+        writeWorkspace(root);
+        Path worker = root.resolve("plugins/worker");
+        Path host = root.resolve("shared/host");
+        Path sdk = root.resolve("shared/plugin-sdk");
+        Path hostClasses = BuildLayout.of(host, JkBuildParser.parse(host.resolve("jk.toml")))
+                .classesDir();
+        Path sdkClasses =
+                BuildLayout.of(sdk, JkBuildParser.parse(sdk.resolve("jk.toml"))).classesDir();
+        JkBuild project = JkBuildParser.parse(worker.resolve("jk.toml"));
+
+        List<Path> beforeCompile = PlannerSupport.workerCodecClassDirs(worker, project);
+        assertThat(beforeCompile)
+                .extracting(p -> p.toAbsolutePath().normalize())
+                .containsExactly(
+                        sdkClasses.toAbsolutePath().normalize(),
+                        hostClasses.toAbsolutePath().normalize());
+
+        // Only one sibling has compiled: the list does not change with it.
+        Files.createDirectories(sdkClasses);
+        Files.writeString(sdkClasses.resolve("Sdk.class"), "sdk");
+        assertThat(PlannerSupport.workerCodecClassDirs(worker, project)).isEqualTo(beforeCompile);
+
+        // With the same bytes on disk, the token is one value however the list was taken.
+        Files.createDirectories(hostClasses);
+        Files.writeString(hostClasses.resolve("Jsonl.class"), "jsonl");
+        String token = PlannerSupport.contributionsToken(PlannerSupport.workerCodecClassDirs(worker, project));
+        assertThat(PlannerSupport.contributionsToken(beforeCompile)).isEqualTo(token);
+    }
+
     @Test
     void worker_pom_omits_vendored_siblings_keeps_external_deps(@TempDir Path tmp) throws Exception {
         Path root = tmp.resolve("ws");

@@ -886,12 +886,10 @@ final class ModuleForecast {
                 classesTok = PackagingKeys.classesTokenForPackage(
                         dir, compact, layout, project, actionCache, compileMainKey, knownResourceDrift);
             }
-            // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
-            // every module forecast permanent "repackage", cascade depDirty, and price a full
-            // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED. A
-            // worker's vendored sibling class dirs are read as the trees the build restores.
+            // The live package-jar's tokens exactly. A worker's vendored sibling class dirs are the
+            // declared set the build lists, each read as the tree the build restores.
             List<Path> contributed = new ArrayList<>(PlannerSupport.packagedDirs(pkgDecls, layout, project));
-            contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project, restored::willBePresent));
+            contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project));
             String contribTok = PlannerSupport.contributionsToken(contributed, restored.identity());
             List<String> tokens = List.of(
                     "classes:" + classesTok,
