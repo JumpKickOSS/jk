@@ -260,7 +260,8 @@ is one JSONL stream from the first byte to the last; on a terminal the app owns 
 
 Ordering is arrival order across processes; nothing is buffered beyond line assembly. Session
 teardown — Ctrl-C, or the app ending the loop — does not emit `sidecar-exited` for the processes it
-stops itself. `jk dev --no-sidecars` emits no `sidecar-*` events at all. [Run](run.md#sidecars-devsidecars).
+stops itself, and once the session is finished no event follows: an app killed by Ctrl-C has no
+`app-exited`, and stdout carries exactly the dev events its `details.jsonl` does. `jk dev --no-sidecars` emits no `sidecar-*` events at all. [Run](run.md#sidecars-devsidecars).
 
 ## `details.jsonl`
 

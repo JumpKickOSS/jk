@@ -65,8 +65,21 @@ public final class AppWatchLoop {
     /** The full rebuild a manifest or resource change triggers; same shape, different plan. */
     private final Compiler builder;
 
-    /** Where every event goes: the session transcript always, stdout under {@code --output json}. */
-    private final Consumer<String> events = line -> JsonlShape.emitEvent(line, json());
+    /** Guards {@link #over}, so an event lands on stdout and in the transcript, or in neither. */
+    private final Object eventsLock = new Object();
+
+    /** Set once the session is finished: an app or pump thread that outlives it emits nothing. */
+    private boolean over;
+
+    /**
+     * Where every event goes: the session transcript always, stdout under {@code --output json}.
+     * Nothing after the session finishes, so stdout never carries an event its transcript lacks.
+     */
+    private final Consumer<String> events = line -> {
+        synchronized (eventsLock) {
+            if (!over) JsonlShape.emitEvent(line, json());
+        }
+    };
 
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
         CliSessionTranscript session = CliSessionTranscript.openAcrossJobs(projectDir, "dev", devArgv(appArgs));
@@ -80,10 +93,18 @@ public final class AppWatchLoop {
         try {
             code = session(projectDir, cache, appArgs, session);
         } catch (IOException | InterruptedException | RuntimeException e) {
-            CliSessionTranscript.finish(session, GlobalCancel.exitCodeFor(Exit.SOFTWARE), false);
+            finish(session, GlobalCancel.exitCodeFor(Exit.SOFTWARE), false);
             throw e;
         }
-        return CliSessionTranscript.finish(session, GlobalCancel.exitCodeFor(code), global.verbose);
+        return finish(session, GlobalCancel.exitCodeFor(code), global.verbose);
+    }
+
+    /** End the session's event stream, then its transcript; the first caller's exit code is kept. */
+    private int finish(@Nullable CliSessionTranscript session, int exit, boolean verbose) {
+        synchronized (eventsLock) {
+            over = true;
+        }
+        return CliSessionTranscript.finish(session, exit, verbose);
     }
 
     /** What {@code session-start} records: the verb as {@code jk dev} spells it, its options, the app's arguments. */
@@ -143,7 +164,7 @@ public final class AppWatchLoop {
         AtomicReference<Process> running = new AtomicReference<>(app.process());
         try (GlobalCancel.Registration onInterrupt = GlobalCancel.onInterrupt(() -> {
                     sidecars.stopAlongside(List.of(running.get()));
-                    CliSessionTranscript.finish(session, Exit.INTERRUPTED, false);
+                    finish(session, Exit.INTERRUPTED, false);
                 });
                 SourceWatch watch = SourceWatch.open(projectDir, watchRoots)) {
             if (!sidecars.isEmpty()) {
