@@ -190,7 +190,7 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
 
     @Test
     void mcp_wait_parks_without_holding_the_only_admission_permit() throws Exception {
-        // RPC budget of 1: a parked job wait held the permit, so every other
+        // RPC budget of 1: a parked run(jid) wait held the permit, so every other
         // request (including the cancel that could un-wedge it) 503'd until timeout.
         HttpEngineServer tiny = new HttpEngineServer(
                 httpConfig("127.0.0.1", 0, 1),
@@ -224,10 +224,9 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
                     return client.send(
                             HttpRequest.newBuilder(URI.create(url + "mcp"))
                                     .header("Authorization", "Bearer " + tok)
-                                    .POST(
-                                            HttpRequest.BodyPublishers.ofString(
-                                                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":"
-                                                            + "{\"name\":\"job\",\"arguments\":{\"action\":\"wait\",\"jid\":7,\"timeout_s\":30}}}"))
+                                    .POST(HttpRequest.BodyPublishers.ofString(
+                                            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":"
+                                                    + "{\"name\":\"run\",\"arguments\":{\"jid\":7,\"timeout_s\":30}}}"))
                                     .build(),
                             HttpResponse.BodyHandlers.ofString());
                 } catch (Exception e) {

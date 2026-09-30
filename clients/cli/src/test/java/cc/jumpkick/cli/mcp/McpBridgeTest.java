@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.mcp;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.testing.DeadEndpoint;
+import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -13,8 +16,13 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,14 +31,23 @@ import org.junit.jupiter.api.Test;
 class McpBridgeTest {
 
     private HttpServer server;
-    private final List<String> projects = new ArrayList<>();
-    private final List<String> sessions = new ArrayList<>();
-    private final List<String> tokens = new ArrayList<>();
+    private final ExecutorService handlers = Executors.newVirtualThreadPerTaskExecutor();
+    private final List<String> projects = new CopyOnWriteArrayList<>();
+    private final List<String> sessions = new CopyOnWriteArrayList<>();
+    private final List<String> tokens = new CopyOnWriteArrayList<>();
+    private final List<String> eventQueries = new CopyOnWriteArrayList<>();
+    private volatile boolean eventsDown;
 
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        // The event stream holds its exchange open while the call it follows is answered.
+        server.setExecutor(handlers);
         server.createContext("/mcp", exchange -> {
+            if (exchange.getRequestMethod().equals("GET")) {
+                events(exchange);
+                return;
+            }
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             projects.add(exchange.getRequestHeaders().getFirst(McpBridge.PROJECT_HEADER));
             sessions.add(exchange.getRequestHeaders().getFirst(McpBridge.SESSION_HEADER));
@@ -41,6 +58,7 @@ class McpBridgeTest {
                 exchange.close();
                 return;
             }
+            if (body.contains("slow")) pause(1_200);
             byte[] out = body.contains("boom")
                     ? "nope".getBytes(StandardCharsets.UTF_8)
                     : "{\"jsonrpc\":\"2.0\",\n\"id\":1,\"result\":{}}".getBytes(StandardCharsets.UTF_8);
@@ -54,6 +72,115 @@ class McpBridgeTest {
     @AfterEach
     void stop() {
         server.stop(0);
+        handlers.shutdownNow();
+    }
+
+    /** The engine's filtered event stream: one step, one label, then quiet until the bridge hangs up. */
+    private void events(HttpExchange exchange) throws IOException {
+        eventQueries.add(exchange.getRequestURI().getRawQuery());
+        if (eventsDown) {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+        }
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+        exchange.sendResponseHeaders(200, 0);
+        try (var out = exchange.getResponseBody()) {
+            String hello = ": mcp-events connected\n\n"
+                    + frame("{\"event\":\"task-start\",\"task\":\"test\",\"progress\":40}")
+                    + frame("{\"event\":\"label\",\"label\":\"FooTest#bar\",\"progress\":55.5}");
+            out.write(hello.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            while (!Thread.currentThread().isInterrupted()) {
+                pause(50);
+                out.write(": heartbeat\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+        } catch (IOException e) {
+            // The bridge hung up.
+        }
+    }
+
+    private static String frame(String params) {
+        return "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/jk/event\",\"params\":" + params
+                + "}\n\n";
+    }
+
+    private static void pause(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private McpBridge paced() {
+        return new McpBridge(this::live, "/ws", Duration.ofMillis(200), Duration.ofMillis(50));
+    }
+
+    private static String slowCall(String meta) {
+        return "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"slow\"" + meta + "}}";
+    }
+
+    /** The {@code notifications/progress} params in {@code out}, in order. */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> progress(String out) {
+        List<Map<String, Object>> notes = new ArrayList<>();
+        for (String line : out.split("\n")) {
+            Map<String, Object> m = (Map<String, Object>) requireNonNull(MiniJson.parse(line));
+            if ("notifications/progress".equals(m.get("method"))) notes.add((Map<String, Object>) m.get("params"));
+        }
+        return notes;
+    }
+
+    @Test
+    void a_slow_call_with_a_progress_token_streams_progress_until_the_reply_then_stops() throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        String in = slowCall(",\"_meta\":{\"progressToken\":\"tok-1\"}") + "\n";
+        paced().serve(
+                        new ByteArrayInputStream(in.getBytes(StandardCharsets.UTF_8)),
+                        new PrintStream(bytes, true, StandardCharsets.UTF_8));
+        String out = bytes.toString(StandardCharsets.UTF_8);
+        String[] lines = out.split("\n");
+        assertThat(lines[lines.length - 1]).as("the reply is the last line").contains("\"result\"");
+        List<Map<String, Object>> notes = progress(out);
+        assertThat(notes).hasSizeGreaterThanOrEqualTo(4).allSatisfy(n -> assertThat(n.get("progressToken"))
+                .isEqualTo("tok-1"));
+        assertThat(notes)
+                .anySatisfy(n -> assertThat(String.valueOf(n.get("message"))).isEqualTo("test · FooTest#bar · 56%"));
+        double last = -1;
+        for (Map<String, Object> n : notes) {
+            double p = ((Number) requireNonNull(n.get("progress"))).doubleValue();
+            assertThat(p).as("progress increases on every notification").isGreaterThan(last);
+            last = p;
+        }
+        assertThat(eventQueries).containsExactly("progressToken=tok-1");
+        pause(400);
+        assertThat(bytes.toString(StandardCharsets.UTF_8))
+                .as("nothing after the reply")
+                .isEqualTo(out);
+    }
+
+    @Test
+    void a_numeric_token_goes_back_as_the_number_the_client_sent() throws IOException {
+        String out = serve(paced(), slowCall(",\"_meta\":{\"progressToken\":7}"));
+        assertThat(out).contains("\"progressToken\":7,");
+        assertThat(eventQueries).containsExactly("progressToken=7");
+    }
+
+    @Test
+    void a_quiet_engine_still_gets_a_heartbeat() throws IOException {
+        eventsDown = true;
+        String out = serve(paced(), slowCall(",\"_meta\":{\"progressToken\":\"t\"}"));
+        assertThat(progress(out)).hasSizeGreaterThanOrEqualTo(3).allSatisfy(n -> assertThat(n.get("message"))
+                .isEqualTo("running"));
+    }
+
+    @Test
+    void a_call_without_a_token_writes_only_its_reply() throws IOException {
+        String out = serve(paced(), slowCall(""));
+        assertThat(out.split("\n")).hasSize(1);
+        assertThat(eventQueries).isEmpty();
     }
 
     private McpBridge.Endpoint live() {

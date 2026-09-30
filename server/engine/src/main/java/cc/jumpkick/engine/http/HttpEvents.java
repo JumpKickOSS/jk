@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -23,8 +24,8 @@ import org.jspecify.annotations.Nullable;
  * ({@code workspace-progress}, {@code eta}, structural task/module/request events) — a dump of
  * compiler output must not freeze the dashboard bar while the CLI TUI keeps ticking.
  *
- * <p>MCP subscribers may filter by {@code requestId} so multi-job engines only deliver one job's
- * events to a given SSE connection ({@code GET /mcp?requestId=N} or progress-token binding).
+ * <p>MCP subscribers may filter by {@code jid} so multi-job engines only deliver one job's
+ * events to a given SSE connection ({@code GET /mcp?jid=N} or {@code ?progressToken=T}).
  */
 public final class HttpEvents {
 
@@ -110,12 +111,20 @@ public final class HttpEvents {
     }
 
     /**
-     * Subscription with frame style and optional {@code requestId} filter. When {@code
-     * requestIdFilter} is non-null, only events whose payload carries that {@code requestId} are
-     * delivered (events without a requestId are dropped for filtered subscriptions).
+     * Subscription with frame style and optional {@code jid} filter. When {@code jid} is non-null,
+     * only events whose payload carries that {@code jid} are delivered (events without one are
+     * dropped for filtered subscriptions).
      */
-    Subscription subscribe(FrameStyle style, @Nullable Long requestIdFilter) {
-        Subscription s = subscribeDetached(style, requestIdFilter);
+    Subscription subscribe(FrameStyle style, @Nullable Long jid) {
+        return subscribeFollowing(style, jid == null ? null : () -> jid);
+    }
+
+    /**
+     * As {@link #subscribe(FrameStyle, Long)} with the jid asked per event, so a filter can name a
+     * job that has not started yet. A filter that answers {@code null} delivers nothing.
+     */
+    Subscription subscribeFollowing(FrameStyle style, @Nullable Supplier<@Nullable Long> jid) {
+        Subscription s = new Subscription(this, style == null ? FrameStyle.DASHBOARD : style, jid);
         attach(s);
         return s;
     }
@@ -127,8 +136,8 @@ public final class HttpEvents {
      * event is either reflected in the snapshot or delivered to the queue, never lost in the
      * subscribe→snapshot window.
      */
-    Subscription subscribeDetached(FrameStyle style, @Nullable Long requestIdFilter) {
-        return new Subscription(this, style == null ? FrameStyle.DASHBOARD : style, requestIdFilter);
+    Subscription subscribeDetached(FrameStyle style, @Nullable Long jid) {
+        return new Subscription(this, style == null ? FrameStyle.DASHBOARD : style, jid == null ? null : () -> jid);
     }
 
     /**
@@ -200,8 +209,8 @@ public final class HttpEvents {
     public static final class Subscription implements AutoCloseable {
         private final HttpEvents hub;
         private final FrameStyle style;
-        /** {@code null} = all events; non-null = only matching {@code requestId}. */
-        private final @Nullable Long requestIdFilter;
+        /** {@code null} = all events; otherwise only events carrying the jid it answers. */
+        private final @Nullable Supplier<@Nullable Long> jidFilter;
 
         private final ReentrantLock lock = new ReentrantLock();
         private final Condition notEmpty = lock.newCondition();
@@ -210,15 +219,15 @@ public final class HttpEvents {
 
         private record Queued(boolean critical, String wire) {}
 
-        private Subscription(HttpEvents hub, FrameStyle style, @Nullable Long requestIdFilter) {
+        private Subscription(HttpEvents hub, FrameStyle style, @Nullable Supplier<@Nullable Long> jidFilter) {
             this.hub = hub;
             this.style = style;
-            this.requestIdFilter = requestIdFilter;
+            this.jidFilter = jidFilter;
         }
 
-        boolean accepts(@Nullable Long eventRequestId) {
-            if (requestIdFilter == null) return true;
-            return eventRequestId != null && requestIdFilter.equals(eventRequestId);
+        boolean accepts(@Nullable Long eventJid) {
+            if (jidFilter == null) return true;
+            return eventJid != null && eventJid.equals(jidFilter.get());
         }
 
         /** The next frame, or {@code null} after {@code timeoutMillis} of quiet (heartbeat time). */

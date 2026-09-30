@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Tools project the same facts as CLI JSONL / {@code /api/*} (status, build trigger, project
  * metadata, history). Live progress: {@code GET /mcp} with {@code Accept: text/event-stream}
- * (MCP {@code notifications/jk/event}); filter with {@code ?requestId=} or {@code
+ * (MCP {@code notifications/jk/event}); filter with {@code ?jid=} or {@code
  * ?progressToken=} (bound from tools/call {@code _meta.progressToken}). See {@code
  * docs/machine-output.md}.
  *
@@ -103,7 +103,7 @@ public final class McpHandler {
         ctx.cacheGate(cacheGate);
     }
 
-    /** Wire the engine's one-jid liveness probe, what a parked {@code job wait} polls. */
+    /** Wire the engine's one-jid liveness probe, what a parked {@code run} wait polls. */
     public void liveJid(LongPredicate liveJid) {
         ctx.liveJid(liveJid);
     }

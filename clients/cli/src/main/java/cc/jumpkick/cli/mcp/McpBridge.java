@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -16,12 +17,16 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
  * MCP over stdio for one project: each newline-delimited JSON-RPC message from the client is
  * POSTed to the engine's {@code /mcp} with the {@code Jk-Project} header, and each reply is
  * written back as one line. The header pins the connection, so the tools take no {@code dir}.
+ * While a {@code tools/call} that carries {@code _meta.progressToken} is outstanding, {@link
+ * McpProgress} writes {@code notifications/progress} lines for it; every stdout line goes through
+ * one lock, so a notification never interleaves with a reply.
  */
 public final class McpBridge {
 
@@ -38,15 +43,30 @@ public final class McpBridge {
     /** Longer than any parked {@code run}: the engine's own wait cap answers first. */
     private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(65);
 
+    /** The longest a call with a progress token goes without a notification. */
+    private static final Duration HEARTBEAT = Duration.ofSeconds(5);
+
+    /** The shortest gap between two notifications, and how long a call runs before it is followed. */
+    private static final Duration GAP = Duration.ofSeconds(1);
+
     private final Endpoints endpoints;
     private final @Nullable String project;
     private final HttpClient http;
-    private @Nullable Endpoint endpoint;
+    private final Duration heartbeat;
+    private final Duration gap;
+    private volatile @Nullable Endpoint endpoint;
     private @Nullable String session;
 
     public McpBridge(Endpoints endpoints, @Nullable String project) {
+        this(endpoints, project, HEARTBEAT, GAP);
+    }
+
+    /** As {@link #McpBridge(Endpoints, String)} with the progress pacing; tests shorten it. */
+    McpBridge(Endpoints endpoints, @Nullable String project, Duration heartbeat, Duration gap) {
         this.endpoints = endpoints;
         this.project = project;
+        this.heartbeat = heartbeat;
+        this.gap = gap;
         this.http = Http.proxiedClientBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10))
@@ -55,16 +75,49 @@ public final class McpBridge {
 
     /** Serve until the client closes stdin. */
     public void serve(InputStream in, PrintStream out) throws IOException {
+        Consumer<String> lines = line -> {
+            synchronized (out) {
+                out.print(line);
+                out.print('\n');
+                out.flush();
+            }
+        };
         BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         String line;
         while ((line = reader.readLine()) != null) {
             if (line.isBlank()) continue;
-            String reply = forward(line);
-            if (reply.isEmpty()) continue;
-            out.print(reply);
-            out.print('\n');
-            out.flush();
+            String reply = call(line, lines);
+            if (!reply.isEmpty()) lines.accept(reply);
         }
+    }
+
+    /** {@link #forward}, followed for progress when the message is a {@code tools/call} with a token. */
+    private String call(String message, Consumer<String> lines) {
+        Object token = McpProgress.tokenOf(message);
+        if (token == null) return forward(message);
+        try (McpProgress ignored = McpProgress.start(token, this::events, lines, heartbeat, gap)) {
+            return forward(message);
+        }
+    }
+
+    /** The engine's MCP event stream for one progress token. */
+    private InputStream events(String token) throws IOException, InterruptedException {
+        Endpoint target = endpoint;
+        if (target == null) target = endpoints.current();
+        String url = target.url().toString();
+        URI uri = URI.create(url + (url.contains("?") ? "&" : "?") + "progressToken="
+                + URLEncoder.encode(token, StandardCharsets.UTF_8));
+        HttpRequest request = Http.proxiedRequest(uri)
+                .header("Authorization", "Bearer " + target.token())
+                .header("Accept", "text/event-stream")
+                .GET()
+                .build();
+        HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() / 100 != 2) {
+            response.body().close();
+            throw new IOException("jk engine event stream answered HTTP " + response.statusCode());
+        }
+        return response.body();
     }
 
     /**

@@ -20,12 +20,13 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 4. Raw step log (optional)   jk results --details  or MCP details
 5. Rebuild                   same selection as the failure (jk test, not --all)
 6. Graph / ETA               jk why / jk explain   or MCP why / explain (extended tools/list)
-7. Stalled                   jk jobs / jk cancel   or MCP status, then job cancel (extended tools/list)
+7. Stalled                   jk jobs / jk cancel   or MCP status, then cancel (extended tools/list)
 ```
 
 Read the **verdict** first. `run` returns it; `jk --agent` prints the same text. The human
 markdown at `target/jk-results.md` is for a person, or for an agent with neither MCP nor
-`--agent`. The verdict is one line when the run is OK.
+`--agent`. The verdict is one line when the run is OK. A `run` that answers `TIMEOUT … jid=N`
+is still going: `run(jid=N)` waits on it again and returns its verdict ([MCP](mcp.md#waits-and-keep-alive)).
 
 After an edit, MCP **`affected_tests`** (or `jk test --affected`) writes
 `target/jk-tests-affected.md` — a short ranked list of test classes for the working tree.

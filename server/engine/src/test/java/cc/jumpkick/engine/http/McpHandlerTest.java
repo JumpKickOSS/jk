@@ -127,7 +127,7 @@ class McpHandlerTest {
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         String text = (String) objects(result, "content").getFirst().get("text");
-        assertThat(text).isEqualTo("RUNNING build jid=42\njob action=wait jid=42\n");
+        assertThat(text).isEqualTo("RUNNING build jid=42\nrun(jid=42)\n");
         Map<String, Object> structured = object(result, "structuredContent");
         assertThat(structured.get("type")).isEqualTo("build-accepted");
         assertThat(number(structured, "jid").longValue()).isEqualTo(42L);

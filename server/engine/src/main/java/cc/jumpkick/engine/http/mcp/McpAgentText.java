@@ -10,19 +10,24 @@ import java.nio.file.Path;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
-/** The agent rendering of a finished run, shared by the job and results tools. */
+/** The agent rendering of a run, shared by {@code run} and the results tools. */
 public final class McpAgentText {
 
     private McpAgentText() {}
 
     /** A job that has not finished. The second line is how to collect the verdict. */
     public static String running(String kind, long jid) {
-        return "RUNNING " + kind + " jid=" + jid + "\njob action=wait jid=" + jid + "\n";
+        return "RUNNING " + kind + " jid=" + jid + "\n" + continuation(jid);
     }
 
     /** A wait that ended before the job did. Same continuation as {@link #running}. */
     public static String timeout(String kind, long jid) {
-        return "TIMEOUT " + kind + " jid=" + jid + "\njob action=wait jid=" + jid + "\n";
+        return "TIMEOUT " + kind + " jid=" + jid + "\n" + continuation(jid);
+    }
+
+    /** The call that waits on {@code jid} and answers its verdict. */
+    private static String continuation(long jid) {
+        return "run(jid=" + jid + ")\n";
     }
 
     /**

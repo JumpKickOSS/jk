@@ -46,7 +46,7 @@ Recommended loop:
    `diagnostics` with `file` is the rest.
 2. Edit sources.
 3. `run` again (`wait` defaults true).
-4. If stalled: `status`, then `job` `cancel` (both on the extended `tools/list`).
+4. If stalled: `status`, then `cancel` (both on the extended `tools/list`).
 
 Do not dump full journal records. Open `details` only when you need the raw
 `details.jsonl` transcript.
@@ -109,7 +109,7 @@ jk cancel 42       # that jid
 ```
 
 Ctrl-C on a running CLI command cancels the engine job(s) for this project, then exits.
-MCP: `cancel` / `job` `cancel`. Details: [Engine](engine.md).
+MCP: `cancel`. Details: [Engine](engine.md).
 
 ## Parallel test flakes
 

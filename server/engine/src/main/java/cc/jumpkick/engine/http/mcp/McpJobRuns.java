@@ -6,20 +6,22 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Everything {@code run} / {@code job} / the thin {@code build}-style aliases share:
+ * Everything {@code run} and the thin {@code build}-style aliases share:
  * submit a {@link JobSpec} through the one admission point, optionally park for it, and attach the
  * finished journal row. The wait loop and the journal-settle poll live here so a second tool
  * cannot invent a different definition of "finished".
  */
 public final class McpJobRuns {
 
-    /** Hard cap on a single wait; agents re-issue {@code job action=wait} to keep waiting. */
+    /** Hard cap on a single wait; agents call {@code run(jid=N)} to keep waiting. */
     public static final int MAX_WAIT_S = 3600;
+
+    /** How long a call parks when it names no {@code timeout_s}. */
+    public static final int DEFAULT_WAIT_S = 240;
 
     private McpJobRuns() {}
 
@@ -75,7 +77,7 @@ public final class McpJobRuns {
                 deadlineMs(in),
                 JobOrigin.mcp(in.sessionLabel()));
         boolean wait = in.flagOr("wait", true);
-        int timeoutS = in.count("timeout_s", 600, 1, MAX_WAIT_S);
+        int timeoutS = timeoutS(in);
         long triggeredAt = System.currentTimeMillis();
         long jid = acceptedJid(in, spec);
         if (!wait) {
@@ -92,41 +94,28 @@ public final class McpJobRuns {
         return in.text(text);
     }
 
-    /** {@code job}: get / wait / cancel, defaulting to the latest live job for the bound dir. */
-    public static Map<String, Object> job(McpCall in) {
+    /**
+     * {@code run(jid=N)}: park on a job an earlier call started and answer its verdict. The call's
+     * progress token follows that job, as it does for a job {@code run} starts.
+     */
+    public static Map<String, Object> await(McpCall in, long jid) {
         McpContext ctx = in.ctx();
-        String action = in.action("get").toLowerCase(Locale.ROOT);
-        Long jid = in.num("jid");
-        if ("cancel".equals(action) && jid == null && in.dir() == null) {
-            // Unbound sessions must name their victim: "latest live job" across every dir could
-            // kill another client's build.
-            throw new McpError(-32602, "job cancel requires jid (or bind first)");
+        String progressToken = in.progressToken();
+        if (progressToken != null) ctx.progressTokens().bind(progressToken, jid);
+        int timeoutS = timeoutS(in);
+        boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * 1000L));
+        if (!done) {
+            return in.text(McpAgentText.timeout(McpVitals.liveKind(ctx, jid), jid));
         }
-        if (jid == null) jid = McpVitals.latestLiveJid(ctx, in.dir());
-        if ("cancel".equals(action)) {
-            if (jid == null) throw new McpError(-32602, "no live job to cancel");
-            // No note: this jid came from the live set, so a miss is a race, not a typo.
-            return cancel(in, jid.longValue(), null);
-        }
-        if (jid == null) {
-            return in.text("no live job\n");
-        }
-        if ("wait".equals(action)) {
-            int timeoutS = in.count("timeout_s", 600, 1, MAX_WAIT_S);
-            long waitJid = jid.longValue();
-            boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, waitJid, timeoutS * 1000L));
-            if (!done) {
-                return in.text(McpAgentText.timeout("job", jid));
-            }
-            Map<String, Object> last = McpDiagnostics.findByRequestId(ctx.history(), jid);
-            if (last == null)
-                last = ctx.finishedRecords().apply(jid) instanceof String raw ? McpHistoryViews.parseRecord(raw) : null;
-            String text = McpAgentText.of(ctx, last);
-            if (text == null) text = "FAIL job jid=" + jid + "\nno run record\n";
-            return in.text(text);
-        }
-        boolean live = McpVitals.isLive(ctx, jid.longValue());
-        return in.text((live ? "running " + jid : "jid " + jid + " not live") + "\n");
+        Map<String, Object> last = ctx.admissionYield().yielding(() -> waitForJournal(ctx, jid));
+        if (last == null) last = McpDiagnostics.findByRequestId(ctx.history(), jid);
+        String text = McpAgentText.of(ctx, last);
+        return in.text(text != null ? text : "FAIL run jid=" + jid + "\nno run record\n");
+    }
+
+    /** {@code timeout_s}: how long one call parks before it answers {@code TIMEOUT}. */
+    private static int timeoutS(McpCall in) {
+        return in.count("timeout_s", DEFAULT_WAIT_S, 1, MAX_WAIT_S);
     }
 
     /**
