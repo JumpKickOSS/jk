@@ -12,10 +12,12 @@ agents** and for the humans who supervise them. Java, Kotlin, Groovy, and Scala.
 manifest. A real lockfile. Structured results agents can read without scraping a TTY. A warm
 engine with a capped heap. Maven Central — not a new package universe.
 
-Wall-clock parity with a tuned Gradle 9.x build is table stakes. The conversion claim is
-**fewer failed cycles and less agent thrash**. On 165 broken-build scenarios, five coding agents
-fix jk projects in as few or fewer turns, with less context and wall time than Maven or Gradle
-given the same agent tooling ([the table](docs/user/why.md#making-the-north-star-true)).
+Wall clock is table stakes: on [the measured table](docs/user/performance.md), clean, warm and
+no-op builds are faster than Gradle 9.8 and Maven, and a one-file edit is slower than Gradle.
+The conversion claim is **fewer failed cycles and less agent thrash**. On 165 broken-build
+scenarios, five coding agents fix jk projects in as few or fewer turns than Maven or Gradle
+given the same agent tooling, and four of the five with less context and wall time
+([the table](docs/user/why.md#making-the-north-star-true)).
 
 > Import your Maven or Gradle project when you are ready. Keep shipping with `jk mvn` /
 > `jk gradle` until the JumpKick path owns the loop.
@@ -60,7 +62,7 @@ That is it. No `build.gradle.kts` that is itself a software project. No 200-line
 |------|-------------------------|
 | **Intent** | `jk skill` / MCP `skill` — the system prompt for a tool models were not trained on |
 | **Mutate** | Declarative `jk.toml`; surgical `jk add` / `remove`; MCP `deps` applies and relocks |
-| **Execute** | Lockfile is law; action cache + CAS; resident engine (256 MiB heap cap) |
+| **Execute** | Lockfile is law; action cache + CAS; resident engine (256 MiB heap cap; whole-tree RSS in [Performance](docs/user/performance.md)) |
 | **Test rungs** | Default `jk test` is unit (inner loop). `--guard` is the named share-the-commit bar. `--all` is nightly, not a habit. |
 | **Observe** | `target/jk-results.md`, MCP diagnostics, JSONL — same facts as the human CLI |
 | **Repair** | Readable PubGrub conflicts, `jk why` / `jk explain`, format after edits |
@@ -105,10 +107,10 @@ surface, real lockfile, agent-readable outcomes.
 **Coming from Gradle:** keep warm/incremental ambition without “your build is a second
 program.” Agents should not write Kotlin DSL to add Jackson.
 
-**Speed and memory (honest):** on that one project, clean, warm and no-op builds are faster
+**Speed and memory (honest):** on spring-petclinic, clean, warm and no-op builds are faster
 than Gradle and Maven, the test run is on par (slightly faster), and a one-file edit is slower
-than Gradle. Whole-tree peak RSS is about a third of Gradle's on a build and in Maven's range;
-on the test run it is under Gradle's and above Maven's. The table is in
+than Gradle (faster than Maven). Whole-tree peak RSS is about a third of Gradle's on a build
+and in Maven's range; on the test run it is under Gradle's and above Maven's. The table is in
 [docs/user/performance.md](docs/user/performance.md).
 The feature matrix, including where JumpKick loses, is in
 [docs/user/comparison.md](docs/user/comparison.md).
