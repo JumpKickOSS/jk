@@ -27,22 +27,22 @@ class PlannerTestGreenStampTest {
 
     @Test
     void a_run_that_discovered_no_test_in_a_module_with_test_sources_earns_a_no_tests_stamp() {
-        assertThat(PlannerTest.stampFor(new TestSummary(0, 0, 0, 0, List.of()), true))
+        assertThat(PlannerTest.stampFor(new TestSummary(0, 0, 0, 0, List.of()), true, false))
                 .isEqualTo(PlannerTest.Stamp.NO_TESTS);
     }
 
     @Test
     void a_module_without_test_sources_stamps_its_empty_run_green() {
-        assertThat(PlannerTest.stampFor(new TestSummary(0, 0, 0, 0, List.of()), false))
+        assertThat(PlannerTest.stampFor(new TestSummary(0, 0, 0, 0, List.of()), false, false))
                 .isEqualTo(PlannerTest.Stamp.GREEN);
     }
 
     @Test
     void a_passing_run_with_tests_is_stamped_green_and_a_failing_one_not_at_all() {
-        assertThat(PlannerTest.stampFor(new TestSummary(3, 2, 0, 1, List.of()), true))
+        assertThat(PlannerTest.stampFor(new TestSummary(3, 2, 0, 1, List.of()), true, false))
                 .isEqualTo(PlannerTest.Stamp.GREEN);
         var failure = new TestFailureInfo("ex:m", "", "C", "m()", "AssertionError", "nope", "");
-        assertThat(PlannerTest.stampFor(new TestSummary(1, 0, 1, 0, List.of(failure)), true))
+        assertThat(PlannerTest.stampFor(new TestSummary(1, 0, 1, 0, List.of(failure)), true, false))
                 .isEqualTo(PlannerTest.Stamp.NONE);
     }
 
@@ -50,7 +50,16 @@ class PlannerTestGreenStampTest {
     @Test
     void a_discovery_crash_earns_no_stamp_of_any_kind() {
         var crash = new TestFailureInfo("(test run)", "", "", "(test run)", "", "exit 1", "");
-        assertThat(PlannerTest.stampFor(new TestSummary(0, 0, 1, 0, List.of(crash)), true))
+        assertThat(PlannerTest.stampFor(new TestSummary(0, 0, 1, 0, List.of(crash)), true, false))
+                .isEqualTo(PlannerTest.Stamp.NONE);
+    }
+
+    /** A cancel can stop a suite part-way with every test that ran green; that is not the suite. */
+    @Test
+    void a_cancelled_run_earns_no_stamp_even_when_every_test_it_ran_passed() {
+        assertThat(PlannerTest.stampFor(new TestSummary(3, 3, 0, 0, List.of()), true, true))
+                .isEqualTo(PlannerTest.Stamp.NONE);
+        assertThat(PlannerTest.stampFor(new TestSummary(0, 0, 0, 0, List.of()), true, true))
                 .isEqualTo(PlannerTest.Stamp.NONE);
     }
 

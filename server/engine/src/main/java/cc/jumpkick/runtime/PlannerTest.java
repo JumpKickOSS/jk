@@ -729,10 +729,11 @@ public final class PlannerTest {
      * evidence that there is nothing to run: helpers only, every test behind an excluded tag — and
      * it gets a stamp of its own, so the module does not fork a discovery JVM on every build
      * forever. A crashed discovery reports a failure and earns nothing. A module without test
-     * sources has nothing to run, and its empty run is the whole truth.
+     * sources has nothing to run, and its empty run is the whole truth. A run the session
+     * cancelled earns nothing: its counts may cover only the part of the suite that ran.
      */
-    static Stamp stampFor(TestSummary result, boolean testSourcesExist) {
-        if (!result.allPassed()) return Stamp.NONE;
+    static Stamp stampFor(TestSummary result, boolean testSourcesExist, boolean cancelled) {
+        if (cancelled || !result.allPassed()) return Stamp.NONE;
         if (result.total() > 0 || !testSourcesExist) return Stamp.GREEN;
         return Stamp.NO_TESTS;
     }
