@@ -206,9 +206,9 @@ final class LintStep {
                 if (!roots.isEmpty()) args.addAll(List.of("-sourcepath", Classpaths.join(roots)));
                 List<Path> aux = exec.compileClasspath();
                 if (!aux.isEmpty()) args.addAll(List.of("-auxclasspath", Classpaths.join(aux)));
-                config.stringOpt("spotbugs-exclude")
-                        .ifPresent(exclude -> args.addAll(
-                                List.of("-exclude", module.resolve(exclude).toString())));
+                for (String exclude : config.stringList("spotbugs-exclude")) {
+                    args.addAll(List.of("-exclude", module.resolve(exclude).toString()));
+                }
                 long maxRank = config.intValue("spotbugs-max-rank", 0);
                 if (maxRank > 0) args.addAll(List.of("-maxRank", Long.toString(maxRank)));
                 List<String> omit = config.stringList("spotbugs-omit-visitors");
