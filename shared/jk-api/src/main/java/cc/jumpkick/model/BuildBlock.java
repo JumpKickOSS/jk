@@ -52,6 +52,16 @@ public record BuildBlock(
         /** {@code [test] exclude-tags}: the baseline tags a bare {@code jk test} leaves out. */
         List<String> testExcludeTags,
         /**
+         * {@code [test] exclude-classes}: class patterns, in {@code --class} syntax, that no suite
+         * runs; an excluded class takes its nested classes with it.
+         */
+        List<String> testExcludeClasses,
+        /**
+         * {@code [test] exclude-src}: globs over a test source's path under its source root; a
+         * matching file is not compiled.
+         */
+        List<String> testExcludeSrc,
+        /**
          * {@code [test] assertions}: whether every forked test JVM runs with {@code -ea}, as
          * Surefire's and Gradle's do. Default {@code true}; {@code false} runs the suite with Java
          * and Kotlin {@code assert} statements disabled.
@@ -153,6 +163,8 @@ public record BuildBlock(
             List.of(),
             List.of(),
             List.of(),
+            List.of(),
+            List.of(),
             true,
             false,
             PlatformPolicy.ENFORCED,
@@ -182,6 +194,8 @@ public record BuildBlock(
         testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
         testIncludeTags = testIncludeTags == null ? List.of() : List.copyOf(testIncludeTags);
         testExcludeTags = testExcludeTags == null ? List.of() : List.copyOf(testExcludeTags);
+        testExcludeClasses = testExcludeClasses == null ? List.of() : List.copyOf(testExcludeClasses);
+        testExcludeSrc = testExcludeSrc == null ? List.of() : List.copyOf(testExcludeSrc);
         platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
         unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
         pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
@@ -246,6 +260,16 @@ public record BuildBlock(
             f.testIncludeTags = includeTags;
             f.testExcludeTags = excludeTags;
         });
+    }
+
+    /** The same block with {@code [test] exclude-classes} set. */
+    public BuildBlock withTestExcludeClasses(List<String> patterns) {
+        return with(f -> f.testExcludeClasses = patterns);
+    }
+
+    /** The same block with {@code [test] exclude-src} set. */
+    public BuildBlock withTestExcludeSrc(List<String> globs) {
+        return with(f -> f.testExcludeSrc = globs);
     }
 
     /** The same block with {@code [test] env} set. */

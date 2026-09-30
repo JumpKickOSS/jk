@@ -10,6 +10,7 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -211,6 +212,33 @@ final class PluginFacts {
         main.removeIf(JdkCompilerAccess::grants);
         test.removeIf(JdkCompilerAccess::grants);
         return new CompilerArgs(main, test, scoped, granted);
+    }
+
+    /**
+     * The compiler plugin's {@code <element>} globs ({@code testExcludes}, {@code excludes}, …) from
+     * its own configuration and every execution reaching the step: {@code test} is compile-test,
+     * else compile-main. Declaration order, no repeats.
+     */
+    static List<String> compilerSourceGlobs(Model model, String element, boolean test) {
+        Set<String> out = new LinkedHashSet<>();
+        Optional<Plugin> compiler = compilerPlugin(model);
+        if (compiler.isEmpty()) return List.of();
+        List<Xpp3Dom> configs = new ArrayList<>();
+        if (compiler.get().getConfiguration() instanceof Xpp3Dom config) configs.add(config);
+        for (PluginExecution execution : compiler.get().getExecutions()) {
+            CompileStep step = compileStep(execution);
+            if (step == (test ? CompileStep.MAIN : CompileStep.TEST)) continue;
+            if (execution.getConfiguration() instanceof Xpp3Dom config) configs.add(config);
+        }
+        for (Xpp3Dom config : configs) {
+            Xpp3Dom list = config.getChild(element);
+            if (list == null) continue;
+            for (Xpp3Dom child : list.getChildren()) {
+                String glob = usable(text(child));
+                if (glob != null) out.add(glob.trim());
+            }
+        }
+        return List.copyOf(out);
     }
 
     /** {@code `<id>` (goal `compile`)} for a compiler-plugin execution bound to one step. */

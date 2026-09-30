@@ -109,6 +109,18 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** {@code [test] exclude-classes} as a regex alternation, or null when the module excludes none. */
+    private @Nullable String excludeFilter;
+
+    /**
+     * {@code [test] exclude-classes}: classes (and their nested classes) no JVM of the run
+     * discovers or executes, whatever the other filters select.
+     */
+    public JUnitLauncher withExcludedClasses(List<String> patterns) {
+        this.excludeFilter = patterns == null ? null : JUnitClassFilter.excludeBody(patterns);
+        return this;
+    }
+
     /**
      * When set, the worker count passed to {@link #run} is the auto share ({@link TestWorkers#autoShare}),
      * not an explicit pin. The launcher then sizes the pool from recorded class walls.
@@ -426,15 +438,19 @@ public final class JUnitLauncher {
 
     /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's tag filters. */
     List<String> pullWorkerArgs(int workerId, Path testClassesDir) {
-        return withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir));
+        return withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir), List.of());
     }
 
-    private List<String> withTagArgs(List<String> base) {
+    /**
+     * {@code base} plus the class filter and the tag filters. The class filter is {@code names}
+     * exactly when given, else the {@code --class} patterns, less the excluded classes either way.
+     */
+    private List<String> withTagArgs(List<String> base, List<String> names) {
         var out = new ArrayList<>(base);
-        if (classFilter != null && classNames.isEmpty()) {
-            out.add("--filter=" + classFilter);
-            out.addAll(methodArgs);
-        }
+        String include = names.isEmpty() ? classFilter : JUnitClassFilter.exactRegex(names);
+        String filter = JUnitClassFilter.filter(include, excludeFilter);
+        if (filter != null) out.add("--filter=" + filter);
+        if (classNames.isEmpty()) out.addAll(methodArgs);
         if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
         if (!excludeTags.isEmpty()) out.add("--exclude-tags=" + String.join(",", excludeTags));
         return out;
@@ -643,7 +659,7 @@ public final class JUnitLauncher {
         var crash = new CaptureBuffer();
         List<String> flags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
         List<String> names = onlyClasses != null ? onlyClasses : classNames;
-        List<String> args = withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, names));
+        List<String> args = withTagArgs(List.of("--scan-classpath=" + testClassesDir), names);
         TestSummary result;
         try {
             result = forkSuite(javaHome, classpath, flags, args, aggregator, crash, listener);
@@ -858,7 +874,7 @@ public final class JUnitLauncher {
             List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
             List<String> names = onlyClasses != null ? onlyClasses : classNames;
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
-            List<String> args = withTagArgs(JUnitClassFilter.singleWorkerArgs(classesDir, names));
+            List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names);
             return forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
         } finally {
             heapOverride = previous;
@@ -999,7 +1015,7 @@ public final class JUnitLauncher {
         var classes = new ArrayList<String>();
         var crash = new CaptureBuffer();
         List<String> flags = jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir);
-        List<String> args = withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir));
+        List<String> args = withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir), List.of());
         int exit;
         try {
             exit = PluginLoader.run(

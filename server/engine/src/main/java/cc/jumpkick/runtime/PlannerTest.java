@@ -187,7 +187,7 @@ public final class PlannerTest {
      * compile-test key and the run-tests stamp hash the same files on both sides. {@code javaTest}
      * carries every selected {@code .java} — the suites' roots and {@code [test] extra-src}, roots in
      * the test tier that belong to no suite and compile with whichever suites were selected because
-     * there is nothing in them to run. {@code javaTestSrc} is the primary suite root, which a mixed
+     * there is nothing in them to run — less {@code [test] exclude-src}. {@code javaTestSrc} is the primary suite root, which a mixed
      * Kotlin test compile reads Java from. Each list holds each path once.
      */
     record TestSources(Path javaTestSrc, List<Path> javaTest, List<Path> ktTest, List<Path> gvTest, List<Path> scTest) {
@@ -203,7 +203,7 @@ public final class PlannerTest {
             LinkedHashSet<Path> javaTest = new LinkedHashSet<>(TestSuites.collectJavaSources(dir, compact, suiteNames));
             javaTest.addAll(TestSupport.testExtraSources(project, dir, ".java"));
             javaTest.addAll(PlannerKsp.pluginContributedTestSources(layout, decls, ".java"));
-            return new TestSources(
+            TestSources all = new TestSources(
                     TestSuites.primaryJavaRoot(dir, compact, suiteNames),
                     List.copyOf(javaTest),
                     CompileSupport.concatDistinct(
@@ -213,6 +213,14 @@ public final class PlannerTest {
                             TestSuites.collectGroovySources(dir, compact, suiteNames),
                             PlannerKsp.pluginContributedTestSources(layout, decls, ".groovy")),
                     TestSuites.collectScalaSources(dir, compact, suiteNames));
+            TestSourceExcludes excludes = TestSourceExcludes.of(project, dir, compact, suiteNames);
+            if (excludes == null) return all;
+            return new TestSources(
+                    all.javaTestSrc(),
+                    excludes.keep(all.javaTest()),
+                    excludes.keep(all.ktTest()),
+                    excludes.keep(all.gvTest()),
+                    excludes.keep(all.scTest()));
         }
 
         boolean isEmpty() {
