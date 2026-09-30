@@ -175,11 +175,11 @@ public final class ClasspathResolver {
      */
     static List<Lockfile.Artifact> moduleRows(Lockfile lock, Set<Scope> scopes, JkBuild module, Path moduleDir) {
         Map<String, Lockfile.Artifact> rows = new LinkedHashMap<>();
-        for (Lockfile.Artifact row :
-                reachableArtifacts(selected(lock, scopes), ModuleRoots.own(module, moduleDir, scopes))) {
+        for (Lockfile.Artifact row : reachableArtifacts(
+                selected(lock, scopes), ModuleRoots.own(module, moduleDir, scopes, lock.artifacts()))) {
             rows.putIfAbsent(row.name(), row);
         }
-        Set<String> inherited = ModuleRoots.inherited(module, moduleDir, scopes);
+        Set<String> inherited = ModuleRoots.inherited(module, moduleDir, scopes, lock.artifacts());
         if (!inherited.isEmpty()) {
             List<Lockfile.Artifact> passed = selected(lock, ModuleRoots.inheritedScopes(scopes));
             for (Lockfile.Artifact row : reachableArtifacts(passed, inherited)) rows.putIfAbsent(row.name(), row);
