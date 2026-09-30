@@ -21,8 +21,9 @@ import org.jspecify.annotations.Nullable;
  * What a module with a {@code module-info.java} adds to its javac invocations. The compiler worker
  * puts the compile classpath on {@code --module-path} whenever it compiles a descriptor or patches a
  * module; this class derives the test compile's side of that, the way Maven's compiler plugin does:
- * the test sources patch the main module ({@code --patch-module}) and the module reads the unnamed
- * module the test classpath forms ({@code --add-reads <module>=ALL-UNNAMED}).
+ * the test sources patch the main module ({@code --patch-module}), or, when they carry their own
+ * descriptor, the main classes patch the test module; and the module reads the unnamed module the
+ * test classpath forms ({@code --add-reads <module>=ALL-UNNAMED}).
  */
 final class ModularCompile {
 
@@ -47,19 +48,31 @@ final class ModularCompile {
 
     /**
      * {@code base} plus the test compile's module options when {@code mainClasses} holds a module
-     * descriptor: the test sources' package roots patch that module, and it reads the unnamed module.
-     * The build and the forecast both derive the options from the same source list, so the request
-     * they key on is one.
+     * descriptor. Test sources without a descriptor of their own patch that module; test sources
+     * with one (a whitebox test descriptor naming the main module) are the module, and the main
+     * classes patch into it. Either way the module reads the unnamed module. The build and the
+     * forecast both derive the options from the same source list, so the request they key on is one.
      */
     static List<String> testOptions(List<String> base, @Nullable Path mainClasses, List<Path> testSources) {
         String module = moduleName(mainClasses);
         if (module == null || testSources.isEmpty()) return base;
+        String patch = declaresModule(testSources)
+                ? Objects.requireNonNull(mainClasses).toAbsolutePath().toString()
+                : Classpaths.join(sourceRoots(testSources));
         List<String> out = new ArrayList<>(base);
         out.add("--patch-module");
-        out.add(module + "=" + Classpaths.join(sourceRoots(testSources)));
+        out.add(module + "=" + patch);
         out.add("--add-reads");
         out.add(module + "=ALL-UNNAMED");
         return List.copyOf(out);
+    }
+
+    private static boolean declaresModule(List<Path> sources) {
+        for (Path source : sources) {
+            Path name = source.getFileName();
+            if (name != null && name.toString().equals("module-info.java")) return true;
+        }
+        return false;
     }
 
     /**

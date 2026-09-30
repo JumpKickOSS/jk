@@ -33,4 +33,10 @@ class CompileRequestTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("release must be >= " + JavaRelease.OLDEST);
     }
+
+    @Test
+    void an_unset_release_is_the_level_of_the_jdk_compiling() {
+        assertThat(CompileRequest.builder().release(0).build().release())
+                .isEqualTo(Runtime.version().feature());
+    }
 }
