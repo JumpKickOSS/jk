@@ -86,7 +86,7 @@ class LockCommandTest {
         int exit;
         exit = run("new", tempDir.toString());
         assertThat(exit).isEqualTo(0);
-        exit = run("add", "com.foo:root:1.0", "-C", tempDir.toString());
+        exit = run("add", "--offline", "com.foo:root:1.0", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
         exit = run(
                 "lock",
@@ -283,7 +283,7 @@ class LockCommandTest {
         Path cache = tempDir.resolve("cache");
 
         run("new", tempDir.toString());
-        run("add", "com.foo:root:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo:root:1.0", "-C", tempDir.toString());
         assertThat(run(
                         "lock",
                         "-C",
@@ -356,7 +356,7 @@ class LockCommandTest {
         // Warm the shared cache + journal with an online lock in one project.
         Path online = Files.createDirectories(tempDir.resolve("online"));
         run("new", online.toString());
-        run("add", "com.foo:root:1.0", "-C", online.toString());
+        run("add", "--offline", "com.foo:root:1.0", "-C", online.toString());
         assertThat(run(
                         "lock",
                         "-C",

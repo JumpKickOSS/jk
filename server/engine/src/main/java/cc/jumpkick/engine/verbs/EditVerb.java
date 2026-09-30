@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
@@ -15,11 +17,13 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted {@code jk.toml} edits. An {@code add-dependency} whose selector is {@code latest}
- * is pinned to the newest stable release in the project's repositories before the editor runs.
+ * is pinned to the newest stable release in the project's repositories before the editor runs;
+ * an exact version no repository serves is refused before anything is written.
  */
 public final class EditVerb implements HostedVerb {
 
@@ -56,8 +60,15 @@ public final class EditVerb implements HostedVerb {
             try {
                 EditRequest req = EditRequest.decode(requestLine);
                 Path file = Path.of(req.file());
-                result = EditOps.apply(file, req.op(), pinned(file, req.op(), req.args()));
-            } catch (RuntimeException | IOException e) {
+                // Under the caller's session: an offline `jk add` must not reach a repository.
+                Session session = Session.defaults()
+                        .withConfig(JkConfig.empty().withOffline(req.offline()))
+                        .withWorkingDir(
+                                Objects.requireNonNull(file.toAbsolutePath().getParent(), "manifest directory"))
+                        .withCancel(cancelToken);
+                List<String> args = SessionContext.where(session, () -> pinned(file, req.op(), req.args()));
+                result = EditOps.apply(file, req.op(), args);
+            } catch (Exception e) {
                 result = new EditOps.Result(false, Errors.text(e));
             }
             host.sendQuiet(writer, ProtoReads.editAck(result.changed(), result.error(), result.detail()));
@@ -70,10 +81,12 @@ public final class EditVerb implements HostedVerb {
 
     /**
      * {@code add-dependency} args with {@code latest} replaced by the selector to write: {@code
-     * managed} under a platform that manages the coordinate, else the number.
+     * managed} under a platform that manages the coordinate, else the number. An exact version must
+     * exist in the project's repositories.
      */
     private static List<String> pinned(Path file, @Nullable String op, List<String> args) throws IOException {
         if (!"add-dependency".equals(op) || args.size() < 5) return args;
+        StableVersions.requireExists(file, args.get(2), args.get(3), args.get(4));
         List<String> out = new ArrayList<>(args);
         out.set(4, StableVersions.versionToWrite(file, args.get(2), args.get(3), args.get(4)));
         return out;

@@ -315,7 +315,7 @@ class AddCommandTest {
                 modules = ["app"]
                 """);
 
-        int exit = Jk.execute("add", "com.foo.add:bar:1.2.3", "-C", tmp.toString());
+        int exit = Jk.execute("add", "--offline", "com.foo.add:bar:1.2.3", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
 
         String toml = Files.readString(tmp.resolve("jk.toml"));

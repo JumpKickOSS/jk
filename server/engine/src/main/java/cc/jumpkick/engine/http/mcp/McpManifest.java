@@ -26,7 +26,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Surgical jk.toml edits (preview by default). Dependencies are spelled by the same writer as
- * {@code jk add}; a {@code group:artifact} without a version is pinned to its newest stable release.
+ * {@code jk add}; a {@code group:artifact} without a version is pinned to its newest stable release,
+ * and an explicit version no configured repository serves is an error, preview or not.
  */
 public final class McpManifest {
 
@@ -42,6 +43,7 @@ public final class McpManifest {
             String after = before;
             Scope scope = parseScope(scopeName);
             List<String> notes = new ArrayList<>();
+            List<Parsed> pinned = new ArrayList<>();
             if ("remove".equals(action)) {
                 for (String c : coords) {
                     String name = artifactName(c);
@@ -57,6 +59,7 @@ public final class McpManifest {
                     }
                     try {
                         after = JkBuildEditor.setDependencyVersion(after, scope, p.name, p.version);
+                        pinned.add(p);
                         notes.add("pin " + p.group + ":" + p.artifact + ":" + p.version);
                     } catch (RuntimeException e) {
                         notes.add("skip " + c + " (" + e.getMessage() + ")");
@@ -74,6 +77,7 @@ public final class McpManifest {
                     String version = StableVersions.versionToWrite(
                             file, p.group, p.artifact, p.version == null ? "latest" : p.version);
                     after = JkBuildEditor.addDependency(after, scope, p.name, p.group, p.artifact, version, catalog);
+                    if (p.version != null) pinned.add(p);
                     notes.add(
                             Dependency.MANAGED_KEYWORD.equals(version)
                                     ? "add " + p.group + ":" + p.artifact + " (version managed by the platform)"
@@ -89,6 +93,9 @@ public final class McpManifest {
                 out.put("preview", "");
                 out.put("applied", false);
                 return out;
+            }
+            for (Parsed p : pinned) {
+                StableVersions.requireExists(file, p.group, p.artifact, Objects.requireNonNull(p.version));
             }
             out.put("notes", notes);
             out.put("changed", !after.equals(before));

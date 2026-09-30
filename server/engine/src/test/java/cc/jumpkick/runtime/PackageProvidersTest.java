@@ -241,15 +241,44 @@ class PackageProvidersTest {
 
     @Test
     void a_keyless_message_of_the_right_shape_is_a_missing_package_and_a_keyed_one_of_another_kind_is_not() {
-        assertThat(PackageProviders.missingPackage(error("package a.b does not exist", "")))
-                .isEqualTo("a.b");
-        assertThat(PackageProviders.missingPackage(error("package a.b does not exist", "compiler.err.doesnt.exist")))
-                .isEqualTo("a.b");
-        assertThat(PackageProviders.missingPackage(error("package a.b does not exist", "compiler.err.other")))
-                .isNull();
-        assertThat(PackageProviders.missingPackage(new CompileResult.Diagnostic(
+        assertThat(PackageProviders.missingPackages(error("package a.b does not exist", "")))
+                .containsExactly("a.b");
+        assertThat(PackageProviders.missingPackages(error("package a.b does not exist", "compiler.err.doesnt.exist")))
+                .containsExactly("a.b");
+        assertThat(PackageProviders.missingPackages(error("package a.b does not exist", "compiler.err.other")))
+                .isEmpty();
+        assertThat(PackageProviders.missingPackages(new CompileResult.Diagnostic(
                         CompileResult.Severity.WARNING, null, 0, 0, "package a.b does not exist", "")))
-                .isNull();
+                .isEmpty();
+    }
+
+    @Test
+    void a_kotlin_unresolved_import_names_the_jar_that_holds_its_package(@TempDir Path tmp) throws Exception {
+        Path source = tmp.resolve("HttpControllersTests.kt");
+        Files.writeString(source, """
+                package com.example.blog
+
+                import com.ninjasquad.springmockk.MockkBean
+                import org.junit.jupiter.api.Test
+                """);
+        Path mockk = jar(tmp.resolve("springmockk.jar"), "com/ninjasquad/springmockk/MockkBean.class");
+        PackageProviders providers = new PackageProviders(
+                List.of(entry("com.ninja-squad:springmockk", SHA, mockk)),
+                List.of(),
+                tmp.resolve("index"),
+                LibraryCatalog.bundled());
+
+        CompileResult.Diagnostic unresolved = error(source.toUri() + ":3:12 Unresolved reference 'ninjasquad'.", "");
+        CompileResult.Diagnostic elsewhere = error(source.toUri() + ":4:8 Unresolved reference 'nothing'.", "");
+        List<CompileResult.Diagnostic> enriched = providers.enrich(List.of(unresolved, elsewhere));
+
+        assertThat(enriched.get(0).message())
+                .startsWith(unresolved.message())
+                .endsWith("\n  provided by: com.ninja-squad:springmockk (in the lock, not on this module's compile"
+                        + " classpath)");
+        assertThat(enriched.get(1))
+                .as("a reference that is not a segment of the import is not a missing package")
+                .isSameAs(elsewhere);
     }
 
     private static CompileResult.Diagnostic error(String message, String key) {

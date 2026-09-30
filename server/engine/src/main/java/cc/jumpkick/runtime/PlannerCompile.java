@@ -835,7 +835,11 @@ public final class PlannerCompile {
                     LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, taskId, worker);
                     if (!kr.success()) {
                         PlannerSupport.forwardWorkerDiagnostics(
-                                ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");
+                                ctx,
+                                "kotlinc",
+                                PackageProviders.enrich(
+                                        ctx, classpath, ClasspathResolver.COMPILE_MAIN, kr.diagnostics()),
+                                "kotlinc failed without diagnostics");
                         throw new RuntimeException("kotlinc reported errors");
                     }
                     if (kr.cacheHit()) {

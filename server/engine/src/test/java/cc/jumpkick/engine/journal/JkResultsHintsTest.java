@@ -154,6 +154,16 @@ class JkResultsHintsTest {
     }
 
     @Test
+    void kotlinc_unresolved_import_with_a_provider_names_the_coordinate() {
+        String hint = render(kotlinc("""
+                e: file:///ws/app/src/Main.kt:3:12 Unresolved reference 'ninjasquad'.
+                  provided by: com.ninja-squad:springmockk (in the local artifact store)"""));
+        assertThat(hint)
+                .contains("→ the import of `ninjasquad` is provided by `com.ninja-squad:springmockk` (in the local"
+                        + " artifact store): `jk add com.ninja-squad:springmockk` in this module, or fix the import.");
+    }
+
+    @Test
     void kotlinc_type_mismatch_in_either_dialect_has_one_row() {
         String hint = "→ the value's type is not the one the declaration wants: change the declared type, "
                 + "convert the value, or cast with `as` when the narrowing is intended.";

@@ -10,6 +10,7 @@ import static cc.jumpkick.runtime.PlannerSupport.testStampExtras;
 import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -365,7 +366,10 @@ public final class PlannerTest {
         LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, ktTaskId, worker);
         if (!kr.success()) {
             PlannerSupport.forwardWorkerDiagnostics(
-                    ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");
+                    ctx,
+                    "kotlinc",
+                    PackageProviders.enrich(ctx, baseCp, ClasspathResolver.COMPILE_TEST, kr.diagnostics()),
+                    "kotlinc failed without diagnostics");
             throw new RuntimeException("test kotlinc reported errors");
         }
         ctx.put(COMPILE_TEST_KOTLIN_ACTION_KEY, kr.actionKey());
