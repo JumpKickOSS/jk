@@ -423,11 +423,12 @@ public final class CommandDispatch {
         }
         boolean agent = AgentMode.requested(in);
         boolean script = GlobalOptions.outputIsJson(in) || cmd.scriptMode(in) || agent;
+        boolean capture = agent && AgentMode.capturesOutput(cmd.name());
         PrintStream prevOut = System.out;
         PrintStream prevErr = System.err;
         ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
         ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
-        if (agent) {
+        if (capture) {
             System.setOut(new PrintStream(outBuf, true, StandardCharsets.UTF_8));
             System.setErr(new PrintStream(errBuf, true, StandardCharsets.UTF_8));
         }
@@ -455,7 +456,7 @@ public final class CommandDispatch {
             CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + msg);
             code = 1;
         } finally {
-            if (agent) {
+            if (capture) {
                 System.setOut(prevOut);
                 System.setErr(prevErr);
             }
@@ -463,8 +464,8 @@ public final class CommandDispatch {
             // print it themselves, and an exec handoff suppresses it outright.
             CliOutput.closeEnvelope();
         }
-        if (agent) {
-            String verdict = AgentMode.reportsRun(cmd.name()) ? thisRunReport() : null;
+        if (capture) {
+            String verdict = thisRunReport();
             try {
                 if (verdict != null) {
                     System.out.write(verdict.getBytes(StandardCharsets.UTF_8));

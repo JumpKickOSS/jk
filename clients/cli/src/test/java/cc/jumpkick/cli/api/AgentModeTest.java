@@ -13,6 +13,14 @@ import org.junit.jupiter.api.Test;
 class AgentModeTest {
 
     @Test
+    void only_a_run_is_held_for_its_verdict_and_stdio_servers_stream() {
+        assertThat(AgentMode.capturesOutput("test")).isTrue();
+        assertThat(AgentMode.capturesOutput("build")).isTrue();
+        assertThat(AgentMode.capturesOutput("mcp")).isFalse();
+        assertThat(AgentMode.capturesOutput("bsp")).isFalse();
+    }
+
+    @Test
     void a_pipe_without_an_agent_variable_stays_human() {
         assertThat(AgentMode.requested(false, env(null, null), false, false)).isFalse();
     }
