@@ -6,6 +6,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -43,10 +45,11 @@ import org.jspecify.annotations.Nullable;
  *
  * The host belongs to the engine, not to the build that happened to start it. It is forked outside
  * the request's worker scope — a request's end kills the workers it registered, and a host that
- * outlives builds must not be one of them — and two owners end it: a reaper that shuts it down once
- * it has sat {@link #IDLE_TIMEOUT} without a script, and the JVM shutdown hook that drains it when
- * the engine stops. Nothing else does, so a build finishing while another build's script is running
- * is not an event the host notices.
+ * outlives builds must not be one of them — and three owners end it: a reaper that shuts it down
+ * once it has sat {@link #IDLE_TIMEOUT} without a script, the worker lease ledger when a waiting fork
+ * needs the host's memory (after the script in flight), and the JVM shutdown hook that drains it
+ * when the engine stops. Nothing else does, so a build finishing while another build's script is
+ * running is not an event the host notices.
  *
  * <h2>Liveness</h2>
  *
@@ -102,6 +105,9 @@ final class KtsSession {
 
     /** First {@code -Xmx} when this host has no learned peak yet. */
     static final long FIRST_HEAP_BYTES = 256L << 20;
+
+    /** What the lease ledger and {@code jk engine status} call this host. */
+    static final String LEASE_NAME = "build-script host";
 
     /** Learned-heap module name. The host is engine-wide, so the key is not a project module. */
     static final String HEAP_MODULE = "kts-host";
@@ -436,9 +442,12 @@ final class KtsSession {
     }
 
     private static KtsSession startBound() throws IOException, InterruptedException {
-        Process p = JobWorkers.startDetached(hostProcess());
+        AtomicReference<@Nullable KtsSession> started = new AtomicReference<>();
+        Process p = JobWorkers.startResident(
+                hostProcess(), new WorkerLeases.Resident(LEASE_NAME, () -> yieldLease(started)));
         registerShutdownHook();
         KtsSession session = new KtsSession(p);
+        started.set(session);
         String ready = session.replies.poll(START_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         if (!"READY".equals(ready)) {
             p.destroyForcibly();
@@ -481,6 +490,19 @@ final class KtsSession {
             } catch (InterruptedException e) {
                 return;
             }
+        }
+    }
+
+    /**
+     * The lease ledger needs this host's memory for a waiting fork. Taking {@link #LOCK} lets a
+     * script in flight finish first; the next script starts a fresh host.
+     */
+    private static void yieldLease(AtomicReference<@Nullable KtsSession> started) {
+        synchronized (LOCK) {
+            KtsSession session = started.get();
+            if (session == null || current != session) return;
+            current = null;
+            session.exit();
         }
     }
 

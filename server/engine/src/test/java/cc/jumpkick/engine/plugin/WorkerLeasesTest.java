@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -192,7 +193,8 @@ class WorkerLeasesTest {
     void a_resident_helper_leases_memory_but_leaves_the_core_to_running_work() throws Exception {
         WorkerLeases.Ledger ledger = ledger(8L << 30, 1);
         List<String> helper = List.of("java", "-Xmx64m", "-version");
-        try (WorkerLeases.Grant resident = ledger.acquireResident(helper, JvmOptions.HeapChoice.inspect(helper))) {
+        try (WorkerLeases.Grant resident = ledger.acquireResident(
+                helper, JvmOptions.HeapChoice.inspect(helper), new WorkerLeases.Resident("helper", () -> {}))) {
             assertThat(ledger.snapshot().leasedBytes()).isEqualTo(resident.bytes());
             CompletableFuture<WorkerLeases.Grant> work = new CompletableFuture<>();
             Thread.ofVirtual().start(() -> {
@@ -205,6 +207,97 @@ class WorkerLeasesTest {
             });
             work.get(5, TimeUnit.SECONDS).close();
         }
+    }
+
+    /**
+     * An idle resident holds part of the budget, a request for the whole budget heads the queue and
+     * smaller forks wait behind it. The resident is asked to exit, the head runs, and the queue
+     * drains; the status line names the head and the holder while it waits.
+     */
+    @Test
+    void a_whole_budget_head_makes_an_idle_resident_let_go_and_the_queue_behind_it_drains() throws Exception {
+        long budget = 1L << 30;
+        WorkerLeases.Ledger ledger = ledger(budget, 4);
+        List<String> host = List.of("java", "-Xmx64m", "-version");
+        CountDownLatch asked = new CountDownLatch(1);
+        CountDownLatch exited = new CountDownLatch(1);
+        AtomicReference<WorkerLeases.Grant> resident = new AtomicReference<>();
+        WorkerLeases.Resident idle = new WorkerLeases.Resident("build-script host", () -> {
+            asked.countDown();
+            try {
+                exited.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            resident.get().close();
+        });
+        resident.set(ledger.acquireResident(host, JvmOptions.HeapChoice.inspect(host), idle));
+
+        CompletableFuture<WorkerLeases.Grant> head = acquireLater(ledger, budget, 7L);
+        awaitQueued(ledger, 1);
+        List<CompletableFuture<WorkerLeases.Grant>> behind = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            behind.add(acquireLater(ledger, 64L << 20, 8L + i));
+            awaitQueued(ledger, 2 + i);
+        }
+
+        assertThat(asked.await(5, TimeUnit.SECONDS))
+                .as("the resident is asked to exit")
+                .isTrue();
+        assertThat(ledger.snapshot().waiting())
+                .isEqualTo("job #7 needs 1.0 GiB (800 MiB free); held by build-script host 224 MiB (asked to exit)");
+        assertThat(head).isNotDone();
+        exited.countDown();
+
+        WorkerLeases.Grant whole = head.get(5, TimeUnit.SECONDS);
+        assertThat(whole.bytes()).isEqualTo(budget);
+        assertThat(behind).noneMatch(CompletableFuture::isDone);
+        whole.close();
+        for (CompletableFuture<WorkerLeases.Grant> small : behind)
+            small.get(5, TimeUnit.SECONDS).close();
+        assertThat(ledger.queued()).isZero();
+        assertThat(ledger.snapshot().leasedBytes()).isZero();
+        assertThat(ledger.snapshot().waiting()).isEmpty();
+    }
+
+    /** A resident is left alone while forks that are working hold what the head needs. */
+    @Test
+    void a_resident_is_not_asked_to_exit_while_running_forks_hold_the_memory() throws Exception {
+        long budget = 1L << 30;
+        WorkerLeases.Ledger ledger = ledger(budget, 4);
+        List<String> host = List.of("java", "-Xmx64m", "-version");
+        AtomicInteger asked = new AtomicInteger();
+        try (WorkerLeases.Grant resident = ledger.acquireResident(
+                        host,
+                        JvmOptions.HeapChoice.inspect(host),
+                        new WorkerLeases.Resident("build-script host", asked::incrementAndGet));
+                WorkerLeases.Grant working = ledger.acquireBytes(512L << 20, true, 3L)) {
+            CompletableFuture<WorkerLeases.Grant> head = acquireLater(ledger, 600L << 20, 7L);
+            awaitQueued(ledger, 1);
+            Thread.sleep(300);
+            assertThat(asked).hasValue(0);
+            assertThat(ledger.snapshot().waiting())
+                    .isEqualTo(
+                            "job #7 needs 600 MiB (288 MiB free); held by job #3 512 MiB, build-script host 224 MiB");
+            working.close();
+            head.get(5, TimeUnit.SECONDS).close();
+            assertThat(asked).hasValue(0);
+            assertThat(resident.bytes()).isPositive();
+        }
+    }
+
+    private static CompletableFuture<WorkerLeases.Grant> acquireLater(
+            WorkerLeases.Ledger ledger, long bytes, long requestId) {
+        CompletableFuture<WorkerLeases.Grant> grant = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try {
+                grant.complete(ledger.acquireBytes(bytes, true, requestId));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                grant.completeExceptionally(e);
+            }
+        });
+        return grant;
     }
 
     @Test

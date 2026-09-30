@@ -46,4 +46,18 @@ test('the workers row names the budget source, the lease, and overbooking', () =
     }),
     '1.5 GiB budget (override JK_WORKER_BUDGET_MB), 672 MiB leased, 0 MiB overbooked, 3 queued, 2/8 JVMs, overbooking off',
   );
+  assert.equal(
+    workerBudgetLine({
+      workerBudgetBytes: 13 * GIB,
+      workerLeasedBytes: GIB,
+      workerOverbookedBytes: 0,
+      workerQueued: 1,
+      workerBudgetSource: 'host',
+      workerRunningJvms: 0,
+      workerCpuCap: 8,
+      workerWaiting: 'job #7 needs 13.0 GiB (12.0 GiB free); held by build-script host 1.0 GiB (asked to exit)',
+    }),
+    '13.0 GiB budget (host), 1.0 GiB leased, 0 MiB overbooked, 1 queued, 0/8 JVMs; '
+      + 'waiting: job #7 needs 13.0 GiB (12.0 GiB free); held by build-script host 1.0 GiB (asked to exit)',
+  );
 });

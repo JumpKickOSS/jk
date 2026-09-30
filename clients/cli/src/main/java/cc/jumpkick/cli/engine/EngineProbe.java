@@ -101,6 +101,11 @@ public final class EngineProbe {
             int workerCpuCap,
             /** This engine was started with {@code CI} set or {@code JK_OVERBOOK} off. */
             boolean overbookingOff,
+            /**
+             * What the head of the worker lease queue needs and who holds the memory; {@code ""}
+             * when nothing is queued, {@code null} when the engine did not report.
+             */
+            @Nullable String workerWaiting,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
             List<Job> jobs) {
 
@@ -175,6 +180,7 @@ public final class EngineProbe {
                     -1,
                     -1,
                     false,
+                    null,
                     jobs);
         }
     }
@@ -330,6 +336,7 @@ public final class EngineProbe {
                     Jsonl.intValue(ack, "workerRunningJvms", -1),
                     Jsonl.intValue(ack, "workerCpuCap", -1),
                     Jsonl.bool(ack, "overbookingOff", false),
+                    Jsonl.str(ack, "workerWaiting"),
                     Job.decodeAll(ack)));
         } catch (IOException e) {
             return Optional.empty();

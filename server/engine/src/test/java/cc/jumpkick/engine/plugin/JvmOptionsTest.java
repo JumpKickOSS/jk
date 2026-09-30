@@ -282,7 +282,7 @@ class JvmOptionsTest {
      * {@code ActiveProcessorCount=1} — a serial formatter on nineteen idle cores.
      */
     @Test
-    void sole_worker_flags_claim_the_whole_machine() {
+    void sole_worker_flags_claim_every_core() {
         try {
             installTuning(PluginTuning.NONE);
             List<String> flags = JvmOptions.soleWorkerFlags();
@@ -295,6 +295,32 @@ class JvmOptionsTest {
         } finally {
             SessionContext.reset();
         }
+    }
+
+    /**
+     * A sole worker leases a quarter of the budget, never the whole of it: a whole-budget lease
+     * waits for every other fork on the engine to end and holds back every fork behind it.
+     */
+    @Test
+    void a_sole_worker_leases_a_quarter_of_the_budget_with_a_floor() {
+        long gib = 1L << 30;
+        WorkerLeases.Ledger big = new WorkerLeases.Ledger(() -> 27 * gib / 2, () -> 8, id -> false);
+        HeapPlan.Plan plan = JvmOptions.soleWorkerPlan(15 * gib, big);
+        assertThat(WorkerLeases.jvmLease(plan.xmxBytes())).isLessThanOrEqualTo(27 * gib / 8);
+        assertThat(plan.xmxBytes()).isGreaterThan(2 * gib);
+        assertThat(plan.softMaxBytes()).isLessThanOrEqualTo(plan.xmxBytes());
+        assertThat(plan.xmsBytes()).isLessThanOrEqualTo(plan.xmxBytes());
+
+        WorkerLeases.Ledger small = new WorkerLeases.Ledger(() -> 3 * gib / 2, () -> 8, id -> false);
+        assertThat(WorkerLeases.jvmLease(
+                        JvmOptions.soleWorkerPlan(2 * gib, small).xmxBytes()))
+                .isLessThanOrEqualTo(gib)
+                .isGreaterThan(3 * gib / 8);
+
+        WorkerLeases.Ledger tiny = new WorkerLeases.Ledger(() -> 512L << 20, () -> 8, id -> false);
+        assertThat(WorkerLeases.jvmLease(JvmOptions.soleWorkerPlan(gib, tiny).xmxBytes()))
+                .isLessThanOrEqualTo(512L << 20)
+                .isGreaterThan(256L << 20);
     }
 
     /** The user's own memory pin is the answer; a sole fork does not get to double it. */

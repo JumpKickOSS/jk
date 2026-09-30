@@ -388,8 +388,8 @@ public final class FormatPlans {
                             o.importOrder(),
                             o.removeUnusedImports())));
             if (!javaFiles.isEmpty()) extra.addAll(JAVAC_EXPORTS);
-            // The run's only fork, so it gets the machine rather than the build-shaped
-            // 1/jobs share the process-wide plan hands every worker.
+            // The run's only fork, so it gets every core and a sole worker's heap rather than the
+            // build-shaped 1/jobs share the process-wide plan hands every worker.
             extra.addAll(JvmOptions.soleWorkerFlags());
             FormatWorker.runWorker(
                     ctx,

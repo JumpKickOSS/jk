@@ -251,7 +251,7 @@ public final class JobWorkers {
 
     /** As {@link #start(ProcessBuilder, WorkerLeases.Ledger)}, recording peaks on {@code heaps}. */
     public static Process start(ProcessBuilder pb, WorkerLeases.Ledger leases, LearnedHeaps heaps) throws IOException {
-        return launch(pb, true, leases, JvmOptions.HeapChoice.inspect(pb.command()), heaps);
+        return launch(pb, true, null, leases, JvmOptions.HeapChoice.inspect(pb.command()), heaps);
     }
 
     /**
@@ -265,21 +265,42 @@ public final class JobWorkers {
     /** As {@link #start(ProcessBuilder, JvmOptions.HeapChoice)}, recording peaks on {@code heaps}. */
     public static Process start(ProcessBuilder pb, JvmOptions.HeapChoice choice, LearnedHeaps heaps)
             throws IOException {
-        return launch(pb, true, WorkerLeases.engine(), choice, heaps);
+        return launch(pb, true, null, WorkerLeases.engine(), choice, heaps);
     }
 
     /**
-     * As {@link #start} but not registered for request cancel. The build-script host and the AOT
-     * trainer outlive the request that spawned them; they are still contained.
+     * As {@link #start} but not registered for request cancel: the AOT trainer outlives the request
+     * that spawned it. It is still contained.
      */
     public static Process startDetached(ProcessBuilder pb) throws IOException {
         return launch(
-                pb, false, WorkerLeases.engine(), JvmOptions.HeapChoice.inspect(pb.command()), LearnedHeaps.engine());
+                pb,
+                false,
+                null,
+                WorkerLeases.engine(),
+                JvmOptions.HeapChoice.inspect(pb.command()),
+                LearnedHeaps.engine());
+    }
+
+    /**
+     * As {@link #startDetached} for a helper that stays up between requests (the build-script
+     * host). Its lease takes no CPU slot, and {@code resident} is asked to exit when the head of the
+     * lease queue needs the memory.
+     */
+    public static Process startResident(ProcessBuilder pb, WorkerLeases.Resident resident) throws IOException {
+        return launch(
+                pb,
+                false,
+                resident,
+                WorkerLeases.engine(),
+                JvmOptions.HeapChoice.inspect(pb.command()),
+                LearnedHeaps.engine());
     }
 
     private static Process launch(
             ProcessBuilder pb,
             boolean track,
+            WorkerLeases.@Nullable Resident resident,
             WorkerLeases.Ledger leases,
             JvmOptions.HeapChoice choice,
             LearnedHeaps heaps)
@@ -287,9 +308,9 @@ public final class JobWorkers {
         Long request = track ? CURRENT.get() : null;
         WorkerLeases.Grant grant;
         try {
-            grant = track
-                    ? leases.acquire(pb.command(), request, choice)
-                    : leases.acquireResident(pb.command(), choice);
+            grant = resident != null
+                    ? leases.acquireResident(pb.command(), choice, resident)
+                    : leases.acquire(pb.command(), request, choice);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("cancelled while waiting for memory");
