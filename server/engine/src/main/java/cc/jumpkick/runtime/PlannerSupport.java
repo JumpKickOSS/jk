@@ -950,6 +950,10 @@ public final class PlannerSupport {
         if (selection != null) extras.add("sel:" + selection.identityToken());
         // Whether the suite JVM ran with -ea decides what an `assert` did.
         extras.add("assertions:" + build.testAssertions());
+        // Excluded classes are classes the suite does not run.
+        if (!build.testExcludeClasses().isEmpty()) {
+            extras.add("exclude-classes:" + String.join(",", build.testExcludeClasses()));
+        }
         // The test JVM's flags change what the suite sees (-D properties, heap), so they retest.
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
         // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the

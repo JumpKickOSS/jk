@@ -14,8 +14,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Where Surefire, Failsafe and JaCoCo land: groups in {@code [test]} tag filters, everything jk
- * has no key for in a row that names the setting and its landing place.
+ * Where Surefire, Failsafe, JaCoCo and the compiler's test source globs land: groups in {@code
+ * [test]} tag filters, excludes in {@code exclude-classes} / {@code exclude-src}, everything jk has
+ * no key for in a row that names the setting and its landing place.
  */
 class PomTestPluginImportTest {
 
@@ -35,7 +36,10 @@ class PomTestPluginImportTest {
                 .containsExactly(Map.entry("spring.profiles.active", "test"), Map.entry("java.awt.headless", "true"));
         assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` `<argLine>`"));
         assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` system properties"));
-        assertThat(messages).anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<excludes>` **/*Slow*.java —"));
+        assertThat(build.build().testExcludeClasses())
+                .as("the file pattern becomes the class pattern Maven's runner skips")
+                .containsExactly("*Slow*");
+        assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` `<excludes>`"));
         assertThat(messages)
                 .as("failsafe's default patterns name the classes to move into the integration suite")
                 .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` runs **/IT*.java, **/*IT.java, **/*ITCase.java")
@@ -55,11 +59,13 @@ class PomTestPluginImportTest {
         assertThat(rendered)
                 .contains(
                         "[test]\ninclude-tags = [\"fast\", \"smoke\"]\nexclude-tags = [\"slow\"]\n"
+                                + "exclude-classes = [\"*Slow*\"]\n"
                                 + "jvm-args = [\"-Xmx1g\", \"-Dfile.encoding=UTF-8\"]\n"
                                 + "system-properties = { \"spring.profiles.active\" = \"test\", \"java.awt.headless\" = \"true\" }\n");
         JkBuild reparsed = JkBuildParser.parse(rendered);
         assertThat(reparsed.build().testIncludeTags()).containsExactly("fast", "smoke");
         assertThat(reparsed.build().testExcludeTags()).containsExactly("slow");
+        assertThat(reparsed.build().testExcludeClasses()).containsExactly("*Slow*");
         assertThat(reparsed.build().testJvm()).isEqualTo(build.build().testJvm());
         assertThat(JkBuildParser.parseTestTags(writeManifest(tempDir, rendered)).excludeTags())
                 .as("the engine's root-scoped reader sees the same filters")
@@ -110,6 +116,67 @@ class PomTestPluginImportTest {
                 """);
         assertThat(result.jkBuild().build().testJvm().jvmArgs()).containsExactly("--enable-preview", "-XX:+UseZGC");
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`<argLine>`"));
+    }
+
+    @Test
+    void surefire_file_patterns_map_to_class_patterns() {
+        assertThat(TestPlugins.classPattern("**/*PerformanceTest.java")).isEqualTo("*PerformanceTest");
+        assertThat(TestPlugins.classPattern("org/acme/**/*IT.class")).isEqualTo("org.acme.*IT");
+        assertThat(TestPlugins.classPattern("%ant[**/Legacy*.java]")).isEqualTo("Legacy*");
+        assertThat(TestPlugins.classPattern("%regex[.*Slow.*]")).isNull();
+        assertThat(TestPlugins.classPattern("**/Test?.java")).isNull();
+    }
+
+    @Test
+    void surefire_excludes_and_compiler_test_excludes_leave_classes_and_sources_out(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>codec</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins>
+                    <plugin>
+                      <groupId>org.apache.maven.plugins</groupId>
+                      <artifactId>maven-compiler-plugin</artifactId>
+                      <version>3.14.0</version>
+                      <configuration>
+                        <testExcludes><testExclude>**/*Benchmark*</testExclude></testExcludes>
+                        <excludes><exclude>**/package-info.java</exclude></excludes>
+                      </configuration>
+                    </plugin>
+                    <plugin>
+                      <groupId>org.apache.maven.plugins</groupId>
+                      <artifactId>maven-surefire-plugin</artifactId>
+                      <version>3.5.2</version>
+                      <configuration>
+                        <includes><include>**/*Test.java</include></includes>
+                        <excludes>
+                          <exclude>**/*PerformanceTest.java</exclude>
+                          <exclude>%regex[.*Flaky.*]</exclude>
+                        </excludes>
+                      </configuration>
+                    </plugin>
+                  </plugins></build>
+                </project>
+                """);
+        JkBuild build = result.jkBuild();
+        List<String> messages = TestImporters.messages(result);
+        assertThat(build.build().testExcludeClasses()).containsExactly("*PerformanceTest");
+        assertThat(build.build().testExcludeSrc()).containsExactly("**/*Benchmark*");
+        assertThat(messages)
+                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<excludes>` %regex[.*Flaky.*] —"))
+                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<includes>` **/*Test.java —"))
+                .anyMatch(m -> m.startsWith("`maven-compiler-plugin` `<excludes>` **/package-info.java —"))
+                .noneMatch(m -> m.startsWith("`maven-compiler-plugin` `<testExcludes>`"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered)
+                .contains("[test]\nexclude-src = [\"**/*Benchmark*\"]\nexclude-classes = [\"*PerformanceTest\"]\n");
+        JkBuild reparsed = JkBuildParser.parse(rendered);
+        assertThat(reparsed.build().testExcludeClasses()).containsExactly("*PerformanceTest");
+        assertThat(reparsed.build().testExcludeSrc()).containsExactly("**/*Benchmark*");
     }
 
     private static Path writeManifest(Path tempDir, String rendered) throws Exception {

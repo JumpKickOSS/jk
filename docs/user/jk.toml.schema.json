@@ -301,6 +301,16 @@
           "type": "boolean",
           "description": "Run every forked test JVM with -ea, as Surefire and Gradle do. Default true; false runs the suite with Java and Kotlin assert statements disabled. A run-tests input: flipping it re-runs the suite."
         },
+        "exclude-classes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Class patterns in --class syntax (fully qualified, simple name in any package, * wildcards) no suite runs, nested classes included; Surefire's <excludes>. A run-tests input."
+        },
+        "exclude-src": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Globs over a test source's path under its source root (**/ also matches at the root); matching files are not compiled by compile-test. The compiler plugin's <testExcludes>."
+        },
         "jvm-args": {
           "type": "array",
           "items": { "type": "string" },

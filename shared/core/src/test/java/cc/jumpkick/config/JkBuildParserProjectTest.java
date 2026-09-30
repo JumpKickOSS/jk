@@ -377,6 +377,33 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void parses_test_exclude_classes_and_exclude_src() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testExcludeClasses()).isEmpty();
+        var build = JkBuildParser.parse(PROJECT + """
+
+                [test]
+                exclude-classes = ["*PerformanceTest", "com.acme.Slow*"]
+                exclude-src = ["**/*Benchmark*"]
+                """).build();
+        assertThat(build.testExcludeClasses()).containsExactly("*PerformanceTest", "com.acme.Slow*");
+        assertThat(build.testExcludeSrc()).containsExactly("**/*Benchmark*");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                exclude-classes = "*PerformanceTest"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].exclude-classes must be an array");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                exclude-src = [""]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].exclude-src");
+    }
+
+    @Test
     void test_assertions_default_on_and_take_only_a_boolean() {
         assertThat(JkBuildParser.parse(PROJECT).build().testAssertions()).isTrue();
         assertThat(JkBuildParser.parse(PROJECT + """
