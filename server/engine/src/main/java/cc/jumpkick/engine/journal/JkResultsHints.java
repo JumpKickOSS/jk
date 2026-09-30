@@ -15,8 +15,8 @@ import org.jspecify.annotations.Nullable;
  * compile worker records beside every diagnostic; the shape of the message is the fallback for a
  * diagnostic that arrived without one — a forked javac's stderr, and every kotlinc diagnostic, since
  * kotlinc's Build Tools logger reports a line of text. The hint quotes the symbol, package or type
- * from the message. A missing package names the coordinate the compile step recorded
- * ({@code provided by:}), and a rejected pin names {@code deps(pin, …)} or {@code deps(remove, …)}.
+ * from the message. A missing package, or a kotlinc unresolved import, names the coordinate the
+ * compile step recorded ({@code provided by:}), and a rejected pin names {@code deps(pin, …)} or {@code deps(remove, …)}.
  */
 @NullMarked
 final class JkResultsHints {
@@ -63,7 +63,7 @@ final class JkResultsHints {
                 Hint byKey = javacByKey(d.key(), first, message);
                 yield byKey != null ? byKey : javacByShape(first, message);
             }
-            case "kotlinc" -> kotlinc(first);
+            case "kotlinc" -> kotlinc(first, message);
             default -> null;
         };
     }
@@ -163,6 +163,14 @@ final class JkResultsHints {
                     "nothing on this module's compile classpath provides package `" + pkg
                             + "`: `jk add <group:artifact>` the library that ships it, or fix the import.");
         }
+        return providedBy(DOESNT_EXIST, "package `" + pkg + "`", provider);
+    }
+
+    /**
+     * {@code subject is provided by `g:a` (where): `jk add g:a` …} from a {@code provided by:}
+     * value, which names one coordinate or two joined by {@code ", "}.
+     */
+    private static Hint providedBy(String code, String subject, String provider) {
         int whereAt = provider.indexOf(" (");
         String coordField = whereAt < 0 ? provider : provider.substring(0, whereAt);
         String where = whereAt < 0
@@ -174,15 +182,14 @@ final class JkResultsHints {
         String[] coords = coordField.split(", ");
         if (coords.length >= 2) {
             return new Hint(
-                    DOESNT_EXIST,
-                    "package `" + pkg + "` is provided by `" + coords[0] + "` or `" + coords[1] + "`" + where
-                            + ": `jk add " + coords[0] + "` or `jk add " + coords[1]
-                            + "` in this module, or fix the import.");
+                    code,
+                    subject + " is provided by `" + coords[0] + "` or `" + coords[1] + "`" + where + ": `jk add "
+                            + coords[0] + "` or `jk add " + coords[1] + "` in this module, or fix the import.");
         }
         String coordinate = coords[0];
         return new Hint(
-                DOESNT_EXIST,
-                "package `" + pkg + "` is provided by `" + coordinate + "`" + where + ": `jk add " + coordinate
+                code,
+                subject + " is provided by `" + coordinate + "`" + where + ": `jk add " + coordinate
                         + "` in this module, or fix the import.");
     }
 
@@ -226,10 +233,14 @@ final class JkResultsHints {
         return m.find() ? m.group(1) : fallback;
     }
 
-    private static @Nullable Hint kotlinc(String first) {
+    private static @Nullable Hint kotlinc(String first, String message) {
         String lower = first.toLowerCase(Locale.ROOT);
         Matcher m = KT_UNRESOLVED.matcher(first);
         if (m.find()) {
+            String provider = field(message, "provided by:");
+            if (!provider.isEmpty()) {
+                return providedBy("UNRESOLVED_REFERENCE", "the import of `" + m.group(1) + "`", provider);
+            }
             return new Hint(
                     "UNRESOLVED_REFERENCE",
                     "`" + m.group(1)

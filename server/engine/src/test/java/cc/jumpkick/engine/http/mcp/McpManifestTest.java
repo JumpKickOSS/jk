@@ -11,6 +11,7 @@ import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.runtime.RepoFixtures;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -64,8 +65,14 @@ class McpManifestTest {
     }
 
     @Test
-    void applied_writes_are_atomic_and_leave_no_temp_sibling(@TempDir Path dir) throws Exception {
-        Files.writeString(dir.resolve("jk.toml"), TABLE_TERMINATED, StandardCharsets.UTF_8);
+    void applied_writes_are_atomic_and_leave_no_temp_sibling(@TempDir Path tmp) throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("app"));
+        Path repo = tmp.resolve("repo");
+        RepoFixtures.module(repo, "com.acme", "thing", "1.0.0");
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                TABLE_TERMINATED + "\n[repositories.local]\nurl = \"" + repo.toUri() + "\"\ngroups = [\"com.acme\"]\n",
+                StandardCharsets.UTF_8);
         McpManifest.setJava(dir.toString(), 21, true);
         McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true);
         try (var files = Files.list(dir)) {

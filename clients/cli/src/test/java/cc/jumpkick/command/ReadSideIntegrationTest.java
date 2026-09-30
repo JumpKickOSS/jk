@@ -51,7 +51,7 @@ class ReadSideIntegrationTest {
         Path cache = tempDir.resolve("cache");
 
         run("new", tempDir.toString());
-        run("add", "com.foo:root:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo:root:1.0", "-C", tempDir.toString());
         run("lock", "-C", tempDir.toString(), "--repo-url", maven.base().toString(), "--cache-dir", cache.toString());
 
         // jk tree — strip ANSI escapes so the GAV-formatted labels
@@ -118,7 +118,7 @@ class ReadSideIntegrationTest {
         maven.registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         run("new", tempDir.toString());
-        run("add", "com.foo:leaf:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo:leaf:1.0", "-C", tempDir.toString());
         // Erase the empty lockfile that `jk init` stamps so we can verify
         // sync creates a fresh one (with the dep we just added).
         Path lockFile = tempDir.resolve("jk-lock.toml");
@@ -147,7 +147,7 @@ class ReadSideIntegrationTest {
         maven.registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         run("new", tempDir.toString());
-        run("add", "com.foo:leaf:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo:leaf:1.0", "-C", tempDir.toString());
         run(
                 "lock",
                 "-C",

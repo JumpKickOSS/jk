@@ -17,23 +17,24 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The number a writer pins for a version-less coordinate comes from the project's declared
- * repositories. The fixture is a {@code file://} repository the manifest names, so nothing here
- * reaches the network.
+ * repositories, and an exact version must be one they serve. The fixture is a {@code file://}
+ * repository the manifest names, so nothing here reaches the network.
  */
 class StableVersionsTest {
 
     private static Path project(Path tmp) throws IOException {
         Path repo = tmp.resolve("repo");
-        metadata(repo, "com.acme", "thing", "1.0.0", "1.2.0", "2.0.0-RC1");
-        metadata(repo, "com.acme", "preview", "1.0.0-M1", "1.0.0-M2");
+        RepoFixtures.module(repo, "com.acme", "thing", "1.0.0", "1.2.0", "2.0.0-RC1");
+        RepoFixtures.module(repo, "com.acme", "preview", "1.0.0-M1", "1.0.0-M2");
         Path dir = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(dir.resolve(ManifestPaths.MANIFEST), """
                 group   = "com.acme"
                 name    = "app"
                 version = "0.1.0"
 
-                [repositories]
-                local = "%s"
+                [repositories.local]
+                url = "%s"
+                groups = ["com.acme"]
                 """.formatted(repo.toUri()));
         return dir;
     }
@@ -61,23 +62,6 @@ class StableVersionsTest {
                 bom = "com.acme:bom:1.0"
                 """);
         return dir;
-    }
-
-    private static void metadata(Path repo, String group, String artifact, String... versions) throws IOException {
-        Path dir = Files.createDirectories(repo.resolve(group.replace('.', '/')).resolve(artifact));
-        StringBuilder list = new StringBuilder();
-        for (String v : versions) list.append("      <version>").append(v).append("</version>\n");
-        Files.writeString(dir.resolve("maven-metadata.xml"), """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <metadata>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <versioning>
-                    <versions>
-                %s    </versions>
-                  </versioning>
-                </metadata>
-                """.formatted(group, artifact, list));
     }
 
     @Test
@@ -123,6 +107,49 @@ class StableVersionsTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("1.0.0-M2")
                 .hasMessageContaining("pass it explicitly");
+    }
+
+    @Test
+    void a_coordinate_no_repository_serves_is_named_without_a_made_up_version(@TempDir Path tmp) throws Exception {
+        Path manifest = project(tmp).resolve(ManifestPaths.MANIFEST);
+        assertThatThrownBy(() -> StableVersions.versionToWrite(manifest, "com.acme", "nothing", "latest"))
+                .isInstanceOf(IOException.class)
+                .hasMessageStartingWith("no com.acme:nothing in the configured repositories; ")
+                .hasMessageNotContaining("1.2.3");
+        assertThatThrownBy(() -> StableVersions.requireExists(manifest, "com.acme", "nothing", "4.0.2"))
+                .isInstanceOf(IOException.class)
+                .hasMessageStartingWith("no com.acme:nothing in the configured repositories; ");
+    }
+
+    @Test
+    void an_exact_version_the_repository_lacks_is_refused_with_the_newest_release(@TempDir Path tmp) throws Exception {
+        Path manifest = project(tmp).resolve(ManifestPaths.MANIFEST);
+        assertThatThrownBy(() -> StableVersions.requireExists(manifest, "com.acme", "thing", "9.9.9"))
+                .isInstanceOf(IOException.class)
+                .hasMessage("no com.acme:thing:9.9.9 in the configured repositories; the newest release is 1.2.0");
+        StableVersions.requireExists(manifest, "com.acme", "thing", "1.0.0");
+        StableVersions.requireExists(manifest, "com.acme", "nothing", "^1");
+        StableVersions.requireExists(manifest, "com.acme", "nothing", "managed");
+    }
+
+    @Test
+    void mcp_deps_preview_of_a_missing_version_is_an_error_and_writes_nothing(@TempDir Path tmp) throws Exception {
+        Path dir = project(tmp);
+        String before = Files.readString(dir.resolve(ManifestPaths.MANIFEST));
+        Map<String, Object> out =
+                McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:9.9.9"), "main", false);
+        assertThat(String.valueOf(out.get("error")))
+                .contains("no com.acme:thing:9.9.9 in the configured repositories; the newest release is 1.2.0");
+        assertThat(Files.readString(dir.resolve(ManifestPaths.MANIFEST))).isEqualTo(before);
+
+        assertThat(McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true)
+                        .get("error"))
+                .isNull();
+        String added = Files.readString(dir.resolve(ManifestPaths.MANIFEST));
+        Map<String, Object> pin =
+                McpManifest.deps(dir.toString(), "pin", List.of("com.acme:thing:9.9.9"), "main", true);
+        assertThat(String.valueOf(pin.get("error"))).contains("no com.acme:thing:9.9.9");
+        assertThat(Files.readString(dir.resolve(ManifestPaths.MANIFEST))).isEqualTo(added);
     }
 
     @Test

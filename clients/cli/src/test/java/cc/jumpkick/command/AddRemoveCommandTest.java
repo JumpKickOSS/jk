@@ -24,7 +24,8 @@ class AddRemoveCommandTest {
     @Test
     void add_modifies_build_jk(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
-        int exit = run("add", "com.fasterxml.jackson.core:jackson-databind:2.18.2", "-C", tempDir.toString());
+        int exit =
+                run("add", "--offline", "com.fasterxml.jackson.core:jackson-databind:2.18.2", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
@@ -37,7 +38,7 @@ class AddRemoveCommandTest {
     @Test
     void add_test_scope(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
-        int exit = run("add", "org.junit.jupiter:junit-jupiter:6.1.0", "--test", "-C", tempDir.toString());
+        int exit = run("add", "--offline", "org.junit.jupiter:junit-jupiter:6.1.0", "--test", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
@@ -74,7 +75,14 @@ class AddRemoveCommandTest {
     @Test
     void add_refuses_two_scope_flags_that_name_two_tables(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
-        assertThat(run("add", "org.mapstruct:mapstruct:1.6.3", "--runtime", "--test", "-C", tempDir.toString()))
+        assertThat(run(
+                        "add",
+                        "--offline",
+                        "org.mapstruct:mapstruct:1.6.3",
+                        "--runtime",
+                        "--test",
+                        "-C",
+                        tempDir.toString()))
                 .isNotEqualTo(0);
         assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
                         .dependencies()
@@ -111,7 +119,7 @@ class AddRemoveCommandTest {
     @Test
     void add_then_remove_by_name(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
-        run("add", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         int exit = run("remove", "bar", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
@@ -122,7 +130,7 @@ class AddRemoveCommandTest {
     @Test
     void remove_accepts_coord_form_as_migration_aid(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
-        run("add", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         int exit = run("remove", "com.foo.addrm:bar", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
@@ -133,7 +141,7 @@ class AddRemoveCommandTest {
     @Test
     void remove_accepts_coord_with_version_and_at_version(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
-        run("add", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         assertThat(run("remove", "com.foo.addrm:bar:9.9.9", "-C", tempDir.toString()))
                 .isEqualTo(0);
         assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
@@ -141,7 +149,7 @@ class AddRemoveCommandTest {
                         .of(Scope.MAIN))
                 .isEmpty();
 
-        run("add", "com.foo.addrm:baz:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo.addrm:baz:1.0", "-C", tempDir.toString());
         assertThat(run("remove", "baz@1.0.0", "-C", tempDir.toString())).isEqualTo(0);
         assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
                         .dependencies()
@@ -182,13 +190,13 @@ class AddRemoveCommandTest {
         run("new", tempDir.toString());
         // A bare name that is not in the library catalog and has no --group
         // is a usage error.
-        int exit = run("add", "not-a-coord", "-C", tempDir.toString());
+        int exit = run("add", "--offline", "not-a-coord", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(64);
     }
 
     @Test
     void add_without_build_jk_fails(@TempDir Path tempDir) {
-        int exit = run("add", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
+        int exit = run("add", "--offline", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(2);
     }
 
@@ -205,7 +213,7 @@ class AddRemoveCommandTest {
         System.setErr(new PrintStream(stderr, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = run("add", "picocl", "--ver", "1.0", "-C", tempDir.toString());
+            exit = run("add", "--offline", "picocl", "--ver", "1.0", "-C", tempDir.toString());
         } finally {
             System.setErr(origErr);
         }
@@ -221,7 +229,7 @@ class AddRemoveCommandTest {
         // an unrelated checkout ./jackson (project name jackson-core) must not redirect
         // `jk remove jackson` away from the manifest dep of the same name.
         run("new", tempDir.toString());
-        run("add", "com.foo.addrm:jackson:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo.addrm:jackson:1.0", "-C", tempDir.toString());
         Path shadow = tempDir.resolve("jackson");
         Files.createDirectories(shadow);
         Files.writeString(shadow.resolve("jk.toml"), """
@@ -253,7 +261,7 @@ class AddRemoveCommandTest {
         assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).isWorkspaceRoot())
                 .isFalse();
 
-        assertThat(run("add", "./libb", "-C", tempDir.toString())).isEqualTo(0);
+        assertThat(run("add", "--offline", "./libb", "-C", tempDir.toString())).isEqualTo(0);
 
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThat(parsed.isWorkspaceRoot()).isTrue();
@@ -272,7 +280,7 @@ class AddRemoveCommandTest {
                 name = "libb"
                 version = "0.2.0"
                 """);
-        assertThat(run("add", "./libb", "-C", tempDir.toString())).isEqualTo(0);
+        assertThat(run("add", "--offline", "./libb", "-C", tempDir.toString())).isEqualTo(0);
         assertThat(workspaceOf(JkBuildParser.parse(tempDir.resolve("jk.toml"))).modules())
                 .contains("libb");
 
@@ -308,7 +316,7 @@ class AddRemoveCommandTest {
     void add_explicit_path_with_coord_flags_is_a_usage_error(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
         Files.createDirectories(tempDir.resolve("mod"));
-        int exit = run("add", "./mod", "--ver", "1.0", "-C", tempDir.toString());
+        int exit = run("add", "--offline", "./mod", "--ver", "1.0", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(64);
     }
 

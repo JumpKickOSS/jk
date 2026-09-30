@@ -176,6 +176,18 @@ class JkResultsAgentTest {
     }
 
     @Test
+    void a_kotlin_unresolved_import_with_a_provider_names_the_add() {
+        String message = """
+                file:///ws/rest-service/src/test/kotlin/HttpControllersTests.kt:3:12 Unresolved reference 'ninjasquad'.
+                  provided by: com.ninja-squad:springmockk (in the local artifact store)
+                """;
+        BuildRecord.Diag unresolved = diag(
+                "compile-test", "kotlinc", message, "src/test/kotlin/HttpControllersTests.kt", 3, 12, 0, List.of(), "");
+        BuildRecord r = record("build", false, false, 900, null, List.of(unresolved), List.of());
+        assertThat(JkResultsAgent.render(r)).contains("FIX deps(add, com.ninja-squad:springmockk)\n");
+    }
+
+    @Test
     void a_removed_starter_is_the_add_and_a_symbol_error_names_no_coordinate() {
         String message = """
                 package org.springframework.web.bind.annotation does not exist

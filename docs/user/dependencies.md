@@ -25,6 +25,13 @@ entry of the manifest (the workspace root's included) already manages, `jk add` 
 the entry is `name = "managed"` for a catalog name, `name = "group:artifact"` otherwise, and the
 platform keeps owning the version.
 
+`jk add` checks the coordinate before writing. A `group:artifact` no configured repository
+publishes is refused as `no com.ninjasquad:springmockk in the configured repositories; did you mean
+com.ninja-squad:springmockk?`, naming a module the local artifact store or the library catalog holds
+under a group or artifact that differs only by punctuation or a character or two. An exact version
+the repositories do not serve is refused with the newest release they do. A repository that cannot
+be reached, or an offline run, skips the check and the lock reports it.
+
 A project with [guards](guards.md) may carry `depend` rules — banned coordinates, scopes a
 library must stay in, version floors, licence and snapshot policy. `jk add` and `jk remove`
 evaluate them before writing: an edit a rule bans is refused with the rule's card (`Instead`,

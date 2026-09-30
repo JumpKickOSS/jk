@@ -47,7 +47,7 @@ class UpdateCommandTest {
 
         // Warm cache + journal online.
         run("new", tempDir.toString());
-        run("add", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
         assertThat(run(
                         "update",
                         "-C",
@@ -97,7 +97,7 @@ class UpdateCommandTest {
         assertThat(DefaultTestDepsFixture.projectCoords(initial)).isEmpty();
 
         // Add a dep, then update.
-        run("add", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
         int exit = run(
                 "update",
                 "-C",
@@ -119,7 +119,7 @@ class UpdateCommandTest {
         maven.registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
         maven.registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
         run("new", tempDir.toString());
-        run("add", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
+        run("add", "--offline", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
 
         int exit = run(
                 "update",

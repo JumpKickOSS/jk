@@ -95,7 +95,7 @@ Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).
 
 | Goal | Prefer |
 |------|--------|
-| Add/remove/pin a dependency | `jk add` / `jk remove`, or MCP `deps` (applies and relocks; `preview=true` does not write). The version written is an exact pin, or `managed` when a platform BOM of the manifest already supplies it |
+| Add/remove/pin a dependency | `jk add` / `jk remove`, or MCP `deps` (applies and relocks; `preview=true` does not write). A coordinate or version no configured repository serves is refused before anything is written, naming the near-miss coordinate or the newest release. The version written is an exact pin, or `managed` when a platform BOM of the manifest already supplies it |
 | Bump dependency versions | `jk outdated` (read-only; the whole picture is `target/jk-outdated-dependencies.md`), then `jk update` (same major; `--major` to cross; `jk update <name>` for one handle), or MCP `update` (`apply` defaults **false** — read the `jk.toml` hunk, then `apply=true`). Never hand-edit `jk-lock.toml` |
 | Change `java = N` | MCP `manifest`, or edit `jk.toml` (`java` is language level, not `jdk`) |
 | Scaffold | `jk new -t …`, or MCP `new` (`preview=true` first; `action=templates` lists ids) |

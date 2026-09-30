@@ -30,7 +30,7 @@ public final class JavacDiagnostics {
     public static boolean report(
             TaskContext ctx, List<Path> classpath, Set<Scope> scopes, List<CompileResult.Diagnostic> diagnostics) {
         boolean errored = false;
-        for (CompileResult.Diagnostic d : withProviders(ctx, classpath, scopes, diagnostics)) {
+        for (CompileResult.Diagnostic d : PackageProviders.enrich(ctx, classpath, scopes, diagnostics)) {
             if (d.severity() == CompileResult.Severity.ERROR) {
                 ctx.keyedError(TOOL, d.key(), d.describe());
                 errored = true;
@@ -39,17 +39,5 @@ public final class JavacDiagnostics {
             }
         }
         return errored;
-    }
-
-    /** The lookup runs only when a missing-package error is present. */
-    private static List<CompileResult.Diagnostic> withProviders(
-            TaskContext ctx, List<Path> classpath, Set<Scope> scopes, List<CompileResult.Diagnostic> diagnostics) {
-        boolean missingPackage = false;
-        for (CompileResult.Diagnostic d : diagnostics) {
-            if (PackageProviders.missingPackage(d) != null) missingPackage = true;
-        }
-        if (!missingPackage) return diagnostics;
-        PackageProviders providers = PackageProviders.forContext(ctx, classpath, scopes);
-        return providers == null ? diagnostics : providers.enrich(diagnostics);
     }
 }

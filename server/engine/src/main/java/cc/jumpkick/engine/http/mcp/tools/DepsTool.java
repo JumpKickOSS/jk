@@ -13,7 +13,8 @@ import java.util.Map;
 
 /**
  * {@code deps} — add, remove, or pin dependencies in {@code jk.toml}, then relock. {@code
- * preview=true} writes nothing and does not lock.
+ * preview=true} writes nothing and does not lock; an added or pinned version must still exist in the
+ * configured repositories.
  */
 public final class DepsTool implements McpTool {
 
