@@ -20,7 +20,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Cross-package feature selection, design C + path): when a consumer selects
+ * Cross-package feature selection: when a consumer selects
  * {@code features} / {@code default-features} on a path dependency whose target has {@code
  * jk.toml}, activate that library's optional deps into the consumer's resolve graph.
  */
