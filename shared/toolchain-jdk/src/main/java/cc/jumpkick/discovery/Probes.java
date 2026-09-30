@@ -17,7 +17,8 @@ import org.jspecify.annotations.Nullable;
  * preempt) the default order.
  *
  * <p>Order rationale: explicit user intent first ({@code env}), then the version managers in rough
- * popularity order for JVM developers, then OS-level system installs as a last resort.
+ * popularity order for JVM developers, then OS-level system installs, then homes a config file
+ * only points at.
  *
  * <p>{@value #ALLOWLIST_ENV} narrows the chain to a comma-separated list of probe names ({@code
  * java-home,jk}, …), read through {@link JkDirs#env} so a test can set it for one JVM or one test.
@@ -63,6 +64,8 @@ public final class Probes {
         chain.add(new JenvProbe());
         chain.add(new HomebrewProbe());
         chain.add(new SystemProbe());
+        // Pointers last, so a home an owner above also reports keeps the owner's label.
+        chain.add(new MavenToolchainsProbe());
         for (LocalToolProbe extension : ServiceLoader.load(LocalToolProbe.class)) {
             chain.add(extension);
         }
