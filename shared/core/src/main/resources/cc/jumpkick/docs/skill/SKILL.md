@@ -31,7 +31,7 @@ E src/main/java/app/Web.java:3:8 package org.springframework.web.bind.annotation
 FIX deps(add, org.springframework.boot:spring-boot-starter-web)
 ```
 
-One line per problem: `E path:line:col message` (paths relative to the project), `T Class#method` for a failed test with its expectation and `at File.java:line`, `FIX` when jk knows the edit (`deps(add, g:a)` is `jk add g:a` in a shell), and `+K more: jk results --all | diagnostics(file=…)` past the cap (the shell command, then the MCP call). An OK run is one line: `OK test app · 2 tests · 0.5s`.
+One line per problem: `E path:line:col message` (paths relative to the project), `T Class#method` for a failed test with its expectation and `at path:line`; under either, `N|`, a tab, then the source line verbatim (an Edit's `old_string`); `FIX` when jk knows the edit (`deps(add, g:a)` is `jk add g:a` in a shell), and `+K more: jk results --all | diagnostics(file=…)` past the cap (the shell command, then the MCP call). An OK run is one line: `OK test app · 2 tests · 0.5s`.
 
 ## Topics
 

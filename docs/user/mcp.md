@@ -82,17 +82,21 @@ OK test rest-service · 2 tests · 500ms
 ```
 FAIL build rest-service · 1 error · 700ms
 E src/main/java/com/example/restservice/RestServiceApplication.java:3:50 ';' expected
-  3| public class RestServiceApplication {
+  3|	public class RestServiceApplication {
 ```
 
 ```
 FAIL test rest-service · 1 of 2 failed · 1.2s
 T com.example.restservice.GreetingControllerTests#noParamGreetingShouldReturnDefaultMessage
   expected: "Hello, World!" but was: "Hello, Wrld!"
-  at GreetingControllerTests.java:44
+  at src/test/java/com/example/restservice/GreetingControllerTests.java:44
+  44|	        assertThat(body).isEqualTo("Hello, World!");
 ```
 
-Paths are relative to the project directory. `wait=false` answers `RUNNING build jid=42` and
+Paths are relative to the project directory. A quoted source row is its line number, `|`, a
+tab, then the line exactly as the file has it, indentation included: everything after the first
+tab is an Edit's `old_string`. When that line occurs more than once in the file, the rows on
+either side come with it so the quote is unique. `wait=false` answers `RUNNING build jid=42` and
 `job action=wait jid=42`. A wait that expires answers `TIMEOUT build jid=42` with the same
 continuation; that wait returns the verdict when the job finishes.
 
