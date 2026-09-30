@@ -149,7 +149,7 @@ Five names, and `JK_HOME` is the only one most people need.
 | `JK_CACHE_DIR` | Cache root only. Same reason, plus isolating the action cache without forcing a cold store. |
 | `JK_STATE_DIR` | State root only (engine sockets, build history, JDK inventory). |
 | `JK_JDKS_DIR` | Managed JDK **write** root. Set it with `JK_HOME` for hermetic JDK isolation. |
-| `JK_JDK_PROBES` | Comma-separated names of the JDK probes jk may consult (`java-home`, `jk`, `intellij`, `gradle`, `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew`, `system`, `maven-toolchains`). Unset is all of them; the test tiers run with `java-home,jk`. |
+| `JK_JDK_PROBES` | Comma-separated names of the JDK probes jk may consult (`java-home`, `jk`, `intellij`, `gradle`, `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew`, `jabba`, `system`, `maven-toolchains`). Unset is all of them; the test tiers run with `java-home,jk`. |
 | `JK_WORKER_AOT=off` | The java-compiler and kotlinc workers neither map nor record their JEP 514 startup cache (CI and short-lived engines) |
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
 | `JK_M2_INTEGRATION` | `false` skips the Maven local repo for third-party jars (same as `[m2] integration = false`) |
