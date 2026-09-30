@@ -432,8 +432,8 @@ final class TestLaunch {
      * path can replay them in its summary. Always stored on success — including --redo/--force.
      * Rerun only means "do not restore/skip the runner"; the marker still uses the normal content
      * key (not a verify scratch salt), so the next explain must see it (same contract as compile).
-     * Skipped only when the key failed open, or when the run is no evidence — see
-     * {@link #stampFor}.
+     * Skipped only when the key failed open, or when the run is no evidence — a cancelled run
+     * included; see {@link PlannerTest#stampFor}.
      */
     static void recordOutcome(
             TaskContext ctx,
@@ -458,7 +458,7 @@ final class TestLaunch {
             throw new RuntimeException(result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
         }
         if (stampKey == null) return;
-        switch (PlannerTest.stampFor(result, testSourcesExist)) {
+        switch (PlannerTest.stampFor(result, testSourcesExist, SessionCancel.cancelled())) {
             case GREEN ->
                 actionCache.storeWithOutputs(
                         testTaskId,

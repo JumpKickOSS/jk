@@ -8,6 +8,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.TestStamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -48,5 +49,31 @@ class ForecastSelectionStampTest {
         assertThat(allSel).isNotEqualTo(unitSel);
         // And the default-session extras still fold the module's own [test] excludes.
         assertThat(unitSel).contains("integration");
+    }
+
+    /** A {@code --class} run's green marker must never be the one a whole-module run replays. */
+    @Test
+    void a_class_filtered_run_keys_its_stamp_apart_from_the_whole_module(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                name = "demo"
+                group = "t"
+                version = "0.0.1"
+                java = 25
+                """);
+        JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+        Path src = Files.writeString(dir.resolve("FooTest.java"), "class FooTest {}");
+        Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
+        Path lock = Files.writeString(dir.resolve("jk-lock.toml"), "v=1");
+
+        List<String> whole =
+                SessionContext.where(Session.defaults(), () -> PlannerSupport.testStampExtras(dir, project));
+        TestSelection filtered = TestSelection.DEFAULT.withClasses(List.of("FooTest"));
+        List<String> partial = SessionContext.where(
+                Session.defaults().withTestSelection(filtered), () -> PlannerSupport.testStampExtras(dir, project));
+
+        String wholeKey = TestStamp.computeKey(List.of(src), mainClasses, List.of(), lock, List.of(), whole);
+        String partialKey = TestStamp.computeKey(List.of(src), mainClasses, List.of(), lock, List.of(), partial);
+        assertThat(wholeKey).isNotNull();
+        assertThat(partialKey).isNotNull().isNotEqualTo(wholeKey);
     }
 }
