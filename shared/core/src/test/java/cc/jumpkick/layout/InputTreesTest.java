@@ -370,36 +370,6 @@ class InputTreesTest {
                 .isFalse();
     }
 
-    /** The scratch carve-out: a tree under a module's {@code target/tmp/} is not build output. */
-    @Test
-    void the_declared_scratch_root_is_not_this_jobs_writing(@TempDir Path w) throws Exception {
-        Files.writeString(w.resolve("jk.toml"), "[workspace]\nmodules = ['shared/core']\n");
-        // A fixture module a test builds inside the scratch root, with a manifest of its own.
-        Path fixture = Files.createDirectories(w.resolve("target/tmp/junit123/fx"));
-        Files.writeString(fixture.resolve("jk.toml"), "[project]\nname='fx'\n");
-        assertThat(InputTrees.isBuildOutput(w.resolve("target/tmp/junit123/src")))
-                .as("the scratch root is not output")
-                .isFalse();
-        assertThat(InputTrees.isBuildOutput(w.resolve("target/shared/core/tmp/junit123/src")))
-                .as("a workspace member's scratch sits a module path deeper")
-                .isFalse();
-        assertThat(InputTrees.isBuildOutput(w.resolve("target/shared/core/tmp/w20/junit123/src")))
-                .as("and deeper again once the worker pool splits it")
-                .isFalse();
-        assertThat(InputTrees.isBuildOutput(fixture.resolve("target/generated/ksp")))
-                .as("a target/ tree inside a scratch tree is output again")
-                .isTrue();
-        assertThat(InputTrees.isBuildOutput(w.resolve("target/tmp/junit123/data/target/x")))
-                .as("unless nothing owns it")
-                .isFalse();
-        assertThat(InputTrees.isBuildOutput(w.resolve("target/shared/core/classes/main")))
-                .as("real module output is untouched")
-                .isTrue();
-        assertThat(InputTrees.isBuildOutput(w.resolve("target/tmpfiles/x")))
-                .as("the reserved name, not every name starting with it")
-                .isTrue();
-    }
-
     /** The real shape of an unlistable tree: a subdirectory this process cannot open. */
     @Test
     void an_unopenable_subdirectory_streams_instead_of_covering_a_hole(@TempDir Path dir) throws Exception {

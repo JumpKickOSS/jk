@@ -174,7 +174,7 @@ public final class CleanCommand implements CliCommand {
 
     /** Build-intermediate subdirs removed by {@code --keep-artifacts} (final jars stay). */
     private static final List<String> INTERMEDIATE_SUBDIRS =
-            List.of("classes", "kotlin", "resources", "generated", "tmp", "test-results", "reports");
+            List.of("classes", "kotlin", "resources", "generated", "test-results", "reports");
 
     /**
      * Every root the clean removes, for one pooled delete: each project's output tree (or, with
