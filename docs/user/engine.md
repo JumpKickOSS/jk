@@ -221,11 +221,14 @@ bytes leased, how much of the lease sits past the budget, how many forks are que
 how many JVMs are running against the CPU cap:
 `13.5 GiB budget (cgroup), 6.2 GiB leased, 700 MiB overbooked, 2 queued, 4/16 JVMs`.
 When this engine was started with `CI` set, or with `JK_OVERBOOK` off, the line ends
-with `overbooking off`. A resident engine keeps the environment it was started with, so
+with `overbooking off`. While a fork is queued, a Waiting line names what the first one in
+line needs and who holds the memory, largest first:
+`job #7 needs 3.4 GiB (2.9 GiB free); held by job #3 6.1 GiB in 9 forks, build-script host 608 MiB (asked to exit)`. A resident engine keeps the environment it was started with, so
 that is how a stale override shows up. `--output json` carries the same facts as
 `workerBudgetBytes`, `workerBudgetSource` (`host`, `cgroup`, or `override`),
 `workerLeasedBytes`, `workerOverbookedBytes`, `workerQueued`, `workerRunningJvms`,
-`workerCpuCap`, and `overbookingOff`. The dashboard's Admin page shows the same line.
+`workerCpuCap`, `overbookingOff`, and `workerWaiting` (the Waiting line, `""` when nothing
+is queued). The dashboard's Admin page shows the same line.
 
 A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
 resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
@@ -239,7 +242,10 @@ and runs once the others have finished — or sooner, when overbooking below has
 its worst case — and the engine log names the pin and the budget.
 If the JVM cannot reserve the pin, its own refusal is the result.
 
-A lease that does not fit waits, first in line first. The step shows
+A lease that does not fit waits, first in line first. The first in line waits only on
+forks that are working: when it would fit once the build-script host let go of its lease,
+the host is asked to exit, finishes the script it is running, and starts again on the next
+script. The step shows
 `waiting for memory: need 512 MiB, free 128 MiB`, and a wait of half a second or more is
 recorded on the step as `waited Ns for memory`. Several waits on one step add up to that
 one line. `target/jk-results.md` and the agent report each carry it, and they carry
@@ -313,10 +319,15 @@ inherited from the shell when it sets its own). `jk engine status` shows heap an
 
 Worker JVMs are job-scoped: compiler lanes, test runners and plugin workers exit when their
 job ends. The build-script host (`.jk/*.kts`) is the one worker that outlives a job, and it
-shuts down after ten idle minutes. It starts with a planned heap of 256 MiB — learned after
-that, the same way as other planned workers — so its lease is that heap plus the usual
-overhead instead of the unsized 512 MiB default. The lease is held while the process is
-alive and drops when the idle timeout exits it.
+shuts down after ten idle minutes, or sooner when a queued fork needs its lease. It starts
+with a planned heap of 256 MiB — learned after that, the same way as other planned workers —
+so its lease is that heap plus the usual overhead instead of the unsized 512 MiB default.
+The lease is held while the process is alive and drops when it exits.
+
+`jk format` forks one worker, so it runs on every core, with a heap whose lease is at most a
+quarter of the worker budget (never cut below 1 GiB while the budget holds that). A lease
+the size of the whole budget would wait for every other fork on the engine to end, and
+every fork behind it would wait too.
 
 ### Compiler worker heap
 

@@ -65,6 +65,12 @@ public final class JvmOptions {
      */
     public static final long DEFAULT_STACK_KB = 512;
 
+    /** A sole worker leases at most one of this many parts of the worker budget. */
+    static final int SOLE_WORKER_BUDGET_SHARE = 4;
+
+    /** The sole worker's lease is not cut below this while the budget holds it. */
+    static final long SOLE_WORKER_LEASE_FLOOR = 1L << 30;
+
     /** Which thread stack and metaspace a fork gets: jk's batch reserve and cap, or the JVM's own defaults. */
     private enum Stack {
         /** {@code -Xss} at {@link #DEFAULT_STACK_KB} and the metaspace cap unless the tuning pins them. */
@@ -285,6 +291,24 @@ public final class JvmOptions {
         return new HeapPlan.Plan(n, xms, soft, xmx, plan.warning());
     }
 
+    /**
+     * The heap of a sole worker: one JVM's share of {@code availableBytes}, leasing at most {@link
+     * #SOLE_WORKER_BUDGET_SHARE} of the worker budget (never less than {@link
+     * #SOLE_WORKER_LEASE_FLOOR} while the budget holds that). The engine is shared, so a lease the
+     * size of the whole budget would wait for every other fork to end and hold back every fork
+     * queued behind it.
+     */
+    static HeapPlan.Plan soleWorkerPlan(long availableBytes, WorkerLeases.Ledger leases) {
+        HeapPlan.Plan plan = fitWorkerBudget(HeapPlan.compute(availableBytes, 1), leases);
+        long budget = leases.capacityBytes();
+        if (budget <= 0) return plan;
+        long share = Math.max(budget / SOLE_WORKER_BUDGET_SHARE, Math.min(budget, SOLE_WORKER_LEASE_FLOOR));
+        if (WorkerLeases.jvmLease(plan.xmxBytes()) <= share) return plan;
+        long xmx = WorkerLeases.clampXmx(plan.xmxBytes(), share);
+        return new HeapPlan.Plan(
+                1, Math.min(plan.xmsBytes(), xmx), Math.min(plan.softMaxBytes(), xmx), xmx, plan.warning());
+    }
+
     /** The applied heap budget, or {@code null} if none (explicit tuning / not yet planned). */
     public static HeapPlan.@Nullable Plan processHeapPlan() {
         return heapPlan;
@@ -294,13 +318,13 @@ public final class JvmOptions {
      * Heap and CPU for a fork that is the <em>only</em> worker its command runs — append after
      * {@link #batchFlags}, whose values these deliberately override (last flag wins on HotSpot).
      * The process-wide plan is sized for {@code jobs} concurrent JVMs, so a command that forks one
-     * worker otherwise gets a twentieth of a twenty-core host. Empty when the user pinned memory.
+     * worker otherwise gets a twentieth of a twenty-core host. It gets every core, and the heap of
+     * {@link #soleWorkerPlan}. Empty when the user pinned memory.
      */
     public static List<String> soleWorkerFlags() {
         PluginTuning s = tuning();
         if (!autoHeapEnabled(s)) return List.of();
-        HeapPlan.Plan plan =
-                fitWorkerBudget(HeapPlan.compute(MemoryProbe.probe().availableBytes(), 1));
+        HeapPlan.Plan plan = soleWorkerPlan(MemoryProbe.probe().availableBytes(), WorkerLeases.engine());
         List<String> out = new ArrayList<>();
         out.add("-Xms" + HeapPlan.mib(plan.xmsBytes()) + "m");
         out.add("-Xmx" + HeapPlan.mib(plan.xmxBytes()) + "m");

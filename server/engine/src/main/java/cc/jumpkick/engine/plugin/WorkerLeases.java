@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.AvailableCpus;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
@@ -11,8 +12,11 @@ import cc.jumpkick.run.TaskNames;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -40,6 +44,11 @@ import org.jspecify.annotations.Nullable;
  * first. On Linux it may instead be granted past the budget while {@link OverbookSignals} say the
  * host has room; {@code CI} and {@code JK_OVERBOOK=0} turn that off. A running fork is never killed
  * to make the room.
+ *
+ * <p>A {@linkplain Resident resident} helper holds its lease between requests. When the head of the
+ * queue would fit once residents let go, the ledger asks them to exit; they finish the request in
+ * flight, exit, and start again on their next use. So the head waits only on forks that are doing
+ * work, never on an idle holder.
  *
  * <p>The queue and the counters live on a {@link Ledger}. {@link #engine()} is the one this process
  * uses: its capacity supplier is {@link WorkerContainment#budgetBytes()}, so {@code
@@ -82,6 +91,9 @@ public final class WorkerLeases {
     static final long MIN_XMX = 32 * MIB;
 
     private static final long REPORT_EVERY_NANOS = 2_000_000_000L;
+
+    /** Holders {@link Snapshot#waiting()} names before it counts the rest. */
+    private static final int HOLDERS_SHOWN = 3;
 
     /** A finished wait shorter than this is recorded and not printed. */
     private static final long OUTPUT_AFTER_NANOS = 500_000_000L;
@@ -322,10 +334,30 @@ public final class WorkerLeases {
 
     /**
      * What {@code jk engine status} prints. {@code overbookedBytes} is the part of {@code
-     * leasedBytes} above {@code budgetBytes}, or {@code 0} when the reserved total fits.
+     * leasedBytes} above {@code budgetBytes}, or {@code 0} when the reserved total fits. {@code
+     * waiting} names what the head of the queue needs and who holds the memory; {@code ""} when
+     * nothing is queued.
      */
     public record Snapshot(
-            long budgetBytes, long leasedBytes, long overbookedBytes, int queued, int runningJvms, int cpuCap) {}
+            long budgetBytes,
+            long leasedBytes,
+            long overbookedBytes,
+            int queued,
+            int runningJvms,
+            int cpuCap,
+            String waiting) {}
+
+    /**
+     * A helper that stays resident between requests (the build-script host). {@code yield} is called
+     * off the ledger's lock when the head of the queue needs this lease back; it lets the request in
+     * flight finish, then makes the process exit, which closes the grant. It may block.
+     */
+    public record Resident(String name, Runnable yield) {
+        public Resident {
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(yield, "yield");
+        }
+    }
 
     /**
      * One queue of waiters and the bytes and JVM slots currently handed out. {@code capacityBytes}
@@ -339,6 +371,7 @@ public final class WorkerLeases {
         private final OverbookSignals.Source signals;
         private final Object lock = new Object();
         private final ArrayDeque<Waiter> queue = new ArrayDeque<>();
+        private final LinkedHashSet<Waiter> held = new LinkedHashSet<>();
         private final ConcurrentHashMap<Long, AtomicLong> waited = new ConcurrentHashMap<>();
         private long leased;
         private int jvmRunning;
@@ -379,7 +412,7 @@ public final class WorkerLeases {
             synchronized (lock) {
                 long budget = capacityBytes();
                 long over = leased > budget ? leased - budget : 0;
-                return new Snapshot(budget, leased, over, queue.size(), jvmRunning, cpuCap());
+                return new Snapshot(budget, leased, over, queue.size(), jvmRunning, cpuCap(), waitingLine(budget));
             }
         }
 
@@ -418,11 +451,14 @@ public final class WorkerLeases {
 
         /**
          * As {@link #acquire(List, Long, JvmOptions.HeapChoice)} for a helper that stays resident
-         * between requests (the build-script host): it leases its memory but takes no CPU slot, so an
-         * idle helper never holds back a fork that has work to run.
+         * between requests: it leases its memory but takes no CPU slot, so an idle helper never holds
+         * back a fork that has work to run, and {@code resident} is asked to give the memory back
+         * when the head of the queue needs it.
          */
-        public Grant acquireResident(List<String> command, JvmOptions.HeapChoice choice) throws InterruptedException {
-            return acquire(demand(command, choice).resident(), null);
+        public Grant acquireResident(List<String> command, JvmOptions.HeapChoice choice, Resident resident)
+                throws InterruptedException {
+            return acquire(
+                    new Waiter(demand(command, choice).resident(), null, Objects.requireNonNull(resident, "resident")));
         }
 
         /** As {@link #acquire(List, Long)} for a lease already measured in bytes. */
@@ -447,8 +483,12 @@ public final class WorkerLeases {
         }
 
         private Grant acquire(Demand demand, @Nullable Long requestId) throws InterruptedException {
+            return acquire(new Waiter(demand, requestId, null));
+        }
+
+        private Grant acquire(Waiter waiter) throws InterruptedException {
+            @Nullable Long requestId = waiter.requestId;
             long arrived = Clock.SYSTEM.nanos();
-            Waiter waiter = new Waiter(demand, requestId);
             boolean queued = false;
             synchronized (lock) {
                 if (grantIfHead(waiter)) return finish(waiter, 0, false);
@@ -524,10 +564,98 @@ public final class WorkerLeases {
                     queue.pollFirst();
                     continue;
                 }
-                if (!admit(head)) return;
+                if (!admit(head)) {
+                    reclaimFor(head);
+                    return;
+                }
                 queue.pollFirst();
                 take(head);
             }
+        }
+
+        /**
+         * Under the lock: when {@code head} is short only of memory that residents hold, ask enough of
+         * them to exit. Each resident is asked once; its grant closes when its process is gone. While
+         * forks that are working still hold what the head needs, residents are left alone.
+         */
+        private void reclaimFor(Waiter head) {
+            if (head.demand.cpuSlot && jvmRunning >= cpuCap()) return;
+            long cap = capacityBytes();
+            long resident = 0;
+            long yielding = 0;
+            for (Waiter w : held) {
+                if (w.resident == null) continue;
+                resident += w.demand.bytes;
+                if (w.yieldAsked) yielding += w.demand.bytes;
+            }
+            if (resident == 0 || head.demand.bytes > cap - (leased - resident)) return;
+            List<Waiter> ask = new ArrayList<>();
+            for (Waiter w : held) {
+                if (head.demand.bytes <= cap - (leased - yielding)) break;
+                if (w.resident == null || w.yieldAsked) continue;
+                w.yieldAsked = true;
+                yielding += w.demand.bytes;
+                ask.add(w);
+            }
+            for (Waiter w : ask) {
+                Resident r = Objects.requireNonNull(w.resident);
+                Log.info("jk engine: asking the " + r.name() + " to exit: " + ownerOf(head) + " needs "
+                        + format(head.demand.bytes) + " and the " + r.name() + " holds " + format(w.demand.bytes));
+                SessionContext.startVirtual("jk-lease-yield", () -> {
+                    try {
+                        r.yield().run();
+                    } catch (RuntimeException e) {
+                        Log.warn("jk engine: the " + r.name() + " did not exit when asked: " + e.getMessage());
+                    }
+                });
+            }
+        }
+
+        /**
+         * Under the lock: {@code job #7 needs 13.2 GiB (12.9 GiB free); held by job #3 6.1 GiB in 9
+         * forks, build-script host 608 MiB (asked to exit)}. Empty when nothing is queued.
+         */
+        private String waitingLine(long budget) {
+            Waiter head = null;
+            for (Waiter w : queue) {
+                if (!w.cancelled) {
+                    head = w;
+                    break;
+                }
+            }
+            if (head == null) return "";
+            StringBuilder line = new StringBuilder(ownerOf(head)).append(" needs ");
+            if (head.demand.cpuSlot && jvmRunning >= cpuCap()) {
+                line.append("a JVM slot (")
+                        .append(jvmRunning)
+                        .append('/')
+                        .append(cpuCap())
+                        .append(" running)");
+            } else {
+                line.append(format(head.demand.bytes))
+                        .append(" (")
+                        .append(format(Math.max(0, budget - leased)))
+                        .append(" free)");
+            }
+            Map<String, Holder> holders = new LinkedHashMap<>();
+            for (Waiter w : held) {
+                holders.computeIfAbsent(ownerOf(w), Holder::new).add(w);
+            }
+            if (holders.isEmpty()) return line.toString();
+            List<Holder> ranked = new ArrayList<>(holders.values());
+            ranked.sort((a, b) -> Long.compare(b.bytes, a.bytes));
+            line.append("; held by ");
+            int shown = Math.min(HOLDERS_SHOWN, ranked.size());
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) line.append(", ");
+                Holder h = ranked.get(i);
+                line.append(h.owner).append(' ').append(format(h.bytes));
+                if (h.forks > 1) line.append(" in ").append(h.forks).append(" forks");
+                if (h.asked) line.append(" (asked to exit)");
+            }
+            if (ranked.size() > shown)
+                line.append(", ").append(ranked.size() - shown).append(" more");
+            return line.toString();
         }
 
         /**
@@ -572,6 +700,7 @@ public final class WorkerLeases {
         }
 
         private void take(Waiter waiter) {
+            held.add(waiter);
             leased += waiter.demand.bytes;
             if (waiter.demand.cpuSlot) jvmRunning++;
             waiter.granted = true;
@@ -592,6 +721,7 @@ public final class WorkerLeases {
         private void release(Waiter waiter) {
             if (waiter.released) return;
             waiter.released = true;
+            held.remove(waiter);
             leased -= waiter.demand.bytes;
             if (leased < 0) leased = 0;
             if (waiter.demand.cpuSlot) jvmRunning = Math.max(0, jvmRunning - 1);
@@ -704,9 +834,38 @@ public final class WorkerLeases {
         }
     }
 
+    /** One owner's held leases, as {@link Snapshot#waiting()} names them. */
+    private static final class Holder {
+        final String owner;
+        long bytes;
+        int forks;
+        boolean asked;
+
+        Holder(String owner) {
+            this.owner = owner;
+        }
+
+        void add(Waiter waiter) {
+            bytes += waiter.demand.bytes;
+            forks++;
+            asked |= waiter.yieldAsked;
+        }
+    }
+
+    /** {@code job #7}, the resident's name, or {@code the engine} for a fork outside any job. */
+    private static String ownerOf(Waiter waiter) {
+        if (waiter.resident != null) return waiter.resident.name();
+        if (waiter.requestId != null) return "job #" + waiter.requestId;
+        return "the engine";
+    }
+
     private static final class Waiter {
         final Demand demand;
         final @Nullable Long requestId;
+        final @Nullable Resident resident;
+        /** The resident has been asked to exit for the head of the queue. */
+        boolean yieldAsked;
+
         boolean cancelled;
         boolean granted;
         boolean released;
@@ -715,9 +874,10 @@ public final class WorkerLeases {
         double sampleSome;
         double sampleFull;
 
-        Waiter(Demand demand, @Nullable Long requestId) {
+        Waiter(Demand demand, @Nullable Long requestId, @Nullable Resident resident) {
             this.demand = demand;
             this.requestId = requestId;
+            this.resident = resident;
         }
     }
 
