@@ -96,6 +96,12 @@ public final class McpRpc {
      * {@code -32601}.
      */
     public static Map<String, Object> initialize(String protocolVersion, String serverName, String version) {
+        return initialize(protocolVersion, serverName, version, McpTools.INSTRUCTIONS);
+    }
+
+    /** As above, with the playbook this connection gets. */
+    public static Map<String, Object> initialize(
+            String protocolVersion, String serverName, String version, String instructions) {
         Map<String, Object> caps = new LinkedHashMap<>();
         caps.put("tools", Map.of("listChanged", false));
         caps.put("resources", Map.of("subscribe", false, "listChanged", false));
@@ -112,7 +118,7 @@ public final class McpRpc {
         result.put("protocolVersion", protocolVersion);
         result.put("capabilities", caps);
         result.put("serverInfo", serverInfo);
-        result.put("instructions", McpTools.INSTRUCTIONS);
+        result.put("instructions", instructions);
         return result;
     }
 

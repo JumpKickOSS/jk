@@ -36,6 +36,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk import` / `jk export` | Maven / Gradle / BOM / IDE | [Migration](migration.md) |
 | `jk mvn` / `jk gradle` | Real Maven/Gradle | [Migration](migration.md) |
 | `jk ide` / `jk bsp` | IDE + BSP | [IDE](ide.md) |
+| `jk mcp` | MCP on stdio for the project in the working directory (an agent's client launches it) | [MCP](mcp.md) |
 | `jk web` | Dashboard | [Web](web.md) |
 | `jk engine …` | Resident engine | [Engine](engine.md) |
 | `jk jobs` / `jk cancel` | Running work | [Engine](engine.md) |

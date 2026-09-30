@@ -11,12 +11,13 @@ import java.util.Map;
 
 /**
  * {@code run} — start a job and wait, or read an earlier verdict. {@code run} (a history id) with
- * no {@code kind} is the read. {@code kind} starts a job. {@code only} limits modules.
+ * no {@code kind} is the read; otherwise it starts a job, {@code test} unless {@code kind} says
+ * otherwise. {@code only} limits modules.
  */
 public final class RunTool implements McpTool {
 
     static final String DESCRIPTION =
-            "Run and wait; the reply is the verdict. kind=build|test|lock|…; only=modules; suites=[integration]; run=<id> rereads a run.";
+            "Run and wait; the reply is the verdict. kind=test (default)|build|lock|…; only=modules; suites=[integration]; run=<id> rereads a run.";
 
     @Override
     public Spec spec() {

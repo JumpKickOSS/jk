@@ -21,6 +21,9 @@ final class McpFront {
     /** Streamable-HTTP session header: minted on {@code initialize}, echoed by the client afterwards. */
     static final String SESSION_HEADER = "Mcp-Session-Id";
 
+    /** The project a single-project client ({@code jk mcp}) is for; its connection needs no {@code dir}. */
+    static final String PROJECT_HEADER = "Jk-Project";
+
     private final McpHandler mcp;
     private final SseEndpoint sse;
     private final String engineVersion;
@@ -78,7 +81,13 @@ final class McpFront {
             return;
         }
         String body = HttpRequests.body(exchange);
-        McpHandler.Reply reply = mcp.handle(body, sessionId);
+        McpHandler.Reply reply;
+        try {
+            reply = mcp.handle(body, sessionId, exchange.getRequestHeaders().getFirst(PROJECT_HEADER));
+        } catch (IllegalArgumentException e) {
+            HttpResponses.sendText(exchange, 400, e.getMessage() + "\n");
+            return;
+        }
         if (reply.openedSessionId() != null) {
             exchange.getResponseHeaders().set(SESSION_HEADER, reply.openedSessionId());
         }
