@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.FakeJdk;
 import java.io.IOException;
@@ -23,14 +24,14 @@ import org.junit.jupiter.api.io.TempDir;
 class JdkToolUninstallerTest {
 
     @Test
-    void unknown_source_returns_fall_through() {
-        // intellij + java-home aren't tool-managed → no recipe → caller
-        // gets FALL_THROUGH and runs the direct purge.
-        var hit = hit(Path.of("/home/u/.jdks/temurin-26.0.1"), "intellij");
-        // Path doesn't exist on the test machine; tryUninstall short-circuits
-        // before invoking anything because commandFor returns null.
-        assertThat(JdkToolUninstaller.tryUninstall(hit, "temurin-26.0.1"))
-                .isEqualTo(JdkToolUninstaller.Outcome.FALL_THROUGH);
+    void sources_without_an_owning_tool_have_no_recipe() {
+        for (String source : List.of("jk", "jdks", "path", "gradle")) {
+            assertThat(JdkToolUninstaller.hasRecipe(hit(Path.of("/nowhere/temurin-26.0.1"), source)))
+                    .as(source)
+                    .isFalse();
+        }
+        assertThat(JdkToolUninstaller.hasRecipe(hit(Path.of("/nowhere/25.0.3-tem"), "sdkman")))
+                .isTrue();
     }
 
     @Test
@@ -61,10 +62,7 @@ class JdkToolUninstallerTest {
     }
 
     @Test
-    void jenv_command_removes_alias_only_caller_falls_back_for_files() {
-        // jenv doesn't own JDK files; this command just unregisters the
-        // alias. The dir-exists check downstream will trigger FALL_THROUGH
-        // so the actual install gets purged too.
+    void jenv_command_removes_the_alias() {
         assertThat(commandFor("jenv", "temurin-21.0.5")).containsExactly("jenv", "remove", "temurin-21.0.5");
     }
 
@@ -100,19 +98,22 @@ class JdkToolUninstallerTest {
 
     @Test
     @DisabledOnOs(OS.WINDOWS) // the fake jabba is a POSIX shell script
-    void jabba_is_invoked_and_what_it_leaves_is_not_jks_to_delete(@TempDir Path tmp) throws IOException {
+    void an_owning_tool_runs_and_what_it_leaves_outside_the_managed_root_stays(@TempDir Path tmp) throws IOException {
         Path jabbaHome = tmp.resolve(".jabba");
         Path install = FakeJdk.create(jabbaHome.resolve("jdk/zulu@1.21.0"), "21.0.5");
         Path log = tmp.resolve("jabba.log");
         Path jabba = Files.createDirectories(jabbaHome.resolve("bin")).resolve("jabba");
         Files.writeString(jabba, "#!/bin/sh\necho \"$@\" > '" + log + "'\n");
         Files.setPosixFilePermissions(jabba, PosixFilePermissions.fromString("rwxr-xr-x"));
+        JdkHit hit = hit(install, "jabba");
+        Path root = Files.createDirectories(tmp.resolve("jdks"));
 
-        var outcome = JdkToolUninstaller.tryUninstall(hit(install, "jabba"), "zulu@1.21.0");
-
-        assertThat(outcome).isEqualTo(JdkToolUninstaller.Outcome.LEFT_BY_TOOL);
+        assertThat(JdkUninstallPolicy.refusal(hit, root)).isEmpty();
+        assertThatThrownBy(() -> JdkToolUninstaller.uninstall(hit, new JdkRegistry(root)))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining(install.toString());
         assertThat(Files.readString(log).strip()).isEqualTo("uninstall zulu@1.21.0");
-        assertThat(install).isDirectory();
+        assertThat(install.resolve("release")).isRegularFile();
     }
 
     @Test
@@ -124,7 +125,7 @@ class JdkToolUninstallerTest {
         Files.writeString(jabba, "#!/bin/sh\nrm -rf '" + install + "'\n");
         Files.setPosixFilePermissions(jabba, PosixFilePermissions.fromString("rwxr-xr-x"));
 
-        assertThat(JdkToolUninstaller.tryUninstall(hit(install, "jabba"), "zulu@1.21.0"))
+        assertThat(JdkToolUninstaller.uninstall(hit(install, "jabba"), new JdkRegistry(tmp.resolve("jdks"))))
                 .isEqualTo(JdkToolUninstaller.Outcome.HANDLED_BY_TOOL);
     }
 
