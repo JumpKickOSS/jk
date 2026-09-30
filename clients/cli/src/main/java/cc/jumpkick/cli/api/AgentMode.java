@@ -79,6 +79,15 @@ public final class AgentMode {
         return RUNS.contains(command);
     }
 
+    /**
+     * Whether agent mode holds {@code command}'s output until it ends: only a command that reports a
+     * run, whose verdict replaces its output. Any other command streams, and a stdio server ({@code
+     * jk mcp}, {@code jk bsp}) held until exit would never answer its client.
+     */
+    public static boolean capturesOutput(String command) {
+        return reportsRun(command);
+    }
+
     /** Latest agent report for {@code project}, journal copy first, then {@code target/}. */
     public static Optional<Path> find(Path project) {
         return find(project, ProjectBuilds.AGENT);
