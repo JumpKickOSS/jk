@@ -453,19 +453,19 @@ public final class JavaCompilerHost {
         }
 
         /**
-         * Enqueue, then make sure a lane exists that will take it. The post-add emptiness check is
-         * the same race {@code Session}'s death path guards from the other side: if the last lane
-         * died between the add and now, its drain has already run and would never see this item,
-         * hanging {@code compile.get} forever.
+         * Enqueue and make sure a lane exists that will take it, in one hold of the pool lock. A
+         * last lane's death decides and drains under the same lock, so the item either lands after
+         * that drain and grows a replacement, or lands before it and the replacement makes that
+         * lane not the last; a drain never fails an item a new lane was started for.
          */
         void enqueue(CompileWork w) {
             w.enqueuedNanos = CLOCK.nanos();
-            // The add shares the pool lock with the idle-leave check, so a lane cannot observe an
-            // empty queue and commit to leaving while this item is already on it.
+            List<CompileWork> orphans;
             synchronized (this) {
                 queue.add(w);
+                orphans = grow() ? List.of() : pollQueued();
             }
-            if (!grow()) drainFailQueued(new IOException("zinc worker exited"));
+            failOrphans(orphans, new IOException("zinc worker exited"));
         }
 
         /**
@@ -539,43 +539,44 @@ public final class JavaCompilerHost {
          * them before it closes the pool, so "last lane dies after close" is the common order.
          */
         void laneDied(Session lane, Throwable cause) {
-            boolean last;
             boolean wide;
-            boolean shed;
+            List<CompileWork> orphans = List.of();
             synchronized (this) {
                 lanes.remove(lane);
-                last = lanes.isEmpty();
                 wide = engineWide;
-                shed = lane.shedding;
+                // A lane that left to free memory is not a crash. Work queued as it left stays
+                // queued and the nudge below starts a replacement.
+                if (lanes.isEmpty() && !lane.shedding) orphans = pollQueued();
             }
             if (wide) {
                 releaseLane();
                 nudgePools();
             }
-            // A lane that left to free memory is not a crash. Work queued as it left stays queued
-            // and the nudge above starts a replacement; failing it here dropped a compile that
-            // arrived between the idle poll and the exit.
-            if (last && !shed) drainFailQueued(cause);
+            failOrphans(orphans, cause);
         }
 
         /**
-         * Fail every queued (not-yet-dispatched) Work. Safe from any thread — it only polls the
-         * concurrent queue and completes futures, both idempotent — and never touches a lane's
-         * {@code slot} or {@code inflight}. POISONs that were polled off go back on: a lane still
-         * alive to take one must still get its {@code DONE}.
+         * Take every queued (not-yet-dispatched) Work off the queue; the caller holds the pool lock
+         * and fails them after releasing it. POISONs go back on: a lane still alive to take one
+         * must still get its {@code DONE}.
          */
-        private void drainFailQueued(Throwable e) {
+        private List<CompileWork> pollQueued() {
+            List<CompileWork> taken = new ArrayList<>();
             int poisons = 0;
             CompileWork w;
             while ((w = queue.poll()) != null) {
-                if (w == CompileWork.POISON) {
-                    poisons++;
-                    continue;
-                }
+                if (w == CompileWork.POISON) poisons++;
+                else taken.add(w);
+            }
+            for (int i = 0; i < poisons; i++) queue.add(CompileWork.POISON);
+            return taken;
+        }
+
+        private static void failOrphans(List<CompileWork> orphans, Throwable e) {
+            for (CompileWork w : orphans) {
                 w.compile.completeExceptionally(e);
                 w.forecast.completeExceptionally(e);
             }
-            for (int i = 0; i < poisons; i++) queue.add(CompileWork.POISON);
         }
 
         /**
@@ -596,7 +597,11 @@ public final class JavaCompilerHost {
             for (Session lane : live) {
                 lane.join(Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - CLOCK.nanos())));
             }
-            drainFailQueued(new IOException("zinc worker pool closed"));
+            List<CompileWork> orphans;
+            synchronized (this) {
+                orphans = pollQueued();
+            }
+            failOrphans(orphans, new IOException("zinc worker pool closed"));
         }
     }
 
@@ -807,7 +812,10 @@ public final class JavaCompilerHost {
                 if (next == null) continue;
                 synchronized (owner) {
                     if (dead) {
-                        owner.queue.add(next);
+                        // Through enqueue, not a bare add: a drain may already have run, and the
+                        // item needs a lane that is alive, or a failure once there can be none.
+                        if (next == CompileWork.POISON) owner.queue.add(next);
+                        else owner.enqueue(next);
                         return CompileWork.POISON;
                     }
                     if (next != CompileWork.POISON) busy = true;
