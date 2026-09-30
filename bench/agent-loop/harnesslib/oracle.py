@@ -499,8 +499,8 @@ def stack_line(block: str, class_name: str) -> int:
     m = re.search(rf"at {re.escape(class_name)}\.\w+\({re.escape(simple)}\.\w+:(\d+)\)", block)
     if m:
         return int(m.group(1))
-    # The agent verdict keeps one project frame as ``at File.java:line``.
-    m = re.search(rf"\bat {re.escape(simple)}\.\w+:(\d+)", block)
+    # The agent verdict names a project frame as ``at File.java:line``, or ``at path/File.java:line`` for the quoted one.
+    m = re.search(rf"\bat (?:[\w./-]*/)?{re.escape(simple)}\.\w+:(\d+)", block)
     return int(m.group(1)) if m else 0
 
 
