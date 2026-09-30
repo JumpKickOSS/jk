@@ -30,7 +30,7 @@ class FormatSummaryTest {
 
     @Test
     void check_on_drift_reads_as_a_failure_and_names_the_fix() {
-        var summary = FormatCommand.summarize(true, 14, 1445, 0, "took 7.0s");
+        var summary = FormatCommand.summarize(true, false, 14, 1445, 0, "took 7.0s");
 
         assertThat(summary.failed()).isTrue();
         assertThat(summary.body()).contains("14 files unformatted").contains("jk format");
@@ -38,7 +38,7 @@ class FormatSummaryTest {
 
     @Test
     void check_on_a_clean_tree_is_a_success() {
-        var summary = FormatCommand.summarize(true, 0, 1459, 0, "took 7.0s");
+        var summary = FormatCommand.summarize(true, false, 0, 1459, 0, "took 7.0s");
 
         assertThat(summary.failed()).isFalse();
         assertThat(summary.body()).startsWith("Already formatted");
@@ -46,7 +46,7 @@ class FormatSummaryTest {
 
     @Test
     void formatting_files_is_work_done_not_a_failure() {
-        var summary = FormatCommand.summarize(false, 14, 1445, 0, "took 4.5s");
+        var summary = FormatCommand.summarize(false, false, 14, 1445, 0, "took 4.5s");
 
         assertThat(summary.failed()).isFalse();
         assertThat(summary.body()).startsWith("Formatted 14 files");
@@ -54,9 +54,12 @@ class FormatSummaryTest {
 
     @Test
     void errors_fail_in_both_modes() {
-        assertThat(FormatCommand.summarize(true, 0, 10, 2, "took 1s").failed()).isTrue();
-        assertThat(FormatCommand.summarize(false, 3, 10, 2, "took 1s").failed()).isTrue();
-        assertThat(FormatCommand.summarize(false, 3, 10, 1, "took 1s").body()).contains("1 error ");
+        assertThat(FormatCommand.summarize(true, false, 0, 10, 2, "took 1s").failed())
+                .isTrue();
+        assertThat(FormatCommand.summarize(false, false, 3, 10, 2, "took 1s").failed())
+                .isTrue();
+        assertThat(FormatCommand.summarize(false, false, 3, 10, 1, "took 1s").body())
+                .contains("1 error ");
     }
 
     /**
@@ -71,7 +74,21 @@ class FormatSummaryTest {
 
     @Test
     void one_file_is_singular() {
-        assertThat(FormatCommand.summarize(true, 1, 0, 0, "took 1s").body()).contains("1 file unformatted");
-        assertThat(FormatCommand.summarize(false, 1, 0, 0, "took 1s").body()).startsWith("Formatted 1 file ");
+        assertThat(FormatCommand.summarize(true, false, 1, 0, 0, "took 1s").body())
+                .contains("1 file unformatted");
+        assertThat(FormatCommand.summarize(false, false, 1, 0, 0, "took 1s").body())
+                .startsWith("Formatted 1 file ");
+    }
+
+    /** A forced run visited every file; its wedge counts them rather than claiming the caches' answer. */
+    @Test
+    void a_redo_counts_every_file_it_visited() {
+        assertThat(FormatCommand.summarize(false, true, 0, 4120, 0, "took 5.5s").body())
+                .startsWith("Formatted 0 files, 4120 already formatted");
+        assertThat(FormatCommand.summarize(false, true, 3, 4117, 0, "took 5.5s").body())
+                .startsWith("Formatted 3 files, 4117 already formatted");
+        var checked = FormatCommand.summarize(true, true, 0, 4120, 0, "took 5.5s");
+        assertThat(checked.failed()).isFalse();
+        assertThat(checked.body()).startsWith("Checked 4120 files, all formatted");
     }
 }

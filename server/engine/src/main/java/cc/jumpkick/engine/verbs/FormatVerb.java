@@ -114,6 +114,7 @@ public final class FormatVerb implements HostedVerb {
                         body.optimizeImports(),
                         body.importOrder(),
                         body.removeUnusedImports(),
+                        session.config().rebuildOr(false),
                         (path, status, message, index, total) -> host.sendQuiet(
                                 writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
                 // `result.success()` answers one question: did the format reach the end? It is false

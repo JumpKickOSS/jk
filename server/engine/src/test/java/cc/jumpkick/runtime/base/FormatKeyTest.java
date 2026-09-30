@@ -153,10 +153,14 @@ class FormatKeyTest {
                 List.of(source),
                 tmp.resolve("cache"),
                 "cafebabe",
+                true,
                 tmp.resolve("out.spec"));
 
         // Read it back through the same accessor the worker's Spec.from uses.
         assertThat(PluginSpec.read(spec).config().stringOpt("configKey")).contains("cafebabe");
+        assertThat(PluginSpec.read(spec).config().bool("redo", false))
+                .as("-r / -F reach the worker")
+                .isTrue();
     }
 
     @Test
@@ -183,6 +187,7 @@ class FormatKeyTest {
                 List.of(groovy, scala),
                 tmp.resolve("cache"),
                 "cafebabe",
+                false,
                 tmp.resolve("gs.spec"));
 
         var cfg = PluginSpec.read(spec).config();
@@ -192,6 +197,7 @@ class FormatKeyTest {
                 .containsExactly(scala.toAbsolutePath().toString());
         assertThat(cfg.stringOpt("scalaVersion")).contains(FormatPlans.SCALAFMT_VERSION);
         assertThat(cfg.bool("optimizeImports", false)).isTrue();
+        assertThat(cfg.bool("redo", false)).isFalse();
     }
 
     private static String key(int kotlinMaxWidth, boolean removeUnusedImports, String gjfVersion) {
