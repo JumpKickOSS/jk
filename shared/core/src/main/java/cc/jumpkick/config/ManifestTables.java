@@ -14,6 +14,7 @@ import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
+import cc.jumpkick.model.ReleaseSources;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
@@ -222,6 +223,57 @@ public final class ManifestTables {
             }
         }
         return Optional.of(new BuildBlock.Dokka(selector, shape));
+    }
+
+    /** The top-level table naming the extra release source sets of a multi-release jar. */
+    static final String MULTI_RELEASE = "multi-release";
+
+    /**
+     * {@code [multi-release]} — each key a Java release, each value the source root (or roots) compiled
+     * at that release into {@code META-INF/versions/<N>/}; see {@link ReleaseSources}.
+     */
+    static List<ReleaseSources> parseMultiRelease(TomlTable root) {
+        if (root.contains(MULTI_RELEASE) && !root.isTable(MULTI_RELEASE)) {
+            throw new JkBuildParseException(
+                    "`multi-release` must be a table: [multi-release] 21 = \"src/main/java21\"");
+        }
+        TomlTable table = root.getTable(MULTI_RELEASE);
+        if (table == null) return List.of();
+        List<ReleaseSources> out = new ArrayList<>();
+        for (String key : table.keySet()) {
+            int release;
+            try {
+                release = Integer.parseInt(key);
+            } catch (NumberFormatException e) {
+                throw new JkBuildParseException("[multi-release] key `" + key
+                        + "` is not a Java release: key each source set by its release, 21 = \"src/main/java21\"");
+            }
+            if (release < ReleaseSources.FLOOR) {
+                throw new JkBuildParseException("[multi-release] " + key + ": a JDK reads META-INF/versions/ from Java "
+                        + ReleaseSources.FLOOR + " on, so the release must be at least " + ReleaseSources.FLOOR);
+            }
+            Object raw = table.get(List.of(key));
+            List<String> src = new ArrayList<>();
+            String where = "[multi-release] " + key;
+            if (raw instanceof String s) {
+                src.add(s);
+            } else if (raw instanceof TomlArray arr) {
+                for (int i = 0; i < arr.size(); i++) {
+                    if (!(arr.get(i) instanceof String s)) {
+                        throw new JkBuildParseException(where + " must be a source root or an array of them");
+                    }
+                    src.add(s);
+                }
+            } else {
+                throw new JkBuildParseException(where + " must be a source root or an array of them");
+            }
+            for (String s : src) {
+                if (s.isBlank()) throw new JkBuildParseException(where + " names an empty source root");
+            }
+            if (src.isEmpty()) throw new JkBuildParseException(where + " names no source root");
+            out.add(new ReleaseSources(release, src));
+        }
+        return out;
     }
 
     static final List<String> BUILD_INFO_KEYS = List.of("file", "time");

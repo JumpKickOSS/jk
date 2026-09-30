@@ -34,6 +34,9 @@ public final class TaskNames {
 
     public static final String COMPILE_TEST_GROOVY = "compile-test-groovy";
 
+    /** The {@code [multi-release]} source sets, each compiled at its release against the main classes. */
+    public static final String COMPILE_VERSIONS = "compile-versions";
+
     /** Shared test helpers compiled to a directory that is never an artifact. */
     public static final String COMPILE_TEST_FIXTURES = "compile-test-fixtures";
 

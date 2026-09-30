@@ -317,6 +317,8 @@ final class CorePlan {
         List<String> testStampRequires = new ArrayList<>();
         // A test that reads git.properties off the classpath (Boot's /info) waits for its writer.
         if (buildInfo != null) testStampRequires.add(TaskNames.BUILD_INFO);
+        // The suite reads the versioned classes ahead of the main ones.
+        if (PlannerVersions.declared(parsedBuild)) testStampRequires.add(TaskNames.COMPILE_VERSIONS);
         if (in.testOnly()) {
             if (useJava) testStampRequires.add(TaskNames.WRITE_STAMP);
             if (useKotlin) testStampRequires.add(TaskNames.WRITE_STAMP_KOTLIN);
@@ -331,7 +333,11 @@ final class CorePlan {
             }
         }
         Task packageJar = PlannerPackage.packageJarStep(
-                cx, plugins == null ? null : plugins.packager(), pluginDecls, variantSecrets);
+                cx,
+                plugins == null ? null : plugins.packager(),
+                pluginDecls,
+                variantSecrets,
+                PlannerVersions.declared(parsedBuild));
         Task writeStamp = PlannerPackage.writeStampStep(cx);
         // Kotlin's freshness companion (cf. write-stamp for Java). Mirrors the
         // input set compile-kotlin checked: Kotlin sources, plus Java sources in
@@ -413,6 +419,7 @@ final class CorePlan {
         if (cx.mixed() || cx.mixedGroovy()) {
             b.addTask(s.assembleClasses());
         }
+        if (PlannerVersions.declared(parsedBuild)) b.addTask(PlannerVersions.compileVersionsStep(cx));
     }
 
     /** The module lane after the compiles it indexes, and the root lanes; or, off-build, the model lane alone. */
@@ -480,6 +487,7 @@ final class CorePlan {
         if (cx.mixed() || cx.mixedGroovy()) {
             leaves.add(TaskNames.ASSEMBLE_CLASSES);
         }
+        if (PlannerVersions.declared(parsedBuild)) leaves.add(TaskNames.COMPILE_VERSIONS);
         leaves.add(TaskNames.COPY_RESOURCES);
         b.addTask(Task.builder(BuildPlanner.COMPILE_JOIN)
                 .stage(BuildStage.COMPILE)

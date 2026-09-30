@@ -112,6 +112,7 @@ Maven's compiler plugin and Gradle compile it:
 |---------|-----------------|
 | `compile-main` | The compile classpath on `--module-path` as well as `-classpath`: a jar with a descriptor is an explicit module, a plain jar an automatic one (its `Automatic-Module-Name`, else the name derived from the file name), a workspace sibling's classes tree an explicit module when it has a descriptor |
 | `compile-test` | The same module path plus `--patch-module <module>=<test source roots>` and `--add-reads <module>=ALL-UNNAMED`: the tests compile as part of the module, so a test in the module's package reaches package-private members, and read the test classpath (JUnit, fixtures) as the unnamed module |
+| `compile-versions` | For a `[multi-release]` entry with its own `module-info.java`: the same module path plus `--patch-module <module>=<main classes>`, so the release's descriptor names the module the main classes form ([Packaging](packaging.md#multi-release-jars)) |
 
 Nothing is declared for this; the descriptor is the switch. `requires` names resolve against the
 dependencies as declared, so a dependency the descriptor requires must be in `[dependencies]` (or

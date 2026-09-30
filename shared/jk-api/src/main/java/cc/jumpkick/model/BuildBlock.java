@@ -3,6 +3,7 @@ package cc.jumpkick.model;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -143,7 +144,12 @@ public record BuildBlock(
          */
         @Nullable BuildInfo buildInfo,
         /** {@code [dokka]} — Dokka's version and output format for a Kotlin or mixed module's javadoc jar. */
-        Dokka dokka) {
+        Dokka dokka,
+        /**
+         * {@code [multi-release]} — the extra source sets compiled at a newer release into the jar's
+         * {@code META-INF/versions/<N>/}, in ascending release order. Empty for an ordinary jar.
+         */
+        List<ReleaseSources> multiRelease) {
 
     /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
     public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -178,7 +184,8 @@ public record BuildBlock(
             List.of(),
             EnvConfig.EMPTY,
             null,
-            Dokka.DEFAULT);
+            Dokka.DEFAULT,
+            List.of());
 
     public BuildBlock {
         orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -206,6 +213,11 @@ public record BuildBlock(
         auditIgnores = auditIgnores == null ? List.of() : List.copyOf(auditIgnores);
         env = env == null ? EnvConfig.EMPTY : env;
         dokka = dokka == null ? Dokka.DEFAULT : dokka;
+        multiRelease = multiRelease == null
+                ? List.of()
+                : multiRelease.stream()
+                        .sorted(Comparator.comparingInt(ReleaseSources::release))
+                        .toList();
     }
 
     /**
@@ -315,6 +327,16 @@ public record BuildBlock(
     /** The same block with the {@code [build-info]} table set. */
     public BuildBlock withBuildInfo(@Nullable BuildInfo info) {
         return with(f -> f.buildInfo = info);
+    }
+
+    /** The same block with the {@code [multi-release]} table set. */
+    public BuildBlock withMultiRelease(List<ReleaseSources> releases) {
+        return with(f -> f.multiRelease = releases);
+    }
+
+    /** True when the module packages a multi-release jar. */
+    public boolean isMultiRelease() {
+        return !multiRelease.isEmpty();
     }
 
     /** The same block with the {@code [dokka]} table set. */

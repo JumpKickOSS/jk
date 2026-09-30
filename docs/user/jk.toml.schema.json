@@ -515,6 +515,19 @@
       },
       "additionalProperties": false
     },
+    "multi-release": {
+      "type": "object",
+      "description": "[multi-release]: each key a Java release (9 or newer), each value the source root or roots compiled at that release into the jar's META-INF/versions/<release>/ (docs/user/packaging.md). The jar gets Multi-Release: true.",
+      "patternProperties": {
+        "^[0-9]+$": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "build-info": {
       "type": "object",
       "description": "[build-info]: the jar carries git.properties (git.commit.id, git.commit.id.abbrev, git.branch, git.commit.time, git.dirty, git.build.time, git.build.version, git.closest.tag.name) and, for a Spring Boot application, META-INF/build-info.properties. An empty table is the battery at its defaults (docs/user/packaging.md).",

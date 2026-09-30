@@ -152,6 +152,15 @@ final class PluginFacts {
         return Optional.empty();
     }
 
+    /** The level one compiler configuration names: its {@code <release>}, else {@code <target>}, else {@code <source>}. */
+    static Optional<Integer> configuredLevel(Xpp3Dom config) {
+        for (String key : COMPILER_CONFIG) {
+            Optional<Integer> level = javaLevel(text(config.getChild(key)));
+            if (level.isPresent()) return level;
+        }
+        return Optional.empty();
+    }
+
     /**
      * The compiler arguments each compile step gets: {@code main} is {@code [javac] args} and
      * {@code test} is {@code [javac.test] args}; {@code scoped} names each execution whose

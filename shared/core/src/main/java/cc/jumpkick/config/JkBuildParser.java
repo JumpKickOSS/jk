@@ -16,6 +16,7 @@ import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.model.ReleaseSources;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Sidecar;
@@ -429,6 +430,9 @@ public final class JkBuildParser {
         // [dokka] shapes the javadoc jar of a Kotlin module; it folds in beside [build-info].
         Optional<BuildBlock.Dokka> dokka = ManifestTables.parseDokka(result);
         if (dokka.isPresent()) build = build.withDokka(dokka.get());
+        // [multi-release] adds release source sets to the compile and the jar.
+        List<ReleaseSources> multiRelease = ManifestTables.parseMultiRelease(result);
+        if (!multiRelease.isEmpty()) build = build.withMultiRelease(multiRelease);
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
         JkBuild.Install install = ManifestTables.parseInstall(result).orElse(null);
         PomMetadata publish = ManifestTables.parsePublish(result).orElse(null);

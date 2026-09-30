@@ -881,7 +881,8 @@ public final class PlannerSupport {
         BuildLayout layout = BuildLayout.of(dir, project);
         List<Path> stampSrcs = PlannerTest.TestSources.collect(project, dir, compact, suites, layout, pluginDecls)
                 .all();
-        List<Path> stampRt = PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp);
+        List<Path> stampRt = PlannerVersions.withOwnVersions(
+                project, layout, PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp));
         List<String> stampExtras =
                 TestStamp.withCompileTest(testStampExtras(dir, project, profileName, identity), compileTestKeys);
         List<Path> stampRes = ModuleLayout.suiteResourceDirs(dir, compact, suites);
@@ -997,9 +998,15 @@ public final class PlannerSupport {
     }
 
     /**
-     * Main classes plus any plugin {@code contributesClasses}/{@code contributesResources} dirs
-     * (Micronaut AOT, etc.). When nothing is contributed, returns {@code classes} unchanged.
+     * Every tree packaging merges over the main classes: {@link #existingContributedDirs}, then the
+     * {@code [multi-release]} root. The build and the forecast list the same set.
      */
+    static List<Path> packagedDirs(@Nullable PluginDeclarations decls, BuildLayout layout, @Nullable JkBuild project) {
+        List<Path> out = new ArrayList<>(existingContributedDirs(decls, layout));
+        out.addAll(PlannerVersions.packagedRoot(project, layout));
+        return out;
+    }
+
     /**
      * The plugin {@code contributesClasses}/{@code contributesResources} dirs that exist, in
      * declaration order. Listing is cheap; {@link #stageClassesWithContributions} is the copy.

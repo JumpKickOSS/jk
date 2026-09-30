@@ -19,6 +19,7 @@ import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.model.ReleaseSources;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -47,6 +48,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.jar.Attributes;
 import java.util.stream.Collectors;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
@@ -311,11 +313,15 @@ public final class PomImporter {
                 .pluginConfig(packaging.quarkus())
                 .pluginConfig(LintPlugins.map(em, report, inherited, resolver.repos()));
         for (PluginConfig table : generators.tables()) builder.pluginConfig(table);
+        List<ReleaseSources> releases = MultiReleasePlugins.map(em.model(), report);
         JkBuild jkBuild = builder.build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
-                        .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(BuildBlock.Dokka.DEFAULT)))
+                        .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(BuildBlock.Dokka.DEFAULT))
+                        .withMultiRelease(releases))
                 .build();
-        Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
+        Map<String, String> manifest = new LinkedHashMap<>(PluginFacts.manifestEntries(em.model()));
+        // A [multi-release] jar carries the attribute already.
+        if (!releases.isEmpty()) manifest.remove(Attributes.Name.MULTI_RELEASE.toString());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
         return new Imported(jkBuild, report.build(), platformSupplied, bomSupplied);
     }
