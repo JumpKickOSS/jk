@@ -236,6 +236,46 @@ class McpConnectionTest {
     }
 
     /** {@code initialize} with {@code clientInfo.name}; returns the minted session id. */
+    @Test
+    void a_project_pinned_connection_lists_no_dir_and_runs_there() {
+        McpHandler.Reply init =
+                mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}", null, "/ws");
+        String id = requireNonNull(init.openedSessionId());
+        assertThat(init.body()).contains("run() tests").doesNotContain("dir");
+
+        String listing = mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}", id, "/ws")
+                .body();
+        assertThat(listing).doesNotContain("\"dir\"").contains("\"run\"");
+
+        Map<String, Object> accepted = call(id, "run", "{\"wait\":false}");
+        assertThat(text(accepted)).startsWith("RUNNING test jid=");
+        assertThat(specs.getLast().dir()).isEqualTo("/ws");
+        assertThat(specs.getLast().kind()).isEqualTo("test");
+    }
+
+    @Test
+    void an_unpinned_connection_still_lists_dir() {
+        String id = initialize("claude-code");
+        String listing = mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}", id)
+                .body();
+        assertThat(listing).contains("\"dir\"");
+    }
+
+    @Test
+    void a_project_call_on_an_unknown_session_reopens_a_pinned_connection() {
+        McpHandler.Reply reply = mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"run\","
+                        + "\"arguments\":{\"wait\":false}}}",
+                "dead",
+                "/ws");
+        assertThat(reply.openedSessionId()).isNotNull().isNotEqualTo("dead");
+        assertThat(specs.getLast().dir()).isEqualTo("/ws");
+        String listing = mcp.handle(
+                        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}", reply.openedSessionId(), "/ws")
+                .body();
+        assertThat(listing).doesNotContain("\"dir\"");
+    }
+
     private String initialize(@Nullable String client) {
         return initialize(mcp, client);
     }

@@ -5,6 +5,7 @@ import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.http.mcp.McpContext;
 import cc.jumpkick.engine.http.mcp.McpError;
+import cc.jumpkick.engine.http.mcp.McpHistoryViews;
 import cc.jumpkick.engine.http.mcp.McpPrompts;
 import cc.jumpkick.engine.http.mcp.McpResources;
 import cc.jumpkick.engine.http.mcp.McpRpc;
@@ -142,18 +143,41 @@ public final class McpHandler {
      * — null or unknown resolves to no connection, and the calls run anonymous.
      */
     public Reply handle(String body, @Nullable String sessionId) {
-        McpConnection connection = ctx.connections().find(sessionId);
+        return handle(body, sessionId, null);
+    }
+
+    /**
+     * As {@link #handle(String, String)} for a client that names its project ({@code jk mcp} sends
+     * the {@code Jk-Project} header). {@code initialize} opens a connection pinned to it; a call on
+     * no known connection opens one too and hands its id back, so a client that outlived an engine
+     * restart keeps its project.
+     */
+    public Reply handle(String body, @Nullable String sessionId, @Nullable String project) {
+        String pin = project == null || project.isBlank() ? null : pinnedDir(project);
+        McpConnection found = ctx.connections().find(sessionId);
         AtomicReference<McpConnection> opened = new AtomicReference<>();
+        if (found == null && pin != null) opened.set(ctx.connections().open("jk mcp", pin));
+        McpConnection connection = found != null ? found : opened.get();
         String response = McpRpc.handleBody(body, (method, params) -> {
             if ("initialize".equals(method)) {
-                McpConnection c = ctx.connections().open(clientName(params));
+                McpConnection c = ctx.connections().open(clientName(params), pin);
                 opened.set(c);
-                return McpRpc.initialize(PROTOCOL_VERSION, SERVER_NAME, ctx.version());
+                String playbook = c.pinned() ? McpTools.PINNED_INSTRUCTIONS : McpTools.INSTRUCTIONS;
+                return McpRpc.initialize(PROTOCOL_VERSION, SERVER_NAME, ctx.version(), playbook);
             }
             return route(method, params, connection);
         });
         McpConnection c = opened.get();
         return new Reply(response, c == null ? null : c.id());
+    }
+
+    /** The absolute project dir a {@code Jk-Project} header names. */
+    private static String pinnedDir(String project) {
+        try {
+            return McpHistoryViews.dirKey(project);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("invalid Jk-Project: " + e.getMessage(), e);
+        }
     }
 
     /** {@code params.clientInfo.name} of an {@code initialize}, or null when the client sent none. */
@@ -172,7 +196,7 @@ public final class McpHandler {
         return switch (method) {
             case "notifications/initialized", "initialized" -> null; // notification
             case "ping" -> Map.of();
-            case "tools/list" -> tools.listing(surface, params);
+            case "tools/list" -> tools.listing(surface, params, connection != null && connection.pinned());
             case "tools/call" -> tools.call(ctx, params, connection);
             case "resources/list" -> McpResources.list();
             case "resources/read" -> McpResources.read(ctx, params, connection);

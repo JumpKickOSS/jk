@@ -13,14 +13,14 @@ Run, read the verdict, edit, run again. The verdict is the whole answer; do not 
 
 | | Shell | MCP |
 |---|---|---|
-| test | `jk --agent test` | `run(kind=test)` |
+| test | `jk --agent test` | `run()` |
 | build | `jk --agent build` | `run(kind=build)` |
 | add / remove a dependency | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
 | why this version | `jk why g:a` | `why(coord=g:a)` |
 | every problem, with source lines | `jk results --all` | `diagnostics()` (`file=` for one) |
 | one topic of this skill | `jk skill <topic>` | `skill(topic=…)` |
 
-A dependency edit relocks in the same call; the next test needs no separate lock. With MCP, pass `dir` (the project root) on the first call.
+A dependency edit relocks in the same call; the next test needs no separate lock. Register MCP as `jk mcp` in the project and the tools take no `dir`; over HTTP, pass `dir` (the project root) on the first call.
 
 ## Verdict
 

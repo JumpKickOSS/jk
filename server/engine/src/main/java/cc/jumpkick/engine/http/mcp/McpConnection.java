@@ -11,18 +11,32 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The bind is per connection, so two agents on one engine never clobber each other's default
  * dir. It is set by {@code bind}, or implicitly by the first call that carries {@code dir}
- * while the connection is unbound.
+ * while the connection is unbound. A {@link #pinned() pinned} connection was opened for one
+ * project ({@code jk mcp}, the {@code Jk-Project} header): its tools take no {@code dir}.
  */
 public final class McpConnection {
 
     private final String id;
     private final @Nullable String client;
+    private final boolean pinned;
     private volatile @Nullable String dir;
 
     public McpConnection(String id, @Nullable String client) {
+        this(id, client, null);
+    }
+
+    /** A connection pinned to {@code project} when it is non-null. */
+    public McpConnection(String id, @Nullable String client, @Nullable String project) {
         if (id == null || id.isBlank()) throw new IllegalArgumentException("connection id is required");
         this.id = id;
         this.client = client == null || client.isBlank() ? null : client.trim();
+        this.pinned = project != null && !project.isBlank();
+        this.dir = pinned ? project : null;
+    }
+
+    /** Opened for one project: {@code tools/list} drops {@code dir} and every call defaults to it. */
+    public boolean pinned() {
+        return pinned;
     }
 
     public String id() {
