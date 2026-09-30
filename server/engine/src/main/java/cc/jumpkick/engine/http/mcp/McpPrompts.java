@@ -25,7 +25,7 @@ public final class McpPrompts {
         m.put("recover-disk", "disk usage then clean or nuke with confirm");
         m.put("setup-ci", "config apply_preset=ci");
         m.put("upgrade-deps", "outdated then read its file then update (preview) then update apply=true");
-        m.put("stall-or-cancel", "status then job cancel");
+        m.put("stall-or-cancel", "status then cancel");
         return Collections.unmodifiableMap(m); // list order is the reading order
     }
 

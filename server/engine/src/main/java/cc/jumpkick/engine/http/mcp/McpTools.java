@@ -19,7 +19,6 @@ import cc.jumpkick.engine.http.mcp.tools.HistoryTool;
 import cc.jumpkick.engine.http.mcp.tools.IdeTool;
 import cc.jumpkick.engine.http.mcp.tools.InstallTool;
 import cc.jumpkick.engine.http.mcp.tools.JdkTool;
-import cc.jumpkick.engine.http.mcp.tools.JobTool;
 import cc.jumpkick.engine.http.mcp.tools.ManifestTool;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
 import cc.jumpkick.engine.http.mcp.tools.OutdatedTool;
@@ -152,7 +151,6 @@ public final class McpTools {
                         new DiagnosticsTool(),
                         new DetailsTool(),
                         new RunTool(),
-                        new JobTool(),
                         new WhyTool(),
                         new ExplainTool(),
                         new AffectedTestsTool(),

@@ -11,12 +11,13 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.MiniJson;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
-/** {@code run wait=true} journal attribution — no HTTP bind. */
+/** {@code run} waits and {@code run(jid=N)} continuations: journal attribution, no HTTP bind. */
 class McpRunWaitTest {
 
     private static final long JID = 45L;
@@ -27,10 +28,12 @@ class McpRunWaitTest {
                     + "\"startedAt\":1700000000000,\"modules\":[],\"diagnostics\":[]}";
 
     private final AtomicInteger historyScans = new AtomicInteger();
+    private final AtomicInteger triggers = new AtomicInteger();
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
         public long trigger(JobSpec spec) {
+            triggers.incrementAndGet();
             return JID;
         }
 
@@ -58,14 +61,20 @@ class McpRunWaitTest {
     }
 
     private McpHandler handler(Supplier<List<String>> history, LongFunction<String> finishedRecords) {
-        McpHandler mcp = newHandler(history, finishedRecords);
+        return handler(history, finishedRecords, liveOnce());
+    }
+
+    private McpHandler handler(
+            Supplier<List<String>> history, LongFunction<String> finishedRecords, Supplier<List<HttpLive.Run>> live) {
+        McpHandler mcp = newHandler(history, finishedRecords, live);
         // These stubs either answer the first by-jid poll or never will — the production 1s
         // journal-settle window only adds wall time here.
         mcp.journalSettleMs(50);
         return mcp;
     }
 
-    private McpHandler newHandler(Supplier<List<String>> history, LongFunction<String> finishedRecords) {
+    private McpHandler newHandler(
+            Supplier<List<String>> history, LongFunction<String> finishedRecords, Supplier<List<HttpLive.Run>> live) {
         return new McpHandler(
                 () -> new StatusSnapshot(
                         "0.12.0",
@@ -84,7 +93,7 @@ class McpRunWaitTest {
                 history,
                 "0.12.0",
                 new ProgressTokenRegistry(),
-                liveOnce(),
+                live,
                 AdmissionYield.NONE,
                 finishedRecords);
     }
@@ -166,6 +175,34 @@ class McpRunWaitTest {
                 .contains("Bad.java")
                 .contains("cannot find symbol")
                 .doesNotContain("dashboard", "session");
+    }
+
+    private static String runJid(McpHandler mcp, int timeoutS) {
+        return mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"run\",\"arguments\":{\"jid\":45,\"timeout_s\":" + timeoutS + "}}}");
+    }
+
+    @Test
+    void run_with_a_jid_answers_that_finished_jobs_verdict_without_starting_one() {
+        McpHandler mcp = handler(List::of, jid -> jid == JID ? FINISHED_OK : null, List::of);
+        String text = textOf(runJid(mcp, 2));
+        assertThat(text).startsWith("OK build a ·");
+        assertThat(triggers).hasValue(0);
+    }
+
+    @Test
+    void an_expired_wait_names_run_jid_and_that_call_returns_the_verdict() {
+        long now = System.currentTimeMillis();
+        HttpLive.Run running = new HttpLive.Run(
+                JID, 9, "test", "/ws", "g:a", null, null, now, now, 0.5, "r9", -1, -1, 0, 0, List.of(), List.of());
+        AtomicBoolean live = new AtomicBoolean(true);
+        McpHandler mcp = handler(
+                List::of,
+                jid -> jid == JID && !live.get() ? FINISHED_OK : null,
+                () -> live.get() ? List.of(running) : List.of());
+        assertThat(textOf(runJid(mcp, 1))).isEqualTo("TIMEOUT test jid=45\nrun(jid=45)\n");
+        live.set(false);
+        assertThat(textOf(runJid(mcp, 2))).startsWith("OK build a ·");
     }
 
     @SuppressWarnings("unchecked")

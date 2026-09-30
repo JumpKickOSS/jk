@@ -36,24 +36,12 @@ public final class McpVitals {
         return "engine " + status.getOrDefault("version", "") + " pid " + status.getOrDefault("pid", "");
     }
 
-    /** The newest live jid for {@code dir} (every dir when {@code null}), or {@code null}. */
-    public static @Nullable Long latestLiveJid(McpContext ctx, @Nullable String dir) {
-        String want = dir == null ? null : McpHistoryViews.normalizeDir(dir);
-        HttpLive.Run newest = null;
+    /** The kind of live job {@code jid}, or {@code run} when it is not in the live set. */
+    public static String liveKind(McpContext ctx, long jid) {
         for (HttpLive.Run r : ctx.liveRuns().get()) {
-            if (want != null) {
-                String have = McpHistoryViews.normalizeDir(r.dir() == null ? "" : r.dir());
-                if (!have.equals(want) && !have.startsWith(want + "/")) continue;
-            }
-            // Newest by startedAt (jid tie-break) — the live-run snapshot iterates a hash map,
-            // so list position is meaningless.
-            if (newest == null
-                    || r.startedAt() > newest.startedAt()
-                    || (r.startedAt() == newest.startedAt() && r.requestId() > newest.requestId())) {
-                newest = r;
-            }
+            if (r.requestId() == jid && r.kind() != null && !r.kind().isBlank()) return r.kind();
         }
-        return newest == null ? null : Long.valueOf(newest.requestId());
+        return "run";
     }
 
     /** True while {@code jid} is in flight — one membership probe, not a snapshot of every run. */
