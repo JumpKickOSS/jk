@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.discovery.Probes;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.JdkPin;
@@ -10,6 +11,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
@@ -141,7 +143,7 @@ public final class JdkEnsure {
             boolean allowInstall,
             JdkInstallListener progress)
             throws IOException, InterruptedException {
-        JdkRegistry registry = sharedRegistry(jdksDirOverride);
+        JdkRegistry registry = sharedRegistry(jdksDirOverride, projectDir);
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
         JdkResolution.Resolved r = resolve(projectDir, registry, defaults, projectJdkSpec, javaRelease, lockJdk);
 
@@ -200,7 +202,7 @@ public final class JdkEnsure {
             @Nullable String projectJdkSpec,
             int javaRelease,
             @Nullable JdkPin lockJdk) {
-        JdkRegistry registry = sharedRegistry(jdksDirOverride);
+        JdkRegistry registry = sharedRegistry(jdksDirOverride, projectDir);
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
         JdkResolution.Resolved r = resolve(projectDir, registry, defaults, projectJdkSpec, javaRelease, lockJdk);
         if (r.jdkOpt().isPresent() || !r.wouldInstall() || r.installSpec() == null) return Optional.empty();
@@ -258,11 +260,12 @@ public final class JdkEnsure {
     public static InstalledJdk install(String spec, Consumer<String> warn, JdkInstallListener progress)
             throws IOException, InterruptedException {
         // The shared instance, so the install refreshes the memo every later ensure resolves against.
-        return install(spec, sharedRegistry(null), warn, progress);
+        return install(spec, sharedRegistry(null, null), warn, progress);
     }
 
     /**
-     * One {@link JdkRegistry} per JDK root, for the life of the process.
+     * One {@link JdkRegistry} per JDK root and {@linkplain #gradlePropertiesRoot build root}, for the
+     * life of the process.
      *
      * <p>The registry's hit-list memo is a per-instance field. {@code ensure} is called
      * <em>per module</em>; a fresh registry each time would cold-scan eleven probes (jk dir, SDKMAN,
@@ -279,12 +282,30 @@ public final class JdkEnsure {
      * than the client that just pre-flighted the download. The host probes stay in the chain
      * either way; only an explicit override walks its one directory alone.
      */
-    static JdkRegistry sharedRegistry(@Nullable Path jdksDirOverride) {
-        Path root = jdksDirOverride != null ? jdksDirOverride : requestJdksRoot();
+    static JdkRegistry sharedRegistry(@Nullable Path jdksDirOverride, @Nullable Path projectDir) {
+        Path root = (jdksDirOverride != null ? jdksDirOverride : requestJdksRoot())
+                .toAbsolutePath()
+                .normalize();
+        if (jdksDirOverride != null) return REGISTRIES.computeIfAbsent(new Key(root, null), k -> new JdkRegistry(root));
+        Path buildRoot = gradlePropertiesRoot(projectDir);
         return REGISTRIES.computeIfAbsent(
-                root.toAbsolutePath().normalize(),
-                r -> jdksDirOverride != null ? new JdkRegistry(r) : new JdkRegistry(r, Probes.defaultChain(r)));
+                new Key(root, buildRoot), k -> new JdkRegistry(root, Probes.defaultChain(root, buildRoot)));
     }
+
+    /**
+     * The root of the build {@code projectDir} belongs to when a {@code gradle.properties} sits
+     * there, whose installation lists discovery then reads; null otherwise, so every build without
+     * one shares a registry.
+     */
+    static @Nullable Path gradlePropertiesRoot(@Nullable Path projectDir) {
+        if (projectDir == null) return null;
+        Path buildRoot = WorkspaceScan.owningRoot(projectDir)
+                .orElse(projectDir.toAbsolutePath().normalize());
+        return Files.isRegularFile(buildRoot.resolve("gradle.properties")) ? buildRoot : null;
+    }
+
+    /** A shared registry's identity: its JDK root, and the build root whose properties it reads. */
+    private record Key(Path root, @Nullable Path buildRoot) {}
 
     /** The managed JDK root for this request: the caller's shell first, then this process's. */
     private static Path requestJdksRoot() {
@@ -297,7 +318,7 @@ public final class JdkEnsure {
         return JkDirs.of(env, System.getProperty("user.home")).jdksDir();
     }
 
-    private static final ConcurrentMap<Path, JdkRegistry> REGISTRIES = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Key, JdkRegistry> REGISTRIES = new ConcurrentHashMap<>();
 
     /** Test seam: forget every shared registry, so the next ensure re-probes the host. */
     public static void resetSharedRegistries() {

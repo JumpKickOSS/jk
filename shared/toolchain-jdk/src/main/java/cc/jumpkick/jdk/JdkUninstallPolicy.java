@@ -21,7 +21,11 @@ public final class JdkUninstallPolicy {
             "maven-toolchains",
             "it is listed in Maven's toolchains.xml, which jk only reads",
             "coursier",
-            "it is in Coursier's JVM cache, which Coursier and Mill own and Coursier has no uninstall for");
+            "it is in Coursier's JVM cache, which Coursier and Mill own and Coursier has no uninstall for",
+            "gradle-properties",
+            "it is named by org.gradle.java.installations in a gradle.properties file, which jk only reads",
+            "jdk-paths",
+            "it is named by JK_JDK_PATHS or JK_JDK_FROM_ENV, which jk only reads");
 
     private JdkUninstallPolicy() {}
 

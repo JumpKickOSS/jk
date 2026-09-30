@@ -31,7 +31,7 @@ class JdkEnsureRequestRootTest {
         Path callers = Files.createDirectories(tmp.resolve("callers-jdks"));
         SessionContext.install(SessionContext.current().withVariant(null, Map.of("JK_JDKS_DIR", callers.toString())));
 
-        JdkRegistry registry = JdkEnsure.sharedRegistry(null);
+        JdkRegistry registry = JdkEnsure.sharedRegistry(null, null);
 
         assertThat(registry.jdksRoot()).isEqualTo(callers.toAbsolutePath().normalize());
     }
@@ -42,7 +42,7 @@ class JdkEnsureRequestRootTest {
         Path override = Files.createDirectories(tmp.resolve("override"));
         SessionContext.install(SessionContext.current().withVariant(null, Map.of("JK_JDKS_DIR", callers.toString())));
 
-        JdkRegistry registry = JdkEnsure.sharedRegistry(override);
+        JdkRegistry registry = JdkEnsure.sharedRegistry(override, null);
 
         assertThat(registry.jdksRoot()).isEqualTo(override.toAbsolutePath().normalize());
     }
@@ -58,10 +58,22 @@ class JdkEnsureRequestRootTest {
         JdkOwnership.mark(home);
         SessionContext.install(SessionContext.current().withVariant(null, Map.of("JK_JDKS_DIR", callers.toString())));
 
-        assertThat(JdkEnsure.sharedRegistry(null).findBySpec("temurin-21"))
+        assertThat(JdkEnsure.sharedRegistry(null, null).findBySpec("temurin-21"))
                 .isPresent()
                 .get()
                 .extracting(InstalledJdk::home)
                 .isEqualTo(home);
+    }
+
+    @Test
+    void a_build_root_gradle_properties_is_read_only_when_it_exists(@TempDir Path tmp) throws IOException {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        assertThat(JdkEnsure.gradlePropertiesRoot(project)).isNull();
+        assertThat(JdkEnsure.gradlePropertiesRoot(null)).isNull();
+
+        Files.writeString(project.resolve("gradle.properties"), "org.gradle.java.installations.paths=/x\n");
+
+        assertThat(JdkEnsure.gradlePropertiesRoot(project))
+                .isEqualTo(project.toAbsolutePath().normalize());
     }
 }

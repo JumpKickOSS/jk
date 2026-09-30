@@ -3,16 +3,19 @@ package cc.jumpkick.discovery;
 
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Surfaces JDKs that Gradle's toolchain auto-provisioning placed under {@code ~/.gradle/jdks/}.
+ * Surfaces JDKs that Gradle's toolchain auto-provisioning placed under {@code <gradle-user-home>/jdks/}.
  * Unlike {@code the managed JDK root} (flat), Gradle nests each install one level down — {@code
  * ~/.gradle/jdks/<vendor-os-arch-hash>/<jdk-dir>/} — so this probe walks two levels and applies the
  * macOS {@code Contents/Home} unwrap ({@link IntellijJdkDir#javaHome}) before discovery. Source
@@ -23,11 +26,17 @@ public final class GradleProbe implements LocalToolProbe {
     private final Path jdksRoot;
 
     public GradleProbe() {
-        this(Path.of(System.getProperty("user.home"), ".gradle", "jdks"));
+        this(gradleUserHome(JkDirs::env, System.getProperty("user.home")).resolve("jdks"));
     }
 
     GradleProbe(Path jdksRoot) {
         this.jdksRoot = jdksRoot;
+    }
+
+    /** {@code GRADLE_USER_HOME} when set, else {@code ~/.gradle}. */
+    static Path gradleUserHome(Function<String, @Nullable String> env, String userHome) {
+        String configured = env.apply("GRADLE_USER_HOME");
+        return configured != null && !configured.isBlank() ? Path.of(configured) : Path.of(userHome, ".gradle");
     }
 
     @Override
