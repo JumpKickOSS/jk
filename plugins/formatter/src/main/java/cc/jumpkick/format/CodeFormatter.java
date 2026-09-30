@@ -396,8 +396,9 @@ public final class CodeFormatter implements Plugin {
     /**
      * How many files to format at once. The work is per-file independent and CPU-bound, and the host
      * launches this worker as its only fork, so {@code ActiveProcessorCount} is the whole machine.
-     * Capped at 8: past that the curve flattens and every thread adds a live Spotless step chain to a
-     * heap sized for one worker. {@link Spec#threads} overrides for measurement.
+     * Capped at 8, and at one thread per 256 MiB of heap since every thread holds a live Spotless
+     * step chain. {@code FormatThreadsBenchTest} measures the curve the cap is set from; {@link
+     * Spec#threads} overrides for measurement.
      */
     static int concurrency(Spec spec) {
         int files = Math.max(1, spec.files.size());
@@ -530,7 +531,7 @@ public final class CodeFormatter implements Plugin {
     }
 
     /**
-     * One file, start to finish: stamp lookup, the FQCN pass, then Spotless, all in memory off one
+     * One file, start to finish: stamp lookup (skipped under {@link Spec#redo}), the FQCN pass, then Spotless, all in memory off one
      * read. Runs on a pool thread under the run's wall bound. It writes nothing and stamps nothing:
      * the verdict, the bytes and the key come back in the result for {@link #formatAll} to emit in
      * spec order and {@linkplain #commit apply}.
@@ -540,7 +541,7 @@ public final class CodeFormatter implements Plugin {
         try {
             byte[] original = Files.readAllBytes(ref.file().toPath());
             String stampKey = stampCache != null ? stampCache.keyFor(original) : null;
-            if (stampCache != null && stampKey != null && stampCache.contains(stampKey)) {
+            if (!spec.redo && stampCache != null && stampKey != null && stampCache.contains(stampKey)) {
                 return new FileResult(ref.file(), "clean", null);
             }
 
@@ -727,6 +728,12 @@ public final class CodeFormatter implements Plugin {
         /** Why {@link #fileTimeoutMs} differs from the default — the host's load — or {@code ""}; see {@link FormatTimeout}. */
         String fileTimeoutWhy = "";
 
+        /**
+         * {@code -r} / {@code -F}: format every file even when its bytes carry a settled stamp. A
+         * remembered timeout still stands; the run's results rewrite the stamps.
+         */
+        boolean redo = false;
+
         /** Files to format at once; 0 lets {@link #concurrency} size the run to the machine. */
         int threads = 0;
 
@@ -749,6 +756,7 @@ public final class CodeFormatter implements Plugin {
             s.optimizeImports = c.bool("optimizeImports", false);
             s.importOrder = c.bool("importOrder", true);
             s.removeUnusedImports = c.bool("removeUnusedImports", true);
+            s.redo = c.bool("redo", false);
             s.fileWarnMs = longProperty("jk.format.file-warn-ms", s.fileWarnMs);
             FormatTimeout timeout = hasProperty("jk.format.file-timeout-ms")
                     ? FormatTimeout.explicit(longProperty("jk.format.file-timeout-ms", s.fileTimeoutMs))

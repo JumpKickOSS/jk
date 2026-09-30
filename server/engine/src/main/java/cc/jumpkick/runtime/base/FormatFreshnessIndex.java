@@ -72,11 +72,16 @@ public final class FormatFreshnessIndex {
 
     /** Partition sources into dirty (mtime/size mismatch or unknown) vs already-clean. */
     public Split partition(List<Path> javaFiles, List<Path> kotlinFiles) {
-        return partition(javaFiles, kotlinFiles, List.of(), List.of());
+        return partition(javaFiles, kotlinFiles, List.of(), List.of(), false);
     }
 
+    /**
+     * As above for every language. Under {@code redo} ({@code -r} / {@code -F}) every file is dirty
+     * and the index forgets them all, so what the run then {@linkplain #record records} rebuilds it.
+     */
     public Split partition(
-            List<Path> javaFiles, List<Path> kotlinFiles, List<Path> groovyFiles, List<Path> scalaFiles) {
+            List<Path> javaFiles, List<Path> kotlinFiles, List<Path> groovyFiles, List<Path> scalaFiles, boolean redo) {
+        if (redo) entries.clear();
         Map<String, Entry> keep = new LinkedHashMap<>();
         List<Path> dirtyJava = new ArrayList<>();
         List<Path> dirtyKotlin = new ArrayList<>();
