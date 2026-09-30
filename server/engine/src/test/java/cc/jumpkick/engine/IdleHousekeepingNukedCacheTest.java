@@ -33,6 +33,8 @@ class IdleHousekeepingNukedCacheTest {
         List<String> log = new CopyOnWriteArrayList<>();
         System.setProperty("jk.env.JK_HOME", home.toAbsolutePath().toString());
         System.setProperty("jk.env.JK_AUTO_PRUNE", "true");
+        // No host calibration after the prune: it would run a real warmup on this machine.
+        Files.writeString(home.resolve("config.toml"), "[engine]\nauto-warmup = false\n");
         try {
             // Control. Without it an enqueue that silently never happened would leave the log
             // empty below and this test would pass having exercised nothing.
@@ -65,7 +67,6 @@ class IdleHousekeepingNukedCacheTest {
         }
     }
 
-    /** Draining, so the warmup that would otherwise follow the prune stays out of the way. */
     private static IdleHousekeeping idle(Path cache, List<String> log) {
         return new IdleHousekeeping(
                 new AtomicInteger(0),
@@ -77,7 +78,7 @@ class IdleHousekeepingNukedCacheTest {
                 System::currentTimeMillis,
                 log::add,
                 () -> false,
-                () -> true,
+                () -> false,
                 () -> {});
     }
 }
