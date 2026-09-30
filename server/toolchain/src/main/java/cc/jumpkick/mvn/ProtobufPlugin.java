@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.PluginConfig;
 import java.io.IOException;
@@ -23,14 +24,18 @@ import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code protobuf-maven-plugin} is the {@code [protobuf]} preset on a module that owns
- * {@code .proto} sources: {@code <protocArtifact>}'s version is {@code version} (the protobuf-java
- * dependency's when the POM names no protoc), {@code <protoSourceRoot>} is {@code src}, the
+ * {@code protobuf-maven-plugin} — xolstice's or ascopes' — is the {@code [protobuf]} preset on a
+ * module that owns {@code .proto} sources: {@code <protocArtifact>}'s version or {@code
+ * <protocVersion>} is {@code version} (the protobuf-java dependency's when the POM names no
+ * protoc), {@code <protoSourceRoot>} or the {@code <sourceDirectories>} are {@code src}, the
  * {@code <excludes>} of the plugin and of its {@code compile} executions are {@code exclude} (a
  * {@code test-compile} execution's govern the test protos, which the table does not cover), and the
  * protoc plugin the {@code compile-custom} goal runs (gRPC's) is the {@code [protobuf.<pluginId>]}
  * entry — {@code <pluginArtifact>}'s {@code group:artifact:version} as {@code plugin},
- * {@code <pluginParameter>}'s comma-separated items as {@code options}. The plugin's output under
+ * {@code <pluginParameter>}'s comma-separated items as {@code options} — and each of ascopes'
+ * {@code <binaryMavenPlugins>} is the entry named for its artifact less {@code protoc-gen-}
+ * ({@code io.grpc:protoc-gen-grpc-java} is {@code [protobuf.grpc-java]}), its {@code <options>}
+ * the entry's. The plugin's output under
  * {@code target/generated-sources/protobuf} is the preset's contribution, so a build-helper root
  * inside it is not written as an {@code extra-src}; a module the plugin reaches by inheritance
  * without protos of its own gets neither the table nor the root. A {@code replacer} execution
@@ -63,9 +68,14 @@ final class ProtobufPlugin {
             "pluginId",
             "pluginArtifact",
             "pluginParameter",
-            "excludes");
+            "excludes",
+            "protocVersion",
+            "sourceDirectories",
+            "binaryMavenPlugins");
 
-    private static final Set<String> GOALS = Set.of("compile", "compile-custom");
+    /** The main-codegen goals: xolstice's {@code compile} and {@code compile-custom}, ascopes' {@code generate}. */
+    private static final Set<String> GOALS = Set.of("compile", "compile-custom", "generate");
+
     private static final String CUSTOM_GOAL = "compile-custom";
 
     /** The table, null when the module owns no protos, the output roots the plugin fills, the plugins consumed. */
@@ -82,11 +92,12 @@ final class ProtobufPlugin {
                 ? null
                 : model.getProjectDirectory().toPath();
         List<Xpp3Dom> configs = PluginFacts.configurations(plugin);
-        String declaredSrc = value(configs, "protoSourceRoot");
-        String src = declaredSrc == null ? DEFAULT_SRC : SourceTreePlugins.moduleRelative(declaredSrc, baseDir);
-        Path protoDir = baseDir == null ? Path.of(src) : baseDir.resolve(src);
+        List<String> srcs = sourceRoots(configs, baseDir);
         List<String> excludes = excludes(plugin);
-        List<Path> protos = baseDir == null ? List.of() : protos(protoDir, excludes);
+        List<Path> protos = new ArrayList<>();
+        if (baseDir != null) {
+            for (String src : srcs) protos.addAll(protos(baseDir.resolve(src), excludes));
+        }
         Map<String, String> outputRoots = new LinkedHashMap<>();
         String row = protos.isEmpty() ? NO_PROTOS_ROW : ADD_SOURCE_ROW;
         outputRoots.put(DEFAULT_OUTPUT, row);
@@ -97,11 +108,16 @@ final class ProtobufPlugin {
         Map<String, Object> values = new LinkedHashMap<>();
         String version = version(model, configs, report);
         if (version != null) values.put("version", version);
-        if (!PRESET_SRC.equals(src)) values.put("src", src);
+        if (srcs.size() > 1) {
+            values.put("src", srcs);
+        } else if (!PRESET_SRC.equals(srcs.getFirst())) {
+            values.put("src", srcs.getFirst());
+        }
         if (!excludes.isEmpty()) values.put("exclude", excludes);
         ReplacerPlugin.Mapped replacer = ReplacerPlugin.map(model, mainOutputRoots(plugin, baseDir), baseDir, report);
         if (!replacer.replace().isEmpty()) values.put("replace", replacer.replace());
-        Map<String, Map<String, Object>> plugins = protocPlugins(plugin, configs, report);
+        Map<String, Map<String, Object>> plugins = new LinkedHashMap<>(protocPlugins(plugin, configs, report));
+        plugins.putAll(binaryMavenPlugins(configs, report));
         if (!plugins.isEmpty()) values.put(PluginConfig.ENTRIES, plugins);
         reportOtherGoals(plugin, report);
         reportUncovered(configs, report);
@@ -121,6 +137,8 @@ final class ProtobufPlugin {
             String version = parts.length >= 3 ? PluginFacts.usable(parts[2]) : null;
             if (version != null) return version;
         }
+        String protocVersion = value(configs, "protocVersion");
+        if (protocVersion != null && Character.isDigit(protocVersion.charAt(0))) return protocVersion;
         for (Dependency d : model.getDependencies()) {
             if (PROTOBUF_GROUP.equals(d.getGroupId()) && PROTOBUF_JAVA.equals(d.getArtifactId())) {
                 String version = PluginFacts.usable(d.getVersion());
@@ -161,17 +179,75 @@ final class ProtobufPlugin {
         }
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("plugin", coordinate);
-        String parameter = value(configs, "pluginParameter");
-        if (parameter != null) {
-            List<String> options = new ArrayList<>();
-            for (String option : parameter.split(",")) {
-                if (!option.isBlank()) options.add(option.trim());
-            }
-            if (!options.isEmpty()) entry.put("options", options);
-        }
+        List<String> options = options(value(configs, "pluginParameter"));
+        if (!options.isEmpty()) entry.put("options", options);
         Map<String, Map<String, Object>> plugins = new LinkedHashMap<>();
         plugins.put(pluginId, entry);
         return plugins;
+    }
+
+    /**
+     * Each of ascopes' {@code <binaryMavenPlugins>} as a {@code [protobuf.<id>]} entry, the id its
+     * artifact less {@code protoc-gen-}; one Maven skips writes nothing, one without a readable
+     * coordinate is a row.
+     */
+    private static Map<String, Map<String, Object>> binaryMavenPlugins(
+            List<Xpp3Dom> configs, ImportReport.Builder report) {
+        Map<String, Map<String, Object>> plugins = new LinkedHashMap<>();
+        for (Xpp3Dom config : configs) {
+            Xpp3Dom declared = config.getChild("binaryMavenPlugins");
+            if (declared == null) continue;
+            for (Xpp3Dom binary : declared.getChildren()) {
+                if (EnvValues.parseBool(PluginFacts.child(binary, "skip")).orElse(false)) continue;
+                String group = PluginFacts.child(binary, "groupId");
+                String artifact = PluginFacts.child(binary, "artifactId");
+                String version = PluginFacts.child(binary, "version");
+                if (group == null || artifact == null || version == null) {
+                    report.error(
+                            "`" + ARTIFACT + "` `<binaryMavenPlugin>` "
+                                    + (artifact == null ? "" : "`" + artifact + "` ")
+                                    + "names no resolvable group, artifact and version, so no `[protobuf.<id>]` entry was"
+                                    + " written; add it with `plugin = \"group:artifact:version\"` naming the plugin executable.");
+                    continue;
+                }
+                String id = artifact.startsWith("protoc-gen-") ? artifact.substring("protoc-gen-".length()) : artifact;
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("plugin", group + ":" + artifact + ":" + version);
+                List<String> options = options(PluginFacts.child(binary, "options"));
+                if (!options.isEmpty()) entry.put("options", options);
+                plugins.put(id, entry);
+            }
+        }
+        return plugins;
+    }
+
+    /** A plugin parameter string's comma-separated items. */
+    private static List<String> options(@Nullable String parameter) {
+        List<String> options = new ArrayList<>();
+        if (parameter == null) return options;
+        for (String option : parameter.split(",")) {
+            if (!option.isBlank()) options.add(option.trim());
+        }
+        return options;
+    }
+
+    /**
+     * The module-relative proto roots: xolstice's {@code <protoSourceRoot>}, else ascopes' {@code
+     * <sourceDirectories>}, else Maven's {@code src/main/proto}.
+     */
+    private static List<String> sourceRoots(List<Xpp3Dom> configs, @Nullable Path baseDir) {
+        String root = value(configs, "protoSourceRoot");
+        if (root != null) return List.of(SourceTreePlugins.moduleRelative(root, baseDir));
+        Set<String> roots = new LinkedHashSet<>();
+        for (Xpp3Dom config : configs) {
+            Xpp3Dom declared = config.getChild("sourceDirectories");
+            if (declared == null) continue;
+            for (Xpp3Dom dir : declared.getChildren()) {
+                String v = PluginFacts.usable(dir.getValue());
+                if (v != null) roots.add(SourceTreePlugins.moduleRelative(v, baseDir));
+            }
+        }
+        return roots.isEmpty() ? List.of(DEFAULT_SRC) : List.copyOf(roots);
     }
 
     /** {@code group:artifact:version} out of a plugin artifact coordinate, null when a segment is missing. */
