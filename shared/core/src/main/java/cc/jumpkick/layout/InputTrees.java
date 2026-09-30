@@ -541,44 +541,19 @@ public final class InputTrees {
 
     /**
      * True when {@code abs} is a tree this job writes — a {@link BuildLayout#TARGET} segment whose
-     * parent holds the {@code jk.toml} that owns it, with {@link BuildLayout#TMP} carved out.
+     * parent holds the {@code jk.toml} that owns it.
      *
      * <p>The manifest is the anchor. Build output is {@code <module>/target/} standalone and
      * {@code <workspace>/target/<rel>/} for a member, and in both layouts the directory holding
      * {@code target} is the one holding {@code jk.toml}. A directory merely named {@code target}
      * elsewhere — a package spelled {@code com.acme.target} under {@code src/main/java}, a resource
-     * folder — is the user's input, and a name-only rule refused the whole module's snapshot for
-     * it: every preflight walked the tree live, forever, with nothing saying why. The check is one
-     * stat per {@code target} segment, on a path asked about once per root per step.
-     *
-     * <p>{@link BuildLayout#TMP} is declared scratch ({@link BuildLayout#tmpDir}), not the job's
-     * own writing: nothing in a build plan compiles or generates into it. It is inside
-     * {@code target/} only so {@code jk clean} can reach it, and a name-only rule would answer
-     * "build output" for a tree under it the build never touched. That is the same defect
-     * {@link BuildLayout#isBuildOutput} anchors away from: a textual ancestor is not a structural
-     * one.
-     *
-     * <p>The scratch root is matched as <em>any</em> {@code tmp} segment inside the target tree
-     * rather than a fixed depth, because its depth is a layout decision:
-     * {@code <module>/target/tmp/} standalone, {@code <workspace>/target/<rel>/tmp/} for a member.
-     * {@code tmp} is a name jk reserves under {@code target/} for exactly this
-     * ({@link BuildLayout#TMP}), so a segment spelling it inside the build output <em>is</em> the
-     * scratch root.
-     *
-     * <p>Scanning resumes past the scratch root rather than stopping, so a {@code target/} tree
-     * <em>inside</em> a scratch tree is build output again — which is exactly what a fixture that
-     * builds one is asserting about.
+     * folder — is the user's input. The check is one stat per {@code target} segment, on a path
+     * asked about once per root per step.
      */
     static boolean isBuildOutput(Path abs) {
         int n = abs.getNameCount();
         for (int i = 0; i < n; i++) {
-            if (!BuildLayout.TARGET.equals(abs.getName(i).toString())) continue;
-            if (!ownedByManifest(abs, i)) continue; // a directory merely named target
-            int scratch = segmentIndex(abs, BuildLayout.TMP, i + 1, n);
-            if (scratch < 0) return true;
-            // Resume past the scratch root, not at it: the tail is judged on its own, so a
-            // target/ tree a scratch tree contains is build output again.
-            i = scratch;
+            if (BuildLayout.TARGET.equals(abs.getName(i).toString()) && ownedByManifest(abs, i)) return true;
         }
         return false;
     }
@@ -590,14 +565,6 @@ public final class InputTrees {
         Path root = abs.getRoot();
         if (root != null) parent = root.resolve(parent);
         return Files.isRegularFile(parent.resolve(ManifestPaths.MANIFEST));
-    }
-
-    /** First index in {@code [from, to)} whose segment is {@code name}, or {@code -1}. */
-    private static int segmentIndex(Path abs, String name, int from, int to) {
-        for (int i = from; i < to; i++) {
-            if (name.equals(abs.getName(i).toString())) return i;
-        }
-        return -1;
     }
 
     private static boolean tryCharge(long n) {
