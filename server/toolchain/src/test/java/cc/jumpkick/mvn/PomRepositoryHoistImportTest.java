@@ -77,10 +77,12 @@ class PomRepositoryHoistImportTest {
                         Tuple.tuple("central-portal-snapshots", false, true));
         String rendered = JkBuildRenderer.render(result.root());
         assertThat(rendered)
-                .contains("fit2cloud-public = \"https://repository.fit2cloud.com/repository/fit2cloud-public/\"")
+                .contains(
+                        "fit2cloud-public = { url = \"https://repository.fit2cloud.com/repository/fit2cloud-public/\","
+                                + " optional = true }")
                 .contains(
                         "central-portal-snapshots = { url = \"https://central.sonatype.com/repository/maven-snapshots/\","
-                                + " releases = false }");
+                                + " releases = false, optional = true }");
     }
 
     private static void write(Path root, String path, String xml) throws Exception {

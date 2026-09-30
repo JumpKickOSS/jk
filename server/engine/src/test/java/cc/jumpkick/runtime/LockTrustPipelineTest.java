@@ -12,6 +12,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
@@ -137,6 +138,46 @@ class LockTrustPipelineTest {
         assertThat(trust.insecureRepos())
                 .as("a blocked repository is dialed by nothing")
                 .isEmpty();
+    }
+
+    /**
+     * tutorials' shape: a POM names a developer's localhost Nexus no other host runs. Nothing
+     * answers there — the connection is dropped before any response — so the lock passes it over
+     * after one attempt, as it would a blocked one, and resolves from the repositories that answer;
+     * a package none serves fails naming the Nexus and what it met.
+     */
+    @Test
+    void a_loopback_repository_nothing_answers_at_is_passed_over_and_named_when_a_package_resolves_nowhere(
+            @TempDir Path tmp) throws Exception {
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            String nexus = dead.uri("/repository/maven-releases/").toString();
+            Files.writeString(tmp.resolve("jk.toml"), """
+                    group = "com.example"
+                    name  = "demo"
+                    version = "1.0.0"
+                    java = 25
+
+                    [dependencies]
+                    lib = { group = "com.foo", name = "lib", version = "=1.0" }
+
+                    [repositories]
+                    nexus = { url = "%s", groups = ["com.foo", "org.junit.*"] }
+                    mirror = { url = "%s", groups = ["com.foo", "org.junit.*"] }
+                    """.formatted(nexus, http.baseUrl()));
+
+            BuildPlanResult refused = plan(tmp).run();
+            assertThat(refused.success()).isFalse();
+            assertThat(refused.errors()).anySatisfy(d -> assertThat(d.message())
+                    .contains("com.foo:lib")
+                    .contains("repository `nexus` at " + nexus + " answered nothing (")
+                    .contains("was passed over"));
+
+            upstream.leaf("com.foo", "lib", "1.0");
+            RepoGroup.clearProcessFetchCache();
+            BuildPlanResult result = plan(tmp).run();
+
+            assertThat(result.success()).as(result.errors().toString()).isTrue();
+        }
     }
 
     private BuildPlan plan(Path tmp) throws IOException {

@@ -52,7 +52,8 @@ final class WorkspaceRepositories {
                             spec.allowUnverified(),
                             spec.releases(),
                             spec.snapshots(),
-                            spec.blocked());
+                            spec.blocked(),
+                            spec.optional());
                     changed = true;
                 }
                 byName.putIfAbsent(spec.name(), spec);

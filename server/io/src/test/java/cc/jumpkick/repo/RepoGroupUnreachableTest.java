@@ -10,6 +10,7 @@ import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.testing.DeadEndpoint;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.ServerSocket;
@@ -31,7 +32,9 @@ import org.junit.jupiter.api.io.TempDir;
  * out — is not a remote that dropped one request. On the resolve leg the next candidate is not
  * asked: a lock computed without a configured repository is not the lock that was asked for, so the
  * resolve stops at once naming the repository and its URL, and the repository is asked nothing
- * more for the rest of the job. Pinned bytes still fall through — the sha256 says what is accepted.
+ * more for the rest of the job — unless it is passable (declared {@code optional}, at a loopback
+ * address, or a POM's), which is passed over as a blocked one is. Pinned bytes still fall through
+ * — the sha256 says what is accepted.
  */
 class RepoGroupUnreachableTest {
 
@@ -151,6 +154,97 @@ class RepoGroupUnreachableTest {
                 .cause()
                 .hasMessageContaining("was not attempted")
                 .hasCauseInstanceOf(ConnectFaults.Remembered.class);
+    }
+
+    /**
+     * An {@code optional} repository — what {@code jk import} writes for a POM's — that answers
+     * nothing is passed over like a blocked one: the resolve goes on to the next candidate, the
+     * repository is asked nothing more, and the group names it for a package that resolves nowhere.
+     */
+    @Test
+    void an_optional_repository_that_refuses_the_connection_is_passed_over(@TempDir Path tmp) throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        Refusing refusing = new Refusing();
+        MavenRepo dead = dead(refusing, cas).withOptional(true);
+        RepoGroup group = new RepoGroup(List.of(dead, good(tmp, cas)));
+
+        assertThat(dead.passable()).isTrue();
+        assertThat(group.tryFetchPom(Coordinate.of("com.example", "lib", "1.0")))
+                .get()
+                .extracting(f -> f.repo().name())
+                .isEqualTo("good");
+        assertThat(group.availableVersions(Coordinate.of("com.example", "lib", "0"), Set.of("1.0"), false))
+                .containsExactly("1.0");
+        assertThat(group.tryFetchPom(Coordinate.of("com.example", "other", "2.0")))
+                .as("a package nothing serves is a miss, not the unreachable repository's failure")
+                .isEmpty();
+        assertThat(refusing.asked)
+                .as("a repository found unreachable is asked nothing more")
+                .noneMatch(uri -> uri.getPath().contains("/other/"));
+        assertThat(group.passedOver()).containsExactly(dead);
+        assertThat(dead.unreachableFault()).contains("Connection refused");
+    }
+
+    /** A loopback repository is a developer's local Nexus: passable without saying so, like an optional one. */
+    @Test
+    void a_loopback_repository_that_refuses_the_connection_is_passed_over(@TempDir Path tmp) throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        MavenRepo nexus = MavenRepo.overTransport(
+                "nexus",
+                URI.create("http://localhost:8081/repository/maven-releases/"),
+                new Refusing(),
+                cas,
+                RepoCredential.ANONYMOUS,
+                null,
+                false,
+                false,
+                false);
+        RepoGroup group = new RepoGroup(List.of(nexus, good(tmp, cas)));
+
+        assertThat(nexus.passable()).isTrue();
+        assertThat(dead(new Refusing(), cas).passable())
+                .as("a remote repository the user wrote by hand keeps the stop")
+                .isFalse();
+        assertThat(group.tryFetchPom(Coordinate.of("com.example", "lib", "1.0")))
+                .get()
+                .extracting(f -> f.repo().name())
+                .isEqualTo("good");
+        assertThat(group.passedOver()).containsExactly(nexus);
+    }
+
+    /**
+     * A connection dropped before any response is no answer either: a passable repository over it
+     * is passed over after one attempt, since its client does not retry silence.
+     */
+    @Test
+    void a_passable_repository_whose_connection_is_dropped_is_passed_over_after_one_attempt(@TempDir Path tmp)
+            throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            MavenRepo nexus = new MavenRepo(
+                    "nexus", dead.uri("/maven2/"), Http.forRepositories().withoutSilenceRetries(), cas);
+            RepoGroup group = new RepoGroup(List.of(nexus, good(tmp, cas)));
+
+            assertThatThrownBy(() -> nexus.fetchPom(Coordinate.of("com.example", "lib", "1.0")))
+                    .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                    .as("one attempt, not the retry ladder")
+                    .hasStackTraceContaining("failed after 1 attempts");
+            assertThat(group.tryFetchPom(Coordinate.of("com.example", "lib", "1.0")))
+                    .get()
+                    .extracting(f -> f.repo().name())
+                    .isEqualTo("good");
+            assertThat(group.passedOver()).containsExactly(nexus);
+        }
+    }
+
+    /** A repository a dependency's POM declares is held to Maven's rule: passed over when nothing answers there. */
+    @Test
+    void a_repository_a_pom_declares_is_passable(@TempDir Path tmp) throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        MavenRepo declared =
+                good(tmp, cas).declaredByPom("vendor", URI.create("https://vendor.example/maven2/"), true, true);
+
+        assertThat(declared.passable()).isTrue();
     }
 
     @Test

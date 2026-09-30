@@ -528,7 +528,11 @@ public final class RepoGroup {
                 try {
                     found = fanOut ? RepoLegs.await(catalogs.get(i).future()) : repo.availableVersions(coord);
                 } catch (MavenRepo.RepositoryUnreachableException dead) {
-                    throw dead; // nothing answers there: the resolve stops, as on the POM leg
+                    // Nothing answers there: the resolve stops, as on the POM leg, unless the
+                    // repository is one it can do without.
+                    if (!repo.passable()) throw dead;
+                    passOver(repo);
+                    continue;
                 } catch (IOException transport) {
                     // One remote's 429, 5xx or reset is that remote's problem, not an answer about the
                     // coordinate: the remaining candidates are still asked. Said once per run per
@@ -768,10 +772,16 @@ public final class RepoGroup {
                 } catch (MavenRepo.RepositoryUnreachableException dead) {
                     // Nothing answers at this repository's address. On the resolve leg the next
                     // candidate is not asked: a lock computed without a configured repository is not
-                    // the lock that was asked for, so the resolve stops here naming it. Pinned bytes
+                    // the lock that was asked for, so the resolve stops here naming it — unless the
+                    // repository is passable, which is then a miss like a blocked one. Pinned bytes
                     // still fall through — the lock's sha256 says what is accepted.
+                    MavenRepo repo = candidates.get(i);
+                    if (resolve && repo.passable()) {
+                        passOver(repo);
+                        continue;
+                    }
                     if (resolve) throw dead;
-                    fanOut.failed(candidates.get(i), dead);
+                    fanOut.failed(repo, dead);
                 } catch (IOException transport) {
                     // A failed remote falls through to the next candidate silently: the artifact that
                     // arrives is still checked against the lock's sha256, so where it came from does
@@ -783,6 +793,27 @@ public final class RepoGroup {
             RepoLegs.settle(legs);
         }
         return local;
+    }
+
+    /** Said once per run: a passable repository nothing answers at is asked nothing more. */
+    private static void passOver(MavenRepo repo) {
+        RunNotices.warnOnce(
+                "repo-passed-over:" + repo.name(),
+                () -> "jk: warning: repository " + repo.name() + " at " + SafeUri.forMessage(repo.baseUrl())
+                        + " answers nothing (" + repo.unreachableFault() + "); it is passed over for the rest of"
+                        + " the resolve, as a blocked one is");
+    }
+
+    /**
+     * The passable repositories here that nothing answered at: asked nothing more, named when a
+     * package resolves nowhere.
+     */
+    public List<MavenRepo> passedOver() {
+        List<MavenRepo> out = new ArrayList<>();
+        for (MavenRepo repo : repos) {
+            if (repo.passable() && repo.unreachableFault() != null) out.add(repo);
+        }
+        return List.copyOf(out);
     }
 
     /** Abort supplier for fetch paths with no abort semantics (POM / metadata). */

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
@@ -30,9 +31,16 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * One candidate's transport failure is that candidate's problem: the fan-out asks the rest. The
  * dead candidate is a {@link DeadEndpoint} — accepted and dropped, the same shape as a reset from a
- * remote — behind a zero-retry client, so each failure costs one attempt and no backoff.
+ * remote — behind a zero-retry client, so each failure costs one attempt and no backoff. It is
+ * reached as a remote's mirror, so it is a hand-written remote and not a passable loopback one.
  */
 class RepoGroupFallThroughTest {
+
+    /** A hand-written remote repository whose every request lands on {@code dead}. */
+    private static MavenRepo remote(DeadEndpoint dead, Cas cas) {
+        return new MavenRepo("dead", URI.create("https://dead.example/maven2/"), Http.failFast(), cas)
+                .mirroredThrough(new MavenRepo.Mirror("dead-mirror", dead.uri(), RepoCredential.ANONYMOUS, "a test"));
+    }
 
     @BeforeEach
     void clear() {
@@ -59,9 +67,8 @@ class RepoGroupFallThroughTest {
                 new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
         List<String> versions;
         try (DeadEndpoint dead = DeadEndpoint.open()) {
-            RepoGroup group = new RepoGroup(List.of(
-                    new MavenRepo("dead", dead.uri(), Http.failFast(), cas),
-                    new MavenRepo("good", good.toUri(), new Http(), cas)));
+            RepoGroup group =
+                    new RepoGroup(List.of(remote(dead, cas), new MavenRepo("good", good.toUri(), new Http(), cas)));
             versions = group.availableVersions(Coordinate.of("com.example", "lib", "0"));
             RepoGroup.clearProcessVersionsCache();
             group.availableVersions(Coordinate.of("com.example", "lib", "0"));
@@ -80,7 +87,7 @@ class RepoGroupFallThroughTest {
     void when_every_candidate_fails_the_failure_is_the_answer_not_an_empty_catalog(@TempDir Path tmp) throws Exception {
         Cas cas = new Cas(tmp.resolve("cas"));
         try (DeadEndpoint dead = DeadEndpoint.open()) {
-            RepoGroup group = new RepoGroup(List.of(new MavenRepo("dead", dead.uri(), Http.failFast(), cas)));
+            RepoGroup group = new RepoGroup(List.of(remote(dead, cas)));
             assertThatThrownBy(() -> group.availableVersions(Coordinate.of("com.example", "lib", "0")))
                     .isInstanceOf(IOException.class);
         }
@@ -100,9 +107,8 @@ class RepoGroupFallThroughTest {
         var original = System.err;
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         try (DeadEndpoint dead = DeadEndpoint.open()) {
-            RepoGroup group = new RepoGroup(List.of(
-                    new MavenRepo("dead", dead.uri(), Http.failFast(), cas),
-                    new MavenRepo("good", good.toUri(), new Http(), cas)));
+            RepoGroup group =
+                    new RepoGroup(List.of(remote(dead, cas), new MavenRepo("good", good.toUri(), new Http(), cas)));
             assertThat(group.tryFetchPom(Coordinate.of("com.example", "lib", "1.0")))
                     .isPresent()
                     .get()
@@ -135,9 +141,8 @@ class RepoGroupFallThroughTest {
         Log.install(
                 new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
         try (DeadEndpoint dead = DeadEndpoint.open()) {
-            RepoGroup group = new RepoGroup(List.of(
-                    new MavenRepo("good", good.toUri(), new Http(), cas),
-                    new MavenRepo("dead", dead.uri(), Http.failFast(), cas)));
+            RepoGroup group =
+                    new RepoGroup(List.of(new MavenRepo("good", good.toUri(), new Http(), cas), remote(dead, cas)));
             assertThat(group.tryFetchPom(stub)).isPresent();
 
             assertThat(group.tryFetchArtifact(stub))
@@ -160,9 +165,8 @@ class RepoGroupFallThroughTest {
         Cas cas = new Cas(tmp.resolve("cas"));
         Coordinate stub = Coordinate.of("com.example", "stub", "1.0");
         try (DeadEndpoint dead = DeadEndpoint.open()) {
-            RepoGroup group = new RepoGroup(List.of(
-                    new MavenRepo("good", good.toUri(), new Http(), cas),
-                    new MavenRepo("dead", dead.uri(), Http.failFast(), cas)));
+            RepoGroup group =
+                    new RepoGroup(List.of(new MavenRepo("good", good.toUri(), new Http(), cas), remote(dead, cas)));
             // No POM was asked through this group: the jar may well live on the remote that failed.
             assertThatThrownBy(() -> group.tryFetchArtifact(stub)).isInstanceOf(IOException.class);
         }

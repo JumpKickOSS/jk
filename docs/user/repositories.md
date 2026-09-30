@@ -171,7 +171,21 @@ A repository nothing answers at — the connection refused, the host unknown, th
 out — stops a resolve at once, naming the repository and its URL: a lock computed without a
 configured repository is not the lock that was asked for, and asking it again for every
 coordinate would only wait out the retry ladder each time. Fix the URL, start the server, or
-remove the entry. A remote that accepts and then drops a request is that request's failure
+remove the entry. A repository the lock can do without is passed over instead, as a blocked one
+is: asked nothing more, with one warning, and named with the fault it met when a package resolves
+nowhere. For such a repository any request that gets no HTTP answer at all — refused, reset,
+dropped before a response, timed out — counts, and after one attempt rather than the retry
+ladder; any status, a 5xx included, is an answer. That is one declared `optional = true` — `jk import` writes a POM's `<repository>` this
+way, as Maven falls through one that answers nothing — one at a loopback address (`localhost`,
+`127.*`, `::1`: a developer's local Nexus no other machine runs), and one a dependency's POM
+declares:
+
+```toml
+[repositories]
+vendor = { url = "https://vendor.example/maven/", optional = true }
+```
+
+A remote that accepts and then drops a request is that request's failure
 alone; the remaining repositories are still asked. Pinned bytes are another matter: a build
 whose lock names an unreachable repository still takes the artifact from any repository that
 serves the same sha256 — and pays the retry ladder once, not once per artifact: an address that

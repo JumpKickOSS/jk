@@ -103,6 +103,12 @@ public final class Http {
     private final Set<String> deniedHosts;
 
     /**
+     * Whether a request that got no HTTP answer at all — refused, reset, dropped, timed out — is
+     * retried; false gives up at the first such attempt, while a 5xx is still retried.
+     */
+    private final boolean retriesSilence;
+
+    /**
      * A comma-separated list of hosts this process must not reach; a request to one fails at once
      * with {@link DeniedHostException}, redirects and the Central failover included. The test
      * launcher sets it to {@link #centralHosts()} for a module's default test tier, so a unit test
@@ -250,6 +256,19 @@ public final class Http {
             ProxyEnvironment proxies,
             Set<String> deniedHosts,
             Duration requestTimeout) {
+        this(client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, requestTimeout, true);
+    }
+
+    private Http(
+            HttpClient client,
+            Duration[] backoffs,
+            CentralMirror centralMirror,
+            HostCooldown cooldown,
+            Clock clock,
+            ProxyEnvironment proxies,
+            Set<String> deniedHosts,
+            Duration requestTimeout,
+            boolean retriesSilence) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
@@ -258,11 +277,22 @@ public final class Http {
         this.proxies = proxies;
         this.deniedHosts = deniedHosts;
         this.requestTimeout = requestTimeout;
+        this.retriesSilence = retriesSilence;
+    }
+
+    /**
+     * This client giving up on a request the first time it gets no HTTP answer at all, with a
+     * {@link NoAnswerException}; a 5xx is still retried. For a repository the resolve passes over
+     * when nothing answers there, so finding that out costs one attempt, not the ladder.
+     */
+    public Http withoutSilenceRetries() {
+        return new Http(client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, requestTimeout, false);
     }
 
     /** Visible for tests — this client with another {@link #REQUEST_TIMEOUT}, so a silent server is proven in milliseconds. */
     Http withRequestTimeout(Duration timeout) {
-        return new Http(client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, timeout);
+        return new Http(
+                client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, timeout, retriesSilence);
     }
 
     /** Maven Central and its failover mirror, as a {@link #DENY_HOSTS_ENV} value. */
@@ -555,6 +585,7 @@ public final class Http {
                 throw e; // a policy answer, not a network fault: the same answer would come back
             } catch (HttpConnectTimeoutException e) {
                 lastIo = e; // the connection never came up: the next attempt is cheap and may land
+                if (!retriesSilence) break;
             } catch (HttpTimeoutException e) {
                 // The server accepted and said nothing for the whole timeout. Central gets one more
                 // chance on the mirror; anyone else has answered, and the URL is named.
@@ -564,12 +595,13 @@ public final class Http {
                 if (!mirrored.equals(request.uri())) {
                     return send(reissue(request, mirrored).build(), handler, drain);
                 }
-                throw new IOException(
+                throw new NoAnswerException(
                         verb + " " + SafeUri.forMessage(uri) + " got no answer within " + requestTimeout.toSeconds()
                                 + " s",
                         e);
             } catch (IOException e) {
                 lastIo = e;
+                if (!retriesSilence) break;
             }
         }
         // SafeUri, not the URI: a repository declared as https://user:token@host/ would otherwise
@@ -580,7 +612,9 @@ public final class Http {
             // address is remembered and asked nothing more until the memory lapses.
             String fault = ConnectFaults.describe(lastIo);
             if (fault != null) ConnectFaults.noteRefusing(dialled(request.uri()), fault);
-            throw new IOException(verb + " " + shown + " failed after " + (backoffs.length + 1) + " attempts", lastIo);
+            throw new NoAnswerException(
+                    verb + " " + shown + " failed after " + (retriesSilence ? backoffs.length + 1 : 1) + " attempts",
+                    lastIo);
         }
         throw new IOException(
                 verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
@@ -635,6 +669,16 @@ public final class Http {
      * A redirect this client will not follow — too long a chain, a downgrade to http, a 3xx naming
      * no target, or a 3xx it never follows. Not retried: the same answer would come back.
      */
+    /**
+     * A request that got no HTTP answer at all: the connection refused, reset or dropped before a
+     * response, or the server silent past the timeout. Any status, 5xx included, is an answer.
+     */
+    public static final class NoAnswerException extends IOException {
+        NoAnswerException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     static final class RedirectRefusedException extends IOException {
         RedirectRefusedException(String message) {
             super(message);
