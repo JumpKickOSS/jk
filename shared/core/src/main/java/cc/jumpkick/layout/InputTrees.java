@@ -553,18 +553,17 @@ public final class InputTrees {
      *
      * <p>{@link BuildLayout#TMP} is declared scratch ({@link BuildLayout#tmpDir}), not the job's
      * own writing: nothing in a build plan compiles or generates into it. It is inside
-     * {@code target/} only so {@code jk clean} can reach it, and it is where a forked test JVM's
-     * temp root lives — so under {@code jk test} every {@code @TempDir} fixture acquires a
-     * {@code target} ancestor, and a name-only rule answers "build output" for a tree the build
-     * never touched. That is the same defect {@link BuildLayout#isBuildOutput} anchors away from:
-     * a textual ancestor is not a structural one.
+     * {@code target/} only so {@code jk clean} can reach it, and a name-only rule would answer
+     * "build output" for a tree under it the build never touched. That is the same defect
+     * {@link BuildLayout#isBuildOutput} anchors away from: a textual ancestor is not a structural
+     * one.
      *
      * <p>The scratch root is matched as <em>any</em> {@code tmp} segment inside the target tree
      * rather than a fixed depth, because its depth is a layout decision:
-     * {@code <module>/target/tmp/} standalone, {@code <workspace>/target/<rel>/tmp/} for a member,
-     * and the worker pool splits it again per worker. {@code tmp} is a name jk reserves under
-     * {@code target/} for exactly this ({@link BuildLayout#TMP}), so a segment spelling it inside
-     * the build output <em>is</em> the scratch root.
+     * {@code <module>/target/tmp/} standalone, {@code <workspace>/target/<rel>/tmp/} for a member.
+     * {@code tmp} is a name jk reserves under {@code target/} for exactly this
+     * ({@link BuildLayout#TMP}), so a segment spelling it inside the build output <em>is</em> the
+     * scratch root.
      *
      * <p>Scanning resumes past the scratch root rather than stopping, so a {@code target/} tree
      * <em>inside</em> a scratch tree is build output again — which is exactly what a fixture that

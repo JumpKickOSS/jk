@@ -577,6 +577,11 @@ plugin's contributed provided classpath rides the same way.
 Tests never run in the engine process (always a forked JVM). Defaults assume tests are
 hermetic enough to share a machine.
 
+The test JVM's temp root — `TMPDIR` / `TMP` / `TEMP` and `java.io.tmpdir`, so every `@TempDir`
+and `createTempFile` — is `~/.jk/test-homes/<key>/tmp`, one per module of each checkout. It is
+outside the project, as Surefire's is, spelled as its real path, emptied at the start of every
+run and removed by `jk clean`. Declare `TMPDIR` in `[test] env` to put it elsewhere.
+
 **You still must avoid:**
 
 - Fixed ports shared across tests or modules — allocate free ports, or pin `workers = 1`

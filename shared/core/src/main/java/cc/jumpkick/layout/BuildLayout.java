@@ -48,9 +48,8 @@ public final class BuildLayout {
      * there. It lives inside {@code target/} so {@code jk clean} can reach it and no two checkouts
      * share it.
      *
-     * <p>Spelled here rather than at each use for the reason {@link #TARGET} is: {@link #tmpDir},
-     * {@code TestEnv} (which points a forked test JVM's {@code TMPDIR} at it) and every "is this
-     * the job's own writing?" test have to agree, and a rename must not be able to split them.
+     * <p>Spelled here rather than at each use for the reason {@link #TARGET} is: {@link #tmpDir}
+     * and every "is this the job's own writing?" test have to agree, and a rename must not be able to split them.
      * Its depth is a layout decision, not a constant — {@code <module>/target/tmp/} standalone,
      * {@code <workspace>/target/<rel>/tmp/} for a member — so callers match the segment, never a
      * fixed path.
@@ -61,9 +60,8 @@ public final class BuildLayout {
      * True when {@code artifact} is a file jk built into a {@link #TARGET} tree.
      *
      * <p>Anchored on the shape, not on the name. An ancestor called {@code target} is not enough:
-     * jk's own test scratch lives at {@code target/<module>/tmp/…}, so once the forked test JVM's
-     * temp root moved inside the build output, every {@code @TempDir} acquired a {@code target}
-     * ancestor and a scratch file started reading as a workspace-built artifact. The anchor is a
+     * scratch under {@code target/<module>/tmp/…} has one too, and must not read as a
+     * workspace-built artifact. The anchor is a
      * {@code classes/} directory beside the file — a module output directory has one and a scratch
      * directory does not — which is a fact about the tree rather than about how a path is spelled.
      *

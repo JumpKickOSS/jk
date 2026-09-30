@@ -220,7 +220,8 @@ A forked test JVM never sees the developer's product layout or the engine's. `Te
 every suite a sandbox home under `<home>/test-homes/<key>/home` (`TestHomes`: keyed by the
 module's real path, outside the project, warm across runs) and pins every root under it:
 `JK_HOME`, `JK_STATE_DIR`, `JK_STORE_DIR`, `JK_CACHE_DIR`, `JK_JDKS_DIR`, plus the workspace's
-shared `JK_M2_LOCAL` and a temp root under the module's `target/`. The three roots are pinned
+shared `JK_M2_LOCAL` and a temp root at `<slot>/tmp` (`TestHomes.tmpFor`: outside the project,
+real-path spelling, emptied at each launch by `TestTmpDir`). The three roots are pinned
 explicitly because `WorkerEnv` lets the engine's own spellings of them through by name: an engine
 started with `JK_STATE_DIR` or `JK_STORE_DIR` in its shell would otherwise hand every suite its
 real build history — and a nested `jk self nuke` its real store. With `W > 1` each runner gets a

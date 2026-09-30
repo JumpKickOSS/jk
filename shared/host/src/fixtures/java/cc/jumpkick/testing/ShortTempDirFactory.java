@@ -18,11 +18,9 @@ import org.junit.jupiter.api.io.TempDirFactory;
  * carries it. If the root has no inodes left (tmpfs), stale {@code jk-junit-*} / {@code junit-*}
  * dirs we own are swept and the create retried once.
  *
- * <p>Always re-rooted rather than using {@code java.io.tmpdir}: the launcher points that at
- * {@code target/tmp} inside the checkout, and a {@code @TempDir} fixture must not sit there — jk's
- * own {@code jk.toml} would become the workspace root as {@code WorkspaceLocator.findRoot} walks
- * up. Worker isolation is kept: each worker JVM has a private tmpdir, and {@link
- * Files#createTempDirectory} still makes a distinct {@code jk-junit-*} directory per request.
+ * <p>Always re-rooted rather than using {@code java.io.tmpdir}, which the launcher points at the
+ * module's sandbox slot: that path is longer than this root. Worker isolation is kept: each worker
+ * JVM has a private tmpdir, and {@link Files#createTempDirectory} still makes a distinct {@code jk-junit-*} directory per request.
  */
 public final class ShortTempDirFactory implements TempDirFactory {
 
