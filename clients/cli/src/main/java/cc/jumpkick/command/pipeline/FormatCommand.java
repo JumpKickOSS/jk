@@ -208,7 +208,7 @@ public final class FormatCommand implements CliCommand {
         }
         if (!global.outputIsJson()) {
             String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
-            Summary summary = summarize(check, counts[0], counts[1], counts[2], took);
+            Summary summary = summarize(check, redo(global), counts[0], counts[1], counts[2], took);
             if (summary.failed()) {
                 CommandWedge.printFail("Format", summary.body());
             } else {
@@ -286,18 +286,18 @@ public final class FormatCommand implements CliCommand {
             if (counts[2] > 0) {
                 String errTail = counts[2] + " error" + (counts[2] == 1 ? "" : "s");
                 cm.finishBuildPlanFailure(errTail);
-            } else if (counts[0] == 0) {
-                // Nothing needed formatting.
+            } else if (counts[0] == 0 && !redo(global)) {
+                // Nothing needed formatting, and the caches said so.
                 cm.finishBuildPlanSuccess(
                         Theme.colorize("Already formatted", Theme.active().success()) + " " + took);
             } else {
-                // N formatted, M already clean.
+                // N formatted, M already formatted.
                 String formatted = Theme.colorize("Formatted", Theme.active().success())
                         + " "
                         + counts[0]
                         + " file"
                         + (counts[0] == 1 ? "" : "s");
-                String clean = counts[1] > 0 ? ", " + counts[1] + " already clean" : "";
+                String clean = counts[1] > 0 ? ", " + counts[1] + " already formatted" : "";
                 cm.finishBuildPlanSuccess(formatted + clean + " " + took);
             }
             return o.workerExit();
@@ -370,25 +370,36 @@ public final class FormatCommand implements CliCommand {
      * <p>{@code --check} answers a yes/no question and exits 1 on drift, so drift renders as a
      * failure and names the command that fixes it — a green wedge there sends a contributor who
      * ran it locally to a red CI job with no idea why. Without {@code --check},
-     * reformatting files is work done, not a problem.
+     * reformatting files is work done, not a problem. Under {@code redo} every file was visited, so
+     * the wedge counts them instead of saying {@code Already formatted}.
      */
-    public static Summary summarize(boolean check, int changed, int clean, int errors, @Nullable String took) {
+    public static Summary summarize(
+            boolean check, boolean redo, int changed, int clean, int errors, @Nullable String took) {
         if (errors > 0) {
             return new Summary(errors + " error" + (errors == 1 ? "" : "s") + " " + took, true);
         }
-        if (changed == 0) {
+        if (changed == 0 && !redo) {
             return new Summary("Already formatted " + took, false);
         }
         if (check) {
+            if (changed == 0) {
+                return new Summary(
+                        "Checked " + clean + " file" + (clean == 1 ? "" : "s") + ", all formatted " + took, false);
+            }
             return new Summary(
-                    changed + " file" + (changed == 1 ? "" : "s") + " unformatted, " + clean + " already clean"
+                    changed + " file" + (changed == 1 ? "" : "s") + " unformatted, " + clean + " already formatted"
                             + " — run `jk format` " + took,
                     true);
         }
         return new Summary(
                 "Formatted " + changed + " file" + (changed == 1 ? "" : "s")
-                        + (clean > 0 ? ", " + clean + " already clean" : "") + " " + took,
+                        + (clean > 0 || redo ? ", " + clean + " already formatted" : "") + " " + took,
                 false);
+    }
+
+    /** {@code -r} / {@code -F}: the run visited every file, so it never reads as served from the caches. */
+    private static boolean redo(GlobalOptions global) {
+        return global.rebuild || global.force;
     }
 
     /**

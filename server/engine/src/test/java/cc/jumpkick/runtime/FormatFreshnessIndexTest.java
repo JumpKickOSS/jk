@@ -49,6 +49,38 @@ class FormatFreshnessIndexTest {
         assertThat(third.clean()).isEqualTo(1);
     }
 
+    /** {@code -r} / {@code -F}: every file is dirty, and the index holds only what the run records. */
+    @Test
+    void a_redo_calls_every_file_dirty_and_rebuilds_from_the_run(@TempDir Path tmp) throws Exception {
+        Path project = tmp.resolve("proj");
+        Path cache = tmp.resolve("cache");
+        Files.createDirectories(project);
+        Path a = Files.writeString(project.resolve("A.java"), "class A {}");
+        Path b = Files.writeString(project.resolve("B.kt"), "class B");
+        String key = key(null);
+        FormatFreshnessIndex seeded = FormatFreshnessIndex.open(cache, project, key);
+        seeded.record(a);
+        seeded.record(b);
+        seeded.save();
+
+        FormatFreshnessIndex plain = FormatFreshnessIndex.open(cache, project, key);
+        FormatFreshnessIndex.Split unchanged = plain.partition(List.of(a), List.of(b), List.of(), List.of(), false);
+        assertThat(unchanged.clean()).isEqualTo(2);
+        assertThat(unchanged.dirtyJava()).isEmpty();
+
+        FormatFreshnessIndex redo = FormatFreshnessIndex.open(cache, project, key);
+        FormatFreshnessIndex.Split forced = redo.partition(List.of(a), List.of(b), List.of(), List.of(), true);
+        assertThat(forced.dirtyJava()).containsExactly(a);
+        assertThat(forced.dirtyKotlin()).containsExactly(b);
+        assertThat(forced.clean()).isZero();
+        redo.record(a); // the run reported A and never reached B
+        redo.save();
+
+        FormatFreshnessIndex after = FormatFreshnessIndex.open(cache, project, key);
+        assertThat(after.isClean(a)).isTrue();
+        assertThat(after.isClean(b)).isFalse();
+    }
+
     @Test
     void config_change_is_a_different_index(@TempDir Path tmp) throws IOException {
         Path project = tmp.resolve("proj");

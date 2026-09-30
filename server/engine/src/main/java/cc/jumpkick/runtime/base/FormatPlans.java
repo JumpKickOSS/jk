@@ -57,7 +57,9 @@ public final class FormatPlans {
      * {@code [format]} block are the client's concern). Steps: {@code collect-sources} (SYNC) walks
      * the tree, {@code resolve-formatters} (IO) pulls the impl jars via {@link ToolResolver}, {@code
      * format} (IO) forks the plugin and streams per-file results. A project with no sources
-     * finishes successfully with {@link FormatWorker#TOTAL} = 0 and no plugin forked.
+     * finishes successfully with {@link FormatWorker#TOTAL} = 0 and no plugin forked. {@code redo}
+     * ({@code -r} / {@code -F}) sends every file to the worker and has it ignore its settled stamps;
+     * the run's results rebuild both stores.
      */
     public static BuildPlan formatBuildPlan(
             Path projectDir,
@@ -68,6 +70,7 @@ public final class FormatPlans {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
+            boolean redo,
             FormatWorker.FileObserver observer) {
         Options o = new Options(
                 projectDir,
@@ -78,6 +81,7 @@ public final class FormatPlans {
                 optimizeImports,
                 importOrder,
                 removeUnusedImports,
+                redo,
                 observer);
         Keys k = Keys.create();
         return BuildPlan.builder("format")
@@ -118,6 +122,7 @@ public final class FormatPlans {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
+            boolean redo,
             FormatWorker.FileObserver observer) {}
 
     /** The plan keys the steps hand each other: dirty files, every file, jars, index and config key. */
@@ -187,8 +192,8 @@ public final class FormatPlans {
                     FormatFreshnessIndex index = configKey == null
                             ? FormatFreshnessIndex.disabled(o.projectDir())
                             : FormatFreshnessIndex.open(o.cache(), o.projectDir(), configKey);
-                    FormatFreshnessIndex.Split split =
-                            index.partition(all.javaFiles(), all.kotlinFiles(), all.groovyFiles(), all.scalaFiles());
+                    FormatFreshnessIndex.Split split = index.partition(
+                            all.javaFiles(), all.kotlinFiles(), all.groovyFiles(), all.scalaFiles(), o.redo());
                     ctx.put(k.javaFilesKey(), split.dirtyJava());
                     ctx.put(k.kotlinFilesKey(), split.dirtyKotlin());
                     ctx.put(k.groovyFilesKey(), split.dirtyGroovy());
@@ -357,6 +362,7 @@ public final class FormatPlans {
                 indexFiles,
                 o.cache(),
                 configKey.isEmpty() ? null : configKey,
+                o.redo(),
                 null);
         try {
             Path hostJava = JavaHomes.runningJavaHome();
@@ -430,6 +436,7 @@ public final class FormatPlans {
             List<Path> indexFiles,
             Path cacheDir,
             @Nullable String configKey,
+            boolean redo,
             @Nullable Path dest)
             throws IOException {
         if (groovyFiles == null) groovyFiles = List.of();
@@ -486,6 +493,8 @@ public final class FormatPlans {
             w.configString("cacheDir", cacheDir.toAbsolutePath().toString());
             w.configString("configKey", configKey);
         }
+        // A redo formats every file it was sent, settled stamps or not.
+        if (redo) w.configBool("redo", true);
         Path spec = dest != null ? dest : Files.createTempFile("jk-format-", ".spec");
         if (dest != null && dest.getParent() != null) Files.createDirectories(dest.getParent());
         Files.write(spec, w.lines(), StandardCharsets.UTF_8);
@@ -570,6 +579,7 @@ public final class FormatPlans {
                 indexFiles,
                 scratch,
                 TRAIN_CONFIG_KEY,
+                false,
                 scratch.resolve("train.spec"));
         // This fork goes through PluginLoader.command, not PluginLaunch — seal at the producer.
         PluginLoader.sealNetworkPolicy(spec);

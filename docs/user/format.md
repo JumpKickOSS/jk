@@ -34,7 +34,12 @@ imports; keep an FQCN only when there is a real collision. See
 [what it can shorten](#what-optimize-imports-can-shorten). Applies to every language `jk
 format` walks.
 
-Per-file stamp cache skips unchanged files.
+Unchanged files are skipped: an mtime/size index skips the fork when nothing moved, and a
+per-file stamp keyed by content skips files the worker has already settled. `jk format -r`
+(`--redo`) or `-F` (`--force`) bypasses both and formats every file; the run's results rebuild
+them, so the next plain `jk format` is fast again. Its summary counts what it visited
+(`Formatted 0 files, 4120 already formatted`) rather than saying `Already formatted`. A
+[remembered timeout](#slow-files-and-the-per-file-timeout) still stands under a redo.
 
 ## Language support
 
