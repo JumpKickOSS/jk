@@ -10,6 +10,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,7 +22,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -340,27 +340,26 @@ public final class JdkRegistry {
     }
 
     /**
-     * Delete an install regardless of where it lives. Used by {@code jk jdk uninstall
-     * <source>/<spec>}, where the user has explicitly qualified which copy to remove — so the
-     * "external installs are read-only" guard {@link #remove} applies no longer fits. {@link
-     * IntellijJdkDir#installDirOf} still handles the macOS {@code Contents/Home} unwrap. Returns
-     * {@code true} when the directory existed and was deleted.
+     * Delete {@code hit}'s install directory for {@code jk jdk uninstall}, with or without a jk
+     * ownership marker. Throws, deleting nothing, when the directory is outside {@link #jdksRoot()}
+     * ({@link JdkUninstallPolicy#deletable}). Returns {@code true} when it existed and was deleted.
      */
-    public boolean purge(InstalledJdk jdk) throws IOException {
-        Objects.requireNonNull(jdk, "jdk");
-        Path installDir = IntellijJdkDir.installDirOf(jdk.home());
-        if (!Files.exists(installDir)) return false;
+    public boolean purge(JdkHit hit) throws IOException {
+        Objects.requireNonNull(hit, "hit");
+        Path installDir = IntellijJdkDir.installDirOf(hit.home());
+        if (!Files.exists(installDir, LinkOption.NOFOLLOW_LINKS)) return false;
+        if (!JdkUninstallPolicy.deletable(hit.home(), jdksRoot)) {
+            throw new IOException(JdkUninstallPolicy.outsideRoot(hit, jdksRoot));
+        }
         deleteRecursively(installDir);
         refresh();
-        // Remove any symlinks in jdksRoot that now dangle to the deleted directory.
-        // Symlinks (POSIX) and junctions (Windows) are created by StableJdkPointer
-        // to give IntelliJ a stable vendor+major path; they become dangling after
-        // the install dir is removed. Windows junctions are cleaned up by the
-        // owning tools or left for the OS; only POSIX symlinks are removed here.
-        if (!Os.isWindows() && Files.isDirectory(jdksRoot)) {
+        // Drop the StableJdkPointer symlinks that now dangle at the deleted directory. Windows
+        // junctions are left for the OS; only POSIX symlinks are removed here.
+        if (!Os.isWindows()) {
             Path canonical = installDir.toAbsolutePath().normalize();
-            try (Stream<Path> entries = Files.list(jdksRoot)) {
-                entries.filter(Files::isSymbolicLink).forEach(link -> {
+            try {
+                PathUtil.forEachChild(jdksRoot, (link, attrs) -> {
+                    if (!attrs.isSymbolicLink()) return true;
                     try {
                         Path target = Files.readSymbolicLink(link);
                         if (!target.isAbsolute()) target = jdksRoot.resolve(target);
@@ -368,11 +367,12 @@ public final class JdkRegistry {
                             Files.deleteIfExists(link);
                         }
                     } catch (IOException ignored) {
-                        // unreadable / already gone — skip
+                        // unreadable or already gone
                     }
+                    return true;
                 });
             } catch (IOException ignored) {
-                // best-effort; purge itself already succeeded
+                // best-effort; the install itself is already deleted
             }
         }
         return true;
@@ -466,12 +466,7 @@ public final class JdkRegistry {
         if (match.isEmpty()) return false;
         Path home = match.get().home();
         Path installDir = IntellijJdkDir.installDirOf(home);
-        // `installDir` is canonical (ProbeSupport.discoverJdk applies
-        // toRealPath()). `jdksRoot` may be a symlink path — e.g. macOS
-        // /var/folders/... → /private/var/folders/.... Canonicalise it
-        // when it exists so the containment check actually works.
-        Path canonicalRoot = Files.exists(jdksRoot) ? jdksRoot.toRealPath() : jdksRoot;
-        if (!installDir.startsWith(canonicalRoot)) {
+        if (!JdkUninstallPolicy.deletable(home, jdksRoot)) {
             return false;
         }
         if (!JdkOwnership.isJkOwned(installDir)) {
