@@ -33,7 +33,7 @@ detekt     = true                                               # detekt over th
 | `pmd-exclude` | A module-relative file in `maven-pmd-plugin`'s `excludeFromFailureFile` shape — `package.Class=Rule,Rule` per line — whose findings are left out of the report | none |
 | `pmd-version` | The PMD release; `jk import` writes the one the POM's plugin runs — the `pmd-java` it pins, else the release its `maven-pmd-plugin` bundles, read from that plugin's POM — since a newer PMD reports what an older one let through | `"7.27.0"` |
 | `spotbugs` | Enable SpotBugs over the module's classes, against its compile classpath | `false` |
-| `spotbugs-exclude` | A SpotBugs filter file of findings to leave out | none |
+| `spotbugs-exclude` | Module-relative SpotBugs filter files of findings to leave out (`["config/spotbugs-exclude.xml"]`); a finding any of them matches is left out | `[]` |
 | `spotbugs-effort` | `min`, `less`, `default`, `more`, `max` | `"default"` |
 | `spotbugs-threshold` | The lowest confidence SpotBugs reports: `high`, `medium` (SpotBugs's and the Maven plugin's default), `low` | `"medium"` |
 | `spotbugs-max-rank` | The scariest bug rank SpotBugs reports, 1 to 20, as the Maven plugin's `<maxRank>`; every rank when unset | none |
@@ -122,7 +122,7 @@ one of PMD's built-in categories (`category/java/bestpractices.xml`, `rulesets/j
 `rulesets/java/maven-pmd-plugin-default.xml` — the ruleset `maven-pmd-plugin` runs when a POM names
 none, which PMD itself does not ship and jk carries so an imported build lints as Maven did — or a
 file; `pmd-exclude` leaves a class's listed rules out, as Maven's `excludeFromFailureFile` does;
-SpotBugs's `spotbugs-exclude` is its filter-file format; detekt's `detekt-config` is
+SpotBugs's `spotbugs-exclude` files are its filter-file format; detekt's `detekt-config` is
 laid over detekt's default configuration (`--build-upon-default-config`). Suppressions stay in the
 tool's own idiom — `@SuppressWarnings("PMD.Rule")`, `@SuppressFBWarnings`, a Checkstyle
 `SuppressionFilter`, `@Suppress("MagicNumber")`.

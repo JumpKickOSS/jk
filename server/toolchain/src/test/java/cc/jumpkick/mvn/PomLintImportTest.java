@@ -83,7 +83,7 @@ class PomLintImportTest {
         assertThat(lint.values())
                 .containsEntry("checkstyle", "../style/checks.xml")
                 .containsEntry("exclude", List.of("**/api/grpc/auto/**", "**/istio/**"))
-                .containsEntry("spotbugs-exclude", "../style/spotbugs-exclude.xml");
+                .containsEntry("spotbugs-exclude", List.of("../style/spotbugs-exclude.xml"));
     }
 
     /** spring-cloud-alibaba's shape: the rule set is a URL, which the step fetches and runs as it is. */
@@ -260,7 +260,7 @@ class PomLintImportTest {
                 .as("offline, the plugin's POM is unread and the PMD release is left to the step")
                 .doesNotContainKey("pmd-version")
                 .containsEntry("spotbugs", true)
-                .containsEntry("spotbugs-exclude", "spotbugs-exclude.xml")
+                .containsEntry("spotbugs-exclude", List.of("spotbugs-exclude.xml"))
                 .containsEntry("spotbugs-effort", "max")
                 .containsEntry("spotbugs-version", "4.9.3")
                 .containsEntry("spotbugs-plugins", List.of("com.mebigfatguy.fb-contrib:fb-contrib:7.7.4"))

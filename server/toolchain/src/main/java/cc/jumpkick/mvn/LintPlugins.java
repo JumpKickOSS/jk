@@ -54,8 +54,8 @@ import org.jspecify.annotations.Nullable;
  * on every finding — is {@code warning}. The PMD release is the plugin's: the {@code pmd-java} its
  * own {@code <dependencies>} pin, else the one the plugin version bundles, written as {@code
  * pmd-version}; a plugin still on PMD 6 is a row, since the step runs PMD 7. {@code
- * spotbugs-maven-plugin}: {@code spotbugs = true}, {@code <excludeFilterFile>} is {@code
- * spotbugs-exclude}, {@code <effort>} is {@code spotbugs-effort}, {@code <threshold>} is {@code
+ * spotbugs-maven-plugin}: {@code spotbugs = true}, {@code <excludeFilterFile>} (comma-separated)
+ * and every {@code <excludeFilterFiles>} entry are {@code spotbugs-exclude}, {@code <effort>} is {@code spotbugs-effort}, {@code <threshold>} is {@code
  * spotbugs-threshold}, {@code <omitVisitors>} / {@code <visitors>} are {@code
  * spotbugs-omit-visitors} / {@code spotbugs-visitors}, {@code <maxRank>} is {@code
  * spotbugs-max-rank}, {@code <plugins>} (fb-contrib, find-sec-bugs) are {@code spotbugs-plugins},
@@ -120,7 +120,8 @@ final class LintPlugins {
         Plugin spotbugs = bound(em, SPOTBUGS, "spotbugs:check", report, inherited);
         if (spotbugs != null) {
             any = true;
-            failOn.put("spotbugs", spotbugs(spotbugs, model, baseDir, values, sources, report));
+            Path reactorRoot = inherited != null ? inherited.rootDir() : reactorRoot(em, baseDir);
+            failOn.put("spotbugs", spotbugs(spotbugs, model, baseDir, reactorRoot, values, sources, report));
         }
         if (!any) return null;
         if (sources.size() > 1) values.put("sources", List.copyOf(sources));
@@ -696,20 +697,32 @@ final class LintPlugins {
      * detectors off). {@code <omitVisitors>} / {@code <visitors>} are {@code spotbugs-omit-visitors}
      * / {@code spotbugs-visitors}, {@code <maxRank>} is {@code spotbugs-max-rank}, and the
      * {@code <plugins>} (fb-contrib, find-sec-bugs) are {@code spotbugs-plugins}, so a suppression
-     * naming one of their patterns stays a suppression instead of a useless one.
+     * naming one of their patterns stays a suppression instead of a useless one. The filter files
+     * of {@code <excludeFilterFile>} and {@code <excludeFilterFiles>} are one {@code
+     * spotbugs-exclude} list, as the plugin applies both.
      */
     private static String spotbugs(
             Plugin plugin,
             Model model,
             @Nullable Path baseDir,
+            @Nullable Path reactorRoot,
             Map<String, Object> values,
             Set<String> sources,
             ImportReport.Builder report) {
         values.put("spotbugs", true);
         SpotBugsParameters parameters = new SpotBugsParameters(plugin, model);
         String failOn = EnvValues.parseBool(parameters.value("failOnError")).orElse(true) ? "warning" : "never";
-        String exclude = parameters.value("excludeFilterFile");
-        if (exclude != null) values.put("spotbugs-exclude", SourceTreePlugins.moduleRelativeFile(exclude, baseDir));
+        List<String> excludes = new ArrayList<>();
+        for (String file : parameters.excludeFilterFiles()) {
+            String path = launcherPath(file, baseDir, reactorRoot);
+            if (path.contains("${")) {
+                report.warning("`" + SPOTBUGS + "` excludes the filter file `" + file
+                        + "`, a path through a property no POM defines; add it to `[lint] spotbugs-exclude`.");
+            } else if (!excludes.contains(path)) {
+                excludes.add(path);
+            }
+        }
+        if (!excludes.isEmpty()) values.put("spotbugs-exclude", excludes);
         String effort = parameters.value("effort");
         if (effort != null && !effort.equalsIgnoreCase("default")) {
             values.put("spotbugs-effort", effort.toLowerCase(Locale.ROOT));
@@ -785,6 +798,39 @@ final class LintPlugins {
             for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
                 String v = PluginFacts.child(dom, name);
                 if (v != null) return v;
+            }
+            return PluginFacts.usable(model.getProperties().getProperty("spotbugs." + name));
+        }
+
+        /**
+         * The filter files of {@code <excludeFilterFile>} (comma-separated), then of the first
+         * configuration's {@code <excludeFilterFiles>}, as written — a launcher property included.
+         */
+        List<String> excludeFilterFiles() {
+            List<String> out = new ArrayList<>();
+            String single = raw("excludeFilterFile");
+            if (single != null) {
+                for (String part : single.split(",")) {
+                    if (!part.isBlank()) out.add(part.trim());
+                }
+            }
+            for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
+                Xpp3Dom files = dom.getChild("excludeFilterFiles");
+                if (files == null) continue;
+                for (Xpp3Dom file : files.getChildren()) {
+                    String v = PluginFacts.text(file);
+                    if (v != null && !v.isBlank()) out.add(v.trim());
+                }
+                break;
+            }
+            return out;
+        }
+
+        /** {@link #value}, keeping a {@code ${...}} the effective model left uninterpolated. */
+        private @Nullable String raw(String name) {
+            for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
+                String v = PluginFacts.text(dom.getChild(name));
+                if (v != null && !v.isBlank()) return v;
             }
             return PluginFacts.usable(model.getProperties().getProperty("spotbugs." + name));
         }
