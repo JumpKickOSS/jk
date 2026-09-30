@@ -28,16 +28,22 @@ Discovery looks at existing installs before downloading from the JetBrains JDK f
 | Source | Where it looks | `jk jdk uninstall` |
 |---|---|---|
 | `jk` | The managed write root below | Deletes it |
-| `intellij` / `jdks` | IntelliJ's shared root; `intellij` when an IDE registered the JDK | `intellij`: refused; `jdks`: deletes it |
-| `gradle` | `$GRADLE_USER_HOME/jdks`, default `~/.gradle/jdks` (Gradle's provisioned JDKs) | Deletes it |
-| `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew` | That tool's install directory | Runs that tool's uninstall first |
+| `intellij` / `jdks` | IntelliJ's shared root; `intellij` when an IDE registered the JDK | `intellij`: refused; `jdks`: deletes it under the managed root |
+| `gradle` | `$GRADLE_USER_HOME/jdks`, default `~/.gradle/jdks` (Gradle's provisioned JDKs) | Refused: outside the managed root |
+| `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew` | That tool's install directory | Runs that tool's uninstall; never deletes what the tool leaves outside the managed root (`jenv remove` only unregisters) |
 | `jabba` | `$JABBA_HOME/jdk`, else `~/.jabba/jdk` | Runs `jabba uninstall`; never deletes what Jabba leaves |
 | `coursier` | `$COURSIER_JVM_CACHE`, else Coursier's JVM cache: `~/.cache/coursier/jvm` (Linux), `~/Library/Caches/Coursier/jvm` (macOS), `~\AppData\Local\Coursier\Cache\jvm` (Windows) | Refused: Coursier has no uninstall |
 | `system` | Linux `/usr/lib/jvm`, `/usr/java`, `/usr/lib64/jvm`, `/usr/local/java`, `/opt/java`; macOS `/Library/Java/JavaVirtualMachines` and `/usr/libexec/java_home -V`; the Windows registry (JavaSoft `JavaHome`, AdoptOpenJDK / Eclipse Adoptium / Eclipse Foundation `hotspot\MSI` `Path`) | Refused |
 | `maven-toolchains` | Every `jdkHome` of type `jdk` in `~/.m2/toolchains.xml`, `${env.NAME}` expanded | Refused: a pointer |
 | `gradle-properties` | Homes named by `org.gradle.java.installations.paths` and `fromEnv`, and the `toolchains.xml` named by `maven-toolchains-file`, in `$GRADLE_USER_HOME/gradle.properties` (default `~/.gradle`) and, during a build, the build root's `gradle.properties`. `auto-detect=false` turns nothing off | Refused: a pointer |
 | `jdk-paths` | Homes named by `JK_JDK_PATHS` and by the variables `JK_JDK_FROM_ENV` names ([Install](install.md)) | Refused: a pointer |
-| `path` | `JAVA_HOME` when no source above owns it | Deletes it |
+| `path` | `JAVA_HOME` when no source above owns it | Deletes it under the managed root; refused elsewhere |
+
+`jk jdk uninstall` deletes a directory only when its real path, symlinks resolved, is under the
+managed write root (`~/.jdks`, macOS `~/Library/Java/JavaVirtualMachines`, or `JK_JDKS_DIR`). A
+JDK there uninstalls whichever source reports it, `JAVA_HOME` included. Outside it, a source with an
+owning tool runs that tool's uninstall and jk deletes nothing itself; any other source is refused
+with its name and path, and nothing is deleted.
 
 `JK_JDK_PROBES` ([Install](install.md)) narrows discovery to the named sources. Managed write root:
 [Install](install.md) (IntelliJ-shared `~/.jdks` / macOS Library JVMs). JumpKick's inventory of

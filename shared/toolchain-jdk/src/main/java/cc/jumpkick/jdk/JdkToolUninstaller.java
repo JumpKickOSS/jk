@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
@@ -15,44 +14,43 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A JDK from a tool that keeps its own index (SDKMAN, mise, JBang, jenv, asdf, Homebrew, Jabba)
  * is removed through that tool's uninstall command, non-interactive and with a timeout, so the
- * tool's manifest stays in sync. When that leaves the directory in place, the caller purges it,
- * except for a {@link #TOOL_ONLY} source, whose directory jk never deletes.
+ * tool's manifest stays in sync. When that leaves the directory in place, {@link JdkRegistry#purge}
+ * deletes it only under the managed root ({@link JdkUninstallPolicy#deletable}).
  */
 public final class JdkToolUninstaller {
 
     /** How long any one tool command is allowed to run before we abandon it. */
     private static final long TIMEOUT_SECONDS = 30;
 
-    /** Outcome label used by the caller for the {@code "✓ … via <tool>"} line. */
+    /** How the install went away, for the caller's success line. */
     public enum Outcome {
         HANDLED_BY_TOOL,
-        /** The caller may purge the directory itself. */
-        FALL_THROUGH,
-        /** The tool left the directory, and it is not jk's to delete. */
-        LEFT_BY_TOOL
+        /** jk deleted the directory under the managed root. */
+        PURGED
     }
-
-    /** Sources whose directory only the owning tool may remove. */
-    static final Set<String> TOOL_ONLY = Set.of("jabba");
 
     private JdkToolUninstaller() {}
 
     /**
-     * Uninstall {@code hit} via its owning tool. {@link Outcome#HANDLED_BY_TOOL} when the tool ran
-     * cleanly and the directory is gone; otherwise {@link Outcome#LEFT_BY_TOOL} for a {@link
-     * #TOOL_ONLY} source and {@link Outcome#FALL_THROUGH} for the rest.
+     * Uninstall {@code hit}: its owning tool first, then {@link JdkRegistry#purge} for whatever
+     * remains. Throws when the directory remains outside the managed root; nothing is deleted then.
      */
-    public static Outcome tryUninstall(JdkHit hit, String identifier) {
-        List<String> command = commandFor(hit, identifier);
+    public static Outcome uninstall(JdkHit hit, JdkRegistry registry) throws IOException {
+        List<String> command = commandFor(hit, JdkRegistry.identifierFor(hit.home()));
         // Some tools exit 0 without deleting, so the directory is the verdict.
         if (command != null && runQuietly(command) && !Files.exists(hit.home())) return Outcome.HANDLED_BY_TOOL;
-        return TOOL_ONLY.contains(hit.source()) ? Outcome.LEFT_BY_TOOL : Outcome.FALL_THROUGH;
+        registry.purge(hit);
+        return Outcome.PURGED;
+    }
+
+    /** Whether {@code hit}'s source has an owning-tool uninstall for this home. */
+    static boolean hasRecipe(JdkHit hit) {
+        return commandFor(hit, JdkRegistry.identifierFor(hit.home())) != null;
     }
 
     /**
-     * The non-interactive command line for {@code hit.source()}'s owning tool. Returns {@code null}
-     * when we don't have a recipe for this source — the caller treats that the same as "tool failed"
-     * and falls back to the direct delete.
+     * The non-interactive command line for {@code hit.source()}'s owning tool; {@code null} when
+     * there is no recipe for this source or home.
      */
     private static @Nullable List<String> commandFor(JdkHit hit, String identifier) {
         return switch (hit.source()) {
@@ -69,12 +67,7 @@ public final class JdkToolUninstaller {
                                 + shellQuote(identifier));
             case "mise" -> List.of("mise", "uninstall", "--yes", "java@" + identifier);
             case "jbang" -> List.of("jbang", "jdk", "uninstall", identifier);
-            // jenv tracks JDKs but doesn't own their files — `remove` just
-            // unregisters the alias. Pair it with a purge so the on-disk
-            // install actually goes away too. Returning the command here
-            // gets jenv's manifest cleaned up; the FALL_THROUGH check below
-            // will see the dir still exists and trigger purge — exactly
-            // what we want.
+            // jenv only registers JDKs: `remove` drops the alias and leaves the files.
             case "jenv" -> List.of("jenv", "remove", identifier);
             case "asdf" -> List.of("asdf", "uninstall", "java", identifier);
             case "jabba" -> jabbaCommand(hit.home());
@@ -108,8 +101,7 @@ public final class JdkToolUninstaller {
 
     /**
      * Walk up from a Homebrew JDK home to find the {@code Cellar/<formula>} segment and return the
-     * formula name. Returns {@code null} when the path doesn't look like a Cellar install (in which
-     * case the caller falls back to the direct purge).
+     * formula name. Returns {@code null} when the path doesn't look like a Cellar install.
      */
     private static @Nullable String homebrewFormulaFor(Path home) {
         Path p = home;

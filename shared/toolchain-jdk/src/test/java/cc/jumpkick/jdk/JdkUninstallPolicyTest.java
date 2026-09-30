@@ -38,9 +38,10 @@ class JdkUninstallPolicyTest {
         JdkHit hit = registry.findHitBySpec("21").orElseThrow();
 
         assertThat(hit.source()).isEqualTo("maven-toolchains");
-        assertThat(JdkUninstallPolicy.refusal(hit)).hasValueSatisfying(message -> assertThat(message)
-                .contains("maven-toolchains")
-                .contains(hit.home().toString()));
+        assertThat(JdkUninstallPolicy.refusal(hit, tmp.resolve("jdks")))
+                .hasValueSatisfying(message -> assertThat(message)
+                        .contains("maven-toolchains")
+                        .contains(hit.home().toString()));
         assertThat(home).isDirectory();
     }
 

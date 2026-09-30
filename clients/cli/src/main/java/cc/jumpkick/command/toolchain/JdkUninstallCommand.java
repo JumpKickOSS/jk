@@ -205,7 +205,7 @@ public final class JdkUninstallCommand implements CliCommand {
 
         JdkHit hit = match.get();
         // A bare spec can resolve to a refused install; name its source and home.
-        Optional<String> refused = JdkUninstallPolicy.refusal(hit);
+        Optional<String> refused = JdkUninstallPolicy.refusal(hit, registry.jdksRoot());
         if (refused.isPresent()) {
             CliOutput.err(refused.get());
             return Exit.USAGE;
@@ -225,7 +225,7 @@ public final class JdkUninstallCommand implements CliCommand {
     private Integer runWizard(JdkRegistry registry, JdkInventory defaults) throws IOException {
         // Installs jk refuses to remove don't belong in the checklist.
         List<JdkHit> installed = registry.listHits().stream()
-                .filter(h -> JdkUninstallPolicy.removable(h.source()))
+                .filter(h -> JdkUninstallPolicy.refusal(h, registry.jdksRoot()).isEmpty())
                 .toList();
         if (installed.isEmpty()) {
             CommandWedge.printFail(
@@ -337,14 +337,12 @@ public final class JdkUninstallCommand implements CliCommand {
     // --- shared mechanics ---------------------------------------------------
 
     /**
-     * Spinner → owning-tool uninstall (best-effort) → {@link JdkRegistry#purge} fallback → {@code "✓
-     * <spec> from <source>"}. The single-target and wizard paths funnel through here, so output shape
-     * stays consistent.
+     * Spinner → {@link JdkToolUninstaller#uninstall} → {@code "✓ <spec> from <source>"}. The
+     * single-target and wizard paths funnel through here, so output shape stays consistent.
      */
     private static void uninstallOne(JdkHit hit, JdkRegistry registry) throws IOException {
         String identifier = JdkRegistry.identifierFor(hit.home());
         Path installDir = IntellijJdkDir.installDirOf(hit.home());
-        InstalledJdk installed = new InstalledJdk(identifier, hit.home());
         // Failure names the resolved `<source>/<identifier>` in yellow; the
         // success line (below) styles it as `[source]/identifier` instead.
         String label = hit.source() + "/" + identifier;
@@ -355,18 +353,7 @@ public final class JdkUninstallCommand implements CliCommand {
                                 JdkInstallView.tildeCollapse(installDir),
                                 Theme.active().path())
                         + "...")) {
-            // Try the owning tool first so its manifest stays consistent
-            // (sdkman, mise, jbang, jenv, asdf, brew, jabba). Anything left on disk
-            // after — including the intellij / java-home sources, which
-            // have no owning tool — gets the direct purge, except what Jabba left.
-            var outcome = JdkToolUninstaller.tryUninstall(hit, identifier);
-            if (outcome == JdkToolUninstaller.Outcome.LEFT_BY_TOOL) {
-                throw new IOException(hit.source() + " did not remove " + installDir + ", and jk does not delete a "
-                        + hit.source() + " install itself");
-            }
-            if (outcome == JdkToolUninstaller.Outcome.FALL_THROUGH) {
-                registry.purge(installed);
-            }
+            JdkToolUninstaller.uninstall(hit, registry);
             JdkInventory.of(registry.jdksRoot()).remove(identifier);
         } catch (IOException e) {
             // The spinner has already cleared its line; print the failure where

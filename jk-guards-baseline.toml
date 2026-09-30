@@ -14,7 +14,7 @@
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [archive-stream-owner]
 population = { files = 2203 }
@@ -42,7 +42,7 @@ population = { files = 2203 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 10, sites = 607 }
 "shared/host" = { classes = 46, sites = 1921 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 "shared/wire" = { classes = 115, sites = 4305 }
 [[blind-tree-walks.entries]]
 in     = "clients/cli"
@@ -666,10 +666,6 @@ at     = "cc.jumpkick.jdk.JdkInventory#ownedInstallDirs()Ljava/util/List; -> jav
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JdkRegistry#purge(Lcc/jumpkick/jdk/InstalledJdk;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.Platform#hasMuslLoader(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -696,7 +692,7 @@ population = { constants = 29, files = 2266, literals = 44297 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [central-address]
 population = { files = 2306 }
@@ -742,7 +738,7 @@ population = { examined = 4 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/host" = { classes = 51, sites = 2014 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.cli.CliFailure#appendLog([Ljava/lang/String;Ljava/lang/Throwable;)V -> java.time.Instant#now()Ljava/time/Instant;"
@@ -1572,7 +1568,7 @@ population = { examined = 15 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [file-size]
 population = { units = 4145 }
@@ -1621,7 +1617,7 @@ population = { files = 1888 }
 "server/resolver" = { classes = 111, sites = 0 }
 "shared/client-io" = { classes = 106, sites = 0 }
 "shared/core" = { classes = 373, sites = 0 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [json-concat]
 population = { files = 2240 }
@@ -1953,7 +1949,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, elements = 3 }
 "shared/client-io" = { classes = 106, elements = 7 }
 "shared/core" = { classes = 373, elements = 17 }
-"shared/toolchain-jdk" = { classes = 163, elements = 11 }
+"shared/toolchain-jdk" = { classes = 168, elements = 11 }
 
 [one-digest-surface]
 [one-digest-surface.populations]
@@ -1968,7 +1964,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
@@ -1983,7 +1979,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [one-host-surface]
 [one-host-surface.populations]
@@ -1998,7 +1994,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
-"shared/toolchain-jdk" = { classes = 163, sites = 6173 }
+"shared/toolchain-jdk" = { classes = 168, sites = 6288 }
 
 [one-http-client]
 [one-http-client.populations]
@@ -2012,7 +2008,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [one-json-codec]
 population = { examined = 1928 }
@@ -2036,7 +2032,7 @@ population = { files = 2203 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
-"shared/toolchain-jdk" = { classes = 163, sites = 6173 }
+"shared/toolchain-jdk" = { classes = 168, sites = 6288 }
 
 [package-cycles]
 [package-cycles.populations]
@@ -2139,7 +2135,7 @@ population = { examined = 15 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [published-installer-ps1]
 population = { left = 1095, right = 1095 }
@@ -2172,7 +2168,7 @@ population = { files = 2335 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [schema-compared-to-its-constant]
 population = { files = 4230 }
@@ -2273,7 +2269,7 @@ population = { files = 1920 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
-"shared/toolchain-jdk" = { classes = 163, sites = 6173 }
+"shared/toolchain-jdk" = { classes = 168, sites = 6288 }
 
 [tree-copy-owner]
 population = { files = 2203 }
@@ -2309,4 +2305,4 @@ population = { files = 1 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
-"shared/toolchain-jdk" = { classes = 163, sites = 8313 }
+"shared/toolchain-jdk" = { classes = 168, sites = 8506 }
