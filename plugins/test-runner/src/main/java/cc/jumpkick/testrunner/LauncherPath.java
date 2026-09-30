@@ -73,8 +73,7 @@ final class LauncherPath {
             EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
 
-        LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
-                .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)));
+        LauncherDiscoveryRequestBuilder b = scan(scanClasspath);
         if (filter != null && !filter.isBlank()) {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
@@ -129,6 +128,16 @@ final class LauncherPath {
         return adapter.hasFailures() ? 1 : 0;
     }
 
+    /**
+     * A discovery of every test class under {@code scanClasspath}, Vintage's nested classes aside
+     * ({@link VintageMemberClasses}).
+     */
+    private static LauncherDiscoveryRequestBuilder scan(Path scanClasspath) {
+        return LauncherDiscoveryRequestBuilder.request()
+                .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)))
+                .filters(VintageMemberClasses.FILTER);
+    }
+
     /** True when every test of {@code plan} sits under a class container, so selecting the classes selects the tests. */
     private static boolean everyTestUnderAClass(TestPlan plan) {
         for (TestIdentifier root : plan.getRoots()) if (!everyTestUnderAClass(plan, root)) return false;
@@ -170,8 +179,7 @@ final class LauncherPath {
             int workerId,
             EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
-        LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
-                .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)));
+        LauncherDiscoveryRequestBuilder b = scan(scanClasspath);
         if (filter != null && !filter.isBlank()) {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
@@ -202,8 +210,7 @@ final class LauncherPath {
     private static @Nullable LauncherDiscoveryRequestBuilder named(
             Path scanClasspath, @Nullable String filter, List<MethodSelection> methods) {
         if (filter == null || filter.isBlank()) return null;
-        LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
-                .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)))
+        LauncherDiscoveryRequestBuilder b = scan(scanClasspath)
                 .filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         applyMethodFilter(b, methods);
         return b;
@@ -346,10 +353,7 @@ final class LauncherPath {
         if (classes <= 0) return;
         TestPlan unfiltered;
         try {
-            unfiltered = listingLauncher()
-                    .discover(LauncherDiscoveryRequestBuilder.request()
-                            .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)))
-                            .build());
+            unfiltered = listingLauncher().discover(scan(scanClasspath).build());
         } catch (RuntimeException e) {
             return;
         }
