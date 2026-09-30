@@ -5,6 +5,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -161,14 +162,14 @@ public final class ProjectBuilds {
                     identity.id(), coord.strip(), abs, identity.source(), identity.gitRemote(), identity.gitRelPath());
         }
         Path home = projectHome(buildsRoot, identity);
-        Files.createDirectories(home.resolve(RUNS));
+        OwnerOnlyFiles.createDirectories(home.resolve(RUNS));
         ProjectIdentity.IdentityFile.write(home, identity);
         long n = allocateRunNumber(home);
         Path runDir = runDir(home, n);
-        Files.createDirectories(runDir);
+        OwnerOnlyFiles.createDirectories(runDir);
         // A run the client opens without the engine has no record.json; the marker keeps it
         // attributable to its checkout for latestRunFile.
-        Files.writeString(runDir.resolve(CHECKOUT), abs + "\n", StandardCharsets.UTF_8);
+        OwnerOnlyFiles.writeString(runDir.resolve(CHECKOUT), abs + "\n");
         return new RunDir(identity.id(), home, runDir, n, identity.coord(), abs);
     }
 
@@ -194,7 +195,7 @@ public final class ProjectBuilds {
      * run tree. {@link FileLocks#withLock} is the cross-process guard.
      */
     public static long allocateRunNumber(Path projectHome) throws IOException {
-        Files.createDirectories(projectHome);
+        OwnerOnlyFiles.createDirectories(projectHome);
         Path f = projectHome.resolve(RUN_NUMBER);
         return FileLocks.withLock(projectHome.resolve(RUN_NUMBER + ".lock"), () -> bumpRunNumber(f));
     }

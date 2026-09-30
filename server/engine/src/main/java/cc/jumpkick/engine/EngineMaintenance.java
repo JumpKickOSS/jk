@@ -5,6 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -159,8 +160,7 @@ public final class EngineMaintenance implements AutoCloseable {
             Log.debug("runMaintenanceCycle: Throwable ignored", e);
         }
         try {
-            Files.createDirectories(stampFile.getParent());
-            Files.writeString(stampFile, Long.toString(System.currentTimeMillis()), StandardCharsets.UTF_8);
+            OwnerOnlyFiles.writeString(stampFile, Long.toString(System.currentTimeMillis()));
         } catch (IOException ignored) {
         }
     }

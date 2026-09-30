@@ -23,6 +23,7 @@ import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.test.RunResults;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.TimelineEvent;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -361,7 +362,7 @@ public final class JournalWriter {
             throws IOException {
         String body = text.endsWith("\n") ? text : text + "\n";
         if (runDir != null) {
-            Files.writeString(runDir.resolve(name), body, StandardCharsets.UTF_8);
+            OwnerOnlyFiles.writeString(runDir.resolve(name), body);
         }
         if (latestMarkdown != null && latestMarkdown.getParent() != null) {
             Files.writeString(latestMarkdown.getParent().resolve(name), body, StandardCharsets.UTF_8);

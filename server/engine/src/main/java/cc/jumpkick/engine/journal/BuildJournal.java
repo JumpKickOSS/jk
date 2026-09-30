@@ -16,6 +16,7 @@ import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -145,7 +146,7 @@ public final class BuildJournal {
             Path projectPath = Path.of(record.dir() == null || record.dir().isBlank() ? "." : record.dir());
             String coord = record.coord() == null || record.coord().isBlank() ? "unknown:unknown" : record.coord();
             Path home = ProjectBuilds.projectHome(buildsRoot, coord, projectPath);
-            Files.createDirectories(home.resolve(ProjectBuilds.RUNS));
+            OwnerOnlyFiles.createDirectories(home.resolve(ProjectBuilds.RUNS));
             ProjectBuilds.writeIdentity(home, coord, projectPath);
             long stampMillis = record.finishedAt() > 0
                     ? record.finishedAt()
@@ -167,12 +168,12 @@ public final class BuildJournal {
             Path tmp = home.resolve(ProjectBuilds.RUNS).resolve("." + dirName + ".tmp");
             PathUtil.deleteRecursively(tmp);
             try {
-                Files.createDirectory(tmp);
+                OwnerOnlyFiles.createDirectory(tmp);
             } catch (FileAlreadyExistsException e) {
                 // A stale staging dir from a killed engine; numbers are allocated under a lock and
                 // job dirs carry the pid, so no live writer shares this name.
                 PathUtil.deleteRecursively(tmp);
-                Files.createDirectory(tmp);
+                OwnerOnlyFiles.createDirectory(tmp);
             }
             try {
                 // Non-build rows share a millisecond timestamp. The directory name is unique
@@ -195,6 +196,7 @@ public final class BuildJournal {
                     // orphan may overwrite). Prefer atomic replace of contents.
                     PathUtil.deleteRecursively(target);
                 }
+                OwnerOnlyFiles.seal(tmp);
                 move(tmp, target);
                 if (!record.running() && !record.synthetic() && BuildHistoryKinds.isBuildLike(record.kind()))
                     MetricsHarvest.get().request();
@@ -231,7 +233,7 @@ public final class BuildJournal {
         Path tmp = parent.resolve("." + dirName + ".complete.tmp");
         try {
             PathUtil.deleteRecursively(tmp);
-            Files.createDirectory(tmp);
+            OwnerOnlyFiles.createDirectory(tmp);
             String timestamp = finished.id();
             if (timestamp == null || timestamp.isBlank()) {
                 timestamp = readRecord(target).map(BuildRecord::id).orElse(null);
@@ -247,6 +249,7 @@ public final class BuildJournal {
             Files.writeString(tmp.resolve(RECORD), Json.write(toWrite), StandardCharsets.UTF_8);
             writeSnapshot(tmp, snapshot);
             writeRunMetricsToml(tmp, toWrite);
+            OwnerOnlyFiles.seal(tmp);
             Files.move(tmp.resolve(RECORD), target.resolve(RECORD), StandardCopyOption.REPLACE_EXISTING);
             Files.deleteIfExists(target.resolve(ENGINE_OWNER));
             if (Files.isRegularFile(tmp.resolve(ProjectBuilds.METRICS))) {

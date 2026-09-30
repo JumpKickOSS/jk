@@ -27,6 +27,7 @@ import cc.jumpkick.scaffold.NewScaffolder;
 import cc.jumpkick.scaffold.ScaffoldVersions;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -196,7 +197,7 @@ public final class NewProjectOps {
     public static Preview preview(Request req) throws IOException {
         Prepared prep = prepare(req);
         Path tmpRoot = JkDirs.tmp();
-        Files.createDirectories(tmpRoot);
+        OwnerOnlyFiles.createDirectories(tmpRoot);
         Path scratch = Files.createTempDirectory(tmpRoot, "jk-new-preview-");
         Path probe = scratch.resolve(prep.name());
         try {

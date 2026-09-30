@@ -2,9 +2,11 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -187,11 +189,11 @@ public final class EngineLogSink extends OutputStream {
     }
 
     private void open(boolean truncate) throws IOException {
-        out = Files.newOutputStream(
+        out = Channels.newOutputStream(OwnerOnlyFiles.channel(
                 log,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE,
-                truncate ? StandardOpenOption.TRUNCATE_EXISTING : StandardOpenOption.APPEND);
+                truncate ? StandardOpenOption.TRUNCATE_EXISTING : StandardOpenOption.APPEND));
         BasicFileAttributes attrs = Files.readAttributes(log, BasicFileAttributes.class);
         fileKey = attrs.fileKey();
         created = attrs.creationTime();

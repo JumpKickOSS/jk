@@ -5,6 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.runtime.WorkSchedule;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Learned schedule-contention bias: the EWMA of {@code actual wall / raw simulated schedule} for
@@ -175,7 +177,7 @@ public final class ScheduleBias {
     }
 
     private static void write(Path f, Map<String, Double> m) throws IOException {
-        Files.createDirectories(f.getParent());
+        OwnerOnlyFiles.createDirectories(Objects.requireNonNull(f.getParent(), "a file has a directory"));
         StringBuilder sb = new StringBuilder(
                 "# schedule-bias — EWMA of actual/simulated wall per project|w<dirty-module bucket> (ScheduleBias)\n");
         for (Map.Entry<String, Double> e : m.entrySet()) {

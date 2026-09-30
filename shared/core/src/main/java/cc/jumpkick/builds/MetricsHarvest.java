@@ -7,6 +7,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -357,7 +359,7 @@ public final class MetricsHarvest {
     }
 
     private static void writeHostMetrics(Path file, Map<String, List<Double>> samples) throws IOException {
-        Files.createDirectories(file.getParent());
+        OwnerOnlyFiles.createDirectories(Objects.requireNonNull(file.getParent(), "a file has a directory"));
         // Read, fold and replace under the ledger lock: the calibration writer folds the same
         // file, and a fold that read before its write would drop the other's rows.
         FileLocks.withLock(ProjectBuilds.ledgerLock(file), () -> foldHostMetrics(file, samples));

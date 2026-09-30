@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentHashMap;
@@ -186,12 +187,16 @@ public final class FileLocks {
     private static Entry entry(Path lockFile) {
         Path key = lockFile.toAbsolutePath().normalize();
         try {
-            Path parent = key.getParent();
-            if (parent != null) Files.createDirectories(parent);
-            try {
-                Files.createFile(key);
-            } catch (FileAlreadyExistsException exists) {
-                // left by the holder before us, as intended
+            if (OwnerOnlyFiles.inState(key)) {
+                OwnerOnlyFiles.touch(key);
+            } else {
+                Path parent = key.getParent();
+                if (parent != null) Files.createDirectories(parent);
+                try {
+                    Files.createFile(key);
+                } catch (FileAlreadyExistsException exists) {
+                    // left by the holder before us, as intended
+                }
             }
             key = key.toRealPath();
         } catch (IOException | UnsupportedOperationException noFile) {
@@ -222,11 +227,15 @@ public final class FileLocks {
         @Nullable
         FileChannel open() throws IOException {
             if (channel != null) return channel;
-            Path parent = file.getParent();
-            if (parent != null) Files.createDirectories(parent);
+            OpenOption[] options = {StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ};
             try {
-                channel = FileChannel.open(
-                        file, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
+                if (OwnerOnlyFiles.inState(file)) {
+                    channel = OwnerOnlyFiles.channel(file, options);
+                } else {
+                    Path parent = file.getParent();
+                    if (parent != null) Files.createDirectories(parent);
+                    channel = FileChannel.open(file, options);
+                }
             } catch (NoSuchFileException | UnsupportedOperationException noLockFile) {
                 return null;
             }

@@ -4,6 +4,7 @@ package cc.jumpkick.cache;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
@@ -235,7 +237,7 @@ public final class LockTimings {
 
     private static void writeUnlocked(Snapshot s) throws IOException {
         Path file = defaultFile();
-        Files.createDirectories(file.getParent());
+        OwnerOnlyFiles.createDirectories(Objects.requireNonNull(file.getParent(), "a file has a directory"));
         StringBuilder sb = new StringBuilder();
         sb.append("# jk lock phase timings (ms) — successful locks only\n");
         sb.append("# Atomized host priors: scale by package count for project-specific ETAs.\n");

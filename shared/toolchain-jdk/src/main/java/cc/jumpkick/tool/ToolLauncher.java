@@ -5,6 +5,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -51,15 +52,8 @@ public final class ToolLauncher {
             List<String> jvmArgs)
             throws IOException {
         Path envDir = LauncherName.resolveChild(envsRoot, env.binName());
-        Files.createDirectories(envDir);
         Files.createDirectories(binDir);
-
-        Files.writeString(
-                envDir.resolve("env.json"),
-                renderEnvJson(env, javaHome, provenance, jvmArgs),
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING);
+        AtomicWrites.replace(envDir.resolve("env.json"), renderEnvJson(env, javaHome, provenance, jvmArgs));
 
         Path launcher = LauncherName.resolveChild(binDir, env.binName() + (Os.isWindows() ? ".cmd" : ""));
         String script = Os.isWindows()
@@ -92,14 +86,8 @@ public final class ToolLauncher {
             @Nullable ToolProvenance provenance)
             throws IOException {
         Path envDir = LauncherName.resolveChild(envsRoot, env.binName());
-        Files.createDirectories(envDir);
         Files.createDirectories(binDir);
-        Files.writeString(
-                envDir.resolve("env.json"),
-                renderEnvJson(env, javaHome, provenance, List.of()),
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING);
+        AtomicWrites.replace(envDir.resolve("env.json"), renderEnvJson(env, javaHome, provenance, List.of()));
 
         Path launcher = LauncherName.resolveChild(binDir, env.binName() + (Os.isWindows() ? ".cmd" : ""));
         String cp = env.classpath().isEmpty() ? null : Classpaths.join(env.classpath());
