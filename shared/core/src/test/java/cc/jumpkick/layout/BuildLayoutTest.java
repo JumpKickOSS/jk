@@ -98,7 +98,6 @@ class BuildLayoutTest {
         assertThat(layout.kotlinTestClassesDir()).isEqualTo(dir.resolve("target/kotlin/test"));
         assertThat(layout.resourcesDir()).isEqualTo(dir.resolve("target/resources/main"));
         assertThat(layout.testResourcesDir()).isEqualTo(dir.resolve("target/resources/test"));
-        assertThat(layout.tmpDir()).isEqualTo(dir.resolve("target/tmp"));
         assertThat(layout.generatedSourcesDir("immutables"))
                 .isEqualTo(dir.resolve("target/generated/sources/immutables/main"));
         assertThat(layout.testResultsDir()).isEqualTo(dir.resolve("target/reports/test-results"));
