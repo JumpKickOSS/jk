@@ -190,6 +190,91 @@ class PomProtobufImportTest {
                         + "options = [\"@generated=omit\", \"jakarta_omit\"]\n");
     }
 
+    /**
+     * hadoop-yarn-csi's shape: ascopes' plugin names protoc by {@code <protocVersion>} and runs
+     * grpc-java as a {@code <binaryMavenPlugin>} under its {@code generate} goal — the {@code
+     * [protobuf.grpc-java]} entry, so the service stubs are generated beside the messages.
+     */
+    @Test
+    void an_ascopes_binary_maven_plugin_is_a_protoc_plugin_entry(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), ROOT.formatted(""));
+        Path protoDir = Files.createDirectories(tempDir.resolve("project/src/main/proto"));
+        Files.writeString(
+                protoDir.resolve("csi.proto"),
+                "syntax = \"proto3\";\nmessage Ping {}\nservice Identity {\n  rpc probe (Ping) returns (Ping);\n}\n");
+        String plugin = """
+                <plugin>
+                  <groupId>io.github.ascopes</groupId>
+                  <artifactId>protobuf-maven-plugin</artifactId>
+                  <version>4.1.3</version>
+                  <configuration>
+                    <protocVersion>3.25.5</protocVersion>
+                    <binaryMavenPlugins>
+                      <binaryMavenPlugin>
+                        <groupId>io.grpc</groupId>
+                        <artifactId>protoc-gen-grpc-java</artifactId>
+                        <version>${genrpc.version}</version>
+                        <options>@generated=omit</options>
+                      </binaryMavenPlugin>
+                      <binaryMavenPlugin>
+                        <groupId>com.salesforce.servicelibs</groupId>
+                        <artifactId>reactor-grpc</artifactId>
+                        <version>1.2.4</version>
+                        <skip>true</skip>
+                      </binaryMavenPlugin>
+                    </binaryMavenPlugins>
+                  </configuration>
+                  <executions><execution><goals><goal>generate</goal></goals></execution></executions>
+                </plugin>
+                """;
+        String module = MODULE.replace(
+                "<artifactId>nacos-consistency</artifactId>",
+                "<artifactId>hadoop-yarn-csi</artifactId><properties><genrpc.version>1.53.0</genrpc.version></properties>");
+        PomImporter.Result result = TestImporters.importXml(tempDir, module.formatted(plugin));
+
+        PluginConfig protobuf = result.jkBuild().pluginConfig("protobuf").orElseThrow();
+        assertThat(protobuf.string("version")).isEqualTo("3.25.5");
+        assertThat(protobuf.entries()).containsOnlyKeys("grpc-java");
+        assertThat(protobuf.entries().get("grpc-java"))
+                .containsEntry("plugin", "io.grpc:protoc-gen-grpc-java:1.53.0")
+                .containsEntry("options", List.of("@generated=omit"));
+        assertThat(result.report().hasErrors()).as(messages(result).toString()).isFalse();
+        assertThat(messages(result))
+                .noneMatch(m -> m.contains("`generate`"))
+                .noneMatch(m -> m.contains("no `[protobuf]` key"));
+    }
+
+    /** tutorials' shape: ascopes' {@code <sourceDirectories>} are the table's {@code src}. */
+    @Test
+    void ascopes_source_directories_are_the_tables_src(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), ROOT.formatted(""));
+        Path protoDir = Files.createDirectories(tempDir.resolve("project/src/main/resources"));
+        Files.writeString(protoDir.resolve("user.proto"), "syntax = \"proto3\";\nmessage User {}\n");
+        Files.createDirectories(tempDir.resolve("project/src/main/shared"));
+        String plugin = """
+                <plugin>
+                  <groupId>io.github.ascopes</groupId>
+                  <artifactId>protobuf-maven-plugin</artifactId>
+                  <version>4.1.3</version>
+                  <configuration>
+                    <protocVersion>4.33.1</protocVersion>
+                    <sourceDirectories>
+                      <sourceDirectory>src/main/resources</sourceDirectory>
+                      <sourceDirectory>src/main/shared</sourceDirectory>
+                    </sourceDirectories>
+                  </configuration>
+                  <executions><execution><goals><goal>generate</goal></goals></execution></executions>
+                </plugin>
+                """;
+        PomImporter.Result result = TestImporters.importXml(tempDir, MODULE.formatted(plugin));
+
+        PluginConfig protobuf = result.jkBuild().pluginConfig("protobuf").orElseThrow();
+        assertThat(protobuf.string("version")).isEqualTo("4.33.1");
+        assertThat(protobuf.stringList("src")).containsExactly("src/main/resources", "src/main/shared");
+        assertThat(protobuf.entries()).isEmpty();
+        assertThat(result.report().hasErrors()).as(messages(result).toString()).isFalse();
+    }
+
     /** {@code compile-custom} with a plugin artifact the import cannot resolve is a row: the entry has to be written by hand. */
     @Test
     void an_unresolvable_plugin_artifact_is_a_row(@TempDir Path tempDir) throws Exception {
