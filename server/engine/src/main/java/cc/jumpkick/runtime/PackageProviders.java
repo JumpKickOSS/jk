@@ -25,8 +25,9 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Names the coordinate that provides a package javac could not find. A {@code package does not
- * exist} diagnostic gains a {@code provided by:} line, indented the way javac indents {@code
+ * Names the coordinate that provides a package the compiler could not find. A javac {@code package
+ * does not exist} diagnostic, or a kotlinc {@code Unresolved reference} on an {@code import} line
+ * ({@link KotlinImports}), gains a {@code provided by:} line, indented the way javac indents {@code
  * symbol:}. The coordinate is, in order: a direct dependency the previous lock carried in this
  * compile's scopes and the current lock does not, when that dependency's closure holds the
  * package; a lock row whose jar holds the package and is not on this module's compile classpath;
@@ -230,6 +231,22 @@ public final class PackageProviders {
         return fromPlatform > 0 ? fromPlatform : fromStarter;
     }
 
+    /**
+     * {@code diagnostics} with a {@code provided by:} line under each missing-package error that
+     * has a provider. {@code classpath} is the compile's own classpath and {@code scopes} the lock
+     * scopes it read. The lookup runs only when such an error is present and the plan has a lock.
+     */
+    public static List<CompileResult.Diagnostic> enrich(
+            TaskContext ctx, List<Path> classpath, Set<Scope> scopes, List<CompileResult.Diagnostic> diagnostics) {
+        boolean missingPackage = false;
+        for (CompileResult.Diagnostic d : diagnostics) {
+            if (!missingPackages(d).isEmpty()) missingPackage = true;
+        }
+        if (!missingPackage) return diagnostics;
+        PackageProviders providers = forContext(ctx, classpath, scopes);
+        return providers == null ? diagnostics : providers.enrich(diagnostics);
+    }
+
     /** {@code diagnostics} with a {@code provided by:} line under each missing-package error that has a provider. */
     public List<CompileResult.Diagnostic> enrich(List<CompileResult.Diagnostic> diagnostics) {
         List<CompileResult.Diagnostic> out = new ArrayList<>(diagnostics.size());
@@ -238,10 +255,14 @@ public final class PackageProviders {
     }
 
     private CompileResult.Diagnostic enrich(CompileResult.Diagnostic d) {
-        String pkg = missingPackage(d);
-        if (pkg == null) return d;
+        List<String> packages = missingPackages(d);
+        if (packages.isEmpty()) return d;
         StringBuilder details = new StringBuilder();
-        String provider = provider(pkg);
+        String provider = null;
+        for (String pkg : packages) {
+            provider = provider(pkg);
+            if (provider != null) break;
+        }
         if (provider != null) details.append("\n  ").append(LABEL).append(' ').append(provider);
         if (!withoutFile.isEmpty())
             details.append("\n  ").append(WITHOUT_FILE).append(' ').append(withoutFile());
@@ -262,12 +283,16 @@ public final class PackageProviders {
         return String.join(", ", named);
     }
 
-    /** The package a {@code compiler.err.doesnt.exist} error names, or null for any other diagnostic. */
-    static @Nullable String missingPackage(CompileResult.Diagnostic d) {
-        if (d.severity() != CompileResult.Severity.ERROR) return null;
-        if (!d.key().isEmpty() && !d.key().equals("compiler.err.doesnt.exist")) return null;
+    /**
+     * The package a {@code compiler.err.doesnt.exist} error names, or the candidates of a kotlinc
+     * unresolved import, most specific first; empty for any other diagnostic.
+     */
+    static List<String> missingPackages(CompileResult.Diagnostic d) {
+        if (d.severity() != CompileResult.Severity.ERROR) return List.of();
+        if (!d.key().isEmpty() && !d.key().equals("compiler.err.doesnt.exist")) return List.of();
         Matcher m = PACKAGE.matcher(d.message());
-        return m.find() ? m.group(1) : null;
+        if (m.find()) return List.of(m.group(1));
+        return d.key().isEmpty() ? KotlinImports.missingPackages(d) : List.of();
     }
 
     /**

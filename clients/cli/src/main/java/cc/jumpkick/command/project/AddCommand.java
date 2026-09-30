@@ -284,26 +284,7 @@ public final class AddCommand implements CliCommand {
         String version = module.version();
         String name = (libraryFlag != null && !libraryFlag.isBlank()) ? libraryFlag : artifact;
 
-        // 1. Dependency edge into the current project, pinned to the module's
-        //    version — matching how this repo's own modules reference siblings.
-        try {
-            EngineEdits.apply(
-                    currentToml, "add-dependency", List.of(scope.canonical(), name, group, artifact, version));
-        } catch (IOException e) {
-            CommandWedge.printFail("Add", e.getMessage());
-            return 1;
-        }
-        CommandWedge.printOk(
-                "Add",
-                "Added "
-                        + Coords.shortName(name)
-                        + " ("
-                        + Coords.gav(group, artifact, version)
-                        + ") to ["
-                        + scope.tomlSection()
-                        + "]");
-
-        // 2. Register membership in the enclosing workspace root (cwd itself
+        // 1. Register membership in the enclosing workspace root (cwd itself
         //    when cwd is the root).
         Path root = WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
         Path rootToml = root.resolve(ManifestPaths.MANIFEST);
@@ -311,11 +292,7 @@ public final class AddCommand implements CliCommand {
         try {
             if (!target.startsWith(root)) {
                 CommandWedge.printFail(
-                        "Add",
-                        raw
-                                + " is outside the workspace root "
-                                + root
-                                + "; added the dependency but not registering it as a module.");
+                        "Add", raw + " is outside the workspace root " + root + "; not registering it as a module.");
             } else if (Files.exists(rootToml) && (rootInfo = ProjectInfos.orNull(root)) != null) {
                 // Adding the first local module promotes a plain project into a workspace root
                 // (Cargo/uv semantics) — without the registration the dependency names a
@@ -334,6 +311,25 @@ public final class AddCommand implements CliCommand {
         } catch (RuntimeException e) {
             CommandWedge.printFail("Add", "could not register workspace module: " + e.getMessage());
         }
+        // 2. Dependency edge into the current project, pinned to the module's version. A member is
+        //    built, not fetched, so registering it first keeps the edit from looking it up.
+        try {
+            EngineEdits.apply(
+                    currentToml, "add-dependency", List.of(scope.canonical(), name, group, artifact, version));
+        } catch (IOException e) {
+            CommandWedge.printFail("Add", e.getMessage());
+            return 1;
+        }
+        CommandWedge.printOk(
+                "Add",
+                "Added "
+                        + Coords.shortName(name)
+                        + " ("
+                        + Coords.gav(group, artifact, version)
+                        + ") to ["
+                        + scope.tomlSection()
+                        + "]");
+
         return 0;
     }
 

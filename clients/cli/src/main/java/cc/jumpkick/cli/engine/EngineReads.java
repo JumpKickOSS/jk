@@ -120,7 +120,12 @@ final class EngineReads {
     static boolean edit(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
         boolean changed = request(
                 paths,
-                new EditRequest(file.toString(), op, args).encode(),
+                new EditRequest(
+                                file.toString(),
+                                op,
+                                args,
+                                SessionContext.current().offline())
+                        .encode(),
                 EngineProtocol.EDIT_ACK,
                 "edit request",
                 line -> {
@@ -136,7 +141,12 @@ final class EngineReads {
     static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
         return request(
                 paths,
-                new EditRequest(file.toString(), op, args).encode(),
+                new EditRequest(
+                                file.toString(),
+                                op,
+                                args,
+                                SessionContext.current().offline())
+                        .encode(),
                 EngineProtocol.EDIT_ACK,
                 "edit request",
                 line -> {

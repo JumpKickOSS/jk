@@ -75,8 +75,9 @@ own key for the diagnostic (`compiler.err.cant.resolve.location`), which the com
 beside every diagnostic and the record carries as `key`; the shape of the message is the fallback
 for kotlinc. The hint quotes the symbol, package or types from the compiler's own message —
 `symbol:` and `location:` for cannot find symbol — and names `jk add` when a dependency is the
-likely repair. For package does not exist the compile step looks the package up before the
-diagnostic is journaled, offline, and writes `provided by: group:artifact (where)` under the error.
+likely repair. For package does not exist, and for a kotlinc unresolved reference on an `import` line (the
+import's package), the compile step looks the package up before the diagnostic is journaled,
+offline, and writes `provided by: group:artifact (where)` under the error.
 `where` is `removed from this module's dependencies` when the previous lock carried a direct
 dependency in this compile's scopes whose closure holds the package and the current lock does not
 — the coordinate to add back, at most two; else `in the lock, not on this module's compile
