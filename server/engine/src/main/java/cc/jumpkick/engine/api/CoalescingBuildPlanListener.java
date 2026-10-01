@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -273,7 +274,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
 
     /** Flush the pending samples, then pass {@code event} through, with nothing emitted between. */
     private void structural(Runnable event) {
-        emitting.lock();
+        lockEmitting();
         try {
             flushEmitting();
             event.run();
@@ -285,11 +286,43 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     /** Emit any pending hot samples now (also called before structural events). */
     public void flush() {
         if (closed.get()) return;
-        emitting.lock();
+        lockEmitting();
         try {
             flushEmitting();
         } finally {
             emitting.unlock();
+        }
+    }
+
+    /**
+     * Take {@link #emitting} as a managed block: the holder may be waiting for a slow client to
+     * drain ({@link WireWriter#sendQuiet}), and a CPU-pool worker queued behind it then has a spare
+     * thread run in its place.
+     */
+    private void lockEmitting() {
+        if (emitting.tryLock()) return;
+        try {
+            ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker() {
+                private boolean held;
+
+                @Override
+                public boolean block() {
+                    if (!held) {
+                        emitting.lock();
+                        held = true;
+                    }
+                    return true;
+                }
+
+                @Override
+                public boolean isReleasable() {
+                    if (!held) held = emitting.tryLock();
+                    return held;
+                }
+            });
+        } catch (InterruptedException e) {
+            // block() takes the lock uninterruptibly and never throws this
+            Thread.currentThread().interrupt();
         }
     }
 
