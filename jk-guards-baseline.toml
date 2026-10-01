@@ -10,7 +10,7 @@
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -35,7 +35,7 @@ population = { files = 2203 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "server/toolchain" = { classes = 20, sites = 1776 }
 "shared/client-io" = { classes = 106, sites = 5913 }
@@ -688,7 +688,7 @@ population = { constants = 29, files = 2266, literals = 44297 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -733,7 +733,7 @@ population = { examined = 4 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -1296,10 +1296,6 @@ in     = "server/io"
 at     = "cc.jumpkick.repo.MavenMetadataCache#touch(Ljava/nio/file/Path;)V -> java.time.Instant#now()Ljava/time/Instant;"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.RepoGroup$VersionsEntry#expired()Z -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
 in     = "server/resolver"
 at     = "cc.jumpkick.resolver.KmpRedirects#facts(Ljava/lang/String;Ljava/lang/String;)Lcc/jumpkick/resolver/KmpRedirects$ModuleFacts; -> java.lang.System#nanoTime()J"
 reason = "KmpRedirects' profiling nanoTime read moved from selectionFor into facts when the memo grew Gradle metadata constraints; same site, new owner method"
@@ -1564,7 +1560,7 @@ population = { examined = 15 }
 [engine-log-owner.populations]
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -1613,7 +1609,7 @@ population = { files = 1888 }
 "plugins/test-runner" = { classes = 15, sites = 0 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 0 }
-"server/io" = { classes = 50, sites = 0 }
+"server/io" = { classes = 56, sites = 0 }
 "server/resolver" = { classes = 111, sites = 0 }
 "shared/client-io" = { classes = 106, sites = 0 }
 "shared/core" = { classes = 373, sites = 0 }
@@ -1945,7 +1941,7 @@ population = { examined = 5 }
 "plugins/test-runner" = { classes = 15, elements = 1 }
 "server/engine" = { classes = 1121, elements = 20 }
 "server/guard" = { classes = 178, elements = 7 }
-"server/io" = { classes = 50, elements = 1 }
+"server/io" = { classes = 56, elements = 1 }
 "server/resolver" = { classes = 111, elements = 3 }
 "shared/client-io" = { classes = 106, elements = 7 }
 "shared/core" = { classes = 373, elements = 17 }
@@ -1960,7 +1956,7 @@ population = { examined = 5 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -1975,7 +1971,7 @@ population = { examined = 5 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -1990,7 +1986,7 @@ population = { examined = 5 }
 "plugins/test-runner" = { classes = 15, sites = 832 }
 "server/engine" = { classes = 1121, sites = 54142 }
 "server/guard" = { classes = 178, sites = 8280 }
-"server/io" = { classes = 50, sites = 2206 }
+"server/io" = { classes = 56, sites = 2576 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
@@ -2004,7 +2000,7 @@ population = { examined = 5 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -2028,7 +2024,7 @@ population = { files = 2203 }
 "plugins/test-runner" = { classes = 15, sites = 832 }
 "server/engine" = { classes = 1121, sites = 54142 }
 "server/guard" = { classes = 178, sites = 8280 }
-"server/io" = { classes = 50, sites = 2206 }
+"server/io" = { classes = 56, sites = 2576 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
@@ -2131,7 +2127,7 @@ population = { examined = 15 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -2164,7 +2160,7 @@ population = { files = 2335 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -2265,7 +2261,7 @@ population = { files = 1920 }
 "plugins/test-runner" = { classes = 15, sites = 832 }
 "server/engine" = { classes = 1121, sites = 54142 }
 "server/guard" = { classes = 178, sites = 8280 }
-"server/io" = { classes = 50, sites = 2206 }
+"server/io" = { classes = 56, sites = 2576 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
@@ -2301,7 +2297,7 @@ population = { files = 1 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 50, sites = 2850 }
+"server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
