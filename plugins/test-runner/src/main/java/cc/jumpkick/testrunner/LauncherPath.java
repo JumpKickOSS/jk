@@ -580,13 +580,11 @@ final class LauncherPath {
     }
 
     /**
-     * Bound for a failure message on the wire — keep in lock-step with the engine aggregator's
-     * {@code JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS} and its {@code
-     * MESSAGE_TRUNCATION_MARKER}. Capping here bounds the JSONL line itself; the engine re-caps and
-     * recognises this exact form so a worker-capped message passes through with its own remainder
-     * count intact.
+     * Bound for a failure message on the wire: the engine's {@code FailureClip.MAX_MESSAGE_CHARS} and
+     * {@code MESSAGE_TRUNCATION_MARKER}. Capping here bounds the JSONL line itself; the engine keeps a
+     * message cut in this form as is, remainder count included.
      */
-    private static final int MAX_MESSAGE_CHARS = 8_192;
+    private static final int MAX_MESSAGE_CHARS = 4_096;
 
     private static final String MESSAGE_TRUNCATION_MARKER = " ... message truncated (";
 

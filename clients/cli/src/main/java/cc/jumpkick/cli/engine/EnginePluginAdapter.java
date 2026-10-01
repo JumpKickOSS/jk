@@ -10,6 +10,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.MvnResultsResultEvent;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.ProvisionResultEvent;
@@ -116,6 +117,7 @@ final class EnginePluginAdapter {
         return new WireStream.Decoder<>() {
             private final List<Task> steps = new ArrayList<>();
             private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+            private final FailureTextRefs texts = new FailureTextRefs();
             private @Nullable BuildPlanListener listener;
 
             @Override
@@ -142,7 +144,7 @@ final class EnginePluginAdapter {
                     case EngineProtocol.WORKSPACE_FINISH -> throw EngineEventDecoder.notASinglePlan();
                     case EngineProtocol.ERROR ->
                         throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
+                    default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, texts);
                 }
                 return null;
             }

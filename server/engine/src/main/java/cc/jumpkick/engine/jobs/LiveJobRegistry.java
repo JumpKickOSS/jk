@@ -89,7 +89,11 @@ public final class LiveJobRegistry {
         BuildAccumulator a = accumulatorOf.apply(eventRequestId);
         if (a != null) a.markUserCancelled(explicit, reason);
         LiveJob job = liveJobs.get(eventRequestId);
-        if (job != null) job.cancelSignal().countDown();
+        if (job != null) {
+            job.cancelSignal().countDown();
+            // A worker waiting for a stalled client to drain must not hold the cancel up.
+            WireWriter.unpace(job.writer());
+        }
         // Cancel runs after the request thread may be gone; the token and request id are explicit.
         Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
             // Workers first (SIGTERM → grace → SIGKILL), then interrupt the runner so

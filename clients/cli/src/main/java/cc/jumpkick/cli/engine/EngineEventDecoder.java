@@ -14,6 +14,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ErrorLineEvent;
 import cc.jumpkick.wire.protocol.EtaEvent;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.LabelEvent;
 import cc.jumpkick.wire.protocol.ModuleFinishEvent;
 import cc.jumpkick.wire.protocol.NoteEvent;
@@ -122,6 +123,7 @@ final class EngineEventDecoder {
         return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
             private final List<Task> steps = new ArrayList<>();
             private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+            private final FailureTextRefs texts = new FailureTextRefs();
             private @Nullable BuildPlanListener listener;
 
             @Override
@@ -156,7 +158,7 @@ final class EngineEventDecoder {
                     case EngineProtocol.WORKSPACE_FINISH -> throw notASinglePlan();
                     case EngineProtocol.ERROR ->
                         throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default -> dispatch(type, line, listener, diagnostics::add);
+                    default -> dispatch(type, line, listener, diagnostics::add, texts);
                 }
                 return null;
             }
@@ -192,6 +194,8 @@ final class EngineEventDecoder {
         return WireStream.pumpJob(reader, ch, new WireStream.Decoder<WorkspaceResult>() {
             /** The dir most recently opened by {@code plan-module}, for its {@code plan-step} lines. */
             private @Nullable String pendingPlanDir;
+
+            private final FailureTextRefs texts = new FailureTextRefs();
 
             @Override
             public @Nullable WorkspaceResult onLine(String type, String line) throws IOException {
@@ -260,9 +264,14 @@ final class EngineEventDecoder {
                         return failed;
                     }
                     default ->
-                        dispatch(type, line, planListenersByDir.getOrDefault(dir, NOOP), d -> diagnosticsByDir
-                                .computeIfAbsent(dir, k -> new ArrayList<>())
-                                .add(d));
+                        dispatch(
+                                type,
+                                line,
+                                planListenersByDir.getOrDefault(dir, NOOP),
+                                d -> diagnosticsByDir
+                                        .computeIfAbsent(dir, k -> new ArrayList<>())
+                                        .add(d),
+                                texts);
                 }
                 return null;
             }
@@ -283,9 +292,10 @@ final class EngineEventDecoder {
             String type,
             String line,
             @Nullable BuildPlanListener listener,
-            Consumer<BuildPlanResult.Diagnostic> onDiagnostic) {
+            Consumer<BuildPlanResult.Diagnostic> onDiagnostic,
+            FailureTextRefs texts) {
         if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
-            onDiagnostic.accept(diagnosticFromWire(line));
+            onDiagnostic.accept(diagnosticFromWire(line, texts));
             return;
         }
         if (listener == null) return;
@@ -343,7 +353,7 @@ final class EngineEventDecoder {
                 WarnEvent e = WarnEvent.decode(line);
                 listener.warn(e.task(), e.code(), e.message());
             }
-            case EngineProtocol.ERROR_LINE -> dispatchError(listener, line);
+            case EngineProtocol.ERROR_LINE -> dispatchError(listener, line, texts);
             case EngineProtocol.TASK_FINISH -> {
                 TaskFinishEvent e = TaskFinishEvent.decode(line);
                 listener.stepFinish(
@@ -360,18 +370,19 @@ final class EngineEventDecoder {
     }
 
     /** Dispatch a wire error line to the plan listener (enriched test-failure when fields present). */
-    private static void dispatchError(BuildPlanListener listener, String line) {
+    private static void dispatchError(BuildPlanListener listener, String line, FailureTextRefs texts) {
         ErrorLineEvent e = ErrorLineEvent.decode(line);
+        FailureTextRefs.Text text = texts.resolve(e.textId(), e.sameText(), e.message(), e.stack());
         TestFailureInfo failure = testFailureOf(
                 e.code(),
-                e.message(),
+                text.message(),
                 e.test(),
                 e.module(),
                 e.engine(),
                 e.testClass(),
                 e.method(),
                 e.exceptionClass(),
-                e.stack(),
+                text.stack(),
                 e.file(),
                 e.worker(),
                 e.line(),
@@ -379,24 +390,25 @@ final class EngineEventDecoder {
                 e.snippet(),
                 e.suite());
         if (failure != null) {
-            listener.error(e.task(), e.code(), e.message(), failure);
+            listener.error(e.task(), e.code(), text.message(), failure);
         } else {
-            listener.error(e.task(), e.code(), e.message(), e.test(), e.exceptionClass());
+            listener.error(e.task(), e.code(), text.message(), e.test(), e.exceptionClass());
         }
     }
 
-    private static BuildPlanResult.Diagnostic diagnosticFromWire(String line) {
+    private static BuildPlanResult.Diagnostic diagnosticFromWire(String line, FailureTextRefs texts) {
         PlanDiagnosticEvent e = PlanDiagnosticEvent.decode(line);
+        FailureTextRefs.Text text = texts.resolve(e.textId(), e.sameText(), e.message(), e.stack());
         TestFailureInfo f = testFailureOf(
                 e.code(),
-                e.message(),
+                text.message(),
                 e.test(),
                 e.module(),
                 e.engine(),
                 e.testClass(),
                 e.method(),
                 e.exceptionClass(),
-                e.stack(),
+                text.stack(),
                 e.file(),
                 e.worker(),
                 e.line(),
@@ -404,9 +416,9 @@ final class EngineEventDecoder {
                 e.snippet(),
                 e.suite());
         if (f != null) {
-            return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), f).withKey(e.key());
+            return new BuildPlanResult.Diagnostic(e.task(), e.code(), text.message(), f).withKey(e.key());
         }
-        return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), e.test(), e.exceptionClass())
+        return new BuildPlanResult.Diagnostic(e.task(), e.code(), text.message(), e.test(), e.exceptionClass())
                 .withKey(e.key());
     }
 

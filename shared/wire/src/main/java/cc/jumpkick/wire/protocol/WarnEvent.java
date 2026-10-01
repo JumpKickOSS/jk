@@ -23,7 +23,9 @@ public record WarnEvent(
         int snippetStart,
         int worker,
         List<String> snippet,
-        String stack) {
+        String stack,
+        int textId,
+        int sameText) {
     public String encode() {
         return DiagnosticFields.encode(
                 EngineProtocol.WARN,
@@ -44,11 +46,20 @@ public record WarnEvent(
                 worker,
                 snippet,
                 stack,
-                "");
+                "",
+                textId,
+                sameText);
     }
 
     /** The record for one failure's fields, with the caller's own dir/task/code/message/test. */
-    static WarnEvent of(String dir, String task, String code, String message, String test, TestFailureInfo f) {
+    static WarnEvent of(
+            String dir,
+            String task,
+            String code,
+            String message,
+            String test,
+            TestFailureInfo f,
+            FailureTextRefs.Ref ref) {
         return new WarnEvent(
                 dir,
                 task,
@@ -66,7 +77,9 @@ public record WarnEvent(
                 f.snippetStart(),
                 f.worker(),
                 f.snippet(),
-                f.stack());
+                f.stack(),
+                ref.textId(),
+                ref.sameText());
     }
 
     public static WarnEvent decode(String json) {
@@ -87,6 +100,8 @@ public record WarnEvent(
                 Jsonl.intValue(json, "snippetStart", 0),
                 Jsonl.intValue(json, "worker", 0),
                 Jsonl.strArray(json, "snippet"),
-                DiagnosticFields.str(json, "stack"));
+                DiagnosticFields.str(json, "stack"),
+                Jsonl.intValue(json, "textId", 0),
+                Jsonl.intValue(json, "sameText", 0));
     }
 }

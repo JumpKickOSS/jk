@@ -103,8 +103,8 @@ class MarkdownTestReportTest {
                         + stack.toString().replace("\t", "\\t").replace("\n", "\\n") + "\"}");
         report.publish(ws.resolve("core").toString(), "g:core");
         MarkdownTestReport.Entry e = sink.takeTests().getFirst().entries().getFirst();
-        assertThat(e.failureMessage()).hasSizeLessThanOrEqualTo(MarkdownTestReport.MAX_MESSAGE_CHARS + 1);
-        assertThat(e.failureStack()).hasSizeLessThanOrEqualTo(MarkdownTestReport.MAX_STACK_CHARS + 1);
+        assertThat(e.failureMessage()).hasSizeLessThanOrEqualTo(FailureClip.MAX_MESSAGE_CHARS + 64);
+        assertThat(e.failureStack()).hasSizeLessThanOrEqualTo(FailureClip.MAX_STACK_CHARS + 64);
         assertThat(e.failureStack())
                 .startsWith("java.lang.AssertionError: top")
                 .contains("Caused by: java.io.IOException: the root");

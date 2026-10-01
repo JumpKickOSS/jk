@@ -496,7 +496,8 @@ dropped for it. A client that reads nothing at all for `JK_STREAM_IDLE_MS` while
 waiting is dropped: its connection is closed, its job ends the way it does when a client
 disconnects, and the engine log says `dropped a client that stopped reading its stream`. A
 terminal suspended mid-build therefore pauses its build once the queue fills, and the build
-resumes when the terminal does. A connection no job owns — a probe,
+resumes when the terminal does. A `jk cancel` of a job whose client is not reading ends the wait at
+once: the cancelled job's threads stop waiting for room, and lines with no room are dropped. A connection no job owns — a probe,
 a status request, a cancel — is held to 10 seconds instead: a reply is one line its client is
 waiting for, and a client that has not read it in that long is gone.
 

@@ -128,7 +128,9 @@ class JsonlShapeFrozenBytesTest {
                                 0,
                                 0,
                                 List.of(),
-                                "")
+                                "",
+                                0,
+                                0)
                         .encode())
                 .isEqualTo(ENV + "error\",\"task\":\"run-tests\",\"code\":\"test-failure\",\"message\":\"boom\"}");
         assertThat(new TestFailureErrorLine(
@@ -147,7 +149,9 @@ class JsonlShapeFrozenBytesTest {
                                 12,
                                 10,
                                 List.of("x", "y"),
-                                "at a.T.m(T.java:12)")
+                                "at a.T.m(T.java:12)",
+                                0,
+                                0)
                         .encode())
                 .isEqualTo(
                         ENV

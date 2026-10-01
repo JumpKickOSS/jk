@@ -41,10 +41,10 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JUnitLauncher {
 
-    /** Marker appended by {@code ResultAggregator.truncateStack}; {@code EventRedaction} keys the cut-seam masking off it. */
+    /** Marker appended by {@link FailureClip#stack}; {@code EventRedaction} keys the cut-seam masking off it. */
     public static final String STACK_TRUNCATION_MARKER = "\n\t... stack truncated (";
 
-    /** Marker appended by {@code ResultAggregator.truncateMessage}. */
+    /** Marker appended by {@link FailureClip#message} and the test runner's own message cap. */
     public static final String MESSAGE_TRUNCATION_MARKER = " ... message truncated (";
 
     /** Marker prefix every protocol line carries. Must match {@code JsonEventWriter.PREFIX}. */

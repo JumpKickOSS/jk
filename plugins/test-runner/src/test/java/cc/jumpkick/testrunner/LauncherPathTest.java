@@ -408,13 +408,13 @@ class LauncherPathTest {
     // --- the message cap -----------------------------------------------------
 
     /**
-     * The engine's {@code JUnitLauncher.ResultAggregator.MESSAGE_TRUNCATION_MARKER}. Spelled out
+     * The engine's {@code JUnitLauncher.MESSAGE_TRUNCATION_MARKER}. Spelled out
      * here because the engine is not on this worker's classpath — the two must stay identical or
      * the engine stops recognising a worker-capped message and re-cuts it.
      */
     private static final String MARKER = " ... message truncated (";
 
-    private static final int CAP = 8_192;
+    private static final int CAP = 4_096;
 
     @Test
     void an_oversized_failure_message_is_capped_on_the_wire() {

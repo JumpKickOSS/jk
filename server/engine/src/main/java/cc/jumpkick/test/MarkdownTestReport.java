@@ -14,24 +14,12 @@ import org.jspecify.annotations.Nullable;
  * record is written. Companion to {@link XmlTestReport} (JUnit XML under {@code
  * target/reports/test-results/}).
  *
- * <p>A failure's message and stack are clipped at {@link #MAX_MESSAGE_CHARS} and {@link
- * #MAX_STACK_CHARS} — the report shows a few dozen lines and the cause chain, which the clip keeps
- * — and a repeated failure shares one copy ({@link FailureTexts}), so a suite whose every failure
- * carries the same forty-kilobyte trace costs kilobytes, not megabytes. A publish with no request
+ * <p>A failure's message and stack are clipped by {@link FailureClip}, and a repeated failure
+ * shares one copy ({@link FailureTexts}), so a suite whose every failure carries the same
+ * forty-kilobyte trace costs kilobytes, not megabytes. A publish with no request
  * open is dropped: nothing would drain it.
  */
 public final class MarkdownTestReport {
-
-    /** Characters of a failure message kept; the report renders one line of it. */
-    static final int MAX_MESSAGE_CHARS = 4_096;
-
-    /** Stack lines kept from the top of a failure trace before the clip keeps only its cause headers. */
-    static final int MAX_STACK_LINES = 64;
-
-    /** Characters of a failure stack kept after the line clip. */
-    static final int MAX_STACK_CHARS = 16_384;
-
-    private static final String CAUSED_BY = "Caused by: ";
 
     public record Entry(
             String className,
@@ -86,42 +74,9 @@ public final class MarkdownTestReport {
                 className,
                 display,
                 durationMs,
-                failureTexts.of(clip(failureMessage, MAX_MESSAGE_CHARS)),
-                failureTexts.of(boundedStack(failureStack)),
+                failureMessage == null ? null : failureTexts.held(FailureClip.message(failureMessage)),
+                failureStack == null ? null : failureTexts.held(FailureClip.stack(failureStack)),
                 null));
-    }
-
-    /** {@code text} cut at {@code max} characters with an ellipsis; {@code null} stays {@code null}. */
-    static @Nullable String clip(@Nullable String text, int max) {
-        if (text == null || text.length() <= max) return text;
-        return text.substring(0, max) + "…";
-    }
-
-    /**
-     * The first {@link #MAX_STACK_LINES} lines of {@code stack}, then every {@code Caused by:}
-     * header past them so the innermost cause survives, the whole cut at {@link #MAX_STACK_CHARS}.
-     */
-    static @Nullable String boundedStack(@Nullable String stack) {
-        if (stack == null || stack.length() <= MAX_STACK_CHARS) {
-            return stack;
-        }
-        String[] lines = stack.split("\n", -1);
-        StringBuilder sb = new StringBuilder();
-        int kept = Math.min(lines.length, MAX_STACK_LINES);
-        for (int i = 0; i < kept; i++) sb.append(lines[i]).append('\n');
-        int elided = 0;
-        for (int i = kept; i < lines.length; i++) {
-            if (lines[i].strip().startsWith(CAUSED_BY)) {
-                if (elided > 0) sb.append("\t… ").append(elided).append(" lines\n");
-                elided = 0;
-                sb.append(lines[i]).append('\n');
-            } else {
-                elided++;
-            }
-        }
-        if (elided > 0) sb.append("\t… ").append(elided).append(" lines\n");
-        String out = sb.toString();
-        return out.length() <= MAX_STACK_CHARS ? out : out.substring(0, MAX_STACK_CHARS) + "…";
     }
 
     /**

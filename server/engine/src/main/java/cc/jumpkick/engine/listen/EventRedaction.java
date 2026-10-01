@@ -8,6 +8,7 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.test.FailureClip;
 import cc.jumpkick.test.JUnitLauncher;
 import java.nio.file.Path;
 import java.util.List;
@@ -131,8 +132,10 @@ public final class EventRedaction {
         if (f == null) return null;
         String message = redactTruncationSeam(
                 redactor, redactSafe(redactor, f.message()), JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
-        String stack =
-                redactTruncationSeam(redactor, redactSafe(redactor, f.stack()), JUnitLauncher.STACK_TRUNCATION_MARKER);
+        String stack = redactTruncationSeam(
+                redactor,
+                redactTruncationSeam(redactor, redactSafe(redactor, f.stack()), FailureClip.LINE_TRUNCATION_MARKER),
+                JUnitLauncher.STACK_TRUNCATION_MARKER);
         if (Objects.equals(message, f.message()) && Objects.equals(stack, f.stack())) {
             return f;
         }
@@ -154,17 +157,19 @@ public final class EventRedaction {
 
     /**
      * Capture-time truncation can cut a secret mid-value, leaving a prefix the exact-substring
-     * pass cannot match. When {@code text} carries the capture marker, mask a dangling
-     * secret prefix at the cut point.
+     * pass cannot match. Mask a dangling secret prefix before each {@code marker} in {@code text}.
      */
     private static String redactTruncationSeam(SecretRedactor redactor, String text, String marker) {
-        if (text.isEmpty()) return text;
+        if (text.isEmpty() || !text.contains(marker)) return text;
         try {
-            int at = text.lastIndexOf(marker);
-            if (at < 0) return text;
-            String head = text.substring(0, at);
-            String masked = redactor.maskTrailingSecretPrefix(head);
-            return masked.equals(head) ? text : masked + text.substring(at);
+            StringBuilder out = new StringBuilder(text.length());
+            int from = 0;
+            for (int at = text.indexOf(marker); at >= 0; at = text.indexOf(marker, from)) {
+                out.append(redactor.maskTrailingSecretPrefix(text.substring(from, at)));
+                out.append(marker);
+                from = at + marker.length();
+            }
+            return out.append(text, from, text.length()).toString();
         } catch (RuntimeException e) {
             warnFailOpen(e);
             return text;

@@ -18,7 +18,11 @@ final class FailureTexts {
     /** The copy of {@code text} already held, else {@code text}, now held; {@code null} stays {@code null}. */
     @Nullable
     String of(@Nullable String text) {
-        if (text == null) return null;
+        return text == null ? null : held(text);
+    }
+
+    /** The copy of {@code text} already held, else {@code text}, now held. */
+    String held(String text) {
         String held = canonical.putIfAbsent(text, text);
         return held != null ? held : text;
     }

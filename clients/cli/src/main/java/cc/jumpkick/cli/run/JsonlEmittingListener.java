@@ -82,7 +82,7 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void error(String step, String code, String msg, @Nullable TestFailureInfo failure) {
-        line(JsonlShape.error(step, code, msg, failure), "error");
+        line(JsonlShape.error(step, code, msg, failure, JsonlShape.STREAM_TEXTS), "error");
     }
 
     @Override
