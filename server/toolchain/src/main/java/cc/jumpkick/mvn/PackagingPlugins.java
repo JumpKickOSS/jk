@@ -254,7 +254,9 @@ final class PackagingPlugins {
     /**
      * {@code [spring-boot] version} is the Boot version the chain resolves: the plugin's own, else the
      * managed {@code spring-boot} artifact (the starter parent or an imported BOM), else the {@code
-     * spring-boot.version} property. Without one the table is a row, since the key is required.
+     * spring-boot.version} property. Without one the table is a row, since the key is required. A
+     * POM that manages no {@code spring-boot} imports no Boot BOM, so the table says {@code platform
+     * = false}: Boot's BOM would otherwise re-version the module's transitives where Maven does not.
      */
     private static @Nullable PluginConfig mapSpringBoot(Plugin boot, Model model, ImportReport.Builder report) {
         for (Xpp3Dom config : PluginFacts.configurations(boot)) {
@@ -274,15 +276,19 @@ final class PackagingPlugins {
                         + " `jk image`, configured under `[image]`.");
             }
         }
+        @Nullable String managed = PluginFacts.managedVersion(model, "org.springframework.boot", "spring-boot");
         String version = PluginFacts.usable(boot.getVersion());
-        if (version == null) version = PluginFacts.managedVersion(model, "org.springframework.boot", "spring-boot");
+        if (version == null) version = managed;
         if (version == null) version = PluginFacts.usable(model.getProperties().getProperty("spring-boot.version"));
         if (version == null) {
             report.warning("`spring-boot-maven-plugin` is declared without a resolvable Boot version; add"
                     + " `[spring-boot] version = \"...\"` to jk.toml yourself.");
             return null;
         }
-        return new PluginConfig("spring-boot", Map.of("version", version));
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("version", version);
+        if (managed == null) values.put("platform", false);
+        return new PluginConfig("spring-boot", values);
     }
 
     /**

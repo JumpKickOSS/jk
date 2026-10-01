@@ -73,6 +73,16 @@ class PluginContributionsTest {
                 .contains("3.9.9");
     }
 
+    /** {@code platform = false}: no Boot BOM, and the loader is the version the table names. */
+    @Test
+    void platform_false_imports_no_bom_and_the_loader_is_the_written_version() {
+        JkBuild build = boot("platform = false\n");
+        assertThat(build.dependencies().of(Scope.PLATFORM)).isEmpty();
+        assertThat(PluginContributions.packagerDependencies(build, Path.of("."), BOOT_LOCKED_AT_4_1_1))
+                .extracting(PluginContributions.PackagerDep::version)
+                .containsOnly("4.0.0");
+    }
+
     // ---- [[contribute.compiler-args]] ----------------------------------------------------------
 
     @Test
