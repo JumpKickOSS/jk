@@ -317,7 +317,7 @@ public final class JobWorkers {
             throw new InterruptedIOException("cancelled while waiting for memory");
         }
         List<String> sized = launchCommand(pb.command(), grant);
-        if (sized != pb.command()) {
+        if (sized != pb.command() && grant.clamped()) {
             Log.info("jk engine: lowered -Xmx to " + WorkerLeases.format(grant.xmxBytes()) + " so the worker fits the "
                     + WorkerLeases.format(leases.capacityBytes()) + " budget");
         } else if (grant.userPinned() && grant.overBudget()) {
@@ -353,13 +353,14 @@ public final class JobWorkers {
     }
 
     /**
-     * The command {@code launch} execs. A planned heap that does not fit is lowered; a user pin is
+     * The command {@code launch} execs. A planned heap that does not fit is lowered, and a
+     * native-image builder that names no heap is given the one it was leased; a user pin is
      * returned unchanged.
      */
     static List<String> launchCommand(List<String> command, WorkerLeases.Grant grant) {
-        if (!grant.userPinned() && grant.clamped() && grant.jvm()) {
-            return WorkerLeases.rewriteHeap(command, grant.xmxBytes());
-        }
+        if (grant.userPinned() || !grant.jvm()) return command;
+        boolean unsizedBuilder = WorkerLeases.nativeImageCommand(command) && WorkerLeases.parseXmx(command) <= 0;
+        if (grant.clamped() || unsizedBuilder) return WorkerLeases.rewriteHeap(command, grant.xmxBytes());
         return command;
     }
 
