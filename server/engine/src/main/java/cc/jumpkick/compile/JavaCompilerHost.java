@@ -735,9 +735,7 @@ public final class JavaCompilerHost {
             if (exit != 0 && !(shedding && inflight.get() == null)) {
                 String output = transcript.render();
                 pendingCause = WorkerFate.classify(exit, output);
-                String how = pendingCause == WorkerFate.Cause.KILLED_FOR_MEMORY
-                        ? WorkerContainment.KILLED_FOR_MEMORY
-                        : "exited with status " + exit;
+                String how = WorkerFate.phrase(pendingCause, "exited with status " + exit);
                 throw new IOException("zinc worker " + how);
             }
         }
@@ -1011,7 +1009,8 @@ public final class JavaCompilerHost {
         /**
          * The item the dead worker was compiling. A jk-planned worker that ran out of heap is
          * answered on the next {@link HeapLadder} rung. A worker the kernel killed for memory is answered once
-         * on the same heap, after a new lease. A pinned heap is not resized. Any other death, while
+         * on the same heap, after a new lease; one killed at its own worker cap is not answered
+         * again. A pinned heap is not resized. Any other death, while
          * this job is still alive, goes back on the queue once; the second death fails it.
          */
         private void settle(CompileWork cur, Throwable e) {
@@ -1037,6 +1036,10 @@ public final class JavaCompilerHost {
                 String label = cur.req == null ? "" : cur.req.label();
                 String pin = cur.req == null ? "" : pinOf(cur.req);
                 fail(cur, WorkerHeap.pinned(label, pin, output));
+                return;
+            }
+            if (cause == WorkerFate.Cause.OVER_WORKER_CAP) {
+                fail(cur, withWorkerTail(e));
                 return;
             }
             if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY && heap != null && alive && !cur.revived) {

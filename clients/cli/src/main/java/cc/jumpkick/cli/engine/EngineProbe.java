@@ -106,6 +106,11 @@ public final class EngineProbe {
              * when nothing is queued, {@code null} when the engine did not report.
              */
             @Nullable String workerWaiting,
+            /**
+             * Workers far over their lease, largest first; {@code ""} when none is, {@code null}
+             * when the engine did not report.
+             */
+            @Nullable String workerOverLease,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
             List<Job> jobs) {
 
@@ -180,6 +185,7 @@ public final class EngineProbe {
                     -1,
                     -1,
                     false,
+                    null,
                     null,
                     jobs);
         }
@@ -337,6 +343,7 @@ public final class EngineProbe {
                     Jsonl.intValue(ack, "workerCpuCap", -1),
                     Jsonl.bool(ack, "overbookingOff", false),
                     Jsonl.str(ack, "workerWaiting"),
+                    Jsonl.str(ack, "workerOverLease"),
                     Job.decodeAll(ack)));
         } catch (IOException e) {
             return Optional.empty();

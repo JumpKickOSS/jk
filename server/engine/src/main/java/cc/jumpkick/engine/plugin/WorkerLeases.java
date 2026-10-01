@@ -12,12 +12,15 @@ import cc.jumpkick.run.TaskNames;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntSupplier;
@@ -44,6 +47,11 @@ import org.jspecify.annotations.Nullable;
  * first. On Linux it may instead be granted past the budget while {@link OverbookSignals} say the
  * host has room; {@code CI} and {@code JK_OVERBOOK=0} turn that off. A running fork is never killed
  * to make the room.
+ *
+ * <p>The lease is an estimate. Every {@link WorkerRss#SAMPLE_EVERY} the engine ledger reads each live
+ * worker's resident set and charges the larger of the two, so a worker whose native memory
+ * (metaspace, thread stacks, direct buffers) outgrows its lease holds back new grants by what it
+ * really uses, and is named in the run's warnings, {@code jk engine status} and the engine log.
  *
  * <p>A {@linkplain Resident resident} helper holds its lease between requests. When the head of the
  * queue would fit once residents let go, the ledger asks them to exit; they finish the request in
@@ -113,8 +121,13 @@ public final class WorkerLeases {
      * This process's ledger. Capacity is re-read from {@link WorkerContainment#budgetBytes()} at
      * most every two seconds; that read honors {@code JK_WORKER_BUDGET_MB}.
      */
-    private static final Ledger ENGINE =
-            new Ledger(new ProcessBudget(), WorkerLeases::forkCpuCap, JobWorkers::ended, OverbookSignals.live());
+    private static final Ledger ENGINE = new Ledger(
+                    new ProcessBudget(),
+                    WorkerLeases::forkCpuCap,
+                    JobWorkers::ended,
+                    OverbookSignals.live(),
+                    MemoryProbe::rssBytes)
+            .sampleEvery(WorkerRss.SAMPLE_EVERY);
 
     private WorkerLeases() {}
 
@@ -301,7 +314,7 @@ public final class WorkerLeases {
     }
 
     /** The program {@code command} execs, looking past a leading {@code setsid}. */
-    private static String executable(List<String> command) {
+    static String executable(List<String> command) {
         if (command.isEmpty()) return "";
         if (command.size() > 1 && setsid(command.get(0))) return command.get(1);
         return command.get(0);
@@ -313,7 +326,7 @@ public final class WorkerLeases {
         return name.equals("setsid");
     }
 
-    private static boolean jvmCommand(List<String> command) {
+    static boolean jvmCommand(List<String> command) {
         return !command.isEmpty() && jvmExecutable(executable(command));
     }
 
@@ -333,10 +346,12 @@ public final class WorkerLeases {
     }
 
     /**
-     * What {@code jk engine status} prints. {@code overbookedBytes} is the part of {@code
-     * leasedBytes} above {@code budgetBytes}, or {@code 0} when the reserved total fits. {@code
+     * What {@code jk engine status} prints. {@code leasedBytes} charges each worker the larger of its
+     * lease and its last measured resident set. {@code overbookedBytes} is the part of {@code
+     * leasedBytes} above {@code budgetBytes}, or {@code 0} when the charged total fits. {@code
      * waiting} names what the head of the queue needs and who holds the memory; {@code ""} when
-     * nothing is queued.
+     * nothing is queued. {@code overLease} names the workers {@linkplain WorkerRss#farOverLease far over
+     * their lease}, largest first; {@code ""} when none is.
      */
     public record Snapshot(
             long budgetBytes,
@@ -345,7 +360,8 @@ public final class WorkerLeases {
             int queued,
             int runningJvms,
             int cpuCap,
-            String waiting) {}
+            String waiting,
+            String overLease) {}
 
     /**
      * A helper that stays resident between requests (the build-script host). {@code yield} is called
@@ -363,18 +379,33 @@ public final class WorkerLeases {
      * One queue of waiters and the bytes and JVM slots currently handed out. {@code capacityBytes}
      * and {@code cpuCap} are read when a lease is granted, so a supplier may change what fits
      * without replacing the ledger.
+     *
+     * <p>A granted worker whose pid is {@linkplain Grant#watch known} is charged the larger of its
+     * lease and the resident set {@link #sample} last read, so a worker that outgrows its lease
+     * holds back new grants by what it really uses. While any worker is {@linkplain WorkerRss#farOverLease
+     * far over its lease}, nothing is overbooked: the reservation no longer bounds what running
+     * forks may use.
      */
     public static final class Ledger {
         private final LongSupplier capacity;
         private final IntSupplier cpus;
         private final LongPredicate ended;
         private final OverbookSignals.Source signals;
+        private final WorkerRss.Source rss;
         private final Object lock = new Object();
         private final ArrayDeque<Waiter> queue = new ArrayDeque<>();
         private final LinkedHashSet<Waiter> held = new LinkedHashSet<>();
         private final ConcurrentHashMap<Long, AtomicLong> waited = new ConcurrentHashMap<>();
+        private final Set<TaskContext> warnedSteps = Collections.newSetFromMap(new WeakHashMap<>());
         private long leased;
+        /** Sum over held workers of the resident bytes above their lease. */
+        private long excess;
+        /** Held workers {@linkplain WorkerRss#farOverLease far over their lease}. */
+        private int overLeaseCount;
+
         private int jvmRunning;
+        private @Nullable Duration sampleEvery;
+        private boolean sampling;
 
         /**
          * {@code ended} is true once that request has been shut down. A lease waiting for it is
@@ -388,14 +419,42 @@ public final class WorkerLeases {
         /**
          * As {@link #Ledger(LongSupplier, IntSupplier, LongPredicate)} with {@code signals} consulted
          * when a lease does not fit the reservation. The source is read under this ledger's lock, so
-         * a cached source is what keeps that off the syscall path.
+         * a cached source is what keeps that off the syscall path. No resident set is read.
          */
         public Ledger(
                 LongSupplier capacityBytes, IntSupplier cpuCap, LongPredicate ended, OverbookSignals.Source signals) {
+            this(capacityBytes, cpuCap, ended, signals, pid -> -1);
+        }
+
+        /** As the four-argument form, reading each watched worker's resident set from {@code rss}. */
+        public Ledger(
+                LongSupplier capacityBytes,
+                IntSupplier cpuCap,
+                LongPredicate ended,
+                OverbookSignals.Source signals,
+                WorkerRss.Source rss) {
             this.capacity = capacityBytes;
             this.cpus = cpuCap;
             this.ended = ended;
             this.signals = Objects.requireNonNull(signals, "signals");
+            this.rss = Objects.requireNonNull(rss, "rss");
+        }
+
+        /**
+         * Run {@link #sample} every {@code every} on a daemon thread, started by the first {@link
+         * Grant#watch}. Each pass also lets {@link WorkerContainment#sweep} settle exited workers'
+         * cgroups.
+         */
+        Ledger sampleEvery(Duration every) {
+            synchronized (lock) {
+                this.sampleEvery = every;
+            }
+            return this;
+        }
+
+        /** Bytes charged against the budget: each held lease, or its worker's resident set when larger. */
+        private long charged() {
+            return leased + excess;
         }
 
         /** Bytes this ledger will hand out. */
@@ -411,8 +470,17 @@ public final class WorkerLeases {
         public Snapshot snapshot() {
             synchronized (lock) {
                 long budget = capacityBytes();
-                long over = leased > budget ? leased - budget : 0;
-                return new Snapshot(budget, leased, over, queue.size(), jvmRunning, cpuCap(), waitingLine(budget));
+                long charged = charged();
+                long over = charged > budget ? charged - budget : 0;
+                return new Snapshot(
+                        budget,
+                        charged,
+                        over,
+                        queue.size(),
+                        jvmRunning,
+                        cpuCap(),
+                        waitingLine(budget),
+                        overLeaseLine());
             }
         }
 
@@ -498,7 +566,7 @@ public final class WorkerLeases {
             if (queued) {
                 long free;
                 synchronized (lock) {
-                    free = Math.max(0, capacityBytes() - leased);
+                    free = Math.max(0, capacityBytes() - charged());
                 }
                 reportWaiting(waiter.demand.bytes, free);
             }
@@ -518,7 +586,7 @@ public final class WorkerLeases {
                         grantQueued();
                         granted = waiter.granted;
                         need = waiter.demand.bytes;
-                        free = Math.max(0, capacityBytes() - leased);
+                        free = Math.max(0, capacityBytes() - charged());
                         if (!granted) lock.wait(250);
                     }
                     if (granted) break;
@@ -588,10 +656,11 @@ public final class WorkerLeases {
                 resident += w.demand.bytes;
                 if (w.yieldAsked) yielding += w.demand.bytes;
             }
-            if (resident == 0 || head.demand.bytes > cap - (leased - resident)) return;
+            long charged = charged();
+            if (resident == 0 || head.demand.bytes > cap - (charged - resident)) return;
             List<Waiter> ask = new ArrayList<>();
             for (Waiter w : held) {
-                if (head.demand.bytes <= cap - (leased - yielding)) break;
+                if (head.demand.bytes <= cap - (charged - yielding)) break;
                 if (w.resident == null || w.yieldAsked) continue;
                 w.yieldAsked = true;
                 yielding += w.demand.bytes;
@@ -634,7 +703,7 @@ public final class WorkerLeases {
             } else {
                 line.append(format(head.demand.bytes))
                         .append(" (")
-                        .append(format(Math.max(0, budget - leased)))
+                        .append(format(Math.max(0, budget - charged())))
                         .append(" free)");
             }
             Map<String, Holder> holders = new LinkedHashMap<>();
@@ -667,7 +736,8 @@ public final class WorkerLeases {
         private boolean admit(Waiter waiter) {
             if (waiter.demand.cpuSlot && jvmRunning >= cpuCap()) return false;
             long cap = capacityBytes();
-            if (leased <= cap && waiter.demand.bytes <= cap - leased) {
+            long charged = charged();
+            if (charged <= cap && waiter.demand.bytes <= cap - charged) {
                 waiter.overbooked = false;
                 return true;
             }
@@ -679,7 +749,9 @@ public final class WorkerLeases {
             long bytes = waiter.demand.bytes;
             long ceiling =
                     cap > Long.MAX_VALUE / OVERBOOK_CAP_FACTOR ? Long.MAX_VALUE : cap * (long) OVERBOOK_CAP_FACTOR;
-            if (bytes > ceiling || leased > ceiling - bytes) return false;
+            if (overLeaseCount > 0) return false;
+            long charged = charged();
+            if (bytes > ceiling || charged > ceiling - bytes) return false;
             OverbookSignals.Reading reading = readSignals();
             if (!reading.enabled() || !reading.pressureLow()) return false;
             if (!reading.covers(bytes, headroomBytes(cap))) return false;
@@ -712,7 +784,7 @@ public final class WorkerLeases {
             Log.info("jk engine: "
                     + overbookedLine(
                             waiter.demand.bytes,
-                            leased,
+                            charged(),
                             cap,
                             new OverbookSignals.Reading(
                                     true, waiter.sampleFree, waiter.sampleSome, waiter.sampleFull)));
@@ -724,7 +796,108 @@ public final class WorkerLeases {
             held.remove(waiter);
             leased -= waiter.demand.bytes;
             if (leased < 0) leased = 0;
+            excess = Math.max(0, excess - waiter.excess());
+            if (waiter.overLease) overLeaseCount = Math.max(0, overLeaseCount - 1);
             if (waiter.demand.cpuSlot) jvmRunning = Math.max(0, jvmRunning - 1);
+            if (waiter.named) {
+                Log.info("jk engine: " + waiter.label() + " exited; resident set peaked at " + format(waiter.peakRss)
+                        + ", leased " + format(waiter.demand.bytes));
+            }
+        }
+
+        /**
+         * Read every watched worker's resident set once and charge it. A worker that first goes
+         * {@linkplain WorkerRss#farOverLease far over} its lease is named: in the engine log, and as a run
+         * warning on the step that forked it, once per step. Reads happen off the lock.
+         */
+        public void sample() {
+            List<Waiter> watched = new ArrayList<>();
+            synchronized (lock) {
+                for (Waiter w : held) if (w.pid > 0) watched.add(w);
+            }
+            if (watched.isEmpty()) return;
+            long[] readings = new long[watched.size()];
+            for (int i = 0; i < readings.length; i++) {
+                try {
+                    readings[i] = rss.rssBytes(watched.get(i).pid);
+                } catch (RuntimeException e) {
+                    readings[i] = -1;
+                }
+            }
+            List<Waiter> crossed = new ArrayList<>();
+            List<TaskContext> warnOn = new ArrayList<>();
+            synchronized (lock) {
+                for (int i = 0; i < readings.length; i++) {
+                    Waiter w = watched.get(i);
+                    if (w.released || readings[i] < 0) continue;
+                    excess -= w.excess();
+                    w.rss = readings[i];
+                    w.peakRss = Math.max(w.peakRss, w.rss);
+                    excess += w.excess();
+                    boolean over = WorkerRss.farOverLease(w.demand.bytes, w.rss);
+                    if (over != w.overLease) overLeaseCount += over ? 1 : -1;
+                    w.overLease = over;
+                    if (over && !w.named) {
+                        w.named = true;
+                        crossed.add(w);
+                        TaskContext step = w.step;
+                        warnOn.add(step != null && warnedSteps.add(step) ? step : null);
+                    }
+                }
+                grantQueued();
+                lock.notifyAll();
+            }
+            for (int i = 0; i < crossed.size(); i++) {
+                Waiter w = crossed.get(i);
+                String phrase = WorkerRss.overLeasePhrase(w.what, w.rss, w.demand.bytes);
+                Log.warn("jk engine: " + WorkerRss.overLeasePhrase(w.label(), w.rss, w.demand.bytes)
+                        + "; charged at its resident set, nothing overbooked while it holds that");
+                TaskContext step = warnOn.get(i);
+                if (step != null) step.warn(WorkerRss.OVER_LEASE_CODE, phrase);
+            }
+        }
+
+        /**
+         * Under the lock: {@code test JVM pid 4242 (job #7) using 12.2 GiB, leased 700 MiB} for up
+         * to three workers far over their lease, largest first. Empty when none is.
+         */
+        private String overLeaseLine() {
+            if (overLeaseCount == 0) return "";
+            List<Waiter> over = new ArrayList<>();
+            for (Waiter w : held) if (w.overLease) over.add(w);
+            over.sort((a, b) -> Long.compare(b.rss, a.rss));
+            StringBuilder line = new StringBuilder();
+            int shown = Math.min(HOLDERS_SHOWN, over.size());
+            for (int i = 0; i < shown; i++) {
+                Waiter w = over.get(i);
+                if (i > 0) line.append("; ");
+                line.append(WorkerRss.overLeasePhrase(w.label(), w.rss, w.demand.bytes));
+            }
+            if (over.size() > shown)
+                line.append("; ").append(over.size() - shown).append(" more");
+            return line.toString();
+        }
+
+        private void watch(Waiter waiter, long pid, String what, @Nullable TaskContext step) {
+            Duration every = null;
+            synchronized (lock) {
+                if (waiter.released) return;
+                waiter.pid = pid;
+                waiter.what = what;
+                waiter.step = step;
+                if (sampleEvery != null && !sampling) {
+                    sampling = true;
+                    every = sampleEvery;
+                }
+            }
+            if (every != null) startSampler(every);
+        }
+
+        private void startSampler(Duration every) {
+            WorkerRss.start(every, () -> {
+                sample();
+                WorkerContainment.sweep();
+            });
         }
 
         private void close(Waiter waiter) {
@@ -846,7 +1019,7 @@ public final class WorkerLeases {
         }
 
         void add(Waiter waiter) {
-            bytes += waiter.demand.bytes;
+            bytes += waiter.demand.bytes + waiter.excess();
             forks++;
             asked |= waiter.yieldAsked;
         }
@@ -874,10 +1047,43 @@ public final class WorkerLeases {
         double sampleSome;
         double sampleFull;
 
+        /** The forked process, once {@link Grant#watch} names it; {@code -1} before. */
+        long pid = -1;
+
+        String what = "worker";
+
+        @Nullable
+        TaskContext step;
+        /** Last resident set read, {@code -1} before the first. */
+        long rss = -1;
+
+        long peakRss;
+        /** The last reading was {@linkplain WorkerRss#farOverLease far over} the lease. */
+        boolean overLease;
+
+        /** Named in the engine log, and on its step, for going far over its lease. */
+        boolean named;
+
         Waiter(Demand demand, @Nullable Long requestId, @Nullable Resident resident) {
             this.demand = demand;
             this.requestId = requestId;
             this.resident = resident;
+        }
+
+        /** Resident bytes above the lease, charged on top of it. */
+        long excess() {
+            return Math.max(0, rss - demand.bytes);
+        }
+
+        /** {@code test JVM pid 4242 (job #7)}. */
+        String label() {
+            String owner = ownerOf(this);
+            String base = resident != null ? owner : what;
+            StringBuilder out = new StringBuilder(base);
+            if (pid > 0) out.append(" pid ").append(pid);
+            if (resident == null && requestId != null)
+                out.append(" (").append(owner).append(')');
+            return out.toString();
         }
     }
 
@@ -921,6 +1127,15 @@ public final class WorkerLeases {
         /** Granted past the reservation budget, on a host sample that said it was safe. */
         public boolean overbooked() {
             return waiter.overbooked;
+        }
+
+        /**
+         * Charge this lease the resident set of {@code pid} from now on. {@code what} names it
+         * ({@link WorkerRss#describe}); {@code step} is the step that forked it, warned when the worker goes
+         * {@linkplain WorkerRss#farOverLease far over} the lease. A closed grant ignores this.
+         */
+        public void watch(long pid, String what, @Nullable TaskContext step) {
+            ledger.watch(waiter, pid, Objects.requireNonNull(what, "what"), step);
         }
 
         @Override

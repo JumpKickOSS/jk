@@ -157,8 +157,9 @@ public final class JkResultsAgent {
     }
 
     /**
-     * A memory wait and a heap retry, one line each, including on a green run. A wait is once per
-     * module and step; a second note of the same retry text on that step is dropped. A workspace
+     * A memory wait, a heap retry and a worker far over its lease, one line each, including on a
+     * green run. A wait is once per module and step; a second note of the same text on that step
+     * is dropped. A workspace
      * names the module: {@code W jk-engine run-tests: retried with …}.
      */
     private static void appendMemoryEvents(StringBuilder sb, BuildRecord record) {
@@ -166,7 +167,8 @@ public final class JkResultsAgent {
         for (BuildRecord.Diag d : record.diagnostics()) {
             if (d == null || d.message() == null || d.message().isBlank()) continue;
             String code = d.code();
-            if (!"heap-retry".equals(code) && !"memory-wait".equals(code)) continue;
+            if (!"heap-retry".equals(code) && !"memory-wait".equals(code) && !"memory-over-lease".equals(code))
+                continue;
             String line = d.message();
             int nl = line.indexOf('\n');
             if (nl >= 0) line = line.substring(0, nl);

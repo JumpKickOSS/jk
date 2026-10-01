@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.util.List;
@@ -39,6 +40,21 @@ class SuiteRetryTest {
                 "g:app", "", "com.acme.BigTest", "(worker 1)", "", "test worker killed for memory", "");
         assertThat(SuiteRetry.retryable(kill)).isTrue();
         assertThat(SuiteRetry.killed(kill)).isTrue();
+    }
+
+    @Test
+    void a_kill_at_the_worker_cap_is_not_retried() {
+        TestFailureInfo capped = new TestFailureInfo(
+                "g:app",
+                "",
+                "com.acme.BigTest",
+                "(worker 1)",
+                "",
+                "test worker " + WorkerContainment.capPhrase(10L << 30),
+                "");
+        assertThat(SuiteRetry.retryable(capped)).isFalse();
+        assertThat(SuiteRetry.killed(capped)).isFalse();
+        assertThat(SuiteRetry.classes(summary(capped))).isEmpty();
     }
 
     private static TestSummary summary(TestFailureInfo... failures) {

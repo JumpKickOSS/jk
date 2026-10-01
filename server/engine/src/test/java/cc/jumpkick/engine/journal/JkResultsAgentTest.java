@@ -68,6 +68,23 @@ class JkResultsAgentTest {
     }
 
     @Test
+    void an_ok_run_still_names_a_worker_far_over_its_lease() {
+        BuildRecord.Diag over = new BuildRecord.Diag(
+                "warning",
+                "/ws/rest-service",
+                "run-tests",
+                "memory-over-lease",
+                "test JVM using 12.2 GiB, leased 6.7 GiB",
+                null,
+                null);
+        BuildRecord r = record("test", true, false, 500, new BuildRecord.Tests(1, 1, 0, 0), List.of(over), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                OK test rest-service · 1 test · 500ms
+                test JVM using 12.2 GiB, leased 6.7 GiB
+                """);
+    }
+
+    @Test
     void a_workspace_names_the_module_on_a_heap_retry_and_a_memory_wait() {
         List<BuildRecord.Module> modules = List.of(
                 new BuildRecord.Module("cc.jumpkick:jk-engine", "/ws/server/engine", true, 0, 10, List.of()),

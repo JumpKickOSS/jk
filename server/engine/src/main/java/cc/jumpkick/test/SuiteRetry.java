@@ -81,14 +81,15 @@ final class SuiteRetry {
     /**
      * A failure row that is this suite running out of heap — an {@link OutOfMemoryError} for the
      * heap that escaped a test, or a runner that died of one — or a worker killed for memory. An
-     * error for the array size limit, metaspace or direct buffers is an ordinary failure.
+     * error for the array size limit, metaspace or direct buffers, or a kill at the worker's own
+     * cap, is an ordinary failure.
      */
     static boolean retryable(TestFailureInfo failure) {
         if (failure == null) return false;
         if (escapedHeapError(failure)) return true;
         String text = failure.message() + "\n" + failure.stack();
         if (WorkerFate.mentionsHeap(text)) return true;
-        if (text.contains(WorkerContainment.KILLED_FOR_MEMORY)) return true;
+        if (WorkerFate.retryableKill(text)) return true;
         return text.contains("exited " + WorkerFate.EXIT_ON_OUT_OF_MEMORY);
     }
 
@@ -102,7 +103,7 @@ final class SuiteRetry {
     static boolean killed(TestFailureInfo failure) {
         if (failure == null) return false;
         String text = failure.message() + "\n" + failure.stack();
-        return text.contains(WorkerContainment.KILLED_FOR_MEMORY) && !WorkerFate.mentionsHeap(text);
+        return WorkerFate.retryableKill(text) && !WorkerFate.mentionsHeap(text);
     }
 
     /** Classes to run again. A worker row's class is the one it was dispatching. */

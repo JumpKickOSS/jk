@@ -395,8 +395,9 @@ Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields)
 `availableMemoryBytes`, `systemCpuLoad`, `systemLoadAverage` (1‑minute), and `engineEpoch`
 (process generation id). The worker budget is on the same object: `workerBudgetBytes`,
 `workerBudgetSource`, `workerLeasedBytes`, `workerOverbookedBytes`, `workerQueued`,
-`workerRunningJvms`, `workerCpuCap`, `overbookingOff`, and `workerWaiting` (what the head of the lease
-queue needs and who holds the memory; `""` when nothing is queued). Config knobs (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only;
+`workerRunningJvms`, `workerCpuCap`, `overbookingOff`, `workerWaiting` (what the head of the lease
+queue needs and who holds the memory; `""` when nothing is queued), and `workerOverLease` (workers
+far over their lease, largest first; `""` when none is). Config knobs (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only;
 the SPA merges SSE into the last REST hydrate.
 
 ### Engine generation (`engineEpoch`)
