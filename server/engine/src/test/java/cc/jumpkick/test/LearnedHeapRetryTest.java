@@ -11,6 +11,7 @@ import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
@@ -185,7 +186,15 @@ class LearnedHeapRetryTest {
             if (Files.isDirectory(state)) {
                 try (var files = Files.list(state)) {
                     for (Path file : files.toList()) {
-                        for (String line : Files.readAllLines(file)) {
+                        // An atomic write's temp file can be listed and renamed away before it is read.
+                        if (file.getFileName().toString().startsWith(".")) continue;
+                        List<String> lines;
+                        try {
+                            lines = Files.readAllLines(file);
+                        } catch (NoSuchFileException gone) {
+                            continue;
+                        }
+                        for (String line : lines) {
                             String[] fields = line.split("\t", -1);
                             if (fields.length > 3
                                     && fields[0].equals("g:app")
