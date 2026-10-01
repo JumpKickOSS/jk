@@ -270,4 +270,43 @@ class FileHashMemoTest {
             for (Thread h : hitters) h.join();
         }
     }
+
+    /**
+     * Every cache root has a store of its own, each bounded on its own, so the number of roots in
+     * memory is bounded too: a third root drops the coldest store, persisted first, and a later
+     * build in that root reloads it rather than re-hashing.
+     */
+    @Test
+    void a_third_cache_root_persists_and_drops_the_coldest_store(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        settle(f);
+        Path first = dir.resolve("cache-1");
+        FileHashMemo.reset();
+        FileHashMemo.resetStats();
+        for (Path cache : List.of(first, dir.resolve("cache-2"), dir.resolve("cache-3"))) {
+            SessionContext.runWhere(Session.defaults().withCacheDir(cache), () -> {
+                try {
+                    FileHashMemo.contentHash(f);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+
+        assertThat(FileHashMemo.loadedStores()).isEqualTo(CacheRootStores.MAX_LOADED);
+        assertThat(first.resolve("hash-memo/memo.v1"))
+                .as("the dropped store was persisted")
+                .exists();
+        assertThat(FileHashMemo.contentReads()).isEqualTo(3);
+
+        SessionContext.runWhere(Session.defaults().withCacheDir(first), () -> {
+            try {
+                FileHashMemo.contentHash(f);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        assertThat(FileHashMemo.contentReads()).as("the reloaded store answers").isEqualTo(3);
+        assertThat(FileHashMemo.loadedStores()).isEqualTo(CacheRootStores.MAX_LOADED);
+    }
 }
