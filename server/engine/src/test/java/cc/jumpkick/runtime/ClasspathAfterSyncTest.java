@@ -109,6 +109,74 @@ class ClasspathAfterSyncTest {
                 .hasMessageContaining("not on disk after sync");
     }
 
+    /**
+     * {@code [test] exclude-dependencies} takes the coordinate off the classpath the test JVM and a
+     * plugin step's test entries see; compile-test still compiles against it.
+     */
+    @Test
+    void test_exclude_dependencies_leave_the_test_runtime_classpath_only(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path module = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                kept = { group = "com.foo", version = "1.0" }
+                simple = { group = "com.foo", version = "2.0" }
+
+                [test]
+                exclude-dependencies = ["com.foo:simple"]
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        Lockfile lock = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk test",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(
+                        materialized(tmp, store, "com.foo:kept", "1.0"),
+                        materialized(tmp, store, "com.foo:simple", "2.0")));
+        Path lockFile = module.resolve("jk-lock.toml");
+        LockfileWriter.write(lock, lockFile);
+        StashContext ctx = new StashContext();
+        ctx.put(BuildPlanner.LOCKFILE, lock);
+        ctx.put(BuildPlanner.PROJECT, project);
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
+                module,
+                store,
+                module.resolve("jk.toml"),
+                lockFile,
+                module,
+                1,
+                0,
+                null,
+                null,
+                false,
+                false,
+                false,
+                false,
+                Set.of(),
+                SessionContext.current());
+
+        PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
+
+        assertThat(ctx.require(BuildPlanner.COMPILE_TEST_CP))
+                .extracting(p -> p.getFileName().toString())
+                .contains("kept-1.0.jar", "simple-2.0.jar");
+        assertThat(ctx.require(BuildPlanner.TEST_RUNTIME_CP))
+                .extracting(p -> p.getFileName().toString())
+                .contains("kept-1.0.jar")
+                .doesNotContain("simple-2.0.jar");
+        assertThat(PluginBuild.testRuntimeEntries(module, new Cas(store), lockFile, project))
+                .extracting(PluginBuild.ProdEntry::artifact)
+                .contains("kept")
+                .doesNotContain("simple");
+        assertThat(PluginBuild.productionClasspath(module, new Cas(store), lockFile, project))
+                .as("the production runtime classpath keeps it")
+                .anyMatch(p -> p.getFileName().toString().equals("simple-2.0.jar"));
+    }
+
     /** One checksummed MAIN row whose jar is in {@code store} under the central repo layout. */
     private static Lockfile.Artifact materialized(Path tmp, Path store, String module, String version)
             throws Exception {

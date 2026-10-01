@@ -803,7 +803,7 @@ public final class PlannerSupport {
     static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws IOException {
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, false, project, dir));
+        List<Path> cp = new ArrayList<>(resolver.testRuntimeClasspathFor(lock, false, project, dir));
         cp.addAll(sib.siblingClosureJars());
         return cp;
     }

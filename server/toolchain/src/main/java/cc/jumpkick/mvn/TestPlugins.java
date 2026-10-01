@@ -20,8 +20,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * The plugins that run tests. Surefire's {@code <groups>} / {@code <excludedGroups>} are {@code
  * [test] include-tags} / {@code exclude-tags}, its {@code <excludes>} are {@code [test]
- * exclude-classes}, its {@code <argLine>} is {@code [test] jvm-args} and its system properties are
- * {@code [test] system-properties}; its {@code <includes>} and a skip flag have no {@code [test]}
+ * exclude-classes}, its {@code <classpathDependencyExcludes>} are {@code [test] exclude-dependencies},
+ * its {@code <argLine>} is {@code [test] jvm-args} and its system properties are {@code [test]
+ * system-properties}; its {@code <includes>} and a skip flag have no {@code [test]}
  * key and are rows saying where each lands. Failsafe defines jk's {@code integration} suite, which
  * is a directory, so its patterns are a row telling the user which classes to move; its JVM
  * settings land in the same keys when Surefire set none. JaCoCo is {@code jk test --coverage}, a
@@ -29,9 +30,17 @@ import org.jspecify.annotations.Nullable;
  */
 final class TestPlugins {
 
-    /** The {@code [test]} tag filters, excluded classes and test JVM settings a POM's test plugins declare. */
-    record TestSettings(List<String> includeTags, List<String> excludeTags, List<String> excludeClasses, TestJvm jvm) {
-        static final TestSettings NONE = new TestSettings(List.of(), List.of(), List.of(), TestJvm.EMPTY);
+    /**
+     * The {@code [test]} tag filters, excluded classes and dependencies, and test JVM settings a
+     * POM's test plugins declare.
+     */
+    record TestSettings(
+            List<String> includeTags,
+            List<String> excludeTags,
+            List<String> excludeClasses,
+            List<String> excludeDependencies,
+            TestJvm jvm) {
+        static final TestSettings NONE = new TestSettings(List.of(), List.of(), List.of(), List.of(), TestJvm.EMPTY);
     }
 
     private static final String SUREFIRE = "maven-surefire-plugin";
@@ -54,22 +63,34 @@ final class TestPlugins {
                     + " `jk test --coverage` runs every suite JVM under the JaCoCo agent and writes"
                     + " `reports/jacoco.xml` per module.");
         }
-        return new TestSettings(tags.includeTags(), tags.excludeTags(), tags.excludeClasses(), jvm.toTestJvm());
+        return new TestSettings(
+                tags.includeTags(),
+                tags.excludeTags(),
+                tags.excludeClasses(),
+                tags.excludeDependencies(),
+                jvm.toTestJvm());
     }
 
     private static TestSettings mapSurefire(Plugin surefire, Model model, ImportReport.Builder report, Jvm jvm) {
         Set<String> include = new LinkedHashSet<>();
         Set<String> exclude = new LinkedHashSet<>();
         Set<String> excludeClasses = new LinkedHashSet<>();
+        Set<String> excludeDependencies = new LinkedHashSet<>();
         for (Xpp3Dom config : PluginFacts.configurations(surefire)) {
             tags(config, "groups", SUREFIRE, report).ifPresent(include::addAll);
             tags(config, "excludedGroups", SUREFIRE, report).ifPresent(exclude::addAll);
             reportIncludes(config, report);
             excludeClasses.addAll(excludes(config, report));
+            excludeDependencies.addAll(classpathDependencyExcludes(config, report));
         }
         jvm.take(surefire, SUREFIRE, model, report);
         reportSkip(surefire, model, report);
-        return new TestSettings(List.copyOf(include), List.copyOf(exclude), List.copyOf(excludeClasses), TestJvm.EMPTY);
+        return new TestSettings(
+                List.copyOf(include),
+                List.copyOf(exclude),
+                List.copyOf(excludeClasses),
+                List.copyOf(excludeDependencies),
+                TestJvm.EMPTY);
     }
 
     /**
@@ -130,6 +151,37 @@ final class TestPlugins {
         if (file != null) {
             report.warning("`" + SUREFIRE + "` `<excludesFile>" + file + "</excludesFile>` — list those classes"
                     + " under `[test] exclude-classes`.");
+        }
+        return out;
+    }
+
+    /**
+     * {@code <classpathDependencyExcludes>} as {@code [test] exclude-dependencies} coordinates, from
+     * child elements or a comma-separated value; an entry that is not {@code group:artifact} is a row.
+     */
+    private static List<String> classpathDependencyExcludes(Xpp3Dom config, ImportReport.Builder report) {
+        Xpp3Dom element = config.getChild("classpathDependencyExcludes");
+        if (element == null) return List.of();
+        List<String> declared = children(element);
+        String inline = PluginFacts.text(element);
+        if (element.getChildCount() == 0 && inline != null) declared.add(inline);
+        List<String> out = new ArrayList<>();
+        List<String> unmapped = new ArrayList<>();
+        for (String value : declared) {
+            for (String coordinate : value.split(",")) {
+                String c = coordinate.trim();
+                if (c.isEmpty()) continue;
+                String[] parts = c.split(":", -1);
+                if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank() || c.contains("${")) {
+                    unmapped.add(c);
+                } else if (!out.contains(c)) {
+                    out.add(c);
+                }
+            }
+        }
+        if (!unmapped.isEmpty()) {
+            report.warning("`" + SUREFIRE + "` `<classpathDependencyExcludes>` " + String.join(", ", unmapped)
+                    + " — `[test] exclude-dependencies` takes `group:artifact` coordinates; add them by hand.");
         }
         return out;
     }

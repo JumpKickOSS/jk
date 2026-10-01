@@ -404,6 +404,36 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void parses_test_exclude_dependencies_as_group_artifact_coordinates() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testExcludeDependencies())
+                .isEmpty();
+        var build = JkBuildParser.parse(PROJECT + """
+
+                [test]
+                exclude-dependencies = ["org.slf4j:slf4j-simple", "org.slf4j:slf4j-simple", "ch.qos.logback:logback-classic"]
+                """).build();
+        assertThat(build.testExcludeDependencies())
+                .containsExactly("org.slf4j:slf4j-simple", "ch.qos.logback:logback-classic");
+        assertThat(build.testExcludesDependency("org.slf4j", "slf4j-simple")).isTrue();
+        assertThat(build.testExcludesDependency("org.slf4j", "slf4j-api")).isFalse();
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                exclude-dependencies = ["slf4j-simple"]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].exclude-dependencies")
+                .hasMessageContaining("slf4j-simple");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                exclude-dependencies = ["org.slf4j:slf4j-simple:2.0.17"]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("group:artifact");
+    }
+
+    @Test
     void test_assertions_default_on_and_take_only_a_boolean() {
         assertThat(JkBuildParser.parse(PROJECT).build().testAssertions()).isTrue();
         assertThat(JkBuildParser.parse(PROJECT + """
