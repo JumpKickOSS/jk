@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -10,16 +11,23 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Linux containment for forked workers: a raised {@code oom_score_adj}, and where this process's
  * cgroup can take a child, a cgroup v2 {@code workers} group with {@code memory.max} and {@code
- * memory.swap.max} 0 when that file exists.
+ * memory.swap.max} 0 when that file exists. Inside it each worker gets its own group, {@code
+ * workers/w<pid>}, whose {@code memory.max} is {@link WorkerRss#workerCapBytes}: the kernel stops
+ * one runaway worker at its cap instead of letting it take the whole budget. Where the memory
+ * controller cannot be enabled below {@code workers}, workers share that group as before.
  *
  * <p>{@code oom_score_adj} of {@value #OOM_SCORE_ADJ} is added to the kernel's badness, so a worker
  * is preferred over any other process that is not using about 80% of RAM more than the worker. The
@@ -40,6 +48,26 @@ public final class WorkerContainment {
     public static final String KILLED_FOR_MEMORY = "killed for memory";
 
     /**
+     * The words a diagnostic uses when the kernel killed a worker at its own cap. A retry at the
+     * same or a larger heap does not help: the worker grew past its lease outside the heap.
+     */
+    public static final String KILLED_AT_CAP = KILLED_FOR_MEMORY + " at its worker cap";
+
+    /** Why {@link #KILLED_AT_CAP} is not a heap problem, appended to it. */
+    public static final String OUTSIDE_HEAP =
+            "; the memory was outside the heap (metaspace, thread stacks, direct buffers), so a larger -Xmx"
+                    + " does not help";
+
+    /** Name prefix of a worker's own group under {@code workers}. */
+    static final String CHILD_PREFIX = "w";
+
+    /** Under {@code workers}, the group a worker joins when its own could not be made. */
+    static final String SHARED_CHILD = "shared";
+
+    /** Cap kills {@link #memoryKill} has not yet attributed; older ones are dropped. */
+    private static final int MAX_PENDING_CAP_KILLS = 16;
+
+    /**
      * Set by the client when this process was not started in a delegated scope. Appended to a
      * score-only reason. Not a user setting; {@code JK_ENGINE_SCOPE=0} is the switch.
      */
@@ -56,8 +84,11 @@ public final class WorkerContainment {
 
     private WorkerContainment() {}
 
-    /** What {@code jk engine status} reports. The limit is {@code -1} unless {@link Mode#CGROUP}. */
-    public record Report(Mode mode, String reason, long maxBytes) {
+    /**
+     * What {@code jk engine status} reports. The limit is {@code -1} unless {@link Mode#CGROUP}.
+     * {@code perWorker} is true when each worker runs in its own capped group.
+     */
+    public record Report(Mode mode, String reason, long maxBytes, boolean perWorker) {
 
         /** {@code cgroup}, {@code score-only}, or {@code none}. */
         public String modeWord() {
@@ -73,7 +104,7 @@ public final class WorkerContainment {
             return switch (mode) {
                 case NONE -> "none";
                 case SCORE_ONLY -> reason.isEmpty() ? "score-only" : "score-only (" + reason + ")";
-                case CGROUP -> "cgroup (max " + gib(maxBytes) + ")";
+                case CGROUP -> "cgroup (max " + gib(maxBytes) + (perWorker ? ", capped per worker)" : ")");
             };
         }
 
@@ -217,7 +248,7 @@ public final class WorkerContainment {
     /** The mode {@link #install} settled on. {@link Mode#NONE} before install, including on Linux. */
     public static Report report() {
         State s = state;
-        return s == null ? new Report(Mode.NONE, "", -1L) : s.report();
+        return s == null ? new Report(Mode.NONE, "", -1L, false) : s.report();
     }
 
     /**
@@ -291,51 +322,177 @@ public final class WorkerContainment {
     }
 
     /**
-     * Raise the child's oom score and, in cgroup mode, move it into {@code workers}. Failures are
-     * a debug line. The move is after {@code start}, so the child is briefly still in the engine's
-     * cgroup.
+     * Raise the child's oom score and, in cgroup mode, move it into {@code workers}: into its own
+     * group capped at {@code capBytes} when per-worker groups are on and {@code capBytes} is
+     * positive. {@code what} names it if the kernel kills it at that cap. Failures are a debug
+     * line. The move is after {@code start}, so the child is briefly still in the engine's cgroup.
      */
-    public static void contain(Process process) {
+    public static void contain(Process process, long capBytes, String what) {
         if (!Os.isLinux()) return;
         long pid = process.pid();
         raiseScore(pid);
         State s = state;
         Path workers = s == null ? null : s.workers;
         if (s == null || s.mode != Mode.CGROUP || workers == null) return;
+        Path target = workers;
+        if (s.perWorker) {
+            Path own = ownGroup(s, workers, pid, capBytes, what);
+            target = own != null ? own : workers.resolve(SHARED_CHILD);
+        }
         try {
-            writeText(workers.resolve("cgroup.procs"), Long.toString(pid) + "\n");
+            writeText(target.resolve("cgroup.procs"), Long.toString(pid) + "\n");
         } catch (IOException e) {
             Log.debug("worker containment cgroup move " + pid + ": " + e.getMessage());
         }
     }
 
+    /** Create {@code workers/w<pid>} at {@code capBytes} and track it; null when it cannot be made. */
+    private static @Nullable Path ownGroup(State s, Path workers, long pid, long capBytes, String what) {
+        if (capBytes <= 0) return null;
+        Path dir = workers.resolve(CHILD_PREFIX + pid);
+        try {
+            Files.createDirectories(dir);
+            writeText(dir.resolve("memory.max"), capBytes + "\n");
+            capSwap(dir);
+        } catch (IOException e) {
+            Log.debug("worker containment cap " + pid + ": " + e.getMessage());
+            try {
+                Files.deleteIfExists(dir);
+            } catch (IOException ignored) {
+                // nothing joined it; a leftover directory is harmless
+            }
+            return null;
+        }
+        synchronized (s) {
+            s.children.put(pid, new Child(dir, capBytes, what));
+        }
+        return dir;
+    }
+
     /**
      * {@link #KILLED_FOR_MEMORY} when {@code exit} is SIGKILL and this workers group has seen an
-     * {@code oom_kill} or is at {@code memory.max}; otherwise {@code otherwise}. One observation
-     * consumes one new {@code oom_kill}.
+     * {@code oom_kill} or is at {@code memory.max}; {@link #capPhrase} when a worker was killed at
+     * its own cap; otherwise {@code otherwise}. One observation consumes one kill.
      */
     public static String failure(int exit, String otherwise) {
-        return killedForMemory(exit) ? KILLED_FOR_MEMORY : otherwise;
+        MemoryKill kill = memoryKill(exit);
+        if (kill.atCap()) return capPhrase(kill.capBytes());
+        return kill.killed() ? KILLED_FOR_MEMORY : otherwise;
+    }
+
+    /** {@code killed for memory at its worker cap of 10.1 GiB; the memory was outside the heap …}. */
+    public static String capPhrase(long capBytes) {
+        String size = capBytes > 0 ? " of " + WorkerLeases.format(capBytes) : "";
+        return KILLED_AT_CAP + size + OUTSIDE_HEAP;
     }
 
     /** True when {@code exit} is a cgroup memory kill of a worker. Score-only mode has no signal. */
     public static boolean killedForMemory(int exit) {
-        if (exit != SIGKILL_EXIT) return false;
+        return memoryKill(exit).killed();
+    }
+
+    /**
+     * How a worker that exited was killed. {@code capBytes} is positive when the kernel stopped it
+     * at its own cap, {@code -1} for a kill of the shared workers group or no kill.
+     */
+    public record MemoryKill(boolean killed, long capBytes) {
+        static final MemoryKill NONE = new MemoryKill(false, -1L);
+
+        /** Killed at its own per-worker cap. */
+        public boolean atCap() {
+            return killed && capBytes > 0;
+        }
+    }
+
+    /**
+     * Classify a SIGKILL. A worker group that counted an {@code oom_kill} is a kill at that
+     * worker's cap; otherwise a new {@code oom_kill} on {@code workers}, or {@code workers} at its
+     * {@code memory.max}, is a group kill. Score-only mode has no signal.
+     */
+    public static MemoryKill memoryKill(int exit) {
+        if (exit != SIGKILL_EXIT) return MemoryKill.NONE;
         State s = state;
         Path workers = s == null ? null : s.workers;
-        if (s == null || s.mode != Mode.CGROUP || workers == null) return false;
+        if (s == null || s.mode != Mode.CGROUP || workers == null) return MemoryKill.NONE;
         synchronized (s) {
+            sweep(s);
+            Long cap = s.capKills.pollFirst();
+            if (cap != null) return new MemoryKill(true, cap);
             long now = readCounter(workers.resolve("memory.events"), "oom_kill");
             boolean increased = now >= 0 && now > s.oomKills;
             if (increased) s.oomKills = now;
-            return increased || atMax(workers);
+            return increased || atMax(workers) ? new MemoryKill(true, -1L) : MemoryKill.NONE;
         }
+    }
+
+    /**
+     * Settle the groups of workers that have exited. A group whose {@code memory.events} counts an
+     * {@code oom_kill} is a cap kill: logged, and queued for {@link #memoryKill}. An empty group is
+     * removed; one a lingering descendant still occupies is tried again on the next sweep.
+     */
+    public static void sweep() {
+        State s = state;
+        if (s == null || !s.perWorker) return;
+        synchronized (s) {
+            sweep(s);
+        }
+    }
+
+    private static void sweep(State s) {
+        if (s.children.isEmpty()) return;
+        Iterator<Map.Entry<Long, Child>> it = s.children.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Long, Child> entry = it.next();
+            long pid = entry.getKey();
+            Child child = entry.getValue();
+            if (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) continue;
+            if (!child.settled) {
+                child.settled = true;
+                long kills = readCounter(child.dir.resolve("memory.events"), "oom_kill");
+                if (kills > 0) {
+                    // memory.events is hierarchical: the same kill shows on workers, already counted here.
+                    s.oomKills += kills;
+                    if (s.capKills.size() >= MAX_PENDING_CAP_KILLS) s.capKills.pollFirst();
+                    s.capKills.addLast(child.capBytes);
+                    Log.warn("jk engine: " + child.what + " pid " + pid + " " + capPhrase(child.capBytes));
+                }
+            }
+            try {
+                removeGroup(child.dir);
+                it.remove();
+            } catch (IOException e) {
+                Log.debug("worker containment rmdir " + child.dir + ": " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Remove {@code dir} and the groups under it, deepest first. A worker that is itself an engine
+     * makes its own groups below its {@code w<pid>}. Only directories are removed: a cgroup's
+     * files go with it.
+     */
+    private static void removeGroup(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        List<Path> subgroups = new ArrayList<>();
+        PathUtil.forEachChild(dir, (child, attrs) -> {
+            if (attrs.isDirectory()) subgroups.add(child);
+            return true;
+        });
+        for (Path sub : subgroups) removeGroup(sub);
+        Files.deleteIfExists(dir);
     }
 
     /** Point the live reader at a fixture workers group. Tests reset with {@link #resetForTest}. */
     static void armForTest(Path workers, long maxBytes, long seenOom) {
+        armForTest(workers, maxBytes, seenOom, false);
+    }
+
+    /** As {@link #armForTest(Path, long, long)}; {@code perWorker} gives each worker its own group. */
+    static void armForTest(Path workers, long maxBytes, long seenOom, boolean perWorker) {
         synchronized (WorkerContainment.class) {
-            state = State.cgroup(workers, new Limits(maxBytes), seenOom);
+            State armed = State.cgroup(workers, new Limits(maxBytes), seenOom);
+            armed.perWorker = perWorker;
+            state = armed;
         }
     }
 
@@ -390,11 +547,32 @@ public final class WorkerContainment {
             long seen = readCounter(workers.resolve("memory.events"), "oom_kill");
             long memTotal = MemoryProbe.current().totalBytes();
             long enclosing = parseLimit(readQuiet(own.resolve("memory.max")));
-            return State.cgroup(workers, limits, seen < 0 ? 0 : seen, naturalSource(memTotal, enclosing));
+            State ready = State.cgroup(workers, limits, seen < 0 ? 0 : seen, naturalSource(memTotal, enclosing));
+            ready.perWorker = enablePerWorker(workers);
+            return ready;
         } catch (IOException e) {
             Log.debug("worker containment setup: " + e.getMessage());
             if (moved) moveBack(own, pid);
             return notedScore(note, "cannot create a child cgroup");
+        }
+    }
+
+    /**
+     * Turn on the memory controller below {@code workers} so each worker can have its own cap, and
+     * make the {@link #SHARED_CHILD} group a worker joins when its own cannot be made. False, and
+     * workers share {@code workers}, when that is refused: a group that already holds processes
+     * cannot hand the controller down.
+     */
+    static boolean enablePerWorker(Path workers) {
+        try {
+            String procs = readQuiet(workers.resolve("cgroup.procs"));
+            if (procs != null && !procs.isBlank()) return false;
+            writeText(workers.resolve("cgroup.subtree_control"), "+memory\n");
+            Files.createDirectories(workers.resolve(SHARED_CHILD));
+            return true;
+        } catch (IOException e) {
+            Log.debug("worker containment per-worker caps: " + e.getMessage());
+            return false;
         }
     }
 
@@ -584,6 +762,14 @@ public final class WorkerContainment {
         final @Nullable Path workers;
         final BudgetSource budgetSource;
         long oomKills;
+        /** Each worker runs in its own capped group under {@link #workers}. */
+        boolean perWorker;
+
+        /** Per-worker groups by pid, until a sweep removes them. */
+        final Map<Long, Child> children = new LinkedHashMap<>();
+
+        /** Caps of workers killed at their cap, oldest first, not yet attributed to an exit. */
+        final ArrayDeque<Long> capKills = new ArrayDeque<>();
 
         private State(
                 Mode mode, String reason, long max, @Nullable Path workers, long oomKills, BudgetSource budgetSource) {
@@ -619,7 +805,21 @@ public final class WorkerContainment {
         }
 
         Report report() {
-            return new Report(mode, reason, max);
+            return new Report(mode, reason, max, perWorker);
+        }
+    }
+
+    /** A worker's own group. {@code settled}: its kill count was read after the worker exited. */
+    private static final class Child {
+        final Path dir;
+        final long capBytes;
+        final String what;
+        boolean settled;
+
+        Child(Path dir, long capBytes, String what) {
+            this.dir = dir;
+            this.capBytes = capBytes;
+            this.what = what;
         }
     }
 }

@@ -5,7 +5,13 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Why a forked worker stopped, in one place: it ran out of its own {@code -Xmx}, the kernel killed
- * it for memory, or something else.
+ * it for memory, the kernel stopped it at its own worker cap, or something else.
+ *
+ * <p>A heap exhaustion is the JVM's own {@link OutOfMemoryError}: the heap ladder retries it with a
+ * larger {@code -Xmx}. A kernel kill is a SIGKILL from a cgroup: the heap never ran out. A kill of
+ * the shared workers group is the host running short, retried once at the same heap. A kill at the
+ * worker's own cap means its memory outside the heap grew past three quarters of the budget, which
+ * neither a retry nor a larger heap fixes, so it is not retried.
  *
  * <p>A jk-planned batch JVM is started with {@code -XX:+ExitOnOutOfMemoryError}, which exits
  * {@value #EXIT_ON_OUT_OF_MEMORY}. A test JVM is not, since a test may provoke and catch the error;
@@ -27,6 +33,8 @@ public final class WorkerFate {
         HEAP_EXHAUSTED,
         /** The kernel or the workers cgroup killed it. Not its {@code -Xmx}. */
         KILLED_FOR_MEMORY,
+        /** The kernel killed it at its own worker cap: memory outside the heap. */
+        OVER_WORKER_CAP,
         /** Any other exit. */
         OTHER
     }
@@ -36,17 +44,42 @@ public final class WorkerFate {
      * once.
      */
     public static Cause classify(int exit, @Nullable String output) {
-        return classify(exit, output, WorkerContainment.killedForMemory(exit));
+        WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(exit);
+        if (kill.atCap()) return Cause.OVER_WORKER_CAP;
+        return classify(exit, output, kill.killed());
     }
 
     /**
      * As {@link #classify(int, String)} when the caller already knows {@code killedForMemory}
-     * (the probe consumes one {@code oom_kill}).
+     * (the probe consumes one {@code oom_kill}). {@code output} naming {@link
+     * WorkerContainment#KILLED_AT_CAP} makes that kill {@link Cause#OVER_WORKER_CAP}.
      */
     public static Cause classify(int exit, @Nullable String output, boolean killedForMemory) {
+        if (killedForMemory && atCap(output)) return Cause.OVER_WORKER_CAP;
         if (killedForMemory) return Cause.KILLED_FOR_MEMORY;
         if (heapExhausted(exit, output)) return Cause.HEAP_EXHAUSTED;
         return Cause.OTHER;
+    }
+
+    /** True when {@code text} names a kill at the worker's own cap. */
+    public static boolean atCap(@Nullable String text) {
+        return text != null && text.contains(WorkerContainment.KILLED_AT_CAP);
+    }
+
+    /** True when {@code text} names a memory kill a retry at the same heap may survive. */
+    public static boolean retryableKill(@Nullable String text) {
+        return text != null && text.contains(WorkerContainment.KILLED_FOR_MEMORY) && !atCap(text);
+    }
+
+    /**
+     * The words for {@code cause} in a failure line: the memory-kill phrases, or {@code otherwise}.
+     */
+    public static String phrase(Cause cause, String otherwise) {
+        return switch (cause) {
+            case KILLED_FOR_MEMORY -> WorkerContainment.KILLED_FOR_MEMORY;
+            case OVER_WORKER_CAP -> WorkerContainment.capPhrase(-1);
+            default -> otherwise;
+        };
     }
 
     /** True when {@code exit} is {@link #EXIT_ON_OUT_OF_MEMORY} or {@code output} names an own-heap OOM. */

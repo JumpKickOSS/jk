@@ -10,7 +10,6 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
-import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLeases;
@@ -241,9 +240,7 @@ public final class WorkerCompileDriver {
             String output = String.join("\n", chatter);
             WorkerFate.Cause cause = success ? WorkerFate.Cause.OTHER : WorkerFate.classify(exit, output);
             if (!success && diagnostics.isEmpty() && !chatter.isEmpty()) {
-                String how = cause == WorkerFate.Cause.KILLED_FOR_MEMORY
-                        ? WorkerContainment.KILLED_FOR_MEMORY
-                        : "exited " + exit + " without diagnostics";
+                String how = WorkerFate.phrase(cause, "exited " + exit + " without diagnostics");
                 StringBuilder tail = new StringBuilder(job.tool() + " worker " + how + "; last output:");
                 for (String line : chatter) tail.append('\n').append(line);
                 diagnostics.add(

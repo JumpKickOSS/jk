@@ -80,13 +80,23 @@ public final class MemoryProbe {
      * {@code /proc/meminfo}); {@code -1} where the OS doesn't expose it (macOS, Windows).
      */
     public static long ownRssBytes() {
+        return rssBytes(PROC_SELF_STATUS);
+    }
+
+    /**
+     * {@link #ownRssBytes()} for process {@code pid}: {@code VmRSS} from {@code /proc/<pid>/status}.
+     * {@code -1} when the process is gone or the OS does not expose it.
+     */
+    public static long rssBytes(long pid) {
+        if (pid <= 0 || !Os.isLinux()) return -1;
+        return rssBytes(Path.of("/proc", Long.toString(pid), "status"));
+    }
+
+    private static long rssBytes(Path status) {
         try {
-            if (Files.isReadable(PROC_SELF_STATUS)) {
-                return meminfoValueBytes(Files.readString(PROC_SELF_STATUS), "VmRSS");
-            }
+            if (Files.isReadable(status)) return meminfoValueBytes(Files.readString(status), "VmRSS");
         } catch (IOException | RuntimeException e) {
-            // best-effort: fall through to unknown
-            Log.debug("ownRssBytes: best-effort", e);
+            Log.debug("rssBytes " + status + ": best-effort", e);
         }
         return -1;
     }

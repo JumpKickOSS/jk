@@ -27,6 +27,23 @@ class WorkerFateTest {
     }
 
     @Test
+    void a_kill_at_the_worker_cap_is_its_own_cause_and_never_retried() {
+        String capped = "test runner " + WorkerContainment.capPhrase(10L << 30);
+        assertThat(WorkerFate.classify(137, capped, true)).isEqualTo(WorkerFate.Cause.OVER_WORKER_CAP);
+        assertThat(WorkerFate.classify(137, capped + "\njava.lang.OutOfMemoryError: Java heap space", true))
+                .isEqualTo(WorkerFate.Cause.OVER_WORKER_CAP);
+        assertThat(WorkerFate.retryableKill(capped)).isFalse();
+        assertThat(WorkerFate.retryableKill("test runner killed for memory")).isTrue();
+        assertThat(WorkerFate.retryableKill("exited 1")).isFalse();
+        assertThat(WorkerFate.phrase(WorkerFate.Cause.OVER_WORKER_CAP, "exited 137"))
+                .startsWith(WorkerContainment.KILLED_AT_CAP)
+                .contains("outside the heap");
+        assertThat(WorkerFate.phrase(WorkerFate.Cause.KILLED_FOR_MEMORY, "exited 137"))
+                .isEqualTo(WorkerContainment.KILLED_FOR_MEMORY);
+        assertThat(WorkerFate.phrase(WorkerFate.Cause.OTHER, "exited 137")).isEqualTo("exited 137");
+    }
+
+    @Test
     void metaspace_and_a_normal_exit_are_other() {
         assertThat(WorkerFate.classify(1, "java.lang.OutOfMemoryError: Metaspace", false))
                 .isEqualTo(WorkerFate.Cause.OTHER);

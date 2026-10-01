@@ -38,7 +38,7 @@ final class JkResultsWarnings {
 
     private static boolean memoryEvent(BuildRecord.Diag d) {
         String code = d.code();
-        return "memory-wait".equals(code) || "heap-retry".equals(code);
+        return "memory-wait".equals(code) || "heap-retry".equals(code) || "memory-over-lease".equals(code);
     }
 
     /** One memory-wait per module and step. Distinct heap-retry lines on a step all stay. */

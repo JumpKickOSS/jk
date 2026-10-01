@@ -129,6 +129,7 @@ public final class EngineStatusCommand implements CliCommand {
                 s.overbookingOff());
         if (workers != null) detail("Workers", workers);
         if (s.workerWaiting() != null && !s.workerWaiting().isEmpty()) detail("Waiting", s.workerWaiting());
+        if (s.workerOverLease() != null && !s.workerOverLease().isEmpty()) detail("Over lease", s.workerOverLease());
         heapDumpRow(paths);
         String memory = formatMemory(s);
         if (memory != null) {
@@ -301,6 +302,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("workerCpuCap", s.workerCpuCap())
                 .bool("overbookingOff", s.overbookingOff())
                 .string("workerWaiting", s.workerWaiting())
+                .string("workerOverLease", s.workerOverLease())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
                 .string("mcpUrl", s.mcpUrl());

@@ -186,14 +186,72 @@ class WorkerContainmentTest {
     }
 
     @Test
+    @EnabledOnOs(OS.LINUX)
+    void a_worker_joins_its_own_capped_group_and_a_kill_there_is_a_kill_at_its_cap() throws Exception {
+        Path workers = root.resolve("workers");
+        Files.createDirectories(workers);
+        Files.writeString(workers.resolve("memory.events"), "oom_kill 0\n");
+        Files.writeString(workers.resolve("memory.current"), "10\n");
+        Files.writeString(workers.resolve("memory.max"), "1000\n");
+        Process child = new ProcessBuilder("sleep", "30").start();
+        Path own = workers.resolve(WorkerContainment.CHILD_PREFIX + child.pid());
+        try {
+            Files.createDirectories(own);
+            Files.writeString(own.resolve("memory.max"), "max\n");
+            Files.writeString(own.resolve("cgroup.procs"), "");
+            WorkerContainment.armForTest(workers, 1000, 0, true);
+            WorkerContainment.contain(child, 750, "test JVM");
+            assertThat(Files.readString(own.resolve("memory.max")).trim()).isEqualTo("750");
+            assertThat(Files.readString(own.resolve("cgroup.procs")).trim()).isEqualTo(Long.toString(child.pid()));
+
+            assertThat(WorkerContainment.memoryKill(137).killed()).isFalse();
+            child.destroyForcibly();
+            child.waitFor(5, TimeUnit.SECONDS);
+            Files.writeString(own.resolve("memory.events"), "oom 1\noom_kill 1\n");
+            Files.writeString(workers.resolve("memory.events"), "oom_kill 1\n");
+
+            WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(137);
+            assertThat(kill.atCap()).isTrue();
+            assertThat(kill.capBytes()).isEqualTo(750);
+            assertThat(WorkerContainment.memoryKill(137).killed())
+                    .as("the group's own oom_kill was this cap kill, already counted")
+                    .isFalse();
+            assertThat(WorkerContainment.capPhrase(3L * GIB))
+                    .startsWith(WorkerContainment.KILLED_AT_CAP + " of 3.0 GiB")
+                    .contains("a larger -Xmx does not help");
+            assertThat(WorkerFate.classify(137, WorkerContainment.capPhrase(750), true))
+                    .isEqualTo(WorkerFate.Cause.OVER_WORKER_CAP);
+        } finally {
+            child.destroyForcibly();
+            WorkerContainment.resetForTest();
+        }
+    }
+
+    @Test
+    void per_worker_groups_need_an_empty_workers_group() throws Exception {
+        Path workers = root.resolve("workers");
+        Files.createDirectories(workers);
+        Files.writeString(workers.resolve("cgroup.subtree_control"), "");
+        Files.writeString(workers.resolve("cgroup.procs"), "4242\n");
+        assertThat(WorkerContainment.enablePerWorker(workers)).isFalse();
+        Files.writeString(workers.resolve("cgroup.procs"), "");
+        assertThat(WorkerContainment.enablePerWorker(workers)).isTrue();
+        assertThat(Files.readString(workers.resolve("cgroup.subtree_control"))).isEqualTo("+memory\n");
+        assertThat(workers.resolve(WorkerContainment.SHARED_CHILD)).isDirectory();
+    }
+
+    @Test
     void status_phrases() {
-        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.NONE, "", -1).text())
+        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.NONE, "", -1, false).text())
                 .isEqualTo("none");
-        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.SCORE_ONLY, "cannot create a child cgroup", -1)
+        assertThat(new WorkerContainment.Report(
+                                WorkerContainment.Mode.SCORE_ONLY, "cannot create a child cgroup", -1, false)
                         .text())
                 .isEqualTo("score-only (cannot create a child cgroup)");
-        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.CGROUP, "", 14 * GIB).text())
+        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.CGROUP, "", 14 * GIB, false).text())
                 .isEqualTo("cgroup (max 14.0 GiB)");
+        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.CGROUP, "", 14 * GIB, true).text())
+                .isEqualTo("cgroup (max 14.0 GiB, capped per worker)");
     }
 
     @Test
@@ -245,11 +303,21 @@ class WorkerContainmentTest {
                 if (line.startsWith("0::"))
                     path = line.substring("0::".length()).trim();
             }
-            assertThat(path).endsWith("/workers");
             Path group = Path.of("/sys/fs/cgroup" + path);
-            assertThat(Long.parseLong(readFile(group.resolve("memory.max")).trim()))
+            Path workers = group;
+            if (report.perWorker()) {
+                assertThat(path).endsWith("/workers/" + WorkerContainment.CHILD_PREFIX + child.pid());
+                workers = Objects.requireNonNull(group.getParent(), "workers");
+                long cap = WorkerRss.workerCapBytes(
+                        WorkerLeases.TOOL_BYTES, WorkerLeases.engine().capacityBytes());
+                assertThat(Long.parseLong(readFile(group.resolve("memory.max")).trim()))
+                        .isEqualTo(cap);
+            } else {
+                assertThat(path).endsWith("/workers");
+            }
+            assertThat(Long.parseLong(readFile(workers.resolve("memory.max")).trim()))
                     .isEqualTo(report.maxBytes());
-            assertThat(readFile(group.resolve("memory.high")).trim()).isEqualTo("max");
+            assertThat(readFile(workers.resolve("memory.high")).trim()).isEqualTo("max");
             Path swap = group.resolve("memory.swap.max");
             if (Files.exists(swap)) assertThat(readFile(swap).trim()).isEqualTo("0");
         } finally {
@@ -299,6 +367,64 @@ class WorkerContainmentTest {
             Files.deleteIfExists(err);
             WorkerContainment.resetForTest();
             WorkerContainment.install();
+        }
+    }
+
+    /**
+     * A worker in its own group is killed at that group's cap while the workers group above it has
+     * room, and the death reads as a kill at its cap. Skips without a private memory cgroup.
+     */
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    @Timeout(90)
+    void a_memory_hog_is_killed_at_its_own_worker_cap() throws Exception {
+        HogBench bench = HogBench.open();
+        Assumptions.assumeTrue(bench != null, "no delegated memory cgroup");
+        Path err = Files.createTempFile("jk-hog-", ".log");
+        Process hog = null;
+        Path own = null;
+        try {
+            Assumptions.assumeTrue(bench.created, "only a group this test created may hand memory down");
+            writeCgroup(bench.dir.resolve("memory.max"), Long.toString(4 * bench.maxBytes));
+            Assumptions.assumeTrue(WorkerContainment.enablePerWorker(bench.dir), "memory cannot be handed down");
+            WorkerContainment.armForTest(bench.dir, 4 * bench.maxBytes, oomKills(bench.dir), true);
+            hog = hogCommand(err).start();
+            own = bench.dir.resolve(WorkerContainment.CHILD_PREFIX + hog.pid());
+            WorkerContainment.contain(hog, bench.maxBytes, "test JVM");
+            assertThat(hog.waitFor(60, TimeUnit.SECONDS))
+                    .as(groupState(bench, hog, err))
+                    .isTrue();
+            int exit = hog.exitValue();
+            assertThat(exit).as(groupState(bench, hog, err)).isEqualTo(WorkerContainment.SIGKILL_EXIT);
+            WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(exit);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!kill.killed() && System.nanoTime() < deadline) {
+                Thread.sleep(50);
+                kill = WorkerContainment.memoryKill(exit);
+            }
+            assertThat(kill.atCap()).as(groupState(bench, hog, err)).isTrue();
+            assertThat(kill.capBytes()).isEqualTo(bench.maxBytes);
+            assertThat(own).doesNotExist();
+            assertThat(ProcessHandle.current().isAlive()).isTrue();
+        } finally {
+            if (hog != null) {
+                hog.destroyForcibly();
+                hog.waitFor(5, TimeUnit.SECONDS);
+            }
+            if (own != null) deleteGroupQuietly(own);
+            deleteGroupQuietly(bench.dir.resolve(WorkerContainment.SHARED_CHILD));
+            bench.close();
+            Files.deleteIfExists(err);
+            WorkerContainment.resetForTest();
+            WorkerContainment.install();
+        }
+    }
+
+    private static void deleteGroupQuietly(Path dir) {
+        try {
+            Files.deleteIfExists(dir);
+        } catch (IOException e) {
+            // close() reports a group it could not remove
         }
     }
 
