@@ -69,13 +69,16 @@ public final class WorkerRss {
         return what + " using " + WorkerLeases.format(rssBytes) + ", leased " + WorkerLeases.format(leaseBytes);
     }
 
+    /** What {@link #describe} calls jk's test runner. */
+    static final String TEST_JVM = "test JVM";
+
     /**
      * What a fork is, for the lines that name it: {@code test JVM} for jk's test runner, {@code
      * worker JVM} for another JVM, or the program's file name.
      */
     public static String describe(List<String> command) {
         for (String arg : command) {
-            if (arg.startsWith(PLUGIN_CLASS_FLAG) && arg.endsWith(".TestRunner")) return "test JVM";
+            if (arg.startsWith(PLUGIN_CLASS_FLAG) && arg.endsWith(".TestRunner")) return TEST_JVM;
         }
         if (WorkerLeases.jvmCommand(command)) return "worker JVM";
         String exe = WorkerLeases.executable(command);

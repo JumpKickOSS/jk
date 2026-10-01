@@ -344,6 +344,7 @@ public final class JobWorkers {
             WorkerContainment.sweep();
         });
         String what = resident != null ? resident.name() : WorkerRss.describe(command);
+        if (what.equals(WorkerRss.TEST_JVM)) TestJvmFlags.note(StepScope.current(), command);
         WorkerContainment.contain(process, WorkerRss.workerCapBytes(grant.bytes(), leases.capacityBytes()), what);
         grant.watch(process.pid(), what, StepScope.current());
         gc.observe(process);

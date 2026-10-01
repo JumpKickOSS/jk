@@ -71,11 +71,6 @@ final class TestLaunch {
         return args;
     }
 
-    /** The step's own line naming the flags the fork gets beyond jk's tuning; silent when there are none. */
-    static void noteJvmArgs(TaskContext ctx, List<String> testJvmArgs) {
-        if (!testJvmArgs.isEmpty()) ctx.output("test jvm-args: " + String.join(" ", testJvmArgs));
-    }
-
     /**
      * The launcher never ran a test: a failed step with the fork's output, not a red test — and a
      * red marker under the run's stamp, so the next build runs the suite again.

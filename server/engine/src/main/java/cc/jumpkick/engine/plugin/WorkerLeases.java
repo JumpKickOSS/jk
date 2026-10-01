@@ -138,9 +138,9 @@ public final class WorkerLeases {
 
     /**
      * How many forked JVMs may run at once: the host's processors, narrowed to a finite cgroup CPU
-     * quota. {@link Runtime#availableProcessors()} is the wrong reading. Test workers pin
-     * {@code -XX:ActiveProcessorCount} to their share of the host, and with no quota
-     * {@link AvailableCpus#count()} reports that pin. A cap of one lets a resident script host or
+     * quota. {@link Runtime#availableProcessors()} is the wrong reading. An engine in a JVM started
+     * with {@code -XX:ActiveProcessorCount} (a batch worker's share, or a user's {@code jvm-args})
+     * would read that pin, and with no quota {@link AvailableCpus#count()} reports it. A cap of one lets a resident script host or
      * compiler hold the only slot until its idle timeout, and the next fork waits out that timeout.
      */
     static int forkCpuCap() {

@@ -8,8 +8,8 @@ import java.nio.file.Path;
 /**
  * The processor count of the machine a test is running on, read from the operating system rather
  * than from the JVM. {@link Runtime#availableProcessors()} answers with what the launcher pinned
- * ({@code -XX:ActiveProcessorCount}, which {@code jk test} sets to the host's share per test JVM),
- * so a wall-clock budget that compares the load average against it is comparing the machine's
+ * ({@code -XX:ActiveProcessorCount}, which a module's {@code [test] jvm-args} may set), so a
+ * wall-clock budget that compares the load average against it is comparing the machine's
  * load against one JVM's slice. On Linux the kernel publishes the online set as ranges in {@code
  * /sys/devices/system/cpu/online} ({@code 0-23}, {@code 0-3,8-11}); elsewhere the JVM's count is the
  * best available answer.

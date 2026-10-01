@@ -42,16 +42,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * {@code jk.toml}) to run it. Unset, it skips and says what to set.
  *
  * <p>The wall-clock budgets are judged only on a JVM that sees the whole host and a host that is
- * idle. {@code jk test} pins every test JVM to its share of the cores ({@code
- * -XX:ActiveProcessorCount}), which serialises the resolver's parallel prefetch and {@code .module}
- * parse into a machine no user has; a run under that pin prints its phase timings and says why the
- * budget was not applied. To measure plainly, lift the pin for this one class:
+ * idle. A JVM pinned below the host (a cgroup quota, {@code -XX:ActiveProcessorCount} in the
+ * jvm-args) serialises the resolver's parallel prefetch and {@code .module} parse into a machine no
+ * user has; such a run prints its phase timings and says why the budget was not applied. Run this
+ * one class alone:
  *
  * <pre>{@code
  * JK_NIA_OVERLAY=/path/to/nowinandroid/overlay \
  *   jk test --profile network -m server/resolver -w 1 \
- *     --class cc.jumpkick.resolver.NiaWarmLockTimingTest \
- *     --jvm-arg -XX:ActiveProcessorCount=$(nproc)
+ *     --class cc.jumpkick.resolver.NiaWarmLockTimingTest
  * }</pre>
  *
  * <p>The lock cost's gate is the wall-band harness, not this assert.

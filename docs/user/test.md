@@ -244,7 +244,7 @@ host list.
 `--exclude-tags ""` is the CLI form of a clear. A profile's `jvm-args` (`[profiles.<name>]
 jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after jk's own tuning and after
 [`[test] jvm-args`](#the-test-jvms-flags-test-jvm-args-test-system-properties), and the step
-prints the whole list as `test jvm-args: …`; its `javac` list reaches the compiler the same way
+prints every flag the JVM started with as `test JVM flags: …`; its `javac` list reaches the compiler the same way
 ([Projects](projects.md#features-profiles-variants)). Suites, tags and the test JVM's flags are
 part of the test stamp: changing any of them re-runs tests even if sources are unchanged. A failed suite is never
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
@@ -542,8 +542,18 @@ system-properties = { "spring.profiles.active" = "test", "java.awt.headless" = t
 `jvm-args` is appended verbatim to every forked test JVM after jk's own tuning, so an `-Xmx`, an
 `-Xss` or an agent here wins over the default; `system-properties` forks as one `-Dkey=value` per
 entry, a number or boolean rendered as its string. A profile's `jvm-args` follow both, so the
-profile wins where they disagree. The step prints the whole list as `test jvm-args: …`, and both
-keys are run-tests inputs: changing either re-runs the suite. `[jvm] args` is the other knob and
+profile wins where they disagree. Both keys are run-tests inputs: changing either re-runs the
+suite.
+
+jk's own tuning of a test JVM is its heap and nothing else. A test JVM runs the JVM's default
+garbage collector — G1 on a host with two or more CPUs — and sees every CPU of the host: jk adds
+no `-XX:ActiveProcessorCount` and no `-XX:+Use…GC`, and `[jvm] gc` does not reach it. Only flags
+you write (`jvm-args`, `[jvm] args`, `--jvm-arg`) choose a collector or a CPU count. When
+`jvm-args` sets a heap (`-Xmx`, `-Xms`, `-XX:MaxHeapSize`, `-XX:MaxRAMPercentage`), jk adds no
+heap flag of its own, so the JVM runs on exactly the heap you wrote. Each test JVM's step prints
+the flags it started with, after the worker budget and the GC log have been applied, as one
+`test JVM flags: …` line per distinct set (pull workers that differ only in their temp
+directories share one line); the line is in `details.jsonl` with the step's other output. `[jvm] args` is the other knob and
 reaches every worker JVM the module forks, compilers included; a value only the tests read belongs
 here. `jk import` writes Surefire's `<argLine>` (minus the `${argLine}` placeholder and the JaCoCo
 agent) and its system properties into these keys.
