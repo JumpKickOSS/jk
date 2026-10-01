@@ -104,7 +104,7 @@ export function mib(bytes, decimals = 0) {
 }
 
 /**
- * The workers row, the same sentence as {@code jk engine status}, then its waiting row. Empty when
+ * The workers row, the same sentence as {@code jk engine status}, then its waiting and over-lease rows. Empty when
  * the engine did not report a budget. {@code source} is {@code host}, {@code cgroup}, or {@code override}.
  */
 export function workerBudgetLine(status) {
@@ -123,6 +123,7 @@ export function workerBudgetLine(status) {
   }
   if (status.overbookingOff) line += ', overbooking off';
   if (status.workerWaiting) line += '; waiting: ' + status.workerWaiting;
+  if (status.workerOverLease) line += '; over lease: ' + status.workerOverLease;
   return line;
 }
 

@@ -246,6 +246,7 @@ public final class LiveVitals implements AutoCloseable {
             String workerBudgetSource,
             boolean overbookingOff,
             String workerWaiting,
+            String workerOverLease,
             List<Map<String, Object>> jobs) {
 
         static PresentStatus of(StatusSnapshot s) {
@@ -272,6 +273,7 @@ public final class LiveVitals implements AutoCloseable {
                     s.workerBudgetSource() == null ? "" : s.workerBudgetSource(),
                     s.overbookingOff(),
                     s.workerWaiting() == null ? "" : s.workerWaiting(),
+                    s.workerOverLease() == null ? "" : s.workerOverLease(),
                     s.jobs());
         }
 

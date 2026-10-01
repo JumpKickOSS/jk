@@ -60,4 +60,18 @@ test('the workers row names the budget source, the lease, and overbooking', () =
     '13.0 GiB budget (host), 1.0 GiB leased, 0 MiB overbooked, 1 queued, 0/8 JVMs; '
       + 'waiting: job #7 needs 13.0 GiB (12.0 GiB free); held by build-script host 1.0 GiB (asked to exit)',
   );
+  assert.equal(
+    workerBudgetLine({
+      workerBudgetBytes: 13 * GIB,
+      workerLeasedBytes: 12 * GIB,
+      workerOverbookedBytes: 0,
+      workerQueued: 0,
+      workerBudgetSource: 'host',
+      workerRunningJvms: 1,
+      workerCpuCap: 8,
+      workerOverLease: 'test JVM pid 4242 (job #7) using 12.0 GiB, leased 700 MiB',
+    }),
+    '13.0 GiB budget (host), 12.0 GiB leased, 0 MiB overbooked, 0 queued, 1/8 JVMs; '
+      + 'over lease: test JVM pid 4242 (job #7) using 12.0 GiB, leased 700 MiB',
+  );
 });

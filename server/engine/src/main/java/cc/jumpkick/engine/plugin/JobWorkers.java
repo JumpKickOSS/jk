@@ -5,6 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.run.StepScope;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.ArrayList;
@@ -340,8 +341,11 @@ public final class JobWorkers {
         process.onExit().whenComplete((code, error) -> {
             grant.close();
             gc.finish();
+            WorkerContainment.sweep();
         });
-        WorkerContainment.contain(process);
+        String what = resident != null ? resident.name() : WorkerRss.describe(command);
+        WorkerContainment.contain(process, WorkerRss.workerCapBytes(grant.bytes(), leases.capacityBytes()), what);
+        grant.watch(process.pid(), what, StepScope.current());
         gc.observe(process);
         if (track) register(process);
         return process;

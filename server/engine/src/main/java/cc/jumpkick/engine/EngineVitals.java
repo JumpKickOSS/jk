@@ -83,6 +83,7 @@ public final class EngineVitals {
                 workers.cpuCap(),
                 OverbookSignals.policyOff(),
                 workers.waiting(),
+                workers.overLease(),
                 jobs.get());
     }
 

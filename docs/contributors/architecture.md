@@ -49,7 +49,12 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   still limited by the worker lease ledger (`WorkerLeases`: FIFO, which on Linux may grant past
   that budget while free memory and PSI pressure stay low, and which asks a resident helper such
   as the build-script host to exit when the head of the queue would fit without its lease, so
-  the head waits only on forks doing work); (4) **per-job input-tree retain**
+  the head waits only on forks doing work; every two seconds it reads each live worker's
+  resident set and charges the larger of lease and RSS, names a worker far over its lease in
+  the run warnings, status and log, and stops overbooking while one is; on Linux
+  `WorkerContainment` puts each worker in its own cgroup capped at three quarters of the budget,
+  and `WorkerFate` reads a kill there as `OVER_WORKER_CAP`, which no retry or heap ladder
+  answers); (4) **per-job input-tree retain**
   (`[engine] vfs-max-mb` / `JK_ENGINE_VFS_MAX_MB`, default 32 MiB per job, live sum
   capped at 75% of engine heap; further jobs stream). Does **not** follow `CI=1`; extra
   heap is concurrency headroom, extra VFS is a huge-tree knob. See [vfs.md](vfs.md). Do not grow the non-CI engine default toward multi-GiB

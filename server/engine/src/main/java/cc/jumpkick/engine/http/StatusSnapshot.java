@@ -109,6 +109,11 @@ public record StatusSnapshot(
          */
         String workerWaiting,
         /**
+         * Workers far over their lease, as {@code test JVM pid 4242 (job #7) using 12.2 GiB, leased
+         * 700 MiB}, largest first. {@code ""} when none is.
+         */
+        String workerOverLease,
+        /**
          * Every live and queued job, live first in admission order then queued in arrival order,
          * each as {@code JobRow.toJson()} renders it: {@code jid}, {@code kind}, {@code dir},
          * {@code state} ({@code live} | {@code queued}), {@code since}, {@code workers},
@@ -186,6 +191,7 @@ public record StatusSnapshot(
                 -1,
                 false,
                 "",
+                "",
                 jobs);
     }
 
@@ -248,6 +254,7 @@ public record StatusSnapshot(
                 -1,
                 -1,
                 false,
+                "",
                 "",
                 List.of());
     }
@@ -350,6 +357,7 @@ public record StatusSnapshot(
         m.put("workerCpuCap", workerCpuCap);
         m.put("overbookingOff", overbookingOff);
         m.put("workerWaiting", workerWaiting == null ? "" : workerWaiting);
+        m.put("workerOverLease", workerOverLease == null ? "" : workerOverLease);
         m.put("jobs", jobs);
         return m;
     }

@@ -199,6 +199,17 @@ rose, or while the group is at the hard cap — is reported as killed for memory
 into `workers` happens just after the process starts, so there is a short window before it
 is inside the group.
 
+Inside `workers` each worker gets its own group, `workers/w<pid>`, with `memory.max` at
+three quarters of the worker budget (never below the worker's own lease) and
+`memory.swap.max` 0. One runaway worker is then stopped by the kernel at its cap, and the
+rest of the build and the host keep the last quarter. A worker killed there is reported as
+`killed for memory at its worker cap of 10.1 GiB; the memory was outside the heap
+(metaspace, thread stacks, direct buffers), so a larger -Xmx does not help`, and it is not
+retried. The engine log names the worker and its cap. The group is removed once the worker
+and anything it started have exited. Where the memory controller cannot be handed down
+below `workers`, workers share that one group as before; status then reads
+`cgroup (max … GiB)` instead of `cgroup (max … GiB, capped per worker)`.
+
 If that setup cannot be done (the cgroup is shared with other processes, it is not
 writable, or the memory controller is not delegated), the engine keeps the score adjustment
 only and remembers why. On any other operating system it does neither, and does not error.
@@ -223,12 +234,15 @@ how many JVMs are running against the CPU cap:
 When this engine was started with `CI` set, or with `JK_OVERBOOK` off, the line ends
 with `overbooking off`. While a fork is queued, a Waiting line names what the first one in
 line needs and who holds the memory, largest first:
-`job #7 needs 3.4 GiB (2.9 GiB free); held by job #3 6.1 GiB in 9 forks, build-script host 608 MiB (asked to exit)`. A resident engine keeps the environment it was started with, so
+`job #7 needs 3.4 GiB (2.9 GiB free); held by job #3 6.1 GiB in 9 forks, build-script host 608 MiB (asked to exit)`.
+While a worker is far over its lease (below), an Over lease line names it, largest first:
+`test JVM pid 4242 (job #7) using 12.2 GiB, leased 6.7 GiB`. A resident engine keeps the environment it was started with, so
 that is how a stale override shows up. `--output json` carries the same facts as
 `workerBudgetBytes`, `workerBudgetSource` (`host`, `cgroup`, or `override`),
 `workerLeasedBytes`, `workerOverbookedBytes`, `workerQueued`, `workerRunningJvms`,
-`workerCpuCap`, `overbookingOff`, and `workerWaiting` (the Waiting line, `""` when nothing
-is queued). The dashboard's Admin page shows the same line.
+`workerCpuCap`, `overbookingOff`, `workerWaiting` (the Waiting line, `""` when nothing
+is queued), and `workerOverLease` (the Over lease line, `""` when no worker is). The
+dashboard's Admin page shows the same line.
 
 A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
 resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
@@ -241,6 +255,17 @@ so the worker still fits, and the engine log says so. A heap you pinned — `[jv
 and runs once the others have finished — or sooner, when overbooking below has room for
 its worst case — and the engine log names the pin and the budget.
 If the JVM cannot reserve the pin, its own refusal is the result.
+
+A lease is an estimate of the heap and the memory around it. Every two seconds the engine
+reads each running worker's resident set (`VmRSS`, Linux) and charges it the larger of its
+lease and that reading, so the leased total, the queue and overbooking all see what a worker
+really holds. A worker is far over its lease when its resident set passes the lease by more
+than the larger of 1 GiB and a quarter of the lease — memory outside the heap: metaspace a
+test framework keeps per application restart, thread stacks, direct buffers. Such a worker
+is named once in the engine log, once on the step that forked it as a run warning
+(`run-tests: test JVM using 12.2 GiB, leased 6.7 GiB`, code `memory-over-lease`), and on the
+Over lease line while it lasts. While any worker is far over its lease, nothing is
+overbooked. jk does not kill it; the per-worker cgroup cap above is what bounds it.
 
 A lease that does not fit waits, first in line first. The first in line waits only on
 forks that are working: when it would fit once the build-script host let go of its lease,
@@ -377,7 +402,9 @@ A jk-planned item that runs out of its own heap is run again at twice that `-Xmx
 three times (512 MiB, 1 GiB, 2 GiB after a 256 MiB start), each rung still inside the budget;
 the new lease waits in line like any other, and a rung the budget cannot grow ends the
 ladder. An item the kernel killed for memory — host or cgroup pressure, not its own heap — is
-run once more at the same heap once its lease can be taken again. The item is a compile, or
+run once more at the same heap once its lease can be taken again. An item killed at its own
+worker cap is not run again: its memory outside the heap outgrew three quarters of the
+budget, and neither the same heap nor a larger one changes that. The item is a compile, or
 a test class (pull mode) or the whole suite (one JVM). Only the last failure reaches you, and
 it names every heap that ran out and how to raise it: `[jvm] args = ["-Xmx…"]` or `[test]
 jvm-args = ["-Xmx…"]`. A heap you pinned is never learned and never resized; that failure is
