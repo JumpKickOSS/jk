@@ -32,6 +32,7 @@ packaging). DevTools is picked up by [`jk watch run` / `jk dev`](run.md).
 | `aot-jvm-args` | `[]` | flags for the processor's JVM — the `--add-opens` a library needs on JDK 17+, a heap size |
 | `aot-args` | `[]` | arguments handed to the application while it starts under processing |
 | `include-tools` | `true` | nest `spring-boot-jarmode-tools` so `java -Djarmode=tools -jar app.jar` works |
+| `platform` | `true` | import `spring-boot-dependencies` at `version` as the module's platform; `false` leaves the BOM out and `version` names only the Boot loader, as a Maven build that runs the Boot plugin without importing Boot's BOM (`jk import` writes it for one) |
 
 `META-INF/build-info.properties` (what `BuildProperties` and the `/actuator/info` endpoint read)
 and `git.properties` (`GitProperties`) come from the core [`[build-info]` table](packaging.md#build-info-gitproperties-and-boots-build-infoproperties),

@@ -159,7 +159,7 @@ class PomPackagingImportTest {
                 .noneMatch(m -> m.startsWith("`<plugin>"));
 
         String rendered = JkBuildRenderer.render(build);
-        assertThat(rendered).contains("[spring-boot]\nversion = \"3.5.5\"\n");
+        assertThat(rendered).contains("[spring-boot]\nversion = \"3.5.5\"\n").doesNotContain("platform =");
         assertThat(JkBuildParser.parse(rendered)
                         .pluginConfig("spring-boot")
                         .orElseThrow()
@@ -255,6 +255,9 @@ class PomPackagingImportTest {
 
         assertThat(result.jkBuild().pluginConfig("spring-boot")).isPresent();
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("binds no `repackage` execution"));
+        assertThat(JkBuildRenderer.render(result.jkBuild()))
+                .as("the POM imports no Boot BOM, so the table imports none either")
+                .contains("[spring-boot]\nversion = \"3.5.5\"\nplatform = false\n");
     }
 
     /** {@code <skip>true</skip>} is Maven's way of saying this module is not the Boot jar. */

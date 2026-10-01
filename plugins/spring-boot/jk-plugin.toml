@@ -33,15 +33,18 @@ layered-image  = true          # images split release/snapshot dep layers + expl
 version       = { type = "string", required = true, example = "4.1.0", hint = "spring-boot-dependencies version — a release such as 4.1.0 (exact), ^4 for the newest 4.x, or latest" }
 aot           = { type = "bool" }                          # tri-state: absent = auto (on when [native] is declared)
 include-tools = { type = "bool", default = true }
+platform      = { type = "bool", default = true }          # false: version names the loader only, spring-boot-dependencies is not imported
 aot-args      = { type = "string-list", default = [] }     # arguments for the application under AOT processing
 aot-jvm-args  = { type = "string-list", default = [] }     # flags for the AOT processor's JVM (--add-opens, heap)
 
 # ---- Declarative contributions (P2) — pure data, evaluated engine-side with zero plugin code.
 
 # Auto-import the Boot BOM so [dependencies] entries need no versions. A user-declared
-# spring-boot-dependencies platform entry wins (no duplicate is injected).
+# spring-boot-dependencies platform entry wins (no duplicate is injected). `platform = false`
+# leaves it out, as a Maven build that packages with the Boot plugin but imports no Boot BOM does.
 [[contribute.platform-dependency]]
 coordinate = "org.springframework.boot:spring-boot-dependencies:${config.version}"
+when       = { config = "platform", equals = "true" }
 
 # Boot reflects on constructor/handler parameter names — compile with parameter names kept.
 # Each arg applies only when the user's own args don't already carry it.
