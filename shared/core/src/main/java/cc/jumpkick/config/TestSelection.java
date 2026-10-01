@@ -128,7 +128,7 @@ public record TestSelection(
             }
             return new Resolved(List.copyOf(discovered), includeTags, excludeTags);
         }
-        List<String> want = suites.isEmpty() ? (guard ? TestSuites.GUARD_SUITES : List.of(TestSuites.DEFAULT)) : suites;
+        List<String> want = wanted();
         List<String> missing = new ArrayList<>();
         LinkedHashSet<String> known = new LinkedHashSet<>(discovered);
         // Default suite may be requested even when empty (no-op compile).
@@ -147,15 +147,21 @@ public record TestSelection(
                 List.copyOf(ordered), includeTags, excludeTags, List.copyOf(missing), List.copyOf(discovered));
     }
 
-    /** Stamp / wire identity fragment (stable). */
+    /** Stamp / wire identity fragment (stable): the suites {@link #resolve} would want, not the raw list. */
     public String identityToken() {
         return "suites="
-                + (allSuites ? "*" : String.join(",", suites.isEmpty() ? List.of(TestSuites.DEFAULT) : suites))
+                + (allSuites ? "*" : String.join(",", wanted()))
                 + ";+tag="
                 + String.join(",", includeTags)
                 + ";-tag="
                 + String.join(",", excludeTags)
                 + (classes.isEmpty() ? "" : ";class=" + String.join(",", classes));
+    }
+
+    /** The suites asked for: the named ones, else the guard's list under {@link #guard}, else the default suite. */
+    private List<String> wanted() {
+        if (!suites.isEmpty()) return suites;
+        return guard ? TestSuites.GUARD_SUITES : List.of(TestSuites.DEFAULT);
     }
 
     public TestSelection withClasses(List<String> names) {

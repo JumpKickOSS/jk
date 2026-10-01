@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Class-name filters for {@link JUnitLauncher}: exact names ({@code --affected}), {@code --class}
  * patterns, each a class pattern or {@code <class pattern>#<method>}, and {@code [test]
- * exclude-classes}, which narrows every selection.
+ * exclude-classes} and the run's suites, which narrow every selection.
  */
 final class JUnitClassFilter {
 
@@ -58,13 +58,17 @@ final class JUnitClassFilter {
     }
 
     /**
-     * The runner's {@code --filter}: the anchored {@code include} regex (null for every class) less
-     * the classes {@code excludeBody} names, or null when neither narrows anything.
+     * The runner's {@code --filter}: the anchored {@code include} regex (null for every class),
+     * within the classes {@code suiteBody} keeps ({@link SuiteClassFilter#body}, null for all), less
+     * the classes {@code excludeBody} names; null when nothing narrows anything.
      */
-    static @Nullable String filter(@Nullable String include, @Nullable String excludeBody) {
-        if (excludeBody == null) return include;
+    static @Nullable String filter(@Nullable String include, @Nullable String excludeBody, @Nullable String suiteBody) {
+        if (excludeBody == null && suiteBody == null) return include;
         String kept = include == null ? ".*" : include.substring(1, include.length() - 1);
-        return "^(?!(?:" + excludeBody + ")$)" + kept + "$";
+        StringBuilder re = new StringBuilder("^");
+        if (suiteBody != null) re.append("(?=(?:").append(suiteBody).append(")$)");
+        if (excludeBody != null) re.append("(?!(?:").append(excludeBody).append(")$)");
+        return re.append(kept).append('$').toString();
     }
 
     /**

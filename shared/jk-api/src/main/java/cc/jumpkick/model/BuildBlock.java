@@ -3,10 +3,13 @@ package cc.jumpkick.model;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
@@ -67,6 +70,12 @@ public record BuildBlock(
          * runtime classpath, whether declared or reached transitively; compile-test still sees them.
          */
         List<String> testExcludeDependencies,
+        /**
+         * {@code [test.suites.<name>] classes}: suites selected by class pattern, in {@code --class}
+         * syntax, over the default suite's compiled classes, in manifest order. The default suite
+         * leaves every class a pattern here matches to that suite.
+         */
+        Map<String, List<String>> testSuiteClasses,
         /**
          * {@code [test] assertions}: whether every forked test JVM runs with {@code -ea}, as
          * Surefire's and Gradle's do. Default {@code true}; {@code false} runs the suite with Java
@@ -177,6 +186,7 @@ public record BuildBlock(
             List.of(),
             List.of(),
             List.of(),
+            Map.of(),
             true,
             false,
             PlatformPolicy.ENFORCED,
@@ -210,6 +220,7 @@ public record BuildBlock(
         testExcludeClasses = testExcludeClasses == null ? List.of() : List.copyOf(testExcludeClasses);
         testExcludeSrc = testExcludeSrc == null ? List.of() : List.copyOf(testExcludeSrc);
         testExcludeDependencies = testExcludeDependencies == null ? List.of() : List.copyOf(testExcludeDependencies);
+        testSuiteClasses = suiteClasses(testSuiteClasses);
         platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
         unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
         pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
@@ -294,6 +305,19 @@ public record BuildBlock(
     /** The same block with {@code [test] exclude-dependencies} set. */
     public BuildBlock withTestExcludeDependencies(List<String> coordinates) {
         return with(f -> f.testExcludeDependencies = coordinates);
+    }
+
+    /** The same block with {@code [test.suites.<name>] classes} set. */
+    public BuildBlock withTestSuiteClasses(Map<String, List<String>> suites) {
+        return with(f -> f.testSuiteClasses = suites);
+    }
+
+    /** An unmodifiable copy that keeps the manifest's suite order. */
+    private static Map<String, List<String>> suiteClasses(@Nullable Map<String, List<String>> suites) {
+        if (suites == null || suites.isEmpty()) return Map.of();
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        suites.forEach((name, patterns) -> out.put(name, List.copyOf(patterns)));
+        return Collections.unmodifiableMap(out);
     }
 
     /** True when {@code [test] exclude-dependencies} names {@code group:artifact}. */

@@ -15,6 +15,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
@@ -122,7 +123,9 @@ public final class TestSupport {
     public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
         int total = 0;
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
-        for (String suite : selectedSuites(moduleDir, compact, selection)) {
+        var discovered = TestSuites.discover(moduleDir, compact);
+        var resolved = selection.resolve(discovered);
+        for (String suite : resolved.ok() ? resolved.suites() : discovered) {
             roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
@@ -184,8 +187,9 @@ public final class TestSupport {
      * falls back to every discovered suite, the same rule {@link #estimateSelectedSuiteTestCount}
      * uses.
      */
-    public static List<String> selectedSuites(Path moduleDir, boolean compact, @Nullable TestSelection selection) {
-        List<String> discovered = TestSuites.discover(moduleDir, compact);
+    public static List<String> selectedSuites(
+            Path moduleDir, boolean compact, BuildBlock build, @Nullable TestSelection selection) {
+        List<String> discovered = TestSuites.available(moduleDir, compact, build.testSuiteClasses());
         if (selection != null) {
             var resolved = selection.resolve(discovered);
             if (resolved.ok()) return resolved.suites();

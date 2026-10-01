@@ -536,16 +536,14 @@ final class ModuleForecast {
         List<Path> ktSrc = prepared.ktSrc();
         List<Path> gvSrc = prepared.gvSrc();
         // ---- compile-test (the suites this session selected) ----
-        // The same source lists the build derives, for the selection it compiles — not every suite
-        // on disk, which would forecast a phantom compile-test on each default build of a
-        // multi-suite module.
+        // The build's source lists for the selection it compiles, never every suite on disk.
+        var selection = SessionContext.current().testSelection();
         try {
             testSources = PlannerTest.TestSources.collect(
                     project,
                     dir,
                     compact,
-                    TestSupport.selectedSuites(
-                            dir, compact, SessionContext.current().testSelection()),
+                    TestSupport.selectedSuites(dir, compact, project.build(), selection),
                     layout,
                     prepared.pkgDecls());
         } catch (IOException ignored) {

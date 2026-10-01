@@ -48,9 +48,9 @@ class TestClassMatchTest {
 
     @Test
     void the_skip_label_and_the_failure_name_the_patterns() {
-        assertThat(TestClassMatch.skipLabel(List.of("OrdersTest", "*IT")))
+        assertThat(TestClassMatch.skipLabel(List.of("OrdersTest", "*IT"), null))
                 .isEqualTo("no classes matched --class OrdersTest, *IT — skipped");
-        TestSummary failure = TestClassMatch.asFailure("acme:orders", ORDERS, null);
+        TestSummary failure = TestClassMatch.asFailure("acme:orders", ORDERS, null, null);
         assertThat(failure.failed()).isEqualTo(1);
         assertThat(failure.failures()).singleElement().satisfies(f -> {
             assertThat(f.module()).isEqualTo("acme:orders");
@@ -62,13 +62,41 @@ class TestClassMatchTest {
     void when_the_tag_filter_dropped_the_named_class_the_failure_is_the_runners_warning() {
         TestSelection excluded = TestSelection.of(List.of(), true, List.of(), List.of("bench"))
                 .withClasses(List.of("FormatThreadsBenchTest"));
-        assertThat(TestClassMatch.noMatchMessage(excluded, TAG_EXCLUDED)).isEqualTo(TAG_EXCLUDED);
-        assertThat(TestClassMatch.asFailure("acme:fmt", excluded, TAG_EXCLUDED).failures())
+        assertThat(TestClassMatch.noMatchMessage(excluded, TAG_EXCLUDED, null)).isEqualTo(TAG_EXCLUDED);
+        assertThat(TestClassMatch.asFailure("acme:fmt", excluded, TAG_EXCLUDED, null)
+                        .failures())
                 .singleElement()
                 .satisfies(f -> assertThat(f.message()).isEqualTo(TAG_EXCLUDED));
-        assertThat(TestClassMatch.noMatchMessage(excluded, null))
+        assertThat(TestClassMatch.noMatchMessage(excluded, null, null))
                 .as("the runner dropped nothing: the patterns matched no class, and that is all it says")
                 .isEqualTo("no test classes matched --class FormatThreadsBenchTest");
+    }
+
+    @Test
+    void a_class_another_suite_owns_names_that_suite_first_and_keeps_the_tag_reason() {
+        TestSelection fooIt = TestSelection.DEFAULT.withClasses(List.of("FooIT"));
+        String hint = "FooIT is in the integration suite (jk test --suite integration --class FooIT)";
+        assertThat(TestClassMatch.skipLabel(List.of("FooIT"), hint))
+                .isEqualTo("no classes matched --class FooIT — skipped; " + hint);
+        assertThat(TestClassMatch.noMatchMessage(fooIt, null, hint))
+                .isEqualTo("no test classes matched --class FooIT — " + hint);
+        assertThat(TestClassMatch.asFailure("acme:app", fooIt, TAG_EXCLUDED, hint)
+                        .failures())
+                .singleElement()
+                .satisfies(f -> assertThat(f.message())
+                        .isEqualTo("no test classes matched --class FooIT — " + hint + "; " + TAG_EXCLUDED));
+
+        Session session = Session.defaults().withTestSelection(fooIt);
+        BuildPlan hinted = BuildPlan.builder("module")
+                .stateKeys(BuildPlanner.TEST_RESULT, BuildPlanner.CLASS_SUITE_HINT)
+                .addTask(Task.builder("run-tests")
+                        .ticks(1)
+                        .execute(ctx -> ctx.put(BuildPlanner.CLASS_SUITE_HINT, hint))
+                        .build())
+                .build();
+        hinted.run();
+        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(plan(null), hinted)))
+                .isEqualTo("no test classes matched --class FooIT — " + hint);
     }
 
     @Test

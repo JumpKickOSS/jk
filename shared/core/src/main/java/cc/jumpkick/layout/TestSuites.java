@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -74,33 +75,17 @@ public final class TestSuites {
     private TestSuites() {}
 
     /**
-     * Suite names that exist on disk for this module (always includes {@link #DEFAULT} when that
-     * suite has sources; always lists {@link #DEFAULT} first when present).
-     */
-    /**
-     * The test-fixtures source set, which is NOT a test suite.
-     *
-     * <p>Fixtures are their own source set with their own step ({@code compile-test-fixtures}) and
-     * their own output, consumed by siblings through {@code fixtures = true}. Discovery listed
-     * {@code src/} and excluded only {@code main} and {@code test}, so {@code src/fixtures/java}
-     * came back as a suite named "fixtures" and its sources were folded into {@code compile-test}.
-     *
-     * <p>That cost the build ETA badly, because it is the forecast that collects sources by suite
-     * while the live compile takes one source root. {@code shared/host} forecast 32 test sources
-     * against the live 23 — the 9 fixtures — so the two computed different {@code compile-test}
-     * action keys, the forecast's key always missed, Zinc reported every test source invalidated,
-     * and {@code run-tests} was forecast to re-run for a module the build finished in 23 ms. On
-     * this tree that priced a phantom 25 s suite for {@code shared/core} and made it the estimate's
-     * long pole: 31.2 s predicted against 17.5 s actual. The same mismatch also broke the
-     * run-tests stamp key, which is built from the same suite-based collection.
-     *
-     * <p>Matched by the directory name under {@code src/}, which is the level discovery works at.
-     * A module that points {@code [test] fixtures} somewhere else is not covered here — the
-     * manifest is not in scope at this call — but {@code BuildBlock.DEFAULT_FIXTURES} is the
-     * spelling {@code fixtures = true} stores, and the only one in this tree.
+     * The test-fixtures source set, which is not a test suite: it has its own step ({@code
+     * compile-test-fixtures}) and output, so discovery must not fold {@code src/fixtures/java} into
+     * {@code compile-test}. Matched by directory name; {@code BuildBlock.DEFAULT_FIXTURES} is the
+     * spelling {@code fixtures = true} stores.
      */
     static final String FIXTURES_DIR = "fixtures";
 
+    /**
+     * Suite names that exist on disk for this module (always includes {@link #DEFAULT} when that
+     * suite has sources; always lists {@link #DEFAULT} first when present).
+     */
     public static List<String> discover(Path projectDir, boolean compact) {
         LinkedHashSet<String> names = new LinkedHashSet<>();
         if (hasSources(
@@ -168,6 +153,45 @@ public final class TestSuites {
         return List.copyOf(names);
     }
 
+    /**
+     * The suites a selection can name in this module: the directory suites {@link #discover} finds,
+     * then each suite {@code [test.suites.<name>] classes} declares, in manifest order. A
+     * class-pattern suite is always present: its classes are the default suite's.
+     */
+    public static List<String> available(Path projectDir, boolean compact, Map<String, List<String>> classSuites) {
+        List<String> found = discover(projectDir, compact);
+        if (classSuites.isEmpty()) return found;
+        LinkedHashSet<String> names = new LinkedHashSet<>(found);
+        names.addAll(classSuites.keySet());
+        return List.copyOf(names);
+    }
+
+    /**
+     * The suites whose source roots compile-test collects for the resolved {@code selected} suites.
+     * A class-pattern suite reads the default suite's classes, so it brings {@link #DEFAULT} (first)
+     * and its own directory only when that has sources; a pattern suite and the default suite then
+     * compile the same roots, so switching between them is one compile. A selection with no
+     * class-pattern suite is returned as is.
+     */
+    public static List<String> compiled(
+            Path projectDir, boolean compact, List<String> selected, Map<String, List<String>> classSuites) {
+        if (selected.stream().noneMatch(classSuites::containsKey)) return selected;
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        out.add(DEFAULT);
+        for (String suite : selected) {
+            if (!classSuites.containsKey(suite) || hasSuiteSources(projectDir, compact, suite)) out.add(suite);
+        }
+        return List.copyOf(out);
+    }
+
+    private static boolean hasSuiteSources(Path projectDir, boolean compact, String suite) {
+        return hasSources(
+                javaRoots(projectDir, compact, suite),
+                kotlinRoots(projectDir, compact, suite),
+                groovyRoots(projectDir, compact, suite),
+                scalaRoots(projectDir, compact, suite));
+    }
+
     /** Whether the module carries a guard suite: Java sources under its {@link #GUARD} root. */
     public static boolean hasGuardSuite(Path projectDir, boolean compact) {
         return hasSources(javaRoots(projectDir, compact, GUARD), List.of(), List.of(), List.of());
@@ -185,8 +209,7 @@ public final class TestSuites {
     /** True if {@code name} is a legal suite identifier ({@code [a-z][a-z0-9_-]*}). */
     public static boolean isSuiteName(String name) {
         if (name == null || name.isEmpty()) return false;
-        // Enforce the documented grammarthe permissive isLetter start turned any
-        // capitalized/Unicode sibling dir with sources (Demo/, Beispiele/) into a test suite.
+        // A capitalized or non-ASCII sibling directory (Demo/, Beispiele/) is not a suite.
         char first = name.charAt(0);
         if (first < 'a' || first > 'z') return false;
         for (int i = 1; i < name.length(); i++) {

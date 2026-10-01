@@ -31,7 +31,7 @@ the git working tree (unstaged + untracked; last commit if the tree is clean).
 be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
-run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + `integration` when that directory exists. Tag excludes
+run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + `integration` when the module has one (a directory, or [a class-pattern suite](#suites-by-class-name-testsuitesname-classes)). Tag excludes
 from `[test]` still apply (`slow` / `network` / `bench` stay out). `--guard` cannot
 combine with `--all`. `--suite` wins over `--guard` (a warning is printed).
 
@@ -50,6 +50,42 @@ directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cos
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
 directory.
 
+## Suites by class name (`[test.suites.<name>] classes`)
+
+A suite is a directory unless the module says otherwise. A Maven tree keeps its integration
+tests beside the unit tests and tells them apart by name, Failsafe's `IT*` / `*IT` / `*ITCase`;
+`[test.suites.<name>]` names such a suite:
+
+```toml
+[test.suites.integration]
+classes = ["IT*", "*IT", "*ITCase"]
+```
+
+`classes` takes `--class` patterns: a fully qualified name is exact, a bare name matches that
+simple name in any package, `*` stands for any run of characters, a nested class goes with its
+outer class, and there is no `#method`. They are matched against compiled class names, not source
+paths: Failsafe's `**/*IT.java` is `*IT` here, and `jk import` writes the mapping.
+
+- The suite's classes are the classes of the default suite's sources (`src/test/java`,
+  `test/src/`, …) its patterns match. **Plain `jk test` leaves every one of them out**, and
+  `jk test --suite integration` runs them and nothing else. `--guard` runs both, `--all` every
+  suite. Both runs read the one `compile-test` output, so switching between them recompiles
+  nothing.
+- A suite that also has a directory (`src/integration/java`) runs that directory's classes too,
+  whatever their names. A class from another suite directory always belongs to that suite.
+- A class two pattern suites match belongs to both; it runs when either is selected.
+- `--class` narrows the selected suites as usual. A `--class` that names a class another suite
+  owns says so: `no test classes matched --class FooIT — FooIT is in the integration suite (jk test
+  --suite integration --class FooIT)`, or a `class-in-other-suite` warning when other classes
+  matched. `--affected` ranks only the selected suites' classes.
+- The run-tests output names the suites it ran, for instance `test suites: test — left out:
+  integration (IT*, *IT, *ITCase), run with jk test --suite <name>`, and the patterns are part of the
+  run's stamp.
+
+The suite name follows the directory rule (`[a-z][a-z0-9_-]*`), and `test`, `guard` and
+`fixtures` cannot be one. The table is per module, like the rest of `[test]`. `[test]
+exclude-classes` still removes a class from every suite, pattern suites included.
+
 ## The guard suite is not a test suite
 
 `src/guard/java` holds **guard tests** — `@Guard` methods in a `@GuardSuite` class that read the
@@ -67,12 +103,12 @@ test has a debugger. The rules themselves, their kinds and their baseline: [Guar
 
 `--all` and `--suite` cannot be combined. `--all` and `--guard` cannot be combined.
 Unknown suite names error with the available list (`--guard`'s default `integration`
-is the exception: skip if absent). `--all` means “everything”: every suite directory
+is the exception: skip if absent). `--all` means “everything”: every suite directory and class-pattern suite
 **and** cleared `[test]` / profile tag excludes. Explicit `--include-tags` /
 `--exclude-tags` still compose on top. `jk build` accepts the same selection flags.
 
 Default-suite paths depend on [layout](layout.md) (`src/test/…` vs `test/src/`). Named
-suites are discovered when those directories exist.
+suites are discovered when those directories exist, or declared by class pattern.
 
 When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
 

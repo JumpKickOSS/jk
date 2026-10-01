@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DebugInfo;
 import java.util.ArrayList;
@@ -49,6 +50,7 @@ final class ManifestBuildTable {
         final List<String> testExcludeClasses = new ArrayList<>();
         final List<String> testExcludeSrc = new ArrayList<>();
         final List<String> testExcludeDependencies = new ArrayList<>();
+        final Map<String, List<String>> testSuiteClasses = new LinkedHashMap<>();
         boolean testAssertions = true;
         boolean testCoverage = false;
         final List<String> testTools = new ArrayList<>();
@@ -218,6 +220,7 @@ final class ManifestBuildTable {
                         + " (got `" + coordinate + "`)");
             }
         }
+        readSuites(test, s);
         // [test] assertions — -ea on every forked test JVM unless the module turns it off.
         if (test.contains("assertions")) {
             if (!(test.get("assertions") instanceof Boolean assertions)) {
@@ -252,6 +255,50 @@ final class ManifestBuildTable {
             }
         }
         readTestJvm(test, s);
+    }
+
+    /**
+     * {@code [test.suites.<name>] classes} — a suite selected by class pattern ({@code --class}
+     * syntax, no {@code #method}) over the default suite's classes. The default suite, the guard
+     * suite and the fixtures source set cannot be one.
+     */
+    private static void readSuites(TomlTable test, Settings s) {
+        if (!test.contains("suites")) return;
+        if (!(test.get("suites") instanceof TomlTable suites)) {
+            throw new JkBuildParseException(
+                    "[test].suites must be a table of suites: [test.suites.integration]" + " classes = [\"*IT\"]");
+        }
+        for (String name : suites.keySet()) {
+            String where = "[test.suites." + name + "]";
+            if (!TestSuites.isSuiteName(name)
+                    || TestSuites.DEFAULT.equals(name)
+                    || TestSuites.GUARD.equals(name)
+                    || "fixtures".equals(name)) {
+                throw new JkBuildParseException(
+                        where + " — a suite name is [a-z][a-z0-9_-]* and not test, guard" + " or fixtures");
+            }
+            if (!(suites.get(name) instanceof TomlTable suite)) {
+                throw new JkBuildParseException(where + " must be a table: classes = [\"*IT\"]");
+            }
+            for (String key : suite.keySet()) {
+                if (!"classes".equals(key)) {
+                    throw new JkBuildParseException(where + " unknown key `" + key + "` — expected: classes");
+                }
+            }
+            String expected = "class patterns: classes = [\"*IT\"]";
+            List<String> patterns = new ArrayList<>();
+            if (!(suite.get("classes") instanceof TomlArray values) || values.isEmpty()) {
+                throw new JkBuildParseException(where + " classes must be a non-empty array of " + expected);
+            }
+            for (int i = 0; i < values.size(); i++) {
+                if (!(values.get(i) instanceof String str) || str.isBlank() || str.contains("#")) {
+                    throw new JkBuildParseException(where + " classes must be a non-empty array of " + expected
+                            + " (a class pattern names no method)");
+                }
+                if (!patterns.contains(str.trim())) patterns.add(str.trim());
+            }
+            s.testSuiteClasses.put(name, List.copyOf(patterns));
+        }
     }
 
     /** A non-blank string array under {@code [test].<key>}, appended to {@code out} without repeats. */

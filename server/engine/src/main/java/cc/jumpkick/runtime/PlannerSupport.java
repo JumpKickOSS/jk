@@ -869,7 +869,8 @@ public final class PlannerSupport {
             @Nullable String profileName,
             @Nullable PluginDeclarations pluginDecls)
             throws IOException {
-        List<String> discovered = TestSuites.discover(dir, compact);
+        List<String> discovered =
+                TestSuites.available(dir, compact, project.build().testSuiteClasses());
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps.
         var resolved = SessionContext.current().testSelection().resolve(discovered);
@@ -884,7 +885,10 @@ public final class PlannerSupport {
                 project, layout, PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp));
         List<String> stampExtras =
                 TestStamp.withCompileTest(testStampExtras(dir, project, profileName, identity), compileTestKeys);
-        List<Path> stampRes = ModuleLayout.suiteResourceDirs(dir, compact, suites);
+        List<Path> stampRes = ModuleLayout.suiteResourceDirs(
+                dir,
+                compact,
+                TestSuites.compiled(dir, compact, suites, project.build().testSuiteClasses()));
         String key = TestStamp.computeKey(
                 stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras, identity);
         if (Perf.enabled()) {
@@ -954,6 +958,9 @@ public final class PlannerSupport {
         if (!build.testExcludeClasses().isEmpty()) {
             extras.add("exclude-classes:" + String.join(",", build.testExcludeClasses()));
         }
+        // A class-pattern suite decides which compiled classes the default suite runs.
+        build.testSuiteClasses()
+                .forEach((suite, patterns) -> extras.add("suite-classes:" + suite + "=" + String.join(",", patterns)));
         // The test JVM's flags change what the suite sees (-D properties, heap), so they retest.
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
         // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
