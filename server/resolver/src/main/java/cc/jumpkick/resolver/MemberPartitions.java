@@ -11,6 +11,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -28,11 +29,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The rows a workspace member reads instead of the merged solve's. The merged manifest is solved
  * once and its rows are the workspace's answer; a member is solved on its own only when that
- * answer cannot be its answer: it declares an exact version the merged row does not carry, a BOM
+ * answer cannot be its answer: it declares an exact version the merged row does not carry, a
+ * module in its graph sits at a version its own graph does not ask for — raised or lowered by
+ * another member's pin or dependencies ({@link #ownGraphDisagrees}) — a BOM
  * of its own table that not every member holds manages a coordinate in its closure at a version
  * the merged row does not carry, or a coordinate in its closure was pinned by a BOM the member
  * does not hold at a version an edge of the member's own graph cannot take — its own platform
@@ -53,7 +57,8 @@ final class MemberPartitions {
     /**
      * Solves one member's effective manifest ({@code member} is its workspace path) under the
      * requested features it declares, the given soft preferences and its own platform table, and
-     * assembles its rows.
+     * assembles its rows. {@code unshared} are the {@code group:artifact}s whose merged version is
+     * not the member's, which no floor the workspace's rows set may hold up.
      */
     interface MemberSolver {
         Lockfile solve(
@@ -61,7 +66,8 @@ final class MemberPartitions {
                 JkBuild manifest,
                 Collection<String> features,
                 Map<String, String> prefs,
-                PlatformConstraints own)
+                PlatformConstraints own,
+                Set<String> unshared)
                 throws IOException, InterruptedException;
     }
 
@@ -76,6 +82,12 @@ final class MemberPartitions {
     private final Collection<String> featuresRequested;
     private final boolean withDefaults;
 
+    /**
+     * The {@code group:artifact}s whose version is the workspace's own, which a member that does
+     * not declare them reads as it reads a BOM every member holds.
+     */
+    private final Set<String> workspaceVersions;
+
     /** package key → the merged solve's module, main graph first. */
     private final Map<String, Resolution.ResolvedModule> unionByKey = new LinkedHashMap<>();
 
@@ -86,7 +98,8 @@ final class MemberPartitions {
             PlatformConstraints.BomTables bomTables,
             PinPolicy pinPolicy,
             Collection<String> featuresRequested,
-            boolean withDefaults) {
+            boolean withDefaults,
+            Set<String> workspaceVersions) {
         this.union = union;
         this.repos = repos;
         this.pomBuilder = pomBuilder;
@@ -94,6 +107,7 @@ final class MemberPartitions {
         this.pinPolicy = pinPolicy;
         this.featuresRequested = featuresRequested;
         this.withDefaults = withDefaults;
+        this.workspaceVersions = Set.copyOf(workspaceVersions);
         for (Resolution graph : List.of(
                 union.solved().main(), union.solved().test(), union.solved().processor())) {
             for (Resolution.ResolvedModule mod : graph.modules().values()) unionByKey.putIfAbsent(mod.module(), mod);
@@ -121,7 +135,7 @@ final class MemberPartitions {
             union.depKeys().addAll(depKeys(row));
         }
 
-        // name@version → the partition row and the members that read it.
+        // name@version and row content → the partition row and the members that read it.
         Map<String, Lockfile.Artifact> partitions = new LinkedHashMap<>();
         Map<String, LinkedHashSet<String>> partitionMembers = new LinkedHashMap<>();
         Map<String, EnumMap<Scope, Boolean>> partitionScopes = new LinkedHashMap<>();
@@ -136,10 +150,13 @@ final class MemberPartitions {
             // Each flagged member costs a solve of its own; on a cold large reactor that is where
             // the lock's time goes, so the label says which member and how many remain.
             observer.onPhase(passLabel(member.path(), ++solved, flaggedMembers.size()));
-            Map<String, String> prefs =
-                    prefsFor(flaggedMember.flagged(), memberPrefs.getOrDefault(member.path(), Map.of()));
+            Map<String, String> prefs = prefsFor(
+                    reach(manifest).closure(),
+                    flaggedMember.flagged(),
+                    memberPrefs.getOrDefault(member.path(), Map.of()));
             // The table read to flag the member is the table its solve runs under.
-            Lockfile mine = solver.solve(member.path(), manifest, featuresFor(manifest), prefs, own);
+            Lockfile mine =
+                    solver.solve(member.path(), manifest, featuresFor(manifest), prefs, own, flaggedMember.flagged());
             Map<String, String> differing = new TreeMap<>();
             Map<String, Set<String>> pruned = new HashMap<>();
             // The BOM or entry of the member's own table that pins each differing row's version, by
@@ -150,7 +167,9 @@ final class MemberPartitions {
             Set<String> mineModules = new HashSet<>();
             for (Lockfile.Artifact row : mine.artifacts())
                 mineModules.add(PackageId.parse(row.packageKey()).ga());
-            for (Lockfile.Artifact row : mine.artifacts()) {
+            for (Lockfile.Artifact solvedRow : mine.artifacts()) {
+                Lockfile.Artifact row = flaggedMember.graphOnly() ? withoutProcessor(solvedRow) : solvedRow;
+                if (row == null) continue;
                 String key = row.packageKey() + "@" + row.version();
                 UnionRow union = unionRows.get(key);
                 Set<String> keys = depKeys(row);
@@ -165,11 +184,14 @@ final class MemberPartitions {
                     }
                     pruned.put(row.displayIdentity(), lacking);
                 }
-                partitions.putIfAbsent(key, row);
+                // Members share a partition row only where the row says the same for each of them.
+                String rowKey = key + " " + row.deps() + " " + row.excludedBy() + " " + row.pinnedBy();
+                partitions.putIfAbsent(rowKey, row);
                 partitionMembers
-                        .computeIfAbsent(key, k -> new LinkedHashSet<>())
+                        .computeIfAbsent(rowKey, k -> new LinkedHashSet<>())
                         .add(member.path());
-                EnumMap<Scope, Boolean> scopes = partitionScopes.computeIfAbsent(key, k -> new EnumMap<>(Scope.class));
+                EnumMap<Scope, Boolean> scopes =
+                        partitionScopes.computeIfAbsent(rowKey, k -> new EnumMap<>(Scope.class));
                 for (Scope scope : row.scopes()) scopes.put(scope, Boolean.TRUE);
                 differing.put(row.displayIdentity(), row.version());
                 String pinner = own.pinnedBy(PackageId.parse(row.packageKey()).ga(), row.version());
@@ -193,9 +215,117 @@ final class MemberPartitions {
         return merged.withArtifacts(rows);
     }
 
-    /** A member whose own platform table or pins flag it for a solve of its own, with what the flagging read. */
+    /**
+     * The {@code group:artifact}s in this member's main and test closure whose merged row is not what
+     * the member's own graph asks for — a version another member's pin, or the dependencies of
+     * another member's graph, raised or lowered. A module asks for the version its own table manages
+     * it at, else the highest plain version an edge from a parent it agrees on declares, every range
+     * such an edge wrote holding it; a module only parents it disagrees on reach is unknown, and so
+     * disagreed on too, until its own solve says. The member's own roots answer for themselves (an
+     * exact pin is {@link #flagged}'s, a floating root asks the workspace), and a module whose
+     * version the workspace owns ({@link #workspaceVersions}) or its compilers decide ({@link
+     * LanguageRuntimeInject#followsCompiler}) is every member's. The processor path
+     * keeps its own rules and is not walked.
+     */
+    private Set<String> ownGraphDisagrees(Reach reach, PlatformConstraints own) {
+        LockRoots.Declared declared = reach.declared();
+        List<Dependency> roots = new ArrayList<>(declared.main().values());
+        roots.addAll(declared.test().values());
+        Set<String> rootKeys = new HashSet<>();
+        for (Dependency root : roots) rootKeys.add(root.packageKey());
+        Set<String> closure = closure(roots);
+        // child package key → the parents in the closure that edge onto its merged version.
+        Map<String, List<Resolution.ResolvedModule>> parents = new HashMap<>();
+        for (String key : closure) {
+            Resolution.ResolvedModule parent = unionByKey.get(key);
+            if (parent == null) continue;
+            for (String ref : parent.deps()) {
+                int at = ref.indexOf('@');
+                String child = at > 0 ? ref.substring(0, at) : ref;
+                Resolution.ResolvedModule merged = unionByKey.get(child);
+                if (merged != null && merged.coord().equals(ref)) {
+                    parents.computeIfAbsent(child, k -> new ArrayList<>()).add(parent);
+                }
+            }
+        }
+        Set<String> disagreed = new LinkedHashSet<>();
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (String key : closure) {
+                if (disagreed.contains(key) || rootKeys.contains(key)) continue;
+                Resolution.ResolvedModule merged = unionByKey.get(key);
+                if (merged == null) continue;
+                String ga = PackageId.parse(key).ga();
+                if (workspaceVersions.contains(ga) || LanguageRuntimeInject.followsCompiler(ga)) continue;
+                if (!asksFor(ga, merged, own, parents.getOrDefault(key, List.of()), disagreed)) {
+                    disagreed.add(key);
+                    changed = true;
+                }
+            }
+        }
+        Set<String> out = new LinkedHashSet<>();
+        for (String key : disagreed) out.add(PackageId.parse(key).ga());
+        return out;
+    }
+
+    /**
+     * Whether a graph that reaches {@code merged} through {@code parents} asks for its version: the
+     * member's own table manages {@code ga} at it, or, where the table manages nothing, the highest
+     * plain version an agreed parent's edge declares is that version and every range such an edge
+     * wrote holds it. A module no agreed parent reaches is not asked for at all.
+     */
+    private static boolean asksFor(
+            String ga,
+            Resolution.ResolvedModule merged,
+            PlatformConstraints own,
+            List<Resolution.ResolvedModule> parents,
+            Set<String> disagreed) {
+        String version = merged.version();
+        String managed = own.collectedVersion(ga);
+        if (managed != null) return Versions.compare(managed, version) == 0;
+        String ref = merged.coord();
+        String highest = null;
+        boolean reached = false;
+        for (Resolution.ResolvedModule parent : parents) {
+            if (disagreed.contains(parent.module())) continue;
+            reached = true;
+            String declared = parent.declared().get(ref);
+            if (declared == null) continue;
+            if (VersionSelectors.looksLikeMavenRange(declared)) {
+                if (!satisfies(declared, version)) return false;
+            } else if (highest == null || Versions.compare(declared, highest) > 0) {
+                highest = declared;
+            }
+        }
+        if (!reached) return parents.isEmpty();
+        return highest == null || Versions.compare(highest, version) == 0;
+    }
+
+    /**
+     * {@code row} with its processor scopes dropped, or {@code null} when it has no other: a member
+     * solved on its own for its main and test graphs alone keeps the workspace's processor rows.
+     */
+    private static Lockfile.@Nullable Artifact withoutProcessor(Lockfile.Artifact row) {
+        List<Scope> kept = new ArrayList<>(row.scopes().size());
+        for (Scope scope : row.scopes()) {
+            if (LockRoots.graphGroup(scope) != LockRoots.GraphGroup.PROCESSOR) kept.add(scope);
+        }
+        if (kept.size() == row.scopes().size()) return row;
+        return kept.isEmpty() ? null : row.withScopes(kept);
+    }
+
+    /**
+     * A member whose own platform table or pins flag it for a solve of its own, with what the flagging
+     * read. {@code graphOnly} is true when only {@link #ownGraphDisagrees} flagged it: such a member's
+     * own rows are its main and test graphs', and its processor path reads the workspace's rows.
+     */
     private record Flagged(
-            LockOrchestrator.Member member, JkBuild manifest, PlatformConstraints own, Set<String> flagged) {}
+            LockOrchestrator.Member member,
+            JkBuild manifest,
+            PlatformConstraints own,
+            Set<String> flagged,
+            boolean graphOnly) {}
 
     /**
      * The members that need a solve of their own, in workspace order — counted before the first solve
@@ -211,8 +341,11 @@ final class MemberPartitions {
             Reach reach = reach(manifest);
             carryProvenance(reach, own, merged, carried);
             Set<String> flagged = flagged(reach, own);
-            if (flagged.isEmpty() && !prunes(reach, own)) continue;
-            out.add(new Flagged(member, manifest, own, flagged));
+            boolean prunes = prunes(reach, own);
+            boolean graphOnly = flagged.isEmpty() && !prunes;
+            flagged.addAll(ownGraphDisagrees(reach, own));
+            if (flagged.isEmpty() && !prunes) continue;
+            out.add(new Flagged(member, manifest, own, flagged, graphOnly));
         }
         return out;
     }
@@ -473,12 +606,16 @@ final class MemberPartitions {
     }
 
     /**
-     * The merged solve's decisions as soft preferences for a member's own solve, minus the flagged
-     * coordinates, under the versions the previous lock's partition rows held for this member.
+     * The merged solve's decisions in the member's closure as soft preferences for its own solve,
+     * minus the flagged coordinates, under the versions the previous lock's partition rows held for
+     * this member. A merged decision outside the closure is another member's and no preference here:
+     * a preferred version above what the member's graph declares would win the member's solve.
      */
-    private Map<String, String> prefsFor(Set<String> flagged, Map<String, String> previous) {
+    private Map<String, String> prefsFor(Set<String> closure, Set<String> flagged, Map<String, String> previous) {
         Map<String, String> prefs = new HashMap<>();
-        for (Resolution.ResolvedModule mod : unionByKey.values()) {
+        for (String key : closure) {
+            Resolution.ResolvedModule mod = unionByKey.get(key);
+            if (mod == null) continue;
             String ga = PackageId.parse(mod.module()).ga();
             if (flagged.contains(ga)) continue;
             prefs.putIfAbsent(mod.module(), mod.version());

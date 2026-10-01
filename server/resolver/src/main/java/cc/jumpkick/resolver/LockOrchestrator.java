@@ -69,6 +69,12 @@ public final class LockOrchestrator {
     /** The workspace members behind a merged manifest, each with its own effective manifest. */
     private List<Member> members = List.of();
 
+    /**
+     * The {@code group:artifact}s whose version is the workspace's own: the root's declarations and
+     * its {@code [workspace.dependencies]}. A member's exact pin on any other module is that member's.
+     */
+    private Set<String> workspaceVersions = Set.of();
+
     /** The {@code group:artifact} coordinates the workspace builds, each at its member's version. */
     private Map<String, String> workspaceModules = Map.of();
 
@@ -92,6 +98,15 @@ public final class LockOrchestrator {
      */
     public LockOrchestrator withMembers(List<Member> members) {
         this.members = members == null ? List.of() : List.copyOf(members);
+        return this;
+    }
+
+    /**
+     * The modules whose version is the workspace's own rather than one member's: the root's
+     * declarations and its {@code [workspace.dependencies]}, as {@code group:artifact}.
+     */
+    public LockOrchestrator withWorkspaceVersions(Set<String> modules) {
+        this.workspaceVersions = modules == null ? Set.of() : Set.copyOf(modules);
         return this;
     }
 
@@ -249,7 +264,7 @@ public final class LockOrchestrator {
     /**
      * The versions a prior lock held: {@code shared} by package key and by {@code group:artifact},
      * a main-scoped row winning over a test- or processor-only one, and {@code members} from the
-     * partition rows, per member path.
+     * partition rows, per member path, by the same rule.
      */
     private record PriorVersions(Map<String, String> shared, Map<String, Map<String, String>> members) {
         static final PriorVersions NONE = new PriorVersions(Map.of(), Map.of());
@@ -262,29 +277,33 @@ public final class LockOrchestrator {
                 String ga = PackageId.isMavenPackageKey(pkg.name())
                         ? PackageId.parse(pkg.name()).ga()
                         : pkg.name();
-                if (pkg.isPartition()) {
-                    for (String member : pkg.members()) {
-                        Map<String, String> mine = members.computeIfAbsent(member, k -> new HashMap<>());
-                        mine.put(key, pkg.version());
-                        mine.put(ga, pkg.version());
-                    }
-                    continue;
-                }
                 boolean specializedOnly = pkg.scopes().stream()
                                 .allMatch(s -> s == Scope.PROCESSOR
                                         || s == Scope.TEST_PROCESSOR
                                         || s == Scope.TEST
                                         || s == Scope.TEST_DEV)
                         && pkg.scopes().stream().noneMatch(LockRoots.MAIN_SCOPES::contains);
-                if (specializedOnly) {
-                    shared.putIfAbsent(key, pkg.version());
-                    shared.putIfAbsent(ga, pkg.version());
+                if (pkg.isPartition()) {
+                    for (String member : pkg.members()) {
+                        prefer(members.computeIfAbsent(member, k -> new HashMap<>()), key, ga, pkg, specializedOnly);
+                    }
                 } else {
-                    shared.put(key, pkg.version());
-                    shared.put(ga, pkg.version());
+                    prefer(shared, key, ga, pkg, specializedOnly);
                 }
             }
             return new PriorVersions(shared, members);
+        }
+
+        /** Record {@code pkg}'s version under both keys; a test or processor dual never displaces a main row's. */
+        private static void prefer(
+                Map<String, String> into, String key, String ga, Lockfile.Artifact pkg, boolean specializedOnly) {
+            if (specializedOnly) {
+                into.putIfAbsent(key, pkg.version());
+                into.putIfAbsent(ga, pkg.version());
+            } else {
+                into.put(key, pkg.version());
+                into.put(ga, pkg.version());
+            }
         }
 
         /** What one member's own solve reads: the shared versions under that member's partition rows. */
@@ -316,6 +335,7 @@ public final class LockOrchestrator {
                 PlatformConstraints.collect(sharedPlatform(project), repos, pomBuilder, bomTables, pinPolicy);
         adoptVersionlessRoots(project, constraints, pomBuilder, bomTables);
         Solve union = solveManifest(
+                projectDir,
                 project,
                 declaredFeatures(project, featuresRequested),
                 withDefaults,
@@ -338,18 +358,20 @@ public final class LockOrchestrator {
             for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
         }
         if (!members.isEmpty()) {
-            MemberPartitions.MemberSolver solver = (member, manifest, features, memberPrefs, own) -> {
+            MemberPartitions.MemberSolver solver = (member, manifest, features, memberPrefs, own, unshared) -> {
                 // A member solved on its own: its rows, assembled against its own platform table.
                 LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
                 ResolveProfile.Phases steps = ResolveProfile.phases();
                 steps.begin(ResolveProfile::memberSolve);
                 try {
+                    // The member's own source trees say which language runtimes its graph carries.
                     Solve solve = solveManifest(
+                            projectDir == null ? null : projectDir.resolve(member),
                             manifest,
                             features,
                             withDefaults,
                             memberPrefs,
-                            floors.forMember(member),
+                            without(floors.forMember(member), unshared),
                             silent,
                             ResolveObserver.NOOP,
                             pomBuilder,
@@ -362,7 +384,7 @@ public final class LockOrchestrator {
                 }
             };
             MemberPartitions partitions = new MemberPartitions(
-                    union, repos, pomBuilder, bomTables, pinPolicy, featuresRequested, withDefaults);
+                    union, repos, pomBuilder, bomTables, pinPolicy, featuresRequested, withDefaults, workspaceVersions);
             ResolveProfile.Phases pass = ResolveProfile.phases();
             pass.begin(ResolveProfile::phasePartition);
             try {
@@ -379,6 +401,16 @@ public final class LockOrchestrator {
         CentralMirror.standard().note().ifPresent(observer::onNote);
         progress.finished(lockfile.artifacts().size());
         return lockfile;
+    }
+
+    /** {@code versions} without the entries on {@code modules}, keyed by package or {@code group:artifact}. */
+    private static Map<String, String> without(Map<String, String> versions, Set<String> modules) {
+        if (versions.isEmpty() || modules.isEmpty()) return versions;
+        Map<String, String> out = new HashMap<>(versions);
+        out.keySet()
+                .removeIf(key -> modules.contains(
+                        PackageId.isMavenPackageKey(key) ? PackageId.parse(key).ga() : key));
+        return out;
     }
 
     /**
@@ -518,10 +550,13 @@ public final class LockOrchestrator {
             KmpRedirects kmp) {}
 
     /**
+     * @param sourceDir the directory whose source trees say which language runtimes the manifest's
+     *     graph carries: the project's, or a workspace member's own
      * @param constraints the manifest's platform table, collected by the caller; the solve edits it
      *     (exact roots strip their BOM say, the runtime inject and the test-framework pins add to it)
      */
     private Solve solveManifest(
+            @Nullable Path sourceDir,
             JkBuild project,
             Collection<String> featuresRequested,
             boolean withDefaults,
@@ -540,7 +575,7 @@ public final class LockOrchestrator {
         // Runs AFTER BOM collection: a platform that manages the runtime (grails-bom's groovy)
         // owns its version — the inject must not smuggle the scaffold default past it.
         LanguageRuntimeInject.Injected injected =
-                LanguageRuntimeInject.inject(project, projectDir, bomConstraints, declared.main(), toolVersions);
+                LanguageRuntimeInject.inject(project, sourceDir, bomConstraints, declared.main(), toolVersions);
         for (String note : injected.notes()) observer.onNote(note);
 
         LockRoots.Roots roots = constraints.apply(declared.split(), injected.runtimes());

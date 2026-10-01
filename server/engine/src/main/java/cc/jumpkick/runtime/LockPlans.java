@@ -15,7 +15,9 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
+import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.repo.LibraryRegistrySync;
@@ -558,15 +560,23 @@ public final class LockPlans {
     }
 
     /**
+     * A workspace's members as the lock solves each on its own, and the {@code group:artifact}s whose
+     * version is the workspace's rather than one member's ({@link #workspaceVersions}).
+     */
+    public record LockMembers(List<LockOrchestrator.Member> members, Set<String> workspaceVersions) {
+        static final LockMembers NONE = new LockMembers(List.of(), Set.of());
+    }
+
+    /**
      * The members behind a workspace's merged manifest, each as the lock solves it on its own:
      * placeholders resolved, sibling externals and platform tables folded in, keyed by its
-     * {@code [[module]]} path. Empty for a standalone project.
+     * {@code [[module]]} path. None for a standalone project.
      */
-    public static List<LockOrchestrator.Member> memberManifests(Path lockDir, JkBuild effective) {
-        if (!effective.isWorkspaceRoot()) return List.of();
+    public static LockMembers lockMembers(Path lockDir, JkBuild effective) {
+        if (!effective.isWorkspaceRoot()) return LockMembers.NONE;
         try {
             JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(lockDir));
-            if (!rootManifest.isWorkspaceRoot()) return List.of();
+            if (!rootManifest.isWorkspaceRoot()) return LockMembers.NONE;
             Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(lockDir, rootManifest);
             List<LockOrchestrator.Member> out = new ArrayList<>(modules.size());
             for (Map.Entry<Path, JkBuild> entry : modules.entrySet()) {
@@ -575,11 +585,30 @@ public final class LockPlans {
                 out.add(new LockOrchestrator.Member(
                         rel, WorkspaceMerge.applyToModule(rootManifest, entry.getValue(), modules.values())));
             }
-            return out;
+            return new LockMembers(out, workspaceVersions(rootManifest));
         } catch (IOException | RuntimeException e) {
-            Log.debug("memberManifests: members unreadable, the merged solve stands alone", e);
-            return List.of();
+            Log.debug("lockMembers: members unreadable, the merged solve stands alone", e);
+            return LockMembers.NONE;
         }
+    }
+
+    /**
+     * The {@code group:artifact}s whose version is the workspace's own rather than one member's: the
+     * root's declarations and its {@code [workspace.dependencies]} entries. A member's {@code
+     * x.workspace = true} reads that version; a version a member writes itself is its own.
+     */
+    static Set<String> workspaceVersions(JkBuild root) {
+        Set<String> out = new LinkedHashSet<>();
+        for (Map.Entry<Scope, List<Dependency>> e :
+                root.dependencies().byScope().entrySet()) {
+            if (e.getKey() == Scope.PLATFORM || e.getKey() == Scope.MANAGED) continue;
+            for (Dependency d : e.getValue()) if (!d.isWorkspace()) out.add(d.module());
+        }
+        Workspace workspace = root.workspace();
+        if (workspace != null) {
+            for (Workspace.WorkspaceDependency shared : workspace.dependencies().values()) out.add(shared.module());
+        }
+        return out;
     }
 
     private static LockScope workspaceScope(Path wsRoot, JkBuild rootManifest, FeatureSelection selection)
