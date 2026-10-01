@@ -98,6 +98,10 @@ test-plugin-jars = [
 # Normal `jk test` should finish in 5 min or less.
 # Run everything (all suites, tags included) with `jk build --all` / `jk test --all`.
 exclude-tags = ["integration", "slow", "bench", "network"]
+# Four CPUs per test JVM: its in-process engines size their carrier and worker pools from this,
+# and at the host's full count the liveness tests that pin every carrier starve the rest of the
+# tier. Four keeps the JVM's default collector.
+jvm-args = ["-XX:ActiveProcessorCount=4"]
 env = [
   # In-process engines under test share this module's sandbox JK_HOME store, and the resident
   # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible
