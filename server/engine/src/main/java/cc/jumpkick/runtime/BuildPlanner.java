@@ -154,6 +154,8 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> TAG_EXCLUDED = BuildPlanKey.scalar("tag-excluded", String.class);
 
     public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.scalar("no-test-sources", Boolean.class);
+    /** The suite a {@code --class} that matched nothing in this module named instead, when one owns it. */
+    public static final BuildPlanKey<String> CLASS_SUITE_HINT = BuildPlanKey.scalar("class-suite-hint", String.class);
 
     public static final BuildPlanKey<Map<String, ClassAbi.Fingerprint>> PRE_COMPILE_ABI =
             BuildPlanKey.map("pre-compile-abi", String.class, ClassAbi.Fingerprint.class);
@@ -205,6 +207,7 @@ public final class BuildPlanner {
             TEST_RESULT,
             TAG_EXCLUDED,
             NO_TEST_SOURCES,
+            CLASS_SUITE_HINT,
             PRE_COMPILE_ABI,
             COMPILED_MAIN_SOURCES,
             AFFECTED_TESTS);

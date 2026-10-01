@@ -12,6 +12,8 @@ import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class JkBuildParserProjectTest {
@@ -431,6 +433,45 @@ class JkBuildParserProjectTest {
                 """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("group:artifact");
+    }
+
+    @Test
+    void parses_class_pattern_suites_in_manifest_order() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testSuiteClasses()).isEmpty();
+        var build = JkBuildParser.parse(PROJECT + """
+
+                [test]
+                exclude-classes = ["*PerformanceTest"]
+
+                [test.suites.integration]
+                classes = ["IT*", "*IT", "*ITCase", "*IT"]
+
+                [test.suites.contract]
+                classes = ["com.acme.*ContractTest"]
+                """).build();
+        assertThat(build.testSuiteClasses())
+                .containsExactly(
+                        Map.entry("integration", List.of("IT*", "*IT", "*ITCase")),
+                        Map.entry("contract", List.of("com.acme.*ContractTest")));
+        assertThat(build.testExcludeClasses()).containsExactly("*PerformanceTest");
+    }
+
+    @Test
+    void refuses_a_class_pattern_suite_it_cannot_run() {
+        for (String bad : List.of(
+                "[test.suites.test]\nclasses = [\"*IT\"]",
+                "[test.suites.guard]\nclasses = [\"*IT\"]",
+                "[test.suites.Integration]\nclasses = [\"*IT\"]",
+                "[test.suites.integration]\nclasses = []",
+                "[test.suites.integration]\nclasses = \"*IT\"",
+                "[test.suites.integration]\nclasses = [\"FooIT#slow\"]",
+                "[test.suites.integration]\nclasses = [\"*IT\"]\ndir = \"src/it/java\"",
+                "[test]\nsuites = [\"integration\"]")) {
+            assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n" + bad + "\n"))
+                    .as(bad)
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessageContaining("suites");
+        }
     }
 
     @Test

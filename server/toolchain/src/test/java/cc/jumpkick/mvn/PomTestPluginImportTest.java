@@ -40,10 +40,11 @@ class PomTestPluginImportTest {
                 .as("the file pattern becomes the class pattern Maven's runner skips")
                 .containsExactly("*Slow*");
         assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` `<excludes>`"));
-        assertThat(messages)
-                .as("failsafe's default patterns name the classes to move into the integration suite")
-                .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` runs **/IT*.java, **/*IT.java, **/*ITCase.java")
-                        && m.contains("`src/integration/java`"));
+        assertThat(build.build().testSuiteClasses())
+                .as("failsafe's default patterns are the integration suite's classes")
+                .containsExactly(Map.entry("integration", List.of("IT*", "*IT", "*ITCase")));
+        assertThat(messages).noneMatch(m -> m.startsWith("`maven-failsafe-plugin` runs"));
+        assertThat(messages).noneMatch(m -> m.contains("src/integration/java"));
         assertThat(messages)
                 .as("failsafe's argLine differs from surefire's, and [test] jvm-args is one list")
                 .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<argLine>` -Xmx2g —")
@@ -57,16 +58,17 @@ class PomTestPluginImportTest {
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
-                .contains(
-                        "[test]\ninclude-tags = [\"fast\", \"smoke\"]\nexclude-tags = [\"slow\"]\n"
-                                + "exclude-classes = [\"*Slow*\"]\n"
-                                + "jvm-args = [\"-Xmx1g\", \"-Dfile.encoding=UTF-8\"]\n"
-                                + "system-properties = { \"spring.profiles.active\" = \"test\", \"java.awt.headless\" = \"true\" }\n");
+                .contains("[test]\ninclude-tags = [\"fast\", \"smoke\"]\nexclude-tags = [\"slow\"]\n"
+                        + "exclude-classes = [\"*Slow*\"]\n"
+                        + "jvm-args = [\"-Xmx1g\", \"-Dfile.encoding=UTF-8\"]\n"
+                        + "system-properties = { \"spring.profiles.active\" = \"test\", \"java.awt.headless\" = \"true\" }\n"
+                        + "\n[test.suites.integration]\nclasses = [\"IT*\", \"*IT\", \"*ITCase\"]\n");
         JkBuild reparsed = JkBuildParser.parse(rendered);
         assertThat(reparsed.build().testIncludeTags()).containsExactly("fast", "smoke");
         assertThat(reparsed.build().testExcludeTags()).containsExactly("slow");
         assertThat(reparsed.build().testExcludeClasses()).containsExactly("*Slow*");
         assertThat(reparsed.build().testJvm()).isEqualTo(build.build().testJvm());
+        assertThat(reparsed.build().testSuiteClasses()).isEqualTo(build.build().testSuiteClasses());
         assertThat(JkBuildParser.parseTestTags(writeManifest(tempDir, rendered)).excludeTags())
                 .as("the engine's root-scoped reader sees the same filters")
                 .containsExactly("slow");
@@ -116,6 +118,45 @@ class PomTestPluginImportTest {
                 """);
         assertThat(result.jkBuild().build().testJvm().jvmArgs()).containsExactly("--enable-preview", "-XX:+UseZGC");
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`<argLine>`"));
+    }
+
+    @Test
+    void failsafe_includes_are_the_integration_suites_classes_and_its_excludes_a_row(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>3.5.2</version>
+                    <configuration>
+                      <includes>
+                        <include>**/*IntegrationTest.java</include>
+                        <include>com/ex/smoke/**/*.java, %regex[.*Flow.*]</include>
+                      </includes>
+                      <excludes><exclude>**/*SlowIntegrationTest.java</exclude></excludes>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        List<String> messages = TestImporters.messages(result);
+
+        assertThat(result.jkBuild().build().testSuiteClasses())
+                .containsExactly(Map.entry("integration", List.of("*IntegrationTest", "com.ex.smoke.*")));
+        assertThat(messages).anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<includes>` %regex[.*Flow.*] —"));
+        assertThat(messages)
+                .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<excludes>` **/*SlowIntegrationTest.java —")
+                        && m.contains("`[test] exclude-classes`"));
+        assertThat(result.jkBuild().build().testExcludeClasses())
+                .as("Failsafe's excludes narrow its own pass; they do not leave a class out of every suite")
+                .isEmpty();
+        assertThat(JkBuildRenderer.render(result.jkBuild()))
+                .contains("\n[test.suites.integration]\nclasses = [\"*IntegrationTest\", \"com.ex.smoke.*\"]\n")
+                .doesNotContain("\n[test]\n");
     }
 
     @Test

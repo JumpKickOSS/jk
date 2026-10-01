@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,6 +26,10 @@ class ForecastSelectedSuiteSourcesTest {
 
     private static final JkBuild PROJECT = JkBuild.builder(
                     Project.builder("ex", "m", "1.0").jdkMajor(25).java(25).build())
+            .build();
+
+    private static final JkBuild PATTERNED = JkBuild.builder(PROJECT.project())
+            .build(BuildBlock.EMPTY.withTestSuiteClasses(Map.of("integration", List.of("IT*", "*IT"))))
             .build();
 
     @Test
@@ -65,14 +71,34 @@ class ForecastSelectedSuiteSourcesTest {
         assertThat(selected(module, TestSelection.DEFAULT)).isEmpty();
     }
 
-    /** The forecast's source list: the selected suites through the factory the build uses. */
+    @Test
+    void aClassPatternSuiteCompilesTheTestSuitesSourcesAndItsOwnDirectory(@TempDir Path module) throws Exception {
+        Path unit = write(module, "src/test/java/app/WidgetTest.java");
+        Path it = write(module, "src/test/java/app/WidgetIT.java");
+        TestSelection integration = TestSelection.of(List.of("integration"), false, List.of(), List.of());
+
+        assertThat(selected(PATTERNED, module, integration))
+                .as("the pattern suite's classes are the test suite's: one compile serves both runs")
+                .containsExactlyInAnyOrder(unit, it);
+        assertThat(selected(PATTERNED, module, TestSelection.DEFAULT)).containsExactlyInAnyOrder(unit, it);
+
+        Path own = write(module, "src/integration/java/app/StackIT.java");
+        assertThat(selected(PATTERNED, module, integration)).containsExactlyInAnyOrder(unit, it, own);
+        assertThat(selected(PATTERNED, module, TestSelection.DEFAULT)).containsExactlyInAnyOrder(unit, it);
+    }
+
     private static List<Path> selected(Path module, TestSelection selection) throws Exception {
+        return selected(PROJECT, module, selection);
+    }
+
+    /** The forecast's source list: the selected suites through the factory the build uses. */
+    private static List<Path> selected(JkBuild project, Path module, TestSelection selection) throws Exception {
         return PlannerTest.TestSources.collect(
-                        PROJECT,
+                        project,
                         module,
                         false,
-                        TestSupport.selectedSuites(module, false, selection),
-                        BuildLayout.of(module, PROJECT),
+                        TestSupport.selectedSuites(module, false, project.build(), selection),
+                        BuildLayout.of(module, project),
                         null)
                 .all();
     }

@@ -94,7 +94,10 @@ public final class ModuleOutputs {
                             moduleDir,
                             compact,
                             TestSupport.selectedSuites(
-                                    moduleDir, compact, SessionContext.current().testSelection()),
+                                    moduleDir,
+                                    compact,
+                                    build.build(),
+                                    SessionContext.current().testSelection()),
                             BuildLayout.of(moduleDir, build),
                             null)
                     .isEmpty();

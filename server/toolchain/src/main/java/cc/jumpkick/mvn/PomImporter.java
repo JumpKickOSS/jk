@@ -7,6 +7,7 @@ import cc.jumpkick.compat.ImportedKotlin;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.InFlightRequests;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Coordinate;
@@ -331,7 +332,7 @@ public final class PomImporter {
      * compiler execution reached one compile step alone; {@code [build]} / {@code [test]} extra
      * source roots; {@code [test] exclude-src} from {@code <testExcludes>}; {@code [test]} tag
      * filters, excluded classes and dependencies, JVM flags and system properties from Surefire and
-     * Failsafe.
+     * Failsafe; Failsafe's class patterns as {@code [test.suites.integration] classes}.
      */
     private static BuildBlock buildBlock(
             Model model,
@@ -368,6 +369,9 @@ public final class PomImporter {
         if (!tests.excludeClasses().isEmpty()) build = build.withTestExcludeClasses(tests.excludeClasses());
         if (!tests.excludeDependencies().isEmpty())
             build = build.withTestExcludeDependencies(tests.excludeDependencies());
+        if (!tests.integrationClasses().isEmpty()) {
+            build = build.withTestSuiteClasses(Map.of(TestSuites.INTEGRATION, tests.integrationClasses()));
+        }
         if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
         List<String> testExcludes = PluginFacts.compilerSourceGlobs(model, "testExcludes", true);
         if (!testExcludes.isEmpty()) build = build.withTestExcludeSrc(testExcludes);

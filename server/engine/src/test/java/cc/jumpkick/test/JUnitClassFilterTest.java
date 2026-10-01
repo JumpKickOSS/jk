@@ -58,21 +58,21 @@ class JUnitClassFilterTest {
     @Test
     void excluded_classes_and_their_nested_classes_drop_out_of_every_selection() {
         String body = JUnitClassFilter.excludeBody(List.of("*PerformanceTest"));
-        Pattern all = Pattern.compile(JUnitClassFilter.filter(null, body));
+        Pattern all = Pattern.compile(JUnitClassFilter.filter(null, body, null));
         assertThat(all.matcher("com.acme.CodecTest").matches()).isTrue();
         assertThat(all.matcher("com.acme.PhoneticPerformanceTest").matches()).isFalse();
         assertThat(all.matcher("com.acme.PhoneticPerformanceTest$Inner").matches())
                 .isFalse();
         assertThat(all.matcher("com.acme.PerformanceTestSupport").matches()).isTrue();
 
-        Pattern narrowed =
-                Pattern.compile(JUnitClassFilter.filter(JUnitClassFilter.patternRegex(List.of("com.acme.*")), body));
+        Pattern narrowed = Pattern.compile(
+                JUnitClassFilter.filter(JUnitClassFilter.patternRegex(List.of("com.acme.*")), body, null));
         assertThat(narrowed.matcher("com.acme.CodecTest").matches()).isTrue();
         assertThat(narrowed.matcher("com.acme.PhoneticPerformanceTest").matches())
                 .isFalse();
         assertThat(narrowed.matcher("org.other.CodecTest").matches()).isFalse();
 
-        assertThat(JUnitClassFilter.filter(null, JUnitClassFilter.excludeBody(List.of())))
+        assertThat(JUnitClassFilter.filter(null, JUnitClassFilter.excludeBody(List.of()), null))
                 .isNull();
     }
 

@@ -121,6 +121,18 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** The classes the run's suites own ({@link SuiteClassFilter#body}), or null for every class. */
+    private @Nullable String suiteFilter;
+
+    /**
+     * The run's suites over a test-classes tree shared with class-pattern suites: no JVM of the run
+     * discovers or executes a class another suite owns, whatever the other filters select.
+     */
+    public JUnitLauncher withSuites(SuiteClassFilter suites) {
+        this.suiteFilter = suites.body();
+        return this;
+    }
+
     /**
      * When set, the worker count passed to {@link #run} is the auto share ({@link TestWorkers#autoShare}),
      * not an explicit pin. The launcher then sizes the pool from recorded class walls.
@@ -443,12 +455,13 @@ public final class JUnitLauncher {
 
     /**
      * {@code base} plus the class filter and the tag filters. The class filter is {@code names}
-     * exactly when given, else the {@code --class} patterns, less the excluded classes either way.
+     * exactly when given, else the {@code --class} patterns, within the run's suites and less the
+     * excluded classes either way.
      */
     private List<String> withTagArgs(List<String> base, List<String> names) {
         var out = new ArrayList<>(base);
         String include = names.isEmpty() ? classFilter : JUnitClassFilter.exactRegex(names);
-        String filter = JUnitClassFilter.filter(include, excludeFilter);
+        String filter = JUnitClassFilter.filter(include, excludeFilter, suiteFilter);
         if (filter != null) out.add("--filter=" + filter);
         if (classNames.isEmpty()) out.addAll(methodArgs);
         if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
