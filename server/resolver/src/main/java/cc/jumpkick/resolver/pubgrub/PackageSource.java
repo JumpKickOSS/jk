@@ -3,6 +3,7 @@ package cc.jumpkick.resolver.pubgrub;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -41,13 +42,14 @@ public interface PackageSource {
     }
 
     /**
-     * Versions that dependency edges expanded so far have named for {@code pkg} as a plain version
-     * (a POM's {@code <version>1.2</version>}, not a range). The solver resolves a package whose
-     * constraints are all such floors to the highest of these rather than to the newest release
-     * the repository advertises. Default: none known.
+     * The plain versions (a POM's {@code <version>1.2</version>}, not a range) that dependency edges
+     * expanded so far have named for {@code pkg}, each with the {@code parentPkg@parentVersion}
+     * coordinates whose edges named it. The solver resolves a package whose constraints are all such
+     * floors to the highest version a parent still in the graph declares, rather than to the newest
+     * release the repository advertises. Default: none known.
      */
-    default Set<String> declaredVersions(String pkg) {
-        return Set.of();
+    default Map<String, Set<String>> declaredVersions(String pkg) {
+        return Map.of();
     }
 
     /**
