@@ -76,6 +76,9 @@ public interface VerbHost {
         throw new UnsupportedOperationException("accToolWall");
     }
 
+    /** A failed run's run-level errors, the verdicts no module or step owns, as error rows on its journal row. */
+    default void accRunErrors(long rid, List<String> errors) {}
+
     /**
      * Refuse this request's journal row: the in-flight stub is deleted at finish and no
      * {@code jk-results.md} is written, for a run whose project cannot be named.

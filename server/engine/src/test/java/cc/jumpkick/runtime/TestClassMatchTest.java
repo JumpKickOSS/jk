@@ -9,6 +9,8 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.test.TestProgressListener;
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -48,7 +50,7 @@ class TestClassMatchTest {
     void the_skip_label_and_the_failure_name_the_patterns() {
         assertThat(TestClassMatch.skipLabel(List.of("OrdersTest", "*IT")))
                 .isEqualTo("no classes matched --class OrdersTest, *IT — skipped");
-        TestSummary failure = TestClassMatch.asFailure("acme:orders", ORDERS);
+        TestSummary failure = TestClassMatch.asFailure("acme:orders", ORDERS, null);
         assertThat(failure.failed()).isEqualTo(1);
         assertThat(failure.failures()).singleElement().satisfies(f -> {
             assertThat(f.module()).isEqualTo("acme:orders");
@@ -57,21 +59,52 @@ class TestClassMatchTest {
     }
 
     @Test
-    void under_a_tag_filter_the_failure_says_the_named_class_may_have_been_excluded_and_what_runs_it() {
-        TestSelection excluded = TestSelection.of(List.of(), true, List.of(), List.of("integration"))
-                .withClasses(List.of("SelfNukeCommandTest"));
-        String line = TestClassMatch.noMatchMessage(excluded);
-        assertThat(line)
-                .startsWith("no test classes matched --class SelfNukeCommandTest")
-                .contains("tag the filter excludes")
-                .contains("--include-tags <tag>");
-        assertThat(TestClassMatch.noMatchMessage(ORDERS))
-                .as("no tag filter: a plain no-match is a typo and says only that")
-                .isEqualTo("no test classes matched --class OrdersTest");
-        assertThat(TestClassMatch.asFailure("acme:orders", excluded).failures())
+    void when_the_tag_filter_dropped_the_named_class_the_failure_is_the_runners_warning() {
+        TestSelection excluded = TestSelection.of(List.of(), true, List.of(), List.of("bench"))
+                .withClasses(List.of("FormatThreadsBenchTest"));
+        assertThat(TestClassMatch.noMatchMessage(excluded, TAG_EXCLUDED)).isEqualTo(TAG_EXCLUDED);
+        assertThat(TestClassMatch.asFailure("acme:fmt", excluded, TAG_EXCLUDED).failures())
                 .singleElement()
-                .satisfies(f -> assertThat(f.message()).contains("tag the filter excludes"));
+                .satisfies(f -> assertThat(f.message()).isEqualTo(TAG_EXCLUDED));
+        assertThat(TestClassMatch.noMatchMessage(excluded, null))
+                .as("the runner dropped nothing: the patterns matched no class, and that is all it says")
+                .isEqualTo("no test classes matched --class FormatThreadsBenchTest");
     }
+
+    @Test
+    void a_module_whose_tag_filter_dropped_the_named_class_is_the_run_wide_verdict() {
+        Session session = Session.defaults().withTestSelection(ORDERS);
+        BuildPlan dropped = BuildPlan.builder("module")
+                .stateKeys(BuildPlanner.TEST_RESULT, BuildPlanner.TAG_EXCLUDED)
+                .addTask(Task.builder("run-tests")
+                        .ticks(1)
+                        .execute(ctx -> ctx.put(BuildPlanner.TAG_EXCLUDED, TAG_EXCLUDED))
+                        .build())
+                .build();
+        dropped.run();
+        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(plan(null), dropped)))
+                .isEqualTo(TAG_EXCLUDED);
+    }
+
+    @Test
+    void the_capture_keeps_the_runners_tag_excluded_warning_and_forwards_every_warning() {
+        List<String> forwarded = new ArrayList<>();
+        var capture = new TagExcludedCapture(new TestProgressListener() {
+            @Override
+            public void onWarning(String code, String message) {
+                forwarded.add(code);
+            }
+        });
+        capture.onWarning("no-test-classes", "nothing here");
+        assertThat(capture.message()).isNull();
+        capture.onWarning("tag-excluded", TAG_EXCLUDED);
+        assertThat(capture.message()).isEqualTo(TAG_EXCLUDED);
+        assertThat(forwarded).containsExactly("no-test-classes", "tag-excluded");
+    }
+
+    private static final String TAG_EXCLUDED = "--class named 1 class the tag filter excluded:"
+            + " a.FormatThreadsBenchTest [bench]; pass --include-tags bench (or a --profile that includes it)"
+            + " to run it";
 
     @Test
     void the_run_fails_only_when_no_module_matched() {

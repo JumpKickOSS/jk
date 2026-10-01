@@ -27,7 +27,7 @@ final class WorkspaceTerminal {
 
     /**
      * Settle a workspace build: release the exclusive slot, decide cancelled-vs-failed, flush
-     * progress and the timeline, emit the terminal, publish the error rows, and hand back the
+     * progress and the timeline, journal and emit the terminal's error rows, and hand back the
      * verdict the build already produced.
      *
      * <p>The terminal goes out with {@link VerbHost#sendQuiet}, never the throwing
@@ -69,6 +69,9 @@ final class WorkspaceTerminal {
         host.flushTimeline(rid, writer);
 
         List<Redacted> errors = host.redactErrors(dir, result.errors());
+        if (!succeeded && !cancelled && rid > 0) {
+            host.accRunErrors(rid, errors.stream().map(Redacted::text).toList());
+        }
         host.sendQuiet(writer, ProtoEvents.workspaceFinish(succeeded, exitCode, errors, cancelled));
         if (!succeeded && !cancelled) {
             for (Redacted error : errors.stream().limit(PUBLISHED_ERROR_ROWS).toList()) {

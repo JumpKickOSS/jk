@@ -150,6 +150,9 @@ public final class BuildPlanner {
     public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.scalar("test-classes", Path.class);
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.scalar("layout", BuildLayout.class);
     public static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.scalar("test-result", TestSummary.class);
+    /** The runner's {@code tag-excluded} warning on a {@code --class} run the tag filter emptied. */
+    public static final BuildPlanKey<String> TAG_EXCLUDED = BuildPlanKey.scalar("tag-excluded", String.class);
+
     public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.scalar("no-test-sources", Boolean.class);
 
     public static final BuildPlanKey<Map<String, ClassAbi.Fingerprint>> PRE_COMPILE_ABI =
@@ -200,6 +203,7 @@ public final class BuildPlanner {
             TEST_CLASSES,
             LAYOUT,
             TEST_RESULT,
+            TAG_EXCLUDED,
             NO_TEST_SOURCES,
             PRE_COMPILE_ABI,
             COMPILED_MAIN_SOURCES,

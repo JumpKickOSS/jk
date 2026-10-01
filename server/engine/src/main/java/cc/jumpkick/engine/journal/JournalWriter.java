@@ -147,6 +147,11 @@ public final class JournalWriter {
         if (a != null) a.addPreflightFailure(stage, millis, reason);
     }
 
+    public void accRunErrors(long requestId, List<String> errors) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.addRunErrors(errors);
+    }
+
     public void accStepStart(long requestId, String dir, String step, String phase) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null) a.noteTaskStart(dir, step, phase, clock.getAsLong());
