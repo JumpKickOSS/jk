@@ -49,6 +49,16 @@ class MemberRowsTest {
                 .containsExactly(both);
     }
 
+    @Test
+    void a_main_partition_keeps_the_processor_part_of_a_plain_row_that_spans_both() {
+        Lockfile.Artifact plain = row("33.7.1-jre", Scope.MAIN, Scope.TEST, Scope.PROCESSOR);
+        Lockfile.Artifact mine = row("33.6.0-android", Scope.MAIN).withMembers(List.of("plugins/publisher"));
+
+        assertThat(MemberRows.narrow(List.of(plain, mine), "plugins/publisher"))
+                .as("the member's main row, and the workspace's row on its processor path alone")
+                .containsExactly(row("33.7.1-jre", Scope.PROCESSOR), mine);
+    }
+
     private static Lockfile.Artifact row(String version, Scope... scopes) {
         return new Lockfile.Artifact(
                 GUAVA,

@@ -14,6 +14,7 @@ import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -233,6 +234,77 @@ class PomManagedImportTest {
                                         + " coordinates under 1 module (org.apache.hadoop:hadoop-common)")
                                 .contains("written once to the root's [managed-dependencies] with `exclude`"),
                         m -> assertThat(m).startsWith("[app] `<dependencyManagement>` in this POM pins 1 version"));
+    }
+
+    /**
+     * A module's own {@code <version>} is that member's pin, and the version a reactor parent's
+     * {@code <dependencyManagement>} supplies is the workspace's: the module that inherits it reads
+     * it as {@code commons-io.workspace = true} from the root's {@code [workspace.dependencies]},
+     * and the root's {@code [managed-dependencies]} carries it for the members that reach the module
+     * without declaring it, as Maven's inherited management governs their transitives.
+     */
+    @Test
+    void a_modules_own_version_is_its_pin_and_the_parents_managed_version_the_workspaces(@TempDir Path root)
+            throws Exception {
+        write(root, "pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <modules><module>core</module><module>app</module><module>lib</module></modules>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>commons-io</groupId><artifactId>commons-io</artifactId><version>2.16.1</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        write(root, "core/pom.xml", leaf("core", """
+                <dependencies>
+                  <dependency><groupId>commons-io</groupId><artifactId>commons-io</artifactId></dependency>
+                </dependencies>
+                """));
+        write(root, "app/pom.xml", leaf("app", """
+                <dependencies>
+                  <dependency>
+                    <groupId>commons-io</groupId><artifactId>commons-io</artifactId><version>2.18.0</version>
+                  </dependency>
+                </dependencies>
+                """));
+        write(root, "lib/pom.xml", leaf("lib", ""));
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(result.report().hasErrors()).isFalse();
+        assertThat(requireNonNull(result.modules().get("core")).dependencies().of(Scope.MAIN))
+                .singleElement()
+                .satisfies(d -> assertThat(d.isWorkspace()).isTrue())
+                .extracting(Dependency::library)
+                .isEqualTo("commons-io");
+        assertThat(requireNonNull(result.root().workspace()).dependencies()).hasEntrySatisfying("commons-io", ws -> {
+            assertThat(ws.module()).isEqualTo("commons-io:commons-io");
+            assertThat(requireNonNull(ws.version()).raw()).isEqualTo("2.16.1");
+        });
+        String rendered = JkBuildRenderer.render(result.root());
+        assertThat(rendered).contains("[workspace.dependencies]\ncommons-io = \"commons-io:commons-io:2.16.1\"\n");
+        assertThat(JkBuildParser.parse(rendered).workspace())
+                .extracting(w -> requireNonNull(w).dependencies().keySet())
+                .asInstanceOf(InstanceOfAssertFactories.collection(String.class))
+                .containsExactly("commons-io");
+        assertThat(JkBuildRenderer.render(requireNonNull(result.modules().get("core"))))
+                .contains("commons-io.workspace = true");
+        assertThat(requireNonNull(result.modules().get("app")).dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module, d -> d.version().raw())
+                .containsExactly(tuple("commons-io:commons-io", "2.18.0"));
+        assertThat(requireNonNull(result.modules().get("lib")).dependencies().of(Scope.MAIN))
+                .isEmpty();
+        assertThat(result.root().dependencies().of(Scope.MANAGED))
+                .extracting(Dependency::module, d -> d.version().raw())
+                .containsExactly(tuple("commons-io:commons-io", "2.16.1"));
     }
 
     private static String leaf(String artifactId, String extra) {

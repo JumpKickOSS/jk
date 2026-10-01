@@ -170,10 +170,40 @@ the reactor edges onto it as workspace edges.
 
 ## Members that disagree
 
-One lock, one solve: the workspace's dependencies are resolved together, and a row of
-`jk-lock.toml` is the version every member reads. Members that only *ask* differently still share
-it — an edge that declares `1.0` where a sibling's declares `2.0` is a floor, and the workspace
-takes `2.0` for both, as it would in one project.
+Each member resolves on its own graph, as each module of a Maven reactor does: its own roots, the
+siblings it depends on and what their POMs declare, under its own platform table. Highest-wins
+mediates *within* that graph — two of the member's dependencies that ask for `1.0` and `2.0` give it
+`2.0` — and nothing outside it reaches the member: another member's pin, or a version another
+member's dependencies ask for, never raises or lowers it. The lock is still one file. Its plain rows
+are the merged solve of every member, and a member whose own graph resolves a coordinate
+differently reads a row of its own (below); a workspace whose members' graphs agree has no
+`members` rows at all.
+
+A version a member writes is that member's, as a module's own `<version>` is under Maven:
+
+| In the member's `jk.toml` | The member reads | A sibling that does not declare it reads |
+|---|---|---|
+| `jackson-databind.workspace = true` | the root's `[workspace.dependencies]` version | the same version: it is the workspace's |
+| `jackson-databind = "2.22.2"` | `2.22.2`, also over the root's own declaration | the version its own graph asks for — its platform table's, else the highest its dependencies' POMs declare |
+
+So `spring-web = "org.springframework:spring-web:7.0.0-M4"` in one member gives that member
+Spring 7 on its compile, runtime and test classpaths, and every Boot application beside it keeps
+the `spring-web` its starters declare, and the `spring-core` they declare too, though Spring 7's
+own POMs ask for a newer one. A version the root declares in its own `[dependencies]` is the
+workspace's for every member that does not write its own. `jk import` writes a version a reactor
+parent's `<dependencyManagement>` supplies as `x.workspace = true` with the root's
+`[workspace.dependencies]` entry, and a module's own `<version>` as that member's pin.
+
+A member's graph is its main and test graphs. The annotation processor path keeps its own rules: a
+processor pin is never a sibling's main version, and a member that reads rows of its own only
+because its graph differs keeps the workspace's processor rows — `error_prone_core` keeps the
+`-jre` Guava its POM asks for even where the member's main classpath reads `-android`.
+
+A member that depends on a sibling reads the sibling's declarations after its own, as Maven's
+nearest-wins reads a dependency's: the consumer's own version wins, then the first sibling's in
+declaration order, breadth-first through the siblings it depends on. `app` depending on `lib`,
+which pins `leaf = "2.0"`, reads 2.0 unless `app` declares `leaf` itself; a member that reaches
+`leaf` only through a library's POM reads what that POM asks for.
 
 A member's own coordinate is the member's everywhere. A dependency whose POM asks for a published
 `group:artifact` the workspace builds — `hbase-server` depending on `org.apache.hadoop:hadoop-common`
@@ -211,7 +241,13 @@ entry only some members hold never moves a plain row. A member is resolved on it
 the workspace's answer cannot be its answer:
 
 - it declares an exact version the workspace's row does not carry (`logback-classic = "1.2.13"`
-  in one member, `"1.5.32"` in three others), or
+  in one member, `"1.5.32"` in three others), or depends on a sibling that does, or
+- a module its main or test graph reaches without pinning it sits on the workspace's row at a
+  version its own graph does not ask for — not the one its own platform table manages the module
+  at, else not the highest a dependency's POM in its graph declares, counting only the parents it
+  agrees on (`jakarta.persistence-api = "3.2.0"` in `service-layer`, and `layered-architecture`
+  reaching it through `hibernate-core`, which declares 3.1.0; or `spring-core` 7.0.9 on the
+  workspace's row, which only Spring 7's POMs in another member ask for), or
 - a BOM or `[managed-dependencies]` entry of its own table that not every member holds — its own,
   one a framework table implies, or a sibling's it depends on — manages a coordinate in its graph
   at a version the workspace's row does not carry (`zipkin-server`'s Boot BOM lifts `jakarta.jms-api` to 3.1.0 where the workspace's
@@ -222,10 +258,8 @@ the workspace's answer cannot be its answer:
   order, when two members each hold a BOM of their own that disagree on it: each member's table
   folds its own BOMs alone, so no `platform BOM conflict` is raised where no member holds both,
   and the later member reads a row of its own), while the BOM's `<exclusions>` on it reach the
-  sibling alone through a row of its own — and the member's own platform table manages it
-  at another version or a dependency's POM in the member's own graph declared a version the pinned
-  one cannot stand in for: below the declaration, or past its compatible line (`^` of what the POM
-  declared), or outside a range it wrote, or
+  sibling alone through a row of its own — and the member's own graph asks for another version,
+  as above, or
 - a BOM or `[managed-dependencies]` entry of its own table that not every member holds writes
   `exclude` patterns on a module in its graph — a BOM's `<exclusions>` on a root it manages, an
   entry's on every edge onto its module — that prune an edge the workspace's row carries, or the
@@ -246,13 +280,11 @@ a test row is not on any member's main classpath, so a member whose main graph w
 gets a main-scoped row of its own rather than reading the workspace's main row. A workspace whose members all agree has no `members` key
 anywhere, and nothing about it changes.
 
-A declaration a pinned workspace row does satisfy is a floor, as a sibling's higher edge is: where
-a versionless root under a sibling's Boot BOM puts `commons-logging` 1.3.6 on the workspace's row,
-it stands in for the 1.3.5 a `spring-context` module's graph declares, and the member reads the
-workspace's row. A floating selector on the member's own root — `latest`, a
-caret, the Jupiter the test runner adds to a member that declares no test dependencies — asks
-the workspace for its answer and never disagrees with it; so a member that holds no platform table
-and pins nothing exactly reads the plain rows alone. A `jk lock --features` name reaches each unit
+A sibling's version is no floor for a member: where a versionless root under a sibling's Boot BOM
+puts `commons-logging` 1.3.6 on the workspace's row, a `spring-context` module whose graph declares
+1.3.5 reads 1.3.5 from a row of its own, as under Maven. A floating selector on the member's own
+root — `latest`, a caret, the Jupiter the test runner adds to a member that declares no test
+dependencies — asks the workspace for its answer and never disagrees with it. A `jk lock --features` name reaches each unit
 whose `[features]` declares it — the root's merged solve where the root declares it, a member's
 declarations in that solve and its own solve where the member does — and is left out for the units
 that lack it; a name no unit of the workspace declares is refused as `unknown feature`. So

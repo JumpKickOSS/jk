@@ -581,7 +581,14 @@ class PomInheritanceImportTest {
 
         PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
         JkBuild app = requireNonNull(result.modules().get("app"));
-        assertThat(versions(app.dependencies().of(Scope.MAIN))).containsExactly("com.google.guava:guava=33.4.0-jre");
+        assertThat(app.dependencies().of(Scope.MAIN))
+                .as("the sibling parent's version is the workspace's")
+                .singleElement()
+                .satisfies(d -> assertThat(d.isWorkspace()).isTrue());
+        assertThat(requireNonNull(result.root().workspace()).dependencies().get("guava"))
+                .extracting(
+                        ws -> ws.module() + "=" + requireNonNull(ws.version()).raw())
+                .isEqualTo("com.google.guava:guava=33.4.0-jre");
         assertThat(app.dependencies().of(Scope.PLATFORM))
                 .as("a sibling is not a published BOM")
                 .isEmpty();

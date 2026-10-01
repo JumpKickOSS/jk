@@ -311,9 +311,11 @@ public final class LockPipeline {
                 PathSourceResolution.prepare(prep.project(), prep.repos(), cas, lockDir, javaHome, jkVersion);
 
         // Deliberately no Diagnostics.Palette here — the engine emits plain text and the client themes it.
+        LockPlans.LockMembers members = LockPlans.lockMembers(lockDir, effective);
         LockOrchestrator orchestrator = new LockOrchestrator(pathPrep.repos())
                 .withProjectDir(lockDir)
-                .withMembers(LockPlans.memberManifests(lockDir, effective))
+                .withMembers(members.members())
+                .withWorkspaceVersions(members.workspaceVersions())
                 .withActivatedFeatures(pathPrep.activatedFeatures())
                 .withJvmEnvironment(PluginContributions.jvmEnvironment(pathPrep.project(), lockDir))
                 .withPlatformPolicy(policy.platform())

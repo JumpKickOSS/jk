@@ -98,13 +98,12 @@ class LockOrchestratorMemberPartitionsTest {
     }
 
     /**
-     * A versionless root under the BOM one member holds puts leaf 1.1 on the workspace's row, within
-     * the line the other member's graph declared it on: {@code middle} declares leaf 1.0. The
-     * declaration is a floor 1.1 satisfies, so both members read the workspace's row and no
-     * partition is written.
+     * A versionless root under the BOM one member holds puts leaf 1.1 on the workspace's row. The
+     * other member's graph asks for the 1.0 {@code middle} declares, and a sibling's BOM never lifts
+     * a member's graph, even within its line: lib reads a row of its own at 1.0, as under Maven.
      */
     @Test
-    void a_compatible_lift_by_a_siblings_bom_is_a_floor_the_member_shares(@TempDir Path tempDir) throws Exception {
+    void a_compatible_lift_by_a_siblings_bom_does_not_lift_the_member(@TempDir Path tempDir) throws Exception {
         serveMiddleOverLeaf();
         upstream.metadata("com.foo", "leaf", "1.0", "1.1");
         upstream.pom("com.foo", "leaf", "1.1", leafPom("leaf", "1.1"));
@@ -125,10 +124,12 @@ class LockOrchestratorMemberPartitionsTest {
                 .withMembers(List.of(new LockOrchestrator.Member("app", app), new LockOrchestrator.Member("lib", lib)))
                 .lock(merged, "test");
 
-        assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
-        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
                 .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
                 .containsExactly(tuple("1.1", "org.example:the-bom:1.0"));
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::members)
+                .containsExactly(tuple("1.0", List.of("lib")));
     }
 
     /**

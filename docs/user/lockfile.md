@@ -355,10 +355,12 @@ of `2.0.1.MR` gave way to it, as a transitive's version gives way to a direct de
 Maven. The lock carries the pinned `2.0.1`; `jk lock` prints one note per pinned module, naming the
 pin, how many dependencies it overrode and what each asked for, and `jk why` shows the floor beside
 the step that declared it. A floor written as an open range (`[2.0.18,)`) gives way the same way.
-A workspace resolves under its root's `[resolve]` table, and a pin any member declares is the
-version for the whole lock, whichever member brought in the transitive that asked for more. Under
-the default `pins = "exact"` that shape is a conflict the lock refuses instead; see
-[Dependencies](dependencies.md#coordinates).
+A workspace resolves under its root's `[resolve]` table, and a pin is the version of the member
+that declares it and of the members that depend on that member: every other member resolves on its
+own graph and reads a row of its own where that graph asks for another version
+([Workspaces](workspaces.md#members-that-disagree)). Under the
+default `pins = "exact"` a pin below a floor the member's own graph declares is a conflict the
+lock refuses instead; see [Dependencies](dependencies.md#coordinates).
 
 A test-scope exact pin on a module the main graph resolves at another version gives way to main's:
 the test classpath is the main classpath plus the test rows, so main's version is the one there
@@ -379,8 +381,8 @@ resolves highest-declared under both policies, so a lock row can sit above the v
 nearer declaration gives the same module. Measured on the Maven top-20 corpus in jk-examples, over
 the 16 repositories that lock and their 493 modules, 225 modules differ from Maven on some version;
 depth mediation accounts for 367 of the 713 differing (module, coordinate) pairs, two BOMs managing
-one module for 137, another member's pin for 70, and a parent that already differs for 102. The
-policy table is in [Platforms](platforms.md#two-boms-that-manage-one-module).
+one module for 137, and a parent that already differs for 102. The policy table is in
+[Platforms](platforms.md#two-boms-that-manage-one-module).
 
 ## Rows a member owns
 
@@ -414,7 +416,26 @@ classpath is a `members` row with `scopes = ["main"]`, and it replaces the plain
 classpath family alone — main, runtime and test are one family, since the test classpath carries
 the main rows — while a plain row of the same coordinate on the annotation processor path, a graph
 of its own — the Guava an Error Prone processor path reads beside a main classpath a member pins to
-another Guava — is still the member's to read. `jk lock` keeps the versions such a row holds like
+another Guava — is still the member's to read, and so is the processor part of a plain row that
+spans both. A sibling's pin gives a member rows like these too:
+
+```toml
+[[artifact]]
+name     = "jakarta.persistence:jakarta.persistence-api:jar:"
+version  = "3.2.0"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "jakarta.persistence:jakarta.persistence-api:jar:"
+version  = "3.1.0"
+scopes   = ["main"]
+members  = ["health-check", "layered-architecture"]
+```
+
+`service-layer` pins 3.2.0, which is the plain row; the members whose `hibernate-core` declares
+3.1.0 and that pin nothing read 3.1.0, as they would under Maven. A version only another member's
+dependencies ask for gives rows like these the same way. Two members' rows at one version
+share a row only where its `deps`, `excluded-by` and `pinned-by` agree. `jk lock` keeps the versions such a row holds like
 any other's, and says once per member which coordinates it reads its own rows for, with its version
 and the workspace's. `jk why` shows both versions with their members; every tool that reads one
 module's rows — the build, `jk run`, packaging and its SBOM, `jk native` training, a plugin's

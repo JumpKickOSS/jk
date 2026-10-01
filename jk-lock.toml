@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.14.0"
-generated-by-build = "b9e54490cdaa"
-generated-by-build-time = "2026-10-01T17:36:52Z"
+generated-by-build = "3101168b6f2b"
+generated-by-build-time = "2026-10-01T19:04:38Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "85d15a33e31c38210b1ec4c26f991cf6cbac15fdb167cab7ace01a6f4683a734"
+manifests-sha256 = "9b50dc718961782da552c23477d92696ad7a665e9e0fbe8f7f0505167a51df27"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -68,9 +68,9 @@ deps = [
 
 [[artifact]]
 name     = "com.eed3si9n:sjson-new-scalajson_3:jar:"
-version  = "0.15.1"
+version  = "0.15.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:050669c78b1f6dcec712eb9b66fdf8b42b1592ef3e8b6030caf182dd66d8141f"
+checksum = "sha256:5aa0f4e14e23f0be71c38035d4ff809fe88d93a7f9e18073244454460a86da73"
 scopes   = ["main"]
 deps = [
   "com.eed3si9n:shaded-jawn-parser_3:jar:@1.7.0",
@@ -81,46 +81,71 @@ deps = [
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
+version  = "2.21"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
 version  = "2.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
-scopes   = ["main", "test"]
+scopes   = ["test"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-core:jar:"
-version  = "2.22.2"
+version  = "2.21.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ff167a6317be15895706c26668f45b898efe40ab8780970658210fe1393d52a6"
-scopes   = ["main", "test"]
+checksum = "sha256:1edd5f2e49dca5f8e4519957c24b7b3050bd1c7ee883920da33cff031ff1f7c0"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-core:jar:"
+version  = "2.22.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:941ff029bcdb93e83d209ce516c1a7fb8bbac07d0a2fa122f5bf194b2cd7b4f4"
+scopes   = ["test"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
-version  = "2.22.2"
+version  = "2.21.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:d0da14c12b16b5d54719aa172d83b542ff4abeb8b0fb7db476fde8ceece760ca"
-scopes   = ["main", "test"]
+checksum = "sha256:b011eb5202d9ec889e27f1dcbdf6c63f06a76e7a16c0a1b30c6048d556c9a28e"
+scopes   = ["main"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.21",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.21.1",
+]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
+version  = "2.22.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:7dcd7e53bec1f56c7ad278bd1ca0840bebcc595d61ce44d6a8439abb75b965b2"
+scopes   = ["test"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
 ]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:"
-version  = "2.22.2"
+version  = "2.21.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:9df71cc7fb3781fd0bed6c05eebbfa8b39292a49f5619e76fdd0d889f64c8f33"
+checksum = "sha256:4d63378b0a6b53733f086ebd301023ba211b9387e417bd584a5400320cd08b8d"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.21",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.21.1",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.21.1",
 ]
 
 [[artifact]]
 name     = "com.fasterxml.woodstox:woodstox-core:jar:"
-version  = "7.2.2"
+version  = "7.2.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:3bd35f778fb15cd517fae51961ba7a9388eae8e4a836fac1166c7f70740e55cd"
+checksum = "sha256:95d5a916ab82aca0a8c4ca8a2cf7e4fd7eab18817c24f1fdc7738e15d2a58845"
 scopes   = ["main", "provided"]
 deps = [
   "org.codehaus.woodstox:stax2-api:jar:@4.3.0",
@@ -128,13 +153,13 @@ deps = [
 
 [[artifact]]
 name     = "com.github.ben-manes.caffeine:caffeine:jar:"
-version  = "3.2.4"
+version  = "3.0.5"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:9d9d2cfd681fd9272ded3d27c9930db12f89f732345975aa113ebc223bbf1224"
+checksum = "sha256:8a9b54d3506a3b92ee46b217bcee79196b21ca6d52dc2967c686a205fb2f9c15"
 scopes   = ["processor"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.checkerframework:checker-qual:jar:@4.2.2",
 ]
 
 [[artifact]]
@@ -195,68 +220,48 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "com.google.api.grpc:proto-google-common-protos:jar:"
-version  = "2.75.0"
+version  = "2.74.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:fbec90d76980efcdcfd92b57d87999c448f21cb15f3546fc885fb5f88e1a25f2"
+checksum = "sha256:cc899ad12f3f522bfedb3765015be10d961eff5cd1f7b48839c972522ba17d02"
 scopes   = ["main"]
 deps = [
-  "com.google.protobuf:protobuf-java:jar:@4.36.1",
-]
-
-[[artifact]]
-name     = "com.google.api:api-common:jar:"
-version  = "2.67.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:598cf969fb6d13109fcb92d4f39ee2dc0577c253911713e38acd5c4295c163c5"
-scopes   = ["main"]
-deps = [
-  "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
-  "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.7.1-jre",
-  "javax.annotation:javax.annotation-api:jar:@1.3.2",
+  "com.google.protobuf:protobuf-java:jar:@4.35.1",
 ]
 
 [[artifact]]
 name     = "com.google.auth:google-auth-library-credentials:jar:"
-version  = "1.51.0"
+version  = "1.10.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:bce65ca6d689855a88ef2d45254f8f541d26d793472593e5f906dcaf05274db1"
+checksum = "sha256:7ba26f607ab1b2dffb0d4d8b2c7efe1ab6cb3ff5d5a7991cee6e6e484d0c7b9c"
 scopes   = ["main"]
-deps = [
-  "org.jspecify:jspecify:jar:@1.0.1",
-]
 
 [[artifact]]
 name     = "com.google.auth:google-auth-library-oauth2-http:jar:"
-version  = "1.51.0"
+version  = "1.10.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:a370a8b6e0f74eff52d51902d61f940dbdd772b25513f5e73970ab71031624c6"
+checksum = "sha256:99463bcfee2925c9198d2788d9e639511db95640ad7335f3f760af3fba617e28"
 scopes   = ["main"]
 deps = [
-  "com.google.api:api-common:jar:@2.67.0",
-  "com.google.auth:google-auth-library-credentials:jar:@1.51.0",
-  "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
+  "com.google.auth:google-auth-library-credentials:jar:@1.10.0",
+  "com.google.auto.value:auto-value-annotations:jar:@1.9",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.http-client:google-http-client-gson:jar:@2.2.0",
   "com.google.http-client:google-http-client:jar:@2.2.0",
-  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
 name     = "com.google.auto.service:auto-service-annotations:jar:"
-version  = "1.1.1"
+version  = "1.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:16a76dd00a2650568447f5d6e3a9e2c809d9a42367d56b45215cfb89731f4d24"
+checksum = "sha256:c7bec54b7b5588b5967e870341091c5691181d954cf2039f1bf0a6eeb837473b"
 scopes   = ["processor"]
 
 [[artifact]]
 name     = "com.google.auto.value:auto-value-annotations:jar:"
-version  = "1.11.1"
+version  = "1.9"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:6c61a11420a5cddf3313888e9d335d5eedfbeb9a8da26591470fbfe61f5bf859"
+checksum = "sha256:fa5469f4c44ee598a2d8f033ab0a9dcbc6498a0c5e0c998dfa0c2adf51358044"
 scopes   = ["main", "processor"]
 
 [[artifact]]
@@ -283,12 +288,12 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:575adde5886ea9b5e741b855c2f029485a4f0ca29b9ce12fa4850208622ebc87"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
-  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.2",
-  "com.google.auth:google-auth-library-oauth2-http:jar:@1.51.0",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.21.1",
+  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.21.1",
+  "com.google.auth:google-auth-library-oauth2-http:jar:@1.10.0",
   "com.google.cloud.tools:jib-build-plan:jar:@0.4.0",
   "com.google.guava:guava:jar:@33.7.1-jre",
-  "com.google.http-client:google-http-client-apache-v2:jar:@2.2.0",
+  "com.google.http-client:google-http-client-apache-v2:jar:@1.42.2",
   "com.google.http-client:google-http-client:jar:@2.2.0",
   "org.apache.commons:commons-compress:jar:@1.28.0",
   "org.ow2.asm:asm:jar:@9.10.1",
@@ -303,6 +308,17 @@ scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "com.google.code.gson:gson:jar:"
+version  = "2.13.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:dd0ce1b55a3ed2080cb70f9c655850cda86c206862310009dcb5e5c95265a5e0"
+scopes   = ["provided"]
+members  = ["plugins/quarkus"]
+deps = [
+  "com.google.errorprone:error_prone_annotations:jar:@2.41.0",
+]
+
+[[artifact]]
+name     = "com.google.code.gson:gson:jar:"
 version  = "2.14.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
@@ -310,6 +326,14 @@ scopes   = ["main", "provided", "test"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
 ]
+
+[[artifact]]
+name     = "com.google.code.gson:gson:jar:"
+version  = "2.9.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c96d60551331a196dac54b745aa642cd078ef89b6f267146b705f2c2cbef052d"
+scopes   = ["main"]
+members  = ["plugins/image-builder"]
 
 [[artifact]]
 name     = "com.google.errorprone:error_prone_annotation:jar:"
@@ -320,6 +344,14 @@ scopes   = ["processor"]
 deps = [
   "com.google.guava:guava:jar:@33.7.1-jre",
 ]
+
+[[artifact]]
+name     = "com.google.errorprone:error_prone_annotations:jar:"
+version  = "2.41.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a56e782b5b50811ac204073a355a21d915a2107fce13ec711331ad036f660fcc"
+scopes   = ["provided"]
+members  = ["plugins/quarkus"]
 
 [[artifact]]
 name     = "com.google.errorprone:error_prone_annotations:jar:"
@@ -335,13 +367,13 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ee935a4f42ac409fb0a471affea938c3050c6887dbaadb106868936d83d8c8f1"
 scopes   = ["processor"]
 deps = [
-  "com.github.ben-manes.caffeine:caffeine:jar:@3.2.4",
+  "com.github.ben-manes.caffeine:caffeine:jar:@3.0.5",
   "com.github.kevinstern:software-and-algorithms:jar:@1.0",
-  "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
+  "com.google.auto.value:auto-value-annotations:jar:@1.9",
   "com.google.errorprone:error_prone_annotation:jar:@2.50.0",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "io.github.eisop:dataflow-errorprone:jar:@3.49.5-eisop1",
-  "io.github.java-diff-utils:java-diff-utils:jar:@4.17",
+  "io.github.eisop:dataflow-errorprone:jar:@3.41.0-eisop1",
+  "io.github.java-diff-utils:java-diff-utils:jar:@4.12",
   "javax.inject:javax.inject:jar:@1",
   "org.jspecify:jspecify:jar:@1.0.1",
 ]
@@ -353,31 +385,29 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:40a88d3ea732fac3a57ae0e2b27f1729ce76cc41857bcd63d5845e79eae5f72e"
 scopes   = ["processor"]
 deps = [
-  "com.google.auto.service:auto-service-annotations:jar:@1.1.1",
-  "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
+  "com.google.auto.service:auto-service-annotations:jar:@1.0.1",
+  "com.google.auto.value:auto-value-annotations:jar:@1.9",
   "com.google.auto:auto-common:jar:@1.2.2",
   "com.google.errorprone:error_prone_annotation:jar:@2.50.0",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.errorprone:error_prone_check_api:jar:@2.50.0",
-  "com.google.googlejavaformat:google-java-format:jar:@1.36.1",
+  "com.google.googlejavaformat:google-java-format:jar:@1.35.0",
   "com.google.guava:guava:jar:@33.7.1-jre",
-  "com.google.protobuf:protobuf-java:jar:@4.36.1",
-  "io.github.eisop:dataflow-errorprone:jar:@3.49.5-eisop1",
+  "com.google.protobuf:protobuf-java:jar:@4.35.1",
+  "io.github.eisop:dataflow-errorprone:jar:@3.41.0-eisop1",
   "javax.inject:javax.inject:jar:@1",
   "org.jspecify:jspecify:jar:@1.0.1",
-  "org.pcollections:pcollections:jar:@5.0.0",
+  "org.pcollections:pcollections:jar:@4.0.1",
 ]
 
 [[artifact]]
 name     = "com.google.googlejavaformat:google-java-format:jar:"
-version  = "1.36.1"
+version  = "1.35.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:57f9b550a662dcbbdf344073e3f5812b837a0e6e430548d8a0a3c9090cada65d"
+checksum = "sha256:b2a52e363d51dd86b3b38d1a8dd51538541b42ff1048769684681c676550f043"
 scopes   = ["processor"]
 deps = [
   "com.google.guava:guava:jar:@33.7.1-jre",
-  "org.commonmark:commonmark-ext-gfm-tables:jar:@0.30.0",
-  "org.commonmark:commonmark:jar:@0.30.0",
 ]
 
 [[artifact]]
@@ -398,6 +428,39 @@ scopes   = ["main", "provided", "test", "processor"]
 
 [[artifact]]
 name     = "com.google.guava:guava:jar:"
+version  = "33.6.0-android"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9532ca9ba8aceb4cd2067171f981c799988b7f5844e3e274811a3bb757034bc4"
+scopes   = ["main"]
+members  = ["plugins/publisher"]
+deps = [
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.guava:failureaccess:jar:@1.0.3",
+  "com.google.guava:listenablefuture:jar:@9999.0-empty-to-avoid-conflict-with-guava",
+  "com.google.j2objc:j2objc-annotations:jar:@3.1",
+  "org.jspecify:jspecify:jar:@1.0.1",
+]
+
+[[artifact]]
+name     = "com.google.guava:guava:jar:"
+version  = "33.6.0-jre"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:dc573e1fca4fd5454f4a5fd3d7da2df03002876a4175bafc14a95980dd7713b3"
+scopes   = ["provided", "test"]
+members  = ["clients/maven-spy"]
+deps = [
+  "com.google.guava:failureaccess:jar:@1.0.3",
+  "org.jspecify:jspecify:jar:@1.0.0",
+]
+excluded-by = [
+  "com.google.errorprone:error_prone_annotations <- org.apache.maven:maven-core@3.9.16",
+  "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.9.16",
+  "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.9.16",
+  "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.9.16",
+]
+
+[[artifact]]
+name     = "com.google.guava:guava:jar:"
 version  = "33.6.0-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:dc573e1fca4fd5454f4a5fd3d7da2df03002876a4175bafc14a95980dd7713b3"
@@ -405,7 +468,7 @@ pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided", "processor"]
 members  = ["plugins/quarkus"]
 deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.41.0",
   "com.google.guava:failureaccess:jar:@1.0.1",
   "org.jspecify:jspecify:jar:@1.0.1",
 ]
@@ -439,9 +502,9 @@ scopes   = ["main", "provided", "test", "processor"]
 
 [[artifact]]
 name     = "com.google.http-client:google-http-client-apache-v2:jar:"
-version  = "2.2.0"
+version  = "1.42.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:aa62efa466a08426bfdf1dfac22b76738075057aa09f44324a569585a92c1441"
+checksum = "sha256:949ae5257aa1774b00f4bff1e81fe7c6b8985aba390cccd0abeb79a8d290ab75"
 scopes   = ["main"]
 deps = [
   "com.google.http-client:google-http-client:jar:@2.2.0",
@@ -464,6 +527,18 @@ deps = [
 
 [[artifact]]
 name     = "com.google.http-client:google-http-client-gson:jar:"
+version  = "1.42.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:4fbeaf39f4fc12c10f45f1d4b8e45db6a0de4452d75da81f94926985b98f9637"
+scopes   = ["main"]
+members  = ["plugins/image-builder"]
+deps = [
+  "com.google.code.gson:gson:jar:@2.9.0",
+  "com.google.http-client:google-http-client:jar:@1.42.2",
+]
+
+[[artifact]]
+name     = "com.google.http-client:google-http-client-gson:jar:"
 version  = "2.2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3242dc7e91d355d118a355c5d586271bedfeb84c3f2f6fa2f3b9b42503a4dc59"
@@ -471,6 +546,23 @@ scopes   = ["main"]
 deps = [
   "com.google.code.gson:gson:jar:@2.14.0",
   "com.google.http-client:google-http-client:jar:@2.2.0",
+]
+
+[[artifact]]
+name     = "com.google.http-client:google-http-client:jar:"
+version  = "1.42.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:97544ad0b0ae39b6ac14b1bcacc0f6c20c46c07ca05b9362ceb38f216c51e049"
+scopes   = ["main"]
+members  = ["plugins/image-builder"]
+deps = [
+  "com.google.code.findbugs:jsr305:jar:@3.0.2",
+  "com.google.guava:guava:jar:@33.7.1-jre",
+  "com.google.j2objc:j2objc-annotations:jar:@3.1",
+  "io.opencensus:opencensus-api:jar:@0.31.1",
+  "io.opencensus:opencensus-contrib-http-util:jar:@0.31.1",
+  "org.apache.httpcomponents:httpclient:jar:@4.5.13",
+  "org.apache.httpcomponents:httpcore:jar:@4.4.15",
 ]
 
 [[artifact]]
@@ -558,22 +650,22 @@ deps = [
 
 [[artifact]]
 name     = "com.google.protobuf:protobuf-java-util:jar:"
-version  = "4.36.1"
+version  = "4.35.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:90722adb6fa80fb0dba8d49602abae2d14f8483e922cae29431d78edbfd4d040"
+checksum = "sha256:ed75aaf651a243a943ae73413acf96cb4b02fdae14a11ae05c8e66a4489e23f3"
 scopes   = ["main"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.code.gson:gson:jar:@2.14.0",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.protobuf:protobuf-java:jar:@4.36.1",
+  "com.google.protobuf:protobuf-java:jar:@4.35.1",
 ]
 
 [[artifact]]
 name     = "com.google.protobuf:protobuf-java:jar:"
-version  = "4.36.1"
+version  = "4.35.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:26434a93561a1a44bf7157b2630fa73a5b4d8df20e94df167bc03fcd14abd7e4"
+checksum = "sha256:a4345ba2aa009912ff6f90467fea2d104605256b72c50840d75f13256638a472"
 scopes   = ["main", "processor"]
 
 [[artifact]]
@@ -599,9 +691,9 @@ scopes   = ["test"]
 
 [[artifact]]
 name     = "com.lmax:disruptor:jar:"
-version  = "4.0.0"
+version  = "3.4.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:c2ba80841541272bc815bcadab910d2d716aa563eca15762450ab4c889440505"
+checksum = "sha256:f412ecbb235c2460b45e63584109723dea8d94b819c78c9bfc38f50cba8546c0"
 scopes   = ["main"]
 
 [[artifact]]
@@ -685,7 +777,7 @@ checksum = "sha256:a74a5fb5a047537a4bdc362f9c1821279d7122d9d36aa2e6a72b79832fab7
 scopes   = ["processor"]
 deps = [
   "com.google.guava:guava:jar:@33.7.1-jre",
-  "org.checkerframework:dataflow-nullaway:jar:@4.2.3",
+  "org.checkerframework:dataflow-nullaway:jar:@4.2.2",
   "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
@@ -712,6 +804,22 @@ scopes   = ["provided"]
 
 [[artifact]]
 name     = "commons-codec:commons-codec:jar:"
+version  = "1.11"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e599d5318e97aa48f42136a2927e6dfa4e8881dff0e6c8e3109ddbbff51d7b7d"
+scopes   = ["main"]
+members  = ["plugins/publisher"]
+
+[[artifact]]
+name     = "commons-codec:commons-codec:jar:"
+version  = "1.19.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5c3881e4f556855e9c532927ee0c9dfde94cc66760d5805c031a59887070af5f"
+scopes   = ["main", "test"]
+members  = ["plugins/avro", "plugins/image-builder"]
+
+[[artifact]]
+name     = "commons-codec:commons-codec:jar:"
 version  = "1.22.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:78a5d732fbd715e2d10bd7150d2f8030bae57267f8aacc5c88f642cb6c2e5d3f"
@@ -727,18 +835,39 @@ scopes   = ["test"]
 
 [[artifact]]
 name     = "commons-io:commons-io:jar:"
-version  = "2.22.0"
+version  = "2.20.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:2b9a7b1f726fb86216dbd2c8321eabe0221dbd5b1be81c18e1cb53811b104758"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["main", "provided", "test"]
+checksum = "sha256:df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
+scopes   = ["main", "provided"]
+
+[[artifact]]
+name     = "commons-io:commons-io:jar:"
+version  = "2.20.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
+scopes   = ["test"]
+members  = ["plugins/avro"]
+
+[[artifact]]
+name     = "commons-io:commons-io:jar:"
+version  = "2.21.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:7d643a2afea8b058b762aa6fb90e5b256f6c729739f8b3784c3370ddc609e88d"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "commons-logging:commons-logging:jar:"
+version  = "1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:daddea1ea0be0f56978ab3006b8ac92834afeefbd9b7e4e6316fca57df0fa636"
+scopes   = ["main", "provided"]
 
 [[artifact]]
 name     = "commons-logging:commons-logging:jar:"
 version  = "1.4.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d175dbd751dd782a63bde28c7a039520e971f25e84b79c19b8435edc3603e0dc"
-scopes   = ["main", "provided", "test"]
+scopes   = ["test"]
 
 [[artifact]]
 name     = "dev.sigstore:sigstore-java:jar:"
@@ -747,19 +876,19 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:84186ec9195529ceca6ad11aa687ea716b3df517c8c944ea27c754256561ba1a"
 scopes   = ["main"]
 deps = [
-  "com.google.api.grpc:proto-google-common-protos:jar:@2.75.0",
+  "com.google.api.grpc:proto-google-common-protos:jar:@2.74.0",
   "com.google.code.gson:gson:jar:@2.14.0",
   "com.google.http-client:google-http-client-apache-v5:jar:@2.2.0",
   "com.google.http-client:google-http-client-gson:jar:@2.2.0",
   "com.google.oauth-client:google-oauth-client-java6:jar:@1.39.0",
   "com.google.oauth-client:google-oauth-client-jetty:jar:@1.39.0",
   "com.google.oauth-client:google-oauth-client:jar:@1.39.0",
-  "com.google.protobuf:protobuf-java-util:jar:@4.36.1",
-  "com.google.protobuf:protobuf-java:jar:@4.36.1",
+  "com.google.protobuf:protobuf-java-util:jar:@4.35.1",
+  "com.google.protobuf:protobuf-java:jar:@4.35.1",
   "io.github.erdtman:java-json-canonicalization:jar:@1.1",
-  "io.grpc:grpc-netty-shaded:jar:@1.84.0",
-  "io.grpc:grpc-protobuf:jar:@1.84.0",
-  "io.grpc:grpc-stub:jar:@1.84.0",
+  "io.grpc:grpc-netty-shaded:jar:@1.83.1",
+  "io.grpc:grpc-protobuf:jar:@1.83.1",
+  "io.grpc:grpc-stub:jar:@1.83.1",
   "org.bouncycastle:bcpkix-jdk18on:jar:@1.85",
   "org.bouncycastle:bcutil-jdk18on:jar:@1.86",
 ]
@@ -786,21 +915,11 @@ excluded-by = [
 ]
 
 [[artifact]]
-name     = "io.github.eisop:checker-qual:jar:"
-version  = "3.49.5-eisop1"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:d0e1853a5be971c7716669339b3451237b7177ee334881517947514ecbd25725"
-scopes   = ["processor"]
-
-[[artifact]]
 name     = "io.github.eisop:dataflow-errorprone:jar:"
-version  = "3.49.5-eisop1"
+version  = "3.41.0-eisop1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:a3f53467156715459ec50d95927cfb16464afa13cd07181183e0d491918f38c4"
+checksum = "sha256:10434fba4e53f55fa9c76904cde414b918932548c9dfc4e2d634ac05ff7a7d10"
 scopes   = ["processor"]
-deps = [
-  "io.github.eisop:checker-qual:jar:@3.49.5-eisop1",
-]
 
 [[artifact]]
 name     = "io.github.erdtman:java-json-canonicalization:jar:"
@@ -811,10 +930,23 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "io.github.java-diff-utils:java-diff-utils:jar:"
-version  = "4.17"
+version  = "4.12"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:3e3b6e149bf5d091422689ad6fcc22baad503a52b1139a9baf250fb6de633024"
+checksum = "sha256:9990a2039778f6b4cc94790141c2868864eacee0620c6c459451121a901cd5b5"
 scopes   = ["processor"]
+
+[[artifact]]
+name     = "io.grpc:grpc-api:jar:"
+version  = "1.83.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:96a94b488a8a9a922e9e455ac4c87d9edcb37be4ed79ec1f14e98da267a6c505"
+scopes   = ["main"]
+members  = ["plugins/publisher"]
+deps = [
+  "com.google.code.findbugs:jsr305:jar:@3.0.2",
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.guava:guava:jar:@33.6.0-android",
+]
 
 [[artifact]]
 name     = "io.grpc:grpc-api:jar:"
@@ -830,6 +962,25 @@ deps = [
 
 [[artifact]]
 name     = "io.grpc:grpc-context:jar:"
+version  = "1.27.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:bcbf9055dff453fd6508bd7cca2a0aa2d5f059a9c94beed1f5fda1dc015607b8"
+scopes   = ["main"]
+members  = ["plugins/image-builder"]
+
+[[artifact]]
+name     = "io.grpc:grpc-context:jar:"
+version  = "1.83.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:8224f45eccae567d68e34e7e0d2fde2f4ed36afc56d6496470f5c156b886b768"
+scopes   = ["main"]
+members  = ["plugins/publisher"]
+deps = [
+  "io.grpc:grpc-api:jar:@1.83.1",
+]
+
+[[artifact]]
+name     = "io.grpc:grpc-context:jar:"
 version  = "1.84.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:e6f6e5db0d704e34d03f013cceb6be326c9ed3916346378ca1587ed41f943080"
@@ -840,9 +991,9 @@ deps = [
 
 [[artifact]]
 name     = "io.grpc:grpc-core:jar:"
-version  = "1.84.0"
+version  = "1.83.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:750c08018e22014cb5e6b6ac64fd4d0b2302b7db9cb2b83a1e0914d0561ed71c"
+checksum = "sha256:e417d5fe3b273aba8e24c5bf8edaf400297ae88a2ede828a2b75c3403b3d13e3"
 scopes   = ["main"]
 deps = [
   "com.google.android:annotations:jar:@4.1.1.4",
@@ -857,25 +1008,25 @@ deps = [
 
 [[artifact]]
 name     = "io.grpc:grpc-netty-shaded:jar:"
-version  = "1.84.0"
+version  = "1.83.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:f07624d7ca0b0bce8dded33dfe261fd9be59168bb6a77f0580ab09ecd22f113d"
+checksum = "sha256:fc7a54cca004df57d8d416f335e851d53b188926b598151c5714498ff60dced5"
 scopes   = ["main"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:guava:jar:@33.7.1-jre",
   "io.grpc:grpc-api:jar:@1.84.0",
-  "io.grpc:grpc-core:jar:@1.84.0",
-  "io.grpc:grpc-util:jar:@1.84.0",
+  "io.grpc:grpc-core:jar:@1.83.1",
+  "io.grpc:grpc-util:jar:@1.83.1",
   "io.perfmark:perfmark-api:jar:@0.27.0",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-protobuf-lite:jar:"
-version  = "1.84.0"
+version  = "1.83.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:12827fd4ba3d75f7ab5fceb3296c5ac9f473826e6b2aa67684d32879b7fa239b"
+checksum = "sha256:70fd274685f8f8b94aeecfd082168ce9518d04da9add5192aeffd46f582de103"
 scopes   = ["main"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
@@ -883,29 +1034,29 @@ deps = [
   "io.grpc:grpc-api:jar:@1.84.0",
 ]
 excluded-by = [
-  "com.google.protobuf:protobuf-javalite <- io.grpc:grpc-protobuf@1.84.0",
+  "com.google.protobuf:protobuf-javalite <- io.grpc:grpc-protobuf@1.83.1",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-protobuf:jar:"
-version  = "1.84.0"
+version  = "1.83.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:076ad68d91d59132970dd739ff908d0b8fffea9fb0ccbea9310d933e0a677802"
+checksum = "sha256:f58e9b04850e8d5a820081de1ba1d93fd641af3182e743f4066818645f1ee58f"
 scopes   = ["main"]
 deps = [
-  "com.google.api.grpc:proto-google-common-protos:jar:@2.75.0",
+  "com.google.api.grpc:proto-google-common-protos:jar:@2.74.0",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.guava:guava:jar:@33.7.1-jre",
-  "com.google.protobuf:protobuf-java:jar:@4.36.1",
+  "com.google.protobuf:protobuf-java:jar:@4.35.1",
   "io.grpc:grpc-api:jar:@1.84.0",
-  "io.grpc:grpc-protobuf-lite:jar:@1.84.0",
+  "io.grpc:grpc-protobuf-lite:jar:@1.83.1",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-stub:jar:"
-version  = "1.84.0"
+version  = "1.83.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:5d7c9eac0386fbf6f1c9dc90171034939093c9f72196bd9242acf819c5f10a4a"
+checksum = "sha256:431c1280d85dd34c93f2ede7cc192c591b660a1becb6053da1423b0a6526c86a"
 scopes   = ["main"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
@@ -916,14 +1067,14 @@ deps = [
 
 [[artifact]]
 name     = "io.grpc:grpc-util:jar:"
-version  = "1.84.0"
+version  = "1.83.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b64b8eedb714ec8c22ddc57361c7f2c0718cd51fa9d44a8cff68b30c117a6c23"
+checksum = "sha256:4e722bf41a8d305e0436f16e69f7787ce5a227dc0dac45be06e8c197f08275e4"
 scopes   = ["main"]
 deps = [
   "com.google.guava:guava:jar:@33.7.1-jre",
   "io.grpc:grpc-api:jar:@1.84.0",
-  "io.grpc:grpc-core:jar:@1.84.0",
+  "io.grpc:grpc-core:jar:@1.83.1",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
 
@@ -963,7 +1114,7 @@ checksum = "sha256:1e61dba95d6f7cab81d57c6f47f9ea4ca235e4193220c2e84cfa0a05a4c4b
 scopes   = ["provided"]
 deps = [
   "io.quarkus:quarkus-fs-util:jar:@1.4.2",
-  "io.smallrye.classfile:jdk-classfile-backport:jar:@27",
+  "io.smallrye.classfile:jdk-classfile-backport:jar:@26",
   "org.jboss.logging:commons-logging-jboss-logging:jar:@2.0.0.Final",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
@@ -979,7 +1130,7 @@ deps = [
   "io.quarkus:quarkus-bootstrap-json:jar:@3.40.0",
   "io.quarkus:quarkus-classloader-commons:jar:@3.40.0",
   "io.quarkus:quarkus-value-registry:jar:@3.40.0",
-  "io.smallrye.common:smallrye-common-io:jar:@2.20.0",
+  "io.smallrye.common:smallrye-common-io:jar:@2.19.0",
 ]
 
 [[artifact]]
@@ -1002,16 +1153,16 @@ deps = [
   "io.quarkus:quarkus-classloader-commons:jar:@3.40.0",
   "io.quarkus:quarkus-fs-util:jar:@1.4.2",
   "io.smallrye.beanbag:smallrye-beanbag-maven:jar:@1.6.1",
-  "org.apache.maven.resolver:maven-resolver-connector-basic:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-connector-basic:jar:@1.9.27",
   "org.apache.maven.resolver:maven-resolver-transport-file:jar:@1.9.27",
   "org.apache.maven.resolver:maven-resolver-transport-http:jar:@1.9.27",
   "org.apache.maven:maven-embedder:jar:@3.9.16",
   "org.apache.maven:maven-resolver-provider:jar:@3.9.16",
   "org.apache.maven:maven-settings-builder:jar:@3.9.16",
-  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0",
+  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
   "org.jboss.logmanager:jboss-logmanager:jar:@3.2.2.Final",
-  "org.jboss.slf4j:slf4j-jboss-logmanager:jar:@2.1.0.Final",
+  "org.jboss.slf4j:slf4j-jboss-logmanager:jar:@1.1.0.Final",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
 
@@ -1075,19 +1226,19 @@ pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
 deps = [
   "commons-codec:commons-codec:jar:@1.22.1",
-  "commons-io:commons-io:jar:@2.22.0",
+  "commons-io:commons-io:jar:@2.20.0",
   "io.smallrye.beanbag:smallrye-beanbag-sisu:jar:@1.6.1",
-  "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
+  "io.smallrye.common:smallrye-common-constraint:jar:@2.19.0",
   "javax.inject:javax.inject:jar:@1",
   "org.apache.commons:commons-lang3:jar:@3.20.0",
   "org.apache.httpcomponents:httpclient:jar:@4.5.14",
   "org.apache.httpcomponents:httpcore:jar:@4.4.16",
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-connector-basic:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-impl:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-spi:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-connector-basic:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-impl:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-spi:jar:@1.9.27",
   "org.apache.maven.resolver:maven-resolver-transport-http:jar:@1.9.27",
-  "org.apache.maven.resolver:maven-resolver-util:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-util:jar:@1.9.27",
   "org.apache.maven:maven-artifact:jar:@3.9.16",
   "org.apache.maven:maven-builder-support:jar:@3.9.16",
   "org.apache.maven:maven-model-builder:jar:@3.9.16",
@@ -1096,13 +1247,13 @@ deps = [
   "org.apache.maven:maven-resolver-provider:jar:@3.9.16",
   "org.apache.maven:maven-settings-builder:jar:@3.9.16",
   "org.apache.maven:maven-settings:jar:@3.9.16",
-  "org.codehaus.plexus:plexus-cipher:jar:@3.0.0",
-  "org.codehaus.plexus:plexus-interpolation:jar:@1.30.0",
-  "org.codehaus.plexus:plexus-sec-dispatcher:jar:@4.2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-cipher:jar:@2.1.0",
+  "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
+  "org.codehaus.plexus:plexus-sec-dispatcher:jar:@2.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
   "org.codehaus.plexus:plexus-xml:jar:@4.2.0",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0",
-  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0",
+  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
 excluded-by = [
@@ -1151,7 +1302,7 @@ deps = [
   "org.codehaus.plexus:plexus-interpolation:jar:@1.26",
   "org.codehaus.plexus:plexus-sec-dispatcher:jar:@2.0",
   "org.codehaus.plexus:plexus-utils:jar:@3.6.1",
-  "org.codehaus.plexus:plexus-xml:jar:@4.2.0",
+  "org.codehaus.plexus:plexus-xml:jar:@4.0.2",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.0.1",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
@@ -1176,7 +1327,7 @@ checksum = "sha256:b3382f432bad1618a2f47e480df6bc514607b43165786d2b8539248da1202
 scopes   = ["provided"]
 deps = [
   "io.smallrye.beanbag:smallrye-beanbag:jar:@1.6.1",
-  "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
+  "io.smallrye.common:smallrye-common-constraint:jar:@2.19.0",
   "javax.inject:javax.inject:jar:@1",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
@@ -1188,7 +1339,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a34a767eb7bc54edcd206bf936e0b0db99f2e27260a064ca18faf4b1914e058e"
 scopes   = ["provided"]
 deps = [
-  "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
+  "io.smallrye.common:smallrye-common-constraint:jar:@2.19.0",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
 
@@ -1199,14 +1350,6 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2eb2741b04c632ca361fb7dc947e993785639e76233129e84b2c85d618ae12ca"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
-members  = ["plugins/quarkus"]
-
-[[artifact]]
-name     = "io.smallrye.classfile:jdk-classfile-backport:jar:"
-version  = "27"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:9d9524307e847200dbfd556ea85b928d8c5bbbcae312908ac22ea6866b47e792"
-scopes   = ["provided"]
 
 [[artifact]]
 name     = "io.smallrye.common:smallrye-common-annotation:jar:"
@@ -1214,14 +1357,6 @@ version  = "2.19.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a29ef5d8ed9e306ed683a4d680bb1c03f89c41196aa0a41c95eb0dda8e81e346"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
-
-[[artifact]]
-name     = "io.smallrye.common:smallrye-common-annotation:jar:"
-version  = "2.20.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:2a7d36f84c48b45a12843a06394519ae2679e1857fa21b55f76697865d2cad5a"
 scopes   = ["provided"]
 
 [[artifact]]
@@ -1231,20 +1366,16 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:4454a2f32caeadb47cf6f0565c667f64c21facbee959cf15bcfc8ec8755c471a"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
-members  = ["plugins/quarkus"]
 deps = [
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
 
 [[artifact]]
-name     = "io.smallrye.common:smallrye-common-constraint:jar:"
-version  = "2.20.0"
+name     = "io.smallrye.common:smallrye-common-cpu:jar:"
+version  = "2.15.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4469ff38d29e5c93b0af1f0e17d794c0ea91382aabaf796fc0e251f3a0bab3a3"
+checksum = "sha256:0a3a17d2828c946f0f13ca12fb424e12ec102873dd8086fae253003bf8bdb1cc"
 scopes   = ["provided"]
-deps = [
-  "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
-]
 
 [[artifact]]
 name     = "io.smallrye.common:smallrye-common-cpu:jar:"
@@ -1256,11 +1387,15 @@ scopes   = ["provided"]
 members  = ["plugins/quarkus"]
 
 [[artifact]]
-name     = "io.smallrye.common:smallrye-common-cpu:jar:"
-version  = "2.20.0"
+name     = "io.smallrye.common:smallrye-common-expression:jar:"
+version  = "2.15.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ab03b41ab8de6af3273fa3ae4e516957cdfef1a0c741c015a6e6b183cc92a619"
+checksum = "sha256:6a76868724acd8b57fb62be9daa42acccf0c02107c831a7112c20d8519d445e8"
 scopes   = ["provided"]
+deps = [
+  "io.smallrye.common:smallrye-common-function:jar:@2.19.0",
+  "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
+]
 
 [[artifact]]
 name     = "io.smallrye.common:smallrye-common-expression:jar:"
@@ -1276,37 +1411,14 @@ deps = [
 ]
 
 [[artifact]]
-name     = "io.smallrye.common:smallrye-common-expression:jar:"
-version  = "2.20.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:04d62cdc531bdaa2d0eb2d8901e85c7dd69f2c68c5cb8e641407436334ae423a"
-scopes   = ["provided"]
-deps = [
-  "io.smallrye.common:smallrye-common-function:jar:@2.20.0",
-  "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
-]
-
-[[artifact]]
 name     = "io.smallrye.common:smallrye-common-function:jar:"
 version  = "2.19.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c78f2661e82821d3ac7153b88bec4aaec375e041aae261832e5e5f4ac17f4800"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
-members  = ["plugins/quarkus"]
 deps = [
   "io.smallrye.common:smallrye-common-constraint:jar:@2.19.0",
-  "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
-]
-
-[[artifact]]
-name     = "io.smallrye.common:smallrye-common-function:jar:"
-version  = "2.20.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:55d4eaf7d9c914787e40db5ed7d19ff34fe52fe45e217b428c32103aaa142442"
-scopes   = ["provided"]
-deps = [
-  "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
 
@@ -1317,7 +1429,6 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:33d549ed88eb279926706a894459f8fc4ad8a23b1eb01b01b4c72d3e723da877"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
-members  = ["plugins/quarkus"]
 deps = [
   "io.smallrye.common:smallrye-common-annotation:jar:@2.19.0",
   "io.smallrye.common:smallrye-common-constraint:jar:@2.19.0",
@@ -1327,16 +1438,13 @@ deps = [
 ]
 
 [[artifact]]
-name     = "io.smallrye.common:smallrye-common-io:jar:"
-version  = "2.20.0"
+name     = "io.smallrye.common:smallrye-common-net:jar:"
+version  = "2.15.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:80ef94c27f089e3e018f3a62c41511e135436d751a7720db2c2493073393e5fb"
+checksum = "sha256:35d0e4d22d408369cd6a6c1474db179eb7d4811849f6fd4cc96e8748f30139cf"
 scopes   = ["provided"]
 deps = [
-  "io.smallrye.common:smallrye-common-annotation:jar:@2.20.0",
-  "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
-  "io.smallrye.common:smallrye-common-os:jar:@2.20.0",
-  "io.smallrye.common:smallrye-common-search:jar:@2.20.0",
+  "io.smallrye.common:smallrye-common-constraint:jar:@2.19.0",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
 
@@ -1354,31 +1462,22 @@ deps = [
 ]
 
 [[artifact]]
-name     = "io.smallrye.common:smallrye-common-net:jar:"
-version  = "2.20.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:2ce3596fc90f12e1903643aab66b61e024560bf395f3a9ee176512ee270b3f45"
-scopes   = ["provided"]
-deps = [
-  "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
-  "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
-]
-
-[[artifact]]
 name     = "io.smallrye.common:smallrye-common-os:jar:"
 version  = "2.19.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ac12ba8e86119ebd0a3b14d1053a3b6a4722f63978e9c718fb1ffcbbd4e3a3b5"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
-members  = ["plugins/quarkus"]
 
 [[artifact]]
-name     = "io.smallrye.common:smallrye-common-os:jar:"
-version  = "2.20.0"
+name     = "io.smallrye.common:smallrye-common-ref:jar:"
+version  = "2.15.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:3254c6de549c8914ce6d7003ac9b772a07f6a31e181b543ce363b1bd60dd0abe"
+checksum = "sha256:7fef733c8468ad6e255e1b3c21869544cc6ed354dc553c4e7cf75b9bc3cba866"
 scopes   = ["provided"]
+deps = [
+  "io.smallrye.common:smallrye-common-constraint:jar:@2.19.0",
+]
 
 [[artifact]]
 name     = "io.smallrye.common:smallrye-common-ref:jar:"
@@ -1393,36 +1492,23 @@ deps = [
 ]
 
 [[artifact]]
-name     = "io.smallrye.common:smallrye-common-ref:jar:"
-version  = "2.20.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:d70ff0a77b2249b488e6b580d7216771a40302b367a6dd7f10cfba9d4398be32"
-scopes   = ["provided"]
-deps = [
-  "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
-]
-
-[[artifact]]
 name     = "io.smallrye.common:smallrye-common-search:jar:"
 version  = "2.19.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:973738a728d8efac3c0ab75d3a54236ce5f9c435b4b4a2f9bc0f16a0c46001ff"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
-members  = ["plugins/quarkus"]
 deps = [
   "io.smallrye.common:smallrye-common-function:jar:@2.19.0",
 ]
 
 [[artifact]]
-name     = "io.smallrye.common:smallrye-common-search:jar:"
-version  = "2.20.0"
+name     = "jakarta.activation:jakarta.activation-api:jar:"
+version  = "2.1.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:86911c77c3804aca5514a839a94efa086a0d53bf828f180337373e0e853c14c6"
-scopes   = ["provided"]
-deps = [
-  "io.smallrye.common:smallrye-common-function:jar:@2.20.0",
-]
+checksum = "sha256:01b176d718a169263e78290691fc479977186bcc6b333487325084d6586f4627"
+scopes   = ["test"]
+members  = ["plugins/jooq"]
 
 [[artifact]]
 name     = "jakarta.activation:jakarta.activation-api:jar:"
@@ -1440,6 +1526,17 @@ scopes   = ["provided"]
 
 [[artifact]]
 name     = "jakarta.xml.bind:jakarta.xml.bind-api:jar:"
+version  = "4.0.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:0d6bcfe47763e85047acf7c398336dc84ff85ebcad0a7cb6f3b9d3e981245406"
+scopes   = ["test"]
+members  = ["plugins/jooq"]
+deps = [
+  "jakarta.activation:jakarta.activation-api:jar:@2.1.3",
+]
+
+[[artifact]]
+name     = "jakarta.xml.bind:jakarta.xml.bind-api:jar:"
 version  = "4.0.5"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:5e489b6c874c4119e003ff1403db523ee3a8959ec499f3de29e77245efccf216"
@@ -1454,7 +1551,7 @@ version  = "1.3.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:e04ba5195bcd555dc95650f7cc614d151e4bcd52d29a10b8aa2197f3ab89ab9b"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["main", "provided"]
+scopes   = ["provided"]
 
 [[artifact]]
 name     = "javax.inject:javax.inject:jar:"
@@ -1473,9 +1570,9 @@ scopes   = ["test"]
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"
-version  = "1.18.13-jdk5"
+version  = "1.18.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4c3ba3487fe10851bd9e1218091c32e8aae0187ee2f257298d9900ab906c5391"
+checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
 scopes   = ["test"]
 
 [[artifact]]
@@ -1605,7 +1702,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2fc749a84cb3b8c9124a29c8b1eb135d021521b12f6a29dd9b7b1e95be398325"
 scopes   = ["test"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
   "org.apache.avro:avro:jar:@1.12.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.apache.velocity:velocity-engine-core:jar:@2.4.1",
@@ -1619,7 +1716,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b4b44005c8d7a5ff0f7a4602d9fca2517efb3c282b28c5ba03b44e8eebfff7ec"
 scopes   = ["test"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.avro:avro:jar:@1.12.2",
   "org.apache.commons:commons-lang3:jar:@3.20.0",
@@ -1634,8 +1731,8 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6522e2a146b859ad158bb024dcc3b0bc826680794a2523b0881dafcbd59ce2df"
 scopes   = ["test"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
   "org.apache.commons:commons-compress:jar:@1.28.0",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
@@ -1647,7 +1744,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:012639e3d2a3079f4c9c1350f18202cea83a7112ef210e50c93b0b771ad5d3af"
 scopes   = ["test"]
 deps = [
-  "commons-io:commons-io:jar:@2.22.0",
+  "commons-io:commons-io:jar:@2.21.0",
   "org.apache.commons:commons-lang3:jar:@3.20.0",
 ]
 
@@ -1659,9 +1756,17 @@ checksum = "sha256:e1522945218456f3649a39bc4afd70ce4bd466221519dba7d378f2141a464
 scopes   = ["main", "test"]
 deps = [
   "commons-codec:commons-codec:jar:@1.22.1",
-  "commons-io:commons-io:jar:@2.22.0",
+  "commons-io:commons-io:jar:@2.20.0",
   "org.apache.commons:commons-lang3:jar:@3.20.0",
 ]
+
+[[artifact]]
+name     = "org.apache.commons:commons-lang3:jar:"
+version  = "3.18.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:4eeeae8d20c078abb64b015ec158add383ac581571cddc45c68f0c9ae0230720"
+scopes   = ["main"]
+members  = ["plugins/image-builder"]
 
 [[artifact]]
 name     = "org.apache.commons:commons-lang3:jar:"
@@ -1719,6 +1824,19 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "org.apache.httpcomponents:httpclient:jar:"
+version  = "4.5.13"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:6fe9026a566c6a5001608cf3fc32196641f6c1e5e1986d1037ccdbd5f31ef743"
+scopes   = ["main"]
+members  = ["plugins/image-builder"]
+deps = [
+  "commons-codec:commons-codec:jar:@1.19.0",
+  "commons-logging:commons-logging:jar:@1.2",
+  "org.apache.httpcomponents:httpcore:jar:@4.4.15",
+]
+
+[[artifact]]
+name     = "org.apache.httpcomponents:httpclient:jar:"
 version  = "4.5.14"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
@@ -1726,8 +1844,23 @@ pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["main", "provided"]
 deps = [
   "commons-codec:commons-codec:jar:@1.22.1",
-  "commons-logging:commons-logging:jar:@1.4.0",
+  "commons-logging:commons-logging:jar:@1.2",
   "org.apache.httpcomponents:httpcore:jar:@4.4.16",
+]
+
+[[artifact]]
+name     = "org.apache.httpcomponents:httpclient:jar:"
+version  = "4.5.14"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
+scopes   = ["main"]
+members  = ["plugins/publisher"]
+deps = [
+  "commons-codec:commons-codec:jar:@1.11",
+  "org.apache.httpcomponents:httpcore:jar:@4.4.16",
+]
+excluded-by = [
+  "commons-logging:commons-logging <- com.google.http-client:google-http-client@2.2.0",
 ]
 
 [[artifact]]
@@ -1746,6 +1879,14 @@ excluded-by = [
   "commons-codec:commons-codec <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
   "commons-logging:commons-logging <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
 ]
+
+[[artifact]]
+name     = "org.apache.httpcomponents:httpcore:jar:"
+version  = "4.4.15"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3cbaed088c499a10f96dde58f39dc0e7985171abd88138ca1655a872011bb142"
+scopes   = ["main"]
+members  = ["plugins/image-builder"]
 
 [[artifact]]
 name     = "org.apache.httpcomponents:httpcore:jar:"
@@ -1778,14 +1919,6 @@ version  = "1.9.27"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a895d222283666a7320ddc76615e2e93a41fabd93ce9a6bf9ddee39272bb87b4"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
-
-[[artifact]]
-name     = "org.apache.maven.resolver:maven-resolver-api:jar:"
-version  = "2.0.22"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ac3f1dca91d5089aa5b4a682d412141bc90b0a34256614e3d9e700c636555519"
 scopes   = ["provided", "test"]
 
 [[artifact]]
@@ -1795,24 +1928,10 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3bd98e3a426f9adcae39e3786db229e2be77e08a743ecd9be15c5ed77be3a625"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
-members  = ["plugins/quarkus"]
 deps = [
   "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
   "org.apache.maven.resolver:maven-resolver-spi:jar:@1.9.27",
   "org.apache.maven.resolver:maven-resolver-util:jar:@1.9.27",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
-]
-
-[[artifact]]
-name     = "org.apache.maven.resolver:maven-resolver-connector-basic:jar:"
-version  = "2.0.22"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:117605e6f4bc24dd0e0e9cf302c9d9b23ee3d6ee28b4af6e82b5ae6e0903850e"
-scopes   = ["provided"]
-deps = [
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-spi:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-util:jar:@2.0.22",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
 
@@ -1822,27 +1941,12 @@ version  = "1.9.27"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:295d48ea2a8bb3aef51888967f105fb6251997d111f13c32d28919fd9b1c951e"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
+scopes   = ["provided", "test"]
 deps = [
   "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
   "org.apache.maven.resolver:maven-resolver-named-locks:jar:@1.9.27",
   "org.apache.maven.resolver:maven-resolver-spi:jar:@1.9.27",
   "org.apache.maven.resolver:maven-resolver-util:jar:@1.9.27",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
-]
-
-[[artifact]]
-name     = "org.apache.maven.resolver:maven-resolver-impl:jar:"
-version  = "2.0.22"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:3fea887c9c409fbdeea39219fbac724b683bad19627da20adf542dd7f53ffbff"
-scopes   = ["provided", "test"]
-deps = [
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-named-locks:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-spi:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-util:jar:@2.0.22",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
 
@@ -1852,17 +1956,6 @@ version  = "1.9.27"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b39ecd4da98fdac5068e6f5d16910a71f4e4d48e95e17d107f6603e18f2b3fdf"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0 (maven-resolver family)"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
-deps = [
-  "org.slf4j:slf4j-api:jar:@2.0.18",
-]
-
-[[artifact]]
-name     = "org.apache.maven.resolver:maven-resolver-named-locks:jar:"
-version  = "2.0.22"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:87b136913c762014d0bb18ea832e6f8351889868c8a45bc62e22d4bcab77af61"
 scopes   = ["provided", "test"]
 deps = [
   "org.slf4j:slf4j-api:jar:@2.0.20",
@@ -1874,21 +1967,9 @@ version  = "1.9.27"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:1cab02f45bc58d5f4d8e084eaf032f13ea1a5fc9021d8bd74f8360ebb6593e5a"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
-deps = [
-  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
-]
-
-[[artifact]]
-name     = "org.apache.maven.resolver:maven-resolver-spi:jar:"
-version  = "2.0.22"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:17a1f73ef575f71eab85a16a79b7c4f13d5f48ac67c473f9d8fa9e94e18e9aed"
 scopes   = ["provided", "test"]
 deps = [
-  "com.google.code.gson:gson:jar:@2.14.0",
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
 ]
 
 [[artifact]]
@@ -1899,8 +1980,8 @@ checksum = "sha256:3988261bd31e2e79eda802b3971992fce44756b0029557a05c7b871d3c3dd
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
 deps = [
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-spi:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-spi:jar:@1.9.27",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
 excluded-by = [
@@ -1919,10 +2000,10 @@ deps = [
   "commons-codec:commons-codec:jar:@1.22.1",
   "org.apache.httpcomponents:httpclient:jar:@4.5.14",
   "org.apache.httpcomponents:httpcore:jar:@4.4.16",
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-spi:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-util:jar:@2.0.22",
-  "org.slf4j:jcl-over-slf4j:jar:@2.0.18",
+  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-spi:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-util:jar:@1.9.27",
+  "org.slf4j:jcl-over-slf4j:jar:@1.7.36",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
 
@@ -1932,20 +2013,9 @@ version  = "1.9.27"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:74a12548f0d6aad13c728666288c1e81201c24bd05bb4e4ec8c1558517b379a7"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
-deps = [
-  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
-]
-
-[[artifact]]
-name     = "org.apache.maven.resolver:maven-resolver-util:jar:"
-version  = "2.0.22"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:f3332052702d7908d06fb4605a0c4327ebd3006d004705547218710df2f9828a"
 scopes   = ["provided", "test"]
 deps = [
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
 ]
 
 [[artifact]]
@@ -1956,11 +2026,25 @@ checksum = "sha256:b613357e1bad4dfc1dead801691c9460f9585fe7c6b466bc25186212d7d18
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided", "test"]
 deps = [
-  "commons-io:commons-io:jar:@2.22.0",
+  "commons-io:commons-io:jar:@2.20.0",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
 excluded-by = [
   "commons-io:commons-io <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+]
+
+[[artifact]]
+name     = "org.apache.maven.shared:maven-shared-utils:jar:"
+version  = "3.4.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b613357e1bad4dfc1dead801691c9460f9585fe7c6b466bc25186212d7d18487"
+scopes   = ["provided", "test"]
+members  = ["clients/maven-spy"]
+deps = [
+  "org.slf4j:slf4j-api:jar:@1.7.36",
+]
+excluded-by = [
+  "commons-io:commons-io <- org.apache.maven:maven-core@3.9.16",
 ]
 
 [[artifact]]
@@ -1987,6 +2071,25 @@ checksum = "sha256:93a14f4aaef8aeac26bb80df784743d0fdac7b8eb699a928c19efa6c2745b
 scopes   = ["main", "provided"]
 
 [[artifact]]
+name     = "org.apache.maven:maven-api-meta:jar:"
+version  = "4.0.0-alpha-7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c4f6f3868f5b280cc7e268f0f95e1bb1d2a824afe92a8029e861be7ec48b1272"
+scopes   = ["provided"]
+members  = ["plugins/quarkus"]
+
+[[artifact]]
+name     = "org.apache.maven:maven-api-xml:jar:"
+version  = "4.0.0-alpha-7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3388f4d0465f5a7e9a6264baf506da1b052c51f7cc10b7ce73f09723e6cf1d92"
+scopes   = ["provided"]
+members  = ["plugins/quarkus"]
+deps = [
+  "org.apache.maven:maven-api-meta:jar:@4.0.0-alpha-7",
+]
+
+[[artifact]]
 name     = "org.apache.maven:maven-api-xml:jar:"
 version  = "4.0.0-rc-6"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -2004,7 +2107,7 @@ checksum = "sha256:54cc1c1ef932e3d4a903352111b42b4d3c3ed8e7a1d0de73b625309d9c3ad
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["main", "provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
 ]
 
 [[artifact]]
@@ -2027,10 +2130,10 @@ deps = [
   "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.inject:guice:jar:classes@5.1.0",
   "javax.inject:javax.inject:jar:@1",
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-impl:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-spi:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-util:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-impl:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-spi:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-util:jar:@1.9.27",
   "org.apache.maven.shared:maven-shared-utils:jar:@3.4.2",
   "org.apache.maven:maven-artifact:jar:@3.9.16",
   "org.apache.maven:maven-builder-support:jar:@3.9.16",
@@ -2041,12 +2144,12 @@ deps = [
   "org.apache.maven:maven-resolver-provider:jar:@3.9.16",
   "org.apache.maven:maven-settings-builder:jar:@3.9.16",
   "org.apache.maven:maven-settings:jar:@3.9.16",
-  "org.codehaus.plexus:plexus-classworlds:jar:@2.12.1",
+  "org.codehaus.plexus:plexus-classworlds:jar:@2.12.0",
   "org.codehaus.plexus:plexus-component-annotations:jar:@2.2.0",
-  "org.codehaus.plexus:plexus-interpolation:jar:@1.30.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0",
-  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0",
+  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
   "org.ow2.asm:asm:jar:@9.10.1",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
@@ -2065,8 +2168,8 @@ deps = [
   "commons-cli:commons-cli:jar:@1.11.0",
   "javax.annotation:javax.annotation-api:jar:@1.3.2",
   "javax.inject:javax.inject:jar:@1",
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-util:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-util:jar:@1.9.27",
   "org.apache.maven.shared:maven-shared-utils:jar:@3.4.2",
   "org.apache.maven:maven-builder-support:jar:@3.9.16",
   "org.apache.maven:maven-core:jar:@3.9.16",
@@ -2075,12 +2178,12 @@ deps = [
   "org.apache.maven:maven-plugin-api:jar:@3.9.16",
   "org.apache.maven:maven-settings-builder:jar:@3.9.16",
   "org.apache.maven:maven-settings:jar:@3.9.16",
-  "org.codehaus.plexus:plexus-cipher:jar:@3.0.0",
-  "org.codehaus.plexus:plexus-classworlds:jar:@2.12.1",
-  "org.codehaus.plexus:plexus-interpolation:jar:@1.30.0",
-  "org.codehaus.plexus:plexus-sec-dispatcher:jar:@4.2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
-  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0",
+  "org.codehaus.plexus:plexus-cipher:jar:@2.1.0",
+  "org.codehaus.plexus:plexus-classworlds:jar:@2.12.0",
+  "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
+  "org.codehaus.plexus:plexus-sec-dispatcher:jar:@2.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
 excluded-by = [
@@ -2100,7 +2203,7 @@ deps = [
   "org.apache.maven:maven-artifact:jar:@3.9.16",
   "org.apache.maven:maven-builder-support:jar:@3.9.16",
   "org.apache.maven:maven-model:jar:@3.9.16",
-  "org.codehaus.plexus:plexus-interpolation:jar:@1.30.0",
+  "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0",
   "org.ow2.asm:asm:jar:@9.10.1",
 ]
@@ -2113,7 +2216,7 @@ checksum = "sha256:f59d86a507c241bf17bbf050050d1b8b9c0d34d5010a7e2386c3cab7c83b9
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["main", "provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
 ]
 
 [[artifact]]
@@ -2126,9 +2229,9 @@ scopes   = ["provided", "test"]
 deps = [
   "org.apache.maven:maven-artifact:jar:@3.9.16",
   "org.apache.maven:maven-model:jar:@3.9.16",
-  "org.codehaus.plexus:plexus-classworlds:jar:@2.12.1",
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
-  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0",
+  "org.codehaus.plexus:plexus-classworlds:jar:@2.12.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -2139,7 +2242,7 @@ checksum = "sha256:bc3dd413b89a16b695f35a5d0496b58ea2787c30b7b6062c130d24d6d7647
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
 ]
 
 [[artifact]]
@@ -2151,14 +2254,14 @@ pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided", "test"]
 deps = [
   "javax.inject:javax.inject:jar:@1",
-  "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-impl:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-spi:jar:@2.0.22",
-  "org.apache.maven.resolver:maven-resolver-util:jar:@2.0.22",
+  "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-impl:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-spi:jar:@1.9.27",
+  "org.apache.maven.resolver:maven-resolver-util:jar:@1.9.27",
   "org.apache.maven:maven-model-builder:jar:@3.9.16",
   "org.apache.maven:maven-model:jar:@3.9.16",
   "org.apache.maven:maven-repository-metadata:jar:@3.9.16",
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
 ]
 
 [[artifact]]
@@ -2172,9 +2275,9 @@ deps = [
   "javax.inject:javax.inject:jar:@1",
   "org.apache.maven:maven-builder-support:jar:@3.9.16",
   "org.apache.maven:maven-settings:jar:@3.9.16",
-  "org.codehaus.plexus:plexus-interpolation:jar:@1.30.0",
-  "org.codehaus.plexus:plexus-sec-dispatcher:jar:@4.2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
+  "org.codehaus.plexus:plexus-sec-dispatcher:jar:@2.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
 ]
 
 [[artifact]]
@@ -2185,7 +2288,22 @@ checksum = "sha256:322ae5b23f4b7b6ce7896bd33a793143dbbbbcc16c4475e2d7eebbd8f755d
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+]
+
+[[artifact]]
+name     = "org.apache.maven:maven-xml-impl:jar:"
+version  = "4.0.0-alpha-7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c89323b70dd491a3ef21432dba4cad2b74e26caaafd77178b0f15313fe0bd5f0"
+scopes   = ["provided"]
+members  = ["plugins/quarkus"]
+deps = [
+  "org.apache.maven:maven-api-xml:jar:@4.0.0-alpha-7",
+  "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
+]
+excluded-by = [
+  "org.eclipse.sisu:org.eclipse.sisu.plexus <- org.codehaus.plexus:plexus-xml@4.0.2",
 ]
 
 [[artifact]]
@@ -2195,7 +2313,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:1ba37789d4dd50cc31d6b838de71a8e73b440bdaf60d6264c2e2d1acef68d8bd"
 scopes   = ["main", "provided"]
 deps = [
-  "com.fasterxml.woodstox:woodstox-core:jar:@7.2.2",
+  "com.fasterxml.woodstox:woodstox-core:jar:@7.2.1",
   "org.apache.maven:maven-api-xml:jar:@4.0.0-rc-6",
   "org.codehaus.woodstox:stax2-api:jar:@4.3.0",
 ]
@@ -2225,7 +2343,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c4a445426c3c2861666863b842cc4ec7bbb1c4226fefd370b6d2fe83d6c4ff0f"
 scopes   = ["test"]
 deps = [
-  "net.bytebuddy:byte-buddy:jar:@1.18.13-jdk5",
+  "net.bytebuddy:byte-buddy:jar:@1.18.3",
 ]
 
 [[artifact]]
@@ -2268,19 +2386,26 @@ deps = [
 
 [[artifact]]
 name     = "org.checkerframework:checker-qual:jar:"
-version  = "4.2.3"
+version  = "3.55.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:f868f731f6e37db3e1c2140d06016477989959a2d13fc5bed9c46760cffd5ba0"
-scopes   = ["main", "processor"]
+checksum = "sha256:857658c8bdcbff794949a8d9922f88d63ee3751c203c7cd7d21ea97f9e745288"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.checkerframework:checker-qual:jar:"
+version  = "4.2.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:4efb9d11ecde9b8b79eca8a132f65162866f28733ee681748f0e7d1cebfa01d7"
+scopes   = ["processor"]
 
 [[artifact]]
 name     = "org.checkerframework:dataflow-nullaway:jar:"
-version  = "4.2.3"
+version  = "4.2.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:0524cc55673ac10f08d74ca659f7a12c9ce74fba1120a61950c5011b843fb25e"
+checksum = "sha256:7642e30918ba238076ef795e93620e7029b47635021cee3cc04737ad933b2a4f"
 scopes   = ["processor"]
 deps = [
-  "org.checkerframework:checker-qual:jar:@4.2.3",
+  "org.checkerframework:checker-qual:jar:@4.2.2",
 ]
 
 [[artifact]]
@@ -2289,6 +2414,17 @@ version  = "1.27"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:cfd7e51a828fe6b98bc0dbb99e34900c9e9012322cb9ddd57fd8dd0b02da5e27"
 scopes   = ["main"]
+
+[[artifact]]
+name     = "org.codehaus.plexus:plexus-cipher:jar:"
+version  = "2.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9a7f1b5c5a9effd61eadfd8731452a2f76a8e79111fac391ef75ea801bea203a"
+scopes   = ["provided", "test"]
+members  = ["clients/maven-spy"]
+deps = [
+  "javax.inject:javax.inject:jar:@1",
+]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-cipher:jar:"
@@ -2304,16 +2440,27 @@ deps = [
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-cipher:jar:"
-version  = "3.0.0"
+version  = "2.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:42177afd1c48382ea31f33c5dfba32a077e9be41a79265a6dbbb3753e4119d1d"
-scopes   = ["provided"]
+checksum = "sha256:ae34b6dcf0641a8bf5592244aeeeea49b6aa457f1889a68dd98a00a08cf1f38c"
+scopes   = ["provided", "test"]
+deps = [
+  "javax.inject:javax.inject:jar:@1",
+]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-classworlds:jar:"
-version  = "2.12.1"
+version  = "2.11.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:7f88ef8b83d6f2be46b12f17b982439a5ec83c566f5e2a04dad2d684e73cda94"
+checksum = "sha256:8971f135490070bc5fde7413fcc8db7c997fda4bebfb5c31185900d66edcbbb2"
+scopes   = ["provided", "test"]
+members  = ["clients/maven-spy"]
+
+[[artifact]]
+name     = "org.codehaus.plexus:plexus-classworlds:jar:"
+version  = "2.12.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d3f81c616c288e7df055dcc1f40a8b0f210a070e9400619de0ae3a15c62d94eb"
 scopes   = ["provided", "test"]
 
 [[artifact]]
@@ -2343,9 +2490,9 @@ members  = ["plugins/quarkus"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-interpolation:jar:"
-version  = "1.30.0"
+version  = "1.29"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:457307267f6d2ea2582f5449df9350b86728f46c23ccd486341087ace473e9a1"
+checksum = "sha256:088d444dbcedfb384630d8686697ece3c401d6f33c8f8b3aa7259ea1c6996878"
 scopes   = ["main", "provided", "test"]
 
 [[artifact]]
@@ -2354,23 +2501,20 @@ version  = "2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:873139960c4c780176dda580b003a2c4bf82188bdce5bb99234e224ef7acfceb"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
+scopes   = ["provided", "test"]
 deps = [
   "javax.inject:javax.inject:jar:@1",
-  "org.codehaus.plexus:plexus-cipher:jar:@2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@3.6.1",
+  "org.codehaus.plexus:plexus-cipher:jar:@2.1.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
 ]
 
 [[artifact]]
-name     = "org.codehaus.plexus:plexus-sec-dispatcher:jar:"
-version  = "4.2.0"
+name     = "org.codehaus.plexus:plexus-utils:jar:"
+version  = "3.6.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:49bcc4b481e24f38199e338e850562040acc6a34e120d734bd119c9c8c10a2fb"
-scopes   = ["provided", "test"]
-deps = [
-  "org.slf4j:slf4j-api:jar:@2.0.20",
-]
+checksum = "sha256:05a63effd67e2d6b9d610cc82e2bd7473289d34802e57a529b28110f28af5679"
+scopes   = ["main", "provided", "test"]
+members  = ["clients/cli", "clients/maven-spy", "server/engine", "server/toolchain"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-utils:jar:"
@@ -2383,10 +2527,21 @@ members  = ["plugins/quarkus"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-utils:jar:"
-version  = "4.1.0"
+version  = "4.0.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968"
+checksum = "sha256:8957274e75fe2c278b1428dd16a0daeee1dd38152cb6eff816177ac28fccb697"
 scopes   = ["main", "provided", "test"]
+
+[[artifact]]
+name     = "org.codehaus.plexus:plexus-xml:jar:"
+version  = "4.0.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e55f26425ad1ce948e4fca7b0fde5ecc9b0ba90d326c6ecc25a8e0e56ccfb6fd"
+scopes   = ["provided"]
+members  = ["plugins/quarkus"]
+deps = [
+  "org.apache.maven:maven-xml-impl:jar:@4.0.0-alpha-7",
+]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-xml:jar:"
@@ -2405,23 +2560,6 @@ version  = "4.3.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:7c805f36129ea9fa42b696093b7ae1eb20bb6ccec65c8280d6f33db5609ca5e1"
 scopes   = ["main", "provided"]
-
-[[artifact]]
-name     = "org.commonmark:commonmark-ext-gfm-tables:jar:"
-version  = "0.30.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:5e28b48e66f7697bee4dfeb4c8f8f08a84a2827d91b53bbd9bd5445e82d14bda"
-scopes   = ["processor"]
-deps = [
-  "org.commonmark:commonmark:jar:@0.30.0",
-]
-
-[[artifact]]
-name     = "org.commonmark:commonmark:jar:"
-version  = "0.30.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:090f0a758ac2f4f51aa86dff9dff0fdf7403666d0efd29f59886dc8e8b1eac53"
-scopes   = ["processor"]
 
 [[artifact]]
 name     = "org.dom4j:dom4j:jar:"
@@ -2454,12 +2592,34 @@ deps = [
 
 [[artifact]]
 name     = "org.eclipse.parsson:parsson:jar:"
-version  = "1.1.9"
+version  = "1.1.7"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:03dc4dc834a928730d52a50952de0f30c35e0daf048889132be19ee1e5053a6c"
+checksum = "sha256:c21db018f8ac6cf79893f1af77f1cd337937bd12ae6fa3d4b10f5a00819ee56c"
 scopes   = ["provided"]
 deps = [
   "jakarta.json:jakarta.json-api:jar:@2.1.3",
+]
+
+[[artifact]]
+name     = "org.eclipse.sisu:org.eclipse.sisu.inject:jar:"
+version  = "1.0.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3ab8d7bfe68f3b6ec95c1a0a47e628edbc9d76e90634cb0a0ba121fbb11b8e42"
+scopes   = ["main", "provided", "test"]
+members  = ["clients/maven-spy", "server/toolchain"]
+deps = [
+  "org.ow2.asm:asm:jar:@9.9.1",
+]
+
+[[artifact]]
+name     = "org.eclipse.sisu:org.eclipse.sisu.inject:jar:"
+version  = "1.0.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3ab8d7bfe68f3b6ec95c1a0a47e628edbc9d76e90634cb0a0ba121fbb11b8e42"
+scopes   = ["main"]
+members  = ["clients/cli", "server/engine"]
+deps = [
+  "org.ow2.asm:asm:jar:@9.10.1",
 ]
 
 [[artifact]]
@@ -2486,37 +2646,40 @@ deps = [
 
 [[artifact]]
 name     = "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:"
-version  = "1.0.1"
+version  = "1.0.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b5ab4bc809e04d6c84168165cfae3f6e6b93623fe8e0b58f7da5594150806e97"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
+checksum = "sha256:865b5300034fc08c790215d7d97f141914c932191bef9338a7dcef589f7536e9"
+scopes   = ["provided", "test"]
+members  = ["clients/maven-spy"]
 deps = [
-  "org.codehaus.plexus:plexus-classworlds:jar:@2.6.0",
+  "org.codehaus.plexus:plexus-classworlds:jar:@2.11.0",
   "org.codehaus.plexus:plexus-component-annotations:jar:@2.2.0",
   "org.codehaus.plexus:plexus-utils:jar:@3.6.1",
-  "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.0.1",
+  "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.0.0",
+]
+excluded-by = [
+  "org.eclipse.sisu:org.eclipse.sisu.inject <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-plugin-api@3.9.16",
 ]
 
 [[artifact]]
 name     = "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:"
-version  = "1.1.0"
+version  = "1.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:7ebc52738567e0450b6857a404a147639533d35c38a5ba42e4c5ab2910c6df94"
+checksum = "sha256:b5ab4bc809e04d6c84168165cfae3f6e6b93623fe8e0b58f7da5594150806e97"
+pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-classworlds:jar:@2.12.1",
+  "org.codehaus.plexus:plexus-classworlds:jar:@2.12.0",
   "org.codehaus.plexus:plexus-component-annotations:jar:@2.2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.1.0",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0",
 ]
 
 [[artifact]]
 name     = "org.fusesource.jansi:jansi:jar:"
-version  = "2.4.3"
+version  = "2.4.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ec168cf31c4c3849348dfff7a04e90170615f7784f1255ee6747b98a854c04c5"
+checksum = "sha256:2e5e775a9dc58ffa6bbd6aa6f099d62f8b62dcdeb4c3c3bbbe5cf2301bc2dcc1"
 scopes   = ["main"]
 
 [[artifact]]
@@ -2633,14 +2796,14 @@ checksum = "sha256:91d3d76c1e41d403cd717026cd6e8c4495068cb3a4a06461d9d984920fbb8
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided"]
 deps = [
-  "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
-  "io.smallrye.common:smallrye-common-cpu:jar:@2.20.0",
-  "io.smallrye.common:smallrye-common-expression:jar:@2.20.0",
-  "io.smallrye.common:smallrye-common-net:jar:@2.20.0",
-  "io.smallrye.common:smallrye-common-os:jar:@2.20.0",
-  "io.smallrye.common:smallrye-common-ref:jar:@2.20.0",
+  "io.smallrye.common:smallrye-common-constraint:jar:@2.19.0",
+  "io.smallrye.common:smallrye-common-cpu:jar:@2.15.0",
+  "io.smallrye.common:smallrye-common-expression:jar:@2.15.0",
+  "io.smallrye.common:smallrye-common-net:jar:@2.15.0",
+  "io.smallrye.common:smallrye-common-os:jar:@2.19.0",
+  "io.smallrye.common:smallrye-common-ref:jar:@2.15.0",
   "jakarta.json:jakarta.json-api:jar:@2.1.3",
-  "org.eclipse.parsson:parsson:jar:@1.1.9",
+  "org.eclipse.parsson:parsson:jar:@1.1.7",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
 excluded-by = [
@@ -2653,14 +2816,6 @@ version  = "1.1.0.Final"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:1470840f56dee84303b0a81202c4b47f4b54815e9731e44cddb81c38df5e6d4d"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
-
-[[artifact]]
-name     = "org.jboss.slf4j:slf4j-jboss-logmanager:jar:"
-version  = "2.1.0.Final"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:5eaf95d93f2e203d3d45795817ba2e70ae4b6176849b8e8930463bf9f9d930ee"
 scopes   = ["provided"]
 
 [[artifact]]
@@ -2679,10 +2834,10 @@ scopes   = ["test"]
 deps = [
   "org.jetbrains.kotlin:kotlin-build-tools-api:jar:@2.4.20",
   "org.jetbrains.kotlin:kotlin-daemon-embeddable:jar:@2.4.20",
-  "org.jetbrains.kotlin:kotlin-reflect:jar:@2.4.10",
+  "org.jetbrains.kotlin:kotlin-reflect:jar:@1.6.10",
   "org.jetbrains.kotlin:kotlin-script-runtime:jar:@2.4.20",
   "org.jetbrains.kotlin:kotlin-stdlib:jar:@2.4.20",
-  "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:jar:@1.11.0",
+  "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:jar:@1.8.0",
 ]
 
 [[artifact]]
@@ -2694,9 +2849,9 @@ scopes   = ["test"]
 
 [[artifact]]
 name     = "org.jetbrains.kotlin:kotlin-reflect:jar:"
-version  = "2.4.10"
+version  = "1.6.10"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:25a1aef7454d46548ecaaf51021b0e52e38141a62ed75af124da109b7324c4e5"
+checksum = "sha256:3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203"
 scopes   = ["test"]
 deps = [
   "org.jetbrains.kotlin:kotlin-stdlib:jar:@2.4.20",
@@ -2719,18 +2874,18 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2226de463d309d4a5500a481320b3dea515a6981dcae1def531fbc158884e25f"
 scopes   = ["provided", "test"]
 deps = [
-  "org.jetbrains:annotations:jar:@26.1.0",
+  "org.jetbrains:annotations:jar:@13.0",
 ]
 
 [[artifact]]
 name     = "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:jar:"
-version  = "1.11.0"
+version  = "1.8.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:d1d75aa01dffbb4d1c520e67e4c4e7f5f6174718e7cb4632412503f2f0e604fa"
+checksum = "sha256:9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5"
 scopes   = ["test"]
 deps = [
   "org.jetbrains.kotlin:kotlin-stdlib:jar:@2.4.20",
-  "org.jetbrains:annotations:jar:@26.1.0",
+  "org.jetbrains:annotations:jar:@13.0",
 ]
 excluded-by = [
   "org.jetbrains.kotlin:kotlin-stdlib <- org.jetbrains.kotlin:kotlin-compiler-embeddable@2.4.20",
@@ -2739,47 +2894,83 @@ excluded-by = [
 
 [[artifact]]
 name     = "org.jetbrains:annotations:jar:"
-version  = "26.1.0"
+version  = "13.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ebc7aec252ed0c7d2d04c039d7f00e69f7b86b1f493c741d67b3ef31b986b054"
+checksum = "sha256:ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
 scopes   = ["provided", "test"]
 
 [[artifact]]
-name     = "org.jline:jline-native:jar:"
-version  = "4.4.1"
+name     = "org.jetbrains:annotations:jar:"
+version  = "26.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:2e43a0ac3d2be1f1cc52b2448db43df3f5273fb86f5747f6666c6b262f8c021d"
-scopes   = ["main", "test"]
+checksum = "sha256:ebc7aec252ed0c7d2d04c039d7f00e69f7b86b1f493c741d67b3ef31b986b054"
+scopes   = ["test"]
+members  = ["clients/cli"]
+
+[[artifact]]
+name     = "org.jline:jline-native:jar:"
+version  = "3.27.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:636646da40413e74963b3f4b40c9c5dcfb42f3d0ecf1b93d6ddf5c895effe422"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.jline:jline-native:jar:"
+version  = "4.0.14"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:72f9da7bef7c2f3c0dbb4eda3f4c0bd012caa047755452a7f40f25e61187fc08"
+scopes   = ["test"]
 
 [[artifact]]
 name     = "org.jline:jline-reader:jar:"
-version  = "4.4.1"
+version  = "4.0.14"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:09181584bb8e85dfc3ec02574af4c9012882042ffabc429aa328dd8c7b36c1c7"
+checksum = "sha256:1c7f57caf0521cdb708c1bb9e4dce2c0988f49672b7bbff1df8edcac7517e073"
 scopes   = ["test"]
 deps = [
-  "org.jline:jline-terminal:jar:@4.4.1",
+  "org.jline:jline-terminal:jar:@4.0.14",
 ]
 
 [[artifact]]
 name     = "org.jline:jline-terminal-jni:jar:"
-version  = "4.4.1"
+version  = "3.27.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:928f6603e195bfa8807e7fe939adc80fddb06b8c57853e17a0f7657b2e02cb96"
-scopes   = ["main", "test"]
+checksum = "sha256:e4bc64f1e68e9fb25d80517338e76abca1e0145b82e389b5c2b2c7d71d150f82"
+scopes   = ["main"]
 deps = [
-  "org.jline:jline-native:jar:@4.4.1",
-  "org.jline:jline-terminal:jar:@4.4.1",
+  "org.jline:jline-native:jar:@3.27.1",
+  "org.jline:jline-terminal:jar:@3.27.1",
+]
+
+[[artifact]]
+name     = "org.jline:jline-terminal-jni:jar:"
+version  = "4.0.14"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5af4a6ebb3b935bcef2f9ceb43a544c28810ccb91d2cad1419603fc69f6a64b4"
+scopes   = ["test"]
+deps = [
+  "org.jline:jline-native:jar:@4.0.14",
+  "org.jline:jline-terminal:jar:@4.0.14",
 ]
 
 [[artifact]]
 name     = "org.jline:jline-terminal:jar:"
-version  = "4.4.1"
+version  = "3.27.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b42a1d56ea83a52670c7e612023eea9e2cafe85a751dcbba1be0f03610e8c68c"
-scopes   = ["main", "test"]
+checksum = "sha256:42b7b756506bca98b505938426a35c99082f7819c333ed25bd4114bfb0e3b5f2"
+scopes   = ["main"]
 deps = [
-  "org.jline:jline-native:jar:@4.4.1",
+  "org.jline:jline-native:jar:@3.27.1",
+]
+
+[[artifact]]
+name     = "org.jline:jline-terminal:jar:"
+version  = "4.0.14"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9698961d2f512b55c47054ec67eb31fbd1f7ddf2d6f056eee0773d361baea73f"
+scopes   = ["test"]
+deps = [
+  "org.jline:jline-native:jar:@4.0.14",
 ]
 
 [[artifact]]
@@ -2824,6 +3015,14 @@ scopes   = ["test"]
 deps = [
   "io.r2dbc:r2dbc-spi:jar:@1.0.0.RELEASE",
 ]
+
+[[artifact]]
+name     = "org.jspecify:jspecify:jar:"
+version  = "1.0.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
+scopes   = ["provided", "test"]
+members  = ["clients/maven-spy"]
 
 [[artifact]]
 name     = "org.jspecify:jspecify:jar:"
@@ -2976,10 +3175,26 @@ checksum = "sha256:ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10
 scopes   = ["main", "provided", "test"]
 
 [[artifact]]
-name     = "org.pcollections:pcollections:jar:"
-version  = "5.0.0"
+name     = "org.ow2.asm:asm:jar:"
+version  = "9.9"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:d42da212e052cbeedfea5eb20641b74ee574bc02302c584a16718db5376fa92c"
+checksum = "sha256:03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4"
+scopes   = ["main"]
+members  = ["plugins/image-builder"]
+
+[[artifact]]
+name     = "org.ow2.asm:asm:jar:"
+version  = "9.9.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd"
+scopes   = ["main", "provided", "test"]
+members  = ["clients/maven-spy", "server/toolchain"]
+
+[[artifact]]
+name     = "org.pcollections:pcollections:jar:"
+version  = "4.0.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1f82766d7c3221930854033bebff5073ea46b43f27326074bbe15d148c18bfb3"
 scopes   = ["processor"]
 
 [[artifact]]
@@ -3010,9 +3225,9 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-lang.modules:scala-asm:jar:"
-version  = "9.10.1-scala-1"
+version  = "9.9.0-scala-1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:620d24ce6b749a12aa4c6ecef3acf0cd50b6edb017234d8adb504b833c940bad"
+checksum = "sha256:75ac366e8ecb691e06a7e85041eed0f67919a646e5262fa0901225698c104375"
 scopes   = ["test"]
 
 [[artifact]]
@@ -3027,22 +3242,22 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-lang.modules:scala-parser-combinators_3:jar:"
-version  = "2.4.0"
+version  = "2.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:50f1b3dcf8f14975702dc6da287797e391fc5d4834e4d3e7e9f9125efdb2de9a"
+checksum = "sha256:9c89c87206aab894492fcb94e380cb7db47ba32aa4977238484bff633d4d6172"
 scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
 ]
 
 [[artifact]]
-name     = "org.scala-lang.modules:scala-xml_2.13:jar:"
-version  = "2.4.0"
+name     = "org.scala-lang.modules:scala-xml_3:jar:"
+version  = "2.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b549a1bf335bc4528cf26f005894c7c37220ac4e8450847973d8f4001b8f59ea"
+checksum = "sha256:c649c3aa411dc7d0b8eb249ef745b08c4f931d5fb09fc2a8f2f068fcf4c54354"
 scopes   = ["main"]
 deps = [
-  "org.scala-lang:scala-library:jar:@3.9.0",
+  "org.scala-lang:scala3-library_3:jar:@3.9.0",
 ]
 
 [[artifact]]
@@ -3059,7 +3274,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3e2c09a5ca6cef17a55f2f66e123815f9c4ea061fce20d0e9d2371989405a61a"
 scopes   = ["test"]
 deps = [
-  "org.scala-lang.modules:scala-asm:jar:@9.10.1-scala-1",
+  "org.scala-lang.modules:scala-asm:jar:@9.9.0-scala-1",
   "org.scala-lang:scala3-interfaces:jar:@3.9.0",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-lang:tasty-core_3:jar:@3.9.0",
@@ -3104,9 +3319,9 @@ checksum = "sha256:f4e3d0eaa6c5b91e576e2a51584eb3e60fe46c3995ce55ea068c9ff4ff9db
 scopes   = ["test"]
 deps = [
   "io.get-coursier:interface:jar:@1.0.29-M4",
-  "org.jline:jline-reader:jar:@4.4.1",
-  "org.jline:jline-terminal-jni:jar:@4.4.1",
-  "org.jline:jline-terminal:jar:@4.4.1",
+  "org.jline:jline-reader:jar:@4.0.14",
+  "org.jline:jline-terminal-jni:jar:@4.0.14",
+  "org.jline:jline-terminal:jar:@4.0.14",
   "org.scala-lang:scala3-compiler_3:jar:@3.9.0",
   "org.scala-lang:scala3-directives-parser_3:jar:@3.9.0",
 ]
@@ -3134,12 +3349,12 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-sbt.jline:jline:jar:"
-version  = "2.14.7-sbt-42b717d4418374417765c7651dca69b1b75d8b84"
+version  = "2.14.7-sbt-9a88bc413e2b34a4580c001c654d1a7f4f65bf18"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:52957f0e66d3e6c35f66671272770e8b32b9a8abc1ce610579eafbe0431c4af9"
+checksum = "sha256:a0dbaa781954fa5ed015706d12d0044e018a5705da6791ec98a51fb365d66cb0"
 scopes   = ["main"]
 deps = [
-  "org.fusesource.jansi:jansi:jar:@2.4.3",
+  "org.fusesource.jansi:jansi:jar:@2.4.1",
 ]
 
 [[artifact]]
@@ -3149,14 +3364,14 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d973c89d6a0036f71501807dd2568f337f501be9dca4e72a7141fae35ba97d7d"
 scopes   = ["main", "test"]
 deps = [
-  "org.scala-sbt:util-interface:jar:@2.0.8",
+  "org.scala-sbt:util-interface:jar:@2.0.0",
 ]
 
 [[artifact]]
 name     = "org.scala-sbt:io_3:jar:"
-version  = "1.13.1"
+version  = "1.12.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b09d2825b3bf81be431b03129bcb01cf7550630cf823a31a8ed9f6f1750ee4f6"
+checksum = "sha256:197c2f0d117e94004c6ad99e05595e2505dbebeabdd970257b9433e738c11296"
 scopes   = ["main"]
 deps = [
   "com.swoval:file-tree-views:jar:@2.1.12",
@@ -3165,27 +3380,27 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-sbt:launcher-interface:jar:"
-version  = "1.6.2"
+version  = "1.6.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4181a31b5340e8e1cdbdbe70260aa0536918fa8a8206ab68f99a98bbdbfeb066"
+checksum = "sha256:1246aef4ba5fe940b1789d2feed34b1fbb899bed246a2411b1e4d4696cbc557e"
 scopes   = ["main"]
 
 [[artifact]]
 name     = "org.scala-sbt:sbinary_3:jar:"
-version  = "0.5.2"
+version  = "0.5.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1723b63ba348dcd997b9bd0bf3805caae6de6d96b12959fd82d348e72f275804"
+checksum = "sha256:efe8db08477fc22781dbbd9b225576b4132a844820cee7ed758fdda23e9181a5"
 scopes   = ["main"]
 deps = [
-  "org.scala-lang.modules:scala-xml_2.13:jar:@2.4.0",
+  "org.scala-lang.modules:scala-xml_3:jar:@2.0.1",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
 ]
 
 [[artifact]]
 name     = "org.scala-sbt:util-control_3:jar:"
-version  = "2.0.8"
+version  = "2.0.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:bd067a0718aa8d088b30be3b936b898a0a7f1c013cc306288254aa397f556e6d"
+checksum = "sha256:612281270d520a6204cfa60cad1336b207d14499b3f85a8bc9987fcff018602f"
 scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
@@ -3193,9 +3408,9 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-sbt:util-core_3:jar:"
-version  = "2.0.8"
+version  = "2.0.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:22d801061babc7d5971a5e450abff200e37db04f714c4f42126d1a51a7546a8c"
+checksum = "sha256:0797c940dcd41d3906519514abadf84ada4374046d12b5310afb27ebea41f103"
 scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
@@ -3203,36 +3418,36 @@ deps = [
 
 [[artifact]]
 name     = "org.scala-sbt:util-interface:jar:"
-version  = "2.0.8"
+version  = "2.0.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:afc66909788aec53a34ee66c4fd715645d1d918a2fea454da5024de5b9e9fd25"
+checksum = "sha256:689d4def3cd0a2521c49850f698a773363bc13d3840d417670b8ea8b5f1d45ee"
 scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "org.scala-sbt:util-logging_3:jar:"
-version  = "2.0.8"
+version  = "2.0.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:13fa9027f7e9418922fe1a02253801f26e0db0ef0c283fe0b3dc5bb0c9987782"
+checksum = "sha256:60110caa6473262d386cde839890fc9d219b3c1dcf8281eb8c313e5097408742"
 scopes   = ["main"]
 deps = [
   "com.eed3si9n:sjson-new-core_3:jar:@0.15.1",
-  "com.eed3si9n:sjson-new-scalajson_3:jar:@0.15.1",
-  "com.lmax:disruptor:jar:@4.0.0",
-  "org.jline:jline-native:jar:@4.4.1",
-  "org.jline:jline-terminal-jni:jar:@4.4.1",
-  "org.jline:jline-terminal:jar:@4.4.1",
+  "com.eed3si9n:sjson-new-scalajson_3:jar:@0.15.0",
+  "com.lmax:disruptor:jar:@3.4.2",
+  "org.jline:jline-native:jar:@3.27.1",
+  "org.jline:jline-terminal-jni:jar:@3.27.1",
+  "org.jline:jline-terminal:jar:@3.27.1",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
-  "org.scala-sbt.jline:jline:jar:@2.14.7-sbt-42b717d4418374417765c7651dca69b1b75d8b84",
-  "org.scala-sbt:io_3:jar:@1.13.1",
-  "org.scala-sbt:util-core_3:jar:@2.0.8",
-  "org.scala-sbt:util-interface:jar:@2.0.8",
+  "org.scala-sbt.jline:jline:jar:@2.14.7-sbt-9a88bc413e2b34a4580c001c654d1a7f4f65bf18",
+  "org.scala-sbt:io_3:jar:@1.12.2",
+  "org.scala-sbt:util-core_3:jar:@2.0.0",
+  "org.scala-sbt:util-interface:jar:@2.0.0",
 ]
 
 [[artifact]]
 name     = "org.scala-sbt:util-relation_3:jar:"
-version  = "2.0.8"
+version  = "2.0.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:838b158747084896ff8faf690d70835fad14a94036d0038251c60c0398b42dd9"
+checksum = "sha256:9945b3d32d81ffa813f3594ab36b389eb7e37a4274262b68cce10602654723de"
 scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
@@ -3259,8 +3474,8 @@ scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt:compiler-interface:jar:@2.0.4",
-  "org.scala-sbt:io_3:jar:@1.13.1",
-  "org.scala-sbt:util-logging_3:jar:@2.0.8",
+  "org.scala-sbt:io_3:jar:@1.12.2",
+  "org.scala-sbt:util-logging_3:jar:@2.0.0",
 ]
 
 [[artifact]]
@@ -3272,8 +3487,8 @@ scopes   = ["main"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt:compiler-interface:jar:@2.0.4",
-  "org.scala-sbt:io_3:jar:@1.13.1",
-  "org.scala-sbt:launcher-interface:jar:@1.6.2",
+  "org.scala-sbt:io_3:jar:@1.12.2",
+  "org.scala-sbt:launcher-interface:jar:@1.6.0",
 ]
 
 [[artifact]]
@@ -3283,13 +3498,13 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:39ab30c1368deea7050f18d0ab3bf570496e8cc4b6c21a2ae7506b6f25765c11"
 scopes   = ["main"]
 deps = [
-  "org.scala-lang.modules:scala-parser-combinators_3:jar:@2.4.0",
+  "org.scala-lang.modules:scala-parser-combinators_3:jar:@2.1.0",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt:compiler-interface:jar:@2.0.4",
-  "org.scala-sbt:io_3:jar:@1.13.1",
-  "org.scala-sbt:launcher-interface:jar:@1.6.2",
-  "org.scala-sbt:util-control_3:jar:@2.0.8",
-  "org.scala-sbt:util-logging_3:jar:@2.0.8",
+  "org.scala-sbt:io_3:jar:@1.12.2",
+  "org.scala-sbt:launcher-interface:jar:@1.6.0",
+  "org.scala-sbt:util-control_3:jar:@2.0.0",
+  "org.scala-sbt:util-logging_3:jar:@2.0.0",
   "org.scala-sbt:zinc-apiinfo_3:jar:@2.0.4",
   "org.scala-sbt:zinc-classfile_3:jar:@2.0.4",
   "org.scala-sbt:zinc-classpath_3:jar:@2.0.4",
@@ -3305,9 +3520,9 @@ deps = [
   "org.scala-lang.modules:scala-parallel-collections_3:jar:@1.2.0",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
   "org.scala-sbt:compiler-interface:jar:@2.0.4",
-  "org.scala-sbt:io_3:jar:@1.13.1",
-  "org.scala-sbt:util-logging_3:jar:@2.0.8",
-  "org.scala-sbt:util-relation_3:jar:@2.0.8",
+  "org.scala-sbt:io_3:jar:@1.12.2",
+  "org.scala-sbt:util-logging_3:jar:@2.0.0",
+  "org.scala-sbt:util-relation_3:jar:@2.0.0",
   "org.scala-sbt:zinc-apiinfo_3:jar:@2.0.4",
   "org.scala-sbt:zinc-classpath_3:jar:@2.0.4",
   "org.scala-sbt:zinc-compile-core_3:jar:@2.0.4",
@@ -3322,7 +3537,7 @@ scopes   = ["main"]
 deps = [
   "org.scala-lang.modules:scala-parallel-collections_3:jar:@1.2.0",
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
-  "org.scala-sbt:sbinary_3:jar:@0.5.2",
+  "org.scala-sbt:sbinary_3:jar:@0.5.1",
   "org.scala-sbt:zinc-compile-core_3:jar:@2.0.4",
   "org.scala-sbt:zinc-core_3:jar:@2.0.4",
 ]
@@ -3343,13 +3558,29 @@ deps = [
 
 [[artifact]]
 name     = "org.slf4j:jcl-over-slf4j:jar:"
-version  = "2.0.18"
+version  = "1.7.36"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ec5c36d57d2dbe100f84878f944575cb7871da32c7a115b8d7e0721277045d67"
+checksum = "sha256:ab57ca8fd223772c17365d121f59e94ecbf0ae59d08c03a3cb5b81071c019195"
 scopes   = ["provided"]
 deps = [
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
+
+[[artifact]]
+name     = "org.slf4j:slf4j-api:jar:"
+version  = "1.7.36"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d3ef575e3e4979678dc01bf1dcce51021493b4d11fb7f1be8ad982877c16a1c0"
+scopes   = ["main", "provided", "test"]
+members  = ["clients/maven-spy", "plugins/java-compiler", "plugins/publisher"]
+
+[[artifact]]
+name     = "org.slf4j:slf4j-api:jar:"
+version  = "2.0.18"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:44508fd1576500688c790b190acdd16fec4f8c79a3e0b900afd70503cf055f55"
+scopes   = ["main", "provided", "test"]
+members  = ["clients/cli", "plugins/avro", "plugins/lint", "server/engine", "shared/guard-api"]
 
 [[artifact]]
 name     = "org.slf4j:slf4j-api:jar:"
@@ -3395,7 +3626,7 @@ checksum = "sha256:aed7cdcd8c7d980fcc481bef6d402145fccc4d4f871c125d767b0523dc050
 scopes   = ["main"]
 deps = [
   "org.antlr:antlr4-runtime:jar:@4.13.2",
-  "org.checkerframework:checker-qual:jar:@4.2.3",
+  "org.checkerframework:checker-qual:jar:@3.55.1",
 ]
 
 [[artifact]]
