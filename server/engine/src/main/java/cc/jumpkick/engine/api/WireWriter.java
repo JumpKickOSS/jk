@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -28,17 +29,27 @@ import org.jspecify.annotations.Nullable;
  * not a virtual thread, so a client that reads slowly parks nothing the engine needs for other
  * clients, and a saturated virtual-thread scheduler cannot hold a hello reply back.
  *
- * <p>A client that stops reading is dropped, not waited for. Its stream dies — the socket is closed
- * and every later line for it fails at once — when {@value #MAX_QUEUED_BYTES} bytes of lines wait
- * for it, or when its oldest unread line is older than the stream-idle bound ({@code
- * JK_STREAM_IDLE_MS}; {@code 0} leaves only the byte bound), which is also how long a {@link #send}
- * waits for its line to land before it gives the client up.
+ * <p>A client that reads slower than its job emits is paced, not dropped: once {@value
+ * #MAX_QUEUED_BYTES} bytes of lines wait for it, a {@link #sendQuiet} waits for the client to drain
+ * before it queues more, so the job runs at the client's pace and the queue stays bounded. A worker
+ * of the CPU pool waits as a managed block, so the pool runs a spare thread in its place and other
+ * jobs keep their parallelism. Lines from threads that serve more than this client — a cancel, a
+ * deadline, a heartbeat — go through {@link #sendNoWait}, which never waits.
+ *
+ * <p>A client that stops reading is dropped. The stream dies — the socket is closed and every later
+ * line for it fails at once — when it has had bytes to write and none has reached the socket for
+ * the stream-idle bound ({@code JK_STREAM_IDLE_MS}; {@code 0} never drops a client, so a paced
+ * producer then waits for as long as its client does not read). The writer reports progress every
+ * {@value #WRITE_CHUNK_CHARS} characters, so a client slowly reading one long line is still reading.
  */
 @NullMarked
 public final class WireWriter {
 
-    /** Bytes of lines a stream holds for a client that is not reading before that client is dropped. */
+    /** Bytes of unread lines past which {@link #sendQuiet} waits for the client to drain. */
     static final long MAX_QUEUED_BYTES = 8L << 20;
+
+    /** A line longer than this is written and flushed in slices this long, each one counted as progress. */
+    static final int WRITE_CHUNK_CHARS = 8_192;
 
     /** A writer thread with nothing to write ends after this long; the next line starts another. */
     static final long WRITER_IDLE_MS = 30_000;
@@ -52,17 +63,17 @@ public final class WireWriter {
     private WireWriter() {}
 
     /**
-     * Give {@code writer}'s stream its idle bound, in milliseconds ({@code 0} = only the byte
-     * bound). A writer nobody bound uses the process-wide stream-idle bound.
+     * Give {@code writer}'s stream its idle bound, in milliseconds ({@code 0} = never drop). A
+     * writer nobody bound uses the process-wide stream-idle bound.
      */
     public static void bind(BufferedWriter writer, long idleBoundMillis) {
         STREAMS.put(writer, new Stream(writer, idleBoundMillis));
     }
 
     /**
-     * Move {@code writer}'s idle bound for the lines that follow, in milliseconds ({@code 0} = only
-     * the byte bound). A connection binds loose for request/reply and hands the job's stream-idle
-     * bound over when a job takes the connection; a writer nobody bound gets the process-wide bound.
+     * Move {@code writer}'s idle bound for the lines that follow, in milliseconds ({@code 0} = never
+     * drop). A connection binds loose for request/reply and hands the job's stream-idle bound over
+     * when a job takes the connection; a writer nobody bound gets the process-wide bound.
      */
     public static void idleBound(BufferedWriter writer, long idleBoundMillis) {
         stream(writer).idleBound(idleBoundMillis);
@@ -75,27 +86,42 @@ public final class WireWriter {
      * a cancelled runner's terminal still has to be the last line the client reads.
      */
     public static void send(BufferedWriter writer, String line) throws IOException {
-        stream(writer).enqueue(line, true);
+        stream(writer).enqueue(line, Mode.LANDED);
     }
 
     /**
-     * Queue one line and return; a stream whose client is gone or not reading drops the line, since
-     * the cancel-watching read loop notices the same disconnect. A null writer is a detached job
-     * (HTTP/MCP) with no wire at all.
+     * Queue one line and return, first waiting for the client to drain while the stream holds
+     * {@value #MAX_QUEUED_BYTES} bytes or more. An interrupted caller does not wait. A stream whose
+     * client is gone or not reading drops the line, since the cancel-watching read loop notices the
+     * same disconnect. A null writer is a detached job (HTTP/MCP) with no wire at all.
      */
     public static void sendQuiet(@Nullable BufferedWriter writer, String line) {
         if (writer == null) return;
         try {
-            stream(writer).enqueue(line, false);
+            stream(writer).enqueue(line, Mode.PACED);
         } catch (IOException gone) {
             // client gone or not reading; the read loop sees it too
         }
     }
 
     /**
-     * Wait for every line queued so far to land — bounded by the stream's idle bound, past which
-     * the client is dropped. A job's envelope waits here after its job-finish, so the connection
-     * loop it returns to never closes a writer with the terminal still in the queue.
+     * {@link #sendQuiet} without the wait: for a short line from a thread that serves more than
+     * this client — a cancel, a deadline, a heartbeat — which must not stand behind its backlog.
+     */
+    public static void sendNoWait(@Nullable BufferedWriter writer, String line) {
+        if (writer == null) return;
+        try {
+            stream(writer).enqueue(line, Mode.QUEUED);
+        } catch (IOException gone) {
+            // client gone or not reading; the read loop sees it too
+        }
+    }
+
+    /**
+     * Wait for every line queued so far to land — while the client keeps reading, however long
+     * that takes; a client that reads nothing for the stream's idle bound is dropped. A job's
+     * envelope waits here after its job-finish, so the connection loop it returns to never closes
+     * a writer with the terminal still in the queue.
      */
     public static void awaitLanded(BufferedWriter writer) {
         Stream s = STREAMS.get(writer);
@@ -111,12 +137,31 @@ public final class WireWriter {
         if (s != null) s.release();
     }
 
+    /** Bytes of lines {@code writer}'s stream holds that have not reached the socket yet. */
+    static long queuedBytes(BufferedWriter writer) {
+        Stream s = STREAMS.get(writer);
+        if (s == null) return 0;
+        synchronized (s) {
+            return s.queuedBytes;
+        }
+    }
+
     private static Stream stream(BufferedWriter writer) {
         return STREAMS.computeIfAbsent(writer, w -> new Stream(w, BoundedLineReader.streamIdleMillis(JkDirs::env)));
     }
 
+    /** How a caller hands its line over. */
+    private enum Mode {
+        /** Wait until the line has reached the socket. */
+        LANDED,
+        /** Wait for room under {@link #MAX_QUEUED_BYTES}, then return. */
+        PACED,
+        /** Return at once. */
+        QUEUED
+    }
+
     /** One line waiting to be written; {@code landed} is present when a caller waits for it. */
-    private record Pending(String line, @Nullable CompletableFuture<Void> landed, long queuedNanos) {
+    private record Pending(String line, @Nullable CompletableFuture<Void> landed) {
         long bytes() {
             return line.length() + 1L;
         }
@@ -130,8 +175,14 @@ public final class WireWriter {
         private long queuedBytes;
         private @Nullable Thread drainer;
 
-        /** When the line being written left the queue; {@code 0} while nothing is being written. */
-        private long writingSinceNanos;
+        /** Whether the writer thread holds a line it took off the queue and has not finished. */
+        private boolean writing;
+
+        /**
+         * When bytes last reached the socket, or when the stream last went from nothing to write to
+         * something. While the stream is busy, its stall runs from here.
+         */
+        private volatile long progressNanos;
 
         private @Nullable IOException dead;
         private boolean released;
@@ -145,33 +196,138 @@ public final class WireWriter {
             idleBoundMillis = Math.max(0L, millis);
         }
 
-        void enqueue(String line, boolean await) throws IOException {
-            Pending p;
-            synchronized (this) {
-                if (dead != null) throw dead;
-                long now = CLOCK.nanos();
-                p = new Pending(line, await ? new CompletableFuture<>() : null, now);
-                if (queuedBytes + p.bytes() > MAX_QUEUED_BYTES) {
-                    throw drop(notReading("holds " + queuedBytes + " bytes of unread lines"));
+        void enqueue(String line, Mode mode) throws IOException {
+            Pending p = new Pending(line, mode == Mode.LANDED ? new CompletableFuture<>() : null);
+            if (mode == Mode.PACED) {
+                awaitRoom(p);
+            } else {
+                synchronized (this) {
+                    add(p);
                 }
-                long stalledMs = stalledMillis(now);
-                if (idleBoundMillis > 0 && stalledMs > idleBoundMillis) {
-                    throw drop(notReading("has read nothing for " + stalledMs + " ms"));
-                }
-                queue.addLast(p);
-                queuedBytes += p.bytes();
-                if (drainer == null) startDrainer();
-                else notifyAll();
             }
             CompletableFuture<Void> landed = p.landed();
             if (landed != null) awaitLanding(landed);
         }
 
-        /** Caller holds the monitor. Age of the oldest line the client has not read yet, in milliseconds. */
+        /**
+         * Caller holds the monitor. Queue {@code p}, or throw when the stream is dead or its client
+         * has read nothing for the idle bound.
+         */
+        private void add(Pending p) throws IOException {
+            if (dead != null) throw dead;
+            long now = CLOCK.nanos();
+            long stalledMs = stalledMillis(now);
+            if (stalled(stalledMs)) throw drop(notReading("has read nothing for " + stalledMs + " ms"));
+            if (!busy()) progressNanos = now;
+            queue.addLast(p);
+            queuedBytes += p.bytes();
+            if (drainer == null) startDrainer();
+            else notifyAll();
+        }
+
+        /** Caller holds the monitor. A line fits while the queue stays under the bound, or is empty. */
+        private boolean hasRoom(Pending p) {
+            return queuedBytes == 0 || queuedBytes + p.bytes() <= MAX_QUEUED_BYTES;
+        }
+
+        /**
+         * Queue {@code p} once the stream has room for it. The wait is a managed block, so a CPU-pool
+         * worker waiting here has a spare thread run in its place. It ends when the client drains,
+         * when the client is dropped for reading nothing within the idle bound, or when the caller
+         * is interrupted: a cancelled job's unwinding lines are queued without waiting.
+         */
+        private void awaitRoom(Pending p) throws IOException {
+            if (Thread.currentThread().isInterrupted()) {
+                synchronized (this) {
+                    add(p);
+                }
+                return;
+            }
+            RoomBlocker blocker = new RoomBlocker(p);
+            try {
+                ForkJoinPool.managedBlock(blocker);
+            } catch (InterruptedException e) {
+                // block() keeps the interrupt itself and never throws it
+                Thread.currentThread().interrupt();
+            }
+            if (blocker.interrupted) Thread.currentThread().interrupt();
+            IOException failed = blocker.failed;
+            if (failed != null) throw failed;
+        }
+
+        /** {@link #awaitRoom}'s wait. Queues the line itself, under the monitor, once there is room. */
+        private final class RoomBlocker implements ForkJoinPool.ManagedBlocker {
+            private final Pending p;
+            private boolean done;
+            private boolean interrupted;
+            private @Nullable IOException failed;
+
+            RoomBlocker(Pending p) {
+                this.p = p;
+            }
+
+            @Override
+            public boolean isReleasable() {
+                synchronized (Stream.this) {
+                    if (!done && (dead != null || hasRoom(p))) addOrFail();
+                    return done;
+                }
+            }
+
+            @Override
+            public boolean block() {
+                synchronized (Stream.this) {
+                    while (!done) {
+                        if (dead != null || hasRoom(p) || interrupted) {
+                            addOrFail();
+                            break;
+                        }
+                        long stalledMs = stalledMillis(CLOCK.nanos());
+                        if (stalled(stalledMs)) {
+                            failed = drop(notReading("has read nothing for " + stalledMs + " ms"));
+                            done = true;
+                            break;
+                        }
+                        try {
+                            Stream.this.wait(pollMillis(stalledMs));
+                        } catch (InterruptedException e) {
+                            interrupted = true;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            /** Caller holds the stream's monitor. */
+            private void addOrFail() {
+                try {
+                    add(p);
+                } catch (IOException e) {
+                    failed = e;
+                }
+                done = true;
+            }
+        }
+
+        /** Caller holds the monitor. Whether the stream has bytes it has not written yet. */
+        private boolean busy() {
+            return writing || !queue.isEmpty();
+        }
+
+        /** Caller holds the monitor. How long a busy stream has gone without writing a byte, in milliseconds. */
         private long stalledMillis(long now) {
-            Pending oldest = queue.peekFirst();
-            long since = writingSinceNanos != 0 ? writingSinceNanos : oldest == null ? now : oldest.queuedNanos();
-            return (now - since) / 1_000_000L;
+            return busy() ? (now - progressNanos) / 1_000_000L : 0L;
+        }
+
+        private boolean stalled(long stalledMs) {
+            long bound = idleBoundMillis;
+            return bound > 0 && stalledMs >= bound;
+        }
+
+        /** How long to wait before looking at the stall again: what is left of the idle bound, at most a second. */
+        private long pollMillis(long stalledMs) {
+            long bound = idleBoundMillis;
+            return bound > 0 ? Math.max(1L, Math.min(bound - stalledMs, 1_000L)) : 1_000L;
         }
 
         private void awaitLanding(CompletableFuture<Void> landed) throws IOException {
@@ -179,14 +335,20 @@ public final class WireWriter {
             try {
                 while (true) {
                     try {
-                        if (idleBoundMillis > 0) landed.get(idleBoundMillis, TimeUnit.MILLISECONDS);
-                        else landed.get();
+                        long waitMs;
+                        synchronized (this) {
+                            waitMs = pollMillis(stalledMillis(CLOCK.nanos()));
+                        }
+                        landed.get(waitMs, TimeUnit.MILLISECONDS);
                         return;
                     } catch (InterruptedException e) {
                         interrupted = true;
                     } catch (TimeoutException e) {
                         synchronized (this) {
-                            throw drop(notReading("has not read a line in " + idleBoundMillis + " ms"));
+                            long stalledMs = stalledMillis(CLOCK.nanos());
+                            if (stalled(stalledMs)) {
+                                throw drop(notReading("has read nothing for " + stalledMs + " ms"));
+                            }
                         }
                     } catch (ExecutionException e) {
                         Throwable cause = e.getCause();
@@ -219,6 +381,8 @@ public final class WireWriter {
             if (message != null && message.startsWith(NOT_READING)) {
                 Log.warn(
                         "jk engine: dropped a client that stopped reading its stream",
+                        "idleBoundMs",
+                        idleBoundMillis,
                         "queuedBytes",
                         queuedBytes,
                         "queuedLines",
@@ -230,7 +394,7 @@ public final class WireWriter {
             }
             queuedBytes = 0;
             Thread t = drainer;
-            if (t != null && t != Thread.currentThread() && writingSinceNanos != 0) t.interrupt();
+            if (t != null && t != Thread.currentThread() && writing) t.interrupt();
             notifyAll();
             return cause;
         }
@@ -266,15 +430,11 @@ public final class WireWriter {
                             return;
                         }
                     }
-                    writingSinceNanos = p.queuedNanos();
+                    writing = true;
                 }
                 CompletableFuture<Void> landed = p.landed();
                 try {
-                    synchronized (writer) {
-                        writer.write(p.line());
-                        writer.write('\n');
-                        writer.flush();
-                    }
+                    write(p.line());
                 } catch (IOException e) {
                     synchronized (this) {
                         drop(e);
@@ -285,17 +445,37 @@ public final class WireWriter {
                 }
                 synchronized (this) {
                     queuedBytes -= p.bytes();
-                    writingSinceNanos = 0;
+                    writing = false;
                     notifyAll();
                 }
                 if (landed != null) landed.complete(null);
             }
         }
 
+        /** One line and its newline; a long line goes out in flushed slices, each one counted as progress. */
+        private void write(String line) throws IOException {
+            synchronized (writer) {
+                int length = line.length();
+                int off = 0;
+                while (length - off > WRITE_CHUNK_CHARS) {
+                    int end = off + WRITE_CHUNK_CHARS;
+                    if (Character.isHighSurrogate(line.charAt(end - 1))) end--;
+                    writer.write(line, off, end - off);
+                    writer.flush();
+                    progressNanos = CLOCK.nanos();
+                    off = end;
+                }
+                writer.write(line, off, length - off);
+                writer.write('\n');
+                writer.flush();
+                progressNanos = CLOCK.nanos();
+            }
+        }
+
         /** Caller holds the monitor; the writer thread is about to return. */
         private void endDrainer() {
             drainer = null;
-            writingSinceNanos = 0;
+            writing = false;
             // Close the socket here, not only via interrupt of a blocked write: on Windows a pipe
             // sink can stay open after Thread.interrupt until the channel is closed explicitly.
             if (dead != null) {
@@ -315,18 +495,16 @@ public final class WireWriter {
         }
 
         synchronized void awaitLanded() {
-            boolean bounded = idleBoundMillis > 0;
-            long deadlineNanos = CLOCK.nanos() + idleBoundMillis * 1_000_000L;
             boolean interrupted = false;
             try {
-                while (dead == null && (!queue.isEmpty() || writingSinceNanos != 0)) {
-                    long remainingMs = (deadlineNanos - CLOCK.nanos()) / 1_000_000L;
-                    if (bounded && remainingMs <= 0) {
+                while (dead == null && busy()) {
+                    long stalledMs = stalledMillis(CLOCK.nanos());
+                    if (stalled(stalledMs)) {
                         drop(notReading("still holds " + queuedBytes + " bytes of unread lines at close"));
                         break;
                     }
                     try {
-                        wait(bounded ? Math.max(1L, Math.min(remainingMs, 1_000L)) : 1_000L);
+                        wait(pollMillis(stalledMs));
                     } catch (InterruptedException e) {
                         interrupted = true;
                     }

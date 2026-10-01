@@ -488,11 +488,15 @@ while a build owns the connection). `jk engine status` prints the count as a `Dr
 
 A client that stops reading — a terminal suspended mid-build, a pipe nobody drains — costs the
 other clients nothing. Each connection is served on its own thread and its lines are written by
-its own writer, so a build's progress goes into that client's queue and the build goes on; `jk
-engine status` and a new client's handshake are answered as usual. Once 8 MiB of lines wait for
-such a client, or its oldest unread line is older than `JK_STREAM_IDLE_MS`, the engine drops it:
-its connection is closed, its job ends the way it does when a client disconnects, and the engine
-log says `dropped a client that stopped reading its stream`. A connection no job owns — a probe,
+its own writer, so a build's progress goes into that client's queue; `jk engine status` and a
+new client's handshake are answered as usual. Once 8 MiB of lines wait for a client, its build
+waits for the client to catch up before it emits more, so a client that reads slowly — a pipe into
+a file on a busy disk, a burst of large test failures — slows its own build down and is never
+dropped for it. A client that reads nothing at all for `JK_STREAM_IDLE_MS` while it has lines
+waiting is dropped: its connection is closed, its job ends the way it does when a client
+disconnects, and the engine log says `dropped a client that stopped reading its stream`. A
+terminal suspended mid-build therefore pauses its build once the queue fills, and the build
+resumes when the terminal does. A connection no job owns — a probe,
 a status request, a cancel — is held to 10 seconds instead: a reply is one line its client is
 waiting for, and a client that has not read it in that long is gone.
 

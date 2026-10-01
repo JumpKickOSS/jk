@@ -19,15 +19,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 /**
  * One connection's writer is shared by the plan's worker threads, the envelope's heartbeat
  * watchdog, the cancel path and the job-finish tail. A JSONL line is only usable if it arrives
- * whole, so every line goes through the stream's one writer thread, and a client that stops
- * reading is dropped rather than waited for.
+ * whole, so every line goes through the stream's one writer thread. A client that reads slowly
+ * paces its producers; a client that stops reading is dropped.
  *
  * <p>{@code BufferedWriter} synchronizes each individual call, so no write is ever torn
  * mid-string; the sequence is what races — two threads writing directly can emit both payloads
@@ -132,35 +134,156 @@ class WireWriterTest {
     }
 
     /**
-     * A client that stops reading — a suspended terminal, a wedged pipe — must not park the
-     * producers of its events: they hand their lines to the stream and return, and once the stream
-     * holds more than it will keep for a client that is not reading, the client is dropped and its
-     * socket closed. The pipe here is never read, so its buffer fills within the first few lines.
+     * A client that stops reading — a suspended terminal, a wedged pipe — paces its producers once
+     * its queue is full, and is dropped once it has read nothing for the idle bound: the producer
+     * returns, the stream is dead for every later line and the socket is closed. The pipe here is
+     * never read, so its buffer fills within the first few lines.
      */
     @Test
     @Timeout(60)
-    void a_client_that_stops_reading_parks_no_producer_and_is_dropped() throws Exception {
+    void a_client_that_stops_reading_is_dropped_within_the_idle_bound_and_frees_its_producer() throws Exception {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0);
-        String line = line(0, 0);
-        // Twice the bound: whatever the pipe's own buffer swallows, the queue crosses it.
+        WireWriter.bind(writer, 300);
+        String line = failureSizedLine();
+        // Twice the byte bound: whatever the pipe's own buffer swallows, the queue crosses it.
         long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
 
+        long started = System.nanoTime();
         Thread producer = Thread.ofPlatform().start(() -> {
             for (long i = 0; i < lines; i++) WireWriter.sendQuiet(writer, line);
         });
         producer.join(Duration.ofSeconds(30).toMillis());
         assertThat(producer.isAlive())
-                .as("the producer returned without waiting for the client")
+                .as("the producer is let go once the client is dropped")
                 .isFalse();
+        long waitedMs = (System.nanoTime() - started) / 1_000_000;
+        assertThat(waitedMs).as("bounded by the idle bound, not by the client").isLessThan(10_000);
 
         assertThatThrownBy(() -> WireWriter.send(writer, line))
                 .as("the stream is dead for every later line")
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("stopped reading");
         Await.until(Duration.ofSeconds(5), () -> !pipe.sink().isOpen());
+    }
+
+    /**
+     * A client that reads slower than a burst arrives is still reading: a burst of twice the byte
+     * bound, in failure-report-sized lines, reaches a reader that takes far longer than the idle
+     * bound to drain it, never pausing for as long as that bound. Every line lands, the producer
+     * waits for room instead of growing the queue past the bound, and the stream stays alive.
+     */
+    @Test
+    @Timeout(120)
+    void a_slow_reader_survives_a_burst_past_the_byte_bound_and_holds_the_queue_to_it() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        long idleMs = 2_000;
+        WireWriter.bind(writer, idleMs);
+        String line = failureSizedLine();
+        int lines = (int) (2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1));
+
+        AtomicLong received = new AtomicLong();
+        AtomicLong newlines = new AtomicLong();
+        Thread reader = Thread.ofPlatform().start(() -> {
+            ByteBuffer buf = ByteBuffer.allocate(32 * 1024);
+            try {
+                while (newlines.get() <= lines) {
+                    buf.clear();
+                    int n = pipe.source().read(buf);
+                    if (n < 0) return;
+                    for (int i = 0; i < n; i++) if (buf.get(i) == '\n') newlines.incrementAndGet();
+                    received.addAndGet(n);
+                    // About 3 MB/s: the burst takes seconds, each pause a sliver of the bound.
+                    Thread.sleep(10);
+                }
+            } catch (IOException | InterruptedException e) {
+                // the stream died under the reader; the assertions below say so
+            }
+        });
+
+        long started = System.nanoTime();
+        AtomicLong maxQueued = new AtomicLong();
+        Thread producer = Thread.ofPlatform().start(() -> {
+            for (int i = 0; i < lines; i++) {
+                WireWriter.sendQuiet(writer, line);
+                maxQueued.accumulateAndGet(WireWriter.queuedBytes(writer), Math::max);
+            }
+        });
+        producer.join(Duration.ofSeconds(90).toMillis());
+        assertThat(producer.isAlive()).isFalse();
+        WireWriter.send(writer, "{\"type\":\"job-finish\"}");
+        reader.join(Duration.ofSeconds(30).toMillis());
+        long tookMs = (System.nanoTime() - started) / 1_000_000;
+
+        assertThat(newlines.get()).as("every line reached the slow reader").isEqualTo(lines + 1L);
+        assertThat(tookMs)
+                .as("the burst outlasted the idle bound, so only draining kept it alive")
+                .isGreaterThan(idleMs);
+        assertThat(maxQueued.get())
+                .as("the producer waited for room rather than growing the queue")
+                .isLessThanOrEqualTo(WireWriter.MAX_QUEUED_BYTES + line.length() + 1);
+        assertThat(pipe.sink().isOpen()).isTrue();
+    }
+
+    /**
+     * A CPU-pool worker that waits for a slow client to drain leaves the pool its parallelism: the
+     * pool runs a spare thread, so another job's task on the same one-thread pool still runs.
+     */
+    @Test
+    @Timeout(60)
+    void a_pool_worker_waiting_for_room_does_not_starve_the_pool() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        WireWriter.bind(writer, 20_000);
+        String line = failureSizedLine();
+        long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
+        ForkJoinPool pool = new ForkJoinPool(1);
+        try {
+            CountDownLatch waiting = new CountDownLatch(1);
+            pool.execute(() -> {
+                for (long i = 0; i < lines; i++) {
+                    if (WireWriter.queuedBytes(writer) + line.length() + 1 > WireWriter.MAX_QUEUED_BYTES) {
+                        waiting.countDown();
+                    }
+                    WireWriter.sendQuiet(writer, line);
+                }
+            });
+            assertThat(waiting.await(30, TimeUnit.SECONDS))
+                    .as("the queue filled")
+                    .isTrue();
+            Thread.sleep(100);
+            assertThat(pool.submit(() -> "ran").get(10, TimeUnit.SECONDS)).isEqualTo("ran");
+        } finally {
+            pipe.source().close();
+            pool.shutdownNow();
+        }
+    }
+
+    /** A cancel or a deadline from another thread is queued at once, whatever the client has left unread. */
+    @Test
+    @Timeout(30)
+    void send_no_wait_queues_past_the_byte_bound_without_waiting() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        WireWriter.bind(writer, 20_000);
+        String line = failureSizedLine();
+        long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
+        long started = System.nanoTime();
+        for (long i = 0; i < lines; i++) WireWriter.sendNoWait(writer, line);
+        long tookMs = (System.nanoTime() - started) / 1_000_000;
+        assertThat(tookMs).isLessThan(10_000);
+        assertThat(WireWriter.queuedBytes(writer)).isGreaterThan(WireWriter.MAX_QUEUED_BYTES);
+        pipe.source().close();
+    }
+
+    /** About the size of one test-failure line: a capped message and a capped stack. */
+    private static String failureSizedLine() {
+        return "{\"type\":\"error\",\"stack\":\"" + "s".repeat(38_000) + "\"}";
     }
 
     /** A line whose client has not read it within the stream's idle bound fails inside that bound. */
