@@ -179,7 +179,7 @@ final class JobWatchdog {
         /** One pass after a tick: the heartbeat line, then the stall note when the job has been silent long enough. */
         void pass() {
             if (heartbeats) {
-                WireWriter.sendQuiet(writer, ProtoLifecycle.heartbeat(nowMillis.getAsLong() - start));
+                WireWriter.sendNoWait(writer, ProtoLifecycle.heartbeat(nowMillis.getAsLong() - start));
             }
             if (stallNoteMs > 0) lastNoted = noteStall(eventRequestId, kind, dir, start, lastNoted);
         }
@@ -229,7 +229,7 @@ final class JobWatchdog {
         if (a != null) a.markUserCancelled(true, deadline.reason());
         int killed = JobWorkers.shutdownForRequest(eventRequestId, limits.cancelGraceMs());
         LiveJobRegistry.interruptRunner(runnerThread);
-        WireWriter.sendQuiet(
+        WireWriter.sendNoWait(
                 writer,
                 ProtoLifecycle.error(
                         EngineProtocol.ERR_DEADLINE,

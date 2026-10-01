@@ -162,7 +162,7 @@ public final class LiveJobRegistry {
 
     private void pushCancelledTerminal(LiveJob job) {
         if (job.writer() == null) return;
-        WireWriter.sendQuiet(job.writer(), cancelledTerminalLine(job.workspaceStream(), job.dir()));
+        WireWriter.sendNoWait(job.writer(), cancelledTerminalLine(job.workspaceStream(), job.dir()));
     }
 
     /**
@@ -187,7 +187,7 @@ public final class LiveJobRegistry {
         for (var e : liveJobs.entrySet()) {
             LiveJob job = e.getValue();
             if (job.writer() != null) {
-                WireWriter.sendQuiet(job.writer(), ProtoLifecycle.error(EngineProtocol.ERR_DEADLINE, reason));
+                WireWriter.sendNoWait(job.writer(), ProtoLifecycle.error(EngineProtocol.ERR_DEADLINE, reason));
             }
             pushCancelledTerminal(job);
             beginCancel(e.getKey(), job.token(), job.runnerRef(), cancelGraceMs, reason, true);
