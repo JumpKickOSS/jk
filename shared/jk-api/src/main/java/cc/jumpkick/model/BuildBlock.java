@@ -71,11 +71,11 @@ public record BuildBlock(
          */
         List<String> testExcludeDependencies,
         /**
-         * {@code [test.suites.<name>] classes}: suites selected by class pattern, in {@code --class}
-         * syntax, over the default suite's compiled classes, in manifest order. The default suite
-         * leaves every class a pattern here matches to that suite.
+         * {@code [test.suites.<name>]}: suites selected by class pattern over the default suite's
+         * compiled classes, in manifest order. The default suite leaves every class a suite's
+         * {@code classes} match to that suite.
          */
-        Map<String, List<String>> testSuiteClasses,
+        Map<String, ClassSuite> testClassSuites,
         /**
          * {@code [test] assertions}: whether every forked test JVM runs with {@code -ea}, as
          * Surefire's and Gradle's do. Default {@code true}; {@code false} runs the suite with Java
@@ -220,7 +220,7 @@ public record BuildBlock(
         testExcludeClasses = testExcludeClasses == null ? List.of() : List.copyOf(testExcludeClasses);
         testExcludeSrc = testExcludeSrc == null ? List.of() : List.copyOf(testExcludeSrc);
         testExcludeDependencies = testExcludeDependencies == null ? List.of() : List.copyOf(testExcludeDependencies);
-        testSuiteClasses = suiteClasses(testSuiteClasses);
+        testClassSuites = suiteClasses(testClassSuites);
         platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
         unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
         pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
@@ -307,17 +307,15 @@ public record BuildBlock(
         return with(f -> f.testExcludeDependencies = coordinates);
     }
 
-    /** The same block with {@code [test.suites.<name>] classes} set. */
-    public BuildBlock withTestSuiteClasses(Map<String, List<String>> suites) {
-        return with(f -> f.testSuiteClasses = suites);
+    /** The same block with its {@code [test.suites.<name>]} class-pattern suites set. */
+    public BuildBlock withTestClassSuites(Map<String, ClassSuite> suites) {
+        return with(f -> f.testClassSuites = suites);
     }
 
     /** An unmodifiable copy that keeps the manifest's suite order. */
-    private static Map<String, List<String>> suiteClasses(@Nullable Map<String, List<String>> suites) {
+    private static Map<String, ClassSuite> suiteClasses(@Nullable Map<String, ClassSuite> suites) {
         if (suites == null || suites.isEmpty()) return Map.of();
-        Map<String, List<String>> out = new LinkedHashMap<>();
-        suites.forEach((name, patterns) -> out.put(name, List.copyOf(patterns)));
-        return Collections.unmodifiableMap(out);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(suites));
     }
 
     /** True when {@code [test] exclude-dependencies} names {@code group:artifact}. */

@@ -870,7 +870,7 @@ public final class PlannerSupport {
             @Nullable PluginDeclarations pluginDecls)
             throws IOException {
         List<String> discovered =
-                TestSuites.available(dir, compact, project.build().testSuiteClasses());
+                TestSuites.available(dir, compact, project.build().testClassSuites());
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps.
         var resolved = SessionContext.current().testSelection().resolve(discovered);
@@ -888,7 +888,7 @@ public final class PlannerSupport {
         List<Path> stampRes = ModuleLayout.suiteResourceDirs(
                 dir,
                 compact,
-                TestSuites.compiled(dir, compact, suites, project.build().testSuiteClasses()));
+                TestSuites.compiled(dir, compact, suites, project.build().testClassSuites()));
         String key = TestStamp.computeKey(
                 stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras, identity);
         if (Perf.enabled()) {
@@ -959,8 +959,9 @@ public final class PlannerSupport {
             extras.add("exclude-classes:" + String.join(",", build.testExcludeClasses()));
         }
         // A class-pattern suite decides which compiled classes the default suite runs.
-        build.testSuiteClasses()
-                .forEach((suite, patterns) -> extras.add("suite-classes:" + suite + "=" + String.join(",", patterns)));
+        build.testClassSuites()
+                .forEach((suite, spec) -> extras.add("suite-classes:" + suite + "=" + String.join(",", spec.classes())
+                        + (spec.excludeClasses().isEmpty() ? "" : "!" + String.join(",", spec.excludeClasses()))));
         // The test JVM's flags change what the suite sees (-D properties, heap), so they retest.
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
         // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the

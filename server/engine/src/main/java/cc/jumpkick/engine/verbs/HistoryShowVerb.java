@@ -182,7 +182,8 @@ public final class HistoryShowVerb implements HostedVerb {
                 d.snippetStart(),
                 d.snippet(),
                 d.worker(),
-                d.key());
+                d.key(),
+                d.suite());
     }
 
     private static String redactSafe(SecretRedactor r, String text) {

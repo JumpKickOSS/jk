@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildBlock;
+import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.nio.file.Files;
@@ -29,7 +30,7 @@ class ForecastSelectedSuiteSourcesTest {
             .build();
 
     private static final JkBuild PATTERNED = JkBuild.builder(PROJECT.project())
-            .build(BuildBlock.EMPTY.withTestSuiteClasses(Map.of("integration", List.of("IT*", "*IT"))))
+            .build(BuildBlock.EMPTY.withTestClassSuites(Map.of("integration", ClassSuite.of(List.of("IT*", "*IT")))))
             .build();
 
     @Test

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.BuildBlock;
+import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
@@ -437,7 +438,7 @@ class JkBuildParserProjectTest {
 
     @Test
     void parses_class_pattern_suites_in_manifest_order() {
-        assertThat(JkBuildParser.parse(PROJECT).build().testSuiteClasses()).isEmpty();
+        assertThat(JkBuildParser.parse(PROJECT).build().testClassSuites()).isEmpty();
         var build = JkBuildParser.parse(PROJECT + """
 
                 [test]
@@ -446,13 +447,15 @@ class JkBuildParserProjectTest {
                 [test.suites.integration]
                 classes = ["IT*", "*IT", "*ITCase", "*IT"]
 
+                exclude-classes = ["*SlowIT", "*SlowIT"]
+
                 [test.suites.contract]
                 classes = ["com.acme.*ContractTest"]
                 """).build();
-        assertThat(build.testSuiteClasses())
+        assertThat(build.testClassSuites())
                 .containsExactly(
-                        Map.entry("integration", List.of("IT*", "*IT", "*ITCase")),
-                        Map.entry("contract", List.of("com.acme.*ContractTest")));
+                        Map.entry("integration", new ClassSuite(List.of("IT*", "*IT", "*ITCase"), List.of("*SlowIT"))),
+                        Map.entry("contract", ClassSuite.of(List.of("com.acme.*ContractTest"))));
         assertThat(build.testExcludeClasses()).containsExactly("*PerformanceTest");
     }
 
@@ -466,6 +469,8 @@ class JkBuildParserProjectTest {
                 "[test.suites.integration]\nclasses = \"*IT\"",
                 "[test.suites.integration]\nclasses = [\"FooIT#slow\"]",
                 "[test.suites.integration]\nclasses = [\"*IT\"]\ndir = \"src/it/java\"",
+                "[test.suites.integration]\nclasses = [\"*IT\"]\nexclude-classes = \"*SlowIT\"",
+                "[test.suites.integration]\nclasses = [\"*IT\"]\nexclude-classes = [\"SlowIT#run\"]",
                 "[test]\nsuites = [\"integration\"]")) {
             assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n" + bad + "\n"))
                     .as(bad)

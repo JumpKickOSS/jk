@@ -22,6 +22,7 @@ final class DiagnosticFields {
             String message,
             String test,
             String module,
+            String suite,
             String engine,
             String testClass,
             String method,
@@ -41,6 +42,7 @@ final class DiagnosticFields {
                 .string("message", message)
                 .optionalNonEmptyString("test", test)
                 .optionalNonEmptyString("module", module)
+                .optionalNonEmptyString("suite", suite)
                 .optionalNonEmptyString("engine", engine)
                 .optionalNonEmptyString(EngineProtocol.TEST_CLASS_FIELD, testClass)
                 .optionalNonEmptyString("method", method)

@@ -3,8 +3,10 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.TestJvm;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,25 +27,25 @@ import org.jspecify.annotations.Nullable;
  * system-properties}; its {@code <includes>} and a skip flag have no {@code [test]}
  * key and are rows saying where each lands. Failsafe's {@code <includes>} (or its defaults) are the
  * class patterns of jk's {@code integration} suite, {@code [test.suites.integration] classes}, so
- * plain {@code jk test} leaves those classes out as {@code mvn test} does; its JVM settings land in
- * the same keys when Surefire set none. JaCoCo is {@code jk test --coverage}, a run flag.
+ * plain {@code jk test} leaves those classes out as {@code mvn test} does, and its {@code
+ * <excludes>} are that suite's {@code exclude-classes}; its JVM settings land in the same keys when
+ * Surefire set none. JaCoCo is {@code jk test --coverage}, a run flag.
  */
 final class TestPlugins {
 
     /**
      * The {@code [test]} tag filters, excluded classes and dependencies, the {@code integration}
-     * suite's class patterns (empty without Failsafe), and test JVM settings a POM's test plugins
-     * declare.
+     * suite (null without Failsafe), and test JVM settings a POM's test plugins declare.
      */
     record TestSettings(
             List<String> includeTags,
             List<String> excludeTags,
             List<String> excludeClasses,
             List<String> excludeDependencies,
-            List<String> integrationClasses,
+            @Nullable ClassSuite integration,
             TestJvm jvm) {
         static final TestSettings NONE =
-                new TestSettings(List.of(), List.of(), List.of(), List.of(), List.of(), TestJvm.EMPTY);
+                new TestSettings(List.of(), List.of(), List.of(), List.of(), null, TestJvm.EMPTY);
     }
 
     private static final String SUREFIRE = "maven-surefire-plugin";
@@ -60,9 +62,9 @@ final class TestPlugins {
         TestSettings tags = PluginFacts.plugin(model, SUREFIRE)
                 .map(surefire -> mapSurefire(surefire, model, report, jvm))
                 .orElse(TestSettings.NONE);
-        List<String> integration = PluginFacts.plugin(model, FAILSAFE)
+        ClassSuite integration = PluginFacts.plugin(model, FAILSAFE)
                 .map(failsafe -> mapFailsafe(failsafe, model, report, jvm))
-                .orElse(List.of());
+                .orElse(null);
         if (PluginFacts.plugin(model, "jacoco-maven-plugin").isPresent()) {
             report.warning("`jacoco-maven-plugin` — coverage is a run flag in jk, not a build setting:"
                     + " `jk test --coverage` runs every suite JVM under the JaCoCo agent and writes"
@@ -96,7 +98,7 @@ final class TestPlugins {
                 List.copyOf(exclude),
                 List.copyOf(excludeClasses),
                 List.copyOf(excludeDependencies),
-                List.of(),
+                null,
                 TestJvm.EMPTY);
     }
 
@@ -338,11 +340,12 @@ final class TestPlugins {
 
     /**
      * Failsafe's second test pass is jk's {@code integration} suite: its {@code <includes>}, or
-     * Failsafe's defaults, as class patterns over the test sources. A pattern the class syntax
-     * cannot spell, {@code <excludes>} and the tag filters are rows. Its JVM settings land in the
-     * same keys as Surefire's.
+     * Failsafe's defaults, as class patterns over the test sources, less its {@code <excludes>}. A
+     * pattern the class syntax cannot spell and the tag filters are rows. Its JVM settings land in
+     * the same keys as Surefire's; null when no include maps.
      */
-    private static List<String> mapFailsafe(Plugin failsafe, Model model, ImportReport.Builder report, Jvm jvm) {
+    private static @Nullable ClassSuite mapFailsafe(
+            Plugin failsafe, Model model, ImportReport.Builder report, Jvm jvm) {
         Set<String> includes = new LinkedHashSet<>();
         Set<String> excludes = new LinkedHashSet<>();
         for (Xpp3Dom config : PluginFacts.configurations(failsafe)) {
@@ -358,10 +361,22 @@ final class TestPlugins {
             }
         }
         List<String> declared = includes.isEmpty() ? FAILSAFE_DEFAULT_INCLUDES : List.copyOf(includes);
+        List<String> patterns = classPatterns(declared, "<includes>", "classes", report);
+        List<String> excluded = classPatterns(excludes, "<excludes>", "exclude-classes", report);
+        jvm.take(failsafe, FAILSAFE, model, report);
+        return patterns.isEmpty() ? null : new ClassSuite(patterns, excluded);
+    }
+
+    /**
+     * Failsafe's Ant-style {@code values} (comma lists allowed) as distinct class patterns; one the
+     * class syntax cannot spell is a row naming the {@code [test.suites.integration]} key.
+     */
+    private static List<String> classPatterns(
+            Collection<String> values, String element, String key, ImportReport.Builder report) {
         List<String> patterns = new ArrayList<>();
         List<String> unmapped = new ArrayList<>();
-        for (String include : declared) {
-            for (String pattern : include.split(",")) {
+        for (String value : values) {
+            for (String pattern : value.split(",")) {
                 if (pattern.isBlank()) continue;
                 String mapped = classPattern(pattern.trim());
                 if (mapped == null) unmapped.add(pattern.trim());
@@ -369,16 +384,10 @@ final class TestPlugins {
             }
         }
         if (!unmapped.isEmpty()) {
-            report.warning("`maven-failsafe-plugin` `<includes>` " + String.join(", ", unmapped)
-                    + " — `[test.suites.integration] classes` takes class names with `*` wildcards; add the"
+            report.warning("`maven-failsafe-plugin` `" + element + "` " + String.join(", ", unmapped)
+                    + " — `[test.suites.integration] " + key + "` takes class names with `*` wildcards; add the"
                     + " classes by hand.");
         }
-        if (!excludes.isEmpty()) {
-            report.warning("`maven-failsafe-plugin` `<excludes>` " + String.join(", ", excludes)
-                    + " — the `integration` suite runs every test class its patterns match; leave a class out"
-                    + " of every suite with `[test] exclude-classes`, or narrow `[test.suites.integration] classes`.");
-        }
-        jvm.take(failsafe, FAILSAFE, model, report);
         return List.copyOf(patterns);
     }
 

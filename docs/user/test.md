@@ -59,6 +59,7 @@ tests beside the unit tests and tells them apart by name, Failsafe's `IT*` / `*I
 ```toml
 [test.suites.integration]
 classes = ["IT*", "*IT", "*ITCase"]
+exclude-classes = ["*SlowIT"]     # optional
 ```
 
 `classes` takes `--class` patterns: a fully qualified name is exact, a bare name matches that
@@ -74,13 +75,21 @@ paths: Failsafe's `**/*IT.java` is `*IT` here, and `jk import` writes the mappin
 - A suite that also has a directory (`src/integration/java`) runs that directory's classes too,
   whatever their names. A class from another suite directory always belongs to that suite.
 - A class two pattern suites match belongs to both; it runs when either is selected.
+- `exclude-classes` (Failsafe's `<excludes>`, same pattern syntax) names classes among the suite's
+  that run in no suite: the suite skips them and the default suite does not take them back, as
+  under `mvn verify`.
 - `--class` narrows the selected suites as usual. A `--class` that names a class another suite
   owns says so: `no test classes matched --class FooIT — FooIT is in the integration suite (jk test
   --suite integration --class FooIT)`, or a `class-in-other-suite` warning when other classes
   matched. `--affected` ranks only the selected suites' classes.
 - The run-tests output names the suites it ran, for instance `test suites: test — left out:
   integration (IT*, *IT, *ITCase), run with jk test --suite <name>`, and the patterns are part of the
-  run's stamp.
+  run's stamp. Each test failure carries the suite it ran in (`suite` in `--output jsonl`,
+  `details.jsonl` and MCP diagnostics; `(integration suite)` beside the test in
+  `target/jk-results.md` for any suite but `test`).
+- `jk ide` writes a `jk test --suite <name>` run configuration (VS Code: a task) for a pattern suite
+  as for a directory suite, and MCP `affected_tests` and the progress estimate count only the
+  selected suites' classes.
 
 The suite name follows the directory rule (`[a-z][a-z0-9_-]*`), and `test`, `guard` and
 `fixtures` cannot be one. The table is per module, like the rest of `[test]`. `[test]

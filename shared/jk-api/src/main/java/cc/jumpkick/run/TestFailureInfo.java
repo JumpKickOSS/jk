@@ -16,6 +16,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>{@code stack} is the full {@code printStackTrace} text (single string, newlines preserved).
  * {@code file}/{@code line}/{@code snippet} are optional source context resolved from the stack.
+ * {@code suite} is the test suite the class ran in ({@code test}, {@code integration}, …), or
+ * empty when the failure belongs to no class (a crashed worker, a run-level error).
  */
 public record TestFailureInfo(
         String module,
@@ -29,7 +31,8 @@ public record TestFailureInfo(
         String file,
         int line,
         int snippetStart,
-        List<String> snippet) {
+        List<String> snippet,
+        String suite) {
 
     public TestFailureInfo {
         module = empty(module);
@@ -41,6 +44,37 @@ public record TestFailureInfo(
         stack = empty(stack);
         file = empty(file);
         snippet = snippet == null || snippet.isEmpty() ? List.of() : List.copyOf(snippet);
+        suite = empty(suite);
+    }
+
+    /** No suite. */
+    public TestFailureInfo(
+            String module,
+            String engine,
+            String className,
+            String method,
+            String exceptionClass,
+            String message,
+            String stack,
+            int worker,
+            String file,
+            int line,
+            int snippetStart,
+            List<String> snippet) {
+        this(
+                module,
+                engine,
+                className,
+                method,
+                exceptionClass,
+                message,
+                stack,
+                worker,
+                file,
+                line,
+                snippetStart,
+                snippet,
+                "");
     }
 
     /** No worker / source snippet. */
@@ -52,7 +86,7 @@ public record TestFailureInfo(
             String exceptionClass,
             String message,
             String stack) {
-        this(module, engine, className, method, exceptionClass, message, stack, 0, "", 0, 0, List.of());
+        this(module, engine, className, method, exceptionClass, message, stack, 0, "", 0, 0, List.of(), "");
     }
 
     /** Worker, no source snippet. */
@@ -65,7 +99,26 @@ public record TestFailureInfo(
             String message,
             String stack,
             int worker) {
-        this(module, engine, className, method, exceptionClass, message, stack, worker, "", 0, 0, List.of());
+        this(module, engine, className, method, exceptionClass, message, stack, worker, "", 0, 0, List.of(), "");
+    }
+
+    /** This failure in {@code suite}; unchanged when {@code suite} is blank or already set. */
+    public TestFailureInfo withSuite(@Nullable String suite) {
+        if (suite == null || suite.isBlank() || !this.suite.isEmpty()) return this;
+        return new TestFailureInfo(
+                module,
+                engine,
+                className,
+                method,
+                exceptionClass,
+                message,
+                stack,
+                worker,
+                file,
+                line,
+                snippetStart,
+                snippet,
+                suite);
     }
 
     /**

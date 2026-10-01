@@ -39,7 +39,7 @@ final class BuildFields {
     List<String> testSerialTags;
     List<String> testIncludeTags, testExcludeTags;
     List<String> testExcludeClasses, testExcludeSrc, testExcludeDependencies;
-    Map<String, List<String>> testSuiteClasses;
+    Map<String, ClassSuite> testClassSuites;
     boolean testAssertions;
     boolean testCoverage;
     PlatformPolicy platformPolicy;
@@ -78,7 +78,7 @@ final class BuildFields {
         testExcludeClasses = b.testExcludeClasses();
         testExcludeSrc = b.testExcludeSrc();
         testExcludeDependencies = b.testExcludeDependencies();
-        testSuiteClasses = b.testSuiteClasses();
+        testClassSuites = b.testClassSuites();
         testAssertions = b.testAssertions();
         testCoverage = b.testCoverage();
         platformPolicy = b.platformPolicy();
@@ -115,7 +115,7 @@ final class BuildFields {
                 testExcludeClasses,
                 testExcludeSrc,
                 testExcludeDependencies,
-                testSuiteClasses,
+                testClassSuites,
                 testAssertions,
                 testCoverage,
                 platformPolicy,

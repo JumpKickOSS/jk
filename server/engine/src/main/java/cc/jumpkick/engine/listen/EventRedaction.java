@@ -148,7 +148,8 @@ public final class EventRedaction {
                 f.file(),
                 f.line(),
                 f.snippetStart(),
-                f.snippet());
+                f.snippet(),
+                f.suite());
     }
 
     /**

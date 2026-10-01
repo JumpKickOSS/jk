@@ -376,7 +376,8 @@ final class EngineEventDecoder {
                 e.worker(),
                 e.line(),
                 e.snippetStart(),
-                e.snippet());
+                e.snippet(),
+                e.suite());
         if (failure != null) {
             listener.error(e.task(), e.code(), e.message(), failure);
         } else {
@@ -400,7 +401,8 @@ final class EngineEventDecoder {
                 e.worker(),
                 e.line(),
                 e.snippetStart(),
-                e.snippet());
+                e.snippet(),
+                e.suite());
         if (f != null) {
             return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), f).withKey(e.key());
         }
@@ -426,7 +428,8 @@ final class EngineEventDecoder {
             int worker,
             int lineNo,
             int snippetStart,
-            List<String> snippet) {
+            List<String> snippet,
+            String suite) {
         if (method.isEmpty()) method = test;
         boolean anyIdentity = !module.isEmpty()
                 || !engine.isEmpty()
@@ -450,7 +453,8 @@ final class EngineEventDecoder {
                 file,
                 lineNo,
                 snippetStart,
-                snippet);
+                snippet,
+                suite);
     }
 
     /** The engine's strategy percent when it sent one (clock-based once R0 is set), else num/den. */

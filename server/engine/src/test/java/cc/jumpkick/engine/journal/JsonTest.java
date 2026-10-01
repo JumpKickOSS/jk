@@ -255,6 +255,36 @@ class JsonTest {
         assertThat(back).isEqualTo(diag);
     }
 
+    @Test
+    void a_test_failures_suite_round_trips() {
+        BuildRecord.Diag diag = new BuildRecord.Diag(
+                "error",
+                "/proj",
+                "run-tests",
+                "test-failure",
+                "boom",
+                null,
+                "java.lang.AssertionError",
+                "com.example:app",
+                "junit",
+                "com.example.CartIT",
+                "checkout()",
+                null,
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0,
+                "",
+                "integration");
+
+        String json = Json.write(record(List.of(diag)));
+
+        assertThat(countOf(json, "\"suite\"")).isOne();
+        assertThat(Json.read(json).diagnostics().get(0)).isEqualTo(diag);
+    }
+
     private static BuildRecord record(List<BuildRecord.Diag> diagnostics) {
         return new BuildRecord(
                 "20260710T143022417-abcd",

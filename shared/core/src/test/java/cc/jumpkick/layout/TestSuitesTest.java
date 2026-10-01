@@ -4,6 +4,7 @@ package cc.jumpkick.layout;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.model.ClassSuite;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -139,7 +140,7 @@ class TestSuitesTest {
     void a_class_pattern_suite_is_available_and_compiles_the_default_suites_roots(@TempDir Path tmp) throws Exception {
         Files.createDirectories(tmp.resolve("src/test/java"));
         Files.writeString(tmp.resolve("src/test/java/FooTest.java"), "class FooTest {}");
-        Map<String, List<String>> patterns = Map.of("integration", List.of("*IT"));
+        Map<String, ClassSuite> patterns = Map.of("integration", ClassSuite.of(List.of("*IT")));
 
         assertThat(TestSuites.available(tmp, false, patterns)).containsExactly("test", "integration");
         assertThat(TestSuites.available(tmp, false, Map.of())).containsExactly("test");
