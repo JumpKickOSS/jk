@@ -139,8 +139,12 @@ public final class MavenPackageSource implements PackageSource {
         }
     }
 
-    /** Package key → plain versions edges expanded in this solve have declared for it. */
-    private final ConcurrentHashMap<String, Set<String>> declaredVersions = new ConcurrentHashMap<>();
+    /**
+     * Package key → plain version an edge expanded in this solve declared for it → the {@code
+     * parentPkg@parentVersion} coordinates whose POMs declared it.
+     */
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, Set<String>>> declaredVersions =
+            new ConcurrentHashMap<>();
 
     /** The graph's exact roots when they override transitive constraints (see {@link NearestPins}). */
     private final NearestPins nearestPins = new NearestPins();
@@ -384,7 +388,7 @@ public final class MavenPackageSource implements PackageSource {
      * to a later repository is otherwise refused as a version nothing advertises.
      */
     private Set<String> wantedVersions(String pkg) {
-        LinkedHashSet<String> out = new LinkedHashSet<>(declaredVersions(pkg));
+        LinkedHashSet<String> out = new LinkedHashSet<>(declaredVersions(pkg).keySet());
         String ga = PackageId.parse(pkg).ga();
         String root = firstNonBlank(exactRoots.get(pkg), exactRoots.get(ga));
         if (root != null) out.add(root);
@@ -483,9 +487,18 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     @Override
-    public Set<String> declaredVersions(String pkg) {
-        Set<String> declared = declaredVersions.get(pkg);
-        return declared == null ? Set.of() : Set.copyOf(declared);
+    public Map<String, Set<String>> declaredVersions(String pkg) {
+        Map<String, Set<String>> out = new LinkedHashMap<>();
+        Map<String, Set<String>> declared = declaredVersions.get(pkg);
+        if (declared != null) declared.forEach((version, parents) -> out.put(version, Set.copyOf(parents)));
+        return out;
+    }
+
+    private void declare(String pkg, String version, String parentPkg, String parentVersion) {
+        declaredVersions
+                .computeIfAbsent(pkg, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(version, k -> ConcurrentHashMap.newKeySet())
+                .add(parentPkg + "@" + parentVersion);
     }
 
     /**
@@ -782,11 +795,7 @@ public final class MavenPackageSource implements PackageSource {
                 // Not a path to the module, so it neither obeys nor registers exclusions. The
                 // solver reads the negative term as "absent or within": the module stays out
                 // unless an edge brings it in, and then sits within the constraint.
-                if (edge.declaredVersion() != null) {
-                    declaredVersions
-                            .computeIfAbsent(edge.depPkg(), k -> ConcurrentHashMap.newKeySet())
-                            .add(edge.declaredVersion());
-                }
+                if (edge.declaredVersion() != null) declare(edge.depPkg(), edge.declaredVersion(), pkg, version);
                 out.add(Term.negative(
                         edge.depPkg(), nearestOrOwn(pkg, version, edge).complement()));
                 continue;
@@ -812,11 +821,7 @@ public final class MavenPackageSource implements PackageSource {
             }
             addManagedExclusions(child, edge.depPkg());
             exclusions.register(edge.depPkg(), child);
-            if (edge.declaredVersion() != null) {
-                declaredVersions
-                        .computeIfAbsent(edge.depPkg(), k -> ConcurrentHashMap.newKeySet())
-                        .add(edge.declaredVersion());
-            }
+            if (edge.declaredVersion() != null) declare(edge.depPkg(), edge.declaredVersion(), pkg, version);
             out.add(Term.positive(edge.depPkg(), nearestOrOwn(pkg, version, edge)));
         }
         // Remember what this expansion dropped so the resolver can detect a stale expansion
@@ -1224,7 +1229,7 @@ public final class MavenPackageSource implements PackageSource {
                 if (pick == null) {
                     List<String> candidates = versions(pkg);
                     // Plain versions the edges wrote steer the solver to the highest of them.
-                    pick = highestOf(new ArrayList<>(declaredVersions(pkg)));
+                    pick = highestOf(new ArrayList<>(declaredVersions(pkg).keySet()));
                     if (pick == null && !candidates.isEmpty()) pick = candidates.getFirst();
                     if (pick == null) return;
                 }
