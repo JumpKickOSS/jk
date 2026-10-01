@@ -230,13 +230,20 @@ public final class NativeImageDriver {
     }
 
     /**
-     * Rewrite {@code [binary, arg…]} to {@code [binary, @argFile]} after writing each arg on its own
-     * line (Java/Graal argfile form).
+     * Rewrite {@code [binary, arg…]} to {@code [binary, -J…, @argFile]} after writing each other arg
+     * on its own line (Java/Graal argfile form).
      */
     static List<String> withArgFile(Path binary, List<String> command, Path argFile) throws IOException {
         StringBuilder body = new StringBuilder();
+        List<String> out = new ArrayList<>();
+        out.add(binary.toString());
         for (int i = 1; i < command.size(); i++) {
             String a = command.get(i);
+            // Builder JVM flags stay on the command line, where the engine sizes the builder's heap.
+            if (a.startsWith("-J")) {
+                out.add(a);
+                continue;
+            }
             // Quote when the token has whitespace or is empty — matches javac @argfile rules.
             if (a.isEmpty() || a.indexOf(' ') >= 0 || a.indexOf('\t') >= 0) {
                 body.append('"')
@@ -248,7 +255,8 @@ public final class NativeImageDriver {
             body.append('\n');
         }
         Files.writeString(argFile, body.toString(), StandardCharsets.UTF_8);
-        return List.of(binary.toString(), "@" + argFile.toAbsolutePath());
+        out.add("@" + argFile.toAbsolutePath());
+        return List.copyOf(out);
     }
 
     /**
