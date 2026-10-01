@@ -16,8 +16,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A failure's message and stack are clipped at {@link #MAX_MESSAGE_CHARS} and {@link
  * #MAX_STACK_CHARS} — the report shows a few dozen lines and the cause chain, which the clip keeps
- * — so a suite whose every failure carries the same forty-kilobyte trace costs kilobytes, not
- * megabytes. A publish with no request open is dropped: nothing would drain it.
+ * — and a repeated failure shares one copy ({@link FailureTexts}), so a suite whose every failure
+ * carries the same forty-kilobyte trace costs kilobytes, not megabytes. A publish with no request
+ * open is dropped: nothing would drain it.
  */
 public final class MarkdownTestReport {
 
@@ -63,6 +64,8 @@ public final class MarkdownTestReport {
 
     private final List<Entry> entries = new ArrayList<>();
 
+    private final FailureTexts failureTexts = new FailureTexts();
+
     /**
      * Record a finished test (passed, failed, or aborted). {@code throwableJson} is the raw nested
      * JSON object from the protocol event's {@code throwable} field — {@code null} for a passing
@@ -83,8 +86,8 @@ public final class MarkdownTestReport {
                 className,
                 display,
                 durationMs,
-                clip(failureMessage, MAX_MESSAGE_CHARS),
-                boundedStack(failureStack),
+                failureTexts.of(clip(failureMessage, MAX_MESSAGE_CHARS)),
+                failureTexts.of(boundedStack(failureStack)),
                 null));
     }
 

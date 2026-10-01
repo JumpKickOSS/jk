@@ -105,4 +105,29 @@ class XmlTestReportTest {
         assertThat(XmlTestReport.classNameFrom("[engine:cucumber]/[feature:x.feature]/[scenario:1]"))
                 .isEqualTo("x.feature");
     }
+
+    /**
+     * Entries are held until the suite ends, so a failure's stack is clipped as the Markdown
+     * report clips it: the head and every cause header survive, the frames between them do not.
+     */
+    @Test
+    void a_long_failure_stack_is_clipped_to_its_head_and_causes() throws Exception {
+        StringBuilder stack = new StringBuilder("java.lang.IllegalStateException: context\\n");
+        for (int i = 0; i < 4_000; i++)
+            stack.append("\\tat com.example.Frame").append(i).append(".run(Frame.java:1)\\n");
+        stack.append("Caused by: java.net.ConnectException: refused\\n");
+        String throwable =
+                "{\"class\":\"java.lang.IllegalStateException\",\"message\":\"context\",\"stack\":\"" + stack + "\"}";
+        var xml = new XmlTestReport();
+        xml.recordFinished("[engine:junit-jupiter]/[class:com.example.CtxTest]/[method:a()]", "a()", 1, throwable);
+
+        xml.writeAll(dir);
+
+        String written = Files.readString(dir.resolve("TEST-com.example.CtxTest.xml"));
+        assertThat(written)
+                .contains("java.lang.IllegalStateException: context")
+                .contains("Caused by: java.net.ConnectException: refused")
+                .doesNotContain("Frame3999");
+        assertThat(written.length()).isLessThan(MarkdownTestReport.MAX_STACK_CHARS + 4_096);
+    }
 }
