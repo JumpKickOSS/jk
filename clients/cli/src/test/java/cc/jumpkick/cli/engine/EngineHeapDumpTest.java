@@ -82,4 +82,24 @@ class EngineHeapDumpTest {
                         + "engine: stopped on request\n");
         assertThat(EngineHeapDump.exitedOnOutOfMemory(log)).isFalse();
     }
+
+    /**
+     * A job whose engine died of OutOfMemoryError mid-stream is told so, with the dump and the
+     * fresh engine the next command starts, not that the connection closed.
+     */
+    @Test
+    void a_stream_cut_by_an_oom_exit_says_so_and_any_other_cut_says_what_was_seen(@TempDir Path dir) throws Exception {
+        EnginePaths.Paths paths = EnginePaths.resolve(dir);
+        Files.createDirectories(paths.dir());
+        Files.writeString(paths.log(), "engine: listening\n");
+        assertThat(WireStream.disconnected(paths))
+                .hasMessageStartingWith("jk engine: the engine closed the connection without sending a result");
+
+        Path dump = paths.dir().resolve("java_pid4242.hprof");
+        Files.writeString(dump, "HPROF");
+        Files.writeString(paths.log(), "engine: listening\n" + OOM_TAIL);
+        assertThat(WireStream.disconnected(paths))
+                .hasMessage("jk engine: the build engine exited on OutOfMemoryError; heap dump at " + dump + "; "
+                        + EngineHeapDump.REMEDY + "; the next jk command starts a fresh engine");
+    }
 }
