@@ -33,7 +33,8 @@ public final class AbiMemo {
     private static final int TRIM_SLACK = MAX_ENTRIES / 4;
     private static final String STORE_FILE = "memo.v1";
 
-    private static final ConcurrentMap<Path, Store> STORES = new ConcurrentHashMap<>();
+    private static final CacheRootStores<Store> STORES =
+            new CacheRootStores<>(root -> Store.load(CacheTree.ABI_MEMO.under(root)), Store::flush);
     private static final AtomicLong USE_TICK = new AtomicLong();
     private static final AtomicLong LOOKUPS = new AtomicLong();
     private static final AtomicLong HITS = new AtomicLong();
@@ -61,7 +62,7 @@ public final class AbiMemo {
     }
 
     public static void flush() {
-        for (Store s : STORES.values()) s.flush();
+        for (Store s : STORES.loaded()) s.flush();
     }
 
     public static void reset() {
@@ -74,7 +75,7 @@ public final class AbiMemo {
      */
     public static int dropAll() {
         int dropped = 0;
-        for (Store s : STORES.values()) {
+        for (Store s : STORES.loaded()) {
             s.flush();
             dropped += s.entries.size();
         }
@@ -97,9 +98,7 @@ public final class AbiMemo {
 
     private static @Nullable Store store() {
         try {
-            Path cache = SessionContext.current().cacheDir();
-            return STORES.computeIfAbsent(
-                    cache.toAbsolutePath().normalize(), root -> Store.load(CacheTree.ABI_MEMO.under(root)));
+            return STORES.of(SessionContext.current().cacheDir());
         } catch (RuntimeException e) {
             return null;
         }
