@@ -642,6 +642,17 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void a_failed_run_with_no_failed_step_names_its_run_level_error_or_else_its_warning() {
+        var wait = new BuildRecord.Diag("warning", "/ws", "run-tests", "memory-wait", "waited 1s", null, null);
+        var dropped = new BuildRecord.Diag("warning", "/ws", "run-tests", "tag-excluded", "dropped", null, null);
+        var verdict = new BuildRecord.Diag("error", "", null, "run-error", "no test classes matched", null, null);
+        assertThat(JkResultsMarkdown.whyLines(record(false, List.of(), List.of(wait, dropped, verdict), List.of())))
+                .containsExactly("no test classes matched");
+        assertThat(JkResultsMarkdown.whyLines(record(false, List.of(), List.of(wait, dropped), List.of())))
+                .containsExactly("`ws` `run-tests`: dropped");
+    }
+
+    @Test
     void a_compile_crash_with_no_junit_is_a_failed_run() {
         BuildRecord.Module auditor = new BuildRecord.Module(
                 "g:auditor", "/ws/auditor", false, 1, 80, List.of(task("compile-test", "compile", "FAIL", 80)));

@@ -571,6 +571,43 @@ public final class BuildAccumulator {
                 0));
     }
 
+    /**
+     * The run-level errors a failed workspace run ended on: a verdict over finished modules (a
+     * {@code --class} selection that matched nothing anywhere) or a graph error before any module
+     * existed. Each is an error row with no step, so the report names what decided the run; one
+     * already recorded, such as a preflight failure's reason, is not repeated.
+     */
+    public void addRunErrors(List<String> errors) {
+        for (String error : errors) {
+            if (error == null || error.isBlank()) continue;
+            boolean recorded;
+            synchronized (diagnostics) {
+                recorded = diagnostics.stream().anyMatch(d -> error.equals(d.message()));
+            }
+            if (recorded) continue;
+            anyFailure = true;
+            addDiag(new BuildRecord.Diag(
+                    "error",
+                    "",
+                    null,
+                    "run-error",
+                    error,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "",
+                    0,
+                    0,
+                    0,
+                    List.of(),
+                    0));
+        }
+    }
+
     /** One finished step, stored under its module dir ("" for a single-plan build). */
     public void addTask(String dir, String step, String phase, String status, long millis, long waitMillis) {
         anyFact = true;

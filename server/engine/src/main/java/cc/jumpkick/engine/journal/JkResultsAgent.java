@@ -129,8 +129,13 @@ public final class JkResultsAgent {
     private static String render(BuildRecord record, @Nullable List<MarkdownTestReport.ModuleRun> tests, Options opt) {
         if (record == null) return "";
         List<Locus> loci = loci(record);
+        Locus decided = decidingError(record, loci, tests);
+        if (decided != null) loci.remove(decided);
         StringBuilder sb = new StringBuilder();
-        sb.append(headline(record, loci, tests)).append('\n');
+        sb.append(headline(record, loci, tests));
+        String reason = decided != null ? decided.message() : decidingWarning(record, loci, tests);
+        if (reason != null && !reason.isBlank()) sb.append(" — ").append(one(reason, record.dir()));
+        sb.append('\n');
         appendMemoryEvents(sb, record);
         if (record.success() && !record.cancelled()) return sb.toString();
         sb.append(body(record, loci, tests, opt));
@@ -199,6 +204,50 @@ public final class JkResultsAgent {
         if (!counts.isEmpty()) sb.append(" · ").append(counts);
         if (r.millis() > 0) sb.append(" · ").append(JkResultsMarkdown.fmtDuration(r.millis()));
         return sb.toString();
+    }
+
+    /**
+     * True when {@code r} failed with nothing on the report to show for it: no failed step, no
+     * failed test, no error at a source line. Such a run's headline carries the reason itself.
+     */
+    private static boolean failedWithoutLocus(
+            BuildRecord r, List<Locus> loci, @Nullable List<MarkdownTestReport.ModuleRun> tests) {
+        if (r.success() || r.cancelled()) return false;
+        if (!JkResultsMarkdown.failedSteps(r).isEmpty()) return false;
+        BuildRecord.Tests summary = r.tests();
+        if (summary != null && summary.failed() > 0) return false;
+        for (Locus d : loci) if (d.test() || d.line() > 0) return false;
+        if (tests != null) {
+            for (MarkdownTestReport.ModuleRun run : tests) {
+                if (run == null || run.entries() == null) continue;
+                for (MarkdownTestReport.Entry e : run.entries()) if (e != null && e.isFail()) return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * The run-level error, owned by no step, that decided a run {@link #failedWithoutLocus}. The
+     * headline names it in place of a problem line; an error on a step keeps its own block.
+     */
+    private static @Nullable Locus decidingError(
+            BuildRecord r, List<Locus> loci, @Nullable List<MarkdownTestReport.ModuleRun> tests) {
+        if (loci.isEmpty() || !failedWithoutLocus(r, loci, tests)) return null;
+        for (Locus d : loci) {
+            if (d.step().isBlank() && !d.message().isBlank()) return d;
+        }
+        return null;
+    }
+
+    /**
+     * The warning a run {@link #failedWithoutLocus} with no error left behind: the only thing it
+     * recorded that can say why. Memory notes are not one; they already have their own lines.
+     */
+    private static @Nullable String decidingWarning(
+            BuildRecord r, List<Locus> loci, @Nullable List<MarkdownTestReport.ModuleRun> tests) {
+        if (!loci.isEmpty() || !failedWithoutLocus(r, loci, tests)) return null;
+        BuildRecord.Diag warning = JkResultsWarnings.deciding(r);
+        return warning == null ? null : JkResultsHints.firstLine(warning.message());
     }
 
     private static String outcome(BuildRecord r) {

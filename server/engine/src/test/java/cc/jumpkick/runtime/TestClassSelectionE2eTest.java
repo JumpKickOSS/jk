@@ -111,6 +111,25 @@ class TestClassSelectionE2eTest {
     }
 
     @Test
+    void a_class_the_tag_filter_excluded_fails_the_run_naming_the_tag_and_the_flag(@TempDir Path tmp) throws Exception {
+        Path ws = workspace(tmp);
+        Steps steps = new Steps();
+
+        WorkspaceResult result = test(
+                ws,
+                tmp,
+                TestSelection.DEFAULT.withExcludeTags(List.of("bench")).withClasses(List.of("BenchTest")),
+                0,
+                steps);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.exitCode()).isEqualTo(Exit.TESTS_FAILED);
+        assertThat(result.errors())
+                .containsExactly("--class named 1 class the tag filter excluded: com.example.BenchTest [bench];"
+                        + " pass --include-tags bench (or a --profile that includes it) to run it");
+    }
+
+    @Test
     void serial_tagged_classes_alone_satisfy_the_pattern(@TempDir Path tmp) throws Exception {
         Path ws = workspace(tmp);
         Steps steps = new Steps();
@@ -149,10 +168,13 @@ class TestClassSelectionE2eTest {
 
     private static WorkspaceResult test(Path ws, Path tmp, List<String> classes, int workers, Steps steps)
             throws Exception {
+        return test(ws, tmp, TestSelection.DEFAULT.withClasses(classes), workers, steps);
+    }
+
+    private static WorkspaceResult test(Path ws, Path tmp, TestSelection selection, int workers, Steps steps)
+            throws Exception {
         Path cache = tmp.resolve("cache");
-        Session session = Session.defaults()
-                .withTestSelection(TestSelection.DEFAULT.withClasses(classes))
-                .withRequestedTestWorkers(workers);
+        Session session = Session.defaults().withTestSelection(selection).withRequestedTestWorkers(workers);
         WorkspaceRequest request = new WorkspaceRequest(
                         ws, cache, null, workers, null, false, false, 2, null, false, false)
                 .withTestOnly(true);
@@ -186,7 +208,7 @@ class TestClassSelectionE2eTest {
 
     /**
      * lib has one plain test class; app depends on lib and carries one plain class plus two
-     * {@code serial}-tagged ones behind {@code [test] serial-tags}. Locked once at the root, with
+     * {@code serial}-tagged ones behind {@code [test] serial-tags}, and one {@code bench}-tagged. Locked once at the root, with
      * the members redirected to the root lock.
      */
     private static Path workspace(Path tmp) throws Exception {
@@ -257,6 +279,7 @@ class TestClassSelectionE2eTest {
         Files.writeString(appTests.resolve("AppTest.java"), testClass("AppTest", null));
         Files.writeString(appTests.resolve("SerialOneTest.java"), testClass("SerialOneTest", "serial"));
         Files.writeString(appTests.resolve("SerialTwoTest.java"), testClass("SerialTwoTest", "serial"));
+        Files.writeString(appTests.resolve("BenchTest.java"), testClass("BenchTest", "bench"));
 
         JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
         BuildPlan lock =

@@ -22,6 +22,7 @@ import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -119,6 +120,11 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public void accToolWall(long rid, long millis) {
         journalWriter.accToolWall(rid, millis);
+    }
+
+    @Override
+    public void accRunErrors(long rid, List<String> errors) {
+        journalWriter.accRunErrors(rid, errors);
     }
 
     @Override

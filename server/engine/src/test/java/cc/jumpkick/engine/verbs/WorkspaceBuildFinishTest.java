@@ -119,6 +119,18 @@ class WorkspaceBuildFinishTest {
     }
 
     @Test
+    void a_failed_build_journals_its_run_level_errors_and_a_green_one_journals_none() {
+        RecordingHost red = new RecordingHost();
+        WorkspaceTerminal.finish(
+                red, null, "/w", result(false, 4, List.of("no test classes matched --class Nope")), false);
+        assertThat(red.journaledErrors).containsExactly("no test classes matched --class Nope");
+
+        RecordingHost green = new RecordingHost();
+        WorkspaceTerminal.finish(green, null, "/w", result(true, 0, List.of()), false);
+        assertThat(green.journaledErrors).isEmpty();
+    }
+
+    @Test
     void a_live_client_still_receives_the_terminal() throws Exception {
         StringBuilder wire = new StringBuilder();
         BufferedWriter writer = new BufferedWriter(new Writer() {
@@ -209,6 +221,7 @@ class WorkspaceBuildFinishTest {
     private static final class RecordingHost implements VerbHost {
         private final List<String> quietSends = new ArrayList<>();
         private final List<String> requestErrors = new ArrayList<>();
+        private final List<String> journaledErrors = new ArrayList<>();
         private int throwingSends;
 
         @Override
@@ -226,6 +239,11 @@ class WorkspaceBuildFinishTest {
         @Override
         public void publishRequestError(long rid, @Nullable String dir, String message) {
             requestErrors.add(message);
+        }
+
+        @Override
+        public void accRunErrors(long rid, List<String> errors) {
+            journaledErrors.addAll(errors);
         }
 
         @Override

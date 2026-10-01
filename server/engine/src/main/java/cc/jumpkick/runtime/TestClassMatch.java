@@ -4,8 +4,10 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -37,6 +39,16 @@ public final class TestClassMatch {
         return "no classes matched --class " + String.join(", ", patterns) + " — skipped";
     }
 
+    /**
+     * Skip a workspace module the patterns matched nothing in, leaving the runner's
+     * {@code tag-excluded} warning, when it raised one, for {@link #runWideVerdict}.
+     */
+    public static void skip(TaskContext ctx, TestSelection selection, @Nullable String tagExcluded) {
+        if (tagExcluded != null) ctx.put(BuildPlanner.TAG_EXCLUDED, tagExcluded);
+        ctx.label(skipLabel(selection.classes()));
+        ctx.cached();
+    }
+
     /** The failure line: the patterns, so the typo is on the screen; "tests" when one names a method. */
     public static String noMatchMessage(List<String> patterns) {
         boolean method = patterns.stream().anyMatch(p -> p.indexOf('#') >= 0);
@@ -44,32 +56,31 @@ public final class TestClassMatch {
     }
 
     /**
-     * The failure line for a selection: the patterns, and — when a tag filter is in force — the
-     * other way a named class runs nothing: the filter dropped it. The runner names the class and
-     * its tags in a {@code tag-excluded} warning; this line says where to look and what to pass.
+     * The failure line: the runner's {@code tag-excluded} warning when the tag filter dropped what
+     * the patterns named, since it names each class, its tags and the flag that runs it; otherwise
+     * the patterns themselves.
      */
-    public static String noMatchMessage(TestSelection selection) {
-        String line = noMatchMessage(selection.classes());
-        if (selection.includeTags().isEmpty() && selection.excludeTags().isEmpty()) return line;
-        return line + " — or every class it named carries a tag the filter excludes"
-                + " (see the tag-excluded warning; --include-tags <tag> or another --profile runs it)";
+    public static String noMatchMessage(TestSelection selection, @Nullable String tagExcluded) {
+        return tagExcluded != null && !tagExcluded.isBlank() ? tagExcluded : noMatchMessage(selection.classes());
     }
 
-    /** A standalone run's verdict: one synthetic failure naming the patterns, attributed to the module. */
-    public static TestSummary asFailure(String moduleLabel, TestSelection selection) {
+    /** A standalone run's verdict: one synthetic failure naming the cause, attributed to the module. */
+    public static TestSummary asFailure(String moduleLabel, TestSelection selection, @Nullable String tagExcluded) {
         return new TestSummary(
                 1,
                 0,
                 1,
                 0,
-                List.of(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", noMatchMessage(selection), "")));
+                List.of(new TestFailureInfo(
+                        moduleLabel, "", "", "(test run)", "", noMatchMessage(selection, tagExcluded), "")));
     }
 
     /**
      * The workspace's verdict once every module has finished: the no-match message when the session
      * asked for classes, the run executed suites, and no module's suite ran a test — otherwise
      * {@code null}. A module that matched carries a {@link BuildPlanner#TEST_RESULT} with tests in
-     * it, whether it ran them or replayed a green stamp for the same patterns.
+     * it, whether it ran them or replayed a green stamp for the same patterns. A module whose tag
+     * filter dropped a named class left {@link BuildPlanner#TAG_EXCLUDED}, and that is the verdict.
      */
     public static @Nullable String runWideVerdict(Session session, boolean skipTests, Collection<BuildPlan> plans) {
         TestSelection selection = session.testSelection();
@@ -79,6 +90,8 @@ public final class TestClassMatch {
             TestSummary result = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
             if (result != null && result.total() > 0) return null;
         }
-        return noMatchMessage(selection);
+        List<String> excluded = new ArrayList<>();
+        for (BuildPlan plan : plans) plan.get(BuildPlanner.TAG_EXCLUDED).ifPresent(excluded::add);
+        return noMatchMessage(selection, excluded.isEmpty() ? null : String.join("; ", excluded));
     }
 }
