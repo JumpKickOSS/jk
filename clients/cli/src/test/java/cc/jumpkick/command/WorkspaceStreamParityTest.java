@@ -38,14 +38,11 @@ class WorkspaceStreamParityTest {
     void every_build_kind_verb_opens_and_terminates_the_stream_exactly_once(String verb, @TempDir Path tmp)
             throws Exception {
         Path cache = workspace(tmp);
-        // The fixture compiles and carries no suite: `jk test` ends in `no tests ran` (exit 2) and
-        // still streams every module to its finish; the other verbs succeed.
-        int expected = verb.equals("test") ? 2 : 0;
-
+        // The fixture compiles and carries no suite; every verb succeeds, `jk test` with no tests to run.
         String out = Capture.stdout(
                 () -> assertThat(run(verb, "-C", tmp.toString(), "--cache-dir", cache.toString(), "--output", "jsonl"))
                         .as("%s on a workspace that compiles and has no suite", verb)
-                        .isEqualTo(expected));
+                        .isEqualTo(0));
 
         assertThat(countType(out, "workspace-start"))
                 .as("%s --output jsonl must open the stream exactly once", verb)
