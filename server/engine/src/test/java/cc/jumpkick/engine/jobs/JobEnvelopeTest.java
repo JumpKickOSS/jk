@@ -852,6 +852,25 @@ class JobEnvelopeTest {
         }
     }
 
+    /** A plan admitted in another workspace than the one before it tells the host which it left. */
+    @Test
+    void a_plan_in_another_workspace_reports_the_switch_and_one_in_the_same_does_not() {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        for (String dir : List.of("/tmp/job-env-a", "/tmp/job-env-a", "/tmp/job-env-b")) {
+            host.accumulator = new BuildAccumulator("build", dir, null, "cli");
+            new JobEnvelope(host, JobLimits.DEFAULTS)
+                    .submit(
+                            "{\"type\":\"build-request\",\"dir\":\"" + dir + "\"}",
+                            JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
+                            new JobTransport.FireAndForget());
+            awaitTail(host);
+            host.sequence.clear();
+        }
+
+        assertThat(host.switches).endsWith("/tmp/job-env-a -> /tmp/job-env-b");
+        assertThat(host.switches).doesNotContain("/tmp/job-env-a -> /tmp/job-env-a");
+    }
+
     /** A cancelled job adds exactly one key, cancelReason, and still ends on the same tail. */
     @Test
     void a_cancelled_job_adds_cancel_reason_and_nothing_else() {

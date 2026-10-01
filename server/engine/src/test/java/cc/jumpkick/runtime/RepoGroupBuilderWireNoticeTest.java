@@ -28,6 +28,7 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -212,6 +213,9 @@ class RepoGroupBuilderWireNoticeTest {
 
         @Override
         public void maybeIdleGc() {}
+
+        @Override
+        public void switchedWorkspace(Path left, Path entered) {}
 
         @Override
         public void log(String message) {}

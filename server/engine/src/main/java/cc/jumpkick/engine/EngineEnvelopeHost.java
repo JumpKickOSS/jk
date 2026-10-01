@@ -12,6 +12,7 @@ import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
+import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -191,6 +192,11 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     @Override
     public void maybeIdleGc() {
         idle.maybeIdleGc();
+    }
+
+    @Override
+    public void switchedWorkspace(Path left, Path entered) {
+        idle.switchedWorkspace(left, entered);
     }
 
     @Override

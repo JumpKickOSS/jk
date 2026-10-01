@@ -11,6 +11,7 @@ import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -223,6 +224,17 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     @Override
     public void maybeIdleGc() {
         sequence.add("idle-gc");
+    }
+
+    /**
+     * Workspaces entered, as {@code left -> entered}. Kept apart from {@link #sequence}: the last
+     * built root is process-wide, so whether a job switches depends on which test ran before it.
+     */
+    final List<String> switches = Collections.synchronizedList(new ArrayList<>());
+
+    @Override
+    public void switchedWorkspace(Path left, Path entered) {
+        switches.add(left + " -> " + entered);
     }
 
     final List<String> logs = Collections.synchronizedList(new ArrayList<>());

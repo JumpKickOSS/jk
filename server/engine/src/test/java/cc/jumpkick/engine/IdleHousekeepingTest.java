@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.runtime.base.TestClassWalls;
@@ -64,6 +67,60 @@ class IdleHousekeepingTest {
         assertThat(TestClassWalls.get("/w/idle-test"))
                 .as("with history on the finish path already harvested them")
                 .isEmpty();
+    }
+
+    /**
+     * Back-to-back jobs in different workspaces never reach the settled trim, so entering a new
+     * workspace drops what the memos hold for the one left — unless another plan is still live
+     * in it.
+     */
+    @Test
+    void entering_another_workspace_drops_the_memos_of_the_one_left_unless_another_plan_is_live(@TempDir Path roots)
+            throws Exception {
+        MemoTrim.drop(null);
+        Path left = roots.resolve("left");
+        Path entered = roots.resolve("entered");
+        JkBuildParser.parseLocal(manifest(left));
+        JkBuildParser.parseLocal(manifest(entered));
+        List<String> log = new CopyOnWriteArrayList<>();
+        AtomicInteger plans = new AtomicInteger(2);
+        IdleHousekeeping housekeeping = housekeeping(plans, roots, log);
+
+        housekeeping.switchedWorkspace(left, entered);
+        assertThat(log).as("another plan may still read them").isEmpty();
+
+        plans.set(1);
+        housekeeping.switchedWorkspace(left, entered);
+        assertThat(log)
+                .singleElement(as(STRING))
+                .matches("jk engine: workspace switch .*left to .*entered: heap \\d+ -> \\d+ MiB;"
+                        + " memos dropped: manifests 2, .*; kept for .*entered");
+        assertThat(MemoTrim.drop(null))
+                .as("only the entered workspace's manifest is still memoized, as a parse and a document")
+                .startsWith("memos dropped: manifests 2,");
+    }
+
+    private static Path manifest(Path module) throws IOException {
+        Files.createDirectories(module);
+        Path toml = module.resolve("jk.toml");
+        Files.writeString(toml, "name = \"" + module.getFileName() + "\"\nversion = \"1.0\"\n");
+        Files.setLastModifiedTime(toml, FileTime.fromMillis(System.currentTimeMillis() - 3_600_000L));
+        return toml;
+    }
+
+    private static IdleHousekeeping housekeeping(AtomicInteger plans, Path roots, List<String> log) {
+        return new IdleHousekeeping(
+                plans,
+                new ReentrantReadWriteLock(),
+                new JkHistoryConfig(false, 30, 512),
+                new BuildJournal(roots.resolve("builds")),
+                () -> roots.resolve("metrics.jsonl"),
+                roots.resolve("engine"),
+                System::currentTimeMillis,
+                log::add,
+                () -> false,
+                () -> false,
+                () -> {});
     }
 
     @Test

@@ -28,9 +28,11 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -285,7 +287,8 @@ public final class JobEnvelope {
             admission.release(jid);
             return refuseDraining(detached, writer);
         }
-        LastBuiltRoot.note(dir);
+        Path left = LastBuiltRoot.note(dir);
+        if (left != null) host.switchedWorkspace(left, Objects.requireNonNull(LastBuiltRoot.get()));
         return null;
     }
 
