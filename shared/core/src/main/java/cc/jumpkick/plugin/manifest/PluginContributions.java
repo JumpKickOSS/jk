@@ -529,21 +529,21 @@ public final class PluginContributions {
      * {@code latest}); no such string is a fetchable version, and the version that matters is
      * the one the lock resolved the platform to. That locked version replaces the selector here,
      * so the loader a packager fetches is the Boot the lock pinned. Without a pin for the platform
-     * (no lock yet, or a BOM that manages nothing locked) the selector's anchor version stands in.
+     * (no lock yet, a BOM that manages nothing locked, or a platform the table turns off) the
+     * selector's anchor version stands in.
      */
     private static PluginConfig toolConfig(
             PluginDescriptor manifest, PluginConfig config, JkBuild build, Map<String, String> platformPins) {
         Map<String, Object> values = null;
         for (PluginDescriptor.PlatformDependency dep : manifest.contributions().platformDependencies()) {
-            if (!holds(
-                    dep.when(), config, build.project(), build.nativeConfigOpt().isPresent(), null, manifest.id())) {
-                continue;
-            }
             String[] parts = dep.coordinate().split(":");
             if (parts.length != 3) continue;
             String key = configKey(parts[2]);
             if (key == null || !(config.values().get(key) instanceof String selector)) continue;
-            String pinned = platformPins.get(parts[0] + ":" + parts[1]);
+            // A platform the table turns off pins nothing; its selector's anchor still names the tool.
+            boolean imported = holds(
+                    dep.when(), config, build.project(), build.nativeConfigOpt().isPresent(), null, manifest.id());
+            String pinned = imported ? platformPins.get(parts[0] + ":" + parts[1]) : null;
             String version = pinned != null ? pinned : anchor(selector);
             if (version.equals(selector)) continue;
             if (values == null) values = new LinkedHashMap<>(config.values());
