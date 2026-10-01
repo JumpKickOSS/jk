@@ -93,6 +93,28 @@ public final class IdleHousekeeping {
         log.accept("jk engine: idle trim: " + HeapTrim.trimNative() + "; " + memos);
     }
 
+    /**
+     * A plan job entered workspace {@code entered} straight after one in {@code left}. Back-to-back
+     * jobs never let the settled trim run, so the memos of every workspace the engine passed
+     * through would pile up until a large one ran the capped heap out. With no other plan live
+     * (the entering job holds the only slot), drop them as the settled trim does, keeping {@code
+     * entered}'s, and collect before the new job starts allocating. The log line names the heap
+     * before and after.
+     */
+    public void switchedWorkspace(Path left, Path entered) {
+        if (activeBuildPlans.get() > 1) return;
+        long before = usedHeap();
+        String memos = MemoTrim.drop(entered);
+        System.gc();
+        log.accept("jk engine: workspace switch " + left + " to " + entered + ": heap " + (before >> 20) + " -> "
+                + (usedHeap() >> 20) + " MiB; " + memos);
+    }
+
+    private static long usedHeap() {
+        Runtime rt = Runtime.getRuntime();
+        return rt.totalMemory() - rt.freeMemory();
+    }
+
     public void maybeIdleGc() {
         if (activeBuildPlans.get() != 0 || warmupRunning.get()) return;
         System.gc();
