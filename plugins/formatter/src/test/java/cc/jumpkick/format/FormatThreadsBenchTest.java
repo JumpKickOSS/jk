@@ -16,6 +16,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,13 +30,15 @@ import org.junit.jupiter.api.io.TempDir;
  * Whole-tree format wall at each worker thread count, so {@link CodeFormatter#concurrency}'s cap
  * is a number someone measured. Check mode over the named tree in place (nothing is written), no
  * stamp store, the FQCN pass on: every file pays the full pipeline on every run. Prints a table
- * with cores, heap and OS; asserts only that every run visited every file.
+ * with cores, heap and OS, and appends it row by row to {@code out}; asserts only that every run
+ * visited every file.
  *
  * <p>Knobs come from {@code ~/.jk-format-bench.properties} — a forked test JVM gets an
  * allow-listed environment. {@code tree} (a source root; absent skips the bench), {@code jars}
  * (the palantir-java-format classpath, {@link File#pathSeparator}-separated), {@code gjf-jars}
  * (google-java-format's, for remove-unused-imports; absent turns that step off), {@code threads}
- * (default {@code 4,8,12,16,24}) and {@code runs} (default 3; the best counts).
+ * (default {@code 4,8,12,16,24}), {@code runs} (default 3; the best counts) and {@code out} (the
+ * table file, default {@code ~/.jk-format-bench.txt}: a passing test's stdout is not kept).
  */
 @Tag("bench")
 class FormatThreadsBenchTest {
@@ -82,16 +85,21 @@ class FormatThreadsBenchTest {
         if (!gjf.isBlank()) w.configList("removeUnusedJars", split(gjf));
         Files.write(spec, w.lines(), StandardCharsets.UTF_8);
 
-        System.out.printf(
-                "%nformat-bench: files=%d cores=%d heap=%dMiB os=%s jdk=%s runs=%d remove-unused=%s%n",
-                sources.size(),
-                HostProcessors.count(),
-                Runtime.getRuntime().maxMemory() / (1024 * 1024),
-                Os.name(),
-                System.getProperty("java.version"),
-                runs(),
-                !gjf.isBlank());
-        System.out.println("format-bench threads | best ms | files/s");
+        Path table = Path.of(KNOBS.getProperty(
+                "out",
+                Path.of(System.getProperty("user.home"), ".jk-format-bench.txt").toString()));
+        report(
+                table,
+                String.format(
+                        "format-bench: files=%d cores=%d heap=%dMiB os=%s jdk=%s runs=%d remove-unused=%s",
+                        sources.size(),
+                        HostProcessors.count(),
+                        Runtime.getRuntime().maxMemory() / (1024 * 1024),
+                        Os.name(),
+                        System.getProperty("java.version"),
+                        runs(),
+                        !gjf.isBlank()));
+        report(table, "format-bench threads | best ms | files/s");
         String previous = System.getProperty("jk.format.threads");
         try {
             for (int threads : threads()) {
@@ -105,12 +113,22 @@ class FormatThreadsBenchTest {
                     assertThat(out.files()).as("every file visited").isEqualTo(sources.size());
                 }
                 long perSecond = best == 0 ? sources.size() : sources.size() * 1000L / best;
-                System.out.printf("format-bench %7d | %7d | %d%n", threads, best, perSecond);
+                report(table, String.format("format-bench %7d | %7d | %d", threads, best, perSecond));
             }
         } finally {
             if (previous == null) System.clearProperty("jk.format.threads");
             else System.setProperty("jk.format.threads", previous);
         }
+    }
+
+    private static void report(Path out, String line) throws IOException {
+        System.out.println(line);
+        Files.writeString(
+                out,
+                line + System.lineSeparator(),
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND);
     }
 
     private static List<String> javaSources(Path root) throws IOException {
