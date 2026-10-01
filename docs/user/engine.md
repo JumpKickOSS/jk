@@ -489,15 +489,16 @@ while a build owns the connection). `jk engine status` prints the count as a `Dr
 A client that stops reading — a terminal suspended mid-build, a pipe nobody drains — costs the
 other clients nothing. Each connection is served on its own thread and its lines are written by
 its own writer, so a build's progress goes into that client's queue; `jk engine status` and a
-new client's handshake are answered as usual. Once 8 MiB of lines wait for a client, its build
-waits for the client to catch up before it emits more, so a client that reads slowly — a pipe into
-a file on a busy disk, a burst of large test failures — slows its own build down and is never
-dropped for it. A client that reads nothing at all for `JK_STREAM_IDLE_MS` while it has lines
-waiting is dropped: its connection is closed, its job ends the way it does when a client
-disconnects, and the engine log says `dropped a client that stopped reading its stream`. A
-terminal suspended mid-build therefore pauses its build once the queue fills, and the build
-resumes when the terminal does. A `jk cancel` of a job whose client is not reading ends the wait at
-once: the cancelled job's threads stop waiting for room, and lines with no room are dropped. A connection no job owns — a probe,
+new client's handshake are answered as usual. Once 8 MiB of lines wait for a client in memory, the rest go to a spill file under
+`~/.jk/state/tmp/wire-spill/` and reach the client in order as it reads them, so a client that reads
+slowly or not at all — a pipe into a file on a busy disk, a pager nobody scrolls, a suspended
+terminal — never holds its build: the build runs to its end and lets go of the test gate and the
+memory it held, and the client reads the rest when it resumes. Only past 1 GiB on disk does the
+build wait for its client. A client that reads nothing at all for `JK_STREAM_IDLE_MS` while it
+has lines waiting is dropped: its connection is closed, its spill file deleted, its job ends the
+way it does when a client disconnects, and the engine log says `dropped a client that stopped
+reading its stream`. A `jk cancel` of a job whose client is not reading ends any wait at once: the
+cancelled job's threads stop waiting for room, and lines with no room are dropped. A connection no job owns — a probe,
 a status request, a cancel — is held to 10 seconds instead: a reply is one line its client is
 waiting for, and a client that has not read it in that long is gone.
 
