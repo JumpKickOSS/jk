@@ -16,10 +16,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -64,11 +66,22 @@ public final class RepoGroup {
     /** Long enough to cover one build's resolves, short enough that a daemon re-checks. */
     private static final long VERSIONS_TTL_NANOS = Duration.ofSeconds(60).toNanos();
 
-    private record VersionsEntry(List<String> versions, long expiresAtNanos) {
+    record VersionsEntry(List<String> versions, long expiresAtNanos) {
         boolean expired() {
-            return System.nanoTime() - expiresAtNanos >= 0;
+            return expired(Clock.SYSTEM.nanos());
+        }
+
+        boolean expired(long nowNanos) {
+            return nowNanos - expiresAtNanos >= 0;
         }
     }
+
+    /**
+     * When the inserting path last swept expired lists out. A list of a popular artifact runs to
+     * kilobytes, and an expired one is otherwise only removed when its own key is asked again, so
+     * a session that resolved many workspaces held thousands of them past their TTL.
+     */
+    private static final AtomicLong VERSIONS_SWEPT_AT = new AtomicLong(Clock.SYSTEM.nanos());
 
     /** Entries a hit memo holds before it starts over, so a long session cannot keep every fetch. */
     private static final int HIT_CACHE_MAX = 16_384;
@@ -88,6 +101,16 @@ public final class RepoGroup {
         int dropped = VERSIONS_CACHE.size();
         VERSIONS_CACHE.clear();
         return dropped;
+    }
+
+    /**
+     * Remove every version list in {@code cache} expired at {@code nowNanos}, and say how many went.
+     * The inserting path runs this at most once per TTL, so the memo holds about two TTLs of lists.
+     */
+    static int sweepExpired(Map<String, VersionsEntry> cache, long nowNanos) {
+        int before = cache.size();
+        cache.values().removeIf(e -> e.expired(nowNanos));
+        return before - cache.size();
     }
 
     /** {@code cache.put}-ready: a memo at its cap starts over rather than refusing the entry. */
@@ -565,8 +588,13 @@ public final class RepoGroup {
         // later.
         List<String> immutable = List.copyOf(union);
         if (memoable) {
+            long now = Clock.SYSTEM.nanos();
+            long swept = VERSIONS_SWEPT_AT.get();
+            if (now - swept >= VERSIONS_TTL_NANOS && VERSIONS_SWEPT_AT.compareAndSet(swept, now)) {
+                sweepExpired(VERSIONS_CACHE, now);
+            }
             admit(VERSIONS_CACHE, VERSIONS_CACHE_MAX);
-            VERSIONS_CACHE.put(key, new VersionsEntry(immutable, Clock.SYSTEM.nanos() + VERSIONS_TTL_NANOS));
+            VERSIONS_CACHE.put(key, new VersionsEntry(immutable, now + VERSIONS_TTL_NANOS));
         }
         return immutable;
     }

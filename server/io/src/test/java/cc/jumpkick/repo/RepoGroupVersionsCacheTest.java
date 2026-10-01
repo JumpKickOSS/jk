@@ -11,7 +11,9 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -169,6 +171,17 @@ class RepoGroupVersionsCacheTest {
         assertThat(RepoGroup.dropVersionsMemo())
                 .as("a drop leaves the memo empty")
                 .isZero();
+    }
+
+    /** A sweep removes the lists past their TTL, which nothing would otherwise ask for again. */
+    @Test
+    void a_sweep_drops_expired_version_lists_and_keeps_live_ones() {
+        Map<String, RepoGroup.VersionsEntry> memo = new HashMap<>();
+        memo.put("gone", new RepoGroup.VersionsEntry(List.of("1.0"), 1_000L));
+        memo.put("live", new RepoGroup.VersionsEntry(List.of("2.0"), 3_000L));
+
+        assertThat(RepoGroup.sweepExpired(memo, 2_000L)).isEqualTo(1);
+        assertThat(memo).containsOnlyKeys("live");
     }
 
     private static void goOffline() {
