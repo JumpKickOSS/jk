@@ -3,9 +3,10 @@ package cc.jumpkick.cache;
 
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
-import java.io.ByteArrayOutputStream;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,10 +29,13 @@ public final class JavadocJar {
 
     private JavadocJar() {}
 
-    /** Zip the javadoc output tree ({@code index.html}, {@code element-list}, …) in memory. */
-    public static byte[] fromTree(Path docRoot) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (JarOutputStream jos = new JarOutputStream(baos)) {
+    /**
+     * Zip the javadoc output tree ({@code index.html}, {@code element-list}, …) into {@code jar},
+     * streamed to disk: a module's documentation runs to megabytes and modules document in
+     * parallel, so a jar built in memory is that many megabytes of engine heap per module.
+     */
+    public static void writeTree(Path docRoot, Path jar) throws IOException {
+        try (JarOutputStream jos = new JarOutputStream(new BufferedOutputStream(Files.newOutputStream(jar)))) {
             ZIP.writeManifest(jos, manifest());
             List<Path> entries = new ArrayList<>();
             PathUtil.forEachRegularFile(docRoot, (file, attrs) -> entries.add(file));
@@ -40,18 +44,15 @@ public final class JavadocJar {
                 ZIP.writeEntry(jos, docRoot.relativize(file).toString().replace('\\', '/'), file);
             }
         }
-        return baos.toByteArray();
     }
 
-    /** A jar whose only entry is a {@code README} explaining that {@code reason} left nothing to document. */
-    public static byte[] readmeOnly(String reason) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (JarOutputStream jos = new JarOutputStream(baos)) {
+    /** Write {@code jar} with a {@code README} as its only entry, explaining that {@code reason} left nothing to document. */
+    public static void writeReadme(String reason, Path jar) throws IOException {
+        try (JarOutputStream jos = new JarOutputStream(new BufferedOutputStream(Files.newOutputStream(jar)))) {
             ZIP.writeManifest(jos, manifest());
             String text = "This javadoc jar is intentionally empty.\n\n" + reason + "\n";
             ZIP.writeEntry(jos, README, text.getBytes(StandardCharsets.UTF_8));
         }
-        return baos.toByteArray();
     }
 
     private static Manifest manifest() {
