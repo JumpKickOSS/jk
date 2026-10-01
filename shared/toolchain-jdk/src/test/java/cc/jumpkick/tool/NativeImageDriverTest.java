@@ -167,12 +167,15 @@ class NativeImageDriverTest {
         longCmd.add(BIN.toString());
         longCmd.add("-cp");
         longCmd.add("a.jar" + File.pathSeparator + "b.jar");
+        longCmd.add("-J-Xmx6g");
         longCmd.add("-o");
         longCmd.add(tmp.resolve("out").toString());
         longCmd.add("com.example.Main");
 
         List<String> rewritten = NativeImageDriver.withArgFile(BIN, longCmd, argFile);
-        assertThat(rewritten).containsExactly(BIN.toString(), "@" + argFile.toAbsolutePath());
+        assertThat(rewritten)
+                .as("builder JVM flags stay where the engine sizes the builder's heap")
+                .containsExactly(BIN.toString(), "-J-Xmx6g", "@" + argFile.toAbsolutePath());
         String body = Files.readString(argFile);
         assertThat(body.lines())
                 .containsExactly(

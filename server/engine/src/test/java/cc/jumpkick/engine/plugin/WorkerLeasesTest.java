@@ -122,6 +122,37 @@ class WorkerLeasesTest {
         });
     }
 
+    /**
+     * A native-image builder that names no heap takes 85% of the worker cap it is contained at; it
+     * is leased that much and launched with it as -J-Xmx, so it cannot outgrow the lease.
+     */
+    @Test
+    void an_unsized_native_image_builder_is_leased_and_given_its_share_of_the_worker_cap() throws Exception {
+        SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
+            long budget = 12L << 30;
+            WorkerLeases.Ledger ledger = ledger(budget, 4);
+            long share = (long) (WorkerRss.workerCapBytes(0, budget) * WorkerLeases.NATIVE_IMAGE_SHARE);
+            for (List<String> command : List.of(
+                    List.of("/opt/graal/bin/native-image", "-cp", "app.jar", "app.Main"),
+                    List.of("setsid", "/opt/graal/bin/native-image", "-cp", "app.jar", "app.Main"))) {
+                try (WorkerLeases.Grant grant = ledger.acquire(command, null)) {
+                    assertThat(grant.xmxBytes()).isEqualTo(share);
+                    assertThat(grant.bytes()).isEqualTo(WorkerLeases.jvmLease(share));
+                    List<String> launched = JobWorkers.launchCommand(command, grant);
+                    int exe = command.indexOf("/opt/graal/bin/native-image");
+                    assertThat(launched.get(exe + 1)).isEqualTo("-J-Xmx" + (share >> 20) + "m");
+                    assertThat(WorkerLeases.parseXmx(launched)).isEqualTo(share >> 20 << 20);
+                }
+            }
+            List<String> sized = List.of("/opt/graal/bin/native-image", "-J-Xmx2g", "-cp", "app.jar", "app.Main");
+            try (WorkerLeases.Grant grant = ledger.acquire(sized, null)) {
+                assertThat(grant.xmxBytes()).isEqualTo(2L << 30);
+                assertThat(JobWorkers.launchCommand(sized, grant)).containsExactlyElementsOf(sized);
+            }
+            return null;
+        });
+    }
+
     @Test
     void a_lease_larger_than_the_budget_is_clamped_to_it() {
         long budget = 200L << 20;

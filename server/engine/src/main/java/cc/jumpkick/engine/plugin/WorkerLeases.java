@@ -92,8 +92,12 @@ public final class WorkerLeases {
     /** {@code -Xmx} assumed for a {@code java} command that names none. */
     static final long UNSIZED_JVM_XMX = 512 * MIB;
 
-    /** {@code -Xmx} assumed for {@link TaskNames#NATIVE_IMAGE} when it carries no {@code -J-Xmx}. */
-    static final long NATIVE_IMAGE_XMX = GIB;
+    /**
+     * Share of its worker cap a {@link TaskNames#NATIVE_IMAGE} builder's heap is given when the
+     * command names none: what the GraalVM driver itself asks for in a container. The heap is
+     * passed as {@code -J-Xmx}, so the builder never outgrows its lease.
+     */
+    static final double NATIVE_IMAGE_SHARE = 0.85;
 
     /** Smallest heap a clamped worker is given when the budget can hold it. */
     static final long MIN_XMX = 32 * MIB;
@@ -225,7 +229,8 @@ public final class WorkerLeases {
 
     /**
      * Command line with {@code -Xmx} / {@code -Xms} / soft-max brought down to {@code xmxBytes}
-     * where they were higher. A JVM command that named no heap gains an {@code -Xmx}.
+     * where they were higher. A JVM command that named no heap gains an {@code -Xmx} after its
+     * executable; a native-image command a {@code -J-Xmx}, the builder's.
      */
     public static List<String> rewriteHeap(List<String> command, long xmxBytes) {
         long xmx = Math.max(MIB, xmxBytes);
@@ -255,7 +260,10 @@ public final class WorkerLeases {
                 } else out.add(arg);
             } else out.add(arg);
         }
-        if (!sawXmx && !out.isEmpty()) out.add(1, "-Xmx" + mib(xmx) + "m");
+        if (!sawXmx && !out.isEmpty()) {
+            int at = command.size() > 1 && setsid(command.get(0)) ? 2 : 1;
+            out.add(Math.min(at, out.size()), (nativeImageCommand(command) ? "-J" : "") + "-Xmx" + mib(xmx) + "m");
+        }
         return List.copyOf(out);
     }
 
@@ -330,11 +338,20 @@ public final class WorkerLeases {
         return !command.isEmpty() && jvmExecutable(executable(command));
     }
 
-    private static long defaultXmx(List<String> command) {
+    /**
+     * The heap a JVM command that names none is leased: a native-image builder's share of the
+     * worker cap it is contained at ({@link WorkerRss#workerCapBytes}), else {@link #UNSIZED_JVM_XMX}.
+     */
+    static long defaultXmx(List<String> command, long capacityBytes) {
+        if (!nativeImageCommand(command)) return UNSIZED_JVM_XMX;
+        long workerCap = WorkerRss.workerCapBytes(0, capacityBytes);
+        return Math.max(MIN_XMX, (long) ((workerCap > 0 ? workerCap : capacityBytes) * NATIVE_IMAGE_SHARE));
+    }
+
+    /** Whether {@code command} runs the GraalVM {@code native-image} driver. */
+    static boolean nativeImageCommand(List<String> command) {
         String exe = executable(command);
-        return jvmExecutable(exe) && exe.toLowerCase(Locale.ROOT).contains(TaskNames.NATIVE_IMAGE)
-                ? NATIVE_IMAGE_XMX
-                : UNSIZED_JVM_XMX;
+        return jvmExecutable(exe) && exe.toLowerCase(Locale.ROOT).contains(TaskNames.NATIVE_IMAGE);
     }
 
     private static String prefix(Matcher matcher) {
@@ -921,7 +938,7 @@ public final class WorkerLeases {
                 long bytes = Math.min(TOOL_BYTES, cap);
                 return new Demand(bytes, 0, false, bytes < TOOL_BYTES, false, false);
             }
-            long xmx = requested > 0 ? requested : defaultXmx(command);
+            long xmx = requested > 0 ? requested : defaultXmx(command, cap);
             if (choice.userPinned()) {
                 long natural = jvmLease(xmx);
                 long bytes = Math.min(cap, natural);
