@@ -10,10 +10,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 import java.util.zip.ZipException;
@@ -29,11 +31,14 @@ import org.jspecify.annotations.Nullable;
  * any size holds a few thousand names at a time and the order is the one a sort of every name
  * would give.
  *
+ * <p>{@link #entry} reads one named entry the same way, for a caller that would otherwise open a
+ * {@code ZipFile} for a single service file.
+ *
  * <p>Handles ZIP64 directories and a jar with bytes prepended (a self-extracting header); a
  * file with no end-of-central-directory record is a {@link ZipException}, as it is for {@code
  * ZipFile}. Names are decoded as UTF-8, as {@code ZipFile} decodes them. Not thread-safe.
  */
-final class JarClassReader implements Closeable {
+public final class JarClassReader implements Closeable {
 
     /** Names held at once. */
     static final int WINDOW = 16_384;
@@ -77,7 +82,7 @@ final class JarClassReader implements Closeable {
         this.window = window;
     }
 
-    static JarClassReader open(Path jar) throws IOException {
+    public static JarClassReader open(Path jar) throws IOException {
         return open(jar, WINDOW);
     }
 
@@ -135,7 +140,7 @@ final class JarClassReader implements Closeable {
         List<String> sample = new ArrayList<>();
         int stride = Math.max(1, Math.min(SAMPLE_EVERY, window / 4));
         long[] count = {0};
-        scan(e -> {
+        scan(JarClassReader::endsWithClass, e -> {
             if (count[0] % stride == 0) sample.add(e.name());
             if (count[0] < window) first.add(e);
             count[0]++;
@@ -154,7 +159,7 @@ final class JarClassReader implements Closeable {
         for (@Nullable String hi : bounds) {
             List<ClassEntry> bucket = new ArrayList<>();
             @Nullable String from = lo;
-            scan(e -> {
+            scan(JarClassReader::endsWithClass, e -> {
                 if ((from == null || e.name().compareTo(from) >= 0)
                         && (hi == null || e.name().compareTo(hi) < 0)) {
                     bucket.add(e);
@@ -170,8 +175,21 @@ final class JarClassReader implements Closeable {
         for (ClassEntry e : bucket) sink.accept(e.name(), read(e));
     }
 
-    /** One pass over the central directory, handing every non-directory {@code .class} entry to {@code sink}. */
-    private void scan(Consumer<ClassEntry> sink) throws IOException {
+    /**
+     * The bytes of the entry named {@code name}, or {@code null} when the jar has none: one streamed
+     * pass over the central directory, then that entry alone.
+     */
+    public byte @Nullable [] entry(String name) throws IOException {
+        byte[] wanted = name.getBytes(StandardCharsets.UTF_8);
+        ClassEntry[] found = {null};
+        scan(n -> Arrays.equals(n, wanted), e -> {
+            if (found[0] == null) found[0] = e;
+        });
+        return found[0] == null ? null : read(found[0]);
+    }
+
+    /** One pass over the central directory, handing every entry whose raw name {@code wanted} accepts to {@code sink}. */
+    private void scan(Predicate<byte[]> wanted, Consumer<ClassEntry> sink) throws IOException {
         Cursor in = new Cursor(channel, cenOffset, cenOffset + cenSize);
         while (in.remaining() >= 46) {
             if (in.s32() != CEN_SIG) throw new ZipException("bad central directory entry");
@@ -186,8 +204,8 @@ final class JarClassReader implements Closeable {
             in.skip(8);
             long localOffset = in.u32();
             byte[] name = in.bytes(nameLen);
-            boolean isClass = endsWithClass(name);
-            if (isClass && (compressed == U32_MAX || size == U32_MAX || localOffset == U32_MAX)) {
+            boolean taken = wanted.test(name);
+            if (taken && (compressed == U32_MAX || size == U32_MAX || localOffset == U32_MAX)) {
                 byte[] extra = in.bytes(extraLen);
                 long[] wide = zip64(extra, size, compressed, localOffset);
                 size = wide[0];
@@ -197,7 +215,7 @@ final class JarClassReader implements Closeable {
                 in.skip(extraLen);
             }
             in.skip(commentLen);
-            if (!isClass) continue;
+            if (!taken) continue;
             sink.accept(new ClassEntry(
                     new String(name, StandardCharsets.UTF_8), localOffset + prepended, compressed, size, method));
         }
