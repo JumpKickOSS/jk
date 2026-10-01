@@ -142,6 +142,17 @@ public final class LanguageRuntimeInject {
         notes.add(note.toString());
     }
 
+    /**
+     * True for a language runtime coordinate the compiler's version decides — the Kotlin stdlib
+     * family, Groovy, the Scala library — which is the workspace's toolchain's for every member.
+     */
+    static boolean followsCompiler(String module) {
+        return kotlinFamily(module)
+                || module.equals(LanguageRuntimes.GROOVY)
+                || module.equals(LanguageRuntimes.SCALA)
+                || module.equals(LanguageRuntimes.SCALA_LIBRARY);
+    }
+
     private static boolean kotlinFamily(String module) {
         for (String family : KOTLIN_FAMILY) {
             if (module.equals(family) || module.startsWith(family + "-")) return true;

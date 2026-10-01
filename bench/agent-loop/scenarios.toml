@@ -487,10 +487,10 @@ jk = "application/jk.toml"
 pom = "application/pom.xml"
 gradle = "application/build.gradle"
 # Imported from Maven, jk keeps nearest-wins pins (`pins = "nearest"`), so the old spring-core
-# wins on every tool and the Boot context fails at test time. MyServiceTest fails only under jk:
-# one lockfile holds one version per artifact, so the application's pin is the library's too.
+# wins on every tool and the application's Boot context fails at test time. The pin is the
+# application's alone: the library resolves on its own graph and its test passes, as under Maven.
 kind = "test"
-tests = ["com.example.multimodule.application.DemoApplicationTest", "com.example.multimodule.service.MyServiceTest"]
+tests = ["com.example.multimodule.application.DemoApplicationTest"]
 
 [repos.junit-starter-maven]
 source = "https://github.com/junit-team/junit-examples"

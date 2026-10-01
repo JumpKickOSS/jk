@@ -23,6 +23,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.model.Workspace;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.MinimalToml;
@@ -518,6 +519,20 @@ public final class JkBuildRenderer {
             sb.append(quote(modules.get(i)));
         }
         sb.append("]\n");
+        Map<String, Workspace.WorkspaceDependency> shared =
+                Objects.requireNonNull(jkBuild.workspace()).dependencies();
+        if (shared.isEmpty()) return;
+        sb.append('\n');
+        sb.append("[workspace.dependencies]\n");
+        for (Map.Entry<String, Workspace.WorkspaceDependency> e : new TreeMap<>(shared).entrySet()) {
+            Workspace.WorkspaceDependency entry = e.getValue();
+            VersionSelector version =
+                    Objects.requireNonNull(entry.version(), "a shared entry the import writes is versioned");
+            sb.append(safeKey(e.getKey()))
+                    .append(" = ")
+                    .append(quote(entry.module() + ":" + versionLiteral(version)))
+                    .append('\n');
+        }
     }
 
     private static void renderRepositories(StringBuilder sb, List<RepositorySpec> repos) {

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which rows of a workspace lock one member reads. A coordinate has one plain row per scope set,
@@ -14,8 +15,8 @@ import java.util.Map;
  * on a partition reads that row in place of the plain row of the scopes it carries, every other
  * member reads the plain one. A plain row in a scope none of the member's partitions carries — the
  * processor path's Guava beside a main classpath pinned to another Guava — is still the member's
- * to read. A coordinate only a member's own graph reaches has no plain row, and no other member
- * reads it.
+ * to read, and so is the processor part of a plain row that also carries main scopes. A coordinate
+ * only a member's own graph reaches has no plain row, and no other member reads it.
  */
 public final class MemberRows {
 
@@ -38,6 +39,9 @@ public final class MemberRows {
                 out.add(row);
             } else if (!row.isPartition() && (own == null || !sharesScope(own, row))) {
                 out.add(row);
+            } else if (!row.isPartition() && own != null && own.stream().noneMatch(MemberRows::hasProcessor)) {
+                Lockfile.Artifact processor = processorPart(row);
+                if (processor != null) out.add(processor);
             }
         }
         return out;
@@ -56,6 +60,19 @@ public final class MemberRows {
             if (processorOnly(partition) == plainProcessor) return true;
         }
         return false;
+    }
+
+    private static boolean hasProcessor(Lockfile.Artifact row) {
+        return row.scopes().contains(Scope.PROCESSOR) || row.scopes().contains(Scope.TEST_PROCESSOR);
+    }
+
+    /** {@code row} on the annotation processor path alone, or {@code null} when it is not on it. */
+    private static Lockfile.@Nullable Artifact processorPart(Lockfile.Artifact row) {
+        List<Scope> processor = new ArrayList<>();
+        for (Scope scope : row.scopes()) {
+            if (scope == Scope.PROCESSOR || scope == Scope.TEST_PROCESSOR) processor.add(scope);
+        }
+        return processor.isEmpty() ? null : row.withScopes(processor);
     }
 
     private static boolean processorOnly(Lockfile.Artifact row) {

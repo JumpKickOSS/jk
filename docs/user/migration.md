@@ -144,8 +144,13 @@ advancing for that long fails naming the coordinate it was reading and the URL i
 version as an exact pin and sets `[resolve] pins = "nearest"` on the root and on every member (a
 workspace lock reads the root's), so the lock resolves a pinned module the way Maven's nearest-wins
 did: the project's pin is the version, and a transitive POM's range on that module — a plain
-version or an open floor such as `[2.0.18,)`, declared by a dependency of the same module or of
-any sibling — is reported, not enforced. `cryptofs 2.10.0` declares `jakarta.inject-api 2.0.1.MR`;
+version or an open floor such as `[2.0.18,)`, declared by a dependency of the same module — is
+reported, not enforced. A module's own `<version>` is that member's pin alone; a version a reactor
+parent's `<dependencyManagement>` supplies is the workspace's, written as `x.workspace = true` with
+the root's `[workspace.dependencies]` entry, and the parent's pins also govern every member's
+transitives from the root's `[managed-dependencies]`. A sibling that does not declare the
+dependency reads the version its own graph asks for, as it would under Maven
+([Workspaces](workspaces.md#members-that-disagree)). `cryptofs 2.10.0` declares `jakarta.inject-api 2.0.1.MR`;
 the POM's own `2.0.1` wins, the lock pins `jakarta.inject-api@2.0.1`, and `jk lock` prints one
 warning per overridden range so the divergence from what the library asked for is on record;
 `jk why jakarta.inject-api` shows the `2.0.1.MR` beside the step that asked for it. A `jk.toml` written by hand keeps the default, `pins = "exact"`, under which the same
