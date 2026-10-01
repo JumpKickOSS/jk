@@ -187,16 +187,14 @@ jk test --profile integration
 `NiaWarmLockTimingTest` (`server/resolver`) locks a local `nowinandroid` overlay twice — cold process
 caches, then hot — and prints the phase walls (`COLD_TOTAL_MS`, `HOT_TOTAL_MS`, the graph and
 materialise splits). Its budget asserts apply only when the JVM sees every processor of the host and
-the host is idle; `jk test` pins each test JVM to its share of the cores with
-`-XX:ActiveProcessorCount`, so under the plain profile the test prints `TIMING_ASSERTS_SKIPPED` with
-the reason and the numbers describe a machine no user has. To measure plainly, lift the pin for the
-one class and run it alone:
+the host is idle; a JVM pinned below the host (a cgroup quota, an `-XX:ActiveProcessorCount` in the
+jvm-args) prints `TIMING_ASSERTS_SKIPPED` with the reason, since its numbers describe a machine no
+user has. Run the one class alone on a quiet host:
 
 ```bash
 JK_NIA_OVERLAY=~/src/oss/jk-examples/android/nowinandroid/overlay \
   jk test --profile network -m server/resolver -w 1 \
-    --class cc.jumpkick.resolver.NiaWarmLockTimingTest \
-    --jvm-arg -XX:ActiveProcessorCount=$(nproc)
+    --class cc.jumpkick.resolver.NiaWarmLockTimingTest
 # JVM_CPUS=… HOST_CPUS=… LOADAVG=… names the machine the numbers were taken on
 ```
 

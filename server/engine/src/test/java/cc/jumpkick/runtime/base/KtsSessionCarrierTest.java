@@ -14,8 +14,9 @@ import org.junit.jupiter.api.Test;
  * The host's stdout reader holds no virtual-thread carrier. A pipe read is a native read that
  * blocks the thread making it; a reader on a virtual thread keeps its carrier for as long as the
  * host is silent — between two scripts, that is until the idle reaper — and relies on the scheduler
- * lending a spare carrier for the time, which is denied when the JVM cannot start one. A test fork
- * runs with one carrier ({@code -XX:ActiveProcessorCount=1}), so one held carrier is every carrier:
+ * lending a spare carrier for the time, which is denied when the JVM cannot start one. A JVM that
+ * sees one CPU (a one-core host, or {@code -XX:ActiveProcessorCount=1}) runs with one carrier, so
+ * one held carrier is every carrier:
  * a plan's step estimates queue behind the reader for as long as the host lives, and the host's own
  * reaper, a virtual thread, cannot wake to end it.
  */
