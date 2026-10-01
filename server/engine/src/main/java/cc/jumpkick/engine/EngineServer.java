@@ -11,6 +11,7 @@ import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
+import cc.jumpkick.engine.jobs.JobRow;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
@@ -719,8 +720,8 @@ public final class EngineServer implements AutoCloseable {
 
     /** The reason a drain-deadline cancel leaves on each job's wire and in the journal. */
     static String drainCancelReason(long deadlineMs) {
-        return "the engine was stopping and its drain deadline (" + deadlineMs
-                + "ms, [engine] drain-deadline-ms / JK_ENGINE_DRAIN_DEADLINE_MS) passed; cancelled";
+        return "the engine was stopping and its drain deadline (" + JobRow.duration(deadlineMs)
+                + ", [engine] drain-deadline-ms / JK_ENGINE_DRAIN_DEADLINE_MS) passed; cancelled";
     }
 
     /**
