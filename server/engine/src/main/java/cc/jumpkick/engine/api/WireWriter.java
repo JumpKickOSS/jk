@@ -118,6 +118,18 @@ public final class WireWriter {
     }
 
     /**
+     * Stop pacing {@code writer}'s producers: its job was cancelled, and a cancelled job's lines must
+     * not hold its threads behind a client that is not reading. Every producer waiting for room
+     * returns at once, and from now on a {@link #sendQuiet} that finds no room drops its line rather
+     * than wait. {@link #send} and {@link #sendNoWait} lines, the terminal among them, still queue.
+     */
+    public static void unpace(@Nullable BufferedWriter writer) {
+        if (writer == null) return;
+        Stream s = STREAMS.get(writer);
+        if (s != null) s.unpace();
+    }
+
+    /**
      * Wait for every line queued so far to land — while the client keeps reading, however long
      * that takes; a client that reads nothing for the stream's idle bound is dropped. A job's
      * envelope waits here after its job-finish, so the connection loop it returns to never closes
@@ -187,6 +199,9 @@ public final class WireWriter {
         private @Nullable IOException dead;
         private boolean released;
 
+        /** Whether the stream's job was cancelled: a paced line never waits, and one with no room is dropped. */
+        private boolean unpaced;
+
         Stream(BufferedWriter writer, long idleBoundMillis) {
             this.writer = writer;
             this.idleBoundMillis = Math.max(0L, idleBoundMillis);
@@ -194,6 +209,11 @@ public final class WireWriter {
 
         void idleBound(long millis) {
             idleBoundMillis = Math.max(0L, millis);
+        }
+
+        synchronized void unpace() {
+            unpaced = true;
+            notifyAll();
         }
 
         void enqueue(String line, Mode mode) throws IOException {
@@ -233,10 +253,16 @@ public final class WireWriter {
         /**
          * Queue {@code p} once the stream has room for it. The wait is a managed block, so a CPU-pool
          * worker waiting here has a spare thread run in its place. It ends when the client drains,
-         * when the client is dropped for reading nothing within the idle bound, or when the caller
-         * is interrupted: a cancelled job's unwinding lines are queued without waiting.
+         * when the client is dropped for reading nothing within the idle bound, when the caller is
+         * interrupted (its line is queued), or when the job is cancelled (its line is dropped).
          */
         private void awaitRoom(Pending p) throws IOException {
+            synchronized (this) {
+                if (unpaced) {
+                    if (hasRoom(p)) add(p);
+                    return;
+                }
+            }
             if (Thread.currentThread().isInterrupted()) {
                 synchronized (this) {
                     add(p);
@@ -270,6 +296,7 @@ public final class WireWriter {
             public boolean isReleasable() {
                 synchronized (Stream.this) {
                     if (!done && (dead != null || hasRoom(p))) addOrFail();
+                    else if (!done && unpaced) done = true;
                     return done;
                 }
             }
@@ -280,6 +307,10 @@ public final class WireWriter {
                     while (!done) {
                         if (dead != null || hasRoom(p) || interrupted) {
                             addOrFail();
+                            break;
+                        }
+                        if (unpaced) {
+                            done = true;
                             break;
                         }
                         long stalledMs = stalledMillis(CLOCK.nanos());

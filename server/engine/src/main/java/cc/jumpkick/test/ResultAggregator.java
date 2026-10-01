@@ -49,6 +49,7 @@ final class ResultAggregator {
     private int discoveredTests = -1;
 
     private final List<TestFailureInfo> failures = new ArrayList<>();
+    private final FailureTexts failureTexts = new FailureTexts();
     // Tests whose `dynamic_registered` event we observed at execute-time
     // — i.e., @ParameterizedTest / @TestFactory / @TestTemplate /
     // @RepeatedTest invocations that weren't in the static plan. Used
@@ -215,8 +216,9 @@ final class ResultAggregator {
         if (exClass == null) exClass = "?";
         String message = throwableJson != null ? Jsonl.str(throwableJson, "message") : null;
         if (message == null) message = "";
-        message = truncateMessage(message);
-        String stack = readStack(throwableJson);
+        // A suite whose every test fails the same way repeats one text per failure; hold it once.
+        message = failureTexts.held(FailureClip.message(message));
+        String stack = failureTexts.held(readStack(throwableJson));
         String className = classNameOf(json);
         String method = methodOf(json);
         String engine = engineOf(json);
@@ -258,10 +260,8 @@ final class ResultAggregator {
     }
 
     /**
-     * {@code throwable.stack} as a single string. Accepts a string (preferred) or a legacy line
-     * array and joins it. Truncated to {@link #MAX_STACK_CHARS}: the stack is worker-controlled
-     * input that rides every downstream copy (wire, SSE, journal), and a deep-recursion failure
-     * can produce megabytes of frames that no reader wants.
+     * {@code throwable.stack} as a single string, clipped by {@link FailureClip#stack}. Accepts a
+     * string (preferred) or a legacy line array and joins it.
      */
     static String readStack(@Nullable String throwableJson) {
         if (throwableJson == null) return "";
@@ -271,63 +271,7 @@ final class ResultAggregator {
             if (lines.isEmpty()) return "";
             s = String.join("\n", lines);
         }
-        return truncateStack(s);
-    }
-
-    /** Bound for a single failure's stack text; ~400 frames — far past any useful depth. */
-    static final int MAX_STACK_CHARS = 32_768;
-
-    static String truncateStack(String stack) {
-        if (stack == null || stack.length() <= MAX_STACK_CHARS) return stack;
-        int cut = stack.lastIndexOf('\n', MAX_STACK_CHARS);
-        if (cut <= 0) {
-            cut = MAX_STACK_CHARS;
-            // Hard cut (a single >32KB line): never leave a lone high surrogate.
-            if (Character.isHighSurrogate(stack.charAt(cut - 1))) cut--;
-        }
-        return stack.substring(0, cut) + JUnitLauncher.STACK_TRUNCATION_MARKER + (stack.length() - cut)
-                + " more chars)";
-    }
-
-    /**
-     * Bound for a single failure's message. Same rationale as {@link #MAX_STACK_CHARS}
-     *: the message is worker-controlled input that rides every downstream copy —
-     * wire, SSE, journal, web card — and an {@code assertEquals} diff of two multi-MB strings
-     * otherwise puts hundreds of MB of transients through the engine for one bad suite. The
-     * copy of the message inside the stack's first line was already bounded; the field itself
-     * was not. {@code LauncherPath} applies the same cap worker-side so the JSONL line is
-     * bounded on the wire too; this cap covers workers that predate it.
-     */
-    static final int MAX_MESSAGE_CHARS = 8_192;
-
-    static String truncateMessage(String message) {
-        if (message == null || message.length() <= MAX_MESSAGE_CHARS) return message;
-        if (workerCapped(message)) return message;
-        int cut = MAX_MESSAGE_CHARS;
-        if (Character.isHighSurrogate(message.charAt(cut - 1))) cut--;
-        return message.substring(0, cut) + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + (message.length() - cut)
-                + " more chars)";
-    }
-
-    /**
-     * A worker-capped message is cap-sized content + marker + remainder count. It exceeds the
-     * cap only by the marker's own tail, and re-cutting would replace the worker's accurate
-     * remainder count with the marker's length — so it passes through verbatim. The marker
-     * position is bounded by the cap, keeping the accepted form itself bounded.
-     */
-    private static boolean workerCapped(String message) {
-        String tail = " more chars)";
-        if (!message.endsWith(tail)) return false;
-        int at = message.lastIndexOf(JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
-        if (at < 0 || at > MAX_MESSAGE_CHARS) return false;
-        int digitsFrom = at + JUnitLauncher.MESSAGE_TRUNCATION_MARKER.length();
-        int digitsTo = message.length() - tail.length();
-        if (digitsTo <= digitsFrom) return false;
-        for (int i = digitsFrom; i < digitsTo; i++) {
-            char c = message.charAt(i);
-            if (c < '0' || c > '9') return false;
-        }
-        return true;
+        return FailureClip.stack(s);
     }
 
     synchronized TestSummary toResult(int exitCode) {

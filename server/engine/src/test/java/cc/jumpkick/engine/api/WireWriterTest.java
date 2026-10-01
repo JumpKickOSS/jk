@@ -169,6 +169,52 @@ class WireWriterTest {
     }
 
     /**
+     * A cancelled job's producers stop waiting for a client that does not read: the idle bound is
+     * never, yet the producer blocked for room returns as soon as the stream is unpaced, its later
+     * lines are dropped rather than queued past the bound, and the cancelled terminal still queues.
+     */
+    @Test
+    @Timeout(60)
+    void a_cancel_frees_a_producer_waiting_on_a_stalled_client() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        WireWriter.bind(writer, 0);
+        String line = failureSizedLine();
+        long lines = 4 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
+        CountDownLatch blocked = new CountDownLatch(1);
+        AtomicLong sent = new AtomicLong();
+
+        Thread producer = Thread.ofPlatform().start(() -> {
+            for (long i = 0; i < lines; i++) {
+                if (WireWriter.queuedBytes(writer) + line.length() + 1 > WireWriter.MAX_QUEUED_BYTES) {
+                    blocked.countDown();
+                }
+                WireWriter.sendQuiet(writer, line);
+                sent.incrementAndGet();
+            }
+        });
+        assertThat(blocked.await(30, TimeUnit.SECONDS)).isTrue();
+        producer.join(500);
+        assertThat(producer.isAlive()).as("paced behind the stalled client").isTrue();
+
+        long cancelled = System.nanoTime();
+        WireWriter.unpace(writer);
+        producer.join(Duration.ofSeconds(5).toMillis());
+        assertThat(producer.isAlive()).as("the cancel frees the producer").isFalse();
+        assertThat((System.nanoTime() - cancelled) / 1_000_000).isLessThan(5_000);
+        assertThat(sent.get()).isEqualTo(lines);
+        assertThat(WireWriter.queuedBytes(writer))
+                .as("dropped, not queued past the bound")
+                .isLessThanOrEqualTo(WireWriter.MAX_QUEUED_BYTES);
+
+        WireWriter.sendNoWait(writer, "{\"type\":\"plan-finish\",\"cancelled\":true}");
+        assertThat(WireWriter.queuedBytes(writer)).isGreaterThan(0);
+        pipe.source().close();
+        pipe.sink().close();
+    }
+
+    /**
      * A client that reads slower than a burst arrives is still reading: a burst of twice the byte
      * bound, in failure-report-sized lines, reaches a reader that takes far longer than the idle
      * bound to drain it, never pausing for as long as that bound. Every line lands, the producer

@@ -23,7 +23,9 @@ public record TestFailureErrorLine(
         int line,
         int snippetStart,
         List<String> snippet,
-        String stack) {
+        String stack,
+        int textId,
+        int sameText) {
     public String encode() {
         return JsonlEnvelope.open(ts, "error")
                 .string("task", task)
@@ -40,6 +42,8 @@ public record TestFailureErrorLine(
                 .optionalNumber("line", line, 0)
                 .optionalNumber("snippetStart", snippetStart, 0)
                 .optionalArray("snippet", snippet)
+                .optionalNumber("textId", textId, 0)
+                .optionalNumber("sameText", sameText, 0)
                 .optionalNonEmptyString("stack", stack)
                 .finish();
     }
@@ -61,7 +65,9 @@ public record TestFailureErrorLine(
                 Jsonl.intValue(json, "line", 0),
                 Jsonl.intValue(json, "snippetStart", 0),
                 Jsonl.strArray(json, "snippet"),
-                orEmpty(Jsonl.str(json, "stack")));
+                orEmpty(Jsonl.str(json, "stack")),
+                Jsonl.intValue(json, "textId", 0),
+                Jsonl.intValue(json, "sameText", 0));
     }
 
     private static String orEmpty(@Nullable String s) {

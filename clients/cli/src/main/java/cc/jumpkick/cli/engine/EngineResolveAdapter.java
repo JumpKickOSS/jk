@@ -12,6 +12,7 @@ import cc.jumpkick.wire.protocol.AffectedTestsReport;
 import cc.jumpkick.wire.protocol.AffectedTestsRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.LockFinishEvent;
 import cc.jumpkick.wire.protocol.LockModuleEvent;
 import cc.jumpkick.wire.protocol.LockPackageEvent;
@@ -207,6 +208,7 @@ final class EngineResolveAdapter {
             return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
                 private final List<Task> steps = new ArrayList<>();
                 private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+                private final FailureTextRefs texts = new FailureTextRefs();
                 private @Nullable BuildPlanListener listener;
 
                 @Override
@@ -232,7 +234,7 @@ final class EngineResolveAdapter {
                         }
                         case EngineProtocol.ERROR ->
                             throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
+                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, texts);
                     }
                     return null;
                 }
@@ -260,6 +262,7 @@ final class EngineResolveAdapter {
                 private @Nullable String currentCoord;
                 private List<Task> steps = new ArrayList<>();
                 private List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+                private final FailureTextRefs texts = new FailureTextRefs();
                 private @Nullable BuildPlanListener listener;
 
                 @Override
@@ -328,7 +331,7 @@ final class EngineResolveAdapter {
                         }
                         case EngineProtocol.ERROR ->
                             throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
+                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, texts);
                     }
                     return null;
                 }
