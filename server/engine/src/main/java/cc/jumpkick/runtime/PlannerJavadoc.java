@@ -119,23 +119,21 @@ final class PlannerJavadoc {
             ctx.progress(1);
             return;
         }
-        byte[] bytes;
+        Files.createDirectories(artifactDir);
         if (repos != null && dokkaVersion != null) {
             ctx.label("dokka " + javadocJar.getFileName());
             DokkaResolver.Tool tool = DokkaResolver.resolve(
                     repos, cas, dokkaVersion, project.build().dokka().format());
             List<Path> documented = new ArrayList<>(kotlinSources);
             documented.addAll(sources);
-            bytes = documentWithDokka(ctx, mode, project, layout, tool, documented, classpath, javaHome, release);
+            documentWithDokka(ctx, mode, project, layout, tool, documented, classpath, javaHome, release, javadocJar);
         } else if (sources.isEmpty()) {
             ctx.label("javadoc " + javadocJar.getFileName());
-            bytes = JavadocJar.readmeOnly(NO_JAVA_SOURCES);
+            JavadocJar.writeReadme(NO_JAVA_SOURCES, javadocJar);
         } else {
             ctx.label("javadoc " + javadocJar.getFileName());
-            bytes = document(ctx, mode, layout, sources, classpath, javaHome, options);
+            document(ctx, mode, layout, sources, classpath, javaHome, options, javadocJar);
         }
-        Files.createDirectories(artifactDir);
-        Files.write(javadocJar, bytes);
         storePackaged(cache, keyed.taskId(), keyed.key(), keyed.tokens(), artifactDir, List.of(javadocJar), persist);
         ctx.progress(1);
     }
@@ -146,8 +144,8 @@ final class PlannerJavadoc {
         return dokkaVersion + ":" + project.build().dokka().format().wireName();
     }
 
-    /** Fork Dokka over the Kotlin and Java sources; the same verdict table as javadoc decides the jar. */
-    private static byte[] documentWithDokka(
+    /** Fork Dokka over the Kotlin and Java sources; the same verdict table as javadoc decides {@code jar}. */
+    private static void documentWithDokka(
             TaskContext ctx,
             JavadocMode mode,
             JkBuild project,
@@ -156,7 +154,8 @@ final class PlannerJavadoc {
             List<Path> sources,
             List<Path> classpath,
             Path javaHome,
-            int release)
+            int release,
+            Path jar)
             throws Exception {
         Path out = layout.moduleTargetDir().resolve("javadoc");
         PathUtil.deleteRecursivelyOrThrow(out);
@@ -171,57 +170,56 @@ final class PlannerJavadoc {
                 classpath,
                 release,
                 layout.moduleRoot());
-        return jarFor("dokka", ctx, mode, r, out);
+        writeJar("dokka", ctx, mode, r, out, jar);
     }
 
     /** Fork javadoc; warnings ride the results, and only strict mode lets an error fail the step. */
-    private static byte[] document(
+    private static void document(
             TaskContext ctx,
             JavadocMode mode,
             BuildLayout layout,
             List<Path> sources,
             List<Path> classpath,
             Path javaHome,
-            List<String> options)
+            List<String> options,
+            Path jar)
             throws Exception {
         Path out = layout.moduleTargetDir().resolve("javadoc");
         PathUtil.deleteRecursivelyOrThrow(out);
         Files.createDirectories(out);
         JavadocTool.Result r = JavadocTool.run(javaHome, out, sources, classpath, options, layout.moduleRoot());
-        return jarFor("javadoc", ctx, mode, r, out);
+        writeJar("javadoc", ctx, mode, r, out, jar);
     }
 
-    /** The jar the verdict table gives {@code tool}'s run over {@code out}; warnings ride the results. */
-    private static byte[] jarFor(String tool, TaskContext ctx, JavadocMode mode, JavadocTool.Result r, Path out)
+    /** Write {@code jar} as the verdict table says for {@code tool}'s run over {@code out}; warnings ride the results. */
+    private static void writeJar(
+            String tool, TaskContext ctx, JavadocMode mode, JavadocTool.Result r, Path out, Path jar)
             throws IOException {
         for (String w : r.warnings()) ctx.warn(CODE, w);
         Verdict verdict = verdict(mode, r, wroteFiles(out));
         switch (verdict) {
-            case DOCUMENTED -> {
-                return JavadocJar.fromTree(out);
-            }
+            case DOCUMENTED -> JavadocJar.writeTree(out, jar);
             // A library of package-private types (a rule pack, a fixtures module) is a library all
             // the same; Central takes the README-only jar, and nothing here is the user's mistake.
             case NO_API -> {
                 ctx.label(tool + ": no public types; README-only jar");
-                return JavadocJar.readmeOnly(NO_PUBLIC_API);
+                JavadocJar.writeReadme(NO_PUBLIC_API, jar);
             }
             case LENIENT_TREE -> {
                 for (String e : errorLines(tool, r)) ctx.warn(CODE, e);
                 ctx.label(tool + " reported errors; jar from what it wrote");
-                return JavadocJar.fromTree(out);
+                JavadocJar.writeTree(out, jar);
             }
             case LENIENT_README -> {
                 for (String e : errorLines(tool, r)) ctx.warn(CODE, e);
                 ctx.label(tool + " reported errors; README-only jar");
-                return JavadocJar.readmeOnly(LENIENT_ERRORS);
+                JavadocJar.writeReadme(LENIENT_ERRORS, jar);
             }
             case FAIL -> {
                 for (String e : errorLines(tool, r)) ctx.error(CODE, e);
                 throw new RuntimeException(tool + " reported errors");
             }
         }
-        throw new IllegalStateException("unreachable: " + verdict);
     }
 
     /** The one decision table, so the lenient and strict arms can be read side by side. */
