@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -174,6 +175,7 @@ public final class NativeImageDriver {
                 command = withArgFile(binary, command, argFile);
             }
             ProcessBuilder pb = new ProcessBuilder(command);
+            sizeBuilderFromOwnLimit(pb.environment());
             if (effective.workingDir() != null)
                 pb.directory(effective.workingDir().toFile());
             Process process = Forks.start(pb);
@@ -187,6 +189,18 @@ public final class NativeImageDriver {
             if (argFile != null) Files.deleteIfExists(argFile);
             if (pathingJar != null) Files.deleteIfExists(pathingJar);
         }
+    }
+
+    /**
+     * Has the driver size the builder JVM's heap at 85% of the memory it can see. A driver that
+     * takes itself for uncontained passes {@code -XX:MaxRAMPercentage} as host-wide {@code
+     * MemAvailable} over its total memory; the engine moves a worker into its capped group just
+     * after it starts, so that total can be a cap below the host's free memory and the value above
+     * 100, which the builder JVM refuses. The driver reads {@code CI} only for this choice and does
+     * not pass it on to the builder.
+     */
+    static void sizeBuilderFromOwnLimit(Map<String, String> env) {
+        env.put("CI", "true");
     }
 
     /**

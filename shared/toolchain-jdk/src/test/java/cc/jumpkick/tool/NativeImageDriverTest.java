@@ -9,7 +9,9 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -62,6 +64,21 @@ class NativeImageDriverTest {
 
         assertThat(message).contains(Path.of("/jdks/temurin-25").toString());
         assertThat(message).doesNotContain(" — ");
+    }
+
+    /**
+     * Without {@code CI}, a driver that started uncontained and then landed in a worker group capped
+     * at 10.1 GiB, on a host with 10.58 GiB {@code MemAvailable}, hands its builder {@code
+     * -XX:MaxRAMPercentage=104.8} (available over the cap), which HotSpot refuses. With it the
+     * driver asks for 85% of what it sees.
+     */
+    @Test
+    void the_driver_sizes_its_builder_from_its_own_memory_limit() {
+        Map<String, String> env = new HashMap<>(Map.of("PATH", "/usr/bin"));
+
+        NativeImageDriver.sizeBuilderFromOwnLimit(env);
+
+        assertThat(env).containsEntry("CI", "true").containsEntry("PATH", "/usr/bin");
     }
 
     @Test

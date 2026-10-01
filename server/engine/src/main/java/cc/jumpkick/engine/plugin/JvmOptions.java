@@ -103,8 +103,7 @@ public final class JvmOptions {
     private static List<String> flags(
             PluginTuning settings, int concurrency, String defaultGc, Role role, List<String> userArgs) {
         PluginTuning s = settings == null ? PluginTuning.NONE : settings;
-        double base = s.maxRamPercent() != null ? s.maxRamPercent() : DEFAULT_MAX_RAM_PERCENT;
-        double perJvm = base / Math.max(1, concurrency);
+        double perJvm = ramPercent(s.maxRamPercent()) / Math.max(1, concurrency);
         String gc = collector(s, defaultGc, role);
 
         List<String> out = new ArrayList<>();
@@ -115,6 +114,15 @@ public final class JvmOptions {
         addHardening(out, s, concurrency, role, gc);
         out.addAll(s.extraArgs());
         return out;
+    }
+
+    /**
+     * {@code requested} within the (0, 100] HotSpot accepts: above 100 is all of RAM, and none, zero
+     * or less is {@link #DEFAULT_MAX_RAM_PERCENT}. A JVM refuses to start on a value outside it.
+     */
+    static double ramPercent(@Nullable Double requested) {
+        if (requested == null || !(requested > 0)) return DEFAULT_MAX_RAM_PERCENT;
+        return Math.min(100.0, requested);
     }
 
     /** The collector a fork's flags name: the tuning's, else {@code defaultGc}. A test JVM's is the JVM default. */
