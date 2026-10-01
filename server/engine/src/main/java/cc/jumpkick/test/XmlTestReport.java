@@ -40,6 +40,12 @@ public final class XmlTestReport {
     private final List<Entry> entries = new ArrayList<>();
 
     /**
+     * Every entry stays in memory until {@link #writeAll}, so a failure's message and stack are
+     * clipped as {@link MarkdownTestReport} clips them and repeats share one copy.
+     */
+    private final FailureTexts failureTexts = new FailureTexts();
+
+    /**
      * What each class's JVM printed while the class ran, by class name — the {@code system-out}
      * of its {@code testsuite}. The fork merges stderr into stdout, so there is one stream and
      * {@code system-err} stays empty.
@@ -76,9 +82,10 @@ public final class XmlTestReport {
         String className = classNameFrom(uniqueId);
         String failureType = null, failureMessage = null, failureStack = null;
         if (throwableJson != null) {
-            failureType = Jsonl.str(throwableJson, "class");
-            failureMessage = Jsonl.str(throwableJson, "message");
-            failureStack = Jsonl.str(throwableJson, "stack");
+            failureType = failureTexts.of(Jsonl.str(throwableJson, "class"));
+            failureMessage = failureTexts.of(
+                    MarkdownTestReport.clip(Jsonl.str(throwableJson, "message"), MarkdownTestReport.MAX_MESSAGE_CHARS));
+            failureStack = failureTexts.of(MarkdownTestReport.boundedStack(Jsonl.str(throwableJson, "stack")));
         }
         entries.add(new Entry(className, display, durationMs, failureType, failureMessage, failureStack, null));
     }
