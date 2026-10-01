@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code ## Warnings} section of {@code jk-results.md}. A memory wait and a heap retry are
@@ -36,6 +37,19 @@ final class JkResultsWarnings {
         sb.append('\n');
     }
 
+    /**
+     * The warning that names why a run failed when it left no error and no failed step: its first
+     * one about the run itself, not a memory note or a guard's. {@code null} when there is none.
+     */
+    static BuildRecord.@Nullable Diag deciding(BuildRecord r) {
+        for (BuildRecord.Diag d : r.diagnostics()) {
+            if (!JkResultsMarkdown.isWarning(d) || !JkResultsMarkdown.notBlank(d.message())) continue;
+            if (!memoryEvent(d) && !JkResultsMarkdown.isGuard(d)) return d;
+        }
+        return null;
+    }
+
+    /** A memory wait, heap retry or over-lease note: a warning about the host, never about the run. */
     private static boolean memoryEvent(BuildRecord.Diag d) {
         String code = d.code();
         return "memory-wait".equals(code) || "heap-retry".equals(code) || "memory-over-lease".equals(code);

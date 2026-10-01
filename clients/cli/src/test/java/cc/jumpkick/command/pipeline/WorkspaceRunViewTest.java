@@ -218,6 +218,19 @@ class WorkspaceRunViewTest {
     }
 
     @Test
+    void a_run_level_verdict_over_green_modules_is_the_failure_line_itself() {
+        String why = "--class named 1 class the tag filter excluded: a.BenchTest [bench];"
+                + " pass --include-tags bench (or a --profile that includes it) to run it";
+        var verdict = new WorkspaceResult(
+                false, 4, List.of(new ModuleOutcome("g:fmt", Path.of("/ws/fmt"), true, 0, 1, true)), List.of(why));
+        assertThat(WorkspaceRunView.errorStep(verdict)).isEqualTo("test");
+        assertThat(WorkspaceRunView.errorsTail(verdict)).isEqualTo(why);
+        var graph = new WorkspaceResult(false, 2, List.of(), List.of("cycle: a -> b -> a"));
+        assertThat(WorkspaceRunView.errorStep(graph)).isEqualTo("composite");
+        assertThat(WorkspaceRunView.errorsTail(graph)).isEqualTo("dependency resolution failed");
+    }
+
+    @Test
     void a_fail_fast_run_still_reads_as_one_named_module() {
         var one = new WorkspaceResult(
                 false, 1, List.of(new ModuleOutcome("g:b", Path.of("/ws/b"), false, 1, 1, true)), List.of());

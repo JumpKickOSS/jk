@@ -232,6 +232,8 @@ public final class JkResultsMarkdown {
         }
         if (!out.isEmpty()) return List.copyOf(out);
         if (r.cancelled()) return List.of("cancelled");
+        BuildRecord.Diag warning = JkResultsWarnings.deciding(r);
+        if (warning != null) return List.of(whyLine(warning));
         if (r.exitCode() != 0) return List.of("failed (exit " + r.exitCode() + ")");
         return List.of("failed");
     }

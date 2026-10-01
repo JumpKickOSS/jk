@@ -394,6 +394,54 @@ class JkResultsAgentTest {
     }
 
     @Test
+    void a_class_the_tag_filter_excluded_is_named_on_the_fail_line() {
+        String why = "--class named 1 class the tag filter excluded: cc.jumpkick.format.FormatThreadsBenchTest"
+                + " [bench]; pass --include-tags bench (or a --profile that includes it) to run it";
+        BuildRecord.Diag warning =
+                new BuildRecord.Diag("warning", "/ws/rest-service", "run-tests", "tag-excluded", why, null, null);
+        BuildRecord.Diag verdict = new BuildRecord.Diag("error", "", null, "run-error", why, null, null);
+        BuildRecord r = record("test", false, false, 9_500, null, List.of(warning, verdict), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("FAIL test rest-service · 9.5s — " + why + "\n");
+    }
+
+    @Test
+    void a_fail_with_no_failed_step_or_test_names_the_error_that_decided_it() {
+        BuildRecord.Diag verdict = new BuildRecord.Diag(
+                "error", "", null, "run-error", "jk test ran no test in any module\nsecond line", null, null);
+        BuildRecord r = record("test", false, false, 300, null, List.of(verdict), List.of());
+        assertThat(JkResultsAgent.render(r))
+                .isEqualTo("FAIL test rest-service · 300ms — jk test ran no test in any module\n");
+    }
+
+    @Test
+    void a_fail_with_only_a_warning_names_that_warning() {
+        BuildRecord.Diag wait = new BuildRecord.Diag(
+                "warning", "/ws/rest-service", "run-tests", "memory-wait", "waited 1s", null, null);
+        BuildRecord.Diag warning = new BuildRecord.Diag(
+                "warning",
+                "/ws/rest-service",
+                "run-tests",
+                "no-tests-discovered",
+                "discovery found 0 tests",
+                null,
+                null);
+        BuildRecord r = record("test", false, false, 300, null, List.of(wait, warning), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                FAIL test rest-service · 300ms — discovery found 0 tests
+                waited 1s
+                """);
+    }
+
+    @Test
+    void a_failed_step_keeps_its_error_off_the_fail_line() {
+        BuildRecord.Diag err =
+                new BuildRecord.Diag("error", "/ws/rest-service", "lock", "lock", "no version satisfies", null, null);
+        BuildRecord.Task step = new BuildRecord.Task("lock", "resolve", "FAIL", 400, 0);
+        BuildRecord r = record("lock", false, false, 400, null, List.of(err), List.of(step));
+        assertThat(JkResultsAgent.render(r)).startsWith("FAIL lock rest-service · 1 error · 400ms\n");
+    }
+
+    @Test
     void a_cancelled_run_names_the_cancel() {
         BuildRecord.Diag err =
                 new BuildRecord.Diag("error", "/ws/rest-service", "compile-java", "cancelled", "cancelled", null, null);

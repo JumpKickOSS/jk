@@ -93,6 +93,13 @@ T com.example.restservice.GreetingControllerTests#noParamGreetingShouldReturnDef
   44|	        assertThat(body).isEqualTo("Hello, World!");
 ```
 
+A failure with no failed step, test or source error carries its reason on the headline, after
+` — `: the run-level error that decided it, or else the warning the run left.
+
+```
+FAIL test jk · 9.5s — --class named 1 class the tag filter excluded: com.example.FormatThreadsBenchTest [bench]; pass --include-tags bench (or a --profile that includes it) to run it
+```
+
 Paths are relative to the project directory. A quoted source row is its line number, `|`, a
 tab, then the line exactly as the file has it, indentation included: everything after the first
 tab is an Edit's `old_string`. When that line occurs more than once in the file, the rows on

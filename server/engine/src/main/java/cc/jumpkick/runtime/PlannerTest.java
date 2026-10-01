@@ -41,7 +41,6 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestLauncherFailure;
-import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -615,6 +614,7 @@ public final class PlannerTest {
                             gated,
                             PlannerTest::awaitTestGate);
                     TestSummary result;
+                    TagExcludedCapture tagExcluded;
                     try {
                         // Module pin ([test] workers / [build] test-workers) wins over CLI for
                         // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -623,14 +623,14 @@ public final class PlannerTest {
                         boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
                         int testWorkers =
                                 debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
-                        TestProgressListener listener = TestSupport.bridgeListener(
-                                ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets);
+                        tagExcluded = new TagExcludedCapture(TestSupport.bridgeListener(
+                                ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets));
                         JUnitLauncher launcher = TestLaunch.launcher(
                                         in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec)
                                 .withAutoShare(auto);
                         try {
                             result = TestLaunch.launch(
-                                    ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
+                                    ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, tagExcluded);
                         } catch (TestLauncherFailure e) {
                             TestLaunch.reportLauncherFailure(
                                     ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
@@ -646,11 +646,10 @@ public final class PlannerTest {
                     if (TestClassMatch.nothingMatched(effectiveSel, affected != null, result)) {
                         // A workspace judges the patterns across its modules; this one skips.
                         if (in.projectModules().size() > 1) {
-                            ctx.label(TestClassMatch.skipLabel(effectiveSel.classes()));
-                            ctx.cached();
+                            TestClassMatch.skip(ctx, effectiveSel, tagExcluded.message());
                             return;
                         }
-                        result = TestClassMatch.asFailure(moduleLabel, effectiveSel);
+                        result = TestClassMatch.asFailure(moduleLabel, effectiveSel, tagExcluded.message());
                     }
                     TagExcludedSuite.note(ctx, effectiveSel, in.profileName(), affected != null, result);
                     ctx.put(TEST_RESULT, result);
