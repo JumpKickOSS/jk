@@ -6,14 +6,18 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.Await;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.Pipe;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
@@ -24,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * One connection's writer is shared by the plan's worker threads, the envelope's heartbeat
@@ -37,6 +42,9 @@ import org.junit.jupiter.api.Timeout;
  * looks for.
  */
 class WireWriterTest {
+
+    @TempDir
+    Path spillDir;
 
     private static final int PRODUCERS = 8;
     private static final int LINES_EACH = 400;
@@ -145,7 +153,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 300);
+        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES);
         String line = failureSizedLine();
         // Twice the byte bound: whatever the pipe's own buffer swallows, the queue crosses it.
         long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
@@ -170,7 +178,8 @@ class WireWriterTest {
 
     /**
      * A cancelled job's producers stop waiting for a client that does not read: the idle bound is
-     * never, yet the producer blocked for room returns as soon as the stream is unpaced, its later
+     * never and there is no room to spill, yet the producer blocked for room returns as soon as the
+     * stream is unpaced, its later
      * lines are dropped rather than queued past the bound, and the cancelled terminal still queues.
      */
     @Test
@@ -179,7 +188,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0);
+        WireWriter.bind(writer, 0, spillDir, 0);
         String line = failureSizedLine();
         long lines = 4 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
         CountDownLatch blocked = new CountDownLatch(1);
@@ -217,8 +226,9 @@ class WireWriterTest {
     /**
      * A client that reads slower than a burst arrives is still reading: a burst of twice the byte
      * bound, in failure-report-sized lines, reaches a reader that takes far longer than the idle
-     * bound to drain it, never pausing for as long as that bound. Every line lands, the producer
-     * waits for room instead of growing the queue past the bound, and the stream stays alive.
+     * bound to drain it, never pausing for as long as that bound. With no room to spill, every line
+     * lands, the producer waits for room instead of growing the queue past the bound, and the
+     * stream stays alive.
      */
     @Test
     @Timeout(120)
@@ -227,7 +237,7 @@ class WireWriterTest {
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
         long idleMs = 2_000;
-        WireWriter.bind(writer, idleMs);
+        WireWriter.bind(writer, idleMs, spillDir, 0);
         String line = failureSizedLine();
         int lines = (int) (2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1));
 
@@ -275,6 +285,78 @@ class WireWriterTest {
     }
 
     /**
+     * A client that stops reading does not hold its job: past the memory bound the lines go to a
+     * spill file and the producer finishes at once, with the engine holding no more than the bound
+     * in memory. When the client reads again every line lands in order, and the drained file is
+     * deleted.
+     */
+    @Test
+    @Timeout(60)
+    void a_stalled_client_spills_to_disk_and_reads_every_line_in_order_later() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES);
+        String pad = "x".repeat(38_000);
+        int lines = (int) (3 * WireWriter.MAX_QUEUED_BYTES / (pad.length() + 16));
+
+        long started = System.nanoTime();
+        for (int i = 0; i < lines; i++) WireWriter.sendQuiet(writer, i + ":" + pad);
+        assertThat((System.nanoTime() - started) / 1_000_000)
+                .as("the producer never waited for the client")
+                .isLessThan(20_000);
+        assertThat(WireWriter.queuedBytes(writer)).isLessThanOrEqualTo(WireWriter.MAX_QUEUED_BYTES);
+        assertThat(WireWriter.spilledBytes(writer)).isGreaterThan(WireWriter.MAX_QUEUED_BYTES);
+        assertThat(spillFiles()).hasSize(1);
+
+        Thread landing = Thread.ofPlatform().start(() -> {
+            try {
+                WireWriter.send(writer, "end");
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        var in = new BufferedReader(Channels.newReader(pipe.source(), StandardCharsets.UTF_8));
+        for (int i = 0; i < lines; i++) {
+            String got = in.readLine();
+            assertThat(got.substring(0, got.indexOf(':'))).isEqualTo(String.valueOf(i));
+        }
+        assertThat(in.readLine()).isEqualTo("end");
+        landing.join(Duration.ofSeconds(10).toMillis());
+        assertThat(landing.isAlive())
+                .as("a send behind spilled lines lands once they do")
+                .isFalse();
+        assertThat(WireWriter.spilledBytes(writer)).isZero();
+        Await.until(Duration.ofSeconds(5), () -> spillFiles().isEmpty());
+    }
+
+    /** A dropped client's spill file goes with it. */
+    @Test
+    @Timeout(60)
+    void a_dropped_client_leaves_no_spill_file() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES);
+        String line = failureSizedLine();
+        for (long i = 0; i < 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1); i++) {
+            WireWriter.sendQuiet(writer, line);
+        }
+        assertThat(spillFiles()).hasSize(1);
+
+        assertThatThrownBy(() -> WireWriter.send(writer, line)).isInstanceOf(IOException.class);
+        assertThat(spillFiles()).isEmpty();
+    }
+
+    private List<Path> spillFiles() {
+        try (var files = Files.list(spillDir)) {
+            return files.toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
      * A CPU-pool worker that waits for a slow client to drain leaves the pool its parallelism: the
      * pool runs a spare thread, so another job's task on the same one-thread pool still runs.
      */
@@ -284,7 +366,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 20_000);
+        WireWriter.bind(writer, 20_000, spillDir, 0);
         String line = failureSizedLine();
         long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
         ForkJoinPool pool = new ForkJoinPool(1);
@@ -316,7 +398,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 20_000);
+        WireWriter.bind(writer, 20_000, spillDir, WireWriter.MAX_SPILL_BYTES);
         String line = failureSizedLine();
         long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
         long started = System.nanoTime();
@@ -339,7 +421,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 300);
+        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES);
         // Enough to fill any pipe buffer, so the writer thread is blocked in the socket.
         String line = line(0, 0);
         for (int i = 0; i < 2_000; i++) WireWriter.sendQuiet(writer, line);
@@ -364,7 +446,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0);
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES);
         WireWriter.idleBound(writer, 300);
         String line = line(0, 0);
         for (int i = 0; i < 2_000; i++) WireWriter.sendQuiet(writer, line);
@@ -384,7 +466,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0);
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES);
         WireWriter.sendQuiet(writer, "{\"type\":\"progress\"}");
         WireWriter.sendQuiet(writer, "{\"type\":\"job-finish\"}");
         WireWriter.release(writer);

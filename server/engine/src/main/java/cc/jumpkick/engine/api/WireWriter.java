@@ -7,8 +7,12 @@ import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -29,11 +33,13 @@ import org.jspecify.annotations.Nullable;
  * not a virtual thread, so a client that reads slowly parks nothing the engine needs for other
  * clients, and a saturated virtual-thread scheduler cannot hold a hello reply back.
  *
- * <p>A client that reads slower than its job emits is paced, not dropped: once {@value
- * #MAX_QUEUED_BYTES} bytes of lines wait for it, a {@link #sendQuiet} waits for the client to drain
- * before it queues more, so the job runs at the client's pace and the queue stays bounded. A worker
- * of the CPU pool waits as a managed block, so the pool runs a spare thread in its place and other
- * jobs keep their parallelism. Lines from threads that serve more than this client — a cancel, a
+ * <p>A client that reads slower than its job emits never holds the job: once {@value
+ * #MAX_QUEUED_BYTES} bytes of lines wait for it in memory, a {@link #sendQuiet}'s line goes to the
+ * stream's spill file under {@code JkDirs.tmp()/wire-spill}, the writer thread reading it back in
+ * order, so the job finishes and lets go of the test gate and memory it holds. Only past {@link
+ * #MAX_SPILL_BYTES} on disk does a {@link #sendQuiet} wait for the client to drain. A worker of the
+ * CPU pool waits as a managed block, so the pool runs a spare thread in its place and other jobs
+ * keep their parallelism. Lines from threads that serve more than this client — a cancel, a
  * deadline, a heartbeat — go through {@link #sendNoWait}, which never waits.
  *
  * <p>A client that stops reading is dropped. The stream dies — the socket is closed and every later
@@ -45,8 +51,11 @@ import org.jspecify.annotations.Nullable;
 @NullMarked
 public final class WireWriter {
 
-    /** Bytes of unread lines past which {@link #sendQuiet} waits for the client to drain. */
+    /** Bytes of unread lines a stream holds in memory; past them a {@link #sendQuiet} line spills to disk. */
     static final long MAX_QUEUED_BYTES = 8L << 20;
+
+    /** Bytes of lines one stream holds on disk past {@link #MAX_QUEUED_BYTES} before a paced producer waits. */
+    static final long MAX_SPILL_BYTES = 1L << 30;
 
     /** A line longer than this is written and flushed in slices this long, each one counted as progress. */
     static final int WRITE_CHUNK_CHARS = 8_192;
@@ -67,7 +76,12 @@ public final class WireWriter {
      * writer nobody bound uses the process-wide stream-idle bound.
      */
     public static void bind(BufferedWriter writer, long idleBoundMillis) {
-        STREAMS.put(writer, new Stream(writer, idleBoundMillis));
+        bind(writer, idleBoundMillis, spillDir(), MAX_SPILL_BYTES);
+    }
+
+    /** {@link #bind} with the stream's spill directory and spill cap in bytes. */
+    static void bind(BufferedWriter writer, long idleBoundMillis, Path spillDir, long spillCap) {
+        STREAMS.put(writer, new Stream(writer, idleBoundMillis, spillDir, spillCap));
     }
 
     /**
@@ -158,8 +172,23 @@ public final class WireWriter {
         }
     }
 
+    /** Bytes of lines {@code writer}'s stream holds on disk that have not reached the socket yet. */
+    static long spilledBytes(BufferedWriter writer) {
+        Stream s = STREAMS.get(writer);
+        if (s == null) return 0;
+        synchronized (s) {
+            return s.spilledBytes;
+        }
+    }
+
     private static Stream stream(BufferedWriter writer) {
-        return STREAMS.computeIfAbsent(writer, w -> new Stream(w, BoundedLineReader.streamIdleMillis(JkDirs::env)));
+        return STREAMS.computeIfAbsent(
+                writer,
+                w -> new Stream(w, BoundedLineReader.streamIdleMillis(JkDirs::env), spillDir(), MAX_SPILL_BYTES));
+    }
+
+    private static Path spillDir() {
+        return JkDirs.tmp().resolve("wire-spill");
     }
 
     /** How a caller hands its line over. */
@@ -171,6 +200,9 @@ public final class WireWriter {
         /** Return at once. */
         QUEUED
     }
+
+    /** A {@link #send} caller waiting for the spilled line at {@code index}. */
+    private record SpillWaiter(long index, CompletableFuture<Void> landed) {}
 
     /** One line waiting to be written; {@code landed} is present when a caller waits for it. */
     private record Pending(String line, @Nullable CompletableFuture<Void> landed) {
@@ -202,9 +234,27 @@ public final class WireWriter {
         /** Whether the stream's job was cancelled: a paced line never waits, and one with no room is dropped. */
         private boolean unpaced;
 
-        Stream(BufferedWriter writer, long idleBoundMillis) {
+        private final Path spillDir;
+        private final long spillCap;
+
+        /** Lines past the memory bound, behind every line in {@link #queue}; null while none wait on disk. */
+        private @Nullable SpillFile spill;
+
+        private long spilledLines;
+        private long spillReadLines;
+        private long spilledBytes;
+
+        /** {@link #send} callers waiting for a spilled line, by its index in the spill file. */
+        private final ArrayDeque<SpillWaiter> spillWaiters = new ArrayDeque<>();
+
+        /** Whether spilling failed once: the stream then paces in memory alone. */
+        private boolean spillBroken;
+
+        Stream(BufferedWriter writer, long idleBoundMillis, Path spillDir, long spillCap) {
             this.writer = writer;
             this.idleBoundMillis = Math.max(0L, idleBoundMillis);
+            this.spillDir = spillDir;
+            this.spillCap = spillCap;
         }
 
         void idleBound(long millis) {
@@ -222,7 +272,7 @@ public final class WireWriter {
                 awaitRoom(p);
             } else {
                 synchronized (this) {
-                    add(p);
+                    place(p, false);
                 }
             }
             CompletableFuture<Void> landed = p.landed();
@@ -230,44 +280,89 @@ public final class WireWriter {
         }
 
         /**
-         * Caller holds the monitor. Queue {@code p}, or throw when the stream is dead or its client
-         * has read nothing for the idle bound.
+         * Caller holds the monitor. Queue {@code p} in memory, or on disk behind lines already there
+         * or past the memory bound; a paced line the spill cap leaves no room for is not placed, and
+         * this returns {@code false}. Throws when the stream is dead or its client has read nothing
+         * for the idle bound.
          */
-        private void add(Pending p) throws IOException {
+        private boolean place(Pending p, boolean paced) throws IOException {
             if (dead != null) throw dead;
             long now = CLOCK.nanos();
             long stalledMs = stalledMillis(now);
             if (stalled(stalledMs)) throw drop(notReading("has read nothing for " + stalledMs + " ms"));
-            if (!busy()) progressNanos = now;
-            queue.addLast(p);
-            queuedBytes += p.bytes();
+            boolean wasBusy = busy();
+            boolean onDisk = spillUnread() > 0;
+            boolean spillFits = spilledBytes + p.bytes() <= spillCap;
+            if (!onDisk && (hasRoom(p) || !paced)) {
+                queue.addLast(p);
+                queuedBytes += p.bytes();
+            } else if (paced && (spillBroken || !spillFits) || !spillTo(p)) {
+                return false;
+            }
+            if (!wasBusy) progressNanos = now;
             if (drainer == null) startDrainer();
             else notifyAll();
+            return true;
         }
 
-        /** Caller holds the monitor. A line fits while the queue stays under the bound, or is empty. */
+        /**
+         * Caller holds the monitor. Append {@code p} to the spill file. A file that cannot be opened
+         * leaves the stream pacing in memory ({@code false}); one that fails mid-stream kills the
+         * stream, since the lines behind it can no longer land in order.
+         */
+        private boolean spillTo(Pending p) throws IOException {
+            SpillFile file = spill;
+            if (file == null) {
+                try {
+                    file = spill = SpillFile.open(spillDir);
+                } catch (IOException e) {
+                    spillBroken = true;
+                    Log.warn(
+                            "jk engine: cannot spill a slow client's lines to disk; pacing it in memory",
+                            "dir",
+                            spillDir,
+                            "error",
+                            String.valueOf(e.getMessage()));
+                    return false;
+                }
+            }
+            try {
+                file.append(p.line());
+            } catch (IOException e) {
+                throw drop(new IOException(
+                        "could not spill a client's lines to " + file.path() + ": " + e.getMessage(), e));
+            }
+            CompletableFuture<Void> landed = p.landed();
+            if (landed != null) spillWaiters.addLast(new SpillWaiter(spilledLines, landed));
+            spilledLines++;
+            spilledBytes += p.bytes();
+            return true;
+        }
+
+        /** Caller holds the monitor. Lines on disk the writer thread has not read yet. */
+        private long spillUnread() {
+            return spilledLines - spillReadLines;
+        }
+
+        /** Caller holds the monitor. A line fits while the in-memory queue stays under the bound, or is empty. */
         private boolean hasRoom(Pending p) {
             return queuedBytes == 0 || queuedBytes + p.bytes() <= MAX_QUEUED_BYTES;
         }
 
         /**
-         * Queue {@code p} once the stream has room for it. The wait is a managed block, so a CPU-pool
-         * worker waiting here has a spare thread run in its place. It ends when the client drains,
-         * when the client is dropped for reading nothing within the idle bound, when the caller is
-         * interrupted (its line is queued), or when the job is cancelled (its line is dropped).
+         * Place {@code p}, waiting first when both memory and the spill cap are full. The wait is a
+         * managed block, so a CPU-pool worker waiting here has a spare thread run in its place. It
+         * ends when the client drains, when the client is dropped for reading nothing within the
+         * idle bound, when the caller is interrupted (its line is queued), or when the job is
+         * cancelled (its line is dropped).
          */
         private void awaitRoom(Pending p) throws IOException {
             synchronized (this) {
-                if (unpaced) {
-                    if (hasRoom(p)) add(p);
+                if (place(p, true) || unpaced) return;
+                if (Thread.currentThread().isInterrupted()) {
+                    place(p, false);
                     return;
                 }
-            }
-            if (Thread.currentThread().isInterrupted()) {
-                synchronized (this) {
-                    add(p);
-                }
-                return;
             }
             RoomBlocker blocker = new RoomBlocker(p);
             try {
@@ -281,7 +376,7 @@ public final class WireWriter {
             if (failed != null) throw failed;
         }
 
-        /** {@link #awaitRoom}'s wait. Queues the line itself, under the monitor, once there is room. */
+        /** {@link #awaitRoom}'s wait. Places the line itself, under the monitor, once there is room. */
         private final class RoomBlocker implements ForkJoinPool.ManagedBlocker {
             private final Pending p;
             private boolean done;
@@ -295,8 +390,7 @@ public final class WireWriter {
             @Override
             public boolean isReleasable() {
                 synchronized (Stream.this) {
-                    if (!done && (dead != null || hasRoom(p))) addOrFail();
-                    else if (!done && unpaced) done = true;
+                    if (!done) tryPlace(false);
                     return done;
                 }
             }
@@ -305,22 +399,9 @@ public final class WireWriter {
             public boolean block() {
                 synchronized (Stream.this) {
                     while (!done) {
-                        if (dead != null || hasRoom(p) || interrupted) {
-                            addOrFail();
-                            break;
-                        }
-                        if (unpaced) {
-                            done = true;
-                            break;
-                        }
-                        long stalledMs = stalledMillis(CLOCK.nanos());
-                        if (stalled(stalledMs)) {
-                            failed = drop(notReading("has read nothing for " + stalledMs + " ms"));
-                            done = true;
-                            break;
-                        }
+                        if (tryPlace(interrupted)) break;
                         try {
-                            Stream.this.wait(pollMillis(stalledMs));
+                            Stream.this.wait(pollMillis(stalledMillis(CLOCK.nanos())));
                         } catch (InterruptedException e) {
                             interrupted = true;
                         }
@@ -329,20 +410,21 @@ public final class WireWriter {
                 return true;
             }
 
-            /** Caller holds the stream's monitor. */
-            private void addOrFail() {
+            /** Caller holds the stream's monitor. Whether the wait is over: placed, failed or dropped. */
+            private boolean tryPlace(boolean force) {
                 try {
-                    add(p);
+                    if (place(p, !force) || unpaced) done = true;
                 } catch (IOException e) {
                     failed = e;
+                    done = true;
                 }
-                done = true;
+                return done;
             }
         }
 
         /** Caller holds the monitor. Whether the stream has bytes it has not written yet. */
         private boolean busy() {
-            return writing || !queue.isEmpty();
+            return writing || !queue.isEmpty() || spillUnread() > 0;
         }
 
         /** Caller holds the monitor. How long a busy stream has gone without writing a byte, in milliseconds. */
@@ -399,10 +481,11 @@ public final class WireWriter {
         }
 
         /**
-         * Caller holds the monitor. Kill the stream: fail every waiting line, and close the socket
-         * under a writer thread blocked in it — interrupting a thread inside an interruptible
-         * channel closes that channel — so the connection's read loop ends as well. A client that
-         * went away is the read loop's news; a client that stopped reading is said in the log.
+         * Caller holds the monitor. Kill the stream: fail every waiting line, delete its spill file,
+         * and close the socket under a writer thread blocked in it — interrupting a thread inside an
+         * interruptible channel closes that channel — so the connection's read loop ends as well. A
+         * client that went away is the read loop's news; a client that stopped reading is said in
+         * the log.
          */
         private IOException drop(IOException cause) {
             IOException already = dead;
@@ -417,17 +500,30 @@ public final class WireWriter {
                         "queuedBytes",
                         queuedBytes,
                         "queuedLines",
-                        queue.size());
+                        queue.size(),
+                        "spilledBytes",
+                        spilledBytes);
             }
             for (Pending p; (p = queue.pollFirst()) != null; ) {
                 CompletableFuture<Void> landed = p.landed();
                 if (landed != null) landed.completeExceptionally(cause);
             }
+            for (SpillWaiter w; (w = spillWaiters.pollFirst()) != null; )
+                w.landed().completeExceptionally(cause);
             queuedBytes = 0;
+            closeSpill();
             Thread t = drainer;
             if (t != null && t != Thread.currentThread() && writing) t.interrupt();
             notifyAll();
             return cause;
+        }
+
+        /** Caller holds the monitor. Delete the spill file and forget its lines. */
+        private void closeSpill() {
+            SpillFile file = spill;
+            spill = null;
+            spilledLines = spillReadLines = spilledBytes = 0;
+            if (file != null) file.close();
         }
 
         /** Caller holds the monitor. */
@@ -442,9 +538,10 @@ public final class WireWriter {
         private void drain() {
             while (true) {
                 Pending p;
+                SpillFile file = null;
                 synchronized (this) {
                     p = queue.pollFirst();
-                    if (p == null) {
+                    if (p == null && spillUnread() == 0) {
                         if (dead != null || released) {
                             endDrainer();
                             return;
@@ -456,17 +553,21 @@ public final class WireWriter {
                             return;
                         }
                         p = queue.pollFirst();
-                        if (p == null) {
+                        if (p == null && spillUnread() == 0) {
                             endDrainer();
                             return;
                         }
                     }
+                    if (p == null) file = spill;
                     writing = true;
                 }
-                CompletableFuture<Void> landed = p.landed();
+                String line;
                 try {
-                    write(p.line());
+                    // Only this thread reads the file; producers append under the monitor.
+                    line = p != null ? p.line() : Objects.requireNonNull(file).next();
+                    write(line);
                 } catch (IOException e) {
+                    CompletableFuture<Void> landed = p == null ? null : p.landed();
                     synchronized (this) {
                         drop(e);
                         endDrainer();
@@ -474,12 +575,25 @@ public final class WireWriter {
                     if (landed != null) landed.completeExceptionally(e);
                     return;
                 }
+                List<CompletableFuture<Void>> landedNow = new ArrayList<>(1);
                 synchronized (this) {
-                    queuedBytes -= p.bytes();
+                    if (p != null) {
+                        queuedBytes -= p.bytes();
+                        CompletableFuture<Void> landed = p.landed();
+                        if (landed != null) landedNow.add(landed);
+                    } else {
+                        long index = spillReadLines++;
+                        spilledBytes -= line.length() + 1L;
+                        while (!spillWaiters.isEmpty()
+                                && spillWaiters.peekFirst().index() <= index) {
+                            landedNow.add(spillWaiters.pollFirst().landed());
+                        }
+                        if (spillUnread() == 0) closeSpill();
+                    }
                     writing = false;
                     notifyAll();
                 }
-                if (landed != null) landed.complete(null);
+                for (CompletableFuture<Void> landed : landedNow) landed.complete(null);
             }
         }
 
