@@ -307,6 +307,11 @@
           "items": { "type": "string" },
           "description": "Class patterns in --class syntax (fully qualified, simple name in any package, * wildcards) no suite runs, nested classes included; Surefire's <excludes>. A run-tests input."
         },
+        "exclude-dependencies": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[^:\\s]+:[^:\\s]+$" },
+          "description": "group:artifact coordinates left off every test JVM's classpath, declared or transitive; compile-test still sees them and the lock is unchanged. Surefire's <classpathDependencyExcludes>. A run-tests input."
+        },
         "exclude-src": {
           "type": "array",
           "items": { "type": "string" },

@@ -48,6 +48,7 @@ final class ManifestBuildTable {
         final List<String> testSerialTags = new ArrayList<>();
         final List<String> testExcludeClasses = new ArrayList<>();
         final List<String> testExcludeSrc = new ArrayList<>();
+        final List<String> testExcludeDependencies = new ArrayList<>();
         boolean testAssertions = true;
         boolean testCoverage = false;
         final List<String> testTools = new ArrayList<>();
@@ -207,6 +208,16 @@ final class ManifestBuildTable {
                 s.testExcludeClasses);
         // [test] exclude-src — globs over a test source's path under its root; matches are not compiled.
         readStrings(test, "exclude-src", "source globs: exclude-src = [\"**/*Benchmark*\"]", s.testExcludeSrc);
+        // [test] exclude-dependencies — group:artifact coordinates the test JVM's classpath leaves out.
+        String coordinates = "group:artifact coordinates: exclude-dependencies = [\"org.slf4j:slf4j-simple\"]";
+        readStrings(test, "exclude-dependencies", coordinates, s.testExcludeDependencies);
+        for (String coordinate : s.testExcludeDependencies) {
+            String[] parts = coordinate.split(":", -1);
+            if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+                throw new JkBuildParseException("[test].exclude-dependencies must be an array of " + coordinates
+                        + " (got `" + coordinate + "`)");
+            }
+        }
         // [test] assertions — -ea on every forked test JVM unless the module turns it off.
         if (test.contains("assertions")) {
             if (!(test.get("assertions") instanceof Boolean assertions)) {

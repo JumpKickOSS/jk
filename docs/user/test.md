@@ -105,12 +105,13 @@ same cone for `jk build` and `jk test`. To reach one module's class from the wor
 name the class: `jk test -m clients/cli --class SelfNukeCommandTest` runs it in `clients/cli`
 and skips the prerequisites, whose suites match nothing.
 
-## Leave classes and sources out (`[test] exclude-classes`, `exclude-src`)
+## Leave classes, sources and dependencies out (`[test] exclude-classes`, `exclude-src`, `exclude-dependencies`)
 
 ```toml
 [test]
-exclude-classes = ["*PerformanceTest"]   # never run: no suite, no --class, no --affected reaches them
-exclude-src     = ["**/*Benchmark*"]     # never compiled by compile-test
+exclude-classes      = ["*PerformanceTest"]         # never run: no suite, no --class, no --affected reaches them
+exclude-src          = ["**/*Benchmark*"]           # never compiled by compile-test
+exclude-dependencies = ["org.slf4j:slf4j-simple"]   # compiled against, but not on the test JVM's classpath
 ```
 
 `exclude-classes` takes `--class` patterns (fully qualified, simple name in any package, `*`
@@ -125,6 +126,14 @@ does not override it.
 matching `.java` / `.kt` / `.groovy` / `.scala` files out of compile-test and out of the
 suite's stamp. It is the compiler plugin's `<testExcludes>`: sources that need a dependency only
 an opt-in feature brings, such as JMH benchmarks.
+
+`exclude-dependencies` takes `group:artifact` coordinates and leaves those jars off the classpath
+every test JVM of the module runs on, whether the module declares the dependency or reaches it
+transitively; the excluded jar's own dependencies stay. compile-test still compiles against it, and
+`jk-lock.toml` is unchanged: it filters the run, not the resolve. It is Surefire's
+`<classpathDependencyExcludes>`: a parent hands every module `slf4j-simple`, and the one module
+that captures log events with `slf4j-test` drops it so a single SLF4J provider loads. The
+classpath is part of the run's stamp, so changing the list re-runs the suite.
 
 ## An empty run is not green
 

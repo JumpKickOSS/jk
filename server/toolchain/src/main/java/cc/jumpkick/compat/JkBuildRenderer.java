@@ -81,7 +81,7 @@ public final class JkBuildRenderer {
 
     /**
      * {@code [build] extra-src}; {@code [test]} extra source roots and source excludes, the baseline
-     * tag filters, the excluded classes, and the test JVM's flags and system properties.
+     * tag filters, the excluded classes and dependencies, and the test JVM's flags and system properties.
      */
     private static void renderBuild(StringBuilder sb, BuildBlock build) {
         if (!build.extraSrc().isEmpty()) {
@@ -92,6 +92,7 @@ public final class JkBuildRenderer {
                 && build.testExcludeTags().isEmpty()
                 && build.testExcludeClasses().isEmpty()
                 && build.testExcludeSrc().isEmpty()
+                && build.testExcludeDependencies().isEmpty()
                 && build.testJvm().isEmpty()) {
             return;
         }
@@ -107,6 +108,10 @@ public final class JkBuildRenderer {
         if (!build.testExcludeClasses().isEmpty())
             sb.append("exclude-classes = ")
                     .append(list(build.testExcludeClasses()))
+                    .append('\n');
+        if (!build.testExcludeDependencies().isEmpty())
+            sb.append("exclude-dependencies = ")
+                    .append(list(build.testExcludeDependencies()))
                     .append('\n');
         if (!build.testJvm().jvmArgs().isEmpty())
             sb.append("jvm-args = ").append(list(build.testJvm().jvmArgs())).append('\n');

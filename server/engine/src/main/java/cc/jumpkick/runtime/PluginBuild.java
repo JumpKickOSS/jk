@@ -566,8 +566,8 @@ public final class PluginBuild {
         List<ProdEntry> out = new ArrayList<>();
         if (Files.exists(lockFile)) {
             var resolver = new ClasspathResolver(cas);
-            for (var entry : resolver.entriesFor(
-                    memberLock(lockFile, projectDir), ClasspathResolver.TEST, false, project, projectDir)) {
+            for (var entry :
+                    resolver.testRuntimeEntriesFor(memberLock(lockFile, projectDir), false, project, projectDir)) {
                 var a = entry.artifact();
                 out.add(new ProdEntry(
                         a.moduleArtifact() + "-" + a.version() + ".jar",
