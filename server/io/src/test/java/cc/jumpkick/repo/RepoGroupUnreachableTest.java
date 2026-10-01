@@ -8,6 +8,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.DeadEndpoint;
@@ -235,6 +236,71 @@ class RepoGroupUnreachableTest {
                     .isEqualTo("good");
             assertThat(group.passedOver()).containsExactly(nexus);
         }
+    }
+
+    /** Every request answered with {@code status}, the way an Artifactory that wants a login answers. */
+    private record Denying(int status) implements RepoTransport {
+        @Override
+        public Optional<byte[]> fetch(URI uri, RepoCredential credential) throws IOException {
+            throw new HttpStatusException(status, uri);
+        }
+
+        @Override
+        public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+            return 0;
+        }
+    }
+
+    /**
+     * tutorials' shape: a POM's repository answers 401 for a coordinate no repository has. A
+     * passable repository that refuses access is passed over like one nothing answers at — the
+     * package is a miss, and the group names the repository with the status it met.
+     */
+    @Test
+    void an_optional_repository_that_refuses_access_is_passed_over(@TempDir Path tmp) throws Exception {
+        for (int status : new int[] {401, 403}) {
+            clear();
+            Cas cas = new Cas(tmp.resolve("cas-" + status));
+            MavenRepo denying = MavenRepo.overTransport(
+                            "vendor",
+                            DEAD,
+                            new Denying(status),
+                            cas,
+                            RepoCredential.ANONYMOUS,
+                            null,
+                            false,
+                            false,
+                            false)
+                    .withOptional(true);
+            RepoGroup group = new RepoGroup(List.of(denying, good(tmp, cas)));
+
+            assertThat(group.tryFetchPom(Coordinate.of("com.example", "other", "2.0")))
+                    .as("HTTP %d from a passable repository leaves a miss, not a failure", status)
+                    .isEmpty();
+            assertThat(group.tryFetchPom(Coordinate.of("com.example", "lib", "1.0")))
+                    .get()
+                    .extracting(f -> f.repo().name())
+                    .isEqualTo("good");
+            assertThat(group.availableVersions(Coordinate.of("com.example", "lib", "0"), Set.of("1.0"), false))
+                    .containsExactly("1.0");
+            assertThat(group.passedOver()).containsExactly(denying);
+            assertThat(denying.unreachableFault()).startsWith("HTTP " + status);
+        }
+    }
+
+    /** A repository written by hand that answers 401 is a credentials problem the user must fix: the resolve stops on it. */
+    @Test
+    void a_hand_written_repository_that_refuses_access_stops_the_resolve(@TempDir Path tmp) throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        MavenRepo denying = MavenRepo.overTransport(
+                "vendor", DEAD, new Denying(401), cas, RepoCredential.ANONYMOUS, null, false, false, false);
+        RepoGroup group = new RepoGroup(List.of(denying, good(tmp, cas)));
+
+        assertThat(denying.passable()).isFalse();
+        assertThatThrownBy(() -> group.tryFetchPom(Coordinate.of("com.example", "other", "2.0")))
+                .isInstanceOf(HttpStatusException.class)
+                .hasMessageContaining("HTTP 401");
+        assertThat(group.passedOver()).isEmpty();
     }
 
     /** A repository a dependency's POM declares is held to Maven's rule: passed over when nothing answers there. */

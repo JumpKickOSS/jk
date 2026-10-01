@@ -6,6 +6,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -183,7 +184,7 @@ public final class MavenMetadataCache {
             if (Files.isRegularFile(body)) {
                 return Files.readAllBytes(body);
             }
-            throw new IOException("HTTP " + status + " fetching " + uri);
+            throw new HttpStatusException(status, uri);
         } catch (MavenRepo.ArtifactNotFoundException notFound) {
             throw notFound; // a real miss, not a transport hiccup
         } catch (IOException networkError) {

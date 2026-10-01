@@ -3,7 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.http.SafeUri;
+import cc.jumpkick.http.HttpStatusException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -34,7 +34,7 @@ public final class HttpTransport implements RepoTransport {
         int status = response.statusCode();
         if (status == 404) return Optional.empty();
         if (!success(status)) {
-            throw new IOException("HTTP " + status + " fetching " + SafeUri.forMessage(uri));
+            throw new HttpStatusException(status, uri);
         }
         return Optional.of(response.body());
     }
@@ -50,7 +50,7 @@ public final class HttpTransport implements RepoTransport {
         }
         if (!success(status)) {
             drain(response.body());
-            throw new IOException("HTTP " + status + " fetching " + SafeUri.forMessage(uri));
+            throw new HttpStatusException(status, uri);
         }
         return Optional.of(response.body());
     }

@@ -9,6 +9,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
@@ -93,10 +94,11 @@ public final class MavenRepo {
     private final DownloadLeg download;
 
     /**
-     * The connect-level fault the first request to this repository met, once one has — nothing
-     * answers at its address, so it is asked nothing more for the rest of the job — else null.
-     * The address itself is remembered process-wide by {@link ConnectFaults}, so a fresh object
-     * over the same URL is refused before it dials as well.
+     * The fault that put this repository out of the job, once a request met one — nothing answers
+     * at its address, or a {@linkplain #passable passable} one refuses access — so it is asked
+     * nothing more for the rest of the job; else null. An address that answers nothing is also
+     * remembered process-wide by {@link ConnectFaults}, so a fresh object over the same URL is
+     * refused before it dials as well.
      */
     private final AtomicReference<@Nullable String> unreachable = new AtomicReference<>();
 
@@ -344,9 +346,9 @@ public final class MavenRepo {
     }
 
     /**
-     * True when the resolve passes this repository over once nothing answers at its address, as
-     * it does a blocked one, instead of stopping: one declared {@code optional}, and any at a
-     * loopback address — a developer's local Nexus no other machine runs.
+     * True when the resolve passes this repository over once nothing answers at its address or it
+     * refuses access (401, 403), as it does a blocked one, instead of stopping: one declared {@code
+     * optional}, and any at a loopback address — a developer's local Nexus no other machine runs.
      */
     public boolean passable() {
         return passable(optional, baseUrl);
@@ -361,7 +363,7 @@ public final class MavenRepo {
         return optional || RepositorySpec.loopback(url.getHost());
     }
 
-    /** The connect-level fault that made this repository unreachable for the rest of the job, or null. */
+    /** The fault that put this repository out of the rest of the job, or null. */
     public @Nullable String unreachableFault() {
         return unreachable.get();
     }
@@ -612,12 +614,13 @@ public final class MavenRepo {
     /**
      * {@code transport} as this repository's unreachable failure when its cause is connect-level,
      * or — for a {@linkplain #passable passable} one — when it got no HTTP answer at all (reset,
-     * dropped, timed out): remembered, so the repository is asked nothing more. Else {@code
-     * transport} itself.
+     * dropped, timed out) or an answer refusing access (401, 403), which Maven passes over as
+     * well: remembered, so the repository is asked nothing more. Else {@code transport} itself.
      */
     private IOException unreachableOr(IOException transport) {
         String fault = ConnectFaults.describe(transport);
         if (fault == null && passable()) fault = silence(transport);
+        if (fault == null && passable()) fault = refusal(transport);
         if (fault == null) return transport;
         unreachable.compareAndSet(null, fault);
         return new RepositoryUnreachableException(name, baseUrl, fault, transport);
@@ -630,6 +633,17 @@ public final class MavenRepo {
                 Throwable met = noAnswer.getCause() == null ? noAnswer : noAnswer.getCause();
                 String detail = met.getMessage();
                 return met.getClass().getSimpleName() + (detail == null || detail.isBlank() ? "" : ": " + detail);
+            }
+        }
+        return null;
+    }
+
+    /** The 401 or 403 in {@code failure}'s cause chain as one line naming it, or null. */
+    private static @Nullable String refusal(Throwable failure) {
+        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof HttpStatusException answer && answer.refusesAccess()) {
+                return "HTTP " + answer.status()
+                        + (answer.status() == 401 ? ": it asks for credentials" : ": access refused");
             }
         }
         return null;

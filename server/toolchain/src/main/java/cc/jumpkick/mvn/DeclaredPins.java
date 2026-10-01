@@ -6,6 +6,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.http.RateLimitedException;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -331,6 +332,9 @@ public final class DeclaredPins {
     static String summary(IOException failure) {
         String message = failure.getMessage() == null ? "" : failure.getMessage();
         if (failure instanceof RateLimitedException) return "was rate-limited";
+        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof HttpStatusException answer) return "answered HTTP " + answer.status();
+        }
         if (failure instanceof MavenRepo.RepositoryUnreachableException) return "could not be reached";
         Matcher status = HTTP_STATUS.matcher(message);
         if (status.find()) return "answered HTTP " + status.group(1);
