@@ -117,7 +117,7 @@ public final class ClasspathResolver {
         this.locator = Objects.requireNonNull(locator, "locator");
     }
 
-    /** Backwards-compat overload: returns every checksummed package. */
+    /** Every checksummed package of the lock. */
     public List<Path> classpathFor(Lockfile lock) {
         return classpathFor(lock, EnumSet.allOf(Scope.class));
     }
@@ -166,6 +166,26 @@ public final class ClasspathResolver {
             Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module, Path moduleDir) {
         return resolveEntries(
                 lock, moduleRows(lock, scopes, module, moduleDir), Missing.of(requirePresent), effectiveLocator(lock));
+    }
+
+    /**
+     * The classpath a module's test JVMs run on: {@link #TEST} over the module, less the rows its
+     * {@code [test] exclude-dependencies} names, wherever in the graph they sit. Their own
+     * dependencies stay.
+     */
+    public List<Path> testRuntimeClasspathFor(Lockfile lock, boolean requirePresent, JkBuild module, Path moduleDir) {
+        List<Path> result = new ArrayList<>(lock.artifacts().size());
+        for (Entry entry : testRuntimeEntriesFor(lock, requirePresent, module, moduleDir)) {
+            if (entry.jar() != null) result.add(entry.jar());
+        }
+        return result;
+    }
+
+    /** As {@link #testRuntimeClasspathFor}, each path paired with its lock row. */
+    public List<Entry> testRuntimeEntriesFor(Lockfile lock, boolean requirePresent, JkBuild module, Path moduleDir) {
+        List<Lockfile.Artifact> rows = moduleRows(lock, TEST, module, moduleDir);
+        rows.removeIf(row -> module.build().testExcludesDependency(row.moduleGroup(), row.moduleArtifact()));
+        return resolveEntries(lock, rows, Missing.of(requirePresent), effectiveLocator(lock));
     }
 
     /**

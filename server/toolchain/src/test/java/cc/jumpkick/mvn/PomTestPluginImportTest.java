@@ -179,6 +179,81 @@ class PomTestPluginImportTest {
         assertThat(reparsed.build().testExcludeSrc()).containsExactly("**/*Benchmark*");
     }
 
+    @Test
+    void surefire_classpath_dependency_excludes_become_test_exclude_dependencies(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>collector</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins>
+                    <plugin>
+                      <artifactId>maven-surefire-plugin</artifactId>
+                      <configuration>
+                        <classpathDependencyExcludes>
+                          <classpathDependencyExcludes>org.slf4j:slf4j-simple</classpathDependencyExcludes>
+                          <classpathDependencyExclude>ch.qos.logback:logback-classic, log4j</classpathDependencyExclude>
+                        </classpathDependencyExcludes>
+                      </configuration>
+                    </plugin>
+                  </plugins></build>
+                </project>
+                """);
+        JkBuild build = result.jkBuild();
+        assertThat(build.build().testExcludeDependencies())
+                .containsExactly("org.slf4j:slf4j-simple", "ch.qos.logback:logback-classic");
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<classpathDependencyExcludes>` log4j —"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered)
+                .contains(
+                        "[test]\nexclude-dependencies = [\"org.slf4j:slf4j-simple\", \"ch.qos.logback:logback-classic\"]\n");
+        assertThat(JkBuildParser.parse(rendered).build().testExcludeDependencies())
+                .containsExactly("org.slf4j:slf4j-simple", "ch.qos.logback:logback-classic");
+    }
+
+    @Test
+    void classpath_dependency_excludes_managed_in_a_parent_reach_the_module(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <build><pluginManagement><plugins>
+                    <plugin>
+                      <artifactId>maven-surefire-plugin</artifactId>
+                      <configuration>
+                        <classpathDependencyExcludes>org.slf4j:slf4j-simple</classpathDependencyExcludes>
+                      </configuration>
+                    </plugin>
+                  </plugins></pluginManagement></build>
+                </project>
+                """);
+        Path pom = Files.createDirectories(tempDir.resolve("core")).resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.ex</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0.0</version>
+                    <relativePath>../pom.xml</relativePath>
+                  </parent>
+                  <artifactId>core</artifactId>
+                  <build><plugins>
+                    <plugin><artifactId>maven-surefire-plugin</artifactId></plugin>
+                  </plugins></build>
+                </project>
+                """);
+        PomImporter.Result result = TestImporters.offline(tempDir).importFrom(pom);
+        assertThat(result.jkBuild().build().testExcludeDependencies()).containsExactly("org.slf4j:slf4j-simple");
+    }
+
     private static Path writeManifest(Path tempDir, String rendered) throws Exception {
         Path manifest = tempDir.resolve("rendered").resolve("jk.toml");
         Files.createDirectories(manifest.getParent());

@@ -219,6 +219,49 @@ class ClasspathResolverTest {
                         app.toAbsolutePath().normalize(), lib.toAbsolutePath().normalize());
     }
 
+    /**
+     * {@code [test] exclude-dependencies} takes a declared and a transitive coordinate off the test
+     * JVM's classpath and leaves the compile-test classpath, and the excluded jar's own
+     * dependencies, alone.
+     */
+    @Test
+    void test_exclude_dependencies_leave_the_test_runtime_classpath_and_not_compile_test(@TempDir Path tempDir)
+            throws Exception {
+        Path api = putJar(tempDir, "org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar", "api");
+        Path simple = putJar(tempDir, "org/slf4j/slf4j-simple/2.0.17/slf4j-simple-2.0.17.jar", "simple");
+        Path capture = putJar(tempDir, "com/ex/capture/1.0/capture-1.0.jar", "capture");
+        Path logback = putJar(tempDir, "ch/qos/logback/logback-classic/1.5.0/logback-classic-1.5.0.jar", "logback");
+        Lockfile lock = lock(
+                testRow("ch.qos.logback:logback-classic:jar:", "1.5.0", logback, List.of()),
+                testRow("com.ex:capture:jar:", "1.0", capture, List.of("ch.qos.logback:logback-classic:jar:@1.5.0")),
+                testRow("org.slf4j:slf4j-api:jar:", "2.0.17", api, List.of()),
+                testRow("org.slf4j:slf4j-simple:jar:", "2.0.17", simple, List.of("org.slf4j:slf4j-api:jar:@2.0.17")));
+        JkBuild module = JkBuildParser.parse("""
+                name = "m"
+                [test-dependencies]
+                slf4j-simple = { group = "org.slf4j", version = "2.0.17" }
+                capture = { group = "com.ex", version = "1.0" }
+
+                [test]
+                exclude-dependencies = ["org.slf4j:slf4j-simple", "ch.qos.logback:logback-classic"]
+                """);
+        ClasspathResolver resolver = new ClasspathResolver(tempDir);
+        Path dir = tempDir.resolve("m");
+
+        assertThat(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true, module, dir))
+                .contains(
+                        simple.toAbsolutePath().normalize(),
+                        logback.toAbsolutePath().normalize(),
+                        api.toAbsolutePath().normalize());
+        assertThat(resolver.testRuntimeClasspathFor(lock, true, module, dir))
+                .containsExactlyInAnyOrder(
+                        api.toAbsolutePath().normalize(),
+                        capture.toAbsolutePath().normalize());
+        assertThat(resolver.testRuntimeEntriesFor(lock, true, module, dir))
+                .extracting(e -> e.artifact().moduleArtifact())
+                .containsExactlyInAnyOrder("slf4j-api", "capture");
+    }
+
     @Test
     void reachable_artifacts_bfs_and_strip_version_pins() {
         Lockfile lock = new Lockfile(
@@ -326,6 +369,18 @@ class ClasspathResolverTest {
                 null,
                 List.of(scope),
                 List.of());
+    }
+
+    private static Lockfile.Artifact testRow(String module, String version, Path jar, List<String> deps)
+            throws Exception {
+        return new Lockfile.Artifact(
+                module,
+                version,
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + Hashing.sha256Hex(jar),
+                null,
+                List.of(Scope.TEST),
+                deps);
     }
 
     private static Lockfile.Artifact pkg(String module, String version, @Nullable String checksum, List<String> deps) {

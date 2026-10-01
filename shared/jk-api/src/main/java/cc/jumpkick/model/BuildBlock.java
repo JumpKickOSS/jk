@@ -63,6 +63,11 @@ public record BuildBlock(
          */
         List<String> testExcludeSrc,
         /**
+         * {@code [test] exclude-dependencies}: {@code group:artifact} coordinates left off the test
+         * runtime classpath, whether declared or reached transitively; compile-test still sees them.
+         */
+        List<String> testExcludeDependencies,
+        /**
          * {@code [test] assertions}: whether every forked test JVM runs with {@code -ea}, as
          * Surefire's and Gradle's do. Default {@code true}; {@code false} runs the suite with Java
          * and Kotlin {@code assert} statements disabled.
@@ -171,6 +176,7 @@ public record BuildBlock(
             List.of(),
             List.of(),
             List.of(),
+            List.of(),
             true,
             false,
             PlatformPolicy.ENFORCED,
@@ -203,6 +209,7 @@ public record BuildBlock(
         testExcludeTags = testExcludeTags == null ? List.of() : List.copyOf(testExcludeTags);
         testExcludeClasses = testExcludeClasses == null ? List.of() : List.copyOf(testExcludeClasses);
         testExcludeSrc = testExcludeSrc == null ? List.of() : List.copyOf(testExcludeSrc);
+        testExcludeDependencies = testExcludeDependencies == null ? List.of() : List.copyOf(testExcludeDependencies);
         platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
         unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
         pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
@@ -282,6 +289,16 @@ public record BuildBlock(
     /** The same block with {@code [test] exclude-src} set. */
     public BuildBlock withTestExcludeSrc(List<String> globs) {
         return with(f -> f.testExcludeSrc = globs);
+    }
+
+    /** The same block with {@code [test] exclude-dependencies} set. */
+    public BuildBlock withTestExcludeDependencies(List<String> coordinates) {
+        return with(f -> f.testExcludeDependencies = coordinates);
+    }
+
+    /** True when {@code [test] exclude-dependencies} names {@code group:artifact}. */
+    public boolean testExcludesDependency(String group, String artifact) {
+        return testExcludeDependencies.contains(group + ":" + artifact);
     }
 
     /** The same block with {@code [test] env} set. */
