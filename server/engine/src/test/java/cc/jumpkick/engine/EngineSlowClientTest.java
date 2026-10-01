@@ -83,7 +83,10 @@ class EngineSlowClientTest extends EngineServerHarness {
             Thread.sleep(1_000);
             // Every carrier of the virtual-thread scheduler is held by a thread that never yields,
             // the way concurrent directory walks hold them; a virtual thread queued now does not run.
-            int carriers = Runtime.getRuntime().availableProcessors() + 4;
+            int carriers = Integer.getInteger(
+                            "jdk.virtualThreadScheduler.parallelism",
+                            Runtime.getRuntime().availableProcessors())
+                    + 4;
             for (int i = 0; i < carriers; i++) {
                 spinners.add(Thread.ofVirtual().start(() -> {
                     while (!stop.get()) Thread.onSpinWait();
