@@ -40,6 +40,20 @@ class MemoryNotesTest {
         assertThat(warnings).hasSize(1);
     }
 
+    /** A wait whose step never closes its scope goes with the step, not with the engine. */
+    @Test
+    void a_wait_on_a_step_that_never_closes_does_not_outlive_the_step() throws Exception {
+        int before = MemoryNotes.held();
+        MemoryNotes.add(recording(new ArrayList<>(), new ArrayList<>()), 2_000_000_000L);
+        assertThat(MemoryNotes.held()).isEqualTo(before + 1);
+
+        for (int i = 0; i < 50 && MemoryNotes.held() > before; i++) {
+            System.gc();
+            Thread.sleep(20);
+        }
+        assertThat(MemoryNotes.held()).isEqualTo(before);
+    }
+
     private static TaskContext recording(List<String> output, List<String> warnings) {
         return new TaskContext() {
             @Override
