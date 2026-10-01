@@ -252,7 +252,7 @@ class JobEnvelopeTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.clock = System::currentTimeMillis;
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 50L, 100L, 500L, 0L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 50L, 100L, 500L, 0L, 0L));
         CountDownLatch release = new CountDownLatch(1);
 
         env.submit(
@@ -428,7 +428,7 @@ class JobEnvelopeTest {
     void the_cancel_grace_the_envelope_was_given_is_the_one_the_worker_shutdown_uses() throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 0L, 0L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 0L, 0L, 0L));
         AtomicReference<Process> worker = new AtomicReference<>();
         CountDownLatch release = new CountDownLatch(1);
 
@@ -479,7 +479,7 @@ class JobEnvelopeTest {
         String project = checkout.toString().replace('\\', '/');
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", project, null, "web");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 100L, 0L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 100L, 0L, 0L));
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
 

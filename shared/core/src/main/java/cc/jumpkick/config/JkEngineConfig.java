@@ -152,7 +152,10 @@ public record JkEngineConfig(
                 AUTO_WARMUP.layer(
                         EnvValues.bool(env, "JK_AUTO_WARMUP").orElse(null), scanBool(scan, "engine.auto-warmup")),
                 JobLimits.resolve(
-                        env, scanLong(scan, "engine.detached-deadline-ms"), scanLong(scan, "engine.queue-wait-ms")),
+                        env,
+                        scanLong(scan, "engine.detached-deadline-ms"),
+                        scanLong(scan, "engine.queue-wait-ms"),
+                        scanLong(scan, "engine.drain-deadline-ms")),
                 LOG_MAX_MB.layer(
                         EnvValues.intValue(env, "JK_ENGINE_LOG_MAX_MB").orElse(null),
                         scanInt(scan, "engine.log-max-mb")),
@@ -184,8 +187,8 @@ public record JkEngineConfig(
 
     /**
      * {@code [engine]} table; missing/malformed/out-of-range → non-CI defaults for that field. Of
-     * the job limits only the detached deadline and the queue wait are file keys; the rest are
-     * env-only knobs and stay at their defaults here.
+     * the job limits only the detached deadline, the queue wait and the drain deadline are file
+     * keys; the rest are env-only knobs and stay at their defaults here.
      */
     public static JkEngineConfig fromToml(Path file) {
         TomlScan scan = scan(file);
@@ -196,7 +199,9 @@ public record JkEngineConfig(
                 VFS_MAX_MB.layer(scanInt(scan, "engine.vfs-max-mb")),
                 AUTO_WARMUP.layer(scanBool(scan, "engine.auto-warmup")),
                 JobLimits.fromFile(
-                        scanLong(scan, "engine.detached-deadline-ms"), scanLong(scan, "engine.queue-wait-ms")),
+                        scanLong(scan, "engine.detached-deadline-ms"),
+                        scanLong(scan, "engine.queue-wait-ms"),
+                        scanLong(scan, "engine.drain-deadline-ms")),
                 LOG_MAX_MB.layer(scanInt(scan, "engine.log-max-mb")),
                 LOG_LEVEL.layer(scan.get("engine.log-level")));
     }

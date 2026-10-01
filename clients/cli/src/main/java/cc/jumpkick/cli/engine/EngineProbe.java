@@ -111,6 +111,11 @@ public final class EngineProbe {
              * when the engine did not report.
              */
             @Nullable String workerOverLease,
+            /**
+             * Epoch millis by which a draining engine exits; {@code -1} when it is not draining, its
+             * drain is unbounded, or it did not report.
+             */
+            long drainDeadlineMillis,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
             List<Job> jobs) {
 
@@ -187,6 +192,7 @@ public final class EngineProbe {
                     false,
                     null,
                     null,
+                    -1L,
                     jobs);
         }
     }
@@ -344,6 +350,7 @@ public final class EngineProbe {
                     Jsonl.bool(ack, "overbookingOff", false),
                     Jsonl.str(ack, "workerWaiting"),
                     Jsonl.str(ack, "workerOverLease"),
+                    Jsonl.longValue(ack, "drainDeadline", -1),
                     Job.decodeAll(ack)));
         } catch (IOException e) {
             return Optional.empty();

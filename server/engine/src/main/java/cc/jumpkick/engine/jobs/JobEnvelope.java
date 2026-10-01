@@ -111,8 +111,8 @@ public final class JobEnvelope {
         JobBody runner = job.body();
         boolean plan = job.joinsActivePlans();
         boolean workspaceStream = job.workspaceTerminal();
-        // Refuse new jobs while draining. The listener is already closed, so this is the race
-        // on a connection accepted just before yield, or an already-open session.
+        // A draining engine keeps its socket for status and cancel, and refuses every new job;
+        // the client that reads this refusal starts a successor and resends.
         if (host.draining()) return refuseDraining(detached, writer);
         // The kind rides explicitly from the dispatch site (never parsed back out of a thread
         // name); the journal dir falls back to a request's specific location field so non-build
@@ -693,6 +693,14 @@ public final class JobEnvelope {
     /** Cancel one live or queued job by jid; {@code false} when unknown or already finished. */
     public boolean cancelJob(long jid) {
         return live.cancelJob(jid) || admission.cancel(jid);
+    }
+
+    /**
+     * The drain deadline passed: cancel every live job with {@code reason} on its wire and in the
+     * journal. Queued jobs are already refused by the drain. Returns the jids cancelled.
+     */
+    public List<Long> cancelAllForDrain(String reason) {
+        return live.cancelAllForDrain(reason);
     }
 
     /** Cancel every live or queued job whose dir matches (canonical absolute path). */

@@ -298,11 +298,12 @@ public final class StatusCommand implements CliCommand {
         if (engine.isEmpty()) {
             return "JumpKick Engine v[focused]" + version + "[/] is not running";
         }
-        return "JumpKick Engine v[focused]"
-                + version
-                + "[/] is running (pid [yellow]"
-                + engine.get().pid()
-                + "[/])";
+        EngineProbe.Status s = engine.get();
+        if (s.draining()) {
+            return "JumpKick Engine v[focused]" + version + "[/] is stopping (pid [yellow]" + s.pid() + "[/]): "
+                    + EngineStatusCommand.drainSummary(s.activeBuildPlans(), s.drainDeadlineMillis());
+        }
+        return "JumpKick Engine v[focused]" + version + "[/] is running (pid [yellow]" + s.pid() + "[/])";
     }
 
     private static void sectionHeader(String title, @Nullable String suffix) {

@@ -36,8 +36,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
- * A newer engine takes over by atomically repointing the endpoint, the predecessor yields its
- * listeners immediately, and in-flight jobs drain — no kill, no lull-waiting. Also covers the
+ * A newer engine takes over by atomically repointing the endpoint, the predecessor yields its HTTP
+ * port immediately and keeps answering on its own generation socket while in-flight jobs drain —
+ * no kill, no lull-waiting. Also covers the
  * displacement watchdog (pid-file / endpoint identity) and drain-status reports to the successor.
  */
 @Tag("integration")
@@ -92,6 +93,13 @@ class EngineTakeoverTest {
         } catch (IOException e) {
             return null;
         }
+    }
+
+    /** The {@code draining} flag of {@code socket}'s hello-ack, or {@code null} when nothing answers. */
+    private static @Nullable Boolean helloDraining(Path socket) {
+        String ack = send(socket, ProtoLifecycle.hello("probe"));
+        if (ack == null || !EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return null;
+        return Jsonl.bool(ack, "draining", false);
     }
 
     private static @Nullable String send(Path socket, String line) {
@@ -196,7 +204,7 @@ class EngineTakeoverTest {
     }
 
     @Test
-    void drain_closes_the_listener_while_a_plan_is_in_flight() throws Exception {
+    void a_draining_engine_keeps_answering_its_socket_while_a_plan_is_in_flight() throws Exception {
         Path state = tempDirs.create();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
@@ -211,7 +219,9 @@ class EngineTakeoverTest {
             assertThat(EngineProtocol.typeOf(bye)).isEqualTo(EngineProtocol.BYE);
             assertThat(Jsonl.bool(bye, "draining", false)).isTrue();
 
-            waitUntil(Duration.ofSeconds(5), () -> helloVersion(sock) == null);
+            assertThat(helloDraining(sock))
+                    .as("a lame duck answers hello on its own socket and says it is draining")
+                    .isTrue();
             assertThat(run.thread().isAlive())
                     .as("process stays up until in-flight plans finish")
                     .isTrue();
@@ -220,6 +230,8 @@ class EngineTakeoverTest {
             assertThat(run.done().await(10, TimeUnit.SECONDS))
                     .as("engine exits once the last in-flight plan finishes")
                     .isTrue();
+            assertThat(sock).as("its socket file goes with it").doesNotExist();
+            assertThat(EnginePaths.pidFor(sock)).as("its pid file goes with it").doesNotExist();
         } finally {
             server.close();
         }
@@ -241,7 +253,7 @@ class EngineTakeoverTest {
         Running newerRun = start(newer);
         try {
             waitUntil(Duration.ofSeconds(10), () -> "2.0.0-test".equals(helloVersion(EnginePaths.activeSocket(p))));
-            waitUntil(Duration.ofSeconds(5), () -> helloVersion(firstSocket) == null);
+            waitUntil(Duration.ofSeconds(5), () -> Boolean.TRUE.equals(helloDraining(firstSocket)));
             waitUntil(Duration.ofSeconds(10), () -> logs.stream().anyMatch(s -> s.contains("is draining")));
             old.releasePlanSlotForTests();
             assertThat(oldRun.done().await(10, TimeUnit.SECONDS)).isTrue();
@@ -250,6 +262,51 @@ class EngineTakeoverTest {
             newer.close();
             old.close();
             assertThat(newerRun.thread().join(Duration.ofSeconds(10))).isTrue();
+        }
+    }
+
+    /**
+     * A stopped engine still draining is what a job client meets after {@code jk engine stop}: it
+     * answers, but refuses new jobs. The client's spawn of the very same build must win the
+     * election rather than yield to it, take the endpoint, and leave the old engine to finish on
+     * its own socket — whose exit then removes its own files and never the successor's endpoint.
+     */
+    @Test
+    void a_stopped_engine_still_draining_is_succeeded_by_the_same_build() throws Exception {
+        Path state = tempDirs.create();
+        EnginePaths.Paths p = EnginePaths.resolve(state);
+
+        EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, null, "1.0.0-test", "aaaaaaaaaaaa", null);
+        Running oldRun = start(old);
+        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        Path firstSocket = EnginePaths.activeSocket(p);
+        assertThat(old.claimPlanSlotForTests()).isTrue();
+        String bye = requireNonNull(send(firstSocket, ProtoLifecycle.shutdown(false)));
+        assertThat(Jsonl.bool(bye, "draining", false)).isTrue();
+
+        EngineServer successor = new EngineServer(p, JkEngineConfig.DEFAULTS, null, "1.0.0-test", "aaaaaaaaaaaa", null);
+        Running successorRun = start(successor);
+        try {
+            waitUntil(
+                    Duration.ofSeconds(10),
+                    () -> !firstSocket.equals(EnginePaths.activeSocket(p))
+                            && Boolean.FALSE.equals(helloDraining(EnginePaths.activeSocket(p))));
+            Path secondSocket = EnginePaths.activeSocket(p);
+            assertThat(helloDraining(firstSocket))
+                    .as("the old engine still answers on its own socket")
+                    .isTrue();
+
+            old.releasePlanSlotForTests();
+            assertThat(oldRun.done().await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(firstSocket).doesNotExist();
+            assertThat(EnginePaths.activeSocket(p))
+                    .as("the lame duck's exit leaves the successor's endpoint alone")
+                    .isEqualTo(secondSocket);
+            assertThat(helloDraining(secondSocket)).isFalse();
+        } finally {
+            successor.close();
+            old.close();
+            assertThat(successorRun.thread().join(Duration.ofSeconds(10))).isTrue();
         }
     }
 

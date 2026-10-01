@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
@@ -15,6 +16,8 @@ import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -53,6 +56,64 @@ class EngineServerDrainTest {
                 .as("the shutdown arm must reach enterDrain(), the reporter's one starter")
                 .isTrue();
         assertThat(out.toString()).contains("\"plans\":1").contains("\"draining\":true");
+        server.releasePlanSlotForTests();
+        server.close();
+    }
+
+    /** The deadline is fixed when drain begins; a second stop or a later displacement keeps it. */
+    @Test
+    void the_drain_deadline_is_fixed_once_at_drain_entry() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        JkEngineConfig config = JkEngineConfig.DEFAULTS.withJobLimits(JobLimits.DEFAULTS.withDrainDeadlineMs(60_000L));
+        EngineServer server = new EngineServer(p, config, "1.0", null);
+        assertThat(server.drainDeadlineForTests()).as("not draining").isEqualTo(-1L);
+        assertThat(server.claimPlanSlotForTests()).isTrue();
+        long before = System.currentTimeMillis();
+
+        server.handleShutdown(ProtoLifecycle.shutdown(false), new BufferedWriter(new StringWriter()));
+        long deadline = server.drainDeadlineForTests();
+        assertThat(deadline).isBetween(before + 60_000L, System.currentTimeMillis() + 60_000L);
+        server.yieldListenersForTests(false);
+        server.handleShutdown(ProtoLifecycle.shutdown(false), new BufferedWriter(new StringWriter()));
+
+        assertThat(server.drainDeadlineForTests()).isEqualTo(deadline);
+        server.releasePlanSlotForTests();
+        server.close();
+    }
+
+    @Test
+    void a_zero_drain_deadline_drains_without_bound() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        JkEngineConfig config = JkEngineConfig.DEFAULTS.withJobLimits(JobLimits.DEFAULTS.withDrainDeadlineMs(0L));
+        EngineServer server = new EngineServer(p, config, "1.0", null);
+        assertThat(server.claimPlanSlotForTests()).isTrue();
+
+        server.handleShutdown(ProtoLifecycle.shutdown(false), new BufferedWriter(new StringWriter()));
+
+        assertThat(server.drainStartedForTests()).isTrue();
+        assertThat(server.drainDeadlineForTests()).isEqualTo(-1L);
+        assertThat(server.drainWaitingForTests()).isTrue();
+        server.releasePlanSlotForTests();
+        server.close();
+    }
+
+    /**
+     * A plan slot that is never released — a job stuck past every cancel — does not keep a
+     * draining engine alive: past the deadline and the grace after it, the engine shuts down.
+     */
+    @Test
+    void a_slot_held_past_the_drain_deadline_still_ends_the_drain() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        List<String> log = new CopyOnWriteArrayList<>();
+        JkEngineConfig config = JkEngineConfig.DEFAULTS.withJobLimits(new JobLimits(0L, 0L, 0L, 100L, 0L, 0L, 200L));
+        EngineServer server = new EngineServer(p, config, "1.0", log::add);
+        assertThat(server.claimPlanSlotForTests()).isTrue();
+
+        server.handleShutdown(ProtoLifecycle.shutdown(false), new BufferedWriter(new StringWriter()));
+
+        Await.until(Duration.ofSeconds(10), () -> !server.drainWaitingForTests());
+        assertThat(log).anyMatch(l -> l.contains("drain deadline passed with 1 job(s) in flight"));
+        assertThat(log).anyMatch(l -> l.contains("drain deadline: cancelled 0 job(s)"));
         server.releasePlanSlotForTests();
         server.close();
     }

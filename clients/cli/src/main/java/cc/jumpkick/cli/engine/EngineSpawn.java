@@ -55,12 +55,14 @@ public final class EngineSpawn {
     private EngineSpawn() {}
 
     /**
-     * Whether the engine behind {@code hs} is the one this client must be served by: the client's
-     * version, running the jar the home's engine pointer names ({@code pointerSha}). The
-     * handshake's build id is a prefix of that jar's digest. Either side without an opinion — an
-     * engine run from a classes directory, a home with no pointer — leaves the version rule alone.
+     * Whether the engine behind {@code hs} is the one this client must be served by: not draining,
+     * the client's version, running the jar the home's engine pointer names ({@code pointerSha}).
+     * The handshake's build id is a prefix of that jar's digest. Either side without an opinion —
+     * an engine run from a classes directory, a home with no pointer — leaves the version rule
+     * alone. A draining engine refuses new jobs whatever it runs, so it is succeeded, not used.
      */
     static boolean serves(EngineProbe.Handshake hs, String clientVersion, Optional<String> pointerSha) {
+        if (hs.draining()) return false;
         if (!clientVersion.equals(hs.version())) return false;
         if (hs.buildId().isEmpty()) return true;
         String expected = pointerSha.orElse("");
@@ -86,20 +88,16 @@ public final class EngineSpawn {
             reach = waitOutSilentPeer(paths, socket, clientVersion, patience, grace);
         if (reach instanceof Reachability.Live live) {
             EngineProbe.Handshake hs = live.handshake();
-            // A draining engine has unbound its listener; this branch is the race before unbind.
-            // Do not spawn a third copy on top of the successor that is already taking over.
-            if (hs.draining()) {
-                throw new IOException(
-                        "the build engine is shutting down — wait for it to stop, or run `jk engine stop --force`");
-            }
             if (serves(hs, clientVersion, pointerSha(clientVersion))) {
                 return hs;
             }
-            // Version skew (incl. same -SNAPSHOT with different content identity) → TAKEOVER, not
-            // a kill: spawn this client's engine; its startup atomically repoints the endpoint and
-            // drains the displaced engine — in-flight jobs finish untouched.
+            // Draining, or version skew (incl. same -SNAPSHOT with different content identity) →
+            // TAKEOVER, not a kill: spawn this client's engine; its startup atomically repoints the
+            // endpoint and drains the displaced engine — in-flight jobs finish untouched. A
+            // draining engine refuses new jobs, so its successor is the one that serves this
+            // client; the startup mutex and the election keep two clients from starting two.
         }
-        // Absent / unusable / version skew → spawn (takeover or cold start).
+        // Absent / unusable / draining / version skew → spawn (takeover or cold start).
         return startWithSelfHeal(paths, clientVersion);
     }
 
@@ -740,8 +738,8 @@ public final class EngineSpawn {
     /**
      * Wait until the endpoint answers with the engine this client needs. During a takeover the
      * displaced engine keeps answering on the endpoint until the successor claims it, so a
-     * handshake alone is not "up": only one that {@link #serves} this client is — the displaced
-     * engine's answer is waited through. Without that, the request that follows a takeover
+     * handshake alone is not "up": only one that {@link #serves} this client is — the displaced or
+     * draining engine's answer is waited through. Without that, the request that follows a takeover
      * (the install's re-shelving pass) would stream to the engine the home no longer names.
      */
     private static StartResult awaitStartup(
@@ -767,7 +765,7 @@ public final class EngineSpawn {
     private static Optional<EngineProbe.Handshake> serving(
             EnginePaths.Paths paths, String clientVersion, Optional<String> pointer) {
         return EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion)
-                .filter(hs -> !hs.draining() && serves(hs, clientVersion, pointer));
+                .filter(hs -> serves(hs, clientVersion, pointer));
     }
 
     /** Append a diagnostic to the engine log only — never the user's terminal. */

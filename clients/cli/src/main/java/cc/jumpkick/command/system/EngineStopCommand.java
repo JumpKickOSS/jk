@@ -15,14 +15,15 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /**
  * {@code jk engine stop} — graceful drain by default: the engine refuses new jobs and exits cleanly
- * once in-flight jobs finish. On a TTY with jobs running it blocks
- * with a live "Draining N job(s)…" region; press Ctrl-X (or pass {@code --force}) to stop now.
+ * once in-flight jobs finish or its drain deadline passes. On a TTY with jobs running it blocks
+ * with a live "Draining N job(s)…" region; press Ctrl-X (or pass {@code --now}) to stop now.
  * Stopping an engine that isn't running is reported, not an error (exit 0 either way).
  */
 public final class EngineStopCommand implements CliCommand {
@@ -55,7 +56,9 @@ public final class EngineStopCommand implements CliCommand {
             return stopByPid(pidArg.get(), in.isSet("now"));
         }
         EnginePaths.Paths paths = EnginePaths.current();
-        Optional<EngineProbe.Status> before = EngineProbe.status(EnginePaths.activeSocket(paths));
+        // This engine's own generation socket: a successor may take the endpoint while it drains.
+        Path socket = EnginePaths.activeSocket(paths);
+        Optional<EngineProbe.Status> before = EngineProbe.status(socket);
         if (before.isEmpty()) {
             return stopUnresponsiveHolder(paths);
         }
@@ -64,23 +67,34 @@ public final class EngineStopCommand implements CliCommand {
         // Force: stop now, then CONFIRM it went. Reporting "stopped" without checking is how a wedged
         // engine ends up being the user's problem to find and kill.
         if (in.isSet("now")) {
-            if (!EngineProcessControl.forceStop(EnginePaths.activeSocket(paths)))
+            if (!EngineProcessControl.forceStop(socket))
                 EngineProcessControl.hardKill(before.get().pid());
             return confirmGone(before.get().pid(), started);
         }
 
         // Graceful drain. The engine enters draining and reports the in-flight job count.
-        int jobs = EngineProcessControl.drain(EnginePaths.activeSocket(paths));
+        int jobs = EngineProcessControl.drain(socket);
         if (jobs <= 0) {
             // Idle (or already gone): the engine should exit immediately — verify, and escalate if not.
             return confirmGone(before.get().pid(), started);
         }
+        long deadline = EngineProbe.status(socket)
+                .map(EngineProbe.Status::drainDeadlineMillis)
+                .orElse(-1L);
         if (!BuildPlanConsole.isInteractiveTerminal()) {
-            return settle(
-                    Exit.SUCCESS,
-                    "shutdown scheduled (" + jobs + " job" + (jobs == 1 ? "" : "s") + " will finish first)");
+            return settle(Exit.SUCCESS, drainingMessage(jobs, deadline));
         }
-        return drainOnTty(paths, jobs, started, before.get().pid());
+        return drainOnTty(socket, jobs, started, before.get().pid());
+    }
+
+    /**
+     * What a stop that left jobs running says: how many it waits for, when the engine exits at the
+     * latest, that the next job starts a successor meanwhile, and how to stop it now.
+     */
+    static String drainingMessage(int jobs, long deadlineMillis) {
+        return "Engine is stopping: waiting for " + jobs + " in-flight job" + (jobs == 1 ? "" : "s")
+                + (deadlineMillis > 0 ? " (exits by " + EngineStatusCommand.wallClock(deadlineMillis) + ")" : "")
+                + "; the next build starts a new engine. `jk engine stop --now` stops it now";
     }
 
     /**
@@ -194,7 +208,10 @@ public final class EngineStopCommand implements CliCommand {
         msg.append(gone).append(gone == 1 ? " engine stopped" : " engines stopped");
         if (killed > 0) msg.append(" (").append(killed).append(" needed a hard kill)");
         if (draining > 0) {
-            msg.append(", ").append(draining).append(" draining (will exit once in-flight jobs finish)");
+            msg.append(", ")
+                    .append(draining)
+                    .append(" draining (will exit once in-flight jobs finish or the drain deadline passes;"
+                            + " `jk engine stop --now` stops now)");
         }
         if (!survived.isEmpty()) {
             msg.append(", ")
@@ -205,30 +222,24 @@ public final class EngineStopCommand implements CliCommand {
         return settle(survived.isEmpty() ? Exit.SUCCESS : Exit.FAILURE, msg.toString());
     }
 
-    /** Block on a TTY with the live drain region until the engine exits or Ctrl-X forces it. */
-    private int drainOnTty(EnginePaths.Paths paths, int jobs, long started, long pid) {
+    /**
+     * Block on a TTY with the live drain region until the engine exits or Ctrl-X forces it. The
+     * draining engine answers status on its own generation socket until it exits, so the job count
+     * comes from there; exit is the process going, never the socket.
+     */
+    private int drainOnTty(Path socket, int jobs, long started, long pid) {
         DrainView view = DrainView.start(jobs, GlobalConfig.nerdFont());
         try {
             while (true) {
                 if (view.forceRequested()) {
-                    EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
+                    EngineProcessControl.forceStop(socket);
                     break;
                 }
-                Optional<EngineProbe.Status> s = EngineProbe.status(EnginePaths.activeSocket(paths));
-                if (s.isEmpty()) {
-                    // The draining engine has unbound its listener so a successor can bind. Status
-                    // going silent is not exit — wait for the process, not the socket.
-                    if (pid > 0
-                            && ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
-                        sleep(200);
-                        continue;
-                    }
-                    sleep(150);
-                    if (EngineProbe.status(EnginePaths.activeSocket(paths)).isEmpty()
-                            && !EngineProbe.ping(EnginePaths.activeSocket(paths))) break;
-                    continue;
-                }
-                view.setJobs(Math.max(0, s.get().activeBuildPlans()));
+                if (pid <= 0
+                        || !ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) break;
+                EngineProbe.status(socket)
+                        .filter(s -> s.pid() == pid)
+                        .ifPresent(s -> view.setJobs(Math.max(0, s.activeBuildPlans())));
                 sleep(200);
             }
             view.settleStopped(stoppedWedge(elapsed(started)));

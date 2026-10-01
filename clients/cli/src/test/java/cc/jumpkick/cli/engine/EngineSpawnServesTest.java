@@ -38,6 +38,17 @@ class EngineSpawnServesTest {
                 .isFalse();
     }
 
+    /**
+     * A draining engine answers its socket for status and cancel but refuses new jobs, so the
+     * client takes over rather than use it — even when it runs exactly the pointed jar.
+     */
+    @Test
+    void a_draining_engine_never_serves_so_the_client_takes_over() {
+        EngineProbe.Handshake draining = new EngineProbe.Handshake("0.13.3", 4242L, 1L, true, "ab12cd34ef56");
+        assertThat(EngineSpawn.serves(draining, "0.13.3", Optional.of(POINTER))).isFalse();
+        assertThat(EngineSpawn.serves(draining, "0.13.3", Optional.empty())).isFalse();
+    }
+
     @Test
     void a_side_without_an_identity_leaves_the_version_rule_alone() {
         // An engine run from a classes directory has no jar to identify itself by.

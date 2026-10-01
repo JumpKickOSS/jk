@@ -91,6 +91,11 @@ class EngineElectionTest {
         private final Thread thread;
 
         FakeIncumbent(EnginePaths.Paths paths, int generation, String version, String buildId) throws IOException {
+            this(paths, generation, version, buildId, false);
+        }
+
+        FakeIncumbent(EnginePaths.Paths paths, int generation, String version, String buildId, boolean draining)
+                throws IOException {
             EnginePaths.Paths gen = EnginePaths.generation(paths, generation);
             Files.createDirectories(gen.dir());
             this.lockChannel = FileChannel.open(gen.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
@@ -123,7 +128,7 @@ class EngineElectionTest {
                                 if (EngineProtocol.AUTH.equals(EngineProtocol.typeOf(first)) && r.readLine() == null) {
                                     continue;
                                 }
-                                w.write(ProtoLifecycle.helloAck(version, 424242L, 1L, false, buildId));
+                                w.write(ProtoLifecycle.helloAck(version, 424242L, 1L, draining, buildId));
                                 w.write('\n');
                                 w.flush();
                             } catch (IOException e) {
@@ -221,6 +226,25 @@ class EngineElectionTest {
                 .isEqualTo(EnginePaths.generation(p, 1).socket());
         assertThat(Files.readString(EnginePaths.endpoint(p)).trim())
                 .as("takeover repoints the endpoint")
+                .isEqualTo(EnginePaths.generation(p, 2).socket().getFileName().toString());
+    }
+
+    /**
+     * A draining engine keeps answering its socket but serves no new job, so an identical version
+     * and build does not make the newcomer redundant: it takes over, or every job client that met
+     * the draining engine would spawn a loser and wait on an engine that refuses it.
+     */
+    @Test
+    void a_draining_incumbent_of_the_same_build_is_succeeded() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        closeLater(new FakeIncumbent(p, 1, VERSION, "aaaa", true));
+
+        EngineElection.Won won = requireNonNull(election(p, "aaaa", 4242).win());
+
+        closeLater(won.listener());
+        assertThat(won.active().socket()).isEqualTo(EnginePaths.generation(p, 2).socket());
+        assertThat(won.displaced()).isEqualTo(EnginePaths.generation(p, 1).socket());
+        assertThat(Files.readString(EnginePaths.endpoint(p)).trim())
                 .isEqualTo(EnginePaths.generation(p, 2).socket().getFileName().toString());
     }
 

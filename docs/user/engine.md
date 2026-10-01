@@ -116,6 +116,29 @@ replacement, or (if displaced/orphaned) after draining. Details of lifetime and 
 [contributor HTTP](../contributors/http.md). User-facing dashboard: [Web](web.md).
 MCP: [MCP](mcp.md). Token, bind, and reporting: [Security](security.md).
 
+### Stopping and draining
+
+`jk engine stop` with jobs in flight does not kill them: the engine **drains**. It releases the
+HTTP port at once, so the next engine can serve the dashboard, refuses new jobs, and exits when
+its last job finishes. While it drains it still answers its own socket:
+
+```
+jk: x Engine > Engine is stopping (pid 19518): draining 1 job, exits by 09:17
+```
+
+`jk engine status` and `--output json` (`draining`, `drainDeadline` in epoch millis, `jobs`) show
+it and its job rows, `jk cancel` reaches its jobs, and a build started meanwhile does not wait for
+it: the client starts a new engine, which takes over the endpoint while the old one finishes. Once
+that has happened, `jk engine status` lists the old engine as
+`draining (1 job, deadline 09:17)`. A version-skewed engine that a newer client replaces drains
+the same way.
+
+A drain has a **deadline**, `drain-deadline-ms` (default one hour, see
+[Configuration](#configuration)): a stuck job cannot keep a stopping engine, its workers and its
+memory alive forever. At the deadline the engine cancels what is still running — each job ends
+with an error naming the drain deadline — kills those jobs' workers and exits. `0` waits without
+bound. `jk engine stop --now` stops a draining engine immediately.
+
 ### A silent engine
 
 A client that connects to the engine's socket and gets no handshake within two seconds does not
@@ -165,6 +188,7 @@ and `auto-warmup` do not follow CI.
 | `log-level` | `JK_LOG_LEVEL` | info | engine start | Engine log threshold: debug, info, warn or error. debug adds the perf probes. |
 | `detached-deadline-ms` | `JK_ENGINE_DETACHED_DEADLINE_MS` | 3600000 | engine start | Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off. |
 | `queue-wait-ms` | `JK_ENGINE_QUEUE_WAIT_MS` | 3600000 | engine start | How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound. |
+| `drain-deadline-ms` | `JK_ENGINE_DRAIN_DEADLINE_MS` | 3600000 | engine start | How long a stopping engine lets its in-flight jobs finish before it cancels them, kills its workers and exits, in ms. 0 = no bound. |
 <!-- engine-config:end -->
 
 Warmup details: [contributor warmup](../contributors/install-optimize.md). Heap vs VFS:
