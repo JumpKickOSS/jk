@@ -103,6 +103,48 @@ class LockDeclaredRepositoryTest {
         assertThat(notes).isEmpty();
     }
 
+    /**
+     * httpcomponents-parent's shape: a POM declares a plaintext {@code http://} snapshot
+     * repository. It is not used, the lock says so in a note, and the lock still succeeds from the
+     * repositories that serve the subtree.
+     */
+    @Test
+    void a_plaintext_repository_a_pom_declares_is_skipped_with_a_note_and_the_lock_succeeds(@TempDir Path dir)
+            throws Exception {
+        new MavenStub(central)
+                .metadata("org.apache.httpcomponents", "httpcore5", "5.3")
+                .pom("org.apache.httpcomponents", "httpcore5", "5.3", """
+                        <project>
+                          <groupId>org.apache.httpcomponents</groupId>
+                          <artifactId>httpcore5</artifactId>
+                          <version>5.3</version>
+                          <repositories>
+                            <repository>
+                              <id>apache.snapshots</id>
+                              <url>http://repository.apache.org/snapshots</url>
+                            </repository>
+                          </repositories>
+                          <dependencies>
+                            <dependency>
+                              <groupId>com.foo</groupId>
+                              <artifactId>leaf</artifactId>
+                              <version>1.0</version>
+                            </dependency>
+                          </dependencies>
+                        </project>
+                        """)
+                .jar("org.apache.httpcomponents", "httpcore5", "5.3")
+                .leaf("com.foo", "leaf", "1.0");
+
+        Lockfile lock = new LockOrchestrator(repos(dir))
+                .lock(project("org.apache.httpcomponents:httpcore5", "=5.3"), "test", List.of(), true, observer());
+
+        assertThat(lock.artifacts()).anyMatch(a -> a.name().startsWith("com.foo:leaf:"));
+        assertThat(notes).singleElement().satisfies(note -> assertThat(note)
+                .startsWith("repository `apache.snapshots` at http://repository.apache.org/snapshots")
+                .contains("was not used: it is plaintext http"));
+    }
+
     /** A POM that declares a repository no row of the lock came from earns no note. */
     @Test
     void a_declared_repository_that_served_no_row_is_not_noted(@TempDir Path dir) throws Exception {
