@@ -3,39 +3,46 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.model.ClassSuite;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Which compiled test classes a run's suites own when the module declares class-pattern suites
- * ({@code [test.suites.<name>] classes}). A class from another suite's directory belongs to that
- * suite. A class from the default suite's root belongs to every pattern suite whose patterns match
- * it (nested classes go with their outer class), and to the default suite when none does.
+ * ({@code [test.suites.<name>]}). A class from another suite's directory belongs to that suite. A
+ * class from the default suite's root belongs to every pattern suite whose {@code classes} match it
+ * (nested classes go with their outer class), and to the default suite when none does. A class a
+ * suite's {@code exclude-classes} also match runs in no suite.
  */
 public final class SuiteClassFilter {
 
-    /** The filter of a module without class-pattern suites: every compiled class is the run's. */
-    public static final SuiteClassFilter NONE = new SuiteClassFilter(Map.of(), List.of(), List.of());
+    /**
+     * The filter of a module that runs its default suite alone, without class-pattern suites: every
+     * compiled class is the run's and belongs to {@link TestSuites#DEFAULT}.
+     */
+    public static final SuiteClassFilter NONE = new SuiteClassFilter(Map.of(), List.of(), Map.of());
 
-    private final Map<String, List<String>> patternSuites;
+    private final Map<String, ClassSuite> patternSuites;
     /** The resolved suites, in selection order. */
     private final List<String> selected;
-    /** Classes compiled from the selected directory suites other than the default one. */
-    private final List<String> directoryClasses;
+    /** Each class compiled from a selected directory suite other than the default one, to that suite. */
+    private final Map<String, String> directoryClasses;
 
     private SuiteClassFilter(
-            Map<String, List<String>> patternSuites, List<String> selected, List<String> directoryClasses) {
+            Map<String, ClassSuite> patternSuites, List<String> selected, Map<String, String> directoryClasses) {
         this.patternSuites = patternSuites;
         this.selected = selected;
         this.directoryClasses = directoryClasses;
@@ -43,19 +50,33 @@ public final class SuiteClassFilter {
 
     /**
      * The filter for {@code suites}, the resolved selection, in a module whose {@code [test.suites]}
-     * declare {@code patternSuites}. The selected directory suites' classes are named from their
-     * source paths.
+     * declare {@code patternSuites} (empty when none). The selected directory suites' classes are
+     * named from their source paths.
      */
     public static SuiteClassFilter of(
-            Path moduleDir, boolean compact, List<String> suites, Map<String, List<String>> patternSuites) {
-        if (patternSuites.isEmpty()) return NONE;
-        List<String> directoryClasses = new ArrayList<>();
+            Path moduleDir, boolean compact, List<String> suites, Map<String, ClassSuite> patternSuites) {
+        if (patternSuites.isEmpty() && (suites.isEmpty() || suites.equals(List.of(TestSuites.DEFAULT)))) return NONE;
+        Map<String, String> directoryClasses = new LinkedHashMap<>();
         for (String suite : suites) {
             if (TestSuites.DEFAULT.equals(suite)) continue;
-            directoryClasses.addAll(sourceClasses(moduleDir, compact, suite));
+            for (String name : sourceClasses(moduleDir, compact, suite)) directoryClasses.putIfAbsent(name, suite);
         }
         return new SuiteClassFilter(
-                patternSuites, List.copyOf(new LinkedHashSet<>(suites)), List.copyOf(directoryClasses));
+                patternSuites, List.copyOf(new LinkedHashSet<>(suites)), Collections.unmodifiableMap(directoryClasses));
+    }
+
+    /**
+     * The suite {@code className} (a binary name; nested classes go with their outer class) runs in:
+     * the directory suite whose sources declare it, else the first selected pattern suite that
+     * runs it, else the default suite.
+     */
+    public String suiteOf(String className) {
+        String directory = directoryOwner(className);
+        if (directory != null) return directory;
+        for (Map.Entry<String, ClassSuite> suite : patternSuites.entrySet()) {
+            if (selected.contains(suite.getKey()) && runs(suite.getValue(), className)) return suite.getKey();
+        }
+        return TestSuites.DEFAULT;
     }
 
     /**
@@ -65,18 +86,34 @@ public final class SuiteClassFilter {
     public @Nullable String body() {
         List<String> left = new ArrayList<>();
         List<String> kept = new ArrayList<>();
-        for (Map.Entry<String, List<String>> suite : patternSuites.entrySet()) {
-            String body = JUnitClassFilter.excludeBody(suite.getValue());
-            if (body == null) continue;
-            (selected.contains(suite.getKey()) ? kept : left).add(body);
+        for (Map.Entry<String, ClassSuite> suite : patternSuites.entrySet()) {
+            String classes = JUnitClassFilter.excludeBody(suite.getValue().classes());
+            if (classes == null) continue;
+            String excluded = JUnitClassFilter.excludeBody(suite.getValue().excludeClasses());
+            if (!selected.contains(suite.getKey())) {
+                left.add(classes);
+            } else if (excluded == null) {
+                kept.add(classes);
+            } else {
+                kept.add("(?!(?:" + excluded + ")$)(?:" + classes + ")");
+                left.add("(?=(?:" + excluded + ")$)(?:" + classes + ")");
+            }
         }
         boolean defaultSelected = selected.contains(TestSuites.DEFAULT);
         if (defaultSelected ? left.isEmpty() : kept.isEmpty()) return null;
-        for (String name : directoryClasses) kept.add(Pattern.quote(name) + "(\\$.*)?");
+        for (String name : directoryClasses.keySet()) kept.add(Pattern.quote(name) + "(\\$.*)?");
         String keep = String.join("|", kept);
         if (!defaultSelected) return keep;
         String rest = "(?!(?:" + String.join("|", left) + ")$).*";
         return keep.isEmpty() ? rest : "(?:" + keep + ")|" + rest;
+    }
+
+    /** Whether this run's suites run a class, by {@link #body}; always true when it keeps every class. */
+    public Predicate<String> acceptor() {
+        String body = body();
+        if (body == null) return name -> true;
+        Pattern pattern = Pattern.compile("^(?:" + body + ")$");
+        return name -> pattern.matcher(name).matches();
     }
 
     /**
@@ -88,9 +125,9 @@ public final class SuiteClassFilter {
         if (patternSuites.isEmpty()) return null;
         List<String> ran = new ArrayList<>();
         List<String> left = new ArrayList<>();
-        for (Map.Entry<String, List<String>> suite : patternSuites.entrySet()) {
+        for (Map.Entry<String, ClassSuite> suite : patternSuites.entrySet()) {
             String name = suite.getKey();
-            String patterns = String.join(", ", suite.getValue());
+            String patterns = String.join(", ", suite.getValue().classes());
             if (selected.contains(name)) ran.add(name + " runs the test suite's classes matching " + patterns);
             else left.add(name + " (" + patterns + ")");
         }
@@ -107,10 +144,11 @@ public final class SuiteClassFilter {
      * suites that match it, else the default suite. Empty when the run's suites own it.
      */
     public List<String> ownersLeftOut(String className) {
-        if (patternSuites.isEmpty() || directoryClass(className)) return List.of();
+        if (patternSuites.isEmpty() || directoryOwner(className) != null) return List.of();
         List<String> left = new ArrayList<>();
-        for (Map.Entry<String, List<String>> suite : patternSuites.entrySet()) {
-            if (!matches(suite.getValue(), className)) continue;
+        for (Map.Entry<String, ClassSuite> suite : patternSuites.entrySet()) {
+            if (!matches(suite.getValue().classes(), className)) continue;
+            if (matches(suite.getValue().excludeClasses(), className)) return List.of();
             if (selected.contains(suite.getKey())) return List.of();
             left.add(suite.getKey());
         }
@@ -143,11 +181,14 @@ public final class SuiteClassFilter {
         return String.join("; ", parts);
     }
 
-    private boolean directoryClass(String className) {
-        for (String name : directoryClasses) {
-            if (className.equals(name) || className.startsWith(name + "$")) return true;
-        }
-        return false;
+    private @Nullable String directoryOwner(String className) {
+        int nested = className.indexOf('$');
+        return directoryClasses.get(nested < 0 ? className : className.substring(0, nested));
+    }
+
+    /** Whether {@code suite} runs {@code className}: its classes match and its exclusions do not. */
+    private static boolean runs(ClassSuite suite, String className) {
+        return matches(suite.classes(), className) && !matches(suite.excludeClasses(), className);
     }
 
     private static boolean matches(List<String> patterns, String className) {

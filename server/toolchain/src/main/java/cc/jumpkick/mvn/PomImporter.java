@@ -339,7 +339,7 @@ public final class PomImporter {
      * compiler execution reached one compile step alone; {@code [build]} / {@code [test]} extra
      * source roots; {@code [test] exclude-src} from {@code <testExcludes>}; {@code [test]} tag
      * filters, excluded classes and dependencies, JVM flags and system properties from Surefire and
-     * Failsafe; Failsafe's class patterns as {@code [test.suites.integration] classes}.
+     * Failsafe; Failsafe's class patterns and excludes as {@code [test.suites.integration]}.
      */
     private static BuildBlock buildBlock(
             Model model,
@@ -376,8 +376,8 @@ public final class PomImporter {
         if (!tests.excludeClasses().isEmpty()) build = build.withTestExcludeClasses(tests.excludeClasses());
         if (!tests.excludeDependencies().isEmpty())
             build = build.withTestExcludeDependencies(tests.excludeDependencies());
-        if (!tests.integrationClasses().isEmpty()) {
-            build = build.withTestSuiteClasses(Map.of(TestSuites.INTEGRATION, tests.integrationClasses()));
+        if (tests.integration() != null) {
+            build = build.withTestClassSuites(Map.of(TestSuites.INTEGRATION, tests.integration()));
         }
         if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
         List<String> testExcludes = PluginFacts.compilerSourceGlobs(model, "testExcludes", true);

@@ -3,9 +3,11 @@ package cc.jumpkick.run;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -81,6 +83,15 @@ public record TestSummary(
     /** Same summary, tagged with the runner count that produced its wall. */
     public TestSummary withWorkers(int runners) {
         return new TestSummary(total, succeeded, failed, skipped, classes, failures, classWallMs, Math.max(0, runners));
+    }
+
+    /** Same summary, each failure that names a class tagged with the suite {@code suiteOf} gives it. */
+    public TestSummary withSuites(Function<String, String> suiteOf) {
+        List<TestFailureInfo> tagged = new ArrayList<>(failures.size());
+        for (TestFailureInfo f : failures) {
+            tagged.add(f.className().isEmpty() ? f : f.withSuite(suiteOf.apply(f.className())));
+        }
+        return new TestSummary(total, succeeded, failed, skipped, classes, tagged, classWallMs, workers);
     }
 
     public boolean allPassed() {

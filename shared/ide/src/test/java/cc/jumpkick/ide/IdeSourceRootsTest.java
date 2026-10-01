@@ -31,7 +31,28 @@ class IdeSourceRootsTest {
         assertThat(roots.stream().map(IdeSourceRoots.Root::relative)).contains("src", "test/src", "integration/src");
         assertThat(roots.stream().filter(r -> "integration".equals(r.relative())))
                 .allMatch(IdeSourceRoots.Root::test);
-        assertThat(IdeSourceRoots.discoveredSuites(tmp)).containsExactly("test", "integration");
+        assertThat(IdeSourceRoots.suites(tmp)).containsExactly("test", "integration");
+    }
+
+    /** A class-pattern suite has no directory of its own, and is still a suite the IDE runs by name. */
+    @Test
+    void suites_include_class_pattern_suites(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "m"
+                version = "1.0.0"
+                java = 25
+
+                [test.suites.integration]
+                classes = ["*IT"]
+                """);
+        Files.createDirectories(tmp.resolve("src"));
+        Files.writeString(tmp.resolve("src/Main.java"), "class Main {}");
+        Files.createDirectories(tmp.resolve("test/src"));
+        Files.writeString(tmp.resolve("test/src/UnitTest.java"), "class UnitTest {}");
+        Files.writeString(tmp.resolve("test/src/SlowIT.java"), "class SlowIT {}");
+
+        assertThat(IdeSourceRoots.suites(tmp)).containsExactly("test", "integration");
     }
 
     @Test
@@ -95,7 +116,7 @@ class IdeSourceRootsTest {
         Files.writeString(tmp.resolve("src/Main.java"), "class Main {}");
         Files.createDirectories(tmp.resolve("docs"));
         Files.writeString(tmp.resolve("docs/Note.java"), "class Note {}");
-        assertThat(IdeSourceRoots.discoveredSuites(tmp)).doesNotContain("docs");
+        assertThat(IdeSourceRoots.suites(tmp)).doesNotContain("docs");
     }
 
     @Test

@@ -355,7 +355,7 @@ public final class ManifestBuild {
                 s.testExcludeClasses,
                 s.testExcludeSrc,
                 s.testExcludeDependencies,
-                s.testSuiteClasses,
+                s.testClassSuites,
                 s.testAssertions,
                 s.testCoverage,
                 policies.platform(),

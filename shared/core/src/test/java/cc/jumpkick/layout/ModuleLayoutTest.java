@@ -71,7 +71,7 @@ class ModuleLayoutTest {
         List<Path> dirs = ModuleLayout.fingerprintDirs(tmp, false);
         assertThat(dirs).contains(tmp.resolve("src"), tmp.resolve("test/src"), tmp.resolve("test"));
         assertThat(dirs).noneMatch(p -> p.startsWith(tmp.resolve("core")) || p.startsWith(tmp.resolve("libs")));
-        assertThat(ModuleLayout.discoveredSuites(tmp)).containsExactly("test");
+        assertThat(TestSuites.discover(tmp, ModuleLayout.isCompact(tmp))).containsExactly("test");
         assertThat(ModuleLayout.roots(tmp).stream().map(ModuleLayout.Root::relative))
                 .contains("src", "test/src")
                 .noneMatch(rel -> rel.startsWith("core") || rel.startsWith("libs"));

@@ -269,11 +269,6 @@ public final class ModuleLayout {
         return List.copyOf(dirs);
     }
 
-    /** Discovered suite names (sources present). */
-    public static List<String> discoveredSuites(Path moduleDir) {
-        return TestSuites.discover(moduleDir, isCompact(moduleDir));
-    }
-
     private static boolean hasDefaultSuiteDir(Path moduleDir, boolean compact) {
         for (Path r : TestSuites.javaRoots(moduleDir, compact, TestSuites.DEFAULT)) {
             if (Files.isDirectory(r)) return true;

@@ -3,6 +3,9 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -13,7 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SuiteClassFilterTest {
 
-    private static final Map<String, List<String>> FAILSAFE = Map.of("integration", List.of("IT*", "*IT", "*ITCase"));
+    private static final Map<String, ClassSuite> FAILSAFE =
+            Map.of("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase")));
 
     @Test
     void the_default_suite_leaves_every_pattern_suite_class_out(@TempDir Path module) {
@@ -88,6 +92,54 @@ class SuiteClassFilterTest {
         assertThat(SuiteClassFilter.of(classes, false, List.of("integration"), FAILSAFE)
                         .classHint(classes, List.of("FooTest")))
                 .isEqualTo("FooTest is in the test suite (jk test --suite test --class FooTest)");
+    }
+
+    /** A Failsafe exclude stays the suite's, so the default suite never takes it, and runs nowhere. */
+    @Test
+    void an_excluded_class_runs_in_no_suite(@TempDir Path module) {
+        Map<String, ClassSuite> failsafe = Map.of("integration", new ClassSuite(List.of("*IT"), List.of("*SlowIT")));
+        Pattern unit = runs(SuiteClassFilter.of(module, false, List.of("test"), failsafe));
+        Pattern integration = runs(SuiteClassFilter.of(module, false, List.of("integration"), failsafe));
+        Pattern both = runs(SuiteClassFilter.of(module, false, List.of("test", "integration"), failsafe));
+
+        assertThat(unit.matcher("com.acme.FooTest").matches()).isTrue();
+        assertThat(unit.matcher("com.acme.CartSlowIT").matches()).isFalse();
+        assertThat(integration.matcher("com.acme.CartIT").matches()).isTrue();
+        assertThat(integration.matcher("com.acme.CartSlowIT").matches()).isFalse();
+        assertThat(integration.matcher("com.acme.CartSlowIT$Nested").matches()).isFalse();
+        assertThat(both.matcher("com.acme.FooTest").matches()).isTrue();
+        assertThat(both.matcher("com.acme.CartIT").matches()).isTrue();
+        assertThat(both.matcher("com.acme.CartSlowIT").matches()).isFalse();
+    }
+
+    /** Each class runs in exactly one suite, and a failure names it. */
+    @Test
+    void suite_of_names_the_suite_a_class_runs_in(@TempDir Path module) throws Exception {
+        Path e2e = Files.createDirectories(module.resolve("src/e2e/java/com/acme"));
+        Files.writeString(e2e.resolve("CheckoutIT.java"), "package com.acme; class CheckoutIT {}");
+        SuiteClassFilter all = SuiteClassFilter.of(module, false, List.of("test", "integration", "e2e"), FAILSAFE);
+
+        assertThat(all.suiteOf("com.acme.FooTest")).isEqualTo("test");
+        assertThat(all.suiteOf("com.acme.FooIT")).isEqualTo("integration");
+        assertThat(all.suiteOf("com.acme.FooIT$Inner")).isEqualTo("integration");
+        assertThat(all.suiteOf("com.acme.CheckoutIT"))
+                .as("a class of another suite directory is that suite's, whatever its name")
+                .isEqualTo("e2e");
+        assertThat(SuiteClassFilter.of(module, false, List.of("e2e"), Map.of()).suiteOf("com.acme.CheckoutIT"))
+                .as("a directory suite without class-pattern suites")
+                .isEqualTo("e2e");
+        assertThat(SuiteClassFilter.NONE.suiteOf("com.acme.FooTest")).isEqualTo("test");
+
+        TestSummary red = new TestSummary(
+                        3,
+                        1,
+                        2,
+                        0,
+                        List.of(
+                                new TestFailureInfo("g:m", "", "com.acme.FooIT", "x()", "", "boom", ""),
+                                new TestFailureInfo("g:m", "", "", "(test run)", "", "worker exited 1", "")))
+                .withSuites(all::suiteOf);
+        assertThat(red.failures()).extracting(TestFailureInfo::suite).containsExactly("integration", "");
     }
 
     private static Pattern runs(SuiteClassFilter suites) {

@@ -339,6 +339,11 @@
                 "minItems": 1,
                 "items": { "type": "string", "pattern": "^[^#]+$" },
                 "description": "Class patterns in --class syntax (fully qualified, simple name in any package, * wildcards), nested classes included; Failsafe's <includes>, e.g. [\"IT*\", \"*IT\", \"*ITCase\"]. A run-tests input."
+              },
+              "exclude-classes": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[^#]+$" },
+                "description": "Class patterns among the suite's classes that run in no suite: the suite skips them and the default suite does not take them back; Failsafe's <excludes>. A run-tests input."
               }
             },
             "required": ["classes"],

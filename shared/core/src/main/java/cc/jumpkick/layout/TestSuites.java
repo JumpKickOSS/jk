@@ -2,6 +2,7 @@
 package cc.jumpkick.layout;
 
 import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.model.ClassSuite;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -158,7 +159,7 @@ public final class TestSuites {
      * then each suite {@code [test.suites.<name>] classes} declares, in manifest order. A
      * class-pattern suite is always present: its classes are the default suite's.
      */
-    public static List<String> available(Path projectDir, boolean compact, Map<String, List<String>> classSuites) {
+    public static List<String> available(Path projectDir, boolean compact, Map<String, ClassSuite> classSuites) {
         List<String> found = discover(projectDir, compact);
         if (classSuites.isEmpty()) return found;
         LinkedHashSet<String> names = new LinkedHashSet<>(found);
@@ -174,7 +175,7 @@ public final class TestSuites {
      * class-pattern suite is returned as is.
      */
     public static List<String> compiled(
-            Path projectDir, boolean compact, List<String> selected, Map<String, List<String>> classSuites) {
+            Path projectDir, boolean compact, List<String> selected, Map<String, ClassSuite> classSuites) {
         if (selected.stream().noneMatch(classSuites::containsKey)) return selected;
         LinkedHashSet<String> out = new LinkedHashSet<>();
         out.add(DEFAULT);

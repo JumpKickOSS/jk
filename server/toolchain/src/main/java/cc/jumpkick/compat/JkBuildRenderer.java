@@ -90,11 +90,18 @@ public final class JkBuildRenderer {
             sb.append("\n[build]\nextra-src = ").append(list(build.extraSrc())).append('\n');
         }
         renderTest(sb, build);
-        build.testSuiteClasses().forEach((suite, patterns) -> sb.append("\n[test.suites.")
-                .append(suite)
-                .append("]\nclasses = ")
-                .append(list(patterns))
-                .append('\n'));
+        build.testClassSuites().forEach((suite, spec) -> {
+            sb.append("\n[test.suites.")
+                    .append(suite)
+                    .append("]\nclasses = ")
+                    .append(list(spec.classes()))
+                    .append('\n');
+            if (!spec.excludeClasses().isEmpty()) {
+                sb.append("exclude-classes = ")
+                        .append(list(spec.excludeClasses()))
+                        .append('\n');
+            }
+        });
     }
 
     private static void renderTest(StringBuilder sb, BuildBlock build) {

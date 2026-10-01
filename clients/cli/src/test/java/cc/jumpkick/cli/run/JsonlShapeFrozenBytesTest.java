@@ -113,7 +113,22 @@ class JsonlShapeFrozenBytesTest {
                         ENV
                                 + "error\",\"task\":\"run-tests\",\"code\":\"test-failure\",\"message\":\"boom\",\"test\":\"a.T#m\",\"exceptionClass\":\"java.lang.AssertionError\"}");
         assertThat(new TestFailureErrorLine(
-                                TS, "run-tests", "test-failure", "boom", "", "", "", "", "", 0, "", 0, 0, List.of(), "")
+                                TS,
+                                "run-tests",
+                                "test-failure",
+                                "boom",
+                                "",
+                                "",
+                                "",
+                                "",
+                                "",
+                                "",
+                                0,
+                                "",
+                                0,
+                                0,
+                                List.of(),
+                                "")
                         .encode())
                 .isEqualTo(ENV + "error\",\"task\":\"run-tests\",\"code\":\"test-failure\",\"message\":\"boom\"}");
         assertThat(new TestFailureErrorLine(
@@ -122,6 +137,7 @@ class JsonlShapeFrozenBytesTest {
                                 "test-failure",
                                 "boom",
                                 "core",
+                                "integration",
                                 "junit-jupiter",
                                 "a.T",
                                 "m",
@@ -135,7 +151,7 @@ class JsonlShapeFrozenBytesTest {
                         .encode())
                 .isEqualTo(
                         ENV
-                                + "error\",\"task\":\"run-tests\",\"code\":\"test-failure\",\"message\":\"boom\",\"module\":\"core\",\"engine\":\"junit-jupiter\",\"class\":\"a.T\",\"method\":\"m\",\"exceptionClass\":\"java.lang.AssertionError\",\"worker\":2,\"file\":\"src/test/java/a/T.java\",\"line\":12,\"snippetStart\":10,\"snippet\":[\"x\",\"y\"],\"stack\":\"at a.T.m(T.java:12)\"}");
+                                + "error\",\"task\":\"run-tests\",\"code\":\"test-failure\",\"message\":\"boom\",\"module\":\"core\",\"suite\":\"integration\",\"engine\":\"junit-jupiter\",\"class\":\"a.T\",\"method\":\"m\",\"exceptionClass\":\"java.lang.AssertionError\",\"worker\":2,\"file\":\"src/test/java/a/T.java\",\"line\":12,\"snippetStart\":10,\"snippet\":[\"x\",\"y\"],\"stack\":\"at a.T.m(T.java:12)\"}");
     }
 
     @Test

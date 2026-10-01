@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
+import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.DebugInfo;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -50,7 +51,7 @@ final class ManifestBuildTable {
         final List<String> testExcludeClasses = new ArrayList<>();
         final List<String> testExcludeSrc = new ArrayList<>();
         final List<String> testExcludeDependencies = new ArrayList<>();
-        final Map<String, List<String>> testSuiteClasses = new LinkedHashMap<>();
+        final Map<String, ClassSuite> testClassSuites = new LinkedHashMap<>();
         boolean testAssertions = true;
         boolean testCoverage = false;
         final List<String> testTools = new ArrayList<>();
@@ -258,9 +259,10 @@ final class ManifestBuildTable {
     }
 
     /**
-     * {@code [test.suites.<name>] classes} — a suite selected by class pattern ({@code --class}
-     * syntax, no {@code #method}) over the default suite's classes. The default suite, the guard
-     * suite and the fixtures source set cannot be one.
+     * {@code [test.suites.<name>]} — a suite selected by class pattern ({@code --class} syntax, no
+     * {@code #method}) over the default suite's classes: {@code classes}, and the {@code
+     * exclude-classes} among them that run in no suite. The default suite, the guard suite and the
+     * fixtures source set cannot be one.
      */
     private static void readSuites(TomlTable test, Settings s) {
         if (!test.contains("suites")) return;
@@ -281,24 +283,39 @@ final class ManifestBuildTable {
                 throw new JkBuildParseException(where + " must be a table: classes = [\"*IT\"]");
             }
             for (String key : suite.keySet()) {
-                if (!"classes".equals(key)) {
-                    throw new JkBuildParseException(where + " unknown key `" + key + "` — expected: classes");
+                if (!"classes".equals(key) && !"exclude-classes".equals(key)) {
+                    throw new JkBuildParseException(
+                            where + " unknown key `" + key + "` — expected: classes, exclude-classes");
                 }
             }
-            String expected = "class patterns: classes = [\"*IT\"]";
-            List<String> patterns = new ArrayList<>();
             if (!(suite.get("classes") instanceof TomlArray values) || values.isEmpty()) {
-                throw new JkBuildParseException(where + " classes must be a non-empty array of " + expected);
+                throw new JkBuildParseException(
+                        where + " classes must be a non-empty array of class patterns: classes = [\"*IT\"]");
             }
-            for (int i = 0; i < values.size(); i++) {
-                if (!(values.get(i) instanceof String str) || str.isBlank() || str.contains("#")) {
-                    throw new JkBuildParseException(where + " classes must be a non-empty array of " + expected
-                            + " (a class pattern names no method)");
+            List<String> classes = classPatterns(where, "classes", values);
+            List<String> excludes = List.of();
+            if (suite.contains("exclude-classes")) {
+                if (!(suite.get("exclude-classes") instanceof TomlArray excluded)) {
+                    throw new JkBuildParseException(where
+                            + " exclude-classes must be an array of class patterns: exclude-classes = [\"*SlowIT\"]");
                 }
-                if (!patterns.contains(str.trim())) patterns.add(str.trim());
+                excludes = classPatterns(where, "exclude-classes", excluded);
             }
-            s.testSuiteClasses.put(name, List.copyOf(patterns));
+            s.testClassSuites.put(name, new ClassSuite(classes, excludes));
         }
+    }
+
+    /** {@code values} as trimmed, distinct class patterns; a blank one or one naming a method is an error. */
+    private static List<String> classPatterns(String where, String key, TomlArray values) {
+        List<String> patterns = new ArrayList<>();
+        for (int i = 0; i < values.size(); i++) {
+            if (!(values.get(i) instanceof String str) || str.isBlank() || str.contains("#")) {
+                throw new JkBuildParseException(where + " " + key
+                        + " must be an array of class patterns: [\"*IT\"] (a class pattern names no method)");
+            }
+            if (!patterns.contains(str.trim())) patterns.add(str.trim());
+        }
+        return List.copyOf(patterns);
     }
 
     /** A non-blank string array under {@code [test].<key>}, appended to {@code out} without repeats. */

@@ -77,6 +77,7 @@ final class Json {
             dm.put("message", d.message());
             if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
             if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
+            if (!d.suite().isEmpty()) dm.put("suite", d.suite());
             if (d.engine() != null && !d.engine().isEmpty()) dm.put("engine", d.engine());
             if (d.className() != null && !d.className().isEmpty())
                 dm.put(EngineProtocol.TEST_CLASS_FIELD, d.className());
@@ -318,7 +319,8 @@ final class Json {
                     (int) lng(dm, "snippetStart"),
                     strList(dm, "snippet"),
                     (int) lng(dm, "worker"),
-                    text(dm, "key")));
+                    text(dm, "key"),
+                    text(dm, "suite")));
         }
 
         return new BuildRecord(

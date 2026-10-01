@@ -313,7 +313,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         tasks.add(taskEntry("jk: test all", "jk test --all"));
         LinkedHashSet<String> extra = new LinkedHashSet<>();
         for (Path mod : model.allModules().keySet()) {
-            for (String suite : IdeSourceRoots.discoveredSuites(mod)) {
+            for (String suite : IdeSourceRoots.suites(mod)) {
                 if (!TestSuites.DEFAULT.equals(suite)) extra.add(suite);
             }
         }

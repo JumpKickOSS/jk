@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.HeapNotes;
@@ -15,8 +16,10 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
@@ -28,6 +31,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.test.JUnitLauncher;
+import cc.jumpkick.test.SuiteClassFilter;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,9 +40,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -87,15 +93,20 @@ public final class TestSupport {
     public static int estimateTestCount(Path testSrcDir) {
         if (!Files.isDirectory(testSrcDir)) return 0;
         int count = 0;
-        for (Path file : testSources(testSrcDir)) {
-            try {
-                String content = Files.readString(file);
-                count += (int) TEST_ANNOTATION_REGEX.matcher(content).results().count();
-            } catch (IOException ignored) {
-                // best-effort: skip unreadable files, keep counting
-            }
-        }
+        for (Path file : testSources(testSrcDir)) count += countTests(file);
         return count;
+    }
+
+    /** The {@code @Test}-family annotations in one source; 0 when it cannot be read. */
+    private static int countTests(Path file) {
+        try {
+            return (int) TEST_ANNOTATION_REGEX
+                    .matcher(Files.readString(file))
+                    .results()
+                    .count();
+        } catch (IOException e) {
+            return 0;
+        }
     }
 
     /**
@@ -116,23 +127,45 @@ public final class TestSupport {
     }
 
     /**
-     * Count test methods for the suites a SELECTION will actually run ({@link #selectedSuites}):
-     * sizing the bar/ETA with every discovered suite makes a plain {@code jk test} under-fill and
-     * snap to 100 when an integration suite exists.
+     * Count test methods for the suites a SELECTION will actually run: sizing the bar/ETA with every
+     * discovered suite makes a plain {@code jk test} under-fill and snap to 100 when an integration
+     * suite exists. A class-pattern suite's classes count only when the selection runs that suite.
      */
     public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
-        int total = 0;
-        LinkedHashSet<Path> roots = new LinkedHashSet<>();
-        var discovered = TestSuites.discover(moduleDir, compact);
+        Map<String, ClassSuite> classSuites = declaredClassSuites(moduleDir);
+        List<String> discovered = TestSuites.available(moduleDir, compact, classSuites);
         var resolved = selection.resolve(discovered);
-        for (String suite : resolved.ok() ? resolved.suites() : discovered) {
+        List<String> suites = resolved.ok() ? resolved.suites() : discovered;
+        Predicate<String> runs =
+                SuiteClassFilter.of(moduleDir, compact, suites, classSuites).acceptor();
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        for (String suite : TestSuites.compiled(moduleDir, compact, suites, classSuites)) {
             roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.scalaRoots(moduleDir, compact, suite));
         }
-        for (Path r : roots) total += estimateTestCount(r);
+        int total = 0;
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) continue;
+            for (Path file : testSources(root)) {
+                String rel = root.relativize(file).toString().replace('\\', '/');
+                if (!runs.test(rel.substring(0, rel.lastIndexOf('.')).replace('/', '.'))) continue;
+                total += countTests(file);
+            }
+        }
         return total;
+    }
+
+    /** The module's {@code [test.suites]} class-pattern suites; none when its manifest does not parse. */
+    private static Map<String, ClassSuite> declaredClassSuites(Path moduleDir) {
+        try {
+            return JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
+                    .build()
+                    .testClassSuites();
+        } catch (IOException | RuntimeException e) {
+            return Map.of();
+        }
     }
 
     /**
@@ -189,7 +222,7 @@ public final class TestSupport {
      */
     public static List<String> selectedSuites(
             Path moduleDir, boolean compact, BuildBlock build, @Nullable TestSelection selection) {
-        List<String> discovered = TestSuites.available(moduleDir, compact, build.testSuiteClasses());
+        List<String> discovered = TestSuites.available(moduleDir, compact, build.testClassSuites());
         if (selection != null) {
             var resolved = selection.resolve(discovered);
             if (resolved.ok()) return resolved.suites();
@@ -428,7 +461,7 @@ public final class TestSupport {
      * 100% on success.
      */
     public static TestProgressListener bridgeListener(TaskContext ctx, int workerCount, boolean verbose) {
-        return bridgeListener(ctx, workerCount, verbose, "", null);
+        return bridgeListener(ctx, workerCount, verbose, "", null, null, SuiteClassFilter.NONE);
     }
 
     /**
@@ -437,26 +470,22 @@ public final class TestSupport {
      */
     public static TestProgressListener bridgeListener(
             TaskContext ctx, int workerCount, boolean verbose, String moduleLabel) {
-        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null);
+        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null, null, SuiteClassFilter.NONE);
     }
 
     /**
      * Full bridge: module coord + project dir so source snippets attach to structured test-failure
-     * diagnostics (web Activity / details.jsonl).
+     * diagnostics (web Activity / details.jsonl), a snippet cache shared with {@link
+     * #renderFailures}, and each failure tagged with the suite {@code suites} says its class runs in.
      */
-    public static TestProgressListener bridgeListener(
-            TaskContext ctx, int workerCount, boolean verbose, @Nullable String moduleLabel, @Nullable Path moduleDir) {
-        return bridgeListener(ctx, workerCount, verbose, moduleLabel, moduleDir, null);
-    }
-
-    /** As {@link #bridgeListener(TaskContext, int, boolean, String, Path)} with a shared snippet cache. */
     public static TestProgressListener bridgeListener(
             TaskContext ctx,
             int workerCount,
             boolean verbose,
             @Nullable String moduleLabel,
             @Nullable Path moduleDir,
-            TestFailureSource.@Nullable Cache cache) {
+            TestFailureSource.@Nullable Cache cache,
+            SuiteClassFilter suites) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         Path dir = moduleDir;
         TestFailureSource.Cache snippets = cache != null ? cache : new TestFailureSource.Cache();
@@ -556,7 +585,8 @@ public final class TestSupport {
                                 file,
                                 line,
                                 snippetStart,
-                                snippetLines));
+                                snippetLines,
+                                className == null || className.isBlank() ? "" : suites.suiteOf(className)));
             }
 
             @Override

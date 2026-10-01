@@ -286,7 +286,9 @@ class JkResultsMarkdownTest {
                 0,
                 0,
                 List.of(),
-                2);
+                2,
+                "",
+                "integration");
         BuildRecord r = record(
                 false,
                 List.of(),
@@ -299,7 +301,7 @@ class JkResultsMarkdownTest {
         assertThat(md).contains("Tests: **1 failed**, 9 passed (10 total)");
         assertThat(md).contains("## Failures");
         assertThat(md).contains("### Tests");
-        assertThat(md).contains("`g:core :: com.acme.FooTest.bar`");
+        assertThat(md).contains("`g:core :: com.acme.FooTest.bar` (integration suite) — ");
         assertThat(md).contains("AssertionFailedError");
         assertThat(md).contains("expected: <1> but was: <2>");
         assertThat(md).contains("JUnit XML: `target/reports/test-results/`");
