@@ -243,12 +243,12 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Worker JVM flags: the heap/GC tuning, {@code -ea} unless the module opted out, the test
+     * Worker JVM flags: the {@linkplain JvmOptions#suiteFlags suite tuning}, {@code -ea} unless the module opted out, the test
      * table's and the active profile's {@code jvm-args}, the {@code jk.plugin.class} selector for the runner, and any
      * {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
     private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir, JvmRole role) {
-        List<String> planned = new ArrayList<>(JvmOptions.suiteFlags(concurrency));
+        List<String> planned = new ArrayList<>(JvmOptions.suiteFlags(concurrency, jvmArgs));
         if (role != JvmRole.DISCOVERY && SuiteRetry.planned(jvmArgs)) {
             int jdk = launchJavaHome != null
                     ? JvmOptions.hostFeature(launchJavaHome)

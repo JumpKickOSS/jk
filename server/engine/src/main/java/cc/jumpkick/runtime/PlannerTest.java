@@ -597,7 +597,6 @@ public final class PlannerTest {
                         return; // skip — nothing changed since last green run
                     }
                     TestLaunch.reweightForRealRun(ctx, in);
-                    TestLaunch.noteJvmArgs(ctx, testJvmArgs);
                     List<Path> runtimeCp =
                             TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
                     String moduleLabel = projectUnderTest.project().group() + ":"

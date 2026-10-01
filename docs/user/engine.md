@@ -334,6 +334,10 @@ Forked JVMs that are actually running are also capped at the machine's online pr
 or at the cgroup CPU quota when that quota is finite, separate from the memory lease, so
 several jobs cannot start one JVM per core each and thrash. A process's
 `-XX:ActiveProcessorCount` is its own share of the machine and does not lower this cap.
+jk's compiler and plugin workers run ParallelGC with `-XX:ActiveProcessorCount` set to their
+share of the cores; a worker whose collector is left to the JVM (`[jvm] gc = "default"`) gets
+no share, because HotSpot picks SerialGC for one CPU. Test JVMs get neither: they run the JVM's
+default collector on every core ([Testing](test.md#the-test-jvms-flags-test-jvm-args-test-system-properties)).
 Before
 a job writes anything, the engine checks free space on the project directory and on the
 store. The floor is the larger of 1 GiB and 2% of that volume, and at most 2 GiB. Below

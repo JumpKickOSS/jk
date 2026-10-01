@@ -5,17 +5,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.config.AvailableCpus;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.jdk.JdkFingerprint;
+import com.sun.management.OperatingSystemMXBean;
+import java.lang.management.ManagementFactory;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,14 +37,19 @@ class JvmOptionsTest {
         return Math.max(1, Runtime.getRuntime().availableProcessors() / concurrency);
     }
 
-    /** The hardening flags every worker fork gets, absent a user override, for the given concurrency. */
-    private static List<String> hardening(int concurrency) {
-        return List.of(
-                "-XX:MaxMetaspaceSize=256m",
-                "-XX:ActiveProcessorCount=" + cores(concurrency),
-                "-Xss512k",
-                PreferIpv4.JVM_FLAG,
-                "-XX:+ExitOnOutOfMemoryError");
+    /**
+     * The hardening flags a batch fork gets, absent a user override, for the given concurrency. The
+     * CPU share comes only with a named collector, so it never makes HotSpot pick SerialGC.
+     */
+    private static List<String> hardening(int concurrency, boolean namedCollector) {
+        List<String> out = new ArrayList<>(List.of("-XX:MaxMetaspaceSize=256m"));
+        if (namedCollector) out.add("-XX:ActiveProcessorCount=" + cores(concurrency));
+        out.addAll(List.of("-Xss512k", PreferIpv4.JVM_FLAG, "-XX:+ExitOnOutOfMemoryError"));
+        return out;
+    }
+
+    private static boolean collectorFlag(String flag) {
+        return flag.startsWith("-XX:+Use") && flag.endsWith("GC");
     }
 
     @Test
@@ -46,7 +57,7 @@ class JvmOptionsTest {
         // No -XX:+Use*GC and no dedup by default: workers ride the JVM's default collector
         // (G1 on server-class machines) — see the DEFAULT_GC javadoc for why ZGC was abandoned.
         List<String> expected = new ArrayList<>(List.of("-XX:MaxRAMPercentage=50"));
-        expected.addAll(hardening(1));
+        expected.addAll(hardening(1, false));
         assertThat(JvmOptions.flags(PluginTuning.NONE, 1)).containsExactlyElementsOf(expected);
     }
 
@@ -55,7 +66,7 @@ class JvmOptionsTest {
         // Test suites run on the JVM's default stack and metaspace, as Surefire's and Gradle's
         // forks do; the batch reserve, the metaspace cap and exit-on-OOM are for compilers and
         // plugin tools. A test may provoke an OutOfMemoryError and catch it.
-        List<String> suite = JvmOptions.suiteFlags(1);
+        List<String> suite = JvmOptions.suiteFlags(1, List.of());
         assertThat(suite)
                 .noneMatch(f -> f.startsWith("-Xss"))
                 .noneMatch(f -> f.startsWith("-XX:MaxMetaspaceSize"))
@@ -83,7 +94,7 @@ class JvmOptionsTest {
                     }
                 }
                 """);
-        assertThat(fork(JvmOptions.suiteFlags(1), program)).isZero();
+        assertThat(fork(JvmOptions.suiteFlags(1, List.of()), program)).isZero();
         assertThat(fork(JvmOptions.workerFlags(1), program)).isEqualTo(WorkerFate.EXIT_ON_OUT_OF_MEMORY);
     }
 
@@ -100,6 +111,84 @@ class JvmOptionsTest {
     }
 
     @Test
+    void a_batch_fork_with_the_jvm_default_collector_gets_no_cpu_share() {
+        // ActiveProcessorCount=1 makes HotSpot pick SerialGC, so a share on a fork whose collector
+        // jk leaves to the JVM would choose its GC. A named collector, jk's or the user's, keeps it.
+        assertThat(JvmOptions.flags(PluginTuning.NONE, 64)).noneMatch(f -> f.startsWith("-XX:ActiveProcessorCount"));
+        assertThat(JvmOptions.batchFlags(64)).contains("-XX:+UseParallelGC", "-XX:ActiveProcessorCount=" + cores(64));
+        PluginTuning userGc = new PluginTuning(null, null, null, List.of("-XX:+UseShenandoahGC"));
+        assertThat(JvmOptions.flags(userGc, 64)).contains("-XX:ActiveProcessorCount=" + cores(64));
+    }
+
+    @Test
+    void a_suite_jvm_names_no_collector_and_no_cpu_share_whatever_the_jvm_table_says() {
+        try {
+            installTuning(new PluginTuning(null, "parallel", true, List.of()));
+            assertThat(JvmOptions.suiteFlags(8, List.of()))
+                    .noneMatch(JvmOptionsTest::collectorFlag)
+                    .noneMatch(f -> f.startsWith("-XX:ActiveProcessorCount"))
+                    .noneMatch(f -> f.equals("-XX:+UseStringDeduplication"));
+            HeapPlan.Plan plan = new HeapPlan.Plan(8, 64L << 20, 512L << 20, 800L << 20, null);
+            PluginTuning zgc = new PluginTuning(null, "zgc", true, List.of());
+            assertThat(JvmOptions.suiteAbsoluteFlags(plan, zgc, List.of()))
+                    .containsExactly("-Xms64m", "-Xmx800m", "-XX:SoftMaxHeapSize=512m", PreferIpv4.JVM_FLAG);
+        } finally {
+            SessionContext.reset();
+        }
+    }
+
+    @Test
+    void a_suite_jvm_whose_test_jvm_args_pin_a_heap_gets_no_heap_flag_from_jk() {
+        HeapPlan.Plan plan = new HeapPlan.Plan(1, 64L << 20, 512L << 20, 521L << 20, null);
+        for (String pin : List.of("-Xmx6g", "-XX:MaxHeapSize=6g", "-XX:MaxRAMPercentage=40", "-Xms1g")) {
+            assertThat(JvmOptions.suiteAbsoluteFlags(plan, PluginTuning.NONE, List.of(pin)))
+                    .as(pin)
+                    .containsExactly(PreferIpv4.JVM_FLAG);
+            assertThat(JvmOptions.suiteFlags(1, List.of("-ea", pin))).as(pin).noneMatch(JvmOptions::pinsHeap);
+        }
+        assertThat(JvmOptions.suiteAbsoluteFlags(plan, PluginTuning.NONE, List.of("-Dprobe=1")))
+                .contains("-Xms64m", "-Xmx521m", "-XX:SoftMaxHeapSize=512m");
+    }
+
+    @Test
+    void a_heap_pinned_in_the_jvm_table_args_leaves_out_the_ram_percentage() {
+        PluginTuning pinned = new PluginTuning(null, null, null, List.of("-Xmx2g"));
+        assertThat(JvmOptions.flags(pinned, 1)).noneMatch(f -> f.startsWith("-XX:MaxRAMPercentage"));
+    }
+
+    /**
+     * A suite JVM forked with jk's planned flags runs the JVM's own default collector: G1 on a host
+     * with at least two CPUs and the memory HotSpot calls server-class.
+     */
+    @Test
+    @Tag("integration")
+    void a_forked_suite_jvm_runs_g1(@TempDir Path dir) throws Exception {
+        // This JVM's own count may be pinned by whoever forked it; the child sees the host and its quota.
+        int quota = AvailableCpus.quota();
+        int cpus = quota > 0 ? Math.min(quota, HostProcessors.count()) : HostProcessors.count();
+        assumeTrue(cpus >= 2, "HotSpot picks SerialGC on one CPU");
+        long total = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean()).getTotalMemorySize();
+        assumeTrue(total >= 2L << 30, "HotSpot picks SerialGC below about 1.8 GiB");
+        Path program = dir.resolve("NamesCollectors.java");
+        Files.writeString(program, """
+                import java.lang.management.ManagementFactory;
+                public class NamesCollectors {
+                    public static void main(String[] args) {
+                        for (var gc : ManagementFactory.getGarbageCollectorMXBeans()) System.out.println(gc.getName());
+                    }
+                }
+                """);
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        command.addAll(JvmOptions.suiteFlags(4, List.of()));
+        command.add(program.toString());
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(process.waitFor()).as(out).isZero();
+        assertThat(out).contains("G1 Young Generation");
+    }
+
+    @Test
     void heap_cap_is_divided_across_concurrent_jvms() {
         // 4 concurrent test workers → each gets a quarter of the base cap.
         assertThat(JvmOptions.flags(PluginTuning.NONE, 4)).contains("-XX:MaxRAMPercentage=12.5");
@@ -109,7 +198,7 @@ class JvmOptionsTest {
     void explicit_settings_win_and_extra_args_append() {
         PluginTuning s = new PluginTuning(70.0, "g1", false, List.of("-XX:+AlwaysPreTouch"));
         List<String> expected = new ArrayList<>(List.of("-XX:MaxRAMPercentage=70", "-XX:+UseG1GC"));
-        expected.addAll(hardening(1));
+        expected.addAll(hardening(1, true));
         expected.add("-XX:+AlwaysPreTouch");
         assertThat(JvmOptions.flags(s, 1)).containsExactlyElementsOf(expected);
         // string-dedup=false → no dedup flag; gc=g1 → G1, not ZGC.
@@ -119,7 +208,7 @@ class JvmOptionsTest {
     void gc_none_emits_no_collector_and_no_dedup() {
         PluginTuning s = new PluginTuning(null, "none", true, List.of());
         List<String> expected = new ArrayList<>(List.of("-XX:MaxRAMPercentage=50"));
-        expected.addAll(hardening(1));
+        expected.addAll(hardening(1, false));
         assertThat(JvmOptions.flags(s, 1)).containsExactlyElementsOf(expected);
     }
 
@@ -233,7 +322,7 @@ class JvmOptionsTest {
             // The CLI carries resolved tuning on the session; worker forks read it back.
             installTuning(new PluginTuning(80.0, "g1", false, List.of()));
             List<String> expected = new ArrayList<>(List.of("-XX:MaxRAMPercentage=80", "-XX:+UseG1GC"));
-            expected.addAll(hardening(1));
+            expected.addAll(hardening(1, true));
             assertThat(JvmOptions.workerFlags(1)).containsExactlyElementsOf(expected);
             // Concurrency still divides the resolved cap.
             assertThat(JvmOptions.workerFlags(4)).contains("-XX:MaxRAMPercentage=20");
@@ -246,7 +335,7 @@ class JvmOptionsTest {
     void absolute_flags_emit_xms_softmax_xmx_and_no_collector_by_default() {
         HeapPlan.Plan plan = new HeapPlan.Plan(4, 64L << 20, 512L << 20, 800L << 20, null);
         List<String> expected = new ArrayList<>(List.of("-Xms64m", "-Xmx800m", "-XX:SoftMaxHeapSize=512m"));
-        expected.addAll(hardening(4)); // plan.parallelism() == 4
+        expected.addAll(hardening(4, false)); // plan.parallelism() == 4; no collector, so no CPU share
         assertThat(JvmOptions.absoluteFlags(plan, PluginTuning.NONE)).containsExactlyElementsOf(expected);
     }
 
@@ -262,7 +351,7 @@ class JvmOptionsTest {
                 "-XX:+ZUncommit",
                 "-XX:ZUncommitDelay=10",
                 "-XX:+UseStringDeduplication"));
-        expected.addAll(hardening(4)); // plan.parallelism() == 4
+        expected.addAll(hardening(4, true)); // plan.parallelism() == 4
         assertThat(JvmOptions.absoluteFlags(plan, zgc)).containsExactlyElementsOf(expected);
     }
 
@@ -271,7 +360,7 @@ class JvmOptionsTest {
         HeapPlan.Plan plan = new HeapPlan.Plan(1, 64L << 20, 256L << 20, 256L << 20, null);
         PluginTuning serial = new PluginTuning(null, "none", false, List.of());
         List<String> expected = new ArrayList<>(List.of("-Xms64m", "-Xmx256m"));
-        expected.addAll(hardening(1)); // plan.parallelism() == 1; no SoftMaxHeapSize, no collector
+        expected.addAll(hardening(1, false)); // plan.parallelism() == 1; no SoftMaxHeapSize, no collector
         assertThat(JvmOptions.absoluteFlags(plan, serial)).containsExactlyElementsOf(expected);
     }
 

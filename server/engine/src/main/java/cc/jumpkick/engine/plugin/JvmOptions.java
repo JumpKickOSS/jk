@@ -37,8 +37,8 @@ public final class JvmOptions {
     public static final String DEFAULT_GC = "default";
 
     /**
-     * Batch GC for jk-owned forks (compilers/plugins). Test workers keep {@link #DEFAULT_GC} so
-     * user code sees the same collector as other runners.
+     * Batch GC for jk-owned forks (compilers/plugins). Test JVMs always run the JVM's own default;
+     * only flags the user wrote ({@code [test] jvm-args}, {@code [jvm] args}) choose theirs.
      */
     public static final String BATCH_DEFAULT_GC = "parallel";
 
@@ -71,15 +71,20 @@ public final class JvmOptions {
     /** The sole worker's lease is not cut below this while the budget holds it. */
     static final long SOLE_WORKER_LEASE_FLOOR = 1L << 30;
 
-    /** Which thread stack and metaspace a fork gets: jk's batch reserve and cap, or the JVM's own defaults. */
-    private enum Stack {
-        /** {@code -Xss} at {@link #DEFAULT_STACK_KB} and the metaspace cap unless the tuning pins them. */
+    /** Which kind of fork the flags are for: one of jk's own batch tools, or a test JVM. */
+    private enum Role {
+        /**
+         * {@code -Xss} at {@link #DEFAULT_STACK_KB}, the metaspace cap, {@code
+         * ExitOnOutOfMemoryError}, and a CPU share when the fork's collector is named, each unless
+         * the tuning pins it.
+         */
         BATCH,
         /**
-         * No {@code -Xss}, no metaspace cap and no {@code ExitOnOutOfMemoryError}: the platform
-         * defaults, as Surefire's and Gradle's test forks run.
+         * The platform defaults, as Surefire's and Gradle's test forks run: no {@code -Xss}, no
+         * metaspace cap, no {@code ExitOnOutOfMemoryError}, no {@code ActiveProcessorCount} and no
+         * collector flag. {@code [jvm] gc} does not reach it.
          */
-        PLATFORM
+        SUITE
     }
 
     /**
@@ -88,37 +93,58 @@ public final class JvmOptions {
      * worker count).
      */
     public static List<String> flags(PluginTuning settings, int concurrency) {
-        return flags(settings, concurrency, DEFAULT_GC, Stack.BATCH);
+        return flags(settings, concurrency, DEFAULT_GC, Role.BATCH, List.of());
     }
 
-    private static List<String> flags(PluginTuning settings, int concurrency, String defaultGc, Stack stack) {
+    /**
+     * {@code userArgs} are the flags that follow these on the fork ({@code [test] jvm-args}). A heap
+     * pinned there or in the tuning's own args leaves out jk's {@code MaxRAMPercentage}.
+     */
+    private static List<String> flags(
+            PluginTuning settings, int concurrency, String defaultGc, Role role, List<String> userArgs) {
         PluginTuning s = settings == null ? PluginTuning.NONE : settings;
         double base = s.maxRamPercent() != null ? s.maxRamPercent() : DEFAULT_MAX_RAM_PERCENT;
         double perJvm = base / Math.max(1, concurrency);
-        String gc = (s.gc() != null ? s.gc() : defaultGc).toLowerCase(Locale.ROOT);
-        boolean dedup = s.stringDedup() == null || s.stringDedup();
+        String gc = collector(s, defaultGc, role);
 
         List<String> out = new ArrayList<>();
-        out.add("-XX:MaxRAMPercentage=" + fmt(perJvm));
+        if (!anyPinsHeap(s.extraArgs()) && !anyPinsHeap(userArgs)) {
+            out.add("-XX:MaxRAMPercentage=" + fmt(perJvm));
+        }
+        addCollector(out, s, gc, false);
+        addHardening(out, s, concurrency, role, gc);
+        out.addAll(s.extraArgs());
+        return out;
+    }
+
+    /** The collector a fork's flags name: the tuning's, else {@code defaultGc}. A test JVM's is the JVM default. */
+    private static String collector(PluginTuning s, String defaultGc, Role role) {
+        if (role == Role.SUITE) return DEFAULT_GC;
+        return (s.gc() != null ? s.gc() : defaultGc).toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * The flag for {@code gc} (none for {@code default}, {@code none} or an unrecognized name), then
+     * string deduplication where it has an effect (G1, ZGC). {@code uncommit} adds ZGC's uncommit.
+     */
+    private static void addCollector(List<String> out, PluginTuning s, String gc, boolean uncommit) {
         switch (gc) {
-            case "zgc" -> out.add("-XX:+UseZGC");
+            case "zgc" -> {
+                out.add("-XX:+UseZGC");
+                if (uncommit) {
+                    out.add("-XX:+ZUncommit");
+                    out.add("-XX:ZUncommitDelay=" + ZGC_UNCOMMIT_DELAY_SECONDS);
+                }
+            }
             case "g1" -> out.add("-XX:+UseG1GC");
             case "parallel" -> out.add("-XX:+UseParallelGC");
             case "serial" -> out.add("-XX:+UseSerialGC");
-            case "none", "default", "" -> {
-                /* leave the JVM's own default */
-            }
             default -> {
-                /* unrecognized name: leave the JVM's own default rather than guess */
+                /* the JVM's own default */
             }
         }
-        // String deduplication only has an effect on G1/ZGC; skip it otherwise.
-        if (dedup && (gc.equals("zgc") || gc.equals("g1"))) {
-            out.add("-XX:+UseStringDeduplication");
-        }
-        addHardening(out, s, concurrency, stack);
-        out.addAll(s.extraArgs());
-        return out;
+        boolean dedup = s.stringDedup() == null || s.stringDedup();
+        if (dedup && (gc.equals("zgc") || gc.equals("g1"))) out.add("-XX:+UseStringDeduplication");
     }
 
     /**
@@ -150,22 +176,21 @@ public final class JvmOptions {
      * at once, so {@code concurrency} is ignored in that case.
      */
     public static List<String> workerFlags(int concurrency) {
-        return workerFlags(concurrency, DEFAULT_GC, Stack.BATCH);
+        return workerFlags(concurrency, DEFAULT_GC, Role.BATCH, List.of());
     }
 
     /**
-     * {@link #workerFlags} for the JVMs that run a module's test suite: the same heap, GC and
-     * hardening, without jk's {@code -Xss} reserve, its metaspace cap or {@code
-     * -XX:+ExitOnOutOfMemoryError}. A test may provoke an {@link OutOfMemoryError} and catch it;
-     * one that escapes is that test's failure, not the JVM's exit. A test thread
-     * gets the JVM's platform default stack and the suite the JVM's own metaspace, exactly what
-     * Surefire's and Gradle's forks give them, so a recursive test that passes under Maven passes
-     * here and a framework that keeps an augmented application per test profile resident — a
-     * {@code @QuarkusTest} suite, listing its classes included — loads what it needs. A cap the
-     * module sets ({@code [test] jvm-args}) still binds.
+     * Flags for the JVMs that run a module's test suite, placed before {@code testJvmArgs} (the
+     * plugins' arguments, {@code [test] jvm-args} and system properties, the profile's {@code
+     * jvm-args}). jk plans the heap and leaves everything else the JVM chooses for itself: no
+     * {@code -Xss}, no metaspace cap, no {@code -XX:+ExitOnOutOfMemoryError}, no {@code
+     * -XX:ActiveProcessorCount} and no collector, so the suite runs the JVM's default GC (G1 on a
+     * host with two or more CPUs) and sees every core, as under Surefire and Gradle. A test may
+     * provoke an {@link OutOfMemoryError} and catch it. When {@code testJvmArgs} pin a heap ({@link
+     * #pinsHeap}), jk adds no heap flag of its own. The user's {@code [jvm] args} still apply.
      */
-    public static List<String> suiteFlags(int concurrency) {
-        return workerFlags(concurrency, DEFAULT_GC, Stack.PLATFORM);
+    public static List<String> suiteFlags(int concurrency, List<String> testJvmArgs) {
+        return workerFlags(concurrency, DEFAULT_GC, Role.SUITE, testJvmArgs == null ? List.of() : testJvmArgs);
     }
 
     /**
@@ -190,7 +215,7 @@ public final class JvmOptions {
      * the flag.
      */
     public static List<String> batchFlags(int concurrency, int hostFeature) {
-        List<String> out = new ArrayList<>(workerFlags(concurrency, BATCH_DEFAULT_GC, Stack.BATCH));
+        List<String> out = new ArrayList<>(workerFlags(concurrency, BATCH_DEFAULT_GC, Role.BATCH, List.of()));
         appendJep498AllowIfSupported(out, hostFeature);
         return out;
     }
@@ -233,11 +258,11 @@ public final class JvmOptions {
         }
     }
 
-    private static List<String> workerFlags(int concurrency, String defaultGc, Stack stack) {
+    private static List<String> workerFlags(int concurrency, String defaultGc, Role role, List<String> userArgs) {
         PluginTuning s = tuning();
         HeapPlan.Plan plan = processHeapPlan();
-        if (plan != null && autoHeapEnabled(s)) return absoluteFlags(plan, s, defaultGc, stack);
-        return flags(s, concurrency, defaultGc, stack);
+        if (plan != null && autoHeapEnabled(s)) return absoluteFlags(plan, s, defaultGc, role, userArgs);
+        return flags(s, concurrency, defaultGc, role, userArgs);
     }
 
     /** Process-wide heap budget from {@link #planAndApply}, or null when explicit tuning wins. */
@@ -476,7 +501,7 @@ public final class JvmOptions {
         Set<String> out = new HashSet<>(PLANNED_HEAPS);
         collectHeapFlags(out, workerFlags(1));
         collectHeapFlags(out, batchFlags(1));
-        collectHeapFlags(out, suiteFlags(1));
+        collectHeapFlags(out, suiteFlags(1, List.of()));
         collectHeapFlags(out, soleWorkerFlags());
         return out;
     }
@@ -502,67 +527,69 @@ public final class JvmOptions {
      * {@code gc = "none"} — G1 and ZGC honour it, everything else recognizes and ignores it.
      */
     static List<String> absoluteFlags(HeapPlan.Plan plan, PluginTuning s) {
-        return absoluteFlags(plan, s, DEFAULT_GC, Stack.BATCH);
+        return absoluteFlags(plan, s, DEFAULT_GC, Role.BATCH, List.of());
     }
 
     static List<String> absoluteFlags(HeapPlan.Plan plan, PluginTuning s, String defaultGc) {
-        return absoluteFlags(plan, s, defaultGc, Stack.BATCH);
+        return absoluteFlags(plan, s, defaultGc, Role.BATCH, List.of());
     }
 
-    private static List<String> absoluteFlags(HeapPlan.Plan plan, PluginTuning s, String defaultGc, Stack stack) {
-        String gc = (s.gc() != null ? s.gc() : defaultGc).toLowerCase(Locale.ROOT);
-        boolean dedup = s.stringDedup() == null || s.stringDedup();
+    /** {@link #suiteFlags} under {@code plan}, for {@code testJvmArgs}. */
+    static List<String> suiteAbsoluteFlags(HeapPlan.Plan plan, PluginTuning s, List<String> testJvmArgs) {
+        return absoluteFlags(plan, s, DEFAULT_GC, Role.SUITE, testJvmArgs);
+    }
+
+    /** {@code userArgs} that pin a heap leave out the plan's heap flags. */
+    private static List<String> absoluteFlags(
+            HeapPlan.Plan plan, PluginTuning s, String defaultGc, Role role, List<String> userArgs) {
+        String gc = collector(s, defaultGc, role);
         boolean softMaxAware = !gc.equals("none");
 
         List<String> out = new ArrayList<>();
-        out.add("-Xms" + HeapPlan.mib(plan.xmsBytes()) + "m");
-        out.add("-Xmx" + HeapPlan.mib(plan.xmxBytes()) + "m");
-        if (softMaxAware) out.add("-XX:SoftMaxHeapSize=" + HeapPlan.mib(plan.softMaxBytes()) + "m");
-        switch (gc) {
-            case "zgc" -> {
-                out.add("-XX:+UseZGC");
-                out.add("-XX:+ZUncommit");
-                out.add("-XX:ZUncommitDelay=" + ZGC_UNCOMMIT_DELAY_SECONDS);
-            }
-            case "g1" -> out.add("-XX:+UseG1GC");
-            case "parallel" -> out.add("-XX:+UseParallelGC");
-            case "serial" -> out.add("-XX:+UseSerialGC");
-            case "none", "default", "" -> {
-                /* JVM default collector */
-            }
-            default -> {
-                /* unrecognized name: leave the JVM's own default rather than guess */
-            }
+        if (!anyPinsHeap(userArgs)) {
+            out.add("-Xms" + HeapPlan.mib(plan.xmsBytes()) + "m");
+            out.add("-Xmx" + HeapPlan.mib(plan.xmxBytes()) + "m");
+            if (softMaxAware) out.add("-XX:SoftMaxHeapSize=" + HeapPlan.mib(plan.softMaxBytes()) + "m");
         }
-        if (dedup && (gc.equals("zgc") || gc.equals("g1"))) out.add("-XX:+UseStringDeduplication");
-        addHardening(out, s, plan.parallelism(), stack);
+        addCollector(out, s, gc, true);
+        addHardening(out, s, plan.parallelism(), role, gc);
         out.addAll(s.extraArgs());
         return out;
+    }
+
+    private static boolean anyPinsHeap(List<String> args) {
+        for (String a : args) {
+            if (pinsHeap(a)) return true;
+        }
+        return false;
     }
 
     /** How long ZGC waits on an idle heap before returning pages to the OS — tuned for aggressive give-back. */
     static final int ZGC_UNCOMMIT_DELAY_SECONDS = 10;
 
     /**
-     * CPU share, IPv4 preference, and for a batch worker the metaspace cap, the stack and {@code
-     * ExitOnOutOfMemoryError}, each unless already set in {@code extraArgs}.
+     * IPv4 preference, and for a batch worker the metaspace cap, the CPU share, the stack and {@code
+     * ExitOnOutOfMemoryError}, each unless already set in {@code extraArgs}. The CPU share is added
+     * only when the fork's collector is named ({@code gc}, or a {@code -XX:+Use…GC} in {@code
+     * extraArgs}): HotSpot picks SerialGC for one CPU, and the share bounds thread counts without
+     * choosing the collector.
      */
-    private static void addHardening(List<String> out, PluginTuning s, int concurrency, Stack stack) {
+    private static void addHardening(List<String> out, PluginTuning s, int concurrency, Role role, String gc) {
         List<String> extra = s.extraArgs();
-        if (stack == Stack.BATCH && !hasArgPrefix(extra, "-XX:MaxMetaspaceSize", "-XX:MetaspaceSize")) {
+        if (role == Role.BATCH && !hasArgPrefix(extra, "-XX:MaxMetaspaceSize", "-XX:MetaspaceSize")) {
             out.add("-XX:MaxMetaspaceSize=" + DEFAULT_MAX_METASPACE_MB + "m");
         }
-        if (!hasArgPrefix(extra, "-XX:ActiveProcessorCount")) {
+        if (role == Role.BATCH && namesCollector(gc, extra) && !hasArgPrefix(extra, "-XX:ActiveProcessorCount")) {
             int cores = Math.max(1, Runtime.getRuntime().availableProcessors() / Math.max(1, concurrency));
             out.add("-XX:ActiveProcessorCount=" + cores);
         }
-        if (stack == Stack.BATCH && !hasArgPrefix(extra, "-Xss")) {
+        if (role == Role.BATCH && !hasArgPrefix(extra, "-Xss")) {
             out.add("-Xss" + DEFAULT_STACK_KB + "k");
         }
         if (!hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) {
             out.add(PreferIpv4.JVM_FLAG);
         }
-        if (stack == Stack.BATCH
+        if (role == Role.BATCH
                 && !hasArgPrefix(
                         extra,
                         "-XX:+ExitOnOutOfMemoryError",
@@ -570,6 +597,15 @@ public final class JvmOptions {
                         "-XX:+CrashOnOutOfMemoryError")) {
             out.add("-XX:+ExitOnOutOfMemoryError");
         }
+    }
+
+    /** True when {@code gc} or a flag in {@code extra} selects a collector. */
+    private static boolean namesCollector(String gc, List<String> extra) {
+        if (gc.equals("zgc") || gc.equals("g1") || gc.equals("parallel") || gc.equals("serial")) return true;
+        for (String a : extra) {
+            if (a.startsWith("-XX:+Use") && a.endsWith("GC")) return true;
+        }
+        return false;
     }
 
     private static boolean hasArgPrefix(List<String> args, String... prefixes) {
