@@ -8,6 +8,7 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.test.FailureClip;
 import cc.jumpkick.test.JUnitLauncher;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -31,6 +32,18 @@ class EventRedactionTest {
         assertThat(safe.stack())
                 .isEqualTo(
                         "E: leak " + SecretRedactor.MASK + JUnitLauncher.STACK_TRUNCATION_MARKER + "12345 more chars)");
+    }
+
+    /** The clip cuts a long header line and a long cause line; each cut is a seam of its own. */
+    @Test
+    void a_secret_cut_by_each_line_clip_is_masked_at_its_seam() {
+        SecretRedactor r = SecretRedactor.of(List.of("s3cret-token-value"));
+        String cut = FailureClip.LINE_TRUNCATION_MARKER + "700 more chars)";
+        String stack = "E: leak s3cret-tok" + cut + "\n\tat C.m(C.java:1)\nCaused by: F: s3cret-to" + cut;
+        TestFailureInfo safe = requireNonNull(EventRedaction.redactFailure(r, failure("m", stack)));
+        assertThat(safe.stack())
+                .isEqualTo("E: leak " + SecretRedactor.MASK + cut + "\n\tat C.m(C.java:1)\nCaused by: F: "
+                        + SecretRedactor.MASK + cut);
     }
 
     @Test

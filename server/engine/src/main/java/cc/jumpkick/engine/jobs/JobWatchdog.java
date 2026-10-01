@@ -227,6 +227,7 @@ final class JobWatchdog {
         // wire-only.
         BuildAccumulator a = accumulatorOf.apply(eventRequestId);
         if (a != null) a.markUserCancelled(true, deadline.reason());
+        WireWriter.unpace(writer);
         int killed = JobWorkers.shutdownForRequest(eventRequestId, limits.cancelGraceMs());
         LiveJobRegistry.interruptRunner(runnerThread);
         WireWriter.sendNoWait(

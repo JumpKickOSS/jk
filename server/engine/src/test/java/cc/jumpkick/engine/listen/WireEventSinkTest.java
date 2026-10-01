@@ -5,7 +5,10 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.WireWriter;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ErrorLineEvent;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
 import java.io.BufferedWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
@@ -19,9 +22,48 @@ import org.junit.jupiter.api.Test;
 
 class WireEventSinkTest {
 
+    private static final FailureTextRefs TEXTS = new FailureTextRefs();
+
+    /**
+     * A suite whose tests all fail on one setup error repeats one text per failure; the stream
+     * carries it once and names it after that.
+     */
+    @Test
+    void a_repeated_failure_text_crosses_the_stream_once() {
+        FailureTextRefs texts = new FailureTextRefs();
+        String stack = "java.lang.AssertionError: war missing\n\tat org.jvnet.hudson.test.JenkinsRule.before(J.java:1)";
+        TestFailureInfo first =
+                new TestFailureInfo("g:core", "", "a.FooTest", "x()", "AssertionError", "war missing", stack);
+        TestFailureInfo second =
+                new TestFailureInfo("g:core", "", "a.BarTest", "y()", "AssertionError", "war missing", stack);
+
+        String one =
+                WireEventSink.encode(new EngineEvent.ErrorFailure("d", "run-tests", "test-failure", "", first), texts);
+        String two =
+                WireEventSink.encode(new EngineEvent.ErrorFailure("d", "run-tests", "test-failure", "", second), texts);
+        String plan = WireEventSink.encode(
+                new EngineEvent.PlanDiagnosticFailure("d", "run-tests", "test-failure", "", first), texts);
+
+        assertThat(one).contains("\"textId\":1").contains("JenkinsRule.before").contains("war missing");
+        assertThat(two)
+                .contains("\"sameText\":1")
+                .contains("a.BarTest")
+                .doesNotContain("JenkinsRule.before")
+                .doesNotContain("war missing");
+        assertThat(plan).contains("\"sameText\":1").doesNotContain("JenkinsRule.before");
+
+        FailureTextRefs reader = new FailureTextRefs();
+        ErrorLineEvent a = ErrorLineEvent.decode(requireNonNull(one));
+        ErrorLineEvent b = ErrorLineEvent.decode(requireNonNull(two));
+        reader.resolve(a.textId(), a.sameText(), a.message(), a.stack());
+        assertThat(reader.resolve(b.textId(), b.sameText(), b.message(), b.stack()))
+                .isEqualTo(new FailureTextRefs.Text("war missing", stack));
+    }
+
     @Test
     void plan_start_encodes_existing_wire_token() {
-        String line = requireNonNull(WireEventSink.encode(new EngineEvent.PlanStart("d", "build", 1, 2, 3, 0, false)));
+        String line =
+                requireNonNull(WireEventSink.encode(new EngineEvent.PlanStart("d", "build", 1, 2, 3, 0, false), TEXTS));
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.BUILDPLAN_START);
         assertThat(line).contains("\"dir\":\"d\"");
     }
@@ -37,14 +79,15 @@ class WireEventSinkTest {
 
     @Test
     void workspace_events_keep_existing_wire_tokens() {
-        assertThat(EngineProtocol.typeOf(
-                        requireNonNull(WireEventSink.encode(new EngineEvent.Preflight("lock", 0, 1, "locking")))))
+        assertThat(EngineProtocol.typeOf(requireNonNull(
+                        WireEventSink.encode(new EngineEvent.Preflight("lock", 0, 1, "locking"), TEXTS))))
                 .isEqualTo(EngineProtocol.PREFLIGHT);
-        assertThat(EngineProtocol.typeOf(requireNonNull(WireEventSink.encode(new EngineEvent.PlanDone(3)))))
+        assertThat(EngineProtocol.typeOf(requireNonNull(WireEventSink.encode(new EngineEvent.PlanDone(3), TEXTS))))
                 .isEqualTo(EngineProtocol.PLAN_DONE);
-        assertThat(EngineProtocol.typeOf(requireNonNull(WireEventSink.encode(new EngineEvent.ModuleStart("d", "g:a")))))
+        assertThat(EngineProtocol.typeOf(
+                        requireNonNull(WireEventSink.encode(new EngineEvent.ModuleStart("d", "g:a"), TEXTS))))
                 .isEqualTo(EngineProtocol.MODULE_START);
-        assertThat(EngineProtocol.typeOf(requireNonNull(WireEventSink.encode(new EngineEvent.Eta(9)))))
+        assertThat(EngineProtocol.typeOf(requireNonNull(WireEventSink.encode(new EngineEvent.Eta(9), TEXTS))))
                 .isEqualTo(EngineProtocol.ETA);
     }
 

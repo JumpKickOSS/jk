@@ -154,10 +154,13 @@ public final class ProtoEvents {
     /** The three diagnostic shapes share one field order; the record is chosen by the wire type. */
     private static String diagnostic(
             String type, String dir, String step, String code, String message, String test, TestFailureInfo f) {
-        return diagnostic(type, dir, step, code, "", message, test, f);
+        return diagnostic(type, dir, step, code, "", message, test, f, null);
     }
 
-    /** As {@link #diagnostic(String, String, String, String, String, String, TestFailureInfo)} with the tool's key. */
+    /**
+     * As {@link #diagnostic(String, String, String, String, String, String, TestFailureInfo)} with the
+     * tool's key; with {@code texts}, a failure text the stream already carried is sent as its id.
+     */
     private static String diagnostic(
             String type,
             String dir,
@@ -166,16 +169,39 @@ public final class ProtoEvents {
             String key,
             String message,
             String test,
-            TestFailureInfo f) {
+            TestFailureInfo f,
+            @Nullable FailureTextRefs texts) {
         String msg = message == null || message.isEmpty() ? f.message() : message;
+        FailureTextRefs.Ref ref = texts == null ? FailureTextRefs.Ref.NONE : texts.ref(msg, f.stack());
+        if (ref.sameText() > 0) {
+            msg = "";
+            f = withoutText(f);
+        }
         return switch (type) {
             case EngineProtocol.WARN ->
-                WarnEvent.of(dir, step, code, msg, test, f).encode();
+                WarnEvent.of(dir, step, code, msg, test, f, ref).encode();
             case EngineProtocol.ERROR_LINE ->
-                ErrorLineEvent.of(dir, step, code, msg, test, f).encode();
+                ErrorLineEvent.of(dir, step, code, msg, test, f, ref).encode();
             default ->
-                PlanDiagnosticEvent.of(dir, step, code, key, msg, test, f).encode();
+                PlanDiagnosticEvent.of(dir, step, code, key, msg, test, f, ref).encode();
         };
+    }
+
+    private static TestFailureInfo withoutText(TestFailureInfo f) {
+        return new TestFailureInfo(
+                f.module(),
+                f.engine(),
+                f.className(),
+                f.method(),
+                f.exceptionClass(),
+                "",
+                "",
+                f.worker(),
+                f.file(),
+                f.line(),
+                f.snippetStart(),
+                f.snippet(),
+                f.suite());
     }
 
     public static String warn(String dir, String step, String code, String message) {
@@ -210,8 +236,27 @@ public final class ProtoEvents {
     }
 
     public static String errorLine(String dir, String step, String code, String message, TestFailureInfo failure) {
+        return errorLine(dir, step, code, message, failure, null);
+    }
+
+    /** An error line for {@code failure}, its text sent as an id when {@code texts} has carried it. */
+    public static String errorLine(
+            String dir,
+            String step,
+            String code,
+            String message,
+            TestFailureInfo failure,
+            @Nullable FailureTextRefs texts) {
         return diagnostic(
-                EngineProtocol.ERROR_LINE, dir, step, code, message, "", failure == null ? NO_FAILURE : failure);
+                EngineProtocol.ERROR_LINE,
+                dir,
+                step,
+                code,
+                "",
+                message,
+                "",
+                failure == null ? NO_FAILURE : failure,
+                texts);
     }
 
     public static String planDiagnostic(
@@ -230,7 +275,8 @@ public final class ProtoEvents {
                 key,
                 message,
                 test,
-                failure("", "", "", "", exceptionClass, ""));
+                failure("", "", "", "", exceptionClass, ""),
+                null);
     }
 
     public static String planDiagnostic(
@@ -255,14 +301,27 @@ public final class ProtoEvents {
     }
 
     public static String planDiagnostic(String dir, String step, String code, String message, TestFailureInfo failure) {
+        return planDiagnostic(dir, step, code, message, failure, null);
+    }
+
+    /** A plan diagnostic for {@code failure}, its text sent as an id when {@code texts} has carried it. */
+    public static String planDiagnostic(
+            String dir,
+            String step,
+            String code,
+            String message,
+            TestFailureInfo failure,
+            @Nullable FailureTextRefs texts) {
         return diagnostic(
                 EngineProtocol.BUILDPLAN_DIAGNOSTIC,
                 dir,
                 step,
                 code,
+                "",
                 message,
                 "",
-                failure == null ? NO_FAILURE : failure);
+                failure == null ? NO_FAILURE : failure,
+                texts);
     }
 
     public static String stepFinish(

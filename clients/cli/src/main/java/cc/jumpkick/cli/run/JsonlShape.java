@@ -28,6 +28,7 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.transcript.JsonlEnvelope;
@@ -66,6 +67,12 @@ public final class JsonlShape {
             EngineProtocol.OUTPUT);
 
     private static final Object STDOUT_LOCK = new Object();
+
+    /**
+     * The failure texts this process's event stream (stdout and the session transcript) has
+     * carried. One for the process: every module's listener writes the same stream.
+     */
+    static final FailureTextRefs STREAM_TEXTS = new FailureTextRefs();
 
     private JsonlShape() {}
 
@@ -214,11 +221,19 @@ public final class JsonlShape {
 
     /**
      * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
-     * exceptionClass, and a single top-level stack (no nested throwable duplicate).
+     * exceptionClass, and a single top-level stack (no nested throwable duplicate). With {@code
+     * texts}, a message and stack the stream already carried are sent as {@code sameText}.
      */
-    static String error(String step, String code, String msg, @Nullable TestFailureInfo failure) {
+    static String error(
+            String step, String code, String msg, @Nullable TestFailureInfo failure, @Nullable FailureTextRefs texts) {
         if (failure == null) return error(step, code, msg);
         String message = msg == null || msg.isEmpty() ? failure.message() : msg;
+        String stack = failure.stack();
+        FailureTextRefs.Ref ref = texts == null ? FailureTextRefs.Ref.NONE : texts.ref(message, stack);
+        if (ref.sameText() > 0) {
+            message = "";
+            stack = "";
+        }
         return new TestFailureErrorLine(
                         nowMillis(),
                         step,
@@ -235,7 +250,9 @@ public final class JsonlShape {
                         failure.line(),
                         failure.snippetStart(),
                         failure.snippet(),
-                        failure.stack())
+                        stack,
+                        ref.textId(),
+                        ref.sameText())
                 .encode();
     }
 

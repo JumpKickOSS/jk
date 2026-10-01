@@ -3,6 +3,7 @@ package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import org.jspecify.annotations.Nullable;
@@ -16,6 +17,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class WireEventSink implements EventSink {
     private final @Nullable BufferedWriter writer;
+    /** The failure texts this stream has carried: a repeated one crosses it once. */
+    private final FailureTextRefs texts = new FailureTextRefs();
 
     public WireEventSink(@Nullable BufferedWriter writer) {
         this.writer = writer;
@@ -24,12 +27,12 @@ public final class WireEventSink implements EventSink {
     @Override
     public void emit(EngineEvent event) {
         if (writer == null) return;
-        String line = encode(event);
+        String line = encode(event, texts);
         if (line == null) return;
         WireWriter.sendQuiet(writer, line);
     }
 
-    static @Nullable String encode(EngineEvent event) {
+    static @Nullable String encode(EngineEvent event, FailureTextRefs texts) {
         return switch (event) {
             case EngineEvent.PlanStart e ->
                 ProtoEvents.planStart(
@@ -85,9 +88,9 @@ public final class WireEventSink implements EventSink {
                         e.exceptionClass() == null ? "" : e.exceptionClass(),
                         e.key());
             case EngineEvent.ErrorFailure e ->
-                ProtoEvents.errorLine(e.dir(), e.step(), e.code(), e.message(), e.failure());
+                ProtoEvents.errorLine(e.dir(), e.step(), e.code(), e.message(), e.failure(), texts);
             case EngineEvent.PlanDiagnosticFailure e ->
-                ProtoEvents.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.failure());
+                ProtoEvents.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.failure(), texts);
             case EngineEvent.Preflight e -> ProtoEvents.preflight(e.stage(), e.done(), e.total(), e.label());
             case EngineEvent.Note e -> ProtoEvents.note(e.text());
             case EngineEvent.InvocationPhase e -> ProtoEvents.invocationPhase(e.name(), e.status());

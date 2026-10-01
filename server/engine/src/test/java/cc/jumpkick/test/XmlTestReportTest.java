@@ -128,6 +128,6 @@ class XmlTestReportTest {
                 .contains("java.lang.IllegalStateException: context")
                 .contains("Caused by: java.net.ConnectException: refused")
                 .doesNotContain("Frame3999");
-        assertThat(written.length()).isLessThan(MarkdownTestReport.MAX_STACK_CHARS + 4_096);
+        assertThat(written.length()).isLessThan(FailureClip.MAX_STACK_CHARS + 4_096);
     }
 }

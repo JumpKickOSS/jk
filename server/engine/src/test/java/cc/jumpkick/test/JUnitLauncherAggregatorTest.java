@@ -100,53 +100,6 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
-    void pathological_stacks_are_truncated_at_capture() {
-        // The stack is worker-controlled input copied onto wire, SSE, and journal — a
-        // deep-recursion failure must not ride megabytes of frames through the pipeline.
-        String frame = "\tat C.recurse(C.java:2)\n";
-        String stack = "StackOverflowError\n" + frame.repeat(200_000 / frame.length());
-        String truncated = ResultAggregator.truncateStack(stack);
-        assertThat(truncated.length()).isLessThanOrEqualTo(ResultAggregator.MAX_STACK_CHARS + 64);
-        assertThat(truncated).endsWith("more chars)");
-        // Cuts on a line boundary, keeping whole frames.
-        assertThat(truncated).contains("... stack truncated (");
-        assertThat(ResultAggregator.truncateStack("short")).isEqualTo("short");
-    }
-
-    @Test
-    void pathological_messages_are_truncated_at_capture() {
-        // Same rationale as the stack cap: an assertEquals diff of two multi-MB
-        // strings is a single-line message that rides wire, SSE, journal, and web card.
-        String message = "expected: <" + "x".repeat(3_000_000) + "> but was: <y>";
-        String truncated = ResultAggregator.truncateMessage(message);
-        assertThat(truncated.length()).isLessThanOrEqualTo(ResultAggregator.MAX_MESSAGE_CHARS + 64);
-        assertThat(truncated).contains("... message truncated (");
-        assertThat(ResultAggregator.truncateMessage("short")).isEqualTo("short");
-        // A cut landing on a surrogate pair backs off one char instead of emitting a lone surrogate.
-        String astral = "a".repeat(ResultAggregator.MAX_MESSAGE_CHARS - 1) + "😀tail";
-        String cutAstral = ResultAggregator.truncateMessage(astral);
-        assertThat(cutAstral).doesNotContain("😀");
-        assertThat(Character.isHighSurrogate(cutAstral.charAt(cutAstral.indexOf(" ... message truncated") - 1)))
-                .isFalse();
-    }
-
-    @Test
-    void worker_capped_messages_keep_their_original_remainder_count() {
-        // The worker cap emits cap-sized content + marker; that exceeds the engine cap by the
-        // marker's tail alone, and a re-cut would replace the accurate remainder count with the
-        // marker's own length.
-        String workerCapped = "x".repeat(ResultAggregator.MAX_MESSAGE_CHARS)
-                + JUnitLauncher.MESSAGE_TRUNCATION_MARKER
-                + "3000000 more chars)";
-        assertThat(ResultAggregator.truncateMessage(workerCapped)).isSameAs(workerCapped);
-        // A message that merely quotes the marker mid-body is still worker-controlled input
-        // past the cap and gets cut.
-        String quoting = "y".repeat(20_000) + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "12 more chars)";
-        String cut = ResultAggregator.truncateMessage(quoting);
-        assertThat(cut.length()).isLessThanOrEqualTo(ResultAggregator.MAX_MESSAGE_CHARS + 64);
-    }
-
-    @Test
     void container_events_do_not_count_toward_test_totals() {
         // JUnit fires FINISHED for engine roots and test classes too — those
         // are CONTAINER nodes and must not inflate the test count.

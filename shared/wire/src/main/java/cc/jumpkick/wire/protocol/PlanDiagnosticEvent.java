@@ -28,7 +28,9 @@ public record PlanDiagnosticEvent(
         int snippetStart,
         int worker,
         List<String> snippet,
-        String stack) {
+        String stack,
+        int textId,
+        int sameText) {
     public String encode() {
         return DiagnosticFields.encode(
                 EngineProtocol.BUILDPLAN_DIAGNOSTIC,
@@ -49,12 +51,21 @@ public record PlanDiagnosticEvent(
                 worker,
                 snippet,
                 stack,
-                key);
+                key,
+                textId,
+                sameText);
     }
 
     /** The record for one failure's fields, with the caller's own dir/task/code/key/message/test. */
     static PlanDiagnosticEvent of(
-            String dir, String task, String code, String key, String message, String test, TestFailureInfo f) {
+            String dir,
+            String task,
+            String code,
+            String key,
+            String message,
+            String test,
+            TestFailureInfo f,
+            FailureTextRefs.Ref ref) {
         return new PlanDiagnosticEvent(
                 dir,
                 task,
@@ -73,7 +84,9 @@ public record PlanDiagnosticEvent(
                 f.snippetStart(),
                 f.worker(),
                 f.snippet(),
-                f.stack());
+                f.stack(),
+                ref.textId(),
+                ref.sameText());
     }
 
     public static PlanDiagnosticEvent decode(String json) {
@@ -95,6 +108,8 @@ public record PlanDiagnosticEvent(
                 Jsonl.intValue(json, "snippetStart", 0),
                 Jsonl.intValue(json, "worker", 0),
                 Jsonl.strArray(json, "snippet"),
-                DiagnosticFields.str(json, "stack"));
+                DiagnosticFields.str(json, "stack"),
+                Jsonl.intValue(json, "textId", 0),
+                Jsonl.intValue(json, "sameText", 0));
     }
 }

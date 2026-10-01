@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -128,6 +129,27 @@ class JsonlShapeTest {
         assertThat(finish).contains("\"modules\":[\"a:b\"]");
     }
 
+    /** The session transcript carries a repeated failure text once and names it after that. */
+    @Test
+    void a_repeated_failure_text_is_written_once() {
+        FailureTextRefs texts = new FailureTextRefs();
+        String stack = "java.lang.AssertionError: war missing\n\tat a.Rule.before(Rule.java:1)";
+        TestFailureInfo first =
+                new TestFailureInfo("g:core", "", "a.FooTest", "x()", "AssertionError", "war missing", stack);
+        TestFailureInfo second =
+                new TestFailureInfo("g:core", "", "a.BarTest", "y()", "AssertionError", "war missing", stack);
+
+        String one = JsonlShape.error("run-tests", "test-failure", "", first, texts);
+        String two = JsonlShape.error("run-tests", "test-failure", "", second, texts);
+
+        assertThat(one).contains("\"textId\":1").contains("a.Rule.before");
+        assertThat(two)
+                .contains("\"sameText\":1")
+                .contains("\"class\":\"a.BarTest\"")
+                .doesNotContain("a.Rule.before")
+                .doesNotContain("war missing");
+    }
+
     @Test
     void error_carries_optional_test_fields() {
         String line = JsonlShape.error(
@@ -153,7 +175,7 @@ class JsonlShapeTest {
                 "expected: \"1.1\"\n but was: \"1.0\"",
                 "org.opentest4j.AssertionFailedError: …\n\tat cc.jumpkick.runtime.LockFreshenConservativeTest.freshen(LockFreshenConservativeTest.java:96)",
                 2);
-        String line = JsonlShape.error("run-tests", "test-failure", failure.message(), failure);
+        String line = JsonlShape.error("run-tests", "test-failure", failure.message(), failure, null);
         assertThat(line).contains("\"worker\":2");
         assertThat(line).contains("\"module\":\"cc.jumpkick:jk-engine\"");
         assertThat(line).contains("\"engine\":\"junit-jupiter\"");

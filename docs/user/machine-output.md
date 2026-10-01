@@ -190,6 +190,13 @@ Illustrative lines:
 {"schema":1,"ts":1721664001000,"type":"buildplan-finish","plan":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
 ```
 
+A test failure's `message` is at most 4 KB and its `stack` its first 64 lines plus every `Caused
+by:` header, each line at most 512 characters; every cut is marked (`… message truncated (N more
+chars)`, `… line truncated (…)`, `… stack truncated (…)`). A suite whose tests fail the same way
+carries that text once per stream: the first line with it says `"textId":N`, and every later line
+with the same message and stack omits both and says `"sameText":N`. Read the text from the
+`textId` line earlier in the same stream (stdout, or the same `details.jsonl`).
+
 ### Toolchain provisioning
 
 When a build-kind verb — `jk build`, `jk test`, `jk run`, `jk install`, `jk dev` / `jk watch`,
@@ -304,7 +311,7 @@ differs; field **names** match.
 | Whole-job % | `workspace-progress` |
 | Label | `label` |
 | User/compiler output | `output` |
-| Warning / error | `warn` / `error` (+ `test`, `exceptionClass`) |
+| Warning / error | `warn` / `error` (+ `test`, `exceptionClass`; a test failure adds `module`, `suite`, `class`, `method`, `stack`, `textId` / `sameText`) |
 | Plan / ETA | `plan`, `eta` (web; CLI via explain) |
 | Module | `module-start` / `module-finish` (paired) |
 | Workspace end | `workspace-finish` (exactly one, on every outcome) |

@@ -83,9 +83,10 @@ public final class XmlTestReport {
         String failureType = null, failureMessage = null, failureStack = null;
         if (throwableJson != null) {
             failureType = failureTexts.of(Jsonl.str(throwableJson, "class"));
-            failureMessage = failureTexts.of(
-                    MarkdownTestReport.clip(Jsonl.str(throwableJson, "message"), MarkdownTestReport.MAX_MESSAGE_CHARS));
-            failureStack = failureTexts.of(MarkdownTestReport.boundedStack(Jsonl.str(throwableJson, "stack")));
+            String message = Jsonl.str(throwableJson, "message");
+            String stack = Jsonl.str(throwableJson, "stack");
+            failureMessage = message == null ? null : failureTexts.held(FailureClip.message(message));
+            failureStack = stack == null ? null : failureTexts.held(FailureClip.stack(stack));
         }
         entries.add(new Entry(className, display, durationMs, failureType, failureMessage, failureStack, null));
     }
