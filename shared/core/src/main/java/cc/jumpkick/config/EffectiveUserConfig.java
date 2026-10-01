@@ -126,6 +126,11 @@ public final class EffectiveUserConfig {
                 "engine.queue-wait-ms",
                 d.jobLimits().queueWaitMs(),
                 e.jobLimits().queueWaitMs());
+        add(
+                out,
+                "engine.drain-deadline-ms",
+                d.jobLimits().drainDeadlineMs(),
+                e.jobLimits().drainDeadlineMs());
     }
 
     private static void addCache(

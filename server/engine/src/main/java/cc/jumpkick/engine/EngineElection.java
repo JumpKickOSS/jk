@@ -49,8 +49,8 @@ import org.jspecify.annotations.Nullable;
  *   <li><b>Generation claim</b> — the first free generation lock, which also reclaims the files of
  *       a crashed prior owner.
  *   <li><b>Takeover</b> — the endpoint write is the atomic handover point; the predecessor is then
- *       asked to yield and is waited for, so its listeners are free before the successor binds
- *       HTTP.
+ *       asked to drain and is waited for, so its HTTP port is free before the successor binds it.
+ *       A draining predecessor keeps answering on its own generation socket until it exits.
  * </ul>
  */
 final class EngineElection {
@@ -61,8 +61,8 @@ final class EngineElection {
     /** Highest generation number tried before giving up on finding a free one. */
     private static final int MAX_GENERATIONS = 10_000;
 
-    /** A live engine's identity as answered on the wire. */
-    record Incumbent(String version, String buildId, long pid) {}
+    /** A live engine's identity as answered on the wire; a draining one serves no new jobs. */
+    record Incumbent(String version, String buildId, long pid, boolean draining) {}
 
     /**
      * A won election: the generation this process owns, its bound listener, the loopback-TCP shared
@@ -133,9 +133,12 @@ final class EngineElection {
         // serves, this instance is a redundant spawn-race participant — lose quietly. A different
         // version — or the same -SNAPSHOT version with a DIFFERENT buildId (a rebuilt dev
         // engine; stale incumbents once won these elections and served old code) — proceeds to
-        // takeover. An empty buildId on either side means "no opinion": version rule only.
+        // takeover. An empty buildId on either side means "no opinion": version rule only. A
+        // draining incumbent still answers its socket but serves no new job, so it is succeeded
+        // whatever its version.
         Incumbent incumbent = helloProbe(previousActive, version);
         if (incumbent != null
+                && !incumbent.draining()
                 && version.equals(incumbent.version())
                 && (buildId.isEmpty() || incumbent.buildId().isEmpty() || buildId.equals(incumbent.buildId()))) {
             releaseStartupLock();
@@ -204,8 +207,8 @@ final class EngineElection {
     }
 
     /**
-     * Tell a displaced predecessor to yield its listeners and drain. Blocks until {@code bye} so
-     * HTTP / the old UDS are free before this engine binds HTTP.
+     * Tell a displaced predecessor to drain. Blocks until {@code bye} so its HTTP port is free
+     * before this engine binds HTTP; the predecessor keeps its own generation socket until it exits.
      */
     void askPredecessorToYield(@Nullable Path previousActive) {
         if (previousActive == null || previousActive.equals(bound().socket())) return;
@@ -347,7 +350,8 @@ final class EngineElection {
             String v = Jsonl.str(ack, "version");
             if (v == null) return null;
             String id = Jsonl.str(ack, "buildId");
-            return new Incumbent(v, id == null ? "" : id, Jsonl.longValue(ack, "pid", -1));
+            return new Incumbent(
+                    v, id == null ? "" : id, Jsonl.longValue(ack, "pid", -1), Jsonl.bool(ack, "draining", false));
         } catch (IOException | RuntimeException e) {
             return null;
         }

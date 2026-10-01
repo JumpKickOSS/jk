@@ -56,17 +56,21 @@ can leave a ghost engine whose socket *name* matches the successor.
 | Pointer / pid | State | Behaviour |
 |---|---|---|
 | names this engine (pid matches) | **primary** | Never self-terminates. Exits on `jk engine stop` or version-skew replacement. |
-| names another process, or pid file / hello pid differs | **displaced** | Yields UDS, wire, and HTTP **immediately**, drains in-flight jobs, reports `drain-status` to the successor, exits when idle. |
+| names another process, or pid file / hello pid differs | **displaced** | Yields HTTP **immediately**, drains in-flight jobs on its own generation socket, reports `drain-status` to the successor, exits when idle or at the drain deadline. |
 | absent | **orphaned** | Exits once genuinely unused: no in-flight jobs **and** no attached SSE stream. |
 
-### Displacement surrenders every listener unconditionally
+### Displacement surrenders the HTTP port unconditionally
 
-A newer engine taking over needs the HTTP port and the UDS (or Windows wire socket). A displaced
-engine closes those listeners right away — attached dashboard streams get **no vote** — then keeps
-only already-accepted job connections until they finish. The successor binds, and the predecessor
-sends `drain-status` / `drain-done` to it over the new listener. The HTTP token is deliberately
-preserved across the respawn so the tab does not have to re-authenticate. Client-side reconnect is
-the SPA's job.
+A newer engine taking over needs the fixed HTTP port. A draining engine — displaced, or told to stop
+with jobs in flight — closes HTTP right away (attached dashboard streams get **no vote**). Its engine
+socket is per generation (`<key>.gen<N>.sock`, or a loopback TCP port on Windows), so nothing contends
+for it: the draining engine keeps it open as a lame duck, answering hello and status (`draining`,
+`drainDeadline`, its jobs) and cancel, and refusing new jobs with `shutting-down`. A job client that
+meets the refusal or a draining hello starts a successor, which takes over the endpoint; the
+predecessor sends `drain-status` / `drain-done` to it. The predecessor exits when its last job
+finishes, or at `[engine] drain-deadline-ms`, when it cancels its jobs, kills their workers and
+exits. The HTTP token is deliberately preserved across the respawn so the tab does not have to
+re-authenticate. Client-side reconnect is the SPA's job.
 
 ### An orphan waits for an attached tab
 
@@ -85,7 +89,7 @@ what actually holds a slot: a stream keeps its permit for the life of the connec
 
 The engine identity is a hash of the state directory **and** the artifact store, so a machine can
 hold several at once — one per `(state dir, store)` pair, plus a draining predecessor that has
-already yielded its listeners. A unique {@code JK_HOME} (every test sandbox home) gets its own UDS
+already yielded its HTTP port and still answers status on its own generation socket. A unique {@code JK_HOME} (every test sandbox home) gets its own UDS
 and, unless the suite opts in, HTTP disabled or
 bound on port {@code 0} so it cannot steal the host dashboard. `jk engine status` lists every
 resident engine this user owns. `jk engine stop` addresses the one this directory resolves to,

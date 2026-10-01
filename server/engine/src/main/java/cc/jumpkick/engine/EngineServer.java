@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.http.HttpEngineServer;
@@ -13,6 +14,7 @@ import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.verbs.VerbRegistry;
@@ -54,10 +56,15 @@ import org.jspecify.annotations.Nullable;
  * "not draining" and "one more plan is running" have to become true inside the same critical
  * section the deciders read — the shutdown message, the displacement watchdog, and the orphan
  * check all settle under this lock. Extracting the claim, {@link #yieldListeners}, {@link
- * #awaitDrainComplete} or the shutdown arm was proposed and withdrawn: every version of it hands
+ * #superviseDrain} or the shutdown arm was proposed and withdrawn: every version of it hands
  * {@code lifecycleLock} to a second object, which spreads one invariant across two files instead
  * of making the race unrepresentable. Their length here is the cost of holding that invariant in
  * one place, and it was paid on purpose.
+ *
+ * <p><b>Drain is a lame-duck mode.</b> A draining engine releases the fixed HTTP port so a
+ * successor can bind it, but keeps its own generation socket: it answers hello and status, serves
+ * cancel for the jobs it is finishing, and refuses new jobs. It exits once its last plan slot is
+ * released, or at the drain deadline, when it cancels what is left and kills its workers.
  *
  * <p>What did leave, and why it could: {@link EngineElection} owns the engine's identity on disk —
  * mutex, incumbent probe, generation, listener, pid file, endpoint — which is settled before the
@@ -195,9 +202,12 @@ public final class EngineServer implements AutoCloseable {
     private final ReentrantReadWriteLock cacheGate = new ReentrantReadWriteLock(true);
 
     private volatile boolean shuttingDown;
-    // Graceful-drain: listeners (UDS / TCP / HTTP) are closed so the successor can bind; in-flight
-    // connections keep running. New jobs are refused. Exit once every plan slot is released.
+    // Lame duck: HTTP is released for a successor, the engine socket stays open for status and
+    // cancel, new jobs are refused, and the engine exits once every plan slot is released.
     private volatile boolean draining;
+
+    /** Epoch millis by which a draining engine exits; {@code -1} while not draining or unbounded. */
+    private volatile long drainDeadlineMillis = -1;
 
     /** Identity on disk: mutex, incumbent probe, generation, pid file, endpoint pointer. */
     private final EngineElection election;
@@ -297,7 +307,9 @@ public final class EngineServer implements AutoCloseable {
         return new DrainReporter(
                 this.pid,
                 this.version,
-                () -> EnginePaths.activeSocket(paths),
+                // A stopped engine with no successor yet is still named by the endpoint, and its
+                // socket is open: it must not report its drain to itself.
+                () -> election.endpointNamesThisEngine() ? null : EnginePaths.activeSocket(paths),
                 // Reads the lifecycle decision; never takes the lock itself (see DrainReporter).
                 () -> {
                     synchronized (lifecycleLock) {
@@ -458,6 +470,7 @@ public final class EngineServer implements AutoCloseable {
                 this::statusSnapshot,
                 http,
                 () -> draining,
+                () -> drainDeadlineMillis,
                 drain,
                 this::handleShutdown,
                 this::noteIdleDropped));
@@ -474,7 +487,6 @@ public final class EngineServer implements AutoCloseable {
         Thread lastWords = lastWordsOnSignal();
         Runtime.getRuntime().addShutdownHook(lastWords);
         acceptLoop();
-        awaitDrainComplete();
         cleanup();
         removeQuietly(lastWords);
         log.accept("jk engine: stopped");
@@ -514,14 +526,16 @@ public final class EngineServer implements AutoCloseable {
             try {
                 ch = listener.accept();
             } catch (ClosedChannelException e) {
-                break; // close / drain-complete / shutdown message closed the listener
+                break; // close / drain complete / drain deadline / shutdown message closed the listener
             } catch (IOException e) {
                 if (shuttingDown) break;
                 log.accept("jk engine: accept failed: " + e.getMessage());
                 continue;
             }
             synchronized (lifecycleLock) {
-                if (shuttingDown || draining) {
+                // A draining engine still accepts: status and cancel reach it, and the job
+                // envelope refuses new work under the same lock the drain decision took.
+                if (shuttingDown) {
                     closeQuietly(ch);
                     continue;
                 }
@@ -608,7 +622,6 @@ public final class EngineServer implements AutoCloseable {
                 // Decision and flag settle in one critical section, so a plan about to claim its
                 // slot can never slip between "zero plans observed" and "shutting down".
                 shuttingDown = true;
-                // Yield listeners before bye so a successor waiting on this line can bind.
                 closeServerChannelQuietly();
                 lifecycleLock.notifyAll();
             }
@@ -620,24 +633,35 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * The one drain transition. Both entry paths — a SHUTDOWN message with plans in flight and the
-     * displacement watchdog — flip {@code draining} here, yield the listeners so a successor can
-     * bind, and start the {@link DrainReporter} — started nowhere else. A
-     * plan that claims its slot before the flag lands is simply drained too — {@link
-     * #awaitDrainComplete} watches the live count, not the count a caller saw.
+     * displacement watchdog — flip {@code draining} and fix the deadline here, release HTTP so a
+     * successor can bind the fixed port, and start the {@link DrainReporter} and the {@link
+     * #superviseDrain} thread — started nowhere else. The engine socket stays open. A plan that
+     * claims its slot before the flag lands is simply drained too — the supervisor watches the live
+     * count, not the count a caller saw. Idempotent: a second stop or a later displacement keeps
+     * the first deadline.
      */
     private void enterDrain() {
+        boolean first;
         synchronized (lifecycleLock) {
-            draining = true;
-            closeServerChannelQuietly();
+            first = !draining;
+            if (first) {
+                draining = true;
+                long bound = config.jobLimits().drainDeadlineMs();
+                drainDeadlineMillis = bound > 0 ? clockMillis.getAsLong() + bound : -1;
+            }
             lifecycleLock.notifyAll();
         }
         http.stopNow();
         drain.start();
+        if (first) {
+            // Engine-lifetime drain supervisor; reads no session.
+            Thread.ofPlatform().daemon().name("jk-engine-drain").start(this::superviseDrain);
+        }
     }
 
     /**
-     * Stop accepting new clients and HTTP so a successor can bind. Existing connections keep
-     * running. {@code exitNow} also marks the process as shutting down (idle, or force).
+     * Release HTTP so a successor can bind, and drain; the engine socket stays open until exit.
+     * {@code exitNow} is the idle observation the caller made: shut down now when it still holds.
      */
     private void yieldListeners(boolean exitNow) {
         boolean drain;
@@ -665,19 +689,76 @@ public final class EngineServer implements AutoCloseable {
         return drain.started();
     }
 
-    /** After the listener is closed, wait for in-flight plans before {@link #cleanup}. */
-    private void awaitDrainComplete() {
+    /** Test seam: the epoch millis a draining engine exits by; {@code -1} when not draining or unbounded. */
+    long drainDeadlineForTests() {
+        return drainDeadlineMillis;
+    }
+
+    /**
+     * Wait for the last plan slot, then shut down. At the drain deadline the in-flight jobs are
+     * cancelled through the ordinary cancel path with a reason that names the drain, given the job
+     * deadline's grace to unwind, and any worker of theirs still alive is killed before the engine
+     * exits.
+     */
+    private void superviseDrain() {
+        if (awaitPlansOrDeadline(drainDeadlineMillis)) {
+            shutDownAfterDrain();
+            return;
+        }
+        JobLimits limits = config.jobLimits();
+        int n = activeBuildPlans.get();
+        log.accept("jk engine: drain deadline passed with " + n + " job(s) in flight — cancelling them");
+        List<Long> cancelled = jobs.cancelAllForDrain(drainCancelReason(limits.drainDeadlineMs()));
+        awaitPlansOrDeadline(clockMillis.getAsLong() + limits.deadlineGraceMs());
+        int killed = 0;
+        for (long jid : cancelled) killed += JobWorkers.shutdownForRequest(jid, 0L);
+        log.accept("jk engine: drain deadline: cancelled " + cancelled.size() + " job(s), killed " + killed
+                + " worker process(es) still alive after the grace; exiting");
+        shutDownAfterDrain();
+    }
+
+    /** The reason a drain-deadline cancel leaves on each job's wire and in the journal. */
+    static String drainCancelReason(long deadlineMs) {
+        return "the engine was stopping and its drain deadline (" + deadlineMs
+                + "ms, [engine] drain-deadline-ms / JK_ENGINE_DRAIN_DEADLINE_MS) passed; cancelled";
+    }
+
+    /**
+     * Wait under the lifecycle lock until no plan holds a slot or the engine is shutting down
+     * ({@code true}), or until {@code deadlineMillis} passes ({@code false}); {@code -1} waits
+     * without bound.
+     */
+    private boolean awaitPlansOrDeadline(long deadlineMillis) {
         synchronized (lifecycleLock) {
-            while (draining && !shuttingDown && activeBuildPlans.get() > 0) {
+            while (!shuttingDown && activeBuildPlans.get() > 0) {
+                long wait = DRAIN_POLL_MS;
+                if (deadlineMillis >= 0) {
+                    long left = deadlineMillis - clockMillis.getAsLong();
+                    if (left <= 0) return false;
+                    wait = Math.min(wait, left);
+                }
                 try {
-                    lifecycleLock.wait(1_000);
+                    lifecycleLock.wait(wait);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    return;
+                    return true;
                 }
             }
+            return true;
         }
     }
+
+    /** Drain is over: close the engine socket, which ends the accept loop and runs {@link #cleanup}. */
+    private void shutDownAfterDrain() {
+        synchronized (lifecycleLock) {
+            shuttingDown = true;
+            closeServerChannelQuietly();
+            lifecycleLock.notifyAll();
+        }
+    }
+
+    /** How often the drain supervisor re-reads the plan count; a released slot does not notify. */
+    private static final long DRAIN_POLL_MS = 250;
 
     /** Test seam: hold a plan slot so drain cannot exit until {@link #releasePlanSlotForTests}. */
     boolean claimPlanSlotForTests() {
@@ -698,7 +779,7 @@ public final class EngineServer implements AutoCloseable {
         yieldListeners(exitNow);
     }
 
-    /** Test seam: {@link #awaitDrainComplete} would still be waiting on a plan slot. */
+    /** Test seam: {@link #superviseDrain} would still be waiting on a plan slot. */
     boolean drainWaitingForTests() {
         synchronized (lifecycleLock) {
             return draining && !shuttingDown && activeBuildPlans.get() > 0;
@@ -706,8 +787,9 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void closeServerChannelQuietly() {
-        // Must be called while holding lifecycleLock: unblocks acceptLoop (accept throws
-        // ClosedChannelException) without racing a connection being registered concurrently.
+        // Must be called while holding lifecycleLock, and only with shuttingDown set: unblocks
+        // acceptLoop (accept throws ClosedChannelException) without racing a connection being
+        // registered concurrently.
         try {
             if (serverChannel != null) serverChannel.close();
         } catch (IOException ignored) {

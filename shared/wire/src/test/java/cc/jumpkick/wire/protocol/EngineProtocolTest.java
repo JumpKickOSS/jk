@@ -69,7 +69,7 @@ class EngineProtocolTest {
 
     @Test
     void status_ack_carries_every_vital_and_the_socket_facts() {
-        String json = ProtoLifecycle.statusAck(vitals(3, 7), true, null, null, true);
+        String json = ProtoLifecycle.statusAck(vitals(3, 7), true, 5_000L, null, null, true);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.STATUS_ACK);
         assertThat(json).startsWith("{\"" + EngineProtocol.TYPE_FIELD + "\":");
         assertThat(Jsonl.str(json, "version")).isEqualTo("1.2.3");
@@ -79,6 +79,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.intValue(json, "activeRequests", -99)).isEqualTo(3);
         assertThat(Jsonl.intValue(json, "activeBuildPlans", -99)).isEqualTo(7);
         assertThat(Jsonl.bool(json, "draining", false)).isTrue();
+        assertThat(Jsonl.longValue(json, "drainDeadline", -1)).isEqualTo(5_000L);
         assertThat(Jsonl.longValue(json, "heapUsedBytes", -99)).isEqualTo(18_000_000);
         assertThat(Jsonl.longValue(json, "heapCommittedBytes", -99)).isEqualTo(42_000_000);
         assertThat(Jsonl.longValue(json, "heapMaxBytes", -99)).isEqualTo(268_435_456);
@@ -97,7 +98,7 @@ class EngineProtocolTest {
 
     @Test
     void status_ack_carries_http_url_when_serving() {
-        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, "http://127.0.0.1:8910/", null, true);
+        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, -1L, "http://127.0.0.1:8910/", null, true);
         assertThat(Jsonl.str(json, "httpUrl")).isEqualTo("http://127.0.0.1:8910/");
         assertThat(Jsonl.str(json, "httpError")).isNull();
         // Trailing slash on httpUrl must not produce //mcp
@@ -106,7 +107,7 @@ class EngineProtocolTest {
 
     @Test
     void status_ack_omits_mcp_url_when_mcp_disabled() {
-        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, "http://127.0.0.1:8910/", null, false);
+        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, -1L, "http://127.0.0.1:8910/", null, false);
         assertThat(Jsonl.str(json, "httpUrl")).isEqualTo("http://127.0.0.1:8910/");
         assertThat(Jsonl.str(json, "mcpUrl")).isNull();
     }
@@ -120,7 +121,7 @@ class EngineProtocolTest {
 
     @Test
     void status_ack_carries_http_error_when_bind_failed() {
-        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, null, "Address already in use", true);
+        String json = ProtoLifecycle.statusAck(vitals(3, 0), false, -1L, null, "Address already in use", true);
         assertThat(Jsonl.str(json, "httpUrl")).isNull();
         assertThat(Jsonl.str(json, "httpError")).isEqualTo("Address already in use");
     }

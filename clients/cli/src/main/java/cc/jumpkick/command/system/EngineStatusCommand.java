@@ -98,8 +98,16 @@ public final class EngineStatusCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
-        CliOutput.out(JkWedge.chipLine(
-                Glyphs.PLAY, "Engine", GlobalConfig.nerdFont(), "Engine is running (pid " + pidStyled(s.pid()) + ")"));
+        if (s.draining()) {
+            CliOutput.out(JkWedge.chipLine(
+                    Glyphs.STOP, "Engine", GlobalConfig.nerdFont(), stoppingHeadline(pidStyled(s.pid()), s)));
+        } else {
+            CliOutput.out(JkWedge.chipLine(
+                    Glyphs.PLAY,
+                    "Engine",
+                    GlobalConfig.nerdFont(),
+                    "Engine is running (pid " + pidStyled(s.pid()) + ")"));
+        }
         detail("Version", s.version());
         if (s.installSource() != null && !s.installSource().isEmpty()) detail("Source", s.installSource());
         detail("Uptime", formatUptime(uptimeSeconds));
@@ -150,6 +158,27 @@ public final class EngineStatusCommand implements CliCommand {
         List<EngineFleet.Member> fleet = EngineFleet.list();
         if (fleet.size() > 1) printFleet(fleet);
         return Exit.SUCCESS;
+    }
+
+    /**
+     * {@code Engine is stopping (pid 19518): draining 1 job, exits by 09:17} — a draining engine
+     * answers its socket, refuses new jobs and exits when its jobs finish or its drain deadline
+     * passes; the next job client starts its successor.
+     */
+    static String stoppingHeadline(@Nullable String pid, EngineProbe.Status s) {
+        return "Engine is stopping (pid " + pid + "): " + drainSummary(s.activeBuildPlans(), s.drainDeadlineMillis());
+    }
+
+    /** {@code draining 1 job, exits by 09:17}; without a deadline, {@code draining 2 jobs}. */
+    static String drainSummary(int jobs, long deadlineMillis) {
+        String summary = "draining " + jobs + (jobs == 1 ? " job" : " jobs");
+        return deadlineMillis > 0 ? summary + ", exits by " + wallClock(deadlineMillis) : summary;
+    }
+
+    /** The fleet row's note for a draining engine: {@code draining (1 job, deadline 09:17)}. */
+    static String drainingFleetNote(int jobs, long deadlineMillis) {
+        String note = "draining (" + jobs + (jobs == 1 ? " job" : " jobs");
+        return note + (deadlineMillis > 0 ? ", deadline " + wallClock(deadlineMillis) : "") + ")";
     }
 
     /** One job under the {@code Live Jobs} or {@code Queued} row, indented to the value column. */
@@ -241,11 +270,16 @@ public final class EngineStatusCommand implements CliCommand {
             if (m.responsive()) {
                 var status = Objects.requireNonNull(m.status(), "status");
                 long up = Math.max(0, (System.currentTimeMillis() - status.startedAtMillis()) / 1000);
-                line.append("  up ").append(formatUptime(up)).append("  jobs ").append(status.activeBuildPlans());
-                if (m.status().draining()) line.append("  draining");
+                line.append("  up ").append(formatUptime(up));
+                if (status.draining()) {
+                    line.append("  ")
+                            .append(drainingFleetNote(status.activeBuildPlans(), status.drainDeadlineMillis()));
+                } else {
+                    line.append("  jobs ").append(status.activeBuildPlans());
+                }
             } else {
-                // Alive but not answering: yielded listeners, rebound socket, or wedged. Still
-                // holds memory; stop --pid is how it goes away.
+                // Alive but not answering: starting, rebound socket, or wedged. Still holds
+                // memory; stop --pid is how it goes away.
                 line.append("  unresponsive (alive, not answering)");
             }
             if (m.current()) line.append("   (this directory)");
@@ -273,6 +307,8 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("startedAt", s.startedAtMillis())
                 .number("uptimeSeconds", uptimeSeconds)
                 .number("activeRequests", s.activeRequests())
+                .bool("draining", s.draining())
+                .number("drainDeadline", s.drainDeadlineMillis())
                 .number("idleDropped", s.idleDropped())
                 .number("queuedBuildPlans", s.queuedBuildPlans())
                 .token("jobs", jobsJson(s.jobs()))
@@ -330,6 +366,7 @@ public final class EngineStatusCommand implements CliCommand {
                 member.number("startedAt", st.startedAtMillis())
                         .number("activeBuildPlans", st.activeBuildPlans())
                         .bool("draining", st.draining())
+                        .number("drainDeadline", st.drainDeadlineMillis())
                         .string("version", st.version());
             }
             members.add(member.finish());

@@ -34,7 +34,7 @@ public final class EngineCancel {
      * engine is unreachable. Idempotent: already-finished jids yield {@code cancelled=false}.
      */
     public static Optional<String> cancel(EnginePaths.Paths paths, long jid) throws IOException {
-        EngineSpawn.ensure(paths, JkVersion.VERSION);
+        ensureUnlessAnswering(paths);
         return cancelOnce(EnginePaths.activeSocket(paths), ProtoLifecycle.cancelRequest(jid), jid);
     }
 
@@ -42,10 +42,22 @@ public final class EngineCancel {
      * Cancel every live job under {@code dir}. Used by bare {@code jk cancel} and Ctrl-C.
      */
     public static Optional<String> cancelForDir(EnginePaths.Paths paths, String dir) throws IOException {
-        EngineSpawn.ensure(paths, JkVersion.VERSION);
+        ensureUnlessAnswering(paths);
         Optional<String> ack = cancelOnce(EnginePaths.activeSocket(paths), ProtoLifecycle.cancelRequestForDir(dir), -1);
         if (ack.isPresent()) ActiveJobs.forgetAll();
         return ack;
+    }
+
+    /**
+     * The jobs to cancel live on whichever engine the endpoint names, draining or of another
+     * version; only when none answers is an engine ensured, so a cancel never takes over the
+     * engine running the job it is meant to stop.
+     */
+    private static void ensureUnlessAnswering(EnginePaths.Paths paths) throws IOException {
+        if (EngineProbe.handshake(EnginePaths.activeSocket(paths), JkVersion.VERSION)
+                .isEmpty()) {
+            EngineSpawn.ensure(paths, JkVersion.VERSION);
+        }
     }
 
     /**

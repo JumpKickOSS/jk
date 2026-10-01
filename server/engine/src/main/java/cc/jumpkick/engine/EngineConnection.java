@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -82,6 +83,7 @@ final class EngineConnection {
             Supplier<StatusSnapshot> status,
             EngineHttpFront http,
             BooleanSupplier draining,
+            LongSupplier drainDeadline,
             DrainReporter drain,
             ShutdownHandler shutdown,
             Runnable idleDropped) {}
@@ -216,6 +218,7 @@ final class EngineConnection {
                 String ack = ProtoLifecycle.statusAck(
                         s.vitals(),
                         ctx.draining().getAsBoolean(),
+                        ctx.drainDeadline().getAsLong(),
                         hs != null ? hs.url() : null,
                         ctx.http().error(),
                         hs != null && hs.mcpEnabled());
