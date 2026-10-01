@@ -195,6 +195,20 @@ class JvmOptionsTest {
     }
 
     @Test
+    void a_ram_percent_outside_what_hotspot_accepts_is_clamped() {
+        // HotSpot accepts (0, 100]; MaxRAMPercentage=104.8 stops the JVM before it starts.
+        assertThat(JvmOptions.flags(new PluginTuning(104.8, null, null, List.of()), 1))
+                .contains("-XX:MaxRAMPercentage=100")
+                .noneMatch(f -> f.equals("-XX:MaxRAMPercentage=104.8"));
+        assertThat(JvmOptions.flags(new PluginTuning(150.0, null, null, List.of()), 4))
+                .contains("-XX:MaxRAMPercentage=25");
+        assertThat(JvmOptions.flags(new PluginTuning(0.0, null, null, List.of()), 1))
+                .contains("-XX:MaxRAMPercentage=50");
+        assertThat(JvmOptions.flags(new PluginTuning(-5.0, null, null, List.of()), 1))
+                .contains("-XX:MaxRAMPercentage=50");
+    }
+
+    @Test
     void explicit_settings_win_and_extra_args_append() {
         PluginTuning s = new PluginTuning(70.0, "g1", false, List.of("-XX:+AlwaysPreTouch"));
         List<String> expected = new ArrayList<>(List.of("-XX:MaxRAMPercentage=70", "-XX:+UseG1GC"));
