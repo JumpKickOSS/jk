@@ -27,8 +27,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Content fingerprints for source and input files, memoized on {@code (path, size, mtime)}.
  *
- * <p>One store per cache root, held in memory for the life of the engine and persisted as a single
- * file at {@code <cache>/hash-memo/memo.v1}. A hit costs one map read; the caller's own stat is the
+ * <p>One store per cache root, held in memory while that root is in use ({@link CacheRootStores}
+ * bounds how many are) and persisted as a single file at {@code <cache>/hash-memo/memo.v1}. A hit costs one map read; the caller's own stat is the
  * only filesystem call on the hot path. An entry per path — rather than a file per path — is what
  * makes the memo pay on every platform: creating and opening small files costs an order of
  * magnitude more on NTFS than on ext4, enough that a file-backed entry cost more to consult than
@@ -68,8 +68,9 @@ public final class FileHashMemo {
 
     private static final String STORE_FILE = "memo.v1";
 
-    /** One loaded store per cache root. */
-    private static final ConcurrentMap<Path, Store> STORES = new ConcurrentHashMap<>();
+    /** The loaded stores, one per cache root. */
+    private static final CacheRootStores<Store> STORES =
+            new CacheRootStores<>(root -> Store.load(CacheTree.HASH_MEMO.under(root)), Store::flush);
 
     /** Monotonic use clock; ranks victims when a store is over cap. */
     private static final AtomicLong USE_TICK = new AtomicLong();
@@ -163,7 +164,7 @@ public final class FileHashMemo {
      * engine starts cold.
      */
     public static void flush() {
-        for (Store s : STORES.values()) {
+        for (Store s : STORES.loaded()) {
             s.flush();
         }
     }
@@ -179,12 +180,17 @@ public final class FileHashMemo {
      */
     public static int dropAll() {
         int dropped = 0;
-        for (Store s : STORES.values()) {
+        for (Store s : STORES.loaded()) {
             s.flush();
             dropped += s.entries.size();
         }
         STORES.clear();
         return dropped;
+    }
+
+    /** Test seam: how many cache roots have a store in memory. */
+    static int loadedStores() {
+        return STORES.size();
     }
 
     /** Test seam: total {@link #contentHash} calls since process start (or last {@link #resetStats}). */
@@ -212,9 +218,7 @@ public final class FileHashMemo {
     /** The store for the session's cache root, or {@code null} when no session cache resolves. */
     private static @Nullable Store store() {
         try {
-            Path cache = SessionContext.current().cacheDir();
-            return STORES.computeIfAbsent(
-                    cache.toAbsolutePath().normalize(), root -> Store.load(CacheTree.HASH_MEMO.under(root)));
+            return STORES.of(SessionContext.current().cacheDir());
         } catch (RuntimeException e) {
             return null;
         }
