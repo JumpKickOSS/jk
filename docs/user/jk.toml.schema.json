@@ -326,6 +326,24 @@
           "type": "object",
           "additionalProperties": { "type": ["string", "number", "boolean"] },
           "description": "One -Dkey=value per entry on every forked test JVM, a number or boolean rendered as its string; Surefire's <systemPropertyVariables>. A run-tests input."
+        },
+        "suites": {
+          "type": "object",
+          "description": "[test.suites.<name>]: suites selected by class pattern over the default suite's sources. The default suite leaves every matching class out; jk test --suite <name> (or --guard for integration) runs them from the same compile.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*$", "not": { "enum": ["test", "guard", "fixtures"] } },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "classes": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "pattern": "^[^#]+$" },
+                "description": "Class patterns in --class syntax (fully qualified, simple name in any package, * wildcards), nested classes included; Failsafe's <includes>, e.g. [\"IT*\", \"*IT\", \"*ITCase\"]. A run-tests input."
+              }
+            },
+            "required": ["classes"],
+            "additionalProperties": false
+          }
         }
       }
     },

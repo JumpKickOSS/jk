@@ -7,6 +7,7 @@ import cc.jumpkick.config.TestSelection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -132,5 +133,41 @@ class TestSuitesTest {
         assertThat(TestSuites.collectScalaSources(trad, false, List.of("test")))
                 .extracting(p -> p.getFileName().toString())
                 .containsExactly("T.scala");
+    }
+
+    @Test
+    void a_class_pattern_suite_is_available_and_compiles_the_default_suites_roots(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src/test/java"));
+        Files.writeString(tmp.resolve("src/test/java/FooTest.java"), "class FooTest {}");
+        Map<String, List<String>> patterns = Map.of("integration", List.of("*IT"));
+
+        assertThat(TestSuites.available(tmp, false, patterns)).containsExactly("test", "integration");
+        assertThat(TestSuites.available(tmp, false, Map.of())).containsExactly("test");
+        assertThat(TestSuites.compiled(tmp, false, List.of("integration"), patterns))
+                .as("no directory of its own: the default suite's roots alone, the key a plain run compiles")
+                .containsExactly("test");
+        assertThat(TestSuites.compiled(tmp, false, List.of("test", "integration"), patterns))
+                .containsExactly("test");
+        assertThat(TestSuites.compiled(tmp, false, List.of("integration"), Map.of()))
+                .as("a directory suite compiles alone, as it always did")
+                .containsExactly("integration");
+
+        Files.createDirectories(tmp.resolve("src/integration/java"));
+        Files.writeString(tmp.resolve("src/integration/java/StackIT.java"), "class StackIT {}");
+        assertThat(TestSuites.available(tmp, false, patterns)).containsExactly("test", "integration");
+        assertThat(TestSuites.compiled(tmp, false, List.of("integration"), patterns))
+                .containsExactly("test", "integration");
+    }
+
+    /** The stamp identity names the suites the selection runs, so a guard run never replays a plain one. */
+    @Test
+    void a_guard_selection_with_no_named_suites_has_the_guard_suites_identity() {
+        TestSelection guard = TestSelection.of(List.of(), false, List.of(), List.of(), false, true);
+        TestSelection explicit =
+                TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
+
+        assertThat(guard.identityToken()).isEqualTo(explicit.identityToken()).startsWith("suites=test,integration;");
+        assertThat(guard.identityToken()).isNotEqualTo(TestSelection.DEFAULT.identityToken());
+        assertThat(TestSelection.DEFAULT.identityToken()).startsWith("suites=test;");
     }
 }

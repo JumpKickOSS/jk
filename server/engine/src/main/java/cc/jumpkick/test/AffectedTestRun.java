@@ -38,7 +38,8 @@ public final class AffectedTestRun {
      * @return {@code null} when {@code session.affected()} is false (caller runs the full
      *     selection). Throws {@link RankingRefused} when ranking cannot be honest.
      */
-    public static @Nullable Outcome apply(TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel)
+    public static @Nullable Outcome apply(
+            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel, SuiteClassFilter suites)
             throws Exception {
         if (!in.session().affected()) return null;
         Path moduleDir = in.dir();
@@ -64,7 +65,7 @@ public final class AffectedTestRun {
         Set<String> production = new LinkedHashSet<>(current.keySet());
         production.addAll(foreign.keySet());
         List<TestClassIndex.Entry> tests = runnable(
-                TestClassIndex.scan(testClasses, production), project.build().testExcludeClasses());
+                TestClassIndex.scan(testClasses, production), project.build().testExcludeClasses(), suites);
         // run-tests only executes when test sources exist (NO_TEST_SOURCES short-circuits), so an
         // empty scan after compile-test means the classes are missing — refuse, don't guess.
         if (tests.isEmpty()) {
@@ -114,12 +115,21 @@ public final class AffectedTestRun {
         return new Outcome(report, report.classNames(), report.identityToken());
     }
 
-    /** {@code tests} less the classes {@code [test] exclude-classes} keeps out of every run. */
-    static List<TestClassIndex.Entry> runnable(List<TestClassIndex.Entry> tests, List<String> excluded) {
+    /**
+     * {@code tests} within the run's suites, less the classes {@code [test] exclude-classes} keeps
+     * out of every run.
+     */
+    static List<TestClassIndex.Entry> runnable(
+            List<TestClassIndex.Entry> tests, List<String> excluded, SuiteClassFilter suites) {
         String body = JUnitClassFilter.excludeBody(excluded);
-        if (body == null) return tests;
-        Pattern out = Pattern.compile(body);
-        return tests.stream().filter(t -> !out.matcher(t.className()).matches()).toList();
+        String suiteBody = suites.body();
+        if (body == null && suiteBody == null) return tests;
+        Pattern out = body == null ? null : Pattern.compile(body);
+        Pattern in = suiteBody == null ? null : Pattern.compile(suiteBody);
+        return tests.stream()
+                .filter(t -> in == null || in.matcher(t.className()).matches())
+                .filter(t -> out == null || !out.matcher(t.className()).matches())
+                .toList();
     }
 
     /** Distinct workspace modules owning dirty paths; 1 when not a workspace or unreadable. */

@@ -40,6 +40,7 @@ import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
+import cc.jumpkick.test.SuiteClassFilter;
 import cc.jumpkick.test.TestLauncherFailure;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -88,12 +89,17 @@ public final class PlannerTest {
                 .execute(ctx -> {
                     List<String> suiteNames = selectedSuites(ctx, in, compact);
                     if (suiteNames == null) return;
+                    JkBuild project = ctx.require(PROJECT);
                     TestSources src = TestSources.collect(
-                            ctx.require(PROJECT), in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
+                            project, in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
+                    // A class-pattern suite compiles the default suite's roots: the suites whose
+                    // directories this compile reads, which is what the shared output records.
+                    List<String> compiledSuites = TestSuites.compiled(
+                            in.dir(), compact, suiteNames, project.build().testSuiteClasses());
                     if (src.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
-                        warnDeclaredTestDepsButNoSources(ctx, ctx.require(PROJECT), in.dir());
+                        warnDeclaredTestDepsButNoSources(ctx, project, in.dir());
                         ctx.cached(); // SKIPPED — nothing to compile
                         ctx.progress(1);
                         return;
@@ -103,7 +109,7 @@ public final class PlannerTest {
                     PlannerSetup.awaitSiblingTestOutputs(ctx, in);
                     List<Path> baseCp = testCompileClasspath(ctx, cx, cas, src);
                     Path testClasses = ctx.require(TEST_CLASSES);
-                    String selectionKey = String.join(",", suiteNames);
+                    String selectionKey = String.join(",", compiledSuites);
                     resetOnSelectionChange(ctx, testClasses, selectionKey);
                     // Identity before the compilers run. Adoption may remove a copy that predates
                     // the ledger, and must not remove a file this compile rewrote.
@@ -129,7 +135,7 @@ public final class PlannerTest {
                             baseCp,
                             gvTestOut,
                             testClasses,
-                            suiteNames,
+                            compiledSuites,
                             compact,
                             mixedTestGv);
                     compileKotlinTests(ctx, in, cas, actionCache, src, baseCp, ktTestOut, testClasses, mixedTest);
@@ -148,7 +154,7 @@ public final class PlannerTest {
                             in,
                             actionCache,
                             compact,
-                            suiteNames,
+                            compiledSuites,
                             testClasses,
                             beforeNonClass,
                             mixedTest,
@@ -167,9 +173,7 @@ public final class PlannerTest {
      * workspace. Single-module runs keep the hard error (typo protection).
      */
     private static @Nullable List<String> selectedSuites(TaskContext ctx, BuildPlanner.Inputs in, boolean compact) {
-        var sel = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
-        List<String> discovered = TestSuites.discover(in.dir(), compact);
-        var resolved = sel.resolve(discovered);
+        var resolved = resolveSuites(in, compact, ctx.require(PROJECT));
         if (resolved.ok()) return resolved.suites();
         if (in.projectModules().size() > 1) {
             ctx.label("suite not present — skipped");
@@ -181,13 +185,22 @@ public final class PlannerTest {
         throw new IllegalArgumentException(resolved.missingMessage());
     }
 
+    /** The session's suite selection resolved against the suites this module has, directories and class patterns. */
+    static TestSelection.Resolved resolveSuites(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
+        var sel = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
+        return sel.resolve(
+                TestSuites.available(in.dir(), compact, project.build().testSuiteClasses()));
+    }
+
     /**
      * The selected suites' sources by language, derived once for the build and the forecast so the
      * compile-test key and the run-tests stamp hash the same files on both sides. {@code javaTest}
      * carries every selected {@code .java} — the suites' roots and {@code [test] extra-src}, roots in
      * the test tier that belong to no suite and compile with whichever suites were selected because
-     * there is nothing in them to run — less {@code [test] exclude-src}. {@code javaTestSrc} is the primary suite root, which a mixed
-     * Kotlin test compile reads Java from. Each list holds each path once.
+     * there is nothing in them to run — less {@code [test] exclude-src}. A selected class-pattern
+     * suite reads the default suite's roots ({@link TestSuites#compiled}). {@code javaTestSrc} is the
+     * primary suite root, which a mixed Kotlin test compile reads Java from. Each list holds each
+     * path once.
      */
     record TestSources(Path javaTestSrc, List<Path> javaTest, List<Path> ktTest, List<Path> gvTest, List<Path> scTest) {
 
@@ -195,10 +208,12 @@ public final class PlannerTest {
                 JkBuild project,
                 Path dir,
                 boolean compact,
-                List<String> suiteNames,
+                List<String> selectedSuites,
                 BuildLayout layout,
                 @Nullable PluginDeclarations decls)
                 throws IOException {
+            List<String> suiteNames = TestSuites.compiled(
+                    dir, compact, selectedSuites, project.build().testSuiteClasses());
             LinkedHashSet<Path> javaTest = new LinkedHashSet<>(TestSuites.collectJavaSources(dir, compact, suiteNames));
             javaTest.addAll(TestSupport.testExtraSources(project, dir, ".java"));
             javaTest.addAll(PlannerKsp.pluginContributedTestSources(layout, decls, ".java"));
@@ -561,7 +576,8 @@ public final class PlannerTest {
                     // own config here. The effective selection feeds BOTH the stamp and the runner.
                     var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
                     testEnv = TestLaunch.withHostWall(testEnv, effectiveSel);
-                    AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel);
+                    SuiteClassFilter suites = suiteFilter(in, cx.compact(), projectUnderTest);
+                    AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
                     if (affected != null && affected.classNames().isEmpty()) {
                         return; // nothing affected — no stamp store
                     }
@@ -596,6 +612,7 @@ public final class PlannerTest {
                         return; // skip — nothing changed since last green run
                     }
                     TestLaunch.reweightForRealRun(ctx, in);
+                    if (suites.describe() != null) ctx.output(suites.describe());
                     List<Path> runtimeCp =
                             TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
                     String moduleLabel = projectUnderTest.project().group() + ":"
@@ -627,6 +644,7 @@ public final class PlannerTest {
                                 ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets));
                         JUnitLauncher launcher = TestLaunch.launcher(
                                         in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec)
+                                .withSuites(suites)
                                 .withAutoShare(auto);
                         try {
                             result = TestLaunch.launch(
@@ -643,14 +661,9 @@ public final class PlannerTest {
                     if (jacoco != null && coverageExec != null) {
                         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
                     }
-                    if (TestClassMatch.nothingMatched(effectiveSel, affected != null, result)) {
-                        // A workspace judges the patterns across its modules; this one skips.
-                        if (in.projectModules().size() > 1) {
-                            TestClassMatch.skip(ctx, effectiveSel, tagExcluded.message());
-                            return;
-                        }
-                        result = TestClassMatch.asFailure(moduleLabel, effectiveSel, tagExcluded.message());
-                    }
+                    result = judgeClassSelection(
+                            ctx, in, effectiveSel, affected != null, suites, moduleLabel, tagExcluded, result);
+                    if (result == null) return;
                     TagExcludedSuite.note(ctx, effectiveSel, in.profileName(), affected != null, result);
                     ctx.put(TEST_RESULT, result);
                     TestLaunch.recordOutcome(
@@ -659,12 +672,52 @@ public final class PlannerTest {
                 .build();
     }
 
+    /**
+     * The summary a {@code --class} selection leaves, or null when this workspace module skips: a
+     * workspace judges the patterns across its modules, a standalone project fails on the spot,
+     * naming the {@code tagExcluded} warning when the tag filter emptied the run. A {@code --class}
+     * naming a class another suite owns says which suite, matched or not.
+     */
+    private static @Nullable TestSummary judgeClassSelection(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            TestSelection sel,
+            boolean exactClassList,
+            SuiteClassFilter suites,
+            String moduleLabel,
+            TagExcludedCapture tagExcludedCapture,
+            TestSummary result) {
+        String tagExcluded = tagExcludedCapture.message();
+        String suiteHint = exactClassList ? null : suites.classHint(ctx.require(TEST_CLASSES), sel.classes());
+        if (!TestClassMatch.nothingMatched(sel, exactClassList, result)) {
+            if (suiteHint != null) {
+                ctx.warn("class-in-other-suite", "--class " + String.join(", ", sel.classes()) + ": " + suiteHint);
+            }
+            return result;
+        }
+        if (in.projectModules().size() > 1) {
+            TestClassMatch.skip(ctx, sel, tagExcluded, suiteHint);
+            return null;
+        }
+        return TestClassMatch.asFailure(moduleLabel, sel, tagExcluded, suiteHint);
+    }
+
+    /** Which compiled test classes the run's suites own; {@link SuiteClassFilter#NONE} without class-pattern suites. */
+    static SuiteClassFilter suiteFilter(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
+        Map<String, List<String>> patternSuites = project.build().testSuiteClasses();
+        if (patternSuites.isEmpty()) return SuiteClassFilter.NONE;
+        var resolved = resolveSuites(in, compact, project);
+        List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
+        return SuiteClassFilter.of(in.dir(), compact, suites, patternSuites);
+    }
+
     /** The affected-test selection when the session asked for one; null otherwise. */
     private static AffectedTestRun.@Nullable Outcome affectedRun(
-            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel) throws Exception {
+            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel, SuiteClassFilter suites)
+            throws Exception {
         if (!in.session().affected()) return null;
         try {
-            return AffectedTestRun.apply(ctx, in, effectiveSel);
+            return AffectedTestRun.apply(ctx, in, effectiveSel, suites);
         } catch (AffectedTestRun.RankingRefused e) {
             throw new RuntimeException(e.getMessage(), e);
         }

@@ -2,6 +2,7 @@
 package cc.jumpkick.model;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -38,6 +39,7 @@ final class BuildFields {
     List<String> testSerialTags;
     List<String> testIncludeTags, testExcludeTags;
     List<String> testExcludeClasses, testExcludeSrc, testExcludeDependencies;
+    Map<String, List<String>> testSuiteClasses;
     boolean testAssertions;
     boolean testCoverage;
     PlatformPolicy platformPolicy;
@@ -76,6 +78,7 @@ final class BuildFields {
         testExcludeClasses = b.testExcludeClasses();
         testExcludeSrc = b.testExcludeSrc();
         testExcludeDependencies = b.testExcludeDependencies();
+        testSuiteClasses = b.testSuiteClasses();
         testAssertions = b.testAssertions();
         testCoverage = b.testCoverage();
         platformPolicy = b.platformPolicy();
@@ -112,6 +115,7 @@ final class BuildFields {
                 testExcludeClasses,
                 testExcludeSrc,
                 testExcludeDependencies,
+                testSuiteClasses,
                 testAssertions,
                 testCoverage,
                 platformPolicy,
