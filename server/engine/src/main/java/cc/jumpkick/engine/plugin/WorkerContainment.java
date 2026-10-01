@@ -108,6 +108,14 @@ public final class WorkerContainment {
             };
         }
 
+        /**
+         * The {@code memory.max} a worker at the smallest lease gets from {@code budgetBytes}, as
+         * {@link WorkerRss#workerCapBytes} writes it; {@code -1} unless each worker has its own group.
+         */
+        public long workerCapBytes(long budgetBytes) {
+            return mode == Mode.CGROUP && perWorker ? WorkerRss.workerCapBytes(0, budgetBytes) : -1L;
+        }
+
         private static String gib(long bytes) {
             return String.format(Locale.ROOT, "%.1f GiB", bytes / (double) GIB);
         }

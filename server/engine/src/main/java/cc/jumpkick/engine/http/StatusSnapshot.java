@@ -83,6 +83,11 @@ public record StatusSnapshot(
         String containmentReason,
         /** {@code workers/memory.max} in bytes; {@code -1} unless {@code containment} is {@code cgroup}. */
         long workerMemoryMax,
+        /**
+         * {@code memory.max} of a worker's own group at the smallest lease; {@code -1} when workers
+         * share one group or there is no cgroup.
+         */
+        long workerCap,
         /** Bytes forked workers may lease; {@code -1} when the engine did not report a budget. */
         long workerBudgetBytes,
         /** Bytes held by leases right now; {@code -1} when the engine did not report. */
@@ -184,6 +189,7 @@ public record StatusSnapshot(
                 -1L,
                 -1L,
                 -1L,
+                -1L,
                 0L,
                 0,
                 "",
@@ -245,6 +251,7 @@ public record StatusSnapshot(
                 "",
                 "none",
                 "",
+                -1L,
                 -1L,
                 -1L,
                 -1L,
@@ -348,6 +355,7 @@ public record StatusSnapshot(
         m.put("containment", containment);
         m.put("containmentReason", containmentReason);
         m.put("workerMemoryMax", workerMemoryMax);
+        m.put("workerCap", workerCap);
         m.put("workerBudgetBytes", workerBudgetBytes);
         m.put("workerLeasedBytes", workerLeasedBytes);
         m.put("workerOverbookedBytes", workerOverbookedBytes);

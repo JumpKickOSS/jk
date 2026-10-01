@@ -12,14 +12,20 @@ class EngineStatusContainmentTest {
 
     @Test
     void phrases_match_the_three_modes() {
-        assertThat(EngineStatusCommand.describeContainment(null, null, -1)).isNull();
-        assertThat(EngineStatusCommand.describeContainment("none", "", -1)).isEqualTo("none");
-        assertThat(EngineStatusCommand.describeContainment("score-only", "cannot create a child cgroup", -1))
+        assertThat(EngineStatusCommand.describeContainment(null, null, -1, -1)).isNull();
+        assertThat(EngineStatusCommand.describeContainment("none", "", -1, -1)).isEqualTo("none");
+        assertThat(EngineStatusCommand.describeContainment("score-only", "cannot create a child cgroup", -1, -1))
                 .isEqualTo("score-only (cannot create a child cgroup)");
-        assertThat(EngineStatusCommand.describeContainment("score-only", "", -1))
+        assertThat(EngineStatusCommand.describeContainment("score-only", "", -1, -1))
                 .isEqualTo("score-only");
-        assertThat(EngineStatusCommand.describeContainment("cgroup", "", 14 * GIB))
+        assertThat(EngineStatusCommand.describeContainment("cgroup", "", 14 * GIB, -1))
                 .isEqualTo("cgroup (max 14.0 GiB)");
+    }
+
+    @Test
+    void a_per_worker_cap_is_named_beside_the_group_max() {
+        assertThat(EngineStatusCommand.describeContainment("cgroup", "", 27 * GIB / 2, 81 * GIB / 8))
+                .isEqualTo("cgroup (max 13.5 GiB, 10.1 GiB per worker)");
     }
 
     @Test
