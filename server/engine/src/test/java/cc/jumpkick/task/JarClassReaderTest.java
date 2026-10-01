@@ -146,6 +146,27 @@ class JarClassReaderTest {
     }
 
     /** Writes {@code entries} in iteration order; every other entry stored rather than deflated when {@code mixStored}. */
+    /** One named entry, stored or deflated, is read from the streamed directory; a name the jar lacks is null. */
+    @Test
+    void a_named_entry_is_read_and_a_missing_one_is_null(@TempDir Path dir) throws Exception {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("a/A.class", "class".getBytes(StandardCharsets.UTF_8));
+        entries.put(
+                "META-INF/services/javax.annotation.processing.Processor",
+                "com.example.Proc\n".getBytes(StandardCharsets.UTF_8));
+        entries.put("META-INF/services/other", "x".repeat(4_000).getBytes(StandardCharsets.UTF_8));
+        Path jar = dir.resolve("services.jar");
+        writeJar(jar, entries, true);
+
+        try (JarClassReader reader = JarClassReader.open(jar)) {
+            assertThat(reader.entry("META-INF/services/javax.annotation.processing.Processor"))
+                    .asString(StandardCharsets.UTF_8)
+                    .isEqualTo("com.example.Proc\n");
+            assertThat(reader.entry("META-INF/services/other")).hasSize(4_000);
+            assertThat(reader.entry("META-INF/services/absent")).isNull();
+        }
+    }
+
     private static void writeJar(Path jar, Map<String, byte[]> entries, boolean mixStored) throws IOException {
         try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(jar))) {
             int i = 0;

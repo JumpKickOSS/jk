@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.task.JarClassReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,8 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The compile-classpath entries that register a javac annotation processor through
@@ -74,20 +73,17 @@ public final class ClasspathProcessors {
      * be read.
      */
     public static List<String> processorNames(Path entry) {
-        byte[] registration;
+        byte @Nullable [] registration;
         try {
             if (Files.isDirectory(entry)) {
                 Path file = entry.resolve(SERVICE);
                 if (!Files.isRegularFile(file)) return List.of();
                 registration = Files.readAllBytes(file);
             } else {
-                try (ZipFile zip = new ZipFile(entry.toFile())) {
-                    ZipEntry service = zip.getEntry(SERVICE);
-                    if (service == null) return List.of();
-                    try (InputStream in = zip.getInputStream(service)) {
-                        registration = in.readAllBytes();
-                    }
+                try (JarClassReader jar = JarClassReader.open(entry)) {
+                    registration = jar.entry(SERVICE);
                 }
+                if (registration == null) return List.of();
             }
         } catch (IOException unreadable) {
             return List.of();
@@ -101,9 +97,13 @@ public final class ClasspathProcessors {
         return List.copyOf(names);
     }
 
+    /**
+     * Read through {@link JarClassReader}, which streams the central directory: {@code ZipFile}
+     * holds all of it in heap, fifty megabytes for an SDK bundle jar.
+     */
     private static boolean jarRegistersProcessor(Path jar) {
-        try (ZipFile zip = new ZipFile(jar.toFile())) {
-            return zip.getEntry(SERVICE) != null;
+        try (JarClassReader reader = JarClassReader.open(jar)) {
+            return reader.entry(SERVICE) != null;
         } catch (IOException unreadable) {
             return false; // javac reports an unreadable classpath entry itself
         }
