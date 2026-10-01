@@ -209,11 +209,11 @@ public final class EngineProtocol {
     public static final String ERR_REQUEST_FAILED = "request-failed";
     public static final String ERR_PROTOCOL = "protocol";
     public static final String ERR_VERSION_SKEW = "version-skew";
-    /** Engine is draining after {@link #SHUTDOWN}; job refused. */
+    /** Engine is draining; job refused. A job client starts a successor and resends. */
     public static final String ERR_SHUTTING_DOWN = "shutting-down";
 
     public static final String ERR_AUTH = "auth";
-    /** Engine cancelled a job that exceeded {@code JK_ENGINE_JOB_DEADLINE_MS}. */
+    /** Engine cancelled a job at a wall deadline: the job's own, or the drain deadline of a stopping engine. */
     public static final String ERR_DEADLINE = "deadline";
 
     /** A job waited the engine's queue-wait bound for memory and gave up; the message names the live job. */

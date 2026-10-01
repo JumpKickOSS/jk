@@ -112,8 +112,9 @@ public final class ProtoLifecycle {
     /**
      * Ack for {@link EngineProtocol#STATUS}: the engine's vitals — the same ordered map the REST,
      * SSE and MCP surfaces render, so a vital added to the snapshot reaches this socket the same
-     * day — followed by the socket-only facts: {@code proto}, {@code draining}, the HTTP URL or the
-     * bind error, and the MCP endpoint derived from the HTTP URL when MCP is enabled. Vitals are
+     * day — followed by the socket-only facts: {@code proto}, {@code draining}, {@code drainDeadline}
+     * (epoch millis by which a draining engine exits, {@code -1} when not draining or unbounded), the
+     * HTTP URL or the bind error, and the MCP endpoint derived from the HTTP URL when MCP is enabled. Vitals are
      * carried as a map because this class cannot see the engine's snapshot type; the per-field
      * parameter list this replaced is what let six of them go missing here. Not a record: the
      * vitals' value types are the snapshot's, which no fixed field list here should re-declare.
@@ -121,6 +122,7 @@ public final class ProtoLifecycle {
     public static String statusAck(
             Map<String, Object> vitals,
             boolean draining,
+            long drainDeadline,
             @Nullable String httpUrl,
             @Nullable String httpError,
             boolean mcpEnabled) {
@@ -129,6 +131,7 @@ public final class ProtoLifecycle {
         m.putAll(vitals);
         m.put("proto", EngineProtocol.PROTOCOL);
         m.put("draining", draining);
+        m.put("drainDeadline", drainDeadline);
         m.put("httpUrl", httpUrl);
         m.put("httpError", httpError);
         m.put("mcpUrl", mcpEnabled ? mcpUrlFromHttp(httpUrl) : null);
@@ -165,7 +168,7 @@ public final class ProtoLifecycle {
     }
 
     /**
-     * Predecessor → successor: in-flight job count after this engine yielded its listeners.
+     * Predecessor → successor: in-flight job count while this engine drains.
      * The successor is already bound; this is status, not a request for work.
      */
     public static String drainStatus(long pid, int plans, String version) {

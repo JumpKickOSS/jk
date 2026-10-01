@@ -92,8 +92,9 @@ public final class EngineFleet {
     /**
      * Every engine this user is running. Disk pointers under this state dir come first; then any
      * other generation pid still alive; then every other resident {@code EngineMain} JVM we can
-     * see. Liveness is the process, not the socket: a draining or rebound engine often answers
-     * nowhere and is the one {@code status} must not hide.
+     * see. Liveness is the process, not the socket: a wedged or rebound engine answers nowhere and
+     * is the one {@code status} must not hide. A draining engine answers on its own generation
+     * socket and is listed with its status.
      */
     public static List<Member> list() {
         return list(JkDirs.state(), EnginePaths.current().key(), true);
@@ -138,8 +139,8 @@ public final class EngineFleet {
 
     /**
      * Pid files for every generation under this state dir. A draining predecessor keeps its
-     * {@code .genN.pid} until it exits; the endpoint already names the successor, so the
-     * identity loop above never sees that pid.
+     * {@code .genN.pid} and answers on its {@code .genN.sock} until it exits; the endpoint already
+     * names the successor, so the identity loop above never sees that pid.
      */
     private static void addGenerationPids(Path stateDir, Set<Long> known, List<Member> out) {
         Path dir = stateDir.resolve("engine");

@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.jsonl.BoundedLineReader;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
@@ -79,9 +80,25 @@ public final class EngineWire {
 
     static <T> T stream(EnginePaths.Paths paths, String requestLine, Reply<T> reply, Ensure ensure) throws IOException {
         // Ensuring is not retried: it already spawns twice with backoff behind a 30 s ceiling per
-        // attempt, and a refusal ("engine is shutting down") is an answer, not a stale socket. Only
-        // the connect is — the remembered endpoint may be dead because the engine died, was
-        // replaced, or the socket moved; forgetting it and ensuring once more may spawn.
+        // attempt, and a refusal is an answer, not a stale socket. Only the connect is — the
+        // remembered endpoint may be dead because the engine died, was replaced, or the socket
+        // moved; forgetting it and ensuring once more may spawn. So is a request the remembered
+        // engine refused because it began draining after this process ensured it: the next ensure
+        // finds it draining and starts its successor.
+        try {
+            return streamOnce(paths, requestLine, reply, ensure);
+        } catch (DrainingRefusal refused) {
+            ENSURED = null;
+            try {
+                return streamOnce(paths, requestLine, reply, ensure);
+            } catch (DrainingRefusal again) {
+                throw new IOException(again.getMessage(), again);
+            }
+        }
+    }
+
+    private static <T> T streamOnce(EnginePaths.Paths paths, String requestLine, Reply<T> reply, Ensure ensure)
+            throws IOException {
         Path socket = ensuredSocket(paths, ensure);
         SocketChannel opened;
         try {
@@ -93,11 +110,56 @@ public final class EngineWire {
         try (SocketChannel ch = opened) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = protocolReader(ch);
+            BufferedReader reader = new DrainGate(protocolReader(ch));
             writer.write(requestLine);
             writer.write('\n');
             writer.flush();
             return reply.read(reader, ch);
+        }
+    }
+
+    /**
+     * The engine answered the request's first line with {@link EngineProtocol#ERR_SHUTTING_DOWN}:
+     * it is draining and ran nothing. Unchecked so no reply decoder's {@code IOException} handling
+     * can swallow it on its way back to {@link #stream}, which retries against the successor.
+     */
+    static final class DrainingRefusal extends RuntimeException {
+        DrainingRefusal(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * Reads the reply as the decoder would, except that a draining refusal before the job ran —
+     * as the first line, or after nothing but {@code job-queued} lines — is thrown as {@link
+     * DrainingRefusal}: no work happened, so the request can be sent again whole. Once any other
+     * line has arrived, every line passes through untouched.
+     */
+    static final class DrainGate extends BufferedReader {
+        private final BufferedReader in;
+        private boolean beforeWork = true;
+
+        DrainGate(BufferedReader in) {
+            super(in, 1);
+            this.in = in;
+        }
+
+        @Override
+        public @Nullable String readLine() throws IOException {
+            String line = in.readLine();
+            if (!beforeWork || line == null) return line;
+            String type = EngineProtocol.typeOf(line);
+            if (EngineProtocol.ERROR.equals(type) && EngineProtocol.ERR_SHUTTING_DOWN.equals(Jsonl.str(line, "code"))) {
+                String message = Jsonl.str(line, "message");
+                throw new DrainingRefusal(message == null ? "the engine is shutting down" : message);
+            }
+            if (!EngineProtocol.JOB_QUEUED.equals(type)) beforeWork = false;
+            return line;
+        }
+
+        @Override
+        public void close() throws IOException {
+            in.close();
         }
     }
 

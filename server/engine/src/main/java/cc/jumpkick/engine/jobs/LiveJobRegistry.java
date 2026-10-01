@@ -7,7 +7,9 @@ import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -66,8 +68,26 @@ public final class LiveJobRegistry {
             @Nullable AtomicReference<Thread> runnerRef,
             long cancelGraceMs,
             boolean explicit) {
+        beginCancel(
+                eventRequestId,
+                cancelToken,
+                runnerRef,
+                cancelGraceMs,
+                explicit ? CANCEL_BY_USER : CANCEL_BY_DISCONNECT,
+                explicit);
+    }
+
+    /** {@link #beginUserCancel} with the reason the journal records. */
+    private void beginCancel(
+            long eventRequestId,
+            Session.CancelToken cancelToken,
+            @Nullable AtomicReference<Thread> runnerRef,
+            long cancelGraceMs,
+            String reason,
+            boolean explicit) {
         cancelToken.cancel();
-        markUserCancelled(eventRequestId, explicit);
+        BuildAccumulator a = accumulatorOf.apply(eventRequestId);
+        if (a != null) a.markUserCancelled(explicit, reason);
         LiveJob job = liveJobs.get(eventRequestId);
         if (job != null) job.cancelSignal().countDown();
         // Cancel runs after the request thread may be gone; the token and request id are explicit.
@@ -157,6 +177,25 @@ public final class LiveJobRegistry {
                 : ProtoEvents.planFinish(dir == null ? "" : dir, false, true);
     }
 
+    /**
+     * Cancel every live job because the engine's drain deadline passed: each client reads a {@link
+     * EngineProtocol#ERR_DEADLINE} error that says so, then the cancelled terminal, and the journal
+     * records {@code reason}. Returns the jids cancelled.
+     */
+    public List<Long> cancelAllForDrain(String reason) {
+        List<Long> cancelled = new ArrayList<>();
+        for (var e : liveJobs.entrySet()) {
+            LiveJob job = e.getValue();
+            if (job.writer() != null) {
+                WireWriter.sendQuiet(job.writer(), ProtoLifecycle.error(EngineProtocol.ERR_DEADLINE, reason));
+            }
+            pushCancelledTerminal(job);
+            beginCancel(e.getKey(), job.token(), job.runnerRef(), cancelGraceMs, reason, true);
+            cancelled.add(e.getKey());
+        }
+        return cancelled;
+    }
+
     /** Cancel every live job whose dir matches (canonical absolute path). */
     public int cancelJobsForDir(String dir) {
         if (dir == null || dir.isBlank()) return 0;
@@ -177,17 +216,6 @@ public final class LiveJobRegistry {
             if (want.equals(got) && cancelJob(e.getKey())) n++;
         }
         return n;
-    }
-
-    /**
-     * Stamp the cancel <em>and</em> why, so the journal can name who stopped the run. {@code
-     * cancelled=true} alone reads the same for a Ctrl-C and for a wall deadline, and only the
-     * deadline recorded a reason — the flag that already tells the two user paths apart
-     * is the one that picks the sentence, so there is one mapping rather than a literal per caller.
-     */
-    private void markUserCancelled(long requestId, boolean explicit) {
-        BuildAccumulator a = accumulatorOf.apply(requestId);
-        if (a != null) a.markUserCancelled(explicit, explicit ? CANCEL_BY_USER : CANCEL_BY_DISCONNECT);
     }
 
     static void interruptRunner(@Nullable Thread runnerThread) {

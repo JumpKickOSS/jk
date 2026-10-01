@@ -13,10 +13,10 @@ import java.util.function.IntSupplier;
  * the path catch that.
  *
  * <ul>
- * <li><b>Pointer, pid file, or live hello names someone else</b> — displaced. Yield UDS/TCP and
- * HTTP immediately so the successor can bind them, drain in-flight jobs, report status to the
- * successor, exit when idle. Attached dashboard streams get no vote: the successor needs the
- * port, and a tab reconnects to it.
+ * <li><b>Pointer, pid file, or live hello names someone else</b> — displaced. Yield HTTP
+ * immediately so the successor can bind the port, drain in-flight jobs on this generation's own
+ * socket, report status to the successor, exit when idle or at the drain deadline. Attached
+ * dashboard streams get no vote: the successor needs the port, and a tab reconnects to it.
  * <li><b>The pointer is absent</b> — orphaned. Exit once genuinely unused — no jobs and no
  * attached streams. Keep HTTP while a browser is attached, because here there is no successor
  * to hand it to.
@@ -90,7 +90,7 @@ final class DisplacementWatchdog {
      */
     boolean tick() throws IOException {
         if (election.displacedBySuccessor()) {
-            log.accept("jk engine: displaced by a newer engine — yielding listeners and draining");
+            log.accept("jk engine: displaced by a newer engine — yielding HTTP and draining");
             yieldListeners.accept(activeBuildPlans.getAsInt() == 0);
             return true;
         }

@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
  */
 class JobWatchdogStallTest {
 
-    private static final JobLimits NO_HEARTBEAT_NO_DEADLINE = new JobLimits(0L, 0L, 0L, 0L, 0L, 0L);
+    private static final JobLimits NO_HEARTBEAT_NO_DEADLINE = new JobLimits(0L, 0L, 0L, 0L, 0L, 0L, 0L);
 
     private static final WallDeadline UNBOUNDED = new WallDeadline(0L, "x");
 

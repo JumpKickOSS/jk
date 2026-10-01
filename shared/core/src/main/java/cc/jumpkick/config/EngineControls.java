@@ -80,7 +80,13 @@ public final class EngineControls {
                     "JK_ENGINE_QUEUE_WAIT_MS",
                     "3600000",
                     ENGINE_START,
-                    "How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound."));
+                    "How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound."),
+            control(
+                    "drain-deadline-ms",
+                    "JK_ENGINE_DRAIN_DEADLINE_MS",
+                    "3600000",
+                    ENGINE_START,
+                    "How long a stopping engine lets its in-flight jobs finish before it cancels them, kills its workers and exits, in ms. 0 = no bound."));
 
     /** {@code JK_ENGINE_*} env that is not an {@code [engine]} key. */
     public static final List<Control> PROCESS = List.of(

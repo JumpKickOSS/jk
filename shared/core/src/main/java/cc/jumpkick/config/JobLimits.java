@@ -8,8 +8,9 @@ import org.jspecify.annotations.Nullable;
  * Wall-clock limits on one engine job: the heartbeat cadence, an optional wall deadline for a job a
  * client owns over its socket, the wall deadline a detached (HTTP/MCP) job runs under, the join
  * grace after a deadline cancel, the shared grace forked workers get between SIGTERM and SIGKILL
- * on any cancel, and how long a job waits for engine memory before it gives up, all in
- * milliseconds. {@code 0} disables the heartbeat, either deadline, or the queue wait's bound.
+ * on any cancel, how long a job waits for engine memory before it gives up, and how long a stopping
+ * engine lets its in-flight jobs run before it cancels them, all in milliseconds. {@code 0} disables
+ * the heartbeat, either job deadline, the queue wait's bound, or the drain deadline.
  *
  * <p>The two deadlines differ because the jobs differ. A socket job ends when its client hangs up,
  * so EOF is its deadline and the wall cap is off unless a CI sets one. A detached job has no
@@ -24,7 +25,8 @@ public record JobLimits(
         long detachedDeadlineMs,
         long deadlineGraceMs,
         long cancelGraceMs,
-        long queueWaitMs) {
+        long queueWaitMs,
+        long drainDeadlineMs) {
 
     /** {@code JK_ENGINE_HEARTBEAT_MS} default: one keep-alive line every 30 s. */
     public static final long DEFAULT_HEARTBEAT_MS = 30_000L;
@@ -61,13 +63,21 @@ public record JobLimits(
      */
     public static final long DEFAULT_QUEUE_WAIT_MS = 3_600_000L;
 
+    /**
+     * {@code [engine] drain-deadline-ms} / {@code JK_ENGINE_DRAIN_DEADLINE_MS} default: one hour.
+     * A displaced or stopped engine may be finishing a full integration tier, so the bound is long;
+     * past it the engine cancels what is left, kills its workers and exits.
+     */
+    public static final long DEFAULT_DRAIN_DEADLINE_MS = 3_600_000L;
+
     public static final JobLimits DEFAULTS = new JobLimits(
             DEFAULT_HEARTBEAT_MS,
             DEFAULT_DEADLINE_MS,
             DEFAULT_DETACHED_DEADLINE_MS,
             DEFAULT_DEADLINE_GRACE_MS,
             DEFAULT_CANCEL_GRACE_MS,
-            DEFAULT_QUEUE_WAIT_MS);
+            DEFAULT_QUEUE_WAIT_MS,
+            DEFAULT_DRAIN_DEADLINE_MS);
 
     private static final MachineConfig<Long> HEARTBEAT_MS =
             MachineConfig.of(DEFAULT_HEARTBEAT_MS, JobLimits::nonNegative);
@@ -81,6 +91,8 @@ public record JobLimits(
             MachineConfig.of(DEFAULT_CANCEL_GRACE_MS, JobLimits::nonNegative);
     private static final MachineConfig<Long> QUEUE_WAIT_MS =
             MachineConfig.of(DEFAULT_QUEUE_WAIT_MS, JobLimits::nonNegative);
+    private static final MachineConfig<Long> DRAIN_DEADLINE_MS =
+            MachineConfig.of(DEFAULT_DRAIN_DEADLINE_MS, JobLimits::nonNegative);
 
     public JobLimits {
         if (heartbeatMs < 0
@@ -88,26 +100,28 @@ public record JobLimits(
                 || detachedDeadlineMs < 0
                 || deadlineGraceMs < 0
                 || cancelGraceMs < 0
-                || queueWaitMs < 0) {
+                || queueWaitMs < 0
+                || drainDeadlineMs < 0) {
             throw new IllegalArgumentException("job limits are durations in ms and cannot be negative");
         }
     }
 
     /** The env knobs alone, each falling back to its default when unset, malformed or negative. */
     public static JobLimits resolve(Function<String, @Nullable String> env) {
-        return resolve(env, null, null);
+        return resolve(env, null, null, null);
     }
 
     /**
-     * The env knobs plus the two {@code [engine]} keys, {@code detached-deadline-ms} and {@code
-     * queue-wait-ms}, as their file layer — env over file over default, the precedence every
-     * machine setting follows. Unset, malformed or negative values fall through; the cancel grace
-     * is clamped to its ceiling.
+     * The env knobs plus the three {@code [engine]} keys, {@code detached-deadline-ms}, {@code
+     * queue-wait-ms} and {@code drain-deadline-ms}, as their file layer — env over file over
+     * default, the precedence every machine setting follows. Unset, malformed or negative values
+     * fall through; the cancel grace is clamped to its ceiling.
      */
     public static JobLimits resolve(
             Function<String, @Nullable String> env,
             @Nullable Long fileDetachedDeadlineMs,
-            @Nullable Long fileQueueWaitMs) {
+            @Nullable Long fileQueueWaitMs,
+            @Nullable Long fileDrainDeadlineMs) {
         return new JobLimits(
                 HEARTBEAT_MS.layer(
                         EnvValues.longValue(env, "JK_ENGINE_HEARTBEAT_MS").orElse(null)),
@@ -124,23 +138,34 @@ public record JobLimits(
                         CANCEL_GRACE_MS.layer(
                                 EnvValues.longValue(env, "JK_CANCEL_GRACE_MS").orElse(null))),
                 QUEUE_WAIT_MS.layer(
-                        EnvValues.longValue(env, "JK_ENGINE_QUEUE_WAIT_MS").orElse(null), fileQueueWaitMs));
+                        EnvValues.longValue(env, "JK_ENGINE_QUEUE_WAIT_MS").orElse(null), fileQueueWaitMs),
+                DRAIN_DEADLINE_MS.layer(
+                        EnvValues.longValue(env, "JK_ENGINE_DRAIN_DEADLINE_MS").orElse(null), fileDrainDeadlineMs));
     }
 
-    /** The file layer alone: every env-only knob at its default, the two file keys from the file. */
-    public static JobLimits fromFile(@Nullable Long fileDetachedDeadlineMs, @Nullable Long fileQueueWaitMs) {
+    /** The file layer alone: every env-only knob at its default, the three file keys from the file. */
+    public static JobLimits fromFile(
+            @Nullable Long fileDetachedDeadlineMs, @Nullable Long fileQueueWaitMs, @Nullable Long fileDrainDeadlineMs) {
         return DEFAULTS.withDetachedDeadlineMs(DETACHED_DEADLINE_MS.layer(fileDetachedDeadlineMs))
-                .withQueueWaitMs(QUEUE_WAIT_MS.layer(fileQueueWaitMs));
+                .withQueueWaitMs(QUEUE_WAIT_MS.layer(fileQueueWaitMs))
+                .withDrainDeadlineMs(DRAIN_DEADLINE_MS.layer(fileDrainDeadlineMs));
     }
 
     /** These limits with another detached deadline — how a test gives a detached job a millisecond cap. */
     public JobLimits withDetachedDeadlineMs(long ms) {
-        return new JobLimits(heartbeatMs, deadlineMs, ms, deadlineGraceMs, cancelGraceMs, queueWaitMs);
+        return new JobLimits(heartbeatMs, deadlineMs, ms, deadlineGraceMs, cancelGraceMs, queueWaitMs, drainDeadlineMs);
     }
 
     /** These limits with another queue wait — how a test makes a queued job give up in milliseconds. */
     public JobLimits withQueueWaitMs(long ms) {
-        return new JobLimits(heartbeatMs, deadlineMs, detachedDeadlineMs, deadlineGraceMs, cancelGraceMs, ms);
+        return new JobLimits(
+                heartbeatMs, deadlineMs, detachedDeadlineMs, deadlineGraceMs, cancelGraceMs, ms, drainDeadlineMs);
+    }
+
+    /** These limits with another drain deadline — how a test makes a stopping engine give up in milliseconds. */
+    public JobLimits withDrainDeadlineMs(long ms) {
+        return new JobLimits(
+                heartbeatMs, deadlineMs, detachedDeadlineMs, deadlineGraceMs, cancelGraceMs, queueWaitMs, ms);
     }
 
     private static boolean nonNegative(long ms) {
