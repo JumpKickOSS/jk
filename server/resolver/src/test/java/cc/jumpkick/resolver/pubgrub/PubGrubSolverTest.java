@@ -264,8 +264,8 @@ class PubGrubSolverTest {
             }
 
             @Override
-            public Set<String> declaredVersions(String pkg) {
-                return pkg.equals("lib") ? Set.of("3.0") : Set.of();
+            public Map<String, Set<String>> declaredVersions(String pkg) {
+                return pkg.equals("lib") ? Map.of("3.0", Set.of("pinner@1.0")) : Map.of();
             }
 
             @Override
@@ -521,6 +521,34 @@ class PubGrubSolverTest {
         assertThat(solution).containsEntry("widget", "1.0-M3");
     }
 
+    /**
+     * A pinned webmvc names context 1.0 and boot names 1.1; boot's milestone names context's
+     * milestone. Conflict resolution reads boot's milestone and drops it again, so its 2.0-M1 is no
+     * one's declaration in the graph that resolves: context takes the least release past the pin's
+     * 1.0 that boot accepts, not the milestone and not the newest release.
+     */
+    @Test
+    void a_version_named_only_by_a_dropped_parent_does_not_steer() throws Exception {
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("context", "1.0")
+                .version("context", "1.1")
+                .version("context", "1.2")
+                .version("context", "2.0-M1")
+                .version("webmvc", "1.0", d -> d.requirePlain("context", "1.0"))
+                .version("boot", "1.0", d -> d.requirePlain("context", "1.1"))
+                .version("boot", "2.0-M1", d -> d.requirePlain("context", "2.0-M1"))
+                .version("starter", "1.0", d -> d.requirePlain("boot", "1.0"))
+                .build();
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve(
+                        "root",
+                        "1.0",
+                        List.of(
+                                Term.positive("webmvc", VersionSet.exact("1.0")),
+                                Term.positive("starter", VersionSet.exact("1.0"))));
+        assertThat(solution).containsEntry("boot", "1.0").containsEntry("context", "1.1");
+    }
+
     @Test
     void a_preferred_pin_is_kept_over_the_declared_version() throws Exception {
         // A lock (or BOM) preference at 26.1.0 is what the project already has; the declared
@@ -595,7 +623,7 @@ class PubGrubSolverTest {
             }
 
             @Override
-            public Set<String> declaredVersions(String p) {
+            public Map<String, Set<String>> declaredVersions(String p) {
                 return delegate.declaredVersions(p);
             }
 

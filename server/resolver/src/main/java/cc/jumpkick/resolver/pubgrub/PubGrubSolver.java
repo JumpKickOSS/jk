@@ -664,6 +664,11 @@ public class PubGrubSolver {
      * highest allowed release as the pick. The declared versions are candidates either way; this
      * only says whether the pick steers to one.
      *
+     * <p>Only a version a parent still decided at the declaring version names steers: a POM read
+     * for a version conflict resolution has since dropped no longer speaks for the graph. When the
+     * constraint has outgrown every such version, the pick is the least stable upgrade past the
+     * highest of them, not the newest release.
+     *
      * <p>A floor the constraint allows replaces every declared version below it, so the pick is the
      * higher of the floor and the highest declared version.
      */
@@ -674,7 +679,10 @@ public class PubGrubSolver {
         if (constraint.hasUpperBound()) return Set.of();
         Optional<String> preferred = source.preferredVersion(pkg);
         if (preferred.isPresent() && constraint.contains(preferred.get())) return Set.of();
-        Set<String> declared = source.declaredVersions(pkg);
+        Set<String> declared = liveDeclarations(pkg);
+        if (!declared.isEmpty() && declared.stream().noneMatch(constraint::contains)) {
+            declared = leastUpgrade(pkg, constraint, declared);
+        }
         Optional<String> floor = source.floorVersion(pkg).filter(constraint::contains);
         if (floor.isEmpty()) return declared;
         Set<String> steer = new LinkedHashSet<>();
@@ -685,9 +693,38 @@ public class PubGrubSolver {
         return steer;
     }
 
+    /** The versions of {@code pkg} that an edge from a parent decided at the declaring version names. */
+    private Set<String> liveDeclarations(String pkg) {
+        Map<String, String> decided = solution.decisionsUnsorted();
+        Set<String> live = new LinkedHashSet<>();
+        source.declaredVersions(pkg).forEach((version, parents) -> {
+            for (String parent : parents) {
+                int at = parent.lastIndexOf('@');
+                if (parent.substring(at + 1).equals(decided.get(parent.substring(0, at)))) {
+                    live.add(version);
+                    return;
+                }
+            }
+        });
+        return live;
+    }
+
+    /** The lowest stable candidate {@code constraint} allows above every version in {@code declared}. */
+    private Set<String> leastUpgrade(String pkg, VersionSet constraint, Set<String> declared) {
+        VersionUniverse u = universes.get(pkg);
+        if (u == null) return Set.of();
+        String highest = Collections.max(declared, Versions::compare);
+        String least = null;
+        for (String v : u.versions()) {
+            if (!Versions.isStable(v) || !constraint.contains(v) || Versions.compare(v, highest) <= 0) continue;
+            if (least == null || Versions.compare(v, least) < 0) least = v;
+        }
+        return least == null ? Set.of() : Set.of(least);
+    }
+
     /** The declared versions of {@code pkg} plus its floor: each must be a candidate to be steered to. */
     private Set<String> candidatesNamedFor(String pkg) {
-        Set<String> declared = source.declaredVersions(pkg);
+        Set<String> declared = source.declaredVersions(pkg).keySet();
         Optional<String> floor = source.floorVersion(pkg);
         if (floor.isEmpty() || declared.contains(floor.get())) return declared;
         Set<String> named = new LinkedHashSet<>(declared);
@@ -824,7 +861,7 @@ public class PubGrubSolver {
     private List<String> capExpanded(String pkg, List<String> versions) {
         if (versions.size() <= MAX_EXPANDED_VERSIONS) return versions;
         VersionSet positive = solution.positiveSet(pkg);
-        Set<String> named = new LinkedHashSet<>(source.declaredVersions(pkg));
+        Set<String> named = new LinkedHashSet<>(source.declaredVersions(pkg).keySet());
         positive.asExactSingleton().ifPresent(named::add);
         // A range is not an exact pin and records no declared version. Keeping only the newest
         // slice drops every release the range still allows once the catalog is longer than the cap.
