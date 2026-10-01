@@ -22,29 +22,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk test} on a workspace whose modules compile but carry no test suite is not green: every
- * module finishes, and the run's own verdict is {@code no tests ran} with exit 2, so an empty run
- * cannot be mistaken for a passing suite. The same workspace still builds.
+ * {@code jk test} on a workspace whose modules compile but carry no test suite is green, as {@code
+ * mvn test} is: every module finishes and the run exits 0 with no error. The client's line says
+ * {@code No tests to run}.
  */
 // Out of the unit tier: a real compile and a real forked test step.
 @Tag("integration")
 class EmptyTestRunE2eTest {
 
     @Test
-    void a_workspace_test_run_in_which_no_module_ran_a_test_fails_with_no_tests_ran(@TempDir Path tmp)
-            throws Exception {
+    void a_workspace_test_run_in_which_no_module_has_a_test_exits_zero(@TempDir Path tmp) throws Exception {
         Path ws = workspace(tmp);
 
         WorkspaceResult test = run(ws, tmp, true);
 
-        assertThat(test.success()).isFalse();
-        assertThat(test.exitCode()).isEqualTo(Exit.CONFIG);
-        assertThat(test.errors())
-                .containsExactly(
-                        "no tests ran: none of the 2 modules has a test suite (com.example:lib, com.example:app)");
-        assertThat(test.modules())
-                .as("every module finished; the verdict is the run's")
-                .allMatch(m -> m.success());
+        assertThat(test.success()).isTrue();
+        assertThat(test.exitCode()).isEqualTo(Exit.SUCCESS);
+        assertThat(test.errors()).isEmpty();
+        assertThat(test.modules()).hasSize(2).allMatch(m -> m.success());
 
         WorkspaceResult build = run(ws, tmp, false);
         assertThat(build.success()).as("the same workspace builds").isTrue();

@@ -111,11 +111,10 @@ is written, so every module that had started is in it — the same failure produ
 however the siblings were timed. Their unfinished steps are one
 line under `## Failed steps` — `_N steps stopped by the failure._` — the module reads `SKIPPED`
 in `## Modules` and in the `Modules:` count, and a test run that was stopped is not a failure
-under `## Failures`. `jk build --continue` runs every module to the end instead. Two verdicts are
+under `## Failures`. `jk build --continue` runs every module to the end instead. One verdict is
 the workspace's own rather than a step's: `built nothing` (`jk build` on a workspace with no module
-that has sources) and `no tests ran` (`jk test` on a workspace in which no module ran a test), both
-`FAIL` with `exit 2` and the one-line reason naming the modules — the project's shape, not a red
-step. [Workspaces](workspaces.md#nothing-to-build).
+that has sources), `FAIL` with `exit 2` and the one-line reason naming the modules — the project's
+shape, not a red step. A `jk test` with no tests to run is green. [Workspaces](workspaces.md#nothing-to-build).
 
 The two markdown files are the same human report. JUnit XML stays at `target/reports/test-results/`.
 There is no separate `test-results.md`. MCP `run` / `run` and `jk://runs/latest/results`

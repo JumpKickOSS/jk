@@ -4,9 +4,6 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -82,60 +79,6 @@ class WorkspaceLifecyclePhasesTest {
         assertThat(result.errors()).singleElement().asString().contains("selection matched no workspace module");
         assertThat(listener.events).containsExactly("preflight:graph:0/0", "preflight:graph:1/1", "finish:2");
         assertThat(listener.finished).hasSize(1);
-    }
-
-    /**
-     * The test verb's sibling of {@code built nothing}: a workspace test run in which no plan holds a
-     * test result fails naming the modules; a plain project, a build, a {@code --skip-tests} run and a
-     * {@code --class} run are judged elsewhere or not at all.
-     */
-    @Test
-    void a_workspace_test_run_without_a_single_test_is_no_tests_ran() throws Exception {
-        Path workspace = workspace(List.of("api", "app"));
-        JkBuild root = JkBuildParser.parse(workspace.resolve("jk.toml"));
-        JkBuild plain = JkBuildParser.parse(workspace.resolve("api/jk.toml"));
-        WorkspaceRequest test = request(workspace).withTestOnly(true);
-        List<BuildPlan> plans = List.of(
-                BuildPlan.builder("api").build(), BuildPlan.builder("app").build());
-        List<ModuleOutcome> outcomes = List.of(outcome("api", true, 0), outcome("app", true, 0));
-        List<BuildGraph.BuildUnit> order = BuildGraph.resolve(workspace, root).topoOrder();
-        Session session = Session.defaults();
-
-        assertThat(NoTestsRan.verdict(test, root, session, plans, outcomes, order))
-                .isEqualTo("no tests ran: none of the 2 modules has a test suite (example:api, example:app)");
-        List<ModuleOutcome> appFirst = List.of(outcome("app", true, 0), outcome("api", true, 0));
-        assertThat(NoTestsRan.verdict(test, root, session, plans, appFirst, order))
-                .as("the modules are named in the workspace's order, not the order they finished in")
-                .isEqualTo("no tests ran: none of the 2 modules has a test suite (example:api, example:app)");
-        assertThat(NoTestsRan.verdict(request(workspace), root, session, plans, outcomes, order))
-                .as("a build is judged by built nothing, not here")
-                .isNull();
-        WorkspaceRequest skipped = new WorkspaceRequest(
-                        workspace, tmp.resolve("cache"), null, 0, null, true, false, 1, null, false, false)
-                .withTestOnly(true);
-        assertThat(NoTestsRan.verdict(skipped, root, session, plans, outcomes, order))
-                .as("a run that asked for no tests")
-                .isNull();
-        assertThat(NoTestsRan.verdict(test, plain, session, plans, outcomes, order))
-                .as("a plain project is never judged here")
-                .isNull();
-        Session classes = session.withTestSelection(TestSelection.DEFAULT.withClasses(List.of("FooTest")));
-        assertThat(NoTestsRan.verdict(test, root, classes, plans, outcomes, order))
-                .as("--class patterns have their own verdict")
-                .isNull();
-
-        // `jk test --profile integration -m <module>` over modules with no integration tier: the
-        // slice the request asked for is empty, which is not a workspace without tests.
-        Session tier =
-                session.withTestSelection(TestSelection.of(List.of(), false, List.of("integration"), List.of(), true));
-        assertThat(NoTestsRan.verdict(test, root, tier, plans, outcomes, order))
-                .as("a run that named a tier is judged by that tier, not by the workspace's shape")
-                .isNull();
-        Session excludeOnly =
-                session.withTestSelection(TestSelection.of(List.of(), false, List.of(), List.of("slow"), true));
-        assertThat(NoTestsRan.verdict(test, root, excludeOnly, plans, outcomes, order))
-                .as("the default selection excludes tags and includes none, so it is still judged")
-                .isEqualTo("no tests ran: none of the 2 modules has a test suite (example:api, example:app)");
     }
 
     @Test
