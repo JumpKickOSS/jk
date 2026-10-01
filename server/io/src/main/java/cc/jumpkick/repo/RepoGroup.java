@@ -795,18 +795,18 @@ public final class RepoGroup {
         return local;
     }
 
-    /** Said once per run: a passable repository nothing answers at is asked nothing more. */
+    /** Said once per run: a passable repository nothing answers at, or that refuses access, is asked nothing more. */
     private static void passOver(MavenRepo repo) {
         RunNotices.warnOnce(
                 "repo-passed-over:" + repo.name(),
                 () -> "jk: warning: repository " + repo.name() + " at " + SafeUri.forMessage(repo.baseUrl())
-                        + " answers nothing (" + repo.unreachableFault() + "); it is passed over for the rest of"
-                        + " the resolve, as a blocked one is");
+                        + " is passed over for the rest of the resolve, as a blocked one is ("
+                        + repo.unreachableFault() + ")");
     }
 
     /**
-     * The passable repositories here that nothing answered at: asked nothing more, named when a
-     * package resolves nowhere.
+     * The passable repositories here that nothing answered at or that refused access: asked
+     * nothing more, named when a package resolves nowhere.
      */
     public List<MavenRepo> passedOver() {
         List<MavenRepo> out = new ArrayList<>();

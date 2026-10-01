@@ -451,13 +451,14 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * The line a passable repository nothing answered at earns when a package resolves nowhere: it
-     * was passed over, as a blocked one is, with what it met and the ways out.
+     * The line a passable repository nothing answered at, or that refused access, earns when a
+     * package resolves nowhere: it was passed over, as a blocked one is, with what it met and the
+     * ways out.
      */
     static String passedOverNote(MavenRepo repo) {
-        return "repository `" + repo.name() + "` at " + SafeUri.forMessage(repo.baseUrl()) + " answered nothing ("
-                + repo.unreachableFault() + ") and was passed over; start it or fix its url if it serves this"
-                + " package, or remove it from [repositories]";
+        return "repository `" + repo.name() + "` at " + SafeUri.forMessage(repo.baseUrl()) + " was passed over ("
+                + repo.unreachableFault() + "); if it serves this package, start it, fix its url or give it"
+                + " credentials, or remove it from [repositories]";
     }
 
     /** Every transitive constraint a nearest pin overrode so far, one rendered line each, sorted. */

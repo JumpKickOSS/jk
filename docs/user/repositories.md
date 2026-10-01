@@ -175,7 +175,9 @@ remove the entry. A repository the lock can do without is passed over instead, a
 is: asked nothing more, with one warning, and named with the fault it met when a package resolves
 nowhere. For such a repository any request that gets no HTTP answer at all — refused, reset,
 dropped before a response, timed out — counts, and after one attempt rather than the retry
-ladder; any status, a 5xx included, is an answer. That is one declared `optional = true` — `jk import` writes a POM's `<repository>` this
+ladder; so does a 401 or 403, as Maven moves on past a repository that wants credentials it
+was not given. Any other status, a 5xx included, is an answer. A repository written by hand
+that answers 401 or 403 stops the resolve: its credentials are the user's to fix. That is one declared `optional = true` — `jk import` writes a POM's `<repository>` this
 way, as Maven falls through one that answers nothing — one at a loopback address (`localhost`,
 `127.*`, `::1`: a developer's local Nexus no other machine runs), and one a dependency's POM
 declares:
