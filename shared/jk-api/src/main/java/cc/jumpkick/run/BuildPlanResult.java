@@ -70,7 +70,8 @@ public record BuildPlanResult(
      *
      * <p>{@code code} names the tool ({@code javac}, {@code kotlinc}, a guard rule); {@code key} is
      * that tool's own name for the diagnostic ({@code compiler.err.cant.resolve.location}), {@code
-     * ""} when the tool reports text only.
+     * ""} when the tool reports text only. {@code suite} is a test failure's suite ({@link
+     * TestFailureInfo#suite}).
      */
     public record Diagnostic(
             String step,
@@ -88,7 +89,8 @@ public record BuildPlanResult(
             int snippetStart,
             List<String> snippet,
             int worker,
-            String key) {
+            String key,
+            String suite) {
 
         /** Diagnostic with no test identity — the common case (javac, resolver, …). */
         public Diagnostic(String step, String code, String message) {
@@ -128,6 +130,7 @@ public record BuildPlanResult(
                     snippetStart,
                     snippet,
                     worker,
+                    "",
                     "");
         }
 
@@ -149,7 +152,8 @@ public record BuildPlanResult(
                     snippetStart,
                     snippet,
                     worker,
-                    key);
+                    key,
+                    suite);
         }
 
         /** Two-field test failure (display label + exception class). */
@@ -194,13 +198,16 @@ public record BuildPlanResult(
                     failure == null ? 0 : failure.line(),
                     failure == null ? 0 : failure.snippetStart(),
                     failure == null ? List.of() : failure.snippet(),
-                    failure == null ? 0 : failure.worker());
+                    failure == null ? 0 : failure.worker(),
+                    "",
+                    failure == null ? "" : failure.suite());
         }
 
         public Diagnostic {
             if (snippet == null) snippet = List.of();
             else snippet = List.copyOf(snippet);
             key = key == null ? "" : key;
+            suite = suite == null ? "" : suite;
         }
 
         public @Nullable TestFailureInfo testFailure() {
@@ -225,7 +232,8 @@ public record BuildPlanResult(
                     empty(file),
                     line,
                     snippetStart,
-                    snippet);
+                    snippet,
+                    suite);
         }
 
         private static String empty(@Nullable String value) {

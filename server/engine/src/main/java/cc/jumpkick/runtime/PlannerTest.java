@@ -20,6 +20,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildStage;
@@ -95,7 +96,7 @@ public final class PlannerTest {
                     // A class-pattern suite compiles the default suite's roots: the suites whose
                     // directories this compile reads, which is what the shared output records.
                     List<String> compiledSuites = TestSuites.compiled(
-                            in.dir(), compact, suiteNames, project.build().testSuiteClasses());
+                            in.dir(), compact, suiteNames, project.build().testClassSuites());
                     if (src.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
@@ -189,7 +190,7 @@ public final class PlannerTest {
     static TestSelection.Resolved resolveSuites(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
         var sel = in.session() == null ? TestSelection.DEFAULT : in.session().testSelection();
         return sel.resolve(
-                TestSuites.available(in.dir(), compact, project.build().testSuiteClasses()));
+                TestSuites.available(in.dir(), compact, project.build().testClassSuites()));
     }
 
     /**
@@ -213,7 +214,7 @@ public final class PlannerTest {
                 @Nullable PluginDeclarations decls)
                 throws IOException {
             List<String> suiteNames = TestSuites.compiled(
-                    dir, compact, selectedSuites, project.build().testSuiteClasses());
+                    dir, compact, selectedSuites, project.build().testClassSuites());
             LinkedHashSet<Path> javaTest = new LinkedHashSet<>(TestSuites.collectJavaSources(dir, compact, suiteNames));
             javaTest.addAll(TestSupport.testExtraSources(project, dir, ".java"));
             javaTest.addAll(PlannerKsp.pluginContributedTestSources(layout, decls, ".java"));
@@ -641,7 +642,7 @@ public final class PlannerTest {
                         int testWorkers =
                                 debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
                         tagExcluded = new TagExcludedCapture(TestSupport.bridgeListener(
-                                ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets));
+                                ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites));
                         JUnitLauncher launcher = TestLaunch.launcher(
                                         in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec)
                                 .withSuites(suites)
@@ -661,6 +662,7 @@ public final class PlannerTest {
                     if (jacoco != null && coverageExec != null) {
                         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
                     }
+                    result = result.withSuites(suites::suiteOf);
                     result = judgeClassSelection(
                             ctx, in, effectiveSel, affected != null, suites, moduleLabel, tagExcluded, result);
                     if (result == null) return;
@@ -702,10 +704,9 @@ public final class PlannerTest {
         return TestClassMatch.asFailure(moduleLabel, sel, tagExcluded, suiteHint);
     }
 
-    /** Which compiled test classes the run's suites own; {@link SuiteClassFilter#NONE} without class-pattern suites. */
+    /** Which compiled test classes the run's suites own, and which suite each runs in. */
     static SuiteClassFilter suiteFilter(BuildPlanner.Inputs in, boolean compact, JkBuild project) {
-        Map<String, List<String>> patternSuites = project.build().testSuiteClasses();
-        if (patternSuites.isEmpty()) return SuiteClassFilter.NONE;
+        Map<String, ClassSuite> patternSuites = project.build().testClassSuites();
         var resolved = resolveSuites(in, compact, project);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         return SuiteClassFilter.of(in.dir(), compact, suites, patternSuites);

@@ -106,6 +106,13 @@ class ProtoEventsFrozenBytesTest {
                         "{\"type\":\"buildplan-diagnostic\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"expected 1\",\"module\":\"m\",\"engine\":\"junit\",\"testClass\":\"FooTest\",\"method\":\"bar\",\"exceptionClass\":\"AE\",\"file\":\"src/FooTest.java\",\"line\":42,\"snippetStart\":40,\"worker\":3,\"snippet\":[\"a\",\"b\"],\"stack\":\"at x\"}");
         assertThat(ProtoEvents.planDiagnostic("a/b", "run-tests", "E1", "own message", failure))
                 .contains("\"message\":\"own message\"");
+        TestFailureInfo inSuite = failure.withSuite("integration");
+        String suiteLine = ProtoEvents.errorLine("a/b", "run-tests", "test-failure", "", inSuite);
+        assertThat(suiteLine).contains("\"module\":\"m\",\"suite\":\"integration\",\"engine\":\"junit\"");
+        assertThat(ErrorLineEvent.decode(suiteLine).suite()).isEqualTo("integration");
+        assertThat(PlanDiagnosticEvent.decode(ProtoEvents.planDiagnostic("a/b", "run-tests", "E1", "", inSuite))
+                        .suite())
+                .isEqualTo("integration");
         assertThat(ProtoEvents.planDiagnostic("a/b", "run-tests", "E1", "boom", "t", "AE"))
                 .isEqualTo(
                         "{\"type\":\"buildplan-diagnostic\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"boom\",\"test\":\"t\",\"exceptionClass\":\"AE\"}");

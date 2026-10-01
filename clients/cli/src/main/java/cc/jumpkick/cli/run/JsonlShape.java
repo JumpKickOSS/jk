@@ -225,6 +225,7 @@ public final class JsonlShape {
                         code,
                         message,
                         failure.module(),
+                        failure.suite(),
                         failure.engine(),
                         failure.className(),
                         failure.method(),

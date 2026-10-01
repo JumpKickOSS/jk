@@ -9,6 +9,7 @@ import static cc.jumpkick.engine.journal.JkResultsMarkdown.fence;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.fmtDuration;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.runTestsFailed;
 
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -228,4 +229,9 @@ final class JkResultsTestsSection {
     }
 
     private record TestRollup(long fail, long skip, long pass, long total, long ms) {}
+
+    /** {@code " (integration suite)"} beside a failure outside the default suite; empty otherwise. */
+    static String suiteNote(String suite) {
+        return suite.isEmpty() || TestSuites.DEFAULT.equals(suite) ? "" : " (" + suite + " suite)";
+    }
 }

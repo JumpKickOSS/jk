@@ -125,6 +125,8 @@ public final class McpDiagnostics {
         if (!detail.isEmpty()) row.put("detail", detail);
         Object ex = d.get("exceptionClass");
         if (ex != null && !String.valueOf(ex).isBlank()) row.put("exceptionClass", ex);
+        String suite = McpHistoryViews.str(d, "suite");
+        if (!suite.isEmpty()) row.put("suite", suite);
         // A guard row carries the two fields that move one-shot fix rate as typed columns too.
         String task = McpHistoryViews.str(d, "task");
         if (task.startsWith(TaskNames.GUARD)) {

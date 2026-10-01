@@ -12,6 +12,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ClassAbi;
 import java.io.IOException;
@@ -24,6 +25,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /** Rank tests from sources and on-disk classes. Does not compile or run. */
@@ -137,7 +139,7 @@ public final class AffectedTestsCompute {
             production.addAll(foreign.keySet());
             Map<String, ClassAbi.Fingerprint> pre =
                     u.dirtyHere() ? AbiIndex.load(AbiIndex.path(u.layout().buildDir())) : Map.of();
-            var tests = testsFor(u.dir(), u.layout().testClassesDir(), production, sel);
+            var tests = testsFor(u.dir(), u.build(), u.layout().testClassesDir(), production, sel);
             String coord =
                     u.build().project().group() + ":" + u.build().project().name();
             String rel = root.relativize(u.dir()).toString();
@@ -209,30 +211,33 @@ public final class AffectedTestsCompute {
 
     /**
      * Compiled test classes (imports + tags) plus every test source in the selection, so ranking
-     * still works when {@code target/classes/test} has not been built yet.
+     * still works when {@code target/classes/test} has not been built yet; only the classes the
+     * selected suites run, class-pattern suites included.
      */
     static List<TestClassIndex.Entry> testsFor(
-            Path moduleDir, Path testClassesDir, Set<String> production, TestSelection sel) throws IOException {
+            Path moduleDir, JkBuild build, Path testClassesDir, Set<String> production, TestSelection sel)
+            throws IOException {
+        boolean compact = ModuleLayout.isCompact(moduleDir);
+        Map<String, ClassSuite> classSuites = build.build().testClassSuites();
+        TestSelection.Resolved resolved = (sel == null ? TestSelection.DEFAULT : sel)
+                .resolve(TestSuites.available(moduleDir, compact, classSuites));
+        List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
+        Predicate<String> runs =
+                SuiteClassFilter.of(moduleDir, compact, suites, classSuites).acceptor();
         LinkedHashMap<String, TestClassIndex.Entry> byName = new LinkedHashMap<>();
         for (TestClassIndex.Entry e : TestClassIndex.scan(testClassesDir, production)) {
-            byName.put(e.className(), e);
+            if (runs.test(e.className())) byName.put(e.className(), e);
         }
-        for (TestClassIndex.Entry e : scanTestSources(moduleDir, sel)) {
-            byName.putIfAbsent(e.className(), e);
+        List<String> roots = TestSuites.compiled(moduleDir, compact, suites, classSuites);
+        for (TestClassIndex.Entry e : scanTestSources(moduleDir, compact, roots)) {
+            if (runs.test(e.className())) byName.putIfAbsent(e.className(), e);
         }
         return List.copyOf(byName.values());
     }
 
-    static List<TestClassIndex.Entry> scanTestSources(Path moduleDir, TestSelection sel) throws IOException {
-        boolean compact = ModuleLayout.isCompact(moduleDir);
-        List<String> suites;
-        if (sel != null && sel.allSuites()) {
-            suites = TestSuites.discover(moduleDir, compact);
-        } else if (sel == null || sel.suites().isEmpty()) {
-            suites = List.of(TestSuites.DEFAULT);
-        } else {
-            suites = sel.suites();
-        }
+    /** The classes the sources of {@code suites}' directories declare, by path. */
+    static List<TestClassIndex.Entry> scanTestSources(Path moduleDir, boolean compact, List<String> suites)
+            throws IOException {
         LinkedHashMap<String, TestClassIndex.Entry> out = new LinkedHashMap<>();
         for (String suite : suites) {
             LinkedHashSet<Path> roots = new LinkedHashSet<>();

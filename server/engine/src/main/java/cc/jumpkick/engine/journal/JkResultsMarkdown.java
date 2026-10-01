@@ -520,6 +520,7 @@ public final class JkResultsMarkdown {
             sb.append("- ");
             String ident = testIdentity(d);
             if (!ident.isEmpty()) sb.append('`').append(ident).append("`");
+            sb.append(JkResultsTestsSection.suiteNote(d.suite()));
             String thrown = some(d.exceptionClass());
             if (thrown != null) {
                 if (!ident.isEmpty()) sb.append(" — ");

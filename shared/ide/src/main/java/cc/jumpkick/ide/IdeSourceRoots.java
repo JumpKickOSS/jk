@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.ide;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.ClassSuite;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * IDE/BSP view of {@link ModuleLayout} Mill-like SIMPLE). Thin adapter so
@@ -49,8 +54,20 @@ public final class IdeSourceRoots {
         return List.copyOf(out);
     }
 
-    public static List<String> discoveredSuites(Path moduleDir) {
-        return ModuleLayout.discoveredSuites(moduleDir);
+    /**
+     * The suites {@code jk test --suite} can name in this module: the directory suites on disk, then
+     * its {@code [test.suites]} class-pattern suites. A manifest that does not parse adds none.
+     */
+    public static List<String> suites(Path moduleDir) {
+        Map<String, ClassSuite> classSuites;
+        try {
+            classSuites = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
+                    .build()
+                    .testClassSuites();
+        } catch (IOException | RuntimeException e) {
+            classSuites = Map.of();
+        }
+        return TestSuites.available(moduleDir, ModuleLayout.isCompact(moduleDir), classSuites);
     }
 
     public static boolean isCompact(Path moduleDir) {

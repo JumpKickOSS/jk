@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,9 +41,9 @@ class PomTestPluginImportTest {
                 .as("the file pattern becomes the class pattern Maven's runner skips")
                 .containsExactly("*Slow*");
         assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` `<excludes>`"));
-        assertThat(build.build().testSuiteClasses())
+        assertThat(build.build().testClassSuites())
                 .as("failsafe's default patterns are the integration suite's classes")
-                .containsExactly(Map.entry("integration", List.of("IT*", "*IT", "*ITCase")));
+                .containsExactly(Map.entry("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase"))));
         assertThat(messages).noneMatch(m -> m.startsWith("`maven-failsafe-plugin` runs"));
         assertThat(messages).noneMatch(m -> m.contains("src/integration/java"));
         assertThat(messages)
@@ -68,7 +69,7 @@ class PomTestPluginImportTest {
         assertThat(reparsed.build().testExcludeTags()).containsExactly("slow");
         assertThat(reparsed.build().testExcludeClasses()).containsExactly("*Slow*");
         assertThat(reparsed.build().testJvm()).isEqualTo(build.build().testJvm());
-        assertThat(reparsed.build().testSuiteClasses()).isEqualTo(build.build().testSuiteClasses());
+        assertThat(reparsed.build().testClassSuites()).isEqualTo(build.build().testClassSuites());
         assertThat(JkBuildParser.parseTestTags(writeManifest(tempDir, rendered)).excludeTags())
                 .as("the engine's root-scoped reader sees the same filters")
                 .containsExactly("slow");
@@ -121,8 +122,7 @@ class PomTestPluginImportTest {
     }
 
     @Test
-    void failsafe_includes_are_the_integration_suites_classes_and_its_excludes_a_row(@TempDir Path tempDir)
-            throws Exception {
+    void failsafe_includes_and_excludes_are_the_integration_suites_classes(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -145,17 +145,19 @@ class PomTestPluginImportTest {
                 """);
         List<String> messages = TestImporters.messages(result);
 
-        assertThat(result.jkBuild().build().testSuiteClasses())
-                .containsExactly(Map.entry("integration", List.of("*IntegrationTest", "com.ex.smoke.*")));
+        assertThat(result.jkBuild().build().testClassSuites())
+                .containsExactly(Map.entry(
+                        "integration",
+                        new ClassSuite(
+                                List.of("*IntegrationTest", "com.ex.smoke.*"), List.of("*SlowIntegrationTest"))));
         assertThat(messages).anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<includes>` %regex[.*Flow.*] —"));
-        assertThat(messages)
-                .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<excludes>` **/*SlowIntegrationTest.java —")
-                        && m.contains("`[test] exclude-classes`"));
+        assertThat(messages).noneMatch(m -> m.startsWith("`maven-failsafe-plugin` `<excludes>`"));
         assertThat(result.jkBuild().build().testExcludeClasses())
                 .as("Failsafe's excludes narrow its own pass; they do not leave a class out of every suite")
                 .isEmpty();
         assertThat(JkBuildRenderer.render(result.jkBuild()))
-                .contains("\n[test.suites.integration]\nclasses = [\"*IntegrationTest\", \"com.ex.smoke.*\"]\n")
+                .contains("\n[test.suites.integration]\nclasses = [\"*IntegrationTest\", \"com.ex.smoke.*\"]\n"
+                        + "exclude-classes = [\"*SlowIntegrationTest\"]\n")
                 .doesNotContain("\n[test]\n");
     }
 

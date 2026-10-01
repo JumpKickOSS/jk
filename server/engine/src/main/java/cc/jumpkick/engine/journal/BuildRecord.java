@@ -554,7 +554,7 @@ public record BuildRecord(
      * the failure output under the failed module inside its "failure details" roll-up. {@code code}
      * names the tool ({@code javac}, {@code kotlinc}, a guard rule); {@code key} is that tool's own
      * name for the diagnostic ({@code compiler.err.cant.resolve.location}), {@code ""} when the tool
-     * reports text only.
+     * reports text only. {@code suite} is a test failure's suite, {@code ""} otherwise.
      */
     public record Diag(
             String severity,
@@ -575,16 +575,62 @@ public record BuildRecord(
             int snippetStart,
             List<String> snippet,
             int worker,
-            String key) {
+            String key,
+            String suite) {
 
         public Diag {
             if (snippet == null) snippet = List.of();
             else snippet = List.copyOf(snippet);
             if (file == null) file = "";
             if (key == null) key = "";
+            if (suite == null) suite = "";
         }
 
-        /** Every field but the tool's key, which is {@code ""}. */
+        /** Every field but the suite, which is {@code ""}. */
+        public Diag(
+                String severity,
+                String dir,
+                @Nullable String step,
+                String code,
+                String message,
+                @Nullable String test,
+                @Nullable String exceptionClass,
+                @Nullable String module,
+                @Nullable String engine,
+                @Nullable String className,
+                @Nullable String method,
+                @Nullable String stack,
+                String file,
+                int line,
+                int col,
+                int snippetStart,
+                List<String> snippet,
+                int worker,
+                String key) {
+            this(
+                    severity,
+                    dir,
+                    step,
+                    code,
+                    message,
+                    test,
+                    exceptionClass,
+                    module,
+                    engine,
+                    className,
+                    method,
+                    stack,
+                    file,
+                    line,
+                    col,
+                    snippetStart,
+                    snippet,
+                    worker,
+                    key,
+                    "");
+        }
+
+        /** Every field but the tool's key and the suite, which are {@code ""}. */
         public Diag(
                 String severity,
                 String dir,
@@ -623,6 +669,7 @@ public record BuildRecord(
                     snippetStart,
                     snippet,
                     worker,
+                    "",
                     "");
         }
 

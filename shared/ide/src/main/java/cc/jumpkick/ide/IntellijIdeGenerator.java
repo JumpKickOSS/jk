@@ -346,8 +346,8 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     }
 
     /**
-     * Shell run configs: {@code jk test}, {@code jk test --all}, and one per non-default suite
-     * discovered under any module.
+     * Shell run configs: {@code jk test}, {@code jk test --all}, and one per non-default suite any
+     * module declares, directory or class pattern.
      */
     static void writeJkTestRunConfigs(IdeOutput out, Path runDir, Path wsRoot, Set<Path> moduleDirs)
             throws IOException {
@@ -355,7 +355,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         out.file(runDir.resolve("jk_test_all.xml"), shellRunConfigXml("jk test (all suites)", "jk test --all", wsRoot));
         LinkedHashSet<String> extraSuites = new LinkedHashSet<>();
         for (Path mod : moduleDirs) {
-            for (String suite : IdeSourceRoots.discoveredSuites(mod)) {
+            for (String suite : IdeSourceRoots.suites(mod)) {
                 if (!TestSuites.DEFAULT.equals(suite)) extraSuites.add(suite);
             }
         }

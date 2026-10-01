@@ -13,6 +13,7 @@ public record TestFailureErrorLine(
         String code,
         String message,
         String module,
+        String suite,
         String engine,
         String className,
         String method,
@@ -29,6 +30,7 @@ public record TestFailureErrorLine(
                 .string("code", code)
                 .string("message", message)
                 .optionalNonEmptyString("module", module)
+                .optionalNonEmptyString("suite", suite)
                 .optionalNonEmptyString("engine", engine)
                 .optionalNonEmptyString("class", className)
                 .optionalNonEmptyString("method", method)
@@ -49,6 +51,7 @@ public record TestFailureErrorLine(
                 Jsonl.requiredStr(json, "code"),
                 Jsonl.requiredStr(json, "message"),
                 orEmpty(Jsonl.str(json, "module")),
+                orEmpty(Jsonl.str(json, "suite")),
                 orEmpty(Jsonl.str(json, "engine")),
                 orEmpty(Jsonl.str(json, "class")),
                 orEmpty(Jsonl.str(json, "method")),
