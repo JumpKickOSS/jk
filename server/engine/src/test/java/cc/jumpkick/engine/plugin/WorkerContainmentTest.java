@@ -255,6 +255,20 @@ class WorkerContainmentTest {
     }
 
     @Test
+    void the_reported_worker_cap_is_what_a_small_worker_is_written() {
+        long budget = 27 * GIB / 2 + 1234;
+        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.CGROUP, "", budget, true).workerCapBytes(budget))
+                .isEqualTo(WorkerRss.workerCapBytes(64L << 20, budget))
+                .isEqualTo((budget / 4 * 3) & -4096L);
+        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.CGROUP, "", budget, false)
+                        .workerCapBytes(budget))
+                .isEqualTo(-1L);
+        assertThat(new WorkerContainment.Report(WorkerContainment.Mode.SCORE_ONLY, "x", -1, false)
+                        .workerCapBytes(budget))
+                .isEqualTo(-1L);
+    }
+
+    @Test
     void a_scope_note_is_appended_only_to_score_only() {
         assertThat(WorkerContainment.withScopeNote(
                         WorkerContainment.Mode.SCORE_ONLY, "other processes share this cgroup", "JK_ENGINE_SCOPE=0"))

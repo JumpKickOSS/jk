@@ -82,6 +82,11 @@ public final class EngineProbe {
             @Nullable String containmentReason,
             /** {@code workers/memory.max} in bytes; {@code -1} when unset or not a cgroup. */
             long workerMemoryMax,
+            /**
+             * {@code memory.max} of a worker's own group at the smallest lease; {@code -1} when
+             * workers share one group, there is no cgroup, or the engine did not report.
+             */
+            long workerCap,
             /** Bytes forked workers may lease; {@code -1} when the engine did not report a budget. */
             long workerBudgetBytes,
             /** Bytes held by worker leases; {@code -1} when the engine did not report. */
@@ -181,6 +186,7 @@ public final class EngineProbe {
                     installSource,
                     null,
                     null,
+                    -1L,
                     -1L,
                     -1L,
                     -1L,
@@ -340,6 +346,7 @@ public final class EngineProbe {
                     Jsonl.str(ack, "containment"),
                     Jsonl.str(ack, "containmentReason"),
                     Jsonl.longValue(ack, "workerMemoryMax", -1),
+                    Jsonl.longValue(ack, "workerCap", -1),
                     Jsonl.longValue(ack, "workerBudgetBytes", -1),
                     Jsonl.longValue(ack, "workerLeasedBytes", -1),
                     Jsonl.longValue(ack, "workerOverbookedBytes", 0),

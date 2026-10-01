@@ -54,6 +54,7 @@ class EngineDrainWordingTest {
                 -1L,
                 -1L,
                 -1L,
+                -1L,
                 0L,
                 0,
                 null,

@@ -231,14 +231,17 @@ rest of the build and the host keep the last quarter. A worker killed there is r
 (metaspace, thread stacks, direct buffers), so a larger -Xmx does not help`, and it is not
 retried. The engine log names the worker and its cap. The group is removed once the worker
 and anything it started have exited. Where the memory controller cannot be handed down
-below `workers`, workers share that one group as before; status then reads
-`cgroup (max … GiB)` instead of `cgroup (max … GiB, capped per worker)`.
+below `workers`, workers share that one group. `jk engine status` reads
+`cgroup (max 13.5 GiB, 10.1 GiB per worker)` when each worker has its own group, naming the
+cap a worker at the smallest lease gets, and `cgroup (max 13.5 GiB)` when they share one.
+`--output json` carries that cap in bytes as `workerCap`, `-1` when workers share one group
+or there is no cgroup.
 
 If that setup cannot be done (the cgroup is shared with other processes, it is not
 writable, or the memory controller is not delegated), the engine keeps the score adjustment
 only and remembers why. On any other operating system it does neither, and does not error.
-`jk engine status` reports the mode: `cgroup (max … GiB)`, `score-only (<reason>)`, or
-`none`. On Linux the client starts the engine in its own delegated systemd user scope
+`jk engine status` reports the mode: `cgroup (max … GiB)` (with the per-worker cap when
+there is one), `score-only (<reason>)`, or `none`. On Linux the client starts the engine in its own delegated systemd user scope
 when `systemd-run` can reach a user manager, so that cgroup is private; `JK_ENGINE_SCOPE=0`
 starts it in the caller's cgroup instead.
 

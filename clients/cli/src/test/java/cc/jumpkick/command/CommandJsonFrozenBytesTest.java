@@ -61,7 +61,7 @@ class CommandJsonFrozenBytesTest {
                         + "\"availableMemoryBytes\":16000,\"systemCpuLoad\":0.25,\"systemLoadAverage\":1.5,"
                         + "\"engineEpoch\":\"epoch-1\",\"logBytes\":40960,\"logRolledAt\":1700000000500,"
                         + "\"ignoredSignals\":\"\",\"installSource\":\"/home/me/src/jk\","
-                        + "\"containment\":null,\"containmentReason\":null,\"workerMemoryMax\":-1,"
+                        + "\"containment\":null,\"containmentReason\":null,\"workerMemoryMax\":-1,\"workerCap\":-1,"
                         + "\"workerBudgetBytes\":-1,\"workerLeasedBytes\":-1,\"workerOverbookedBytes\":0,\"workerQueued\":0,"
                         + "\"workerBudgetSource\":null,\"workerRunningJvms\":-1,\"workerCpuCap\":-1,\"overbookingOff\":false,\"workerWaiting\":null,\"workerOverLease\":null,"
                         + "\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
