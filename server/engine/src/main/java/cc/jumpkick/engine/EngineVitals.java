@@ -74,6 +74,7 @@ public final class EngineVitals {
                 containment.modeWord(),
                 containment.reason(),
                 containment.maxBytes(),
+                containment.workerCapBytes(workers.budgetBytes()),
                 workers.budgetBytes(),
                 workers.leasedBytes(),
                 workers.overbookedBytes(),

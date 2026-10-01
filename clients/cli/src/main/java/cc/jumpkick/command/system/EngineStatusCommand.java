@@ -124,7 +124,8 @@ public final class EngineStatusCommand implements CliCommand {
         if (s.ignoredSignals() != null && !s.ignoredSignals().isEmpty()) {
             detail("Signals", describeIgnoredSignals(s.ignoredSignals()));
         }
-        String containment = describeContainment(s.containment(), s.containmentReason(), s.workerMemoryMax());
+        String containment =
+                describeContainment(s.containment(), s.containmentReason(), s.workerMemoryMax(), s.workerCap());
         if (containment != null) detail("Containment", containment);
         String workers = describeWorkers(
                 s.workerBudgetBytes(),
@@ -329,6 +330,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .string("containment", s.containment())
                 .string("containmentReason", s.containmentReason())
                 .number("workerMemoryMax", s.workerMemoryMax())
+                .number("workerCap", s.workerCap())
                 .number("workerBudgetBytes", s.workerBudgetBytes())
                 .number("workerLeasedBytes", s.workerLeasedBytes())
                 .number("workerOverbookedBytes", s.workerOverbookedBytes())
@@ -410,13 +412,16 @@ public final class EngineStatusCommand implements CliCommand {
     }
 
     /**
-     * {@code none}, {@code score-only (<reason>)}, or {@code cgroup (max X GiB)}. Null when the
-     * engine did not report a mode.
+     * {@code none}, {@code score-only (<reason>)}, {@code cgroup (max X GiB)}, or {@code cgroup
+     * (max X GiB, Y GiB per worker)} when {@code workerCapBytes} is positive. Null when the engine
+     * did not report a mode.
      */
-    static @Nullable String describeContainment(@Nullable String mode, @Nullable String reason, long maxBytes) {
+    static @Nullable String describeContainment(
+            @Nullable String mode, @Nullable String reason, long maxBytes, long workerCapBytes) {
         if (mode == null || mode.isEmpty()) return null;
         if ("cgroup".equals(mode) && maxBytes > 0) {
-            return "cgroup (max " + gib(maxBytes) + ")";
+            String perWorker = workerCapBytes > 0 ? ", " + gib(workerCapBytes) + " per worker" : "";
+            return "cgroup (max " + gib(maxBytes) + perWorker + ")";
         }
         if ("score-only".equals(mode)) {
             return reason == null || reason.isEmpty() ? "score-only" : "score-only (" + reason + ")";
