@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.JobQueuedFrame;
 import cc.jumpkick.wire.protocol.JobStartFrame;
@@ -239,6 +240,25 @@ public final class WireStream {
             if (SessionContext.current().cancelled()) return new JobCancelledException();
         } catch (RuntimeException ignored) {
             // no session installed — fall through to the generic message
+        }
+        try {
+            return disconnected(EnginePaths.current());
+        } catch (RuntimeException unresolvable) {
+            return disconnected(null);
+        }
+    }
+
+    /**
+     * The disconnect as observed, unless the engine's log ends in an {@code OutOfMemoryError}: the
+     * JVM writes that line and its heap dump before it exits, so by the time the connection closes
+     * the log says why, and the next command starts a fresh engine.
+     */
+    static IOException disconnected(EnginePaths.@Nullable Paths paths) {
+        Optional<String> oom = paths == null
+                ? Optional.empty()
+                : EngineHeapDump.exitMessage(paths.log(), EnginePaths.heapDumpDir(paths));
+        if (oom.isPresent()) {
+            return new IOException("jk engine: " + oom.get() + "; the next jk command starts a fresh engine");
         }
         return new IOException("jk engine: the engine closed the connection without sending a result; "
                 + "run `jk engine status` to see whether it is still running, and check its log for the job");
