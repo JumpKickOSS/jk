@@ -30,6 +30,7 @@ import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.test.FailureClip;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteClassFilter;
 import cc.jumpkick.test.TestProgressListener;
@@ -570,17 +571,19 @@ public final class TestSupport {
                         snippetLines = s.lines();
                     }
                 }
+                // The live event carries a tighter clip than the summary and the reports keep.
+                String eventMessage = FailureClip.eventMessage(message == null ? "" : message);
                 ctx.error(
                         "test-failure",
-                        message,
+                        eventMessage,
                         new TestFailureInfo(
                                 module == null ? "" : module,
                                 engine == null ? "" : engine,
                                 className == null ? "" : className,
                                 methodLabel == null ? "" : methodLabel,
                                 exClass == null ? "" : exClass,
-                                message == null ? "" : message,
-                                stack == null ? "" : stack,
+                                eventMessage,
+                                FailureClip.eventStack(stack == null ? "" : stack, className),
                                 workerId,
                                 file,
                                 line,

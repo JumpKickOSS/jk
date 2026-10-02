@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.test.FailureClip;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -82,12 +83,11 @@ class JkResultsStackTest {
 
     @Test
     void frame_class_reads_the_declaring_class_and_ignores_message_lines() {
-        assertThat(JkResultsStack.frameClass("\tat java.base/java.lang.Thread.run(Thread.java:1583)"))
+        assertThat(FailureClip.frameClass("\tat java.base/java.lang.Thread.run(Thread.java:1583)"))
                 .isEqualTo("java.lang.Thread");
-        assertThat(JkResultsStack.frameClass("at com.acme.web.UploadTest$Nested.run(UploadTest.java:5)"))
+        assertThat(FailureClip.frameClass("at com.acme.web.UploadTest$Nested.run(UploadTest.java:5)"))
                 .isEqualTo("com.acme.web.UploadTest$Nested");
-        assertThat(JkResultsStack.frameClass("java.lang.AssertionError: at least"))
-                .isNull();
-        assertThat(JkResultsStack.frameClass("Caused by: java.io.IOException")).isNull();
+        assertThat(FailureClip.frameClass("java.lang.AssertionError: at least")).isNull();
+        assertThat(FailureClip.frameClass("Caused by: java.io.IOException")).isNull();
     }
 }
