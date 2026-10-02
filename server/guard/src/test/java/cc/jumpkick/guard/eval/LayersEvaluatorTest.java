@@ -67,7 +67,7 @@ class LayersEvaluatorTest {
     /** Writes each module's main index with the given classes, where the workspace lane would read it. */
     private static void indexes(Path root, Map<String, List<ClassFacts>> byModule) throws IOException {
         for (var e : byModule.entrySet()) {
-            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, root.resolve(e.getKey())), "main");
+            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve(e.getKey())), "main");
             Files.createDirectories(idx.getParent());
             Map<String, ClassFacts> classes = new LinkedHashMap<>();
             for (ClassFacts c : e.getValue()) classes.put(c.name(), c);

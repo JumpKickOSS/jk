@@ -342,12 +342,12 @@ final class PlannerGuards {
                         List<Path> classDirs = new ArrayList<>();
                         if (workspace) {
                             for (Path m : workspaceModules) {
-                                Path bd = BuildLayout.moduleTargetDir(g.root(), m);
+                                Path bd = BuildLayout.moduleTargetDir(m);
                                 Path idx = FactsIndexing.indexPath(bd, "main");
                                 if (Files.isRegularFile(idx)) factsIdx.add(idx);
                                 Path tidx = FactsIndexing.indexPath(bd, "test");
                                 if (Files.isRegularFile(tidx)) testIdx.add(tidx);
-                                classDirs.add(bd.resolve("classes").resolve("main"));
+                                classDirs.add(bd.resolve("classes"));
                             }
                         } else {
                             factsIdx.add(FactsIndexing.indexPath(buildDir, "main"));

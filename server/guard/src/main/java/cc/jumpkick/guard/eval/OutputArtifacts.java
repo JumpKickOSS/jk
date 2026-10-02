@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class OutputArtifacts {
 
-    /** The coverage XML a module's test run leaves when nothing names another: under the module's reports. */
+    /** The coverage XML a module's test run leaves when nothing names another: in its JaCoCo report dir. */
     public static final String DEFAULT_COVERAGE = "jacoco.xml";
 
     private OutputArtifacts() {}
@@ -134,7 +134,7 @@ public final class OutputArtifacts {
                     name.endsWith(".jar") ? name.substring(0, name.length() - 4) + ".pom" : name + ".pom");
             Path coverage = coverageReport != null
                     ? root.resolve(coverageReport)
-                    : layout.reportsDir().resolve(DEFAULT_COVERAGE);
+                    : layout.jacocoReportDir().resolve(DEFAULT_COVERAGE);
             List<String> checkstyleRuns = build.pluginConfig("lint")
                     .map(lint -> List.copyOf(lint.entries().keySet()))
                     .orElse(List.of());

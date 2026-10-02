@@ -124,9 +124,9 @@ public final class WorkspaceFacts {
      * Without a classes tree the index on disk, if any, is the module's word.
      */
     private static @Nullable Path indexOf(Path root, Path module) {
-        Path buildDir = BuildLayout.moduleTargetDir(root, module);
+        Path buildDir = BuildLayout.moduleTargetDir(module);
         Path idx = FactsIndexing.indexPath(buildDir, "main");
-        Path classes = buildDir.resolve("classes").resolve("main");
+        Path classes = buildDir.resolve("classes");
         if (Files.isDirectory(classes)) {
             try {
                 FactsIndexing.ensure(classes, idx);

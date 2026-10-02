@@ -259,7 +259,7 @@ class PreflightMemoTest {
                 .findFirst()
                 .orElseThrow()
                 .dir();
-        Files.createDirectories(BuildLayout.moduleTargetDir(tmp, aDir));
+        Files.createDirectories(BuildLayout.moduleTargetDir(aDir));
         storeDirty(tmp, graph, Set.of());
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
 

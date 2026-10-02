@@ -12,7 +12,7 @@ src/main/resources/META-INF/services/cc.jumpkick.plugin.Plugin
 src/main/java/com/example/hello/HelloPlugin.java
 ```
 
-Build it like any library — `jk lock && jk build` — and `target/lib/hello-plugin-0.1.0.jar` is the
+Build it like any library — `jk lock && jk build` — and `target/hello-plugin-0.1.0.jar` is the
 plugin. A consumer pins it by content:
 
 ```toml

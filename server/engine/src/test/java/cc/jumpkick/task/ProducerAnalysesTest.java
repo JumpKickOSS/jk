@@ -18,8 +18,8 @@ class ProducerAnalysesTest {
     @Test
     void a_sibling_s_jar_and_classes_dir_both_lead_to_the_compile_that_wrote_them(@TempDir Path dir)
             throws IOException {
-        Path classes = dir.resolve("target/lib-mod/classes/main");
-        Path jar = dir.resolve("target/lib-mod/lib/lib-mod-1.0.jar");
+        Path classes = dir.resolve("lib-mod/target/classes");
+        Path jar = dir.resolve("lib-mod/target/lib-mod-1.0.jar");
         Path maven = dir.resolve("m2/guava.jar");
         Files.createDirectories(classes);
         Files.createDirectories(jar.getParent());
@@ -38,7 +38,7 @@ class ProducerAnalysesTest {
 
     @Test
     void a_test_classes_tree_leads_to_its_compile_test_state(@TempDir Path dir) throws IOException {
-        Path testClasses = dir.resolve("target/lib-mod/classes/test");
+        Path testClasses = dir.resolve("lib-mod/target/test-classes");
         Files.createDirectories(testClasses);
         Path inc = dir.resolve("incremental-java");
         Path analysis = stateOf(inc, TaskNames.COMPILE_TEST, testClasses).resolve(ProducerAnalyses.ANALYSIS_FILE);
@@ -51,7 +51,7 @@ class ProducerAnalysesTest {
 
     @Test
     void a_producer_that_has_not_written_an_analysis_contributes_nothing(@TempDir Path dir) throws IOException {
-        Path classes = dir.resolve("target/lib-mod/classes/main");
+        Path classes = dir.resolve("lib-mod/target/classes");
         Files.createDirectories(classes);
         Path inc = dir.resolve("incremental-java");
         Files.createDirectories(stateOf(inc, TaskNames.COMPILE_MAIN, classes));

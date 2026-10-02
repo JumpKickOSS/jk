@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A workspace member's deliverables are linked into the workspace's {@code target/} when that
- * member finishes. Its outputs live under {@code target/<module>/}, not under the module directory,
+ * member finishes. Its outputs live under the member's own {@code target/},
  * and the link step has to know that or it links nothing until the root itself completes.
  */
 class WorkspaceArtifactsTest {
@@ -44,7 +44,7 @@ class WorkspaceArtifactsTest {
                 name = "jk"
                 """);
         String nativeName = BuildLayout.nativeExecutableFileName("jk");
-        Path built = root.resolve("target/clients/cli").resolve(nativeName);
+        Path built = root.resolve("clients/cli/target").resolve(nativeName);
         Files.createDirectories(built.getParent());
         Files.writeString(built, "native client");
 

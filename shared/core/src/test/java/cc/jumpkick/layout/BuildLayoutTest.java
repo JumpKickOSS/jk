@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
-import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BuildLayoutTest {
 
-    /** Library project: no {@code main}. Artifacts land in {@code target/lib/}. */
+    /** Library project: no {@code main}. Artifacts land in {@code target/}, as an application's do. */
     private static JkBuild project(String artifact, String version) {
         return JkBuild.of(new Project("com.acme", artifact, version, 25));
     }
@@ -71,7 +70,7 @@ class BuildLayoutTest {
         Path m2 = dir.resolve("m2/lib/guava.jar");
         Files.createDirectories(m2.getParent());
         Files.createFile(m2);
-        Path missing = dir.resolve("target/lib/gone.jar");
+        Path missing = dir.resolve("target/gone.jar");
 
         assertThat(BuildLayout.compiledClassesOf(m2)).isEmpty();
         assertThat(BuildLayout.compiledClassesOf(missing)).isEmpty();
@@ -89,98 +88,55 @@ class BuildLayoutTest {
     }
 
     @Test
-    void intermediates_live_under_target(@TempDir Path dir) {
-        BuildLayout layout = BuildLayout.of(dir, project("widget", "0.1.0"));
-
-        assertThat(layout.classesDir()).isEqualTo(dir.resolve("target/classes/main"));
-        assertThat(layout.testClassesDir()).isEqualTo(dir.resolve("target/classes/test"));
-        assertThat(layout.kotlinClassesDir()).isEqualTo(dir.resolve("target/kotlin/main"));
-        assertThat(layout.kotlinTestClassesDir()).isEqualTo(dir.resolve("target/kotlin/test"));
-        assertThat(layout.resourcesDir()).isEqualTo(dir.resolve("target/resources/main"));
-        assertThat(layout.testResourcesDir()).isEqualTo(dir.resolve("target/resources/test"));
-        assertThat(layout.generatedSourcesDir("immutables"))
-                .isEqualTo(dir.resolve("target/generated/sources/immutables/main"));
-        assertThat(layout.testResultsDir()).isEqualTo(dir.resolve("target/reports/test-results"));
-    }
-
-    @Test
-    void library_artifacts_live_under_target_lib(@TempDir Path dir) {
-        // No project.main → library; all deliverables go to target/lib/
+    void intermediates_live_where_maven_puts_them(@TempDir Path dir) {
         BuildLayout layout = BuildLayout.of(dir, project("widget", "1.2.3"));
 
-        assertThat(layout.artifactDir()).isEqualTo(dir.resolve("target/lib"));
-        assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3.jar"));
-        assertThat(layout.assemblyJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-all.jar"));
-        assertThat(layout.sourcesJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-sources.jar"));
-        assertThat(layout.javadocJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-javadoc.jar"));
-        assertThat(layout.nativeBinary())
-                .isEqualTo(dir.resolve("target/lib").resolve(BuildLayout.nativeExecutableFileName("widget")));
-        // Shared-library base: lib<artifact> in target/lib/, no extension (native-image adds it).
-        assertThat(layout.nativeLibrary()).isEqualTo(dir.resolve("target/lib/libwidget"));
-        assertThat(layout.ociImageTar()).isEqualTo(dir.resolve("target/lib/widget.oci.tar"));
-        assertThat(layout.testReportsDir("core")).isEqualTo(dir.resolve("target/reports/core"));
-        assertThat(layout.sbomDir()).isEqualTo(dir.resolve("target/sbom"));
-        assertThat(layout.provenanceDir()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-provenance"));
+        assertThat(layout.classesDir()).isEqualTo(dir.resolve("target/classes"));
+        assertThat(layout.testClassesDir()).isEqualTo(dir.resolve("target/test-classes"));
+        assertThat(layout.kotlinClassesDir()).isEqualTo(dir.resolve("target/kotlin/main"));
+        assertThat(layout.kotlinTestClassesDir()).isEqualTo(dir.resolve("target/kotlin/test"));
+        assertThat(layout.generatedSourcesDir("annotations"))
+                .isEqualTo(dir.resolve("target/generated-sources/annotations"));
+        assertThat(layout.generatedSourcesDir("annotations", "test"))
+                .isEqualTo(dir.resolve("target/generated-test-sources/test-annotations"));
+        assertThat(layout.generatedSourcesDir("annotations", "fixtures"))
+                .isEqualTo(dir.resolve("target/generated-sources/annotations-fixtures"));
+        assertThat(layout.testResultsDir()).isEqualTo(dir.resolve("target/surefire-reports"));
+        assertThat(layout.integrationResultsDir()).isEqualTo(dir.resolve("target/failsafe-reports"));
+        assertThat(layout.jacocoExec()).isEqualTo(dir.resolve("target/jacoco.exec"));
+        assertThat(layout.jacocoReportDir()).isEqualTo(dir.resolve("target/site/jacoco"));
+        assertThat(layout.apidocsDir()).isEqualTo(dir.resolve("target/site/apidocs"));
     }
 
     @Test
-    void application_artifacts_live_under_target(@TempDir Path dir) {
-        // [application].main declared → application; all deliverables go to target/
-        BuildLayout layout = BuildLayout.of(dir, appProject("widget", "1.2.3"));
+    void a_library_s_artifacts_live_at_the_target_root(@TempDir Path dir) {
+        BuildLayout layout = BuildLayout.of(dir, project("widget", "1.2.3"));
 
         assertThat(layout.artifactDir()).isEqualTo(dir.resolve("target"));
         assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/widget-1.2.3.jar"));
         assertThat(layout.assemblyJar()).isEqualTo(dir.resolve("target/widget-1.2.3-all.jar"));
+        assertThat(layout.minifiedJar()).isEqualTo(dir.resolve("target/widget-1.2.3-min.jar"));
         assertThat(layout.sourcesJar()).isEqualTo(dir.resolve("target/widget-1.2.3-sources.jar"));
+        assertThat(layout.javadocJar()).isEqualTo(dir.resolve("target/widget-1.2.3-javadoc.jar"));
         assertThat(layout.nativeBinary())
                 .isEqualTo(dir.resolve("target").resolve(BuildLayout.nativeExecutableFileName("widget")));
+        assertThat(layout.nativeLibrary()).isEqualTo(dir.resolve("target/libwidget"));
         assertThat(layout.ociImageTar()).isEqualTo(dir.resolve("target/widget.oci.tar"));
+        assertThat(layout.sbomDir()).isEqualTo(dir.resolve("target/sbom"));
+        assertThat(layout.provenanceDir()).isEqualTo(dir.resolve("target/widget-1.2.3-provenance"));
     }
 
     @Test
-    void workspace_member_outputs_under_workspace_target_module(@TempDir Path workspace) {
+    void a_workspace_member_writes_to_its_own_target(@TempDir Path workspace) {
         Path module = workspace.resolve("core");
-        JkBuild proj = project("jk-core", "0.7.0");
-        BuildLayout layout = BuildLayout.of(workspace, module, proj);
+        BuildLayout layout = BuildLayout.of(workspace, module, project("jk-core", "0.7.0"));
 
-        // Mill-style: <workspace>/target/<module-rel>/
-        assertThat(layout.classesDir()).isEqualTo(workspace.resolve("target/core/classes/main"));
-        // No main → library; artifacts under target/core/lib/.
-        assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/core/lib/jk-core-0.7.0.jar"));
-        assertThat(layout.nativeBinary())
-                .isEqualTo(
-                        workspace.resolve("target/core/lib").resolve(BuildLayout.nativeExecutableFileName("jk-core")));
-    }
-
-    @Test
-    void moduleTargetDir_aligns_symlink_path_aliases(@TempDir Path workspace) throws IOException {
-        // On macOS TempDir is often under /var/folders while unit dirs realpath to /private/var/…
-        // A naive normalize() then treats the member as outside the workspace and falls back to
-        // <member>/target — breaking preflight clean-row checks (and Mill-style output roots).
-        Path module = Files.createDirectories(workspace.resolve("core"));
-        Path wsNorm = workspace.toAbsolutePath().normalize();
-        Path modReal = module.toAbsolutePath().toRealPath();
-        Path expected = wsNorm.resolve("target").resolve("core");
-
-        assertThat(BuildLayout.moduleTargetDir(workspace, module)).isEqualTo(expected);
-        // Cross-alias: workspace as /var/…, module as /private/var/… (or the reverse).
-        assertThat(BuildLayout.moduleTargetDir(wsNorm, modReal)).isEqualTo(expected);
-        assertThat(BuildLayout.moduleTargetDir(wsNorm, modReal).endsWith(Path.of("core", "target")))
-                .isFalse();
-    }
-
-    @Test
-    void member_symlinked_into_the_tree_keeps_the_central_target(@TempDir Path tmp) throws IOException {
-        // Lexical membership decides first. A member whose directory is a symlink to a
-        // physical location outside the workspace is still <ws>/core to every caller — its
-        // outputs must stay under <ws>/target/core, not silently relocate to the physical
-        // location's module-local target/ (which would also invalidate its action-cache tags).
-        Path workspace = Files.createDirectories(tmp.resolve("ws"));
-        Path elsewhere = Files.createDirectories(tmp.resolve("elsewhere").resolve("core"));
-        Path link = workspace.resolve("core");
-        Symlinks.create(link, elsewhere);
-        Path expected = workspace.toAbsolutePath().normalize().resolve("target").resolve("core");
-        assertThat(BuildLayout.moduleTargetDir(workspace, link)).isEqualTo(expected);
+        assertThat(layout.classesDir())
+                .isEqualTo(module.toAbsolutePath().normalize().resolve("target/classes"));
+        assertThat(layout.mainJar())
+                .isEqualTo(module.toAbsolutePath().normalize().resolve("target/jk-core-0.7.0.jar"));
+        assertThat(BuildLayout.moduleTargetDir(module))
+                .isEqualTo(module.toAbsolutePath().normalize().resolve("target"));
     }
 
     @Test
@@ -206,9 +162,8 @@ class BuildLayoutTest {
 
         assertThat(layout.workspaceRoot()).isEqualTo(workspace.toAbsolutePath().normalize());
         assertThat(layout.moduleRoot()).isEqualTo(module);
-        // Workspace member → outputs under workspace/target/core/
-        assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/core/lib/core-1.0.0.jar"));
-        assertThat(layout.classesDir()).isEqualTo(workspace.resolve("target/core/classes/main"));
+        assertThat(layout.mainJar()).isEqualTo(module.resolve("target/core-1.0.0.jar"));
+        assertThat(layout.classesDir()).isEqualTo(module.resolve("target/classes"));
     }
 
     @Test
@@ -216,8 +171,7 @@ class BuildLayoutTest {
         BuildLayout layout = BuildLayout.of(workspace, workspaceRootProject("ws-root", "1.0.0"));
         assertThat(layout.workspaceRoot()).isEqualTo(workspace);
         assertThat(layout.moduleRoot()).isEqualTo(workspace);
-        // No main → library; jar under target/lib/.
-        assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/lib/ws-root-1.0.0.jar"));
+        assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/ws-root-1.0.0.jar"));
     }
 
     private static JkBuild workspaceRootProject(String artifact, String version) {
@@ -242,7 +196,7 @@ class BuildLayoutTest {
     }
 
     @Test
-    void plugin_worker_jars_land_at_target_root_not_lib(@TempDir Path dir) throws IOException {
+    void a_plugin_worker_is_packaged_at_root(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("jk-plugin.toml"), "[plugin]\nid = \"x\"\ntable = \"x\"\n");
         BuildLayout layout = BuildLayout.of(dir, project("jk-x", "1.0.0"));
         assertThat(layout.hasMain()).isFalse();

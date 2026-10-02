@@ -121,8 +121,7 @@ public final class GuardSuiteLibrary {
     static @Nullable Path workspaceClasses(Path root, Predicate<Path> compiled) {
         Module own = workspaceModule(root);
         if (own == null) return null;
-        Path classes =
-                BuildLayout.moduleTargetDir(root, own.dir()).resolve("classes").resolve("main");
+        Path classes = BuildLayout.moduleTargetDir(own.dir()).resolve("classes");
         return compiled.test(classes) ? classes : null;
     }
 

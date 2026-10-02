@@ -142,7 +142,7 @@ class ApiEvaluatorTest {
             ClassFacts f = FactsExtractor.extract(c);
             m.put(f.name(), f);
         }
-        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, root.resolve(module)), "main");
+        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve(module)), "main");
         Files.createDirectories(idx.getParent());
         FactsFormat.write(idx, new FactsIndex(m, Map.of(), "v2"));
     }

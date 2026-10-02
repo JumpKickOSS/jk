@@ -69,7 +69,7 @@ class AllowScopeTest {
     @Test
     void a_package_glob_that_also_names_a_sibling_s_classes_is_not_judged_here(@TempDir Path dir) throws Exception {
         Path root = workspace(dir);
-        Path bIdx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, root.resolve("b")), "main");
+        Path bIdx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve("b")), "main");
         Files.createDirectories(bIdx.getParent());
         FactsFormat.write(bIdx, index(cls("p/shared/B")));
         FactsIndex aFacts = index(cls("p/shared/A"));

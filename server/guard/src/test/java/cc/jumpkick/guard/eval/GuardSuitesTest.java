@@ -177,7 +177,7 @@ class GuardSuitesTest {
         List<GuardSuites.Declared> declared = GuardSuites.declared(idx);
         Map<String, Rule> rules = new LinkedHashMap<>();
         for (GuardSuites.Declared d : declared) rules.put(d.id(), GuardSuites.rule(d, root, "m"));
-        Path report = GuardSuites.report(root.resolve("target/m"));
+        Path report = GuardSuites.report(root.resolve("m/target"));
         Files.createDirectories(report.getParent());
         Files.writeString(report, """
                 {"id":"esc","outcome":"ok","population":12,"violations":[{"fingerprint":"a.Esc#write()V -> java.lang.String#replace(CC)Ljava/lang/String;","file":"a/Esc.java","line":7,"detail":"an escaper"},{"fingerprint":"a.Legacy#old()V -> java.lang.String#replace(CC)Ljava/lang/String;","file":"a/Legacy.java","line":3,"detail":"old escaper"},{"fingerprint":"a/Big.java","value":900,"detail":"lines = 900"}]}
@@ -249,7 +249,7 @@ class GuardSuitesTest {
     void a_bytecode_site_names_the_source_root_that_holds_it(@TempDir Path root) throws Exception {
         FactsIndex idx = index(suite("rules/R", "MODULE", "kt|w||" + FACTS_V));
         Rule rule = GuardSuites.rule(GuardSuites.declared(idx).get(0), root, "m");
-        Path report = GuardSuites.report(root.resolve("target/m"));
+        Path report = GuardSuites.report(root.resolve("m/target"));
         Files.createDirectories(report.getParent());
         Files.writeString(report, """
                 {"id":"kt","outcome":"ok","population":1,"violations":[{"fingerprint":"a.K#f()V -> java.lang.System#exit(I)V","file":"a/K.kt","line":4,"detail":"exit"}]}
@@ -298,7 +298,7 @@ class GuardSuitesTest {
         Path source = root.resolve("n/src/main/kotlin/b/Other.kt");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "");
-        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, root.resolve("n")), "main");
+        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve("n")), "main");
         Files.createDirectories(idx.getParent());
         ClassFacts other = new ClassFacts(
                 "b/Other", 1, "java/lang/Object", List.of(), "Other.kt", List.of(), List.of(), List.of(), Set.of());
@@ -307,7 +307,7 @@ class GuardSuitesTest {
                 suite("rules/R", "WORKSPACE", "ws|w||" + FACTS_V, "esc|w||" + FACTS_V + "|allow=n;n owns the exit"));
         Map<String, Rule> rules = new LinkedHashMap<>();
         for (GuardSuites.Declared d : GuardSuites.declared(suite)) rules.put(d.id(), GuardSuites.rule(d, root, "m"));
-        Path report = GuardSuites.report(BuildLayout.moduleTargetDir(root, root.resolve("m")));
+        Path report = GuardSuites.report(BuildLayout.moduleTargetDir(root.resolve("m")));
         Files.createDirectories(report.getParent());
         String sites = "[{\"fingerprint\":\"b.Other#f()V -> java.lang.System#exit(I)V\",\"file\":\"b/Other.kt\","
                 + "\"line\":4,\"detail\":\"exit\",\"root\":\"source\"},"
@@ -372,7 +372,7 @@ class GuardSuitesTest {
                 root.resolve(GuardsPresence.RULES_FILE),
                 "[guards.other]\nkind = \"text\"\npattern = \"x\"\ninstead = \"y\"\nwhy = \"w\"\n");
         // the module lane left a suite index and a report behind
-        Path target = root.resolve("target/m");
+        Path target = root.resolve("m/target");
         Path idx = FactsIndexing.indexPath(target, "guard");
         Files.createDirectories(idx.getParent());
         FactsFormat.write(idx, index(suite("rules/R", "MODULE", "esc|w|codec|" + FACTS_V)));

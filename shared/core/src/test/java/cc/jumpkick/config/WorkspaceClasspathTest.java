@@ -218,8 +218,8 @@ class WorkspaceClasspathTest {
                 lib = { workspace = true, kind = "tests" }
                 """);
         // Materialize the products WorkspaceClasspath looks for.
-        Path libMain = root.resolve("target/lib/lib/lib-0.1.0.jar");
-        Path libTestClasses = root.resolve("target/lib/classes/test");
+        Path libMain = root.resolve("lib/target/lib-0.1.0.jar");
+        Path libTestClasses = root.resolve("lib/target/test-classes");
         Files.createDirectories(libMain.getParent());
         Files.createDirectories(libTestClasses);
         Files.writeString(libMain, "jar");
@@ -227,11 +227,11 @@ class WorkspaceClasspathTest {
 
         JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
         var mainOnly = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN));
-        assertThat(mainOnly.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("classes/test"));
+        assertThat(mainOnly.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("test-classes"));
 
         var withTests =
                 WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
-        assertThat(withTests.jars()).anyMatch(p -> p.endsWith(Path.of("classes/test")));
+        assertThat(withTests.jars()).anyMatch(p -> p.endsWith(Path.of("test-classes")));
         assertThat(withTests.missingSiblingJars()).isEmpty();
     }
 
@@ -324,8 +324,8 @@ class WorkspaceClasspathTest {
                 [test-dependencies]
                 lib = { workspace = true, fixtures = true }
                 """);
-        Path libMain = root.resolve("target/lib/lib/lib-0.1.0.jar");
-        Path libFixtures = root.resolve("target/lib/test-fixtures/classes");
+        Path libMain = root.resolve("lib/target/lib-0.1.0.jar");
+        Path libFixtures = root.resolve("lib/target/test-fixtures/classes");
         Files.createDirectories(libMain.getParent());
         Files.createDirectories(libFixtures);
         Files.writeString(libMain, "jar");
@@ -380,14 +380,14 @@ class WorkspaceClasspathTest {
 
         assertThat(result.siblingClosureClasses()).hasSameSizeAs(result.siblingClosureJars());
         assertThat(result.siblingClosureClasses())
-                .allMatch(p -> p.endsWith(Path.of("classes", "main")))
+                .allMatch(p -> p.endsWith(Path.of("target", "classes")))
                 .anyMatch(p -> p.toString().contains("app"))
                 .anyMatch(p -> p.toString().contains("lib"));
         assertThat(result.siblingClosureJars())
                 .allMatch(p -> p.getFileName().toString().endsWith(".jar"));
         // Nothing is built: both views are declared, and each names every sibling's own absence.
         assertThat(result.missingSiblingClasses()).hasSize(2).allMatch(m -> m.replace('\\', '/')
-                .endsWith("classes/main"));
+                .endsWith("target/classes"));
         assertThat(result.missingSiblingJars()).hasSize(2).allMatch(m -> m.endsWith(".jar"));
     }
 

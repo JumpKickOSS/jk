@@ -28,7 +28,7 @@ class TaskForecasterCleanPackageTest {
     @Test
     void classes_token_after_clean_matches_pre_clean_tree(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("mod"));
-        Path classes = Files.createDirectories(module.resolve("target/classes/main"));
+        Path classes = Files.createDirectories(module.resolve("target/classes"));
         Path classFile = classes.resolve("t/Lib.class");
         Files.createDirectories(classFile.getParent());
         Files.writeString(classFile, "bytecode");
@@ -95,7 +95,7 @@ class TaskForecasterCleanPackageTest {
     @Test
     void reconstruction_follows_the_current_compile_key_not_the_last_record(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("mod"));
-        Path classes = Files.createDirectories(module.resolve("target/classes/main"));
+        Path classes = Files.createDirectories(module.resolve("target/classes"));
         Path classFile = classes.resolve("t/Lib.class");
         Files.createDirectories(classFile.getParent());
 

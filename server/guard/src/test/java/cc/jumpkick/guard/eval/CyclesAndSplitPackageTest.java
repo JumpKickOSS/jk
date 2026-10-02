@@ -131,7 +131,7 @@ class CyclesAndSplitPackageTest {
 
         // a and b both compile p.shared; c owns p.c alone
         for (String[] m : new String[][] {{"a", "p/shared/A"}, {"b", "p/shared/B"}, {"c", "p/c/C"}}) {
-            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, root.resolve(m[0])), "main");
+            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve(m[0])), "main");
             Files.createDirectories(idx.getParent());
             FactsFormat.write(idx, index(cls(m[1])));
         }

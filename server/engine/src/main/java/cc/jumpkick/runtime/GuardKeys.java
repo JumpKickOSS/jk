@@ -116,8 +116,8 @@ final class GuardKeys {
     static List<String> workspaceTokens(Path root, List<Path> modules) throws IOException {
         List<String> tokens = new ArrayList<>();
         for (Path m : modules) {
-            Path buildDir = BuildLayout.moduleTargetDir(root, m);
-            Path classes = buildDir.resolve("classes").resolve("main");
+            Path buildDir = BuildLayout.moduleTargetDir(m);
+            Path classes = buildDir.resolve("classes");
             Path idx = FactsIndexing.indexPath(buildDir, "main");
             String digest = Files.isDirectory(classes)
                     ? FactsIndexing.freshDigest(classes, idx).orElse("stale")

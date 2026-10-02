@@ -292,7 +292,7 @@ path segment — the one place a credential can ride into every page a report li
 — and is checked with the same constant-time comparison as the header. `<id>` is the journal
 record's id (or its build number / job directory, as `GET /api/history?id=` accepts); a run whose
 record has no `coverage[]` is a 404. An empty `<path>` is a `302` to the report's entry page: the
-one module's `index.html`, or the workspace roll-up (`target/reports/coverage/index.html`, or
+one module's `index.html`, or the workspace roll-up (`target/site/jacoco/index.html`, or
 `workspace.html` beside it when a module's own report owns `index.html`). Any other `<path>`
 resolves under the record's `dir` and is served only when it is a regular file inside one of the
 report directories the record names (each module's `html` parent, plus the roll-up's). Pages carry

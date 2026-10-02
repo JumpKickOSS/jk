@@ -45,17 +45,17 @@ class ProcessorClasspathTest {
                 siblings,
                 false);
 
-        // Workspace layout: <ws>/target/<module-rel>/classes/main (not module/target/). The tree,
-        // not the jar: javac loads the processor and its service registration from it, and it is
+        // The sibling's <module>/target/classes, the tree, not the jar: javac loads the processor and its service
+        // registration from it, and it is
         // whole before the sibling packages.
-        assertThat(cp).contains(root.resolve("target/proc/classes/main"));
+        assertThat(cp).contains(root.resolve("proc/target/classes"));
         assertThat(cp).noneMatch(p -> p.getFileName().toString().endsWith(".jar"));
     }
 
     @Test
     void an_uncompiled_sibling_processor_is_reported_missing(@TempDir Path tmp) throws Exception {
         Path root = workspace(tmp);
-        PathUtil.deleteRecursively(root.resolve("target/proc/classes"));
+        PathUtil.deleteRecursively(root.resolve("proc/target/classes"));
         Path consumer = root.resolve("consumer");
 
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(
@@ -127,7 +127,7 @@ class ProcessorClasspathTest {
                 false);
 
         assertThat(main).isEmpty();
-        assertThat(test).contains(root.resolve("target/proc/classes/main"));
+        assertThat(test).contains(root.resolve("proc/target/classes"));
     }
 
     @Test
@@ -170,7 +170,7 @@ class ProcessorClasspathTest {
                 name    = "proc"
                 version = "1.0.0"
                 """);
-        Path procClasses = Files.createDirectories(root.resolve("target/proc/classes/main/META-INF/services"));
+        Path procClasses = Files.createDirectories(root.resolve("proc/target/classes/META-INF/services"));
         Files.writeString(procClasses.resolve("javax.annotation.processing.Processor"), "com.example.Proc\n");
 
         Path consumer = Files.createDirectories(root.resolve("consumer"));

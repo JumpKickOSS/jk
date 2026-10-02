@@ -90,16 +90,13 @@ final class TestLaunch {
         }
     }
 
-    /** A fresh {@code target/reports/jacoco.exec}: every suite JVM of this module appends to it. */
+    /** A fresh {@code target/jacoco.exec}: every suite JVM of this module appends to it. */
     static Path coverageExecFile(TaskContext ctx) throws IOException {
-        Path exec = ctx.require(LAYOUT).reportsDir().resolve("jacoco.exec");
+        Path exec = ctx.require(LAYOUT).jacocoExec();
         Files.deleteIfExists(exec);
         Files.createDirectories(exec.getParent());
         return exec;
     }
-
-    /** {@code target/reports/coverage/} — the module's JaCoCo HTML report, {@code index.html} first. */
-    static final String COVERAGE_HTML_DIR = "coverage";
 
     /**
      * The module's JaCoCo XML, where the {@code coverage.*} guard measures look for it, and the HTML
@@ -111,8 +108,8 @@ final class TestLaunch {
             TaskContext ctx, BuildPlanner.Inputs in, CoverageTools.Jacoco jacoco, Path exec, String moduleLabel)
             throws Exception {
         BuildLayout layout = ctx.require(LAYOUT);
-        Path xml = layout.reportsDir().resolve(OutputArtifacts.DEFAULT_COVERAGE);
-        Path html = layout.reportsDir().resolve(COVERAGE_HTML_DIR);
+        Path html = layout.jacocoReportDir();
+        Path xml = html.resolve(OutputArtifacts.DEFAULT_COVERAGE);
         List<Path> classDirs = List.of(ctx.require(MAIN_CLASSES), layout.kotlinClassesDir(), layout.groovyClassesDir());
         List<Path> sourceDirs = new ArrayList<>();
         for (ModuleLayout.Root root : ModuleLayout.roots(in.dir())) {

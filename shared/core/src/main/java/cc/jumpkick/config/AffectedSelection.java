@@ -92,6 +92,8 @@ public final class AffectedSelection {
         // --end-of-options: a ref like "--output=…" must be read as a revision, not a git
         // option. Matches the discipline in GitCliExtension. --relative + stdout-only parsing:
         // see DirtyPaths.gitDiffNameOnly.
-        return DirtyPaths.gitLines(root, "diff", "--name-only", "--relative", "--end-of-options", ref + "...HEAD");
+        List<String> lines =
+                DirtyPaths.gitLines(root, "diff", "--name-only", "--relative", "--end-of-options", ref + "...HEAD");
+        return lines == null ? null : DirtyPaths.withoutBuildOutput(root, lines);
     }
 }

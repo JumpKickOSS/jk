@@ -11,7 +11,7 @@ workspace-showcase/
   app/jk.toml    # lib.workspace = true
 ```
 
-Build output lands under `target/<module>/` at the workspace root. Modules have no
+Build output lands in each module's own `target/`. Modules have no
 `target/` of their own.
 
 ## Run it

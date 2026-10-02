@@ -17,6 +17,7 @@ import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.TestSummary;
@@ -130,6 +131,18 @@ public final class JUnitLauncher {
      */
     public JUnitLauncher withSuites(SuiteClassFilter suites) {
         this.suiteFilter = suites.body();
+        this.suites = suites;
+        return this;
+    }
+
+    private SuiteClassFilter suites = SuiteClassFilter.NONE;
+
+    /** Where the {@code integration} suite's JUnit XML goes, as Failsafe's does; null keeps it with the rest. */
+    private @Nullable Path integrationResultsDir;
+
+    /** Write the {@code integration} suite's JUnit XML to {@code dir} rather than beside every other suite's. */
+    public JUnitLauncher withIntegrationResults(Path dir) {
+        this.integrationResultsDir = dir;
         return this;
     }
 
@@ -397,11 +410,17 @@ public final class JUnitLauncher {
         return Files.isDirectory(module) ? module : null;
     }
 
-    /** The XML report exists exactly when there is a directory to write it into. */
-    private static void writeXml(@Nullable XmlTestReport xml, @Nullable Path testResultsDir) {
+    /**
+     * The XML report exists exactly when there is a directory to write it into: each class's file in
+     * its suite's directory, the {@code integration} suite's in {@link #integrationResultsDir}.
+     */
+    private void writeXml(@Nullable XmlTestReport xml, @Nullable Path testResultsDir) {
         if (testResultsDir == null || xml == null) return;
+        Path integration = integrationResultsDir;
         try {
-            xml.writeAll(testResultsDir);
+            xml.writeAll(className -> integration != null && TestSuites.INTEGRATION.equals(suites.suiteOf(className))
+                    ? integration
+                    : testResultsDir);
         } catch (IOException e) {
             // Non-fatal: the tests ran; only the report failed to land.
         }
