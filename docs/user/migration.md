@@ -95,8 +95,8 @@ its inline pins that no declared dependency uses become `[managed-dependencies]`
 govern transitive versions as they do under Maven (a reactor parent's once, on the workspace root —
 [Managed versions](dependencies.md#managed-versions)),
 `import`-scope BOMs become `[platform]` entries with their versions resolved, in the order the
-POM declares them (two BOMs that manage the same module resolve to the first one's version under
-`pins = "nearest"`, as Maven's imports do — [Platforms](platforms.md#two-boms-that-manage-one-module)),
+POM declares them (two BOMs that manage the same module resolve to the higher version, where Maven
+takes the first import's — [Platforms](platforms.md#two-boms-that-manage-one-module)),
 `${property}` placeholders are interpolated, and profiles Maven would activate on this machine (active by
 default, JDK, OS) are folded in. The fidelity report names what each parent contributed —
 "versions for X, Y managed by parent g:a:v" — and a parent no repository has is a Tier-3 row, not
@@ -140,24 +140,31 @@ advancing for that long fails naming the coordinate it was reading and the URL i
 `optional = true`: the module's own dependency, which no consumer inherits — see
 [Dependencies](dependencies.md#optional-dependencies).
 
-**A direct version is the version, as it is under Maven.** Import writes every `<dependency>`
-version as an exact pin and sets `[resolve] pins = "nearest"` on the root and on every member (a
-workspace lock reads the root's), so the lock resolves a pinned module the way Maven's nearest-wins
-did: the project's pin is the version, and a transitive POM's range on that module — a plain
-version or an open floor such as `[2.0.18,)`, declared by a dependency of the same module — is
-reported, not enforced. A module's own `<version>` is that member's pin alone; a version a reactor
+**A direct version below a dependency's floor is raised.** Import writes every `<dependency>`
+version as an exact pin, and the imported project resolves as every jk project does: highest wins,
+as under Gradle — not Maven's nearest-wins, under which the POM's own version beats whatever a
+dependency asks for. Where a pin sits below what its dependencies need, the import raises it: once
+the manifests are written it resolves the project with each pin read as a floor, rewrites every pin
+that resolve holds higher to exactly the version it holds, and adds a report row per raise naming
+the module, both versions and the dependencies that reach it. `cryptofs 2.10.0` declares
+`jakarta.inject-api 2.0.1.MR` and the POM pins `2.0.1`: the import writes `2.0.1.MR`, and its report
+says so:
+
+```text
+`jakarta.inject:jakarta.inject-api` 2.0.1 → 2.0.1.MR ([dependencies] in …): the POM's pin sits below
+what its dependencies need (depended on by org.cryptomator:cryptofs 2.10.0); highest wins, so the pin
+is raised to the version the lock resolves
+```
+
+`jk lock` then resolves the project as written. A pin nothing asks above stays where the POM put it; the raise never floats a
+pin to a newer release. A module's own `<version>` is that member's pin alone; a version a reactor
 parent's `<dependencyManagement>` supplies is the workspace's, written as `x.workspace = true` with
 the root's `[workspace.dependencies]` entry, and the parent's pins also govern every member's
 transitives from the root's `[managed-dependencies]`. A sibling that does not declare the
 dependency reads the version its own graph asks for, as it would under Maven
-([Workspaces](workspaces.md#members-that-disagree)). `cryptofs 2.10.0` declares `jakarta.inject-api 2.0.1.MR`;
-the POM's own `2.0.1` wins, the lock pins `jakarta.inject-api@2.0.1`, and `jk lock` prints one
-warning per overridden range so the divergence from what the library asked for is on record;
-`jk why jakarta.inject-api` shows the `2.0.1.MR` beside the step that asked for it. A `jk.toml` written by hand keeps the default, `pins = "exact"`, under which the same
-shape is a conflict PubGrub refuses with its explanation; delete the `[resolve]` line to get that
-strictness back on an imported project. The alternative — importing direct versions as `>=` floors
-so highest-wins lifts them — would float every imported project past the versions Maven built
-with, which is not what the POM says. Making an existing Maven project work under jk — plugin-aware
+([Workspaces](workspaces.md#members-that-disagree)). When the raise cannot run — no network, a
+repository that does not answer — the report says so and `jk lock` names any pin a dependency needs
+higher. `jk mvn` runs Maven itself and resolves as Maven does. Making an existing Maven project work under jk — plugin-aware
 mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
 first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
@@ -225,9 +232,10 @@ jk test                   # runs the JUnit suite; target/jk-results.md
 jk explain                # the same steps a jk.toml module gets
 ```
 
-Resolution follows the POM: a bare version is an exact pin, a BOM import is an enforced platform,
-and the POM's direct versions win over transitive requests (`[resolve] pins = "nearest"`, the
-policy `jk import` writes). The results file's header says which mode ran — `manifest: pom.xml,
+Resolution reads the POM as jk reads every manifest: a bare version is an exact pin, a BOM import is
+an enforced platform, and highest wins. A POM's direct version below what one of its dependencies
+needs is a conflict the in-place build refuses with PubGrub's explanation; `jk import` raises such a
+pin for you, and `jk mvn` runs Maven itself. The results file's header says which mode ran — `manifest: pom.xml,
 no jk.toml (effective POM, built in place)` — so an agent reading `target/jk-results.md` knows the
 manifest it should edit is the POM.
 
@@ -287,10 +295,9 @@ jk, in 13 s against 37 s under Maven, once the test JVM kept the platform defaul
 Its lock and build counts fell for a reason the table cannot show: run 3 imported dataease as one
 module of fifteen and neo4j as three of 181, and locked those fragments; run 4 imports the whole
 reactor of each (nested aggregators, CI-friendly versions, sibling edges) and the full graph hits
-two walls the fragments never reached. Both are tickets: two imported BOMs managing one artifact,
-where Maven takes the first-declared import and jk still refuses (seven repositories); and a
-workspace module's exact pin losing to a transitive's floor under the nearest policy (neo4j,
-analysis-ik). Run 5 (main c3011aae3) passed both: ten repositories lock, four compile, and
+two walls the fragments never reached: two imported BOMs managing one artifact (seven
+repositories), and a workspace module's exact pin below a transitive's floor (neo4j, analysis-ik).
+Run 5 (main c3011aae3) passed both: ten repositories lock, four compile, and
 analysis-ik joins TheAlgorithms/Java with every test passing. The walls that stop the others now sit
 past the lock, in the compile and test steps, and each is a ticket: a classpath-discovered
 annotation processor run without its own dependencies (neo4j), a `module-info.java` compiled off

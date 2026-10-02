@@ -48,7 +48,7 @@ public final class CompatPlans {
      * Build the import plan. All paths arrive absolute (the command pre-flighted source detection
      * and overwrite checks); {@code report} may be {@code null}; {@code poms} resolves the parents a
      * POM inherits and {@code gradle} reads a Gradle build, its stages streamed as {@code note}
-     * lines. Conversion runs in-process so {@code [[import.gradle-plugin]]} rules come from the
+     * lines; {@code raise} lifts the written pins a dependency needs higher. Conversion runs in-process so {@code [[import.gradle-plugin]]} rules come from the
      * engine registry, not a worker catalog; only Gradle's own evaluation runs in a fork.
      */
     public static BuildPlan importBuildPlan(
@@ -60,6 +60,7 @@ public final class CompatPlans {
             Path tmpDir,
             boolean force,
             @Nullable Path report,
+            ProjectImport.PinRaise raise,
             NoteObserver observer) {
         Task convert = Task.builder("import")
                 .kind(TaskKind.IO)
@@ -75,7 +76,8 @@ public final class CompatPlans {
                             tmpDir == null ? null : tmpDir.toAbsolutePath(),
                             force,
                             report == null ? null : report.toAbsolutePath(),
-                            note -> observer.onNote("note", note));
+                            note -> observer.onNote("note", note),
+                            raise);
                     for (Path wrote : outcome.wrote()) observer.onNote("wrote", wrote.toString());
                     if (outcome.error() != null && outcome.exit() != 0) ctx.put(ERROR, outcome.error());
                     ctx.put(WARNINGS, outcome.warnings());

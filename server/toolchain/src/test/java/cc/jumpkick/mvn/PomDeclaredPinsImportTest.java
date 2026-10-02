@@ -128,7 +128,8 @@ class PomDeclaredPinsImportTest {
                 null,
                 true,
                 report,
-                note -> {});
+                note -> {},
+                ProjectImport.PinRaise.NONE);
 
         assertThat(outcome.exit()).isZero();
         assertThat(Files.readString(report))

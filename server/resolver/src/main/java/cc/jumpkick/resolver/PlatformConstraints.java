@@ -4,7 +4,6 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePom;
@@ -12,6 +11,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,12 +36,9 @@ import org.jspecify.annotations.Nullable;
  * {@link #apply}.
  *
  * <p>The managed table folds first, so a BOM that manages one of its modules at another version
- * gives way under both pin policies, as a POM's own {@code dependencyManagement} entry beats the
- * BOMs it imports under Maven; the lock reports the BOM's say as an override. Two BOMs that manage
- * one module at different versions meet the pin policy: under {@link PinPolicy#NEAREST} the
- * first-declared BOM's version stands, as the first {@code import} does in Maven's {@code
- * dependencyManagement}, and the later BOM's say is kept as an override the lock reports; under
- * {@link PinPolicy#EXACT} the disagreement is a refusal.
+ * gives way: the project's own entry is its say. Two BOMs that manage one module at different
+ * versions resolve as every other disagreement does, highest wins. Either way the losing say is
+ * kept as an override the lock reports.
  */
 public final class PlatformConstraints {
 
@@ -51,7 +48,7 @@ public final class PlatformConstraints {
     /** {@link #versions} as collected, before the solve's edits; see {@link #collectedVersion}. */
     private final Map<String, String> collected = new LinkedHashMap<>();
 
-    /** Per module, the later BOMs whose say the first-declared BOM's version kept. */
+    /** Per module, the other BOMs whose say the winning entry overrode. */
     private final Map<String, ManagementOverride> overrides = new LinkedHashMap<>();
 
     /** Module → the exclusions the first BOM managing it writes; see {@link #bomExclusionsByModule}. */
@@ -63,27 +60,24 @@ public final class PlatformConstraints {
     /** Per managed module, the patterns its entries exclude, each with the {@code jk.toml:<handle>} that wrote it. */
     private final Map<String, Map<String, Set<String>>> managedExclusions = new LinkedHashMap<>();
 
-    private final PinPolicy pinPolicy;
-
     /**
-     * A module two imported BOMs manage at different versions, resolved as Maven resolves
-     * dependencyManagement imports: the first-declared BOM's version stands.
+     * A module the project's managed table and a BOM, or two BOMs, manage at different versions.
      *
      * @param module the managed {@code group:artifact}
-     * @param kept the version the lock uses
-     * @param keptBy the first-declared BOM as {@code group:artifact:version}, or the {@code
+     * @param kept the version the lock uses: the project's own entry's, else the highest a BOM says
+     * @param keptBy the winning BOM as {@code group:artifact:version}, or the {@code
      *     jk.toml:<handle>} of the managed entry
-     * @param overridden every later BOM with the version it asked for, in declaration order
+     * @param overridden every other BOM with the version it asked for, in the order met
      */
     record ManagementOverride(
-            String module, String kept, String keptBy, boolean keptByManifest, List<LaterSay> overridden) {}
+            String module, String kept, String keptBy, boolean keptByManifest, List<OtherSay> overridden) {}
 
-    /** What a later BOM asked for on a module whose version an earlier entry keeps. */
-    record LaterSay(String bom, String asked) {}
+    /** What another BOM asked for on a module whose version the winning entry keeps. */
+    record OtherSay(String bom, String asked) {}
 
     /**
-     * The lines the lock reports, one per (winner, later BOM) pair: a pair that meets on one module
-     * names the module, its kept version and the later BOM's say; a pair that meets on several
+     * The lines the lock reports, one per (winner, other BOM) pair: a pair that meets on one module
+     * names the module, its kept version and the other BOM's say; a pair that meets on several
      * counts them and lists them, the first {@value #LISTED_MODULES} in full.
      */
     static final class OverrideLines {
@@ -96,7 +90,7 @@ public final class PlatformConstraints {
         private final Map<Pair, List<Meeting>> byPair = new LinkedHashMap<>();
 
         void add(ManagementOverride o) {
-            for (LaterSay say : o.overridden()) {
+            for (OtherSay say : o.overridden()) {
                 Pair pair = new Pair(
                         o.keptByManifest() ? "[managed-dependencies]" : o.keptBy(), o.keptByManifest(), say.bom());
                 byPair.computeIfAbsent(pair, k -> new ArrayList<>())
@@ -111,15 +105,13 @@ public final class PlatformConstraints {
         }
 
         private static String render(Pair pair, List<Meeting> meetings) {
-            String rule = pair.byManifest()
-                    ? " — the project's own entry wins, as a POM's own dependencyManagement entry beats"
-                            + " the BOMs it imports under Maven"
-                    : " — the first-declared BOM wins, as the first import does under Maven";
+            String rule =
+                    pair.byManifest() ? " — the project's own entry wins over the BOMs" : " — the highest version wins";
             if (meetings.size() == 1) {
                 Meeting m = meetings.getFirst();
                 String keeper = pair.byManifest()
                         ? " is the project's [managed-dependencies] entry (" + m.keptBy() + "); "
-                        : " is " + m.keptBy() + "'s, the first [platform-dependencies] entry that manages it; ";
+                        : " is " + m.keptBy() + "'s, the highest a [platform-dependencies] entry manages; ";
                 return m.module() + " " + m.kept() + keeper + pair.later() + " constrains to " + m.asked() + rule;
             }
             StringBuilder out = new StringBuilder();
@@ -135,7 +127,7 @@ public final class PlatformConstraints {
                         .append(pair.later())
                         .append(" on ")
                         .append(meetings.size())
-                        .append(" modules it manages first: ");
+                        .append(" modules it manages higher: ");
             }
             List<Meeting> ordered = new ArrayList<>(meetings);
             ordered.sort(Comparator.comparing(Meeting::module));
@@ -152,9 +144,7 @@ public final class PlatformConstraints {
         }
     }
 
-    private PlatformConstraints(PinPolicy pinPolicy) {
-        this.pinPolicy = pinPolicy;
-    }
+    private PlatformConstraints() {}
 
     /**
      * What one BOM says, read off its effective POM once and shared by every table that imports it:
@@ -190,13 +180,13 @@ public final class PlatformConstraints {
     /**
      * Fold every {@code [managed-dependencies]} entry, then load every {@code [platform-dependencies]}
      * BOM in declaration order and fold its managed versions in; a module an earlier entry manages
-     * at another version follows {@code pinPolicy}. {@code tables} is the lock's memo of what each
-     * BOM says; a caller that collects once may hand a fresh one.
+     * at another version keeps the project's own entry, else the highest. {@code tables} is the
+     * lock's memo of what each BOM says; a caller that collects once may hand a fresh one.
      */
     static PlatformConstraints collect(
-            JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder, BomTables tables, PinPolicy pinPolicy)
+            JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder, BomTables tables)
             throws IOException, InterruptedException {
-        PlatformConstraints c = new PlatformConstraints(pinPolicy == null ? PinPolicy.EXACT : pinPolicy);
+        PlatformConstraints c = new PlatformConstraints();
         c.fold(project, repos, pomBuilder, tables);
         c.collected.putAll(c.versions);
         return c;
@@ -210,13 +200,11 @@ public final class PlatformConstraints {
     /**
      * What {@code project}'s {@code [managed-dependencies]} entries and {@code [platform-dependencies]}
      * BOMs manage, {@code group:artifact -> version}, read for an edit that asks whether a platform
-     * already owns a coordinate. Two BOMs that disagree resolve as under Maven; which of them wins
-     * is not the question here.
+     * already owns a coordinate.
      */
     public static Map<String, String> managedVersions(JkBuild project, RepoGroup repos)
             throws IOException, InterruptedException {
-        PlatformConstraints table =
-                collect(project, repos, new EffectivePomBuilder(repos), new BomTables(), PinPolicy.NEAREST);
+        PlatformConstraints table = collect(project, repos, new EffectivePomBuilder(repos), new BomTables());
         return Map.copyOf(table.versions());
     }
 
@@ -384,30 +372,31 @@ public final class PlatformConstraints {
 
     /**
      * A later BOM manages {@code module} at {@code asked} where an earlier entry said {@code kept}: the
-     * project's own managed entry stands under every policy, a first-declared BOM's under {@link
-     * PinPolicy#NEAREST} only.
+     * project's own managed entry stands, and between BOMs the higher version wins. The losing say
+     * is kept for {@link #renderedOverrides}.
      */
     private void laterBomDisagrees(String module, String kept, String bomLabel, String asked) {
         String keptBy = Objects.requireNonNull(provenance.get(module));
         boolean byManifest = managedByManifest.contains(module);
-        if (!byManifest && pinPolicy != PinPolicy.NEAREST) {
-            throw new IllegalStateException("platform BOM conflict on `" + module + "`: " + keptBy
-                    + " constrains to " + kept + ", but " + bomLabel + " constrains to " + asked
-                    + ". Pick one BOM, pin the coord explicitly, or set [resolve] pins = \"nearest\""
-                    + " to take the first-declared BOM's version as Maven does.");
+        if (byManifest || Versions.compare(kept, asked) >= 0) {
+            overrides
+                    .computeIfAbsent(
+                            module, k -> new ManagementOverride(module, kept, keptBy, byManifest, new ArrayList<>()))
+                    .overridden()
+                    .add(new OtherSay(bomLabel, asked));
+            return;
         }
-        overrides
-                .computeIfAbsent(
-                        module, k -> new ManagementOverride(module, kept, keptBy, byManifest, new ArrayList<>()))
-                .overridden()
-                .add(new LaterSay(bomLabel, asked));
+        ManagementOverride prior = overrides.remove(module);
+        List<OtherSay> losers = new ArrayList<>(prior == null ? List.of() : prior.overridden());
+        losers.add(new OtherSay(keptBy, kept));
+        versions.put(module, asked);
+        provenance.put(module, bomLabel);
+        overrides.put(module, new ManagementOverride(module, asked, bomLabel, false, losers));
     }
 
     /**
-     * One line per (winner, later BOM) pair, in the order the pairs were met, folding every module
-     * the pair disagrees on: a module the project's managed table pins under either policy, and one
-     * two BOMs disagree on under {@link PinPolicy#NEAREST} only, where under {@link PinPolicy#EXACT}
-     * it is a refusal. A module the project pins exactly is not here: the pin beats every BOM.
+     * One line per (winner, other BOM) pair, in the order the pairs were met, folding every module
+     * the pair disagrees on. A module the project pins exactly is not here: the pin beats every BOM.
      */
     List<String> renderedOverrides() {
         OverrideLines lines = new OverrideLines();

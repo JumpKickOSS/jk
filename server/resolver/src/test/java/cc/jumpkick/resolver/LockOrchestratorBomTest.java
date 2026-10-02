@@ -62,58 +62,6 @@ class LockOrchestratorBomTest {
     }
 
     @Test
-    void conflicting_platform_boms_surface_diagnostic(@TempDir Path tempDir) throws Exception {
-        // Two BOMs that both constrain `com.foo:widget` to different versions.
-        upstream.pom("org.example", "bom-a", "1.0", """
-                <project>
-                  <groupId>org.example</groupId>
-                  <artifactId>bom-a</artifactId>
-                  <version>1.0</version>
-                  <packaging>pom</packaging>
-                  <dependencyManagement>
-                    <dependencies>
-                      <dependency>
-                        <groupId>com.foo</groupId>
-                        <artifactId>widget</artifactId>
-                        <version>1.0</version>
-                      </dependency>
-                    </dependencies>
-                  </dependencyManagement>
-                </project>
-                """);
-        upstream.pom("org.example", "bom-b", "1.0", """
-                <project>
-                  <groupId>org.example</groupId>
-                  <artifactId>bom-b</artifactId>
-                  <version>1.0</version>
-                  <packaging>pom</packaging>
-                  <dependencyManagement>
-                    <dependencies>
-                      <dependency>
-                        <groupId>com.foo</groupId>
-                        <artifactId>widget</artifactId>
-                        <version>2.0</version>
-                      </dependency>
-                    </dependencies>
-                  </dependencyManagement>
-                </project>
-                """);
-
-        JkBuild project = jkBuildWithPlatformDeps(
-                Dependency.of("bom-a", "org.example:bom-a", VersionSelector.parse("=1.0")),
-                Dependency.of("bom-b", "org.example:bom-b", VersionSelector.parse("=1.0")));
-
-        LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
-        assertThatThrownBy(() -> orchestrator.lock(project, "test"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("com.foo:widget")
-                .hasMessageContaining("bom-a")
-                .hasMessageContaining("bom-b")
-                .hasMessageContaining("1.0")
-                .hasMessageContaining("2.0");
-    }
-
-    @Test
     void a_plugin_implied_bom_no_repository_has_names_the_table(@TempDir Path tempDir) {
         JkBuild project = jkBuildWithPlatformDeps(
                 Dependency.of("quarkus-bom", "io.quarkus.platform:quarkus-bom", VersionSelector.parse("=999-SNAPSHOT"))

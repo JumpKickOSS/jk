@@ -9,7 +9,6 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -141,7 +140,6 @@ class LockOrchestratorMemberBomTablesTest {
             }
         };
         return new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.EXACT)
                 .withMembers(members)
                 .lock(WorkspaceMerge.merge(root, modules), "test", List.of(), true, recording);
     }

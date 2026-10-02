@@ -9,7 +9,6 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -72,19 +71,14 @@ class JkBuildParserProjectTest {
     }
 
     @Test
-    void resolve_pins_parses_and_defaults_to_exact() {
-        JkBuild parsed = JkBuildParser.parse(PROJECT + """
-
-                [resolve]
-                pins = "nearest"
-                """);
-        assertThat(parsed.build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
-        assertThat(JkBuildParser.parse(PROJECT).build().pinPolicy()).isEqualTo(PinPolicy.EXACT);
+    void resolve_refuses_a_key_it_does_not_know() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
 
                         [resolve]
-                        pins = "furthest"
-                        """)).hasMessageContaining("[resolve].pins");
+                        pins = "nearest"
+                        """))
+                .hasMessageContaining("[resolve] unknown key `pins`")
+                .hasMessageContaining("platform, unmapped");
     }
 
     @Test

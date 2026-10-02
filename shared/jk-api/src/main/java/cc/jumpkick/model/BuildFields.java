@@ -44,7 +44,6 @@ final class BuildFields {
     boolean testCoverage;
     PlatformPolicy platformPolicy;
     UnmappedPolicy unmappedPolicy;
-    PinPolicy pinPolicy;
     List<EnvDecl> testEnv;
     List<String> testTools;
     TestJvm testJvm;
@@ -85,7 +84,6 @@ final class BuildFields {
         testCoverage = b.testCoverage();
         platformPolicy = b.platformPolicy();
         unmappedPolicy = b.unmappedPolicy();
-        pinPolicy = b.pinPolicy();
         testEnv = b.testEnv();
         testTools = b.testTools();
         testJvm = b.testJvm();
@@ -123,7 +121,6 @@ final class BuildFields {
                 testCoverage,
                 platformPolicy,
                 unmappedPolicy,
-                pinPolicy,
                 testEnv,
                 testTools,
                 testJvm,

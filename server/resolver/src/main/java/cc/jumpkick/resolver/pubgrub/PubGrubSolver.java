@@ -185,6 +185,18 @@ public class PubGrubSolver {
     /** True when any universe was seeded from a compact list or preferred singleton. */
     private boolean usedCompactUniverse;
 
+    /**
+     * The versions roots' exact pins named before they were read as floors, by {@code
+     * group:artifact}: such a root resolves to the higher of its pin and the highest version a
+     * parent declares, not to the newest release.
+     */
+    private Map<String, String> pinFloors = Map.of();
+
+    public PubGrubSolver withPinFloors(Map<String, String> gaToVersion) {
+        this.pinFloors = Map.copyOf(gaToVersion);
+        return this;
+    }
+
     public PubGrubSolver withWideUniverses() {
         this.wideUniverses = true;
         return this;
@@ -673,7 +685,8 @@ public class PubGrubSolver {
      * higher of the floor and the highest declared version.
      */
     private Set<String> steeringDeclarations(String pkg) {
-        if (floatingRoots.contains(pkg)) return Set.of();
+        Optional<String> pinFloor = pinFloor(pkg);
+        if (floatingRoots.contains(pkg) && pinFloor.isEmpty()) return Set.of();
         if (lazyUniverses.contains(pkg)) return Set.of();
         VersionSet constraint = solution.constraint(pkg);
         if (constraint.hasUpperBound()) return Set.of();
@@ -683,7 +696,7 @@ public class PubGrubSolver {
         if (!declared.isEmpty() && declared.stream().noneMatch(constraint::contains)) {
             declared = leastUpgrade(pkg, constraint, declared);
         }
-        Optional<String> floor = source.floorVersion(pkg).filter(constraint::contains);
+        Optional<String> floor = higher(source.floorVersion(pkg), pinFloor).filter(constraint::contains);
         if (floor.isEmpty()) return declared;
         Set<String> steer = new LinkedHashSet<>();
         steer.add(floor.get());
@@ -691,6 +704,19 @@ public class PubGrubSolver {
             if (Versions.compare(v, floor.get()) > 0) steer.add(v);
         }
         return steer;
+    }
+
+    /** The pin floor of {@code pkg}, a package key whose first two segments are its {@code group:artifact}. */
+    private Optional<String> pinFloor(String pkg) {
+        int group = pkg.indexOf(':');
+        int artifact = group < 0 ? -1 : pkg.indexOf(':', group + 1);
+        return Optional.ofNullable(pinFloors.get(artifact < 0 ? pkg : pkg.substring(0, artifact)));
+    }
+
+    private static Optional<String> higher(Optional<String> a, Optional<String> b) {
+        if (a.isEmpty()) return b;
+        if (b.isEmpty()) return a;
+        return Versions.compare(a.get(), b.get()) >= 0 ? a : b;
     }
 
     /** The versions of {@code pkg} that an edge from a parent decided at the declaring version names. */
@@ -726,9 +752,13 @@ public class PubGrubSolver {
     private Set<String> candidatesNamedFor(String pkg) {
         Set<String> declared = source.declaredVersions(pkg).keySet();
         Optional<String> floor = source.floorVersion(pkg);
-        if (floor.isEmpty() || declared.contains(floor.get())) return declared;
+        Optional<String> pinFloor = pinFloor(pkg);
+        boolean floorNamed = floor.isEmpty() || declared.contains(floor.get());
+        boolean pinNamed = pinFloor.isEmpty() || declared.contains(pinFloor.get());
+        if (floorNamed && pinNamed) return declared;
         Set<String> named = new LinkedHashSet<>(declared);
-        named.add(floor.get());
+        floor.ifPresent(named::add);
+        pinFloor.ifPresent(named::add);
         return named;
     }
 

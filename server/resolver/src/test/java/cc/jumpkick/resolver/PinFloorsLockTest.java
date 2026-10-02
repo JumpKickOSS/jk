@@ -7,10 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -32,13 +30,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A project pins {@code jakarta.inject-api 2.0.1}; its dependency {@code cryptofs 2.10.0} declares
- * {@code 2.0.1.MR}, a floor the pin sits below. Under the default policy that is a conflict the lock
- * refuses; under {@code [resolve] pins = "nearest"} the pin wins as it does under Maven, the lock
- * edge still carries what cryptofs asked for, and the observer hears one override. The same holds
- * across a workspace, where the pin sits in one member and the floor arrives through another
- * member's dependency as an open range.
+ * {@code 2.0.1.MR}, a floor the pin sits below. A project's own pin is exact, so its lock refuses the
+ * conflict. Read as floors — the import's probe — highest wins: the pin rises to the version the
+ * graph needs, and a pin nothing asks above stays where it is rather than floating to the newest
+ * release. The same holds across a workspace.
  */
-class NearestPinsLockTest {
+class PinFloorsLockTest {
 
     private static final String INJECT_API = "jakarta.inject:jakarta.inject-api:jar:";
     private static final String CRYPTOFS = "org.cryptomator:cryptofs:jar:";
@@ -61,17 +58,21 @@ class NearestPinsLockTest {
                     v,
                     MavenStub.emptyPom("jakarta.inject", "jakarta.inject-api", v));
         }
-        upstream.metadata("org.cryptomator", "cryptofs", "2.10.0");
-        upstream.pom("org.cryptomator", "cryptofs", "2.10.0", """
-                <project>
-                  <groupId>org.cryptomator</groupId><artifactId>cryptofs</artifactId><version>2.10.0</version>
-                  <dependencies>
-                    <dependency>
-                      <groupId>jakarta.inject</groupId><artifactId>jakarta.inject-api</artifactId><version>2.0.1.MR</version>
-                    </dependency>
-                  </dependencies>
-                </project>
-                """);
+        // More releases above the pin than the compact candidate window keeps.
+        List<String> cryptofs = List.of("2.10.0", "2.11.0", "2.12.0", "2.13.0", "2.14.0", "2.15.0", "3.0.0");
+        upstream.metadata("org.cryptomator", "cryptofs", cryptofs.toArray(String[]::new));
+        for (String v : cryptofs) {
+            upstream.pom("org.cryptomator", "cryptofs", v, """
+                    <project>
+                      <groupId>org.cryptomator</groupId><artifactId>cryptofs</artifactId><version>%s</version>
+                      <dependencies>
+                        <dependency>
+                          <groupId>jakarta.inject</groupId><artifactId>jakarta.inject-api</artifactId><version>2.0.1.MR</version>
+                        </dependency>
+                      </dependencies>
+                    </project>
+                    """.formatted(v));
+        }
         upstream.metadata("org.apache.shiro", "shiro-lang", "3.0.0");
         upstream.pom("org.apache.shiro", "shiro-lang", "3.0.0", """
                 <project>
@@ -93,141 +94,70 @@ class NearestPinsLockTest {
     }
 
     @Test
-    void a_nearest_pin_wins_and_the_lock_says_what_was_asked(@TempDir Path tempDir) throws Exception {
-        List<String> overrides = new ArrayList<>();
-        ResolveObserver observer = recording(overrides);
-
-        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
-                .lock(project(), "test", List.of(), true, observer);
-
-        Lockfile.Artifact injectApi = row(lock, INJECT_API);
-        assertThat(injectApi.version()).isEqualTo("2.0.1");
-        Lockfile.Artifact cryptofs = row(lock, CRYPTOFS);
-        assertThat(cryptofs.deps()).contains(INJECT_API + "@2.0.1");
-        assertThat(new EdgeSelectors(repoGroup(tempDir), lock).declared(cryptofs, injectApi))
-                .isEqualTo("2.0.1.MR");
-        assertThat(overrides).hasSize(1);
-        assertThat(overrides.getFirst())
-                .contains("jakarta.inject:jakarta.inject-api 2.0.1")
-                .contains("org.cryptomator:cryptofs 2.10.0")
-                .contains("2.0.1.MR");
-    }
-
-    @Test
-    void a_pin_a_transitive_already_accepts_is_no_override(@TempDir Path tempDir) throws Exception {
-        List<String> overrides = new ArrayList<>();
-        ResolveObserver observer = recording(overrides);
-
-        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
-                .lock(project("2.0.1.MR"), "test", List.of(), true, observer);
+    void read_as_floors_a_pin_rises_to_what_the_graph_needs_and_no_further(@TempDir Path tempDir) throws Exception {
+        Lockfile lock =
+                new LockOrchestrator(repoGroup(tempDir)).withPinsAsFloors(true).lock(project(), "test");
 
         assertThat(row(lock, INJECT_API).version()).isEqualTo("2.0.1.MR");
-        assertThat(overrides).isEmpty();
+        assertThat(row(lock, CRYPTOFS).version())
+                .as("nothing asks above the 2.10.0 pin, so it does not float to a newer release")
+                .isEqualTo("2.10.0");
     }
 
-    /**
-     * The workspace lock is the root's policy applied to every member's roots: the pin one member
-     * declares wins over the open floor a sibling's dependency declares, and the sibling's row
-     * says what it asked for.
-     */
+    /** A member's pin rises to the open floor a sibling's dependency declares. */
     @Test
-    void a_members_pin_wins_over_a_siblings_open_floor_across_the_workspace(@TempDir Path tempDir) throws Exception {
+    void read_as_floors_a_members_pin_rises_across_the_workspace(@TempDir Path tempDir) throws Exception {
         JkBuild root = JkBuild.builder(new Project("org.neo4j", "parent", "1.0", 25))
                 .workspace(new Workspace(List.of("server", "security")))
-                .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
         JkBuild server =
                 member("server", new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1")));
         JkBuild security =
                 member("security", new Dependency("org.apache.shiro:shiro-lang", VersionSelector.parse("=3.0.0")));
         JkBuild merged = WorkspaceMerge.merge(root, List.of(server, security));
-        List<String> overrides = new ArrayList<>();
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(merged.build().pinPolicy())
-                .lock(merged, "test", List.of(), true, recording(overrides));
+                .withPinsAsFloors(true)
+                .lock(merged, "test", List.of(), true, ResolveObserver.NOOP);
 
-        assertThat(row(lock, INJECT_API).version()).isEqualTo("2.0.1");
-        Lockfile.Artifact shiro = row(lock, SHIRO_LANG);
-        assertThat(shiro.deps()).contains(INJECT_API + "@2.0.1");
-        assertThat(new EdgeSelectors(repoGroup(tempDir), lock).declared(shiro, row(lock, INJECT_API)))
-                .isEqualTo("[2.0.1.MR,)");
-        assertThat(overrides).hasSize(1);
-        assertThat(overrides.getFirst())
-                .contains("jakarta.inject:jakarta.inject-api 2.0.1")
-                .contains("org.apache.shiro:shiro-lang 3.0.0")
-                .contains("2.0.1.MR");
-    }
-
-    /**
-     * Every dependency the pin overrides is one line per pinned module, counted and naming each
-     * dependency and what it asked for, not a line per (dependency, module) pair.
-     */
-    @Test
-    void the_dependencies_a_pin_overrides_are_summarized_per_module(@TempDir Path tempDir) throws Exception {
-        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-        byScope.put(
-                Scope.MAIN,
-                List.of(
-                        new Dependency("org.cryptomator:cryptofs", VersionSelector.parse("=2.10.0")),
-                        new Dependency("org.apache.shiro:shiro-lang", VersionSelector.parse("=3.0.0")),
-                        new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1"))));
-        JkBuild project = new JkBuild(
-                new Project("org.cryptomator", "cryptomator", "1.0", 25), new JkBuild.Dependencies(byScope));
-        List<String> overrides = new ArrayList<>();
-
-        new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
-                .lock(project, "test", List.of(), true, recording(overrides));
-
-        assertThat(overrides).hasSize(1);
-        assertThat(overrides.getFirst())
-                .startsWith("jakarta.inject:jakarta.inject-api 2.0.1 is the project's pin; 2 dependencies asked for"
-                        + " other versions: org.apache.shiro:shiro-lang 3.0.0 asked for [2.0.1.MR,+∞),"
-                        + " org.cryptomator:cryptofs 2.10.0 asked for 2.0.1.MR — the pin wins")
-                .endsWith("as a direct dependency does under Maven");
+        assertThat(row(lock, INJECT_API).version()).isEqualTo("2.0.1.MR");
+        assertThat(row(lock, SHIRO_LANG).deps()).contains(INJECT_API + "@2.0.1.MR");
     }
 
     /**
      * A test-scope dependency asks for more than a main-scope pin allows. The test classpath is
      * the main classpath plus the test rows, so the pin is the version there too: the test solve
-     * takes it for every edge onto the module under both policies, the lock carries one row with
-     * both scopes rather than a test row above the pin, and the edge still says what was asked.
+     * takes it for every edge onto the module, the lock carries one row with both scopes rather
+     * than a test row above the pin, and the edge still says what was asked.
      */
     @Test
     void a_main_pin_governs_the_test_solve(@TempDir Path tempDir) throws Exception {
-        for (PinPolicy policy : PinPolicy.values()) {
-            List<String> overrides = new ArrayList<>();
-            EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-            byScope.put(
-                    Scope.MAIN,
-                    List.of(new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1"))));
-            byScope.put(
-                    Scope.TEST, List.of(new Dependency("org.cryptomator:cryptofs", VersionSelector.parse("=2.10.0"))));
-            JkBuild project = new JkBuild(
-                    new Project("org.cryptomator", "cryptomator", "1.0", 25), new JkBuild.Dependencies(byScope));
+        List<String> overrides = new ArrayList<>();
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.MAIN,
+                List.of(new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1"))));
+        byScope.put(Scope.TEST, List.of(new Dependency("org.cryptomator:cryptofs", VersionSelector.parse("=2.10.0"))));
+        JkBuild project = new JkBuild(
+                new Project("org.cryptomator", "cryptomator", "1.0", 25), new JkBuild.Dependencies(byScope));
 
-            Lockfile lock = new LockOrchestrator(repoGroup(tempDir.resolve(policy.name())))
-                    .withPinPolicy(policy)
-                    .lock(project, "test", List.of(), true, recording(overrides));
+        Lockfile lock =
+                new LockOrchestrator(repoGroup(tempDir)).lock(project, "test", List.of(), true, recording(overrides));
 
-            List<Lockfile.Artifact> injectRows = lock.artifacts().stream()
-                    .filter(a -> a.packageKey().equals(INJECT_API))
-                    .toList();
-            assertThat(injectRows).as(policy.name()).hasSize(1);
-            assertThat(injectRows.getFirst().version()).as(policy.name()).isEqualTo("2.0.1");
-            assertThat(injectRows.getFirst().scopes()).as(policy.name()).contains(Scope.MAIN, Scope.TEST);
-            Lockfile.Artifact cryptofs = row(lock, CRYPTOFS);
-            assertThat(cryptofs.deps()).as(policy.name()).contains(INJECT_API + "@2.0.1");
-            assertThat(new EdgeSelectors(repoGroup(tempDir.resolve(policy.name())), lock)
-                            .declared(cryptofs, injectRows.getFirst()))
-                    .as(policy.name())
-                    .isEqualTo("2.0.1.MR");
-            assertThat(overrides).as(policy.name()).hasSize(1);
-            assertThat(overrides.getFirst()).as(policy.name()).contains("org.cryptomator:cryptofs 2.10.0");
-        }
+        List<Lockfile.Artifact> injectRows = lock.artifacts().stream()
+                .filter(a -> a.packageKey().equals(INJECT_API))
+                .toList();
+        assertThat(injectRows).hasSize(1);
+        assertThat(injectRows.getFirst().version()).isEqualTo("2.0.1");
+        assertThat(injectRows.getFirst().scopes()).contains(Scope.MAIN, Scope.TEST);
+        Lockfile.Artifact cryptofs = row(lock, CRYPTOFS);
+        assertThat(cryptofs.deps()).contains(INJECT_API + "@2.0.1");
+        assertThat(new EdgeSelectors(repoGroup(tempDir), lock).declared(cryptofs, injectRows.getFirst()))
+                .isEqualTo("2.0.1.MR");
+        assertThat(overrides).hasSize(1);
+        assertThat(overrides.getFirst())
+                .contains("jakarta.inject:jakarta.inject-api 2.0.1 is the main graph's version")
+                .contains("org.cryptomator:cryptofs 2.10.0");
     }
 
     /**
@@ -297,17 +227,12 @@ class NearestPinsLockTest {
     }
 
     private static JkBuild project() {
-        return project("2.0.1");
-    }
-
-    private static JkBuild project(String injectApiPin) {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(
                 Scope.MAIN,
                 List.of(
                         new Dependency("org.cryptomator:cryptofs", VersionSelector.parse("=2.10.0")),
-                        new Dependency(
-                                "jakarta.inject:jakarta.inject-api", VersionSelector.parse("=" + injectApiPin))));
+                        new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1"))));
         return new JkBuild(new Project("org.cryptomator", "cryptomator", "1.0", 25), new JkBuild.Dependencies(byScope));
     }
 

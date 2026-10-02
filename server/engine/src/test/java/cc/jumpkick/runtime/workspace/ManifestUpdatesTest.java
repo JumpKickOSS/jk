@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.testing.LoopbackHttp;
@@ -291,6 +293,59 @@ class ManifestUpdatesTest {
     }
 
     // ---- fixture ---------------------------------------------------------------
+
+    // ---- raising pins a highest-wins probe holds higher -----------------------------
+
+    /**
+     * The probe holds guava above the root's pin and the jackson {@code lib} reads above its own;
+     * those two move, to exactly the probe's version. The root's jackson stays because the plain
+     * row is its version, and nothing the probe holds at or below its pin moves.
+     */
+    @Test
+    void raise_moves_each_pin_the_probe_holds_higher_and_nothing_else(@TempDir Path ws) throws Exception {
+        workspace(ws);
+        Lockfile probe = new Lockfile(
+                1,
+                "test",
+                "pubgrub",
+                List.of(
+                        row("com.acme:jackson", "2.18.0", List.of()),
+                        row("com.acme:jackson", "2.19.1", List.of("lib")),
+                        row("com.acme:guava", "33.4.8-jre", List.of()),
+                        row("com.acme:shared", "1.0.0", List.of()),
+                        row("com.acme:tj", "0.9", List.of())));
+
+        ManifestUpdates.Plan plan = ManifestUpdates.raise(ws, probe);
+
+        assertThat(plan.rewrites())
+                .extracting(r -> r.dir().getFileName().toString(), r -> r.handle(), r -> r.from(), r -> r.to())
+                .containsExactlyInAnyOrder(
+                        tuple(ws.getFileName().toString(), "guava", "33.0.0-jre", "33.4.8-jre"),
+                        tuple("lib", "jackson", "2.18.0", "2.19.1"));
+        ManifestUpdates.apply(plan);
+        assertThat(Files.readString(ws.resolve("jk.toml")))
+                .contains("jackson = \"com.acme:jackson:2.18.0\" # keep")
+                .contains("version = \"33.4.8-jre\" }");
+        assertThat(Files.readString(ws.resolve("lib").resolve("jk.toml")))
+                .contains("jackson = \"com.acme:jackson:2.19.1\"")
+                .contains("tj = \"com.acme:tj:1.0\"");
+    }
+
+    private static Lockfile.Artifact row(String module, String version, List<String> members) {
+        return new Lockfile.Artifact(
+                module + ":jar:",
+                version,
+                "central",
+                null,
+                null,
+                List.of(Scope.MAIN),
+                List.of(),
+                null,
+                null,
+                null,
+                List.of(),
+                members);
+    }
 
     private void publish() {
         MavenStub upstream = new MavenStub(http);

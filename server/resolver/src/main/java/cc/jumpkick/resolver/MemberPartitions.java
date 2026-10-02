@@ -5,7 +5,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
@@ -78,7 +77,6 @@ final class MemberPartitions {
     private final RepoGroup repos;
     private final EffectivePomBuilder pomBuilder;
     private final PlatformConstraints.BomTables bomTables;
-    private final PinPolicy pinPolicy;
     private final Collection<String> featuresRequested;
     private final boolean withDefaults;
 
@@ -96,7 +94,6 @@ final class MemberPartitions {
             RepoGroup repos,
             EffectivePomBuilder pomBuilder,
             PlatformConstraints.BomTables bomTables,
-            PinPolicy pinPolicy,
             Collection<String> featuresRequested,
             boolean withDefaults,
             Set<String> workspaceVersions) {
@@ -104,7 +101,6 @@ final class MemberPartitions {
         this.repos = repos;
         this.pomBuilder = pomBuilder;
         this.bomTables = bomTables;
-        this.pinPolicy = pinPolicy;
         this.featuresRequested = featuresRequested;
         this.withDefaults = withDefaults;
         this.workspaceVersions = Set.copyOf(workspaceVersions);
@@ -337,7 +333,7 @@ final class MemberPartitions {
         List<Flagged> out = new ArrayList<>();
         for (LockOrchestrator.Member member : members) {
             JkBuild manifest = solvable(member.manifest());
-            PlatformConstraints own = PlatformConstraints.collect(manifest, repos, pomBuilder, bomTables, pinPolicy);
+            PlatformConstraints own = PlatformConstraints.collect(manifest, repos, pomBuilder, bomTables);
             Reach reach = reach(manifest);
             carryProvenance(reach, own, merged, carried);
             Set<String> flagged = flagged(reach, own);

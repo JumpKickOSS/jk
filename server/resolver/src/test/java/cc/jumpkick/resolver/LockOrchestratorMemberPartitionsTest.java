@@ -12,7 +12,6 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -150,7 +149,6 @@ class LockOrchestratorMemberPartitionsTest {
         JkBuild merged = manifest("root", Map.of(Scope.PLATFORM, List.of(implied), Scope.MAIN, List.of(middle)));
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
                 .withMembers(
                         List.of(new LockOrchestrator.Member("server", server), new LockOrchestrator.Member("lib", lib)))
                 .lock(merged, "test");
@@ -164,9 +162,9 @@ class LockOrchestratorMemberPartitionsTest {
     }
 
     /**
-     * Two members manage one versionless coordinate through different BOMs. The first-declared BOM
-     * decides the workspace row under {@code nearest}; the member whose own BOM says another
-     * version is solved on its own and reads that version.
+     * Two members manage one versionless coordinate through different BOMs. The higher BOM version
+     * decides the workspace row; the member whose own BOM says another version is solved on its own
+     * and reads that version.
      */
     @Test
     void a_members_own_bom_beats_a_siblings_bom_on_the_members_rows(@TempDir Path tempDir) throws Exception {
@@ -186,7 +184,6 @@ class LockOrchestratorMemberPartitionsTest {
                 manifest("root", Map.of(Scope.PLATFORM, List.of(serverBom, libBom), Scope.MAIN, List.of(leaf)));
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
                 .withMembers(
                         List.of(new LockOrchestrator.Member("server", server), new LockOrchestrator.Member("lib", lib)))
                 .lock(merged, "test");
@@ -422,7 +419,6 @@ class LockOrchestratorMemberPartitionsTest {
         JkBuild merged = manifest("root", Map.of(Scope.PROVIDED, List.of(widgetOld)));
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
                 .withMembers(List.of(
                         new LockOrchestrator.Member("legacy", legacy), new LockOrchestrator.Member("current", current)))
                 .lock(merged, "test");
@@ -475,7 +471,6 @@ class LockOrchestratorMemberPartitionsTest {
         };
 
         new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
                 .withMembers(List.of(
                         new LockOrchestrator.Member("legacy", legacy), new LockOrchestrator.Member("current", current)))
                 .lock(merged, "test", List.of(), true, observer);
@@ -789,13 +784,11 @@ class LockOrchestratorMemberPartitionsTest {
 
     /**
      * A reactor whose root imports two BOMs that disagree on a module — every member holds both, in
-     * the root's order. Under {@code nearest}, what {@code jk import} writes, the first-declared BOM
-     * decides the workspace's one plain row, as the first import does under Maven, and the lock
-     * reports the later BOM's say; under {@code exact} the disagreement is a refusal naming both.
+     * the root's order. The higher version decides the workspace's one plain row whichever BOM comes
+     * first, and the lock reports the other BOM's say.
      */
     @Test
-    void two_root_boms_that_disagree_resolve_to_the_first_declared_one_under_nearest_pins(@TempDir Path tempDir)
-            throws Exception {
+    void two_root_boms_that_disagree_resolve_to_the_higher_version(@TempDir Path tempDir) throws Exception {
         upstream.metadata("com.foo", "leaf", "1.0", "2.0");
         for (String v : List.of("1.0", "2.0")) {
             upstream.pom("com.foo", "leaf", v, leafPom("leaf", v));
@@ -811,36 +804,33 @@ class LockOrchestratorMemberPartitionsTest {
                 "api-parent",
                 "1.0",
                 MavenStub.bom("org.example", "api-parent", "1.0", List.of("com.foo:leaf:1.0")));
-        Dependency first = Dependency.of("quarkus-bom", "org.example:quarkus-bom", VersionSelector.parse("=1.0"));
-        Dependency later = Dependency.of("api-parent", "org.example:api-parent", VersionSelector.parse("=1.0"));
+        Dependency higher = Dependency.of("quarkus-bom", "org.example:quarkus-bom", VersionSelector.parse("=1.0"));
+        Dependency lower = Dependency.of("api-parent", "org.example:api-parent", VersionSelector.parse("=1.0"));
         Dependency leaf = Dependency.platformManaged("leaf", "com.foo:leaf");
         JkBuild app = manifest("app", Map.of(Scope.MAIN, List.of(leaf)));
         JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(leaf)));
-        Map<Scope, List<Dependency>> rootDeps = Map.of(Scope.PLATFORM, List.of(first, later));
-        List<String> overrides = new ArrayList<>();
+        for (List<Dependency> order : List.of(List.of(higher, lower), List.of(lower, higher))) {
+            String label = order.getFirst().library() + "-first";
+            List<String> overrides = new ArrayList<>();
 
-        Lockfile lock =
-                lockWorkspace(tempDir, rootDeps, List.of(app, lib), new ArrayList<>(), overrides, PinPolicy.NEAREST);
+            Lockfile lock = lockWorkspace(
+                    tempDir.resolve(label),
+                    Map.of(Scope.PLATFORM, order),
+                    List.of(app, lib),
+                    new ArrayList<>(),
+                    overrides);
 
-        assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
-        assertThat(rows(lock, "com.foo:leaf:jar:"))
-                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
-                .containsExactly(tuple("2.0", "org.example:quarkus-bom:1.0"));
-        assertThat(overrides)
-                .containsExactly("com.foo:leaf 2.0 is org.example:quarkus-bom:1.0's, the first [platform-dependencies]"
-                        + " entry that manages it; org.example:api-parent:1.0 constrains to 1.0"
-                        + " — the first-declared BOM wins, as the first import does under Maven");
-        assertThatThrownBy(() -> lockWorkspace(
-                        tempDir.resolve("exact"),
-                        rootDeps,
-                        List.of(app, lib),
-                        new ArrayList<>(),
-                        new ArrayList<>(),
-                        PinPolicy.EXACT))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageStartingWith(
-                        "platform BOM conflict on `com.foo:leaf`: org.example:quarkus-bom:1.0 constrains to 2.0,"
-                                + " but org.example:api-parent:1.0 constrains to 1.0.");
+            assertThat(lock.artifacts()).as(label).allMatch(r -> !r.isPartition());
+            assertThat(rows(lock, "com.foo:leaf:jar:"))
+                    .as(label)
+                    .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                    .containsExactly(tuple("2.0", "org.example:quarkus-bom:1.0"));
+            assertThat(overrides)
+                    .as(label)
+                    .containsExactly("com.foo:leaf 2.0 is org.example:quarkus-bom:1.0's, the highest a"
+                            + " [platform-dependencies] entry manages; org.example:api-parent:1.0 constrains to 1.0"
+                            + " — the highest version wins");
+        }
     }
 
     /** A BOM the root holds, or one every member holds, is the workspace's constraint: one row, no partition. */
@@ -875,20 +865,16 @@ class LockOrchestratorMemberPartitionsTest {
     private Lockfile lockWorkspace(
             Path tempDir, Map<Scope, List<Dependency>> rootDeps, List<JkBuild> modules, List<String> notes)
             throws Exception {
-        return lockWorkspace(tempDir, rootDeps, modules, notes, new ArrayList<>(), PinPolicy.EXACT);
+        return lockWorkspace(tempDir, rootDeps, modules, notes, new ArrayList<>());
     }
 
-    /**
-     * {@link #lockWorkspace(Path, Map, List, List)} under {@code pinPolicy} — the root's {@code
-     * [resolve] pins}, which the pipeline hands the orchestrator — recording the override lines too.
-     */
+    /** {@link #lockWorkspace(Path, Map, List, List)}, recording the override lines too. */
     private Lockfile lockWorkspace(
             Path tempDir,
             Map<Scope, List<Dependency>> rootDeps,
             List<JkBuild> modules,
             List<String> notes,
-            List<String> overrides,
-            PinPolicy pinPolicy)
+            List<String> overrides)
             throws Exception {
         List<String> names = modules.stream().map(m -> m.project().name()).toList();
         EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
@@ -920,7 +906,6 @@ class LockOrchestratorMemberPartitionsTest {
             }
         };
         return new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(pinPolicy)
                 .withMembers(members)
                 .lock(WorkspaceMerge.merge(root, modules), "test", List.of(), true, recording);
     }

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
@@ -17,6 +18,7 @@ import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.CompatPlans;
+import cc.jumpkick.runtime.workspace.ImportPinRaises;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ImportRequest;
@@ -132,6 +134,7 @@ public final class ImportVerb implements HostedVerb {
                         Path.of(body.tmpDir()),
                         body.force(),
                         body.report() != null ? Path.of(body.report()) : null,
+                        lockDir -> SessionContext.where(session, () -> ImportPinRaises.apply(lockDir, cache)),
                         (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));
                 // `result.success()` answers whether the conversion ran, not whether it worked:
                 // CompatPlans publishes the importer's exit as a result rather than a step failure,
