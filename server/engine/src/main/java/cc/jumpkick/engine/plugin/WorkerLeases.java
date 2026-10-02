@@ -89,9 +89,6 @@ public final class WorkerLeases {
     /** {@link #TOOL_BYTES} in whole mebibytes, for the class note. */
     public static final long TOOL_MIB = TOOL_BYTES / MIB;
 
-    /** {@code -Xmx} assumed for a {@code java} command that names none. */
-    static final long UNSIZED_JVM_XMX = 512 * MIB;
-
     /** Smallest heap a clamped worker is given when the budget can hold it. */
     static final long MIN_XMX = 32 * MIB;
 
@@ -329,14 +326,6 @@ public final class WorkerLeases {
 
     static boolean jvmCommand(List<String> command) {
         return !command.isEmpty() && jvmExecutable(executable(command));
-    }
-
-    /**
-     * The heap a JVM command that names none is leased: a native-image builder's {@link
-     * NativeHeap#generous} heap, else {@link #UNSIZED_JVM_XMX}.
-     */
-    static long defaultXmx(List<String> command, long capacityBytes) {
-        return nativeImageCommand(command) ? NativeHeap.generous(capacityBytes) : UNSIZED_JVM_XMX;
     }
 
     /** Whether {@code command} runs the GraalVM {@code native-image} driver. */
@@ -929,7 +918,7 @@ public final class WorkerLeases {
                 long bytes = Math.min(TOOL_BYTES, cap);
                 return new Demand(bytes, 0, false, bytes < TOOL_BYTES, false, false);
             }
-            long xmx = requested > 0 ? requested : defaultXmx(command, cap);
+            long xmx = requested > 0 ? requested : UnsizedHeap.lease(command, cap);
             if (choice.userPinned()) {
                 long natural = jvmLease(xmx);
                 long bytes = Math.min(cap, natural);
