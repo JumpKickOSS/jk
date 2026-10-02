@@ -170,7 +170,7 @@ public final class GuardSuites {
     public static Map<String, Located> declaredAcrossWorkspace(Path root) throws IOException {
         Map<String, Located> out = new TreeMap<>();
         for (Path m : WorkspaceModules.of(root)) {
-            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, m), "guard");
+            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(m), "guard");
             if (!Files.isRegularFile(idx)) continue;
             String rel = WorkspaceModel.rel(root, m);
             for (Declared d : declared(FactsFormat.read(idx))) out.putIfAbsent(d.id(), new Located(d, rel));

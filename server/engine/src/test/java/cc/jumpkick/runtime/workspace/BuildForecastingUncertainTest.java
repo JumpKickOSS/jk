@@ -44,7 +44,7 @@ class BuildForecastingUncertainTest {
         Path src = tmp.resolve("src/main/java");
         Files.createDirectories(src);
         Files.writeString(src.resolve("App.java"), "class App {}\n");
-        Files.createDirectories(BuildLayout.moduleTargetDir(tmp, tmp));
+        Files.createDirectories(BuildLayout.moduleTargetDir(tmp));
         Path lock = tmp.resolve("jk-lock.toml");
         Files.writeString(lock, """
                 version = 1

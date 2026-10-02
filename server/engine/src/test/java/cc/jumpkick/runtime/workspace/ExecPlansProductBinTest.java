@@ -218,10 +218,10 @@ class ExecPlansProductBinTest {
                 version = "0.1.0"
                 java = 25
                 """);
-        Path builtCore = root.resolve("target/core/lib/core-0.1.0.jar");
+        Path builtCore = root.resolve("core/target/core-0.1.0.jar");
         Files.createDirectories(builtCore.getParent());
         Files.writeString(builtCore, "core built");
-        Path unshelvedOnly = root.resolve("target/cli/lib/jk-cli-0.1.0.jar");
+        Path unshelvedOnly = root.resolve("cli/target/jk-cli-0.1.0.jar");
         Files.createDirectories(unshelvedOnly.getParent());
         Files.writeString(unshelvedOnly, "cli built");
         LockfileWriter.write(
@@ -242,7 +242,7 @@ class ExecPlansProductBinTest {
                     ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
             assertThat(after.launcherScript())
                     .contains(shelvedCore.toString())
-                    .doesNotContain(root.resolve("target/core").toString());
+                    .doesNotContain(root.resolve("core/target").toString());
         } finally {
             restore("jk.env.JK_STORE_DIR", prevStore);
         }

@@ -42,8 +42,26 @@ Other names (`contract`, `mutation`, …) are discovered the same way. Do not pu
 Playwright or compose stacks in `src/test`. Cost (`slow`, `network`) is a JUnit
 tag, not a fourth canonical directory. [Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
 
-Outputs always land under **`target/`**. Standalone project: `{project}/target/`.
-Workspace: `{workspace}/target/{module-rel}/` (not `module/target/`).
+## Build output
+
+Every module writes to its own **`target/`**, in Maven's layout, so a tool, a CI glob or a test
+harness that knows where Maven puts things finds them there:
+
+| What | Where |
+|---|---|
+| Main classes, resources copied in | `target/classes/` |
+| Test classes, test resources copied in | `target/test-classes/` |
+| Annotation-processor sources | `target/generated-sources/annotations/`, `target/generated-test-sources/test-annotations/` |
+| Jar, sources jar, javadoc jar | `target/<name>-<version>.jar`, `-sources.jar`, `-javadoc.jar` |
+| Fat jar, minified jar (jk's own) | `target/<name>-<version>-all.jar`, `-min.jar` |
+| Native binary | `target/<name>` |
+| JUnit XML | `target/surefire-reports/`; the `integration` suite in `target/failsafe-reports/` |
+| JaCoCo | `target/jacoco.exec`, report in `target/site/jacoco/` |
+| Javadoc HTML | `target/site/apidocs/` |
+
+jk's own working state sits beside them (`kotlin/`, `groovy/`, `incremental/`, `plugin/`, …),
+and its reports (`jk-results.md`, `jk-guards.*`) in the `target/` of the directory a build ran
+from.
 
 ## Tests
 

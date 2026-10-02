@@ -38,11 +38,11 @@ class WorkerLaunchClasspathTest {
         Files.createDirectories(sandbox);
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-host-worker", "1.0.0");
         Coordinate dep = Coordinate.of("org.example", "lib", "1.0");
-        Path workspaceJar = tmp.resolve("target/plugins/host-worker/jk-host-worker-1.0.0.jar");
+        Path workspaceJar = tmp.resolve("plugins/host-worker/target/jk-host-worker-1.0.0.jar");
         Files.createDirectories(workspaceJar.getParent());
         // A module output directory, not merely a path containing `target`: the compiled classes
         // beside it are what BuildLayout.isBuildOutput anchors on.
-        Files.createDirectories(workspaceJar.resolveSibling("classes").resolve("main"));
+        Files.createDirectories(workspaceJar.resolveSibling("classes"));
         Files.writeString(workspaceJar, "workspace-worker");
         put(host, MavenLayout.artifactPath(worker), "store-worker");
         put(host, MavenLayout.pomPath(worker), """
@@ -70,9 +70,9 @@ class WorkerLaunchClasspathTest {
                 </project>
                 """);
 
-        Path sdkClasses = tmp.resolve("target/shared/plugin-sdk/classes/main");
+        Path sdkClasses = tmp.resolve("shared/plugin-sdk/target/classes");
         Files.createDirectories(sdkClasses);
-        Path hostCodecJar = tmp.resolve("target/shared/host/lib/jk-host-1.0.0.jar");
+        Path hostCodecJar = tmp.resolve("shared/host/target/jk-host-1.0.0.jar");
         Files.createDirectories(hostCodecJar.getParent());
         Files.writeString(hostCodecJar, "host");
 

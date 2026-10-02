@@ -123,7 +123,7 @@ fast tier on every `jk build` and `jk test`; each property is budgeted in tries 
 add a few seconds.
 
 A failing property prints its shrunk sample and `seed = …` in the test report
-(`target/<module>/reports/test-results/TEST-*.xml`, `system-out`). To replay one sample, put the seed on the
+(`<module>/target/surefire-reports/TEST-*.xml`, `system-out`). To replay one sample, put the seed on the
 property: `@Property(seed = "-3119466389416338755")`. A shrunk sample that exposes a solver defect
 becomes an example test in `PubGrubShrunkCounterexampleTest` so the fix stays pinned when the
 generator moves on.
@@ -131,7 +131,7 @@ generator moves on.
 ## Coverage ratchet (nightly)
 
 `jk test --coverage` runs every module's unit tier under the JaCoCo agent and writes
-`target/<module>/reports/jacoco.xml`; `jk guard` then evaluates `coverage-band` (G91), a `metric`
+`<module>/target/site/jacoco/jacoco.xml`; `jk guard` then evaluates `coverage-band` (G91), a `metric`
 floor over `coverage.line` baselined per module in `jk-guards-baseline.toml` with a half-point band:
 
 - more than 0.5 points **below** the entry: red, naming the module, the measured and the recorded
@@ -179,7 +179,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ```bash
 jk test --profile integration
-# per-step walls: target/jk-profile.json; per-class times: target/**/reports/test-results/TEST-*.xml
+# per-step walls: target/jk-profile.json; per-class times: **/target/surefire-reports/TEST-*.xml
 ```
 
 ## Measuring the Android lock (network tier)

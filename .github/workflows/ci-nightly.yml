@@ -67,7 +67,7 @@ jobs:
         if: always()
         with:
           name: integration-results
-          path: target/**/reports/test-results/
+          path: "**/target/surefire-reports/"
           if-no-files-found: warn
           retention-days: 14
 
@@ -266,7 +266,7 @@ jobs:
         if: always()
         with:
           name: jacoco-per-module
-          path: target/**/reports/jacoco.xml
+          path: "**/target/site/jacoco/jacoco.xml"
           if-no-files-found: warn
           retention-days: 14
 

@@ -553,7 +553,7 @@ public final class PluginTableRegistry {
             if (src == null || src.getLocation() == null) return false;
             Path loc = Path.of(src.getLocation().toURI()).toAbsolutePath().normalize();
             if (Files.isDirectory(loc)) {
-                return "main".equals(pathFileName(loc));
+                return "classes".equals(pathFileName(loc));
             }
             return !pathFileName(loc).startsWith(ENGINE_FAT_JAR_PREFIX);
         } catch (Exception e) {

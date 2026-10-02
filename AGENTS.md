@@ -100,7 +100,7 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 | Native CLI | GraalVM native-image (`clients/cli`) |
 | Engine | JVM fat jar (`server/engine` + `server/*`) — never native |
 | Config / lock | TOML (`jk.toml`), canonical `jk-lock.toml` (workspace root only) |
-| Module outputs | `{workspace}/target/{module-rel}/` (standalone: `{project}/target/`) |
+| Module outputs | `{module}/target/`, Maven's layout (`classes/`, `test-classes/`, jars at the root, `surefire-reports/`, …) |
 | Resolve | PubGrub (`server/resolver`) |
 | Cache | Content-addressed store + action cache |
 | Wire | JSONL client↔engine protocol (`shared/wire`) |

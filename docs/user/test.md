@@ -535,11 +535,11 @@ compiled against a dependency absent at test time — is left where discovery le
 
 `jk test --coverage` starts every test JVM under the JaCoCo agent (fetched from the project's
 repositories at its newest release; not a lock entry) and, per module, writes
-`target/<module>/reports/jacoco.xml` and the JaCoCo HTML report at
-`target/<module>/reports/coverage/index.html` (a standalone project: `target/reports/…`). The
+the execution data to `target/jacoco.exec` and the report to `target/site/jacoco/` (`jacoco.xml` and
+the HTML's `index.html`), where Maven's JaCoCo plugin puts them. The
 results file gets a **Coverage** block after Tests — per module, covered lines and branches as a
 percentage with the counts, an **all** row for a workspace — and a `Coverage:` line in the
-headline; a workspace also gets a roll-up page at `target/reports/coverage/index.html` linking
+headline; a workspace also gets a roll-up page at the root's `target/site/jacoco/index.html` linking
 each module's report. The figures are the whole-report `LINE` and `BRANCH` counters of each
 `jacoco.xml`. The agent verdict does not repeat the block.
 

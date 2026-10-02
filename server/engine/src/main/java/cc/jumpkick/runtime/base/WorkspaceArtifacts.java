@@ -83,9 +83,7 @@ public final class WorkspaceArtifacts {
     public static void linkModule(Path workspaceRoot, Path moduleDir, Map<Path, Path> workspaceLinks) {
         if (workspaceLinks.isEmpty()) return;
         Path normalDir = moduleDir.toAbsolutePath().normalize();
-        Path outputDir = BuildLayout.moduleTargetDir(workspaceRoot, moduleDir)
-                .toAbsolutePath()
-                .normalize();
+        Path outputDir = BuildLayout.moduleTargetDir(moduleDir).toAbsolutePath().normalize();
         for (var entry : workspaceLinks.entrySet()) {
             Path source = entry.getKey();
             if (!(source.startsWith(normalDir) || source.startsWith(outputDir)) || !Files.isRegularFile(source)) {

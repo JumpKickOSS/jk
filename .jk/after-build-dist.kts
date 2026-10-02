@@ -84,12 +84,11 @@ if (!Files.isDirectory(target)) {
 
     /**
      * The thin jar and POM of the module at [rel] for [version], or null when this build produced
-     * none. A worker writes them at its output root, a library under `lib/`; the coordinate comes
-     * from the POM, the one file that states it.
+     * none: both at the module's own `target/`; the coordinate comes from the POM, the one file
+     * that states it.
      */
     fun moduleArtifacts(rel: String, version: String): ModuleArtifacts? {
-        val root = target.resolve(rel)
-        for (dir in listOf(root, root.resolve("lib"))) {
+        for (dir in listOf(projectDir.resolve(rel).resolve("target"))) {
             if (!Files.isDirectory(dir)) continue
             val pom = Files.list(dir).use { entries ->
                 entries.filter { it.fileName.toString().endsWith("-$version.pom") }
@@ -151,11 +150,10 @@ if (!Files.isDirectory(target)) {
     /**
      * The Maven event spy's module jar for [version], or null when this build produced none. A
      * thin jar on purpose: Maven supplies its API, so there is nothing to bundle. A library
-     * module's jar lands under its own `target/<module>/lib/`, not at the workspace root where
-     * the assemblies do.
+     * module's jar lands in its own `target/`, not at the workspace root where the assemblies do.
      */
     fun mavenSpy(version: String): Path? {
-        val jar = target.resolve("clients/maven-spy/lib/jk-maven-spy-$version.jar")
+        val jar = projectDir.resolve("clients/maven-spy/target/jk-maven-spy-$version.jar")
         return if (Files.isRegularFile(jar)) jar else null
     }
 

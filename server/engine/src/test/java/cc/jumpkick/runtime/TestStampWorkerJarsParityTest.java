@@ -37,8 +37,7 @@ class TestStampWorkerJarsParityTest {
                 [application]
                 main = "cc.jumpkick.cli.Jk"
                 """);
-        // Sibling engine is a library (no [application].main) → workspace layout puts the
-        // main jar at target/<module-rel>/lib/<name>-<ver>.jar (not module-local target/).
+        // The sibling's main jar is at <module>/target/<name>-<ver>.jar.
         Path engine = tmp.resolve("server/engine");
         Files.createDirectories(engine);
         Files.writeString(engine.resolve("jk.toml"), """
@@ -58,7 +57,7 @@ class TestStampWorkerJarsParityTest {
                 [workspace]
                 modules = ["clients/cli", "server/engine"]
                 """);
-        Path engineJar = tmp.resolve("target/server/engine/lib/jk-engine-0.0.1.jar");
+        Path engineJar = tmp.resolve("server/engine/target/jk-engine-0.0.1.jar");
         Files.createDirectories(engineJar.getParent());
         writeMinimalJar(engineJar);
 

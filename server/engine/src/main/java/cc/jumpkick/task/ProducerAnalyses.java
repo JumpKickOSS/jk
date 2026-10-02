@@ -56,8 +56,9 @@ public final class ProducerAnalyses {
      * compile-test, every other tree {@link BuildLayout#compiledClassesOf} names to compile-main.
      */
     private static Path stateDir(Path incrementalRoot, Path classes) {
-        String task =
-                "test".equals(String.valueOf(classes.getFileName())) ? TaskNames.COMPILE_TEST : TaskNames.COMPILE_MAIN;
+        String task = "test-classes".equals(String.valueOf(classes.getFileName()))
+                ? TaskNames.COMPILE_TEST
+                : TaskNames.COMPILE_MAIN;
         return ActionKey.stateDir(incrementalRoot, task, classes);
     }
 }

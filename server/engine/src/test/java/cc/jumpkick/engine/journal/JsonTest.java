@@ -17,7 +17,7 @@ class JsonTest {
         assertThat(Json.write(plain)).doesNotContain("\"coverage\"");
 
         BuildRecord covered = plain.withCoverage(List.of(new BuildRecord.Coverage(
-                "/proj/lib", "com.example:lib", 120, 30, 6, 4, "/proj/target/lib/reports/coverage/index.html")));
+                "/proj/lib", "com.example:lib", 120, 30, 6, 4, "/proj/lib/target/site/jacoco/index.html")));
         BuildRecord back = Json.read(Json.write(covered));
         assertThat(back.coverage()).containsExactlyElementsOf(covered.coverage());
     }

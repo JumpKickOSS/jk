@@ -135,7 +135,7 @@ public final class GuardFixtures {
             // Both layouts, as the source-side declaration scan reads them.
             if (!Files.isDirectory(m)
                     || (!PlannerGuardSuite.declared(m, false) && !PlannerGuardSuite.declared(m, true))) continue;
-            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, m), "guard");
+            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(m), "guard");
             if (Files.isRegularFile(idx)) continue;
             String rel = WorkspaceModel.rel(root, m);
             out.add((rel.isEmpty() ? "the workspace root" : rel)
@@ -160,7 +160,7 @@ public final class GuardFixtures {
         String mixed = FixtureCheck.treeProblem(sources);
         if (mixed != null) return new FixtureCheck.Verdict(c.id(), "error", mixed);
         Path moduleDir = c.module().isEmpty() ? root : root.resolve(c.module());
-        Path work = BuildLayout.moduleTargetDir(root, moduleDir)
+        Path work = BuildLayout.moduleTargetDir(moduleDir)
                 .resolve("jk-guards")
                 .resolve("fixtures")
                 .resolve(c.id());
@@ -244,7 +244,7 @@ public final class GuardFixtures {
             return out;
         }
         List<Path> classpath = compileClasspath(root, moduleDir, cas);
-        Path outDir = BuildLayout.moduleTargetDir(root, moduleDir)
+        Path outDir = BuildLayout.moduleTargetDir(moduleDir)
                 .resolve("jk-guards")
                 .resolve("fixtures")
                 .resolve("classes");
@@ -282,7 +282,7 @@ public final class GuardFixtures {
             int badSites;
             int okSites;
             if (c.guardTest()) {
-                Path work = BuildLayout.moduleTargetDir(root, moduleDir)
+                Path work = BuildLayout.moduleTargetDir(moduleDir)
                         .resolve("jk-guards")
                         .resolve("fixtures")
                         .resolve(c.id());

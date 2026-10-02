@@ -632,7 +632,7 @@ Two fixed taxonomies (do not collapse them):
 | **Module plan** | `BuildStage` | Inside a module `BuildPlan` (usually during `InvocationPhase.BUILD`): `resolve → generate → compile → test → package → train → native → image → publish → other` |
 
 - **Task DAG** (`TaskNames` + `requires`) is the scheduler; stages are product buckets for UI fold, ETA, and future pre/post hooks — not a second scheduler.
-- **Workspace edges are compile-to-compile.** A module's compile classpath names its siblings' `classes/main` trees (`WorkspaceClasspath.siblingClosureClasses`), never their jars, and the workspace scheduler admits a dependent once every module on that classpath has compiled, assembled its classes and copied its resources — while those modules still package, test and build their tails. The jars remain what the dependent's package, test, native and plugin steps read; `copy-resources` is the first step behind which all of them sit, so it waits there (`SiblingArtifacts`) for the siblings to have published their artifacts and then names any jar, test output or fixtures directory that is missing. `resolve-deps` requires only the trees.
+- **Workspace edges are compile-to-compile.** A module's compile classpath names its siblings' `target/classes` trees (`WorkspaceClasspath.siblingClosureClasses`), never their jars, and the workspace scheduler admits a dependent once every module on that classpath has compiled, assembled its classes and copied its resources — while those modules still package, test and build their tails. The jars remain what the dependent's package, test, native and plugin steps read; `copy-resources` is the first step behind which all of them sit, so it waits there (`SiblingArtifacts`) for the siblings to have published their artifacts and then names any jar, test output or fixtures directory that is missing. `resolve-deps` requires only the trees.
 - In-plan stage **`resolve`** (parse / lock classpath / ensure JDK) ≠ request phase **`RESOLVE`** (lock/graph for the command).
 - Prefer `Task.builder(…).stage(BuildStage.COMPILE)`; free-form `group("…")` maps unknown strings to `OTHER`.
 - `TaskPhases` remains a string facade over `BuildStage` for metrics call sites.
@@ -707,8 +707,8 @@ them is churn without a product gain. Instead:
   staleness keep their meaning.
 
 **Build directory.** A coexistence build writes into the module's `target/` exactly as a
-`jk.toml` module does (`classes/main/`, `lib/`, `reports/`), so Maven's own `target/classes` and
-`surefire-reports` share the tree when both tools run; the shadow and its lock live under
+`jk.toml` module does, which is Maven's own layout (`classes/`, `test-classes/`,
+`surefire-reports/`), so both tools agree on every path when both run; the shadow and its lock live under
 `target/jk/shadow/`. Results land at `target/jk-results.md`, the path agents already read, with a
 `manifest: pom.xml, no jk.toml` line in the header; `details.jsonl` beside it. Rooting the whole
 build under `target/jk/` (a per-build `BuildLayout` root) is open.

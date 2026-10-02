@@ -73,7 +73,7 @@ jk new -t quarkus/hello my-api
   pull Maven embedder.
 - **Tests:** `@QuarkusTest` boots from an application model jk writes before the module's tests
   run (the `quarkus-test-model` step): the locked test closure resolved through Quarkus's own
-  bootstrap, with `target/classes/main` as the application's one root. The forked test JVM gets
+  bootstrap, with `target/classes` as the application's one root. The forked test JVM gets
   its path as `-Dquarkus-internal-test.serialized-app-model.path=…`, the seam Quarkus's Gradle
   plugin uses, so the bootstrap indexes the application archive once and augments once per test
   profile; no `pom.xml` is read or written. The bootstrap keeps one augmented application per

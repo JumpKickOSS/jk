@@ -132,7 +132,6 @@ public final class WorkspaceClasspath {
         Map<String, Path> siblingJarByModule = sib.jarByModule();
         Map<String, Path> siblingClassesByModule = sib.classesByModule();
         Map<String, Path> siblingTestClassesByModule = sib.testClassesByModule();
-        Map<String, Path> siblingTestResourcesByModule = sib.testResourcesByModule();
         Map<String, Path> siblingFixturesByModule = sib.fixturesByModule();
         Closure closure =
                 substitutedMembers(workspace.dir(), project, scopes, workspaceClosure(project, scopes, sib), sib);
@@ -190,14 +189,6 @@ public final class WorkspaceClasspath {
                             testClasses,
                             missing,
                             module + " tests kind (expected test classes at " + testClasses + ")");
-                }
-                Path testResources = siblingTestResourcesByModule.get(module);
-                if (testResources != null && Files.isDirectory(testResources)) {
-                    if (seenPaths.add(testResources)) {
-                        jars.add(testResources);
-                        closureJars.add(testResources);
-                        closureClasses.add(testResources);
-                    }
                 }
             }
             if (fixturesKinds.contains(module)) {
@@ -261,7 +252,6 @@ public final class WorkspaceClasspath {
             Map<String, Path> jarByModule,
             Map<String, Path> classesByModule,
             Map<String, Path> testClassesByModule,
-            Map<String, Path> testResourcesByModule,
             Map<String, Path> fixturesByModule,
             Map<String, JkBuild> manifestByCoord,
             Map<String, String> coordByName,
@@ -279,7 +269,6 @@ public final class WorkspaceClasspath {
         Map<String, Path> siblingJarByModule = new HashMap<>();
         Map<String, Path> siblingClassesByModule = new HashMap<>();
         Map<String, Path> siblingTestClassesByModule = new HashMap<>();
-        Map<String, Path> siblingTestResourcesByModule = new HashMap<>();
         Map<String, Path> siblingFixturesByModule = new HashMap<>();
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
@@ -313,7 +302,6 @@ public final class WorkspaceClasspath {
                 siblingClassesByModule.put(coord, layout.classesDir());
             }
             siblingTestClassesByModule.put(coord, layout.testClassesDir());
-            siblingTestResourcesByModule.put(coord, layout.testResourcesDir());
             siblingFixturesByModule.put(coord, layout.testFixturesClassesDir());
             siblingManifestByCoord.put(coord, unit);
             siblingCoordByName.put(unit.project().name(), coord);
@@ -323,7 +311,6 @@ public final class WorkspaceClasspath {
                 siblingJarByModule,
                 siblingClassesByModule,
                 siblingTestClassesByModule,
-                siblingTestResourcesByModule,
                 siblingFixturesByModule,
                 siblingManifestByCoord,
                 siblingCoordByName,

@@ -172,15 +172,29 @@ public final class CleanCommand implements CliCommand {
         return Optional.empty();
     }
 
-    /** Build-intermediate subdirs removed by {@code --keep-artifacts} (final jars stay). */
-    private static final List<String> INTERMEDIATE_SUBDIRS =
-            List.of("classes", "kotlin", "resources", "generated", "test-results", "reports");
+    /**
+     * Build-intermediate subdirs of a module's {@code target/} removed by {@code --keep-artifacts}:
+     * everything but the deliverables (jars, the native binary, the war) at the target root.
+     */
+    private static final List<String> INTERMEDIATE_SUBDIRS = List.of(
+            "classes",
+            "test-classes",
+            "generated-sources",
+            "generated-test-sources",
+            "kotlin",
+            "groovy",
+            "ksp",
+            "versions",
+            "incremental",
+            "plugin",
+            "surefire-reports",
+            "failsafe-reports",
+            "reports",
+            "site");
 
     /**
-     * Every root the clean removes, for one pooled delete: each project's output tree (or, with
-     * {@code keepArtifacts}, only its intermediates). Outputs live at the layout-resolved target
-     * dir — {@code <workspace>/target/<rel>/} for a member, not {@code <member>/target/}. A
-     * distinct member-local {@code target/} is also swept when present.
+     * Every root the clean removes, for one pooled delete: each project's {@code target/} (or, with
+     * {@code keepArtifacts}, only its intermediates).
      *
      * <p>The module's test sandbox home goes too. It is not under {@code target/} — it holds jk's
      * whole layout and a directory of that shape inside a source tree is what a stray {@code git}
@@ -191,18 +205,12 @@ public final class CleanCommand implements CliCommand {
     static List<Path> deleteRoots(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts) {
         List<Path> roots = new ArrayList<>();
         for (Path projectDir : projectDirs) {
-            Path layoutTarget = BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
-            Path memberLocalTarget = projectDir.resolve(BuildLayout.TARGET);
-            boolean distinct = !layoutTarget.equals(memberLocalTarget);
+            Path target = BuildLayout.moduleTargetDir(projectDir);
             if (!keepArtifacts) {
-                roots.add(layoutTarget);
-                if (distinct) roots.add(memberLocalTarget);
+                roots.add(target);
                 roots.add(TestHomes.slotFor(projectDir));
             } else {
-                for (String sub : INTERMEDIATE_SUBDIRS) {
-                    roots.add(layoutTarget.resolve(sub));
-                    if (distinct) roots.add(memberLocalTarget.resolve(sub));
-                }
+                for (String sub : INTERMEDIATE_SUBDIRS) roots.add(target.resolve(sub));
             }
         }
         return roots;

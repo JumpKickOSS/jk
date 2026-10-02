@@ -120,7 +120,7 @@ public final class NativePreflight {
             ws = WorkspaceLocator.findRoot(abs).orElse(abs);
         } catch (IOException ignored) {
         }
-        return BuildLayout.moduleTargetDir(ws, abs).resolve("classes").resolve("main");
+        return BuildLayout.moduleTargetDir(abs).resolve("classes");
     }
 
     static List<String> scanSourceMains(Path moduleDir) {

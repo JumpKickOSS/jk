@@ -197,7 +197,7 @@ why     = "a wire type typed by hand is an event nobody handles"
 kind    = "vocabulary"
 owner   = "cc.jumpkick.layout.BuildLayout"
 shape   = "regex:target"
-instead = "BuildLayout.TARGET, or BuildLayout.moduleTargetDir(ws, mod)"
+instead = "BuildLayout.TARGET, or BuildLayout.moduleTargetDir(mod)"
 why     = "the output directory is named once; renaming it must not miss a spelling"
 
 [[guards.target-dir.allow]]

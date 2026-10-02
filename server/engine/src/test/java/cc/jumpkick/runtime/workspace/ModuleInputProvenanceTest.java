@@ -40,7 +40,7 @@ class ModuleInputProvenanceTest {
         Path src = tmp.resolve("src/main/java");
         Files.createDirectories(src);
         Files.writeString(src.resolve("App.java"), "class App {}\n");
-        Files.createDirectories(BuildLayout.moduleTargetDir(tmp, tmp));
+        Files.createDirectories(BuildLayout.moduleTargetDir(tmp));
         return BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
     }
 

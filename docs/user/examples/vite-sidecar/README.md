@@ -69,7 +69,7 @@ web |   VITE v8.3.0  ready in 488 ms
 web |
 web |   ➜  Local:   http://localhost:5173/
 web |   ➜  Network: use --host to expose
-jk watch run: ready - http://localhost:5173 (java -cp target/classes/main demo.Api)
+jk watch run: ready - http://localhost:5173 (java -cp target/classes demo.Api)
 ```
 
 The JVM's line (`listening on …`) is unprefixed — it is the module being developed. Every line

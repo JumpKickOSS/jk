@@ -119,7 +119,7 @@ class OutputEvaluatorTest {
                 .anySatisfy(d -> assertThat(d).contains("com.acme:ghost").contains("not an artifact it packages"));
         assertThat(e.observations()).hasSize(2);
         assertThat(e.population()).containsEntry("poms", 1L);
-        assertThat(e.observations().get(0).file()).isEqualTo("target/core/lib/core-1.0.0.pom");
+        assertThat(e.observations().get(0).file()).isEqualTo("core/target/core-1.0.0.pom");
     }
 
     @Test
