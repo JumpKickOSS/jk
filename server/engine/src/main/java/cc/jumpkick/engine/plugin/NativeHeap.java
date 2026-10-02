@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
  * changed or whose classpath grew by more than {@value #GROWTH_PERCENT}%, gets the {@link
  * #generous} heap. Otherwise it gets twice the largest peak learned from its
  * earlier builds, at least {@value #FLOOR_MIB} MiB, scaled by how much the classpath grew and never
- * more than the generous heap. A learned heap that runs out is retried once at the generous one.
+ * more than the generous heap. A build that ends for memory gets one {@link #retry}.
  */
 public final class NativeHeap {
 
@@ -102,6 +102,37 @@ public final class NativeHeap {
         if (rounded >= generousBytes) return generous(generousBytes, "its learned heap reaches the most it can have");
         return new Choice(
                 rounded, true, "learned: twice the " + WorkerLeases.format(peak) + " its earlier builds peaked at");
+    }
+
+    /**
+     * A rerun of a native-image build that ended for memory: its heap, its {@code --parallelism}
+     * ({@code 0} leaves the driver's own), and the line that says why.
+     */
+    public record Retry(long xmxBytes, int parallelism, String note) {}
+
+    /**
+     * The one rerun a native-image build that ended with {@code cause} gets, or {@code null}. A
+     * learned heap that ran out, or was killed for memory, reruns at {@code generousBytes}. A builder
+     * killed at its own worker cap used memory outside its heap: it reruns with a quarter less heap
+     * and half the {@code cores} as threads, which hold that memory, unless the args set the threads.
+     * A user-pinned heap ({@code heap} null) is not rerun.
+     */
+    public static @Nullable Retry retry(
+            @Nullable Choice heap, WorkerFate.Cause cause, long generousBytes, int cores, boolean threadsPinned) {
+        if (heap == null) return null;
+        boolean killed = cause == WorkerFate.Cause.KILLED_FOR_MEMORY;
+        if (heap.learned() && (cause == WorkerFate.Cause.HEAP_EXHAUSTED || killed)) {
+            return new Retry(generousBytes, 0, HeapNotes.line(generousBytes, heap.xmxBytes(), killed));
+        }
+        if (cause != WorkerFate.Cause.OVER_WORKER_CAP) return null;
+        long smaller = Math.max(WorkerLeases.MIN_XMX, heap.xmxBytes() / 4 * 3);
+        int threads = threadsPinned ? 0 : Math.max(1, cores / 2);
+        return new Retry(
+                smaller,
+                threads,
+                "retried with " + WorkerLeases.format(smaller) + " heap"
+                        + (threads > 0 ? " and --parallelism=" + threads : "")
+                        + " after native-image was killed at its worker cap");
     }
 
     /** The generous builder heap: {@link #GENEROUS_SHARE} of the worker cap under {@code capacityBytes}. */
