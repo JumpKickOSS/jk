@@ -191,11 +191,11 @@ shape   = "hyphenated"
 instead = "EngineProtocol.<CONSTANT>"
 why     = "a wire type typed by hand is an event nobody handles"
 
-# G18. jk's build output directory is named once, in BuildLayout.TARGET. A `target` that is not
+# G18. jk's build output directory is named once, in OutputDirs.TARGET. A `target` that is not
 # this directory — a CLI parameter, javac's -target, a BSP field — is an allow entry with its reason.
 [guards.target-dir]
 kind    = "vocabulary"
-owner   = "cc.jumpkick.layout.BuildLayout"
+owner   = "cc.jumpkick.host.OutputDirs"
 shape   = "regex:target"
 instead = "BuildLayout.TARGET, or BuildLayout.moduleTargetDir(mod)"
 why     = "the output directory is named once; renaming it must not miss a spelling"

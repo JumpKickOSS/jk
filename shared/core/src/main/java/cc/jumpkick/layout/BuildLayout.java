@@ -3,6 +3,7 @@ package cc.jumpkick.layout;
 
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
@@ -38,7 +39,7 @@ public final class BuildLayout {
      * javac's {@code -target}, a BSP request field and the {@code ${target}} interpolation variable
      * are separate vocabularies and must not borrow it.
      */
-    public static final String TARGET = "target";
+    public static final String TARGET = OutputDirs.TARGET;
 
     /**
      * True when {@code artifact} is a file jk built into a {@link #TARGET} tree.
