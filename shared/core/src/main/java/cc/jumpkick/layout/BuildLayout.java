@@ -8,24 +8,21 @@ import cc.jumpkick.plugin.manifest.PluginModule;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Pure path layout for module build outputs.
- *
- * <ul>
- * <li><strong>Standalone</strong> (or workspace root as the only unit): {@code <module>/target/}.
- * <li><strong>Workspace member</strong>: {@code <workspace>/target/<module-rel>/} (Mill-style
- * central out tree), where {@code module-rel} is the path relative to the workspace root
- * (e.g. {@code plugins/auditor}).
- * </ul>
+ * Pure path layout for module build outputs: Maven's. Every module, standalone or a workspace
+ * member, writes to its own {@code <module>/target/}: {@code classes/} and {@code test-classes/}
+ * (resources copied in), {@code generated-sources/} and {@code generated-test-sources/}, the
+ * jars at the target root, {@code surefire-reports/} and {@code failsafe-reports/}, and {@code
+ * site/} for javadoc and coverage. Directories Maven does not define ({@code kotlin/}, {@code
+ * groovy/}, {@code incremental/}, {@code plugin/}, …) are jk's own working state.
  *
  * <p>Kotlinc and javac use separate dirs ({@code kotlin/} vs {@code classes/}) so Kotlin's
  * incremental prune cannot drop javac output; classes are merged into {@code classes/} after
- * compile. Apps put artifacts at the module target root; libraries under {@code lib/}.
+ * compile.
  */
 public final class BuildLayout {
 
@@ -162,32 +159,16 @@ public final class BuildLayout {
         return pluginWorker;
     }
 
-    /**
-     * True when deliverables go at {@code target/} (application or plugin worker), not {@code
-     * target/lib/}.
-     */
+    /** True for an application or a plugin worker: a deliverable that runs, rather than a library. */
     public boolean packagedAtRoot() {
         return hasMain || pluginWorker;
     }
 
     // ---- Per-module output -------------------------------------------------
 
-    /** Memoized {@link #moduleTargetDir()} — every layout accessor funnels through it, and the
-     * alias-fallback path costs filesystem walks; both roots are final, so the answer is stable
-     * for the instance's life. */
-    private volatile @Nullable Path cachedModuleTargetDir;
-
-    /**
-     * Root of this module's output tree: {@code <module>/target/} when standalone (or the unit is
-     * the workspace root itself); {@code <workspace>/target/<rel>/} for a workspace member.
-     */
+    /** Root of this module's output tree: {@code <module>/target/}. */
     public Path moduleTargetDir() {
-        Path cached = cachedModuleTargetDir;
-        if (cached == null) {
-            cached = moduleTargetDir(workspaceRoot, moduleRoot);
-            cachedModuleTargetDir = cached;
-        }
-        return cached;
+        return moduleTargetDir(moduleRoot);
     }
 
     /** Where the module's plugin steps and commands keep their scratch: {@code <target>/plugin/}. */
@@ -203,66 +184,9 @@ public final class BuildLayout {
         return pluginDir().resolve(step);
     }
 
-    /**
-     * As {@link #moduleTargetDir} from the two roots alone — the layout decision needs no parsed
-     * project, so callers on parse-free fast paths (preflight memo) share one rule.
-     *
-     * <p>Membership is decided <em>lexically</em> first (zero filesystem I/O on the hot path, and
-     * a member symlinked <em>into</em> the workspace tree keeps its central out dir — realpath
-     * would relocate its outputs to a module-local {@code target/}). Only on a lexical miss does
-     * {@link #absoluteKey} reconcile symlink alias pairs ({@code /var} vs {@code /private/var} on
-     * macOS). The returned path keeps the caller's {@code workspaceRoot} form (absolute +
-     * normalize) so it matches other paths the caller already holds.
-     */
-    public static Path moduleTargetDir(Path workspaceRoot, Path moduleRoot) {
-        Path wsOut = workspaceRoot.toAbsolutePath().normalize();
-        Path modAbs = moduleRoot.toAbsolutePath().normalize();
-        if (modAbs.equals(wsOut)) {
-            return wsOut.resolve(TARGET);
-        }
-        if (modAbs.startsWith(wsOut)) {
-            return wsOut.resolve(TARGET).resolve(wsOut.relativize(modAbs));
-        }
-        // Lexical miss: an alias pair can still name the same tree — compare realpath keys.
-        Path modKey = absoluteKey(moduleRoot);
-        Path wsKey = absoluteKey(workspaceRoot);
-        if (modKey.equals(wsKey)) {
-            return wsOut.resolve(TARGET);
-        }
-        if (!modKey.startsWith(wsKey)) {
-            // Genuinely outside the workspace tree — fall back to module-local target/.
-            return modAbs.resolve(TARGET);
-        }
-        return wsOut.resolve(TARGET).resolve(wsKey.relativize(modKey));
-    }
-
-    /**
-     * Absolute path with existing symlink parents resolved, so macOS {@code /var} vs
-     * {@code /private/var} (and similar alias pairs) compare equal for prefix checks.
-     */
-    static Path absoluteKey(Path p) {
-        Path abs = p.toAbsolutePath().normalize();
-        try {
-            if (Files.exists(abs)) {
-                return abs.toRealPath();
-            }
-            // Reconstruct under the realpath of the deepest existing ancestor.
-            Path cur = abs;
-            ArrayDeque<String> missing = new ArrayDeque<>();
-            while (cur != null && !Files.exists(cur)) {
-                Path name = cur.getFileName();
-                if (name != null) missing.push(name.toString());
-                cur = cur.getParent();
-            }
-            if (cur == null) return abs;
-            Path real = cur.toRealPath();
-            while (!missing.isEmpty()) {
-                real = real.resolve(missing.pop());
-            }
-            return real.normalize();
-        } catch (IOException e) {
-            return abs;
-        }
+    /** {@code <module>/target/} — the one rule, for callers that hold only the module directory. */
+    public static Path moduleTargetDir(Path moduleRoot) {
+        return moduleRoot.toAbsolutePath().normalize().resolve(TARGET);
     }
 
     /** Root of all per-module build intermediates (same as {@link #moduleTargetDir()}). */
@@ -271,7 +195,7 @@ public final class BuildLayout {
     }
 
     /**
-     * {@code target/classes/main/} — final assembled main classes.
+     * {@code target/classes/} — final assembled main classes, main resources copied in.
      *
      * <p>Both javac output and (after assembly) kotlinc output land here. This is the directory the
      * JAR packager reads from, so it contains all compiled classes regardless of which compiler
@@ -279,7 +203,7 @@ public final class BuildLayout {
      * then jk merges the result here.
      */
     public Path classesDir() {
-        return buildDir().resolve(CLASSES).resolve(MAIN);
+        return buildDir().resolve(CLASSES);
     }
 
     /**
@@ -308,14 +232,13 @@ public final class BuildLayout {
         return versionedClassesRoot().resolve("META-INF").resolve("versions").resolve(Integer.toString(release));
     }
 
-    /** {@code target/classes/test/} — final assembled test classes. */
+    /** {@code target/test-classes/} — final assembled test classes, test resources copied in. */
     public Path testClassesDir() {
-        return buildDir().resolve(CLASSES).resolve(TEST);
+        return buildDir().resolve(TEST_CLASSES);
     }
 
     private static final String CLASSES = "classes";
-    private static final String MAIN = "main";
-    private static final String TEST = "test";
+    private static final String TEST_CLASSES = "test-classes";
 
     /**
      * The classes directory a compile-classpath entry was compiled into, when the entry is one jk
@@ -324,7 +247,7 @@ public final class BuildLayout {
      * everything else — a Maven jar, the JDK, another build tool's output.
      *
      * <p>Anchored on the tree's shape like {@link #isBuildOutput}: the jar's directory is the
-     * module's target dir or its {@code lib/}, and the classes tree has to exist beside it. The
+     * module's target dir, and the classes tree has to exist beside it. The
      * answer names the directory a compile's incremental state is keyed by, which is how a
      * consumer finds its producer's state from the entry alone — the same way whether the
      * classpath carries the producer's jar or its classes directory.
@@ -335,19 +258,12 @@ public final class BuildLayout {
         if (parent == null) return Optional.empty();
         String name = String.valueOf(abs.getFileName());
         if (Files.isDirectory(abs)) {
-            boolean classesTree =
-                    (MAIN.equals(name) || TEST.equals(name)) && CLASSES.equals(String.valueOf(parent.getFileName()));
+            boolean classesTree = (CLASSES.equals(name) || TEST_CLASSES.equals(name))
+                    && TARGET.equals(String.valueOf(parent.getFileName()));
             return classesTree ? Optional.of(abs) : Optional.empty();
         }
         if (!name.endsWith(".jar")) return Optional.empty();
-        Path target = parent;
-        Path grandparent = parent.getParent();
-        if ("lib".equals(String.valueOf(parent.getFileName()))
-                && grandparent != null
-                && !Files.isDirectory(parent.resolve(CLASSES))) {
-            target = grandparent;
-        }
-        Path classes = target.resolve(CLASSES).resolve(MAIN);
+        Path classes = parent.resolve(CLASSES);
         return Files.isDirectory(classes) ? Optional.of(classes) : Optional.empty();
     }
 
@@ -374,16 +290,12 @@ public final class BuildLayout {
      * re-hashes every {@code .class} under its own output dir.
      */
     public Path jdtClassesDir() {
-        // Module-LOCAL on purpose (unlike buildDir's Mill-style central tree): Eclipse JDT
-        // requires output folders inside the project, and a workspace member's central dir would
-        // render as an invalid "../target/…" entry in .classpath. jk's own outputs
-        // never live here, so the isolation contract holds either way.
-        return moduleRoot().resolve(TARGET).resolve("jdt").resolve("classes").resolve("main");
+        return moduleTargetDir().resolve("jdt").resolve("classes").resolve("main");
     }
 
     /** {@code target/jdt/classes/test/} — test class output for an external IDE language server. */
     public Path jdtTestClassesDir() {
-        return moduleRoot().resolve(TARGET).resolve("jdt").resolve("classes").resolve("test");
+        return moduleTargetDir().resolve("jdt").resolve("classes").resolve("test");
     }
 
     /**
@@ -421,50 +333,62 @@ public final class BuildLayout {
         return buildDir().resolve("groovy").resolve("stubs");
     }
 
-    /** {@code target/resources/main/} — copied main resources. */
-    public Path resourcesDir() {
-        return buildDir().resolve("resources").resolve("main");
-    }
-
-    /** {@code target/resources/test/} — copied test resources. */
-    public Path testResourcesDir() {
-        return buildDir().resolve("resources").resolve("test");
-    }
-
-    /** {@code target/generated/sources/<processor>/main/} — annotation-processor output. */
+    /** {@code target/generated-sources/<processor>/} — annotation-processor output for main sources. */
     public Path generatedSourcesDir(String processor) {
         return generatedSourcesDir(processor, "main");
     }
 
     /**
-     * {@code target/generated/sources/<processor>/<sourceSet>/} — annotation-processor output for a
-     * given source set ({@code main} or {@code test}). Test processing must not share a directory
-     * with main, or the two would clobber each other's generated files.
+     * Annotation-processor output for a source set, as Maven lays it out: {@code
+     * target/generated-sources/<processor>/} for {@code main}, {@code
+     * target/generated-test-sources/test-<processor>/} for {@code test}, and {@code
+     * target/generated-sources/<processor>-<sourceSet>/} for jk's other sets (fixtures, guard,
+     * multi-release). Each set has its own directory, so one set's generated files never clobber
+     * another's.
      */
     public Path generatedSourcesDir(String processor, String sourceSet) {
         Objects.requireNonNull(processor, "processor");
         Objects.requireNonNull(sourceSet, "sourceSet");
-        return buildDir()
-                .resolve("generated")
-                .resolve("sources")
-                .resolve(processor)
-                .resolve(sourceSet);
+        return switch (sourceSet) {
+            case "main" -> buildDir().resolve("generated-sources").resolve(processor);
+            case "test" -> buildDir().resolve("generated-test-sources").resolve("test-" + processor);
+            default -> buildDir().resolve("generated-sources").resolve(processor + "-" + sourceSet);
+        };
     }
 
-    /** {@code target/reports/} — test and coverage reports. */
+    /** {@code target/reports/} — jk's own reports (the native-image log, …); Maven defines none here. */
     public Path reportsDir() {
         return buildDir().resolve("reports");
     }
 
-    /** {@code target/reports/<module>/} — JUnit reports for a workspace module. */
-    public Path testReportsDir(String module) {
-        Objects.requireNonNull(module, "module");
-        return reportsDir().resolve(module);
+    /** {@code target/surefire-reports/} — JUnit XML for every suite but {@code integration}, as Surefire writes it. */
+    public Path testResultsDir() {
+        return buildDir().resolve("surefire-reports");
     }
 
-    /** {@code target/reports/test-results/} — JUnit XML test results. */
-    public Path testResultsDir() {
-        return reportsDir().resolve("test-results");
+    /** {@code target/failsafe-reports/} — JUnit XML for the {@code integration} suite, as Failsafe writes it. */
+    public Path integrationResultsDir() {
+        return buildDir().resolve("failsafe-reports");
+    }
+
+    /** {@code target/site/} — generated documentation and report sites. */
+    public Path siteDir() {
+        return buildDir().resolve("site");
+    }
+
+    /** {@code target/site/apidocs/} — javadoc (or Dokka) HTML, as the javadoc plugin writes it. */
+    public Path apidocsDir() {
+        return siteDir().resolve("apidocs");
+    }
+
+    /** {@code target/jacoco.exec} — the JaCoCo agent's execution data. */
+    public Path jacocoExec() {
+        return buildDir().resolve("jacoco.exec");
+    }
+
+    /** {@code target/site/jacoco/} — the JaCoCo report: {@code index.html}, {@code jacoco.xml}. */
+    public Path jacocoReportDir() {
+        return siteDir().resolve("jacoco");
     }
 
     // Note: target/jk-results.md deliberately has no helper here. The real contract is
@@ -474,31 +398,17 @@ public final class BuildLayout {
 
     // ---- Final artifacts -------------------------------------------------------
 
-    /**
-     * Root of all build output for this module (alias of {@link #moduleTargetDir}).
-     *
-     * <p>In a workspace, all members write under {@code <workspace>/target/<module-rel>/} so the
-     * monorepo has a single out tree (like Mill's {@code out/}).
-     */
+    /** Root of all build output for this module (alias of {@link #moduleTargetDir}). */
     public Path targetDir() {
         return moduleTargetDir();
     }
 
     /**
-     * Destination directory for deliverable artifacts (jars, binaries, OCI images).
-     *
-     * <ul>
-     * <li>{@code target/} when the project declares {@code main} or is a plugin worker —
-     * the packaged output is a process entry (app or {@code PluginMain} worker).
-     * <li>{@code target/lib/} when neither applies — a library whose packaged output is
-     * consumed by other projects, not run directly.
-     * </ul>
-     *
-     * <p>This rule also applies to native shared-library outputs ({@code .so}, {@code .dylib},
-     * {@code .dll}) produced by GraalVM {@code native-image --shared}.
+     * Destination directory for deliverable artifacts (jars, binaries, OCI images): the module's
+     * {@code target/}, as Maven's.
      */
     public Path artifactDir() {
-        return packagedAtRoot() ? targetDir() : targetDir().resolve("lib");
+        return targetDir();
     }
 
     /** {@code <artifactDir>/<artifact>-<version>.jar} — the main jar. */
@@ -533,10 +443,7 @@ public final class BuildLayout {
      * look at the file that actually lands on disk.
      */
     public Path nativeBinary() {
-        if (nativeName != null) {
-            return moduleTargetDir().resolve(nativeExecutableFileName(nativeName));
-        }
-        return artifactDir().resolve(nativeExecutableFileName(artifact));
+        return artifactDir().resolve(nativeExecutableFileName(nativeName != null ? nativeName : artifact));
     }
 
     /**

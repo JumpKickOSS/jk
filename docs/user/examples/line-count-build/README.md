@@ -21,7 +21,7 @@ line-count-build/
 ```
 
 The script writes only to `outDir`
-(`target/generated/sources/jk-logic-out-after-resources/main/`), which jk creates empty before
+(`target/generated-sources/jk-logic-out-after-resources/`), which jk creates empty before
 each run — it is the only place a stem script may write, and the only thing the action cache
 captures.
 

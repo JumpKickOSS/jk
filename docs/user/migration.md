@@ -220,7 +220,7 @@ removes it.
 
 ```bash
 cd my-maven-repo          # pom.xml, src/main/java, src/test/java — no jk.toml
-jk build --skip-tests     # compiles into target/classes/main
+jk build --skip-tests     # compiles into target/classes
 jk test                   # runs the JUnit suite; target/jk-results.md
 jk explain                # the same steps a jk.toml module gets
 ```
@@ -372,7 +372,7 @@ running `jk test`, so `xvfb-run jk test` is the same remedy ([Test](test.md#a-su
 apollo's `ApolloSqlConverterUtil.getRepositoryDir()` reads the class directory off
 `ApolloSqlConverter`'s code source and accepts only a path ending in
 `/apollo-build-sql-converter/target/classes`, stripping that suffix to find the repository root;
-jk compiles the module to `target/apollo-build-sql-converter/classes/main`, so the check throws
+jk compiles the module to `apollo-build-sql-converter/target/classes`, so the check throws
 `illegal class path`. No classpath scanner is involved and no `[test]` key spells a class
 directory: the test hard-codes Maven's layout, and the portable spelling is the working directory
 (`user.dir`), which both Surefire and jk set to the module directory. Until the test says that,

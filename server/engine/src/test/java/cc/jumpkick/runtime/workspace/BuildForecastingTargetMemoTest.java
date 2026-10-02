@@ -44,7 +44,7 @@ class BuildForecastingTargetMemoTest {
         Files.createDirectories(src);
         Files.writeString(src.resolve("App.java"), "class App {}\n");
         // Clean-claim requires the module output tree to exist.
-        Files.createDirectories(BuildLayout.moduleTargetDir(tmp, tmp));
+        Files.createDirectories(BuildLayout.moduleTargetDir(tmp));
         return BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
     }
 

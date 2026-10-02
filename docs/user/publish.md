@@ -86,9 +86,8 @@ count, and for Central the deployment id, the state the poll ended in and every 
 ## SBOM
 
 `jk publish --sbom` uploads a CycloneDX 1.6 and an SPDX 2.3 document beside the artifact and
-writes the same two files under the module's build output — `target/sbom/<name>-<version>.cdx.json`
-and `target/sbom/<name>-<version>.spdx.json`; a workspace member's build output sits under the
-root's `target/<module>/` — printing their paths. With `--dry-run` nothing is uploaded and no
+writes the same two files under the module's `target/` — `target/sbom/<name>-<version>.cdx.json`
+and `target/sbom/<name>-<version>.spdx.json` — printing their paths. With `--dry-run` nothing is uploaded and no
 `--repo-url` is needed, so a release script takes the bill of materials from disk:
 
 ```bash

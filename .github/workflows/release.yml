@@ -156,8 +156,8 @@ jobs:
         run: jk install --skip-tests --no-ansi
 
       # The bill of materials of the engine, written by the jk that built it: `jk publish --sbom
-      # --dry-run` leaves the CycloneDX document in the module's build output (a workspace
-      # member's sits under the root's target/) without an upload, and it is the one the engine
+      # --dry-run` leaves the CycloneDX document in the module's own target/ without an upload,
+      # and it is the one the engine
       # jar embeds under META-INF/sbom/ (one writer, derived from jk-lock.toml;
       # docs/user/packaging.md). Staged beside the version tree, never in it, so the signed
       # SHA256SUMS the installers verify stays byte for byte what the publish job signs.
@@ -169,7 +169,7 @@ jobs:
           (cd server/engine && jk publish --sbom --dry-run --no-ansi)
           mkdir -p out/sbom
           sbom="out/sbom/jk-${JK_VERSION}.cdx.json"
-          cp "target/server/engine/sbom/jk-engine-${JK_VERSION}.cdx.json" "$sbom"
+          cp "server/engine/target/sbom/jk-engine-${JK_VERSION}.cdx.json" "$sbom"
           jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6" and (.components | length) > 0 and (.metadata.component.name == "jk-engine")' "$sbom" >/dev/null
           echo "SBOM: $(jq '.components | length' "$sbom") components, CycloneDX $(jq -r .specVersion "$sbom")"
 

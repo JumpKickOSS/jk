@@ -101,7 +101,7 @@ final class GuardSuiteRunner {
 
     /** The report the module's own suite leaves, the one its lane evaluates. */
     static Path report(Inputs in) {
-        return GuardSuites.report(BuildLayout.moduleTargetDir(in.root(), in.moduleDir()));
+        return GuardSuites.report(BuildLayout.moduleTargetDir(in.moduleDir()));
     }
 
     /** Work done while the tree's turn on a report is held. */

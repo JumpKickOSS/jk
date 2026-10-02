@@ -157,7 +157,7 @@ final class PlannerJavadoc {
             int release,
             Path jar)
             throws Exception {
-        Path out = layout.moduleTargetDir().resolve("javadoc");
+        Path out = layout.apidocsDir();
         PathUtil.deleteRecursivelyOrThrow(out);
         Files.createDirectories(out);
         JavadocTool.Result r = DokkaTool.run(
@@ -184,7 +184,7 @@ final class PlannerJavadoc {
             List<String> options,
             Path jar)
             throws Exception {
-        Path out = layout.moduleTargetDir().resolve("javadoc");
+        Path out = layout.apidocsDir();
         PathUtil.deleteRecursivelyOrThrow(out);
         Files.createDirectories(out);
         JavadocTool.Result r = JavadocTool.run(javaHome, out, sources, classpath, options, layout.moduleRoot());

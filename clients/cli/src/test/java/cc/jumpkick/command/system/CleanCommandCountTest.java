@@ -45,9 +45,9 @@ class CleanCommandCountTest {
 
     @Test
     void keep_artifacts_counts_only_the_intermediates_it_will_delete(@TempDir Path ws) throws Exception {
-        plant(ws.resolve("target/app/classes"), 4);
-        plant(ws.resolve("target/app/reports"), 2);
-        Files.writeString(ws.resolve("target/app/app-1.0.0.jar"), "jar-bytes");
+        plant(ws.resolve("app/target/classes"), 4);
+        plant(ws.resolve("app/target/reports"), 2);
+        Files.writeString(ws.resolve("app/target/app-1.0.0.jar"), "jar-bytes");
 
         List<Path> roots = CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), true);
         assertThat(PathUtil.measureTrees(roots).files()).isEqualTo(6);
@@ -55,7 +55,7 @@ class CleanCommandCountTest {
         var tally = new PathUtil.Removed();
         PathUtil.deleteTrees(roots, tally);
         assertThat(tally.files()).isEqualTo(6);
-        assertThat(ws.resolve("target/app/app-1.0.0.jar")).exists();
+        assertThat(ws.resolve("app/target/app-1.0.0.jar")).exists();
     }
 
     @Test

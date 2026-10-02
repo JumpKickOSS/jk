@@ -400,8 +400,8 @@ class JkBuildWorkspaceTest {
                 .toList();
         assertThat(jars)
                 .containsExactly(
-                        tempDir.resolve("target/common/edqs/lib/edqs-4.4.0.jar"),
-                        tempDir.resolve("target/edqs/lib/edqs-4.4.0.jar"));
+                        tempDir.resolve("common/edqs/target/edqs-4.4.0.jar"),
+                        tempDir.resolve("edqs/target/edqs-4.4.0.jar"));
     }
 
     /** An edge to a name two members carry cannot pick one silently: it is refused, naming both. */

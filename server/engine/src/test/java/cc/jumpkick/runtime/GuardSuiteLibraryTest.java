@@ -53,7 +53,7 @@ class GuardSuiteLibraryTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("jk-guards-junit")
                 .hasMessageContaining("jk install");
-        Path classes = Files.createDirectories(root.resolve("target/lib/classes/main"));
+        Path classes = Files.createDirectories(root.resolve("lib/target/classes"));
         GuardSuiteLibrary.Located located = GuardSuiteLibrary.locate(root, cas);
         assertThat(located.path()).isEqualTo(classes);
         assertThat(located.jar()).as("a workspace module has no jar to pin").isNull();

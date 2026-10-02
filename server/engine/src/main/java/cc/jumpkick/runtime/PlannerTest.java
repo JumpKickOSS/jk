@@ -646,6 +646,7 @@ public final class PlannerTest {
                         JUnitLauncher launcher = TestLaunch.launcher(
                                         in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec)
                                 .withSuites(suites)
+                                .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
                                 .withAutoShare(auto);
                         try {
                             result = TestLaunch.launch(

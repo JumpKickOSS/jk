@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -136,9 +137,13 @@ public final class XmlTestReport {
      * attempt: a class whose file cannot be written is reported after the rest have landed, as the
      * first such failure.
      */
-    public synchronized void writeAll(Path dir) throws IOException {
+    public void writeAll(Path dir) throws IOException {
+        writeAll(className -> dir);
+    }
+
+    /** As {@link #writeAll(Path)}, each class's file in the directory {@code dirFor} names for it. */
+    public synchronized void writeAll(Function<String, Path> dirFor) throws IOException {
         if (entries.isEmpty()) return;
-        Files.createDirectories(dir);
 
         Map<String, List<Entry>> byClass = new LinkedHashMap<>();
         for (Entry e : entries) {
@@ -147,8 +152,9 @@ public final class XmlTestReport {
 
         IOException first = null;
         for (var kv : byClass.entrySet()) {
-            Path file = dir.resolve("TEST-" + fileNameComponent(kv.getKey()) + ".xml");
             try {
+                Path dir = Files.createDirectories(dirFor.apply(kv.getKey()));
+                Path file = dir.resolve("TEST-" + fileNameComponent(kv.getKey()) + ".xml");
                 Files.writeString(file, buildXml(kv.getKey(), kv.getValue()));
             } catch (IOException e) {
                 if (first == null) first = e;

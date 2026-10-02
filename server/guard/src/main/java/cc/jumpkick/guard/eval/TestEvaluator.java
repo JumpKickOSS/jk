@@ -20,7 +20,7 @@ final class TestEvaluator implements Evaluator {
     @Override
     public Evaluation evaluate(Rule rule, EvalContext ctx) throws IOException {
         Path moduleDir = ctx.moduleDir() == null ? ctx.root() : ctx.moduleDir();
-        Path report = GuardSuites.report(BuildLayout.moduleTargetDir(ctx.root(), moduleDir));
+        Path report = GuardSuites.report(BuildLayout.moduleTargetDir(moduleDir));
         Map<String, Object> lines = GuardSuites.readReport(report);
         SiteOwners owners = Evaluators.laneOf(rule) == Lane.WORKSPACE
                 ? SiteOwners.of(ctx.root(), WorkspaceModules.of(ctx.root()))

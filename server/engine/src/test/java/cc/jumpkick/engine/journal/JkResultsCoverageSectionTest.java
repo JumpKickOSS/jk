@@ -51,7 +51,7 @@ class JkResultsCoverageSectionTest {
                 lm,
                 bc,
                 bm,
-                WS.resolve("target/" + name + "/reports/coverage/index.html").toString());
+                WS.resolve(name + "/target/site/jacoco/index.html").toString());
     }
 
     /** The pointer is forward-slash on every host: the markdown is read on machines other than this one. */
@@ -75,7 +75,7 @@ class JkResultsCoverageSectionTest {
 
         assertThat(md)
                 .contains("Coverage: **60.0%** lines · 50.0% branches · 2 modules\n")
-                .contains(pointer("target/reports/coverage/index.html"))
+                .contains(pointer("target/site/jacoco/index.html"))
                 .contains("## Coverage\n\n| Module | Lines | Branches |\n|---|---|---|\n")
                 .contains("| g:lib | 80.0% (120/150) | 50.0% (20/40) |\n")
                 .contains("| g:app | 0.0% (0/50) | 100.0% (0/0) |\n")
@@ -102,7 +102,7 @@ class JkResultsCoverageSectionTest {
     @Test
     void a_single_module_points_at_its_own_page_relative_to_the_root() {
         String md = render(record(3, List.of(module("lib", 1, 0, 0, 0))), null);
-        assertThat(md).contains(pointer("target/lib/reports/coverage/index.html"));
+        assertThat(md).contains(pointer("lib/target/site/jacoco/index.html"));
         assertThat(md).contains("Coverage: **100.0%** lines · 100.0% branches\n");
     }
 

@@ -22,8 +22,7 @@ public final class CoverageRollup {
 
     /** The roll-up's path for {@code r}, or the one module's own page when there is one module. */
     public static Path pageFor(BuildRecord r) {
-        Path dir =
-                Path.of(r.dir()).resolve(BuildLayout.TARGET).resolve("reports").resolve("coverage");
+        Path dir = Path.of(r.dir()).resolve(BuildLayout.TARGET).resolve("site").resolve("jacoco");
         Path index = dir.resolve("index.html");
         for (BuildRecord.Coverage c : r.coverage()) {
             if (samePath(c.html(), index)) return dir.resolve("workspace.html");

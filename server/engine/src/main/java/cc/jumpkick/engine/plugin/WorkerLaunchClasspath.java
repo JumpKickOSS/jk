@@ -25,9 +25,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Classpath used to fork a thin plugin worker: the worker jar plus the Maven runtime closure from
- * its POM ({@code repos/jk-local} / {@code jumpkick} / {@code central} / {@code google}). A workspace {@code target/}
- * worker also gets plugin-sdk and host from {@code target/shared/} (the codec a shipped worker jar
- * vendors).
+ * its POM ({@code repos/jk-local} / {@code jumpkick} / {@code central} / {@code google}). A worker
+ * built in jk's own workspace also gets plugin-sdk and host from {@code shared/plugin-sdk/target/}
+ * and {@code shared/host/target/} (the codec a shipped worker jar vendors).
  *
  * <p>{@code repos/jk-local} jars reach a fork as artifact-CAS blobs, never as shelf paths: a
  * {@code cache-install} from another checkout replaces the shelf path in place, and on Windows
@@ -210,46 +210,39 @@ public final class WorkerLaunchClasspath {
     }
 
     /**
-     * plugin-sdk + host next to a workspace-built worker. Prefer {@code classes/main} when present
-     * so a just-compiled SDK is used even if the sibling jar is stale.
+     * plugin-sdk + host next to a workspace-built worker. Prefer the module's {@code classes/} when
+     * present so a just-compiled SDK is used even if the sibling jar is stale.
      */
     static List<Path> workspaceCodec(Path workerJar) {
-        Path target = workspaceTarget(workerJar);
-        if (target == null) return List.of();
+        Path root = codecWorkspace(workerJar);
+        if (root == null) return List.of();
         List<Path> out = new ArrayList<>();
-        addCodecModule(out, target.resolve("shared").resolve("plugin-sdk"), "jk-plugin-sdk-");
-        addCodecModule(out, target.resolve("shared").resolve("host"), "jk-host-");
+        addCodecModule(
+                out, BuildLayout.moduleTargetDir(root.resolve("shared").resolve("plugin-sdk")), "jk-plugin-sdk-");
+        addCodecModule(out, BuildLayout.moduleTargetDir(root.resolve("shared").resolve("host")), "jk-host-");
         return List.copyOf(out);
     }
 
-    static @Nullable Path workspaceTarget(Path workerJar) {
-        // The jar has to be something jk built, not merely something sitting under a build tree.
-        // A `shared/` child proves the directory is a workspace out tree; it does not prove this
-        // file came out of one, and jk's own test scratch now lives inside that same tree — so a
-        // CAS blob or a @TempDir jar would otherwise pick up the workspace codec modules.
+    /** The workspace that built {@code workerJar} and holds {@code shared/plugin-sdk}, or {@code null}. */
+    static @Nullable Path codecWorkspace(Path workerJar) {
+        // The jar has to be something jk built, not merely something sitting under a build tree:
+        // a CAS blob or a @TempDir jar inside the workspace must not pick up its codec modules.
         if (!BuildLayout.isBuildOutput(workerJar)) return null;
         Path cur = workerJar.toAbsolutePath().normalize().getParent();
         while (cur != null) {
-            Path name = cur.getFileName();
-            if (name != null
-                    && BuildLayout.TARGET.equals(name.toString())
-                    && Files.isDirectory(cur.resolve("shared"))) {
-                return cur;
-            }
+            if (Files.isDirectory(cur.resolve("shared").resolve("plugin-sdk"))) return cur;
             cur = cur.getParent();
         }
         return null;
     }
 
     private static void addCodecModule(List<Path> out, Path moduleTarget, String jarPrefix) {
-        Path classes = moduleTarget.resolve("classes").resolve("main");
+        Path classes = moduleTarget.resolve("classes");
         if (Files.isDirectory(classes)) {
             out.add(classes);
             return;
         }
-        Path lib = moduleTarget.resolve("lib");
-        if (!Files.isDirectory(lib)) return;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(lib, "*.jar")) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(moduleTarget, "*.jar")) {
             for (Path jar : stream) {
                 String n = jar.getFileName().toString();
                 if (n.startsWith(jarPrefix)) out.add(jar.toAbsolutePath().normalize());

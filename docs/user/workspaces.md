@@ -1,7 +1,7 @@
 # Workspaces
 
 A workspace is a multi-module repo with **one root `jk.toml`**, **one `jk-lock.toml`**,
-and module output under **`target/<module-rel>/`** at the workspace root.
+and each module's output in its own **`target/`**, as Maven lays it out ([Layout](layout.md#build-output)).
 
 ```toml
 # root jk.toml
@@ -49,8 +49,8 @@ and the dependency tables are each member's own and never inherit.
 
 Two members may carry the same `name` when their `group` differs, the shape Maven's reactor
 allows (`org.thingsboard.common:edqs` under `common/edqs` and `org.thingsboard:edqs` under
-`edqs`). Each member's output lives under its own `target/<module-rel>/`, so
-`target/common/edqs/lib/edqs-4.4.0.jar` and `target/edqs/lib/edqs-4.4.0.jar` never meet. One
+`edqs`). Each member's output lives in its own `target/`, so `common/edqs/target/edqs-4.4.0.jar`
+and `edqs/target/edqs-4.4.0.jar` never meet. One
 `group:name:version` declared by two members is a `workspace module collision`: a workspace
 publishes one artifact per coordinate.
 

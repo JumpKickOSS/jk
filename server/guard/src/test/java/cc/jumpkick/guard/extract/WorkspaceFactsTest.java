@@ -19,15 +19,14 @@ class WorkspaceFactsTest {
     void a_module_that_has_compiled_but_not_indexed_is_still_read(@TempDir Path root) throws Exception {
         Path module = root.resolve("app");
         Files.createDirectories(module);
-        Path classes =
-                BuildLayout.moduleTargetDir(root, module).resolve("classes").resolve("main");
+        Path classes = BuildLayout.moduleTargetDir(module).resolve("classes").resolve("main");
         String resource = WorkspaceFactsTest.class.getName().replace('.', '/') + ".class";
         Path target = classes.resolve(resource);
         Files.createDirectories(target.getParent());
         try (InputStream in = WorkspaceFactsTest.class.getClassLoader().getResourceAsStream(resource)) {
             Files.copy(in, target);
         }
-        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, module), "main");
+        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(module), "main");
         assertThat(idx).doesNotExist();
 
         FactsIndex merged = WorkspaceFacts.merged(root, List.of(module, root.resolve("web")));

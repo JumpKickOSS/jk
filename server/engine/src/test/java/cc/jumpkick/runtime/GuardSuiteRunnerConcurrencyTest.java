@@ -92,7 +92,7 @@ class GuardSuiteRunnerConcurrencyTest {
             pool.shutdownNow();
         }
 
-        Path report = GuardSuites.report(BuildLayout.moduleTargetDir(root, root));
+        Path report = GuardSuites.report(BuildLayout.moduleTargetDir(root));
         Map<String, Object> lines = GuardSuites.readReport(report);
         assertThat(lines).containsOnlyKeys("takes-turns");
         assertThat(String.valueOf(lines.get("takes-turns"))).doesNotContain("threw");

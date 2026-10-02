@@ -56,8 +56,8 @@ A coverage run (`jk test --coverage`, or a module with `[test] coverage = true`)
 `| Module | Lines | Branches |` as `85.2% (1204/1413)` — an `**all**` row for a workspace, and,
 when the journal holds an earlier coverage run of the project, `_Δ vs run #N_` with a `Δ` column
 of signed percentage points (`+1.3`, `−0.5`, `±0.0`, `new`) after each measure. `## Files` points
-at the HTML (`target/reports/coverage/index.html`; per module under
-`target/<module>/reports/coverage/`). The record carries the same rows as `coverage[]`
+at the HTML (`target/site/jacoco/index.html`; per module under
+`<module>/target/site/jacoco/`). The record carries the same rows as `coverage[]`
 (`dir`, `label`, `linesCovered`, `linesMissed`, `branchesCovered`, `branchesMissed`, `html`).
 [Test](test.md#coverage---coverage-test-coverage).
 
@@ -116,7 +116,7 @@ the workspace's own rather than a step's: `built nothing` (`jk build` on a works
 that has sources), `FAIL` with `exit 2` and the one-line reason naming the modules — the project's
 shape, not a red step. A `jk test` with no tests to run is green. [Workspaces](workspaces.md#nothing-to-build).
 
-The two markdown files are the same human report. JUnit XML stays at `target/reports/test-results/`.
+The two markdown files are the same human report. JUnit XML stays at `target/surefire-reports/` (`target/failsafe-reports/` for the integration suite).
 There is no separate `test-results.md`. MCP `run` / `run` and `jk://runs/latest/results`
 are the verdict, not this markdown. After a test run, prefer the verdict over `--all` guesswork:
 default `jk test` is the unit suite; climb with `--suite`. [Test](test.md).
@@ -193,7 +193,7 @@ Illustrative lines:
 A test failure's `message` is at most 1 KB and its `stack` its first 24 lines, the test's own
 frame and the one above it, and every `Caused by:` header, each line at most 256 characters; every
 cut is marked (`… message truncated (N more chars)`, `… line truncated (…)`, `… stack truncated
-(…)`). The JUnit XML under `target/reports/test-results/` keeps the longer report clip. A suite whose tests fail the same way
+(…)`). The JUnit XML under `target/surefire-reports/` keeps the longer report clip. A suite whose tests fail the same way
 carries that text once per stream: the first line with it says `"textId":N`, and every later line
 with the same message and stack omits both and says `"sameText":N`. Read the text from the
 `textId` line earlier in the same stream (stdout, or the same `details.jsonl`).
@@ -261,7 +261,7 @@ is one JSONL stream from the first byte to the last; on a terminal the app owns 
 {"schema":1,"ts":1721664002000,"type":"sidecar-started","name":"web","pid":48213}
 {"schema":1,"ts":1721664002410,"type":"sidecar-output","name":"web","stream":"stdout","line":"  VITE v8.3.0  ready in 212 ms"}
 {"schema":1,"ts":1721664002655,"type":"sidecar-ready","name":"web","url":"http://localhost:5173","frontDoor":true}
-{"schema":1,"ts":1721664002656,"type":"dev-ready","url":"http://localhost:5173","app":"java -cp target/classes/main demo.Api"}
+{"schema":1,"ts":1721664002656,"type":"dev-ready","url":"http://localhost:5173","app":"java -cp target/classes demo.Api"}
 {"schema":1,"ts":1721664031002,"type":"sidecar-exited","name":"web","pid":48213,"exit":1,"restartInMs":500}
 ```
 

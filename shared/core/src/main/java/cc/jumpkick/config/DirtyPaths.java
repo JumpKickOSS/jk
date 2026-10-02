@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -41,10 +44,31 @@ public final class DirtyPaths {
         if (diff == null) return null;
         List<String> untracked = gitUntracked(root);
         if (untracked == null) return null;
-        if (untracked.isEmpty()) return diff;
         LinkedHashSet<String> out = new LinkedHashSet<>(diff);
         out.addAll(untracked);
+        return withoutBuildOutput(root, out);
+    }
+
+    /**
+     * {@code paths} without those inside a module's build output: a {@code target/} directory
+     * beside a {@code jk.toml} or {@code pom.xml}. A build writes there whether or not the project
+     * ignores it in git, and what it writes is not a change to the module.
+     */
+    static List<String> withoutBuildOutput(Path root, Collection<String> paths) {
+        List<String> out = new ArrayList<>(paths.size());
+        for (String p : paths) {
+            if (!inBuildOutput(root, p)) out.add(p);
+        }
         return List.copyOf(out);
+    }
+
+    private static boolean inBuildOutput(Path root, String path) {
+        Path dir = root;
+        for (String segment : path.split("/")) {
+            if (BuildLayout.TARGET.equals(segment) && ManifestPaths.describesProject(dir)) return true;
+            dir = dir.resolve(segment);
+        }
+        return false;
     }
 
     /**
@@ -59,7 +83,8 @@ public final class DirtyPaths {
      * module can own) drops out instead of mis-resolving.
      */
     static @Nullable List<String> gitDiffNameOnly(Path root, String rev) {
-        return gitLines(root, "diff", "--name-only", "--relative", "--end-of-options", rev);
+        List<String> lines = gitLines(root, "diff", "--name-only", "--relative", "--end-of-options", rev);
+        return lines == null ? null : withoutBuildOutput(root, lines);
     }
 
     static @Nullable List<String> gitUntracked(Path root) {
