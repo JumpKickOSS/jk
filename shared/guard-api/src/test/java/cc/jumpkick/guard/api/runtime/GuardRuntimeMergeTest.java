@@ -67,9 +67,12 @@ class GuardRuntimeMergeTest {
     }
 
     @Test
-    void the_output_directory_is_the_first_segment_under_the_root_that_holds_the_report() {
+    void the_output_directory_is_the_output_tree_that_holds_the_report() {
         assertThat(GuardRuntime.outputDirOf(config(dir, dir.resolve("target/guard/report.jsonl"))))
                 .isEqualTo("target");
+        assertThat(GuardRuntime.outputDirOf(config(dir, dir.resolve("server/guard/target/guard/report.jsonl"))))
+                .as("a module's own target, never the top-level directory it sits in")
+                .isEqualTo("server/guard/target");
         assertThat(GuardRuntime.outputDirOf(config(dir, dir.resolve("build/report.jsonl"))))
                 .isEqualTo("build");
     }

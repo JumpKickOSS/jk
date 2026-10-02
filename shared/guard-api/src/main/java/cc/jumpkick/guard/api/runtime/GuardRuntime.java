@@ -8,6 +8,7 @@ import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.host.OutputDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,13 +41,23 @@ public final class GuardRuntime {
         Files.createDirectories(config.report().toAbsolutePath().getParent());
     }
 
-    /** The root-level directory the report sits under — jk's output tree — or {@code null} when it is elsewhere. */
+    /**
+     * The root-relative {@code target} or {@code build} directory nearest the report — the output tree
+     * it was written into — or {@code null} when the report is outside the root or in neither.
+     */
     static @Nullable String outputDirOf(GuardConfig config) {
         Path root = config.root().toAbsolutePath().normalize();
         Path report = config.report().toAbsolutePath().normalize();
         if (!report.startsWith(root)) return null;
-        Path rel = root.relativize(report);
-        return rel.getNameCount() > 1 ? rel.getName(0).toString() : null;
+        for (Path dir = report.getParent();
+                dir != null && dir.startsWith(root) && !dir.equals(root);
+                dir = dir.getParent()) {
+            String name = String.valueOf(dir.getFileName());
+            if (name.equals(OutputDirs.TARGET) || name.equals("build")) {
+                return root.relativize(dir).toString().replace('\\', '/');
+            }
+        }
+        return null;
     }
 
     /** The runtime for this JVM, or {@code null} when jk did not configure one. */
