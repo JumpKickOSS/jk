@@ -131,7 +131,7 @@ class WorkerLeasesTest {
         SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
             long budget = 12L << 30;
             WorkerLeases.Ledger ledger = ledger(budget, 4);
-            long share = (long) (WorkerRss.workerCapBytes(0, budget) * WorkerLeases.NATIVE_IMAGE_SHARE);
+            long share = (long) (WorkerRss.workerCapBytes(0, budget) * NativeHeap.GENEROUS_SHARE);
             for (List<String> command : List.of(
                     List.of("/opt/graal/bin/native-image", "-cp", "app.jar", "app.Main"),
                     List.of("setsid", "/opt/graal/bin/native-image", "-cp", "app.jar", "app.Main"))) {
