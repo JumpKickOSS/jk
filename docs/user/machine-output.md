@@ -190,9 +190,10 @@ Illustrative lines:
 {"schema":1,"ts":1721664001000,"type":"buildplan-finish","plan":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
 ```
 
-A test failure's `message` is at most 4 KB and its `stack` its first 64 lines plus every `Caused
-by:` header, each line at most 512 characters; every cut is marked (`… message truncated (N more
-chars)`, `… line truncated (…)`, `… stack truncated (…)`). A suite whose tests fail the same way
+A test failure's `message` is at most 1 KB and its `stack` its first 24 lines, the test's own
+frame and the one above it, and every `Caused by:` header, each line at most 256 characters; every
+cut is marked (`… message truncated (N more chars)`, `… line truncated (…)`, `… stack truncated
+(…)`). The JUnit XML under `target/reports/test-results/` keeps the longer report clip. A suite whose tests fail the same way
 carries that text once per stream: the first line with it says `"textId":N`, and every later line
 with the same message and stack omits both and says `"sameText":N`. Read the text from the
 `textId` line earlier in the same stream (stdout, or the same `details.jsonl`).

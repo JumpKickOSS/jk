@@ -79,4 +79,40 @@ class FailureClipTest {
         String quoting = "y".repeat(20_000) + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "12 more chars)";
         assertThat(FailureClip.message(quoting).length()).isLessThanOrEqualTo(FailureClip.MAX_MESSAGE_CHARS + 64);
     }
+
+    /**
+     * The live event keeps less than the reports: a short message, the head of the trace, the test's
+     * own frame however deep the library stack runs, and every cause header, in a few kilobytes.
+     */
+    @Test
+    void the_live_event_keeps_the_head_the_test_frame_and_the_causes_in_a_few_kilobytes() {
+        String message = "jenkins-war-*.war was not in " + "/home/u/.m2/repository/x/y/z-1.0.jar:".repeat(220);
+        StringBuilder stack =
+                new StringBuilder("java.lang.AssertionError: ").append(message).append('\n');
+        for (int i = 0; i < 60; i++)
+            stack.append("\tat org.jvnet.hudson.test.Frame").append(i).append("(F.java:1)\n");
+        stack.append("\tat org.junit.Assert.fail(Assert.java:89)\n");
+        stack.append("\tat hudson.model.ComputerTest.dumpExportTable(ComputerTest.java:42)\n");
+        for (int i = 0; i < 40; i++)
+            stack.append("\tat org.junit.Runner").append(i).append("(R.java:1)\n");
+        stack.append("Caused by: java.lang.IllegalStateException: ")
+                .append(message)
+                .append('\n');
+
+        String eventMessage = FailureClip.eventMessage(message);
+        String eventStack = FailureClip.eventStack(stack.toString(), "hudson.model.ComputerTest");
+
+        assertThat(eventMessage.length()).isLessThanOrEqualTo(FailureClip.EVENT_MESSAGE_CHARS + 64);
+        assertThat(eventMessage.length() + eventStack.length()).isLessThan(4_096);
+        assertThat(eventStack)
+                .startsWith("java.lang.AssertionError: jenkins-war")
+                .contains("\tat org.jvnet.hudson.test.Frame22(F.java:1)")
+                .doesNotContain("Frame23(")
+                .contains("\tat org.junit.Assert.fail(Assert.java:89)")
+                .contains("\tat hudson.model.ComputerTest.dumpExportTable(ComputerTest.java:42)")
+                .contains("Caused by: java.lang.IllegalStateException: jenkins-war")
+                .doesNotContain("Runner39");
+        assertThat(FailureClip.eventStack("java.lang.AssertionError: no\n\tat a.B.c(B.java:1)", "a.B"))
+                .isEqualTo("java.lang.AssertionError: no\n\tat a.B.c(B.java:1)");
+    }
 }
