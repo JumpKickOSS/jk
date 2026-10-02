@@ -50,21 +50,6 @@ public final class Signals {
         }
     }
 
-    /**
-     * Raise signal {@code name} on this process ({@code "STOP"} stops it until a {@code SIGCONT}).
-     * Returns {@code false} where the runtime cannot.
-     */
-    public static boolean raise(String name) {
-        try {
-            Class<?> signalClass = Class.forName("sun.misc.Signal");
-            Object signal = signalClass.getConstructor(String.class).newInstance(name);
-            signalClass.getMethod("raise", signalClass).invoke(null, signal);
-            return true;
-        } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
-            return false;
-        }
-    }
-
     private static @Nullable Object defaultValue(Method method) {
         Class<?> r = method.getReturnType();
         if (!r.isPrimitive() || r == void.class) {
