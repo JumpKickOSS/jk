@@ -44,8 +44,8 @@ class ThirdPartyPluginExampleTest {
 
     @Test
     void a_plugin_compiled_against_the_published_sdk_loads_in_a_consumer_build(@TempDir Path dir) throws Exception {
-        Path sdkLib = ROOT.resolve("target/shared/plugin-sdk/lib");
-        Path hostLib = ROOT.resolve("target/shared/host/lib");
+        Path sdkLib = ROOT.resolve("shared/plugin-sdk/target");
+        Path hostLib = ROOT.resolve("shared/host/target");
         assumeTrue(
                 Files.isRegularFile(sdkLib.resolve("jk-plugin-sdk-" + VERSION + ".jar"))
                         && Files.isRegularFile(hostLib.resolve("jk-host-" + VERSION + ".jar")),
@@ -90,10 +90,7 @@ class ThirdPartyPluginExampleTest {
         assertThat(lockExit[0]).as(lockOut).isEqualTo(0);
         assertThat(Files.readString(plugin.resolve("jk-lock.toml"))).contains("jk-plugin-sdk");
         assertThat(run("build", "-C", plugin.toString(), "--skip-tests")).isEqualTo(0);
-        // A standalone module packages at its target root; a workspace member under lib/.
-        Path jar = Files.exists(plugin.resolve("target/hello-plugin-0.1.0.jar"))
-                ? plugin.resolve("target/hello-plugin-0.1.0.jar")
-                : plugin.resolve("target/lib/hello-plugin-0.1.0.jar");
+        Path jar = plugin.resolve("target/hello-plugin-0.1.0.jar");
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
             assertThat(jf.getEntry("jk-plugin.toml"))
@@ -157,11 +154,11 @@ class ThirdPartyPluginExampleTest {
         assertThat(run("trust", "plugin", "path:hello")).isEqualTo(64);
         assertThat(run("trust", "plugin", "sha256:" + Hashing.sha256Hex(jar))).isEqualTo(0);
         buildGreen(app, "first build");
-        assertThat(app.resolve("target/lib/app-0.1.0.jar")).exists();
+        assertThat(app.resolve("target/app-0.1.0.jar")).exists();
         // The plugin's [[contribute.compiler-args]] adds -parameters: the consumer's compile step
         // honours a path-pinned plugin's javac contribution, on the first build and on the cached
         // second one alike.
-        Path appClass = app.resolve("target/classes/main/app/App.class");
+        Path appClass = app.resolve("target/classes/app/App.class");
         assertThat(carriesMethodParameters(appClass)).as("first build").isTrue();
         buildGreen(app, "second build");
         assertThat(carriesMethodParameters(appClass)).as("second build").isTrue();
@@ -186,7 +183,7 @@ class ThirdPartyPluginExampleTest {
      */
     private static void publish(Path project, String name, String description, String deps, Path lib, URI repoUrl)
             throws IOException {
-        Files.createDirectories(project.resolve("target/lib"));
+        Files.createDirectories(project.resolve("target"));
         Files.writeString(project.resolve("jk.toml"), """
                 group       = "cc.jumpkick"
                 name        = "%s"
@@ -196,7 +193,7 @@ class ThirdPartyPluginExampleTest {
                 %s""".formatted(name, VERSION, description, deps));
         for (String suffix : List.of(".jar", "-sources.jar", "-javadoc.jar")) {
             Path built = lib.resolve(name + "-" + VERSION + suffix);
-            if (Files.isRegularFile(built)) Files.copy(built, project.resolve("target/lib/" + built.getFileName()));
+            if (Files.isRegularFile(built)) Files.copy(built, project.resolve("target/" + built.getFileName()));
         }
         assertThat(run("publish", "-C", project.toString(), "--repo-url", repoUrl.toString()))
                 .isEqualTo(0);

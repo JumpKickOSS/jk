@@ -265,7 +265,7 @@ final class PlannerGuards {
     /**
      * Whether this build's module lane indexes the test classes: only when the plan compiles them.
      * Under {@code --skip-tests} or {@code --compile-only} no compile-test runs, and {@code
-     * classes/test} holds whatever a previous build left there — indexing it would judge bytecode
+     * target/test-classes} holds whatever a previous build left there — indexing it would judge bytecode
      * the sources no longer describe.
      */
     static boolean indexesTestClasses(BuildPlanner.Inputs in) {

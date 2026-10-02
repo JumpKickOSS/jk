@@ -50,13 +50,13 @@ class WorkspaceShadedSiblingE2eTest {
         assertThat(result.success())
                 .as("app imports com.example.shaded.lib.Util, which only lib's -all.jar carries")
                 .isTrue();
-        Path shaded = ws.resolve("target/lib/lib/lib-1.0.0-all.jar");
+        Path shaded = ws.resolve("lib/target/lib-1.0.0-all.jar");
         assertThat(shaded).isRegularFile();
         try (JarFile jar = new JarFile(shaded.toFile())) {
             assertThat(jar.getEntry("com/example/shaded/lib/Util.class")).isNotNull();
             assertThat(jar.getEntry("com/example/lib/Util.class")).isNull();
         }
-        assertThat(ws.resolve("target/app/classes/main/com/example/App.class")).isRegularFile();
+        assertThat(ws.resolve("app/target/classes/com/example/App.class")).isRegularFile();
     }
 
     private static Path workspace(Path tmp) throws Exception {

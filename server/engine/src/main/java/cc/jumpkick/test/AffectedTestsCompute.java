@@ -211,7 +211,7 @@ public final class AffectedTestsCompute {
 
     /**
      * Compiled test classes (imports + tags) plus every test source in the selection, so ranking
-     * still works when {@code target/classes/test} has not been built yet; only the classes the
+     * still works when {@code target/test-classes} has not been built yet; only the classes the
      * selected suites run, class-pattern suites included.
      */
     static List<TestClassIndex.Entry> testsFor(

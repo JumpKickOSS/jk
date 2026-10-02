@@ -201,7 +201,7 @@ public final class KotlinCompiler implements Plugin {
      * snapshot file list for the IC config. A snapshot is named by the entry's path and its
      * current shape: a jar's size and mtime, a directory's listing (relative path, size, mtime of
      * every file). A store jar never changes, so its snapshot is reused across builds; a sibling
-     * module's {@code target/classes/main} is rewritten at the same path by every build, and its
+     * module's {@code target/classes} is rewritten at the same path by every build, and its
      * snapshot is recomputed exactly then — which is what lets the incremental compile see that a
      * dependency's API moved and recompile the sources that use it. Only the current snapshot of
      * an entry is kept, so the shared snapshot cache stays bounded. On any failure the compile runs

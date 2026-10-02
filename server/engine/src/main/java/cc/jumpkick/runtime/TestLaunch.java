@@ -270,7 +270,7 @@ final class TestLaunch {
     }
 
     /**
-     * classes/main, the test runtime classpath, and the language runtimes keyed on the SELECTED
+     * target/classes, the test runtime classpath, and the language runtimes keyed on the SELECTED
      * suites' sources (TEST_SOURCES is selection-scoped) — the old default-suite-only collectors
      * missed a Kotlin/Groovy-only named suite and the forked JVM lacked the runtime.
      */

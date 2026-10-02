@@ -37,16 +37,16 @@ class CoverageResultsE2eTest {
                 .contains("| com.example:lib |")
                 .contains("| com.example:app |")
                 .contains("| **all** |")
-                .contains("- Coverage HTML: `target/reports/coverage/index.html`")
+                .contains("- Coverage HTML: `target/site/jacoco/index.html`")
                 .doesNotContain("| Δ |");
         assertThat(first).containsPattern("\\| com\\.example:lib \\| 50\\.0% \\(\\d+/\\d+\\) \\|");
-        assertThat(ws.resolve("target/lib/reports/jacoco.xml")).isRegularFile();
-        assertThat(ws.resolve("target/lib/reports/coverage/index.html")).isRegularFile();
-        assertThat(ws.resolve("target/app/reports/coverage/index.html")).isRegularFile();
-        assertThat(ws.resolve("target/reports/coverage/index.html")).isRegularFile();
-        assertThat(Files.readString(ws.resolve("target/reports/coverage/index.html")))
+        assertThat(ws.resolve("lib/target/site/jacoco/jacoco.xml")).isRegularFile();
+        assertThat(ws.resolve("lib/target/site/jacoco/index.html")).isRegularFile();
+        assertThat(ws.resolve("app/target/site/jacoco/index.html")).isRegularFile();
+        assertThat(ws.resolve("target/site/jacoco/index.html")).isRegularFile();
+        assertThat(Files.readString(ws.resolve("target/site/jacoco/index.html")))
                 .contains("com.example:lib")
-                .contains("../../lib/reports/coverage/index.html");
+                .contains("../../../lib/target/site/jacoco/index.html");
 
         // Cover the second branch of Lib.twice: lib climbs (its implicit constructor stays the one
         // uncovered line), app is unchanged.
@@ -90,8 +90,8 @@ class CoverageResultsE2eTest {
                 .contains("## Coverage")
                 .contains("| com.example:lib | 50.0% (2/4) | 50.0% (1/2) |")
                 .doesNotContainPattern("\\| com\\.example:app \\| \\d+\\.\\d% ");
-        assertThat(ws.resolve("target/lib/reports/coverage/index.html")).isRegularFile();
-        assertThat(ws.resolve("target/app/reports/jacoco.xml")).doesNotExist();
+        assertThat(ws.resolve("lib/target/site/jacoco/index.html")).isRegularFile();
+        assertThat(ws.resolve("app/target/site/jacoco/jacoco.xml")).doesNotExist();
     }
 
     /** {@code lib} (a branch to cover) and {@code app} depending on it; JUnit from Central. */

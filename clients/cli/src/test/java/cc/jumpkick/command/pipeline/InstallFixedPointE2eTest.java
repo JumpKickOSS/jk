@@ -78,7 +78,7 @@ class InstallFixedPointE2eTest {
             assertThat(pins.source()).isEqualTo(ws.toAbsolutePath().normalize().toString());
             assertThat(pins.jars()).containsOnlyKeys("com.example:lib:0.1.0", "com.example:app:0.1.0");
             assertThat(pins.sha("com.example:lib:0.1.0"))
-                    .contains(Hashing.sha256Hex(ws.resolve("target/lib/lib/lib-0.1.0.jar")));
+                    .contains(Hashing.sha256Hex(ws.resolve("lib/target/lib-0.1.0.jar")));
             Run status = jk(home, ws, "engine", "status");
             assertThat(status.exit()).as(status.output()).isZero();
             assertThat(status.output()).contains("Source").contains(pins.source());

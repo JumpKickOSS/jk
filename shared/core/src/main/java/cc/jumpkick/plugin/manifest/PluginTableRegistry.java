@@ -632,10 +632,8 @@ public final class PluginTableRegistry {
 
     /**
      * Workspace root that owns the running tests. {@code user.dir} is tried first (module root
-     * when the launcher sets it); otherwise walk from this class's code source — jk's test
-     * classes live at {@code target/<module-rel>/classes/test}, so {@code user.dir} inference
-     * from {@code …/target/classes/test} does not apply, but core's classes dir still sits under
-     * the checkout.
+     * when the launcher sets it); otherwise walk up from this class's code source, which sits
+     * under the checkout.
      */
     static @Nullable Path discoverTestWorkspaceRoot() {
         Path fromCwd = workspaceRootOwning(

@@ -72,7 +72,7 @@ final class TaskCatalog {
                     "compile"),
             def(TaskNames.COMPILE_KOTLIN, "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
             def(TaskNames.COMPILE_GROOVY, "Compile main Groovy sources", BuildLayout::groovyClassesDir),
-            def(TaskNames.ASSEMBLE_CLASSES, "Merge language outputs into classes/main", BuildLayout::classesDir),
+            def(TaskNames.ASSEMBLE_CLASSES, "Merge language outputs into target/classes", BuildLayout::classesDir),
             def(TaskNames.BUILD_LOGIC_AFTER_COMPILE, "Project build-logic (AFTER_COMPILE)", BuildLayout::classesDir),
             def(
                     TaskNames.COPY_RESOURCES,

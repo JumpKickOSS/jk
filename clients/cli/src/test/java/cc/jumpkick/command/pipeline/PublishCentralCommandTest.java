@@ -263,7 +263,7 @@ class PublishCentralCommandTest {
                 description = "A widget"
                 java        = 25
                 """);
-        writeZip(dir.resolve("target/lib/widget-1.0.0.jar"));
+        writeZip(dir.resolve("target/widget-1.0.0.jar"));
 
         String[] args = {
             "publish",
@@ -283,8 +283,8 @@ class PublishCentralCommandTest {
                 .contains("widget-1.0.0-sources.jar")
                 .contains("widget-1.0.0-javadoc.jar");
 
-        writeZip(dir.resolve("target/lib/widget-1.0.0-sources.jar"));
-        writeZip(dir.resolve("target/lib/widget-1.0.0-javadoc.jar"));
+        writeZip(dir.resolve("target/widget-1.0.0-sources.jar"));
+        writeZip(dir.resolve("target/widget-1.0.0-javadoc.jar"));
         assertThat(run(args)).isEqualTo(1);
         assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
                 .contains("Maven Central requires POM metadata this manifest lacks: url, licenses, developers, scm");
@@ -305,9 +305,9 @@ class PublishCentralCommandTest {
                 developers = [{ id = "ada", name = "Ada Lovelace" }]
                 scm = { url = "https://github.com/example/widget", connection = "scm:git:https://github.com/example/widget.git", developer-connection = "scm:git:ssh://git@github.com/example/widget.git" }
                 """);
-        writeZip(dir.resolve("target/lib/widget-1.0.0.jar"));
-        writeZip(dir.resolve("target/lib/widget-1.0.0-sources.jar"));
-        writeZip(dir.resolve("target/lib/widget-1.0.0-javadoc.jar"));
+        writeZip(dir.resolve("target/widget-1.0.0.jar"));
+        writeZip(dir.resolve("target/widget-1.0.0-sources.jar"));
+        writeZip(dir.resolve("target/widget-1.0.0-javadoc.jar"));
     }
 
     /** An empty zip: the four bytes of an end-of-central-directory record with no entries. */

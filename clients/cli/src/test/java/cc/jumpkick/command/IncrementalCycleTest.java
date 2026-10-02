@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.jar.JarFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -119,15 +118,9 @@ class IncrementalCycleTest {
      * distinctive name makes a substring scan an honest test without a bytecode parser.
      */
     private static boolean appCallsBeta(Path dir) throws IOException {
-        // Found rather than spelled: the jars dir sits under the module's own target tree, and a
-        // test that hardcodes that shape fails for the layout rather than for the defect.
-        Optional<Path> jar;
-        try (var walk = Files.walk(dir.resolve("target"))) {
-            jar = walk.filter(p -> p.getFileName().toString().equals("app-1.0.0.jar"))
-                    .findFirst();
-        }
-        assertThat(jar).as("app's packaged jar under target/").isPresent();
-        try (JarFile jf = new JarFile(jar.orElseThrow().toFile())) {
+        Path jar = dir.resolve("app/target/app-1.0.0.jar");
+        assertThat(jar).as("app's packaged jar").isRegularFile();
+        try (JarFile jf = new JarFile(jar.toFile())) {
             var entry = jf.getJarEntry("ex/App.class");
             assertThat(entry).isNotNull();
             byte[] bytes;

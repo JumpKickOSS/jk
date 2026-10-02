@@ -27,7 +27,7 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
     @Test
     void a_run_with_coverage_serves_its_report_tree_behind_the_path_token() throws Exception {
         Path ws = Files.createDirectories(stateDir.resolve("ws"));
-        Path report = Files.createDirectories(ws.resolve("lib/target/reports/coverage"));
+        Path report = Files.createDirectories(ws.resolve("lib/target/site/jacoco"));
         Files.writeString(report.resolve("index.html"), "<html><link href=\"jacoco-resources/report.css\"></html>");
         Files.createDirectories(report.resolve("jacoco-resources"));
         Files.writeString(report.resolve("jacoco-resources/report.css"), "body{}");
@@ -37,9 +37,9 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         HttpResponse<String> entry = fetch("/report/" + token() + "/" + id + "/");
         assertThat(entry.statusCode()).isEqualTo(302);
         assertThat(entry.headers().firstValue("Location"))
-                .contains("/report/" + token() + "/" + id + "/lib/target/reports/coverage/index.html");
+                .contains("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html");
 
-        HttpResponse<String> page = fetch("/report/" + token() + "/" + id + "/lib/target/reports/coverage/index.html");
+        HttpResponse<String> page = fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html");
         assertThat(page.statusCode()).isEqualTo(200);
         assertThat(page.headers().firstValue("Content-Type")).contains("text/html; charset=utf-8");
         assertThat(page.headers().firstValue("Content-Security-Policy")).contains("sandbox");
@@ -47,14 +47,14 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         assertThat(page.body()).contains("jacoco-resources/report.css");
 
         HttpResponse<String> css =
-                fetch("/report/" + token() + "/" + id + "/lib/target/reports/coverage/jacoco-resources/report.css");
+                fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/jacoco-resources/report.css");
         assertThat(css.statusCode()).isEqualTo(200);
         assertThat(css.headers().firstValue("Content-Type")).contains("text/css; charset=utf-8");
 
         assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/secret.txt")
                         .statusCode())
                 .isEqualTo(404);
-        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/reports/coverage/../secret.txt")
+        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/../secret.txt")
                         .statusCode())
                 .isEqualTo(404);
         assertThat(fetch("/report/nope/" + id + "/").statusCode()).isEqualTo(401);
@@ -65,20 +65,20 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
     void a_workspace_run_enters_at_the_roll_up_and_serves_every_module_page() throws Exception {
         Path ws = Files.createDirectories(stateDir.resolve("ws2"));
         for (String m : List.of("core", "app")) {
-            Path dir = Files.createDirectories(ws.resolve(m + "/target/reports/coverage"));
+            Path dir = Files.createDirectories(ws.resolve(m + "/target/site/jacoco"));
             Files.writeString(dir.resolve("index.html"), "<html>" + m + "</html>");
         }
-        Path rollup = Files.createDirectories(ws.resolve("target/reports/coverage"));
+        Path rollup = Files.createDirectories(ws.resolve("target/site/jacoco"));
         Files.writeString(rollup.resolve("index.html"), "<html>roll-up</html>");
         String id = finished(testJournal(), ws, List.of(module(ws, "core", 10, 10), module(ws, "app", 5, 5)));
 
         HttpResponse<String> entry = fetch("/report/" + token() + "/" + id + "/");
         assertThat(entry.headers().firstValue("Location"))
-                .contains("/report/" + token() + "/" + id + "/target/reports/coverage/index.html");
-        assertThat(fetch("/report/" + token() + "/" + id + "/target/reports/coverage/index.html")
+                .contains("/report/" + token() + "/" + id + "/target/site/jacoco/index.html");
+        assertThat(fetch("/report/" + token() + "/" + id + "/target/site/jacoco/index.html")
                         .body())
                 .contains("roll-up");
-        assertThat(fetch("/report/" + token() + "/" + id + "/app/target/reports/coverage/index.html")
+        assertThat(fetch("/report/" + token() + "/" + id + "/app/target/site/jacoco/index.html")
                         .body())
                 .contains("app");
     }
@@ -101,7 +101,7 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
                 missed,
                 covered / 2,
                 missed / 2,
-                ws.resolve(name + "/target/reports/coverage/index.html").toString());
+                ws.resolve(name + "/target/site/jacoco/index.html").toString());
     }
 
     /** One finished coverage run of {@code ws} in the journal; returns a locator the route accepts. */

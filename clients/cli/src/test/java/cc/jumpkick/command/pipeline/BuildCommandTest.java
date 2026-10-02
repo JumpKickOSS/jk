@@ -40,7 +40,7 @@ class BuildCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        Path jar = tempDir.resolve("target/lib/widget-0.1.0.jar");
+        Path jar = tempDir.resolve("target/widget-0.1.0.jar");
         assertThat(jar).exists();
 
         try (JarFile jf = new JarFile(jar.toFile())) {
@@ -77,7 +77,7 @@ class BuildCommandTest {
                 tempDir.resolve("cache").toString(),
                 "--skip-tests");
         assertThat(ok).isEqualTo(0);
-        assertThat(tempDir.resolve("target/lib/widget-0.1.0.jar")).exists();
+        assertThat(tempDir.resolve("target/widget-0.1.0.jar")).exists();
     }
 
     @Test
@@ -95,8 +95,7 @@ class BuildCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        try (JarFile jf =
-                new JarFile(tempDir.resolve("target/lib/widget-0.1.0.jar").toFile())) {
+        try (JarFile jf = new JarFile(tempDir.resolve("target/widget-0.1.0.jar").toFile())) {
             assertThat(jf.getJarEntry("application.properties")).isNotNull();
             String content = new String(
                     jf.getInputStream(jf.getJarEntry("application.properties")).readAllBytes(), StandardCharsets.UTF_8);
@@ -145,7 +144,7 @@ class BuildCommandTest {
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(tempDir.resolve("target/lib/empty-0.1.0.jar")).exists();
+        assertThat(tempDir.resolve("target/empty-0.1.0.jar")).exists();
     }
 
     @Test
@@ -180,9 +179,9 @@ class BuildCommandTest {
 
         // All three modules produced their jars (parallel default).
         // Mill layout: workspace members build into <workspace>/target/<module>/.
-        assertThat(tempDir.resolve("target/liba/lib/liba-1.0.0.jar")).exists();
-        assertThat(tempDir.resolve("target/libb/lib/libb-1.0.0.jar")).exists();
-        assertThat(tempDir.resolve("target/app/lib/app-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("liba/target/liba-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("libb/target/libb-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("app/target/app-1.0.0.jar")).exists();
 
         // -j1 still builds the workspace (serial module concurrency).
         int serial = run(
@@ -231,9 +230,9 @@ class BuildCommandTest {
             System.setOut(orig);
         }
         assertThat(exit).isEqualTo(0);
-        assertThat(tempDir.resolve("target/app/lib/app-1.0.0.jar")).exists();
-        assertThat(tempDir.resolve("target/liba/lib/liba-1.0.0.jar")).exists();
-        assertThat(tempDir.resolve("target/libb/lib/libb-1.0.0.jar")).doesNotExist();
+        assertThat(tempDir.resolve("app/target/app-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("liba/target/liba-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("libb/target/libb-1.0.0.jar")).doesNotExist();
         assertThat(TestAnsi.strip(stdout.toString(StandardCharsets.UTF_8))).contains("building module app");
     }
 

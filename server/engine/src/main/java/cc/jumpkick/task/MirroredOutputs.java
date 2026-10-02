@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,18 +19,18 @@ import org.jspecify.annotations.Nullable;
  */
 public final class MirroredOutputs {
 
-    /** Ledger under {@code <module>/incremental/} for {@code classes/main}. */
+    /** Ledger under {@code target/incremental/} for {@code target/classes}. */
     public static final String MAIN_LEDGER = "copied-resources.txt";
 
-    /** Ledger under {@code <module>/incremental/} for {@code classes/test}. */
+    /** Ledger under {@code target/incremental/} for {@code target/test-classes}. */
     public static final String TEST_LEDGER = "copied-test-resources.txt";
 
     private MirroredOutputs() {}
 
     /**
      * {@code outputs} without the paths the ledger for {@code outputDir} records. {@code
-     * classes/main} and {@code classes/test} are the trees that share a directory with a mirror;
-     * any other directory is returned unchanged.
+     * target/classes} and {@code target/test-classes} are the trees that share a directory with a
+     * mirror; any other directory is returned unchanged.
      */
     public static Map<String, String> without(Path outputDir, Map<String, String> outputs) throws IOException {
         Set<String> mirrored = recorded(outputDir);
@@ -89,15 +90,13 @@ public final class MirroredOutputs {
         if (name == null) return Set.of();
         String ledgerName =
                 switch (name.toString()) {
-                    case "main" -> MAIN_LEDGER;
-                    case "test" -> TEST_LEDGER;
+                    case "classes" -> MAIN_LEDGER;
+                    case "test-classes" -> TEST_LEDGER;
                     default -> null;
                 };
         if (ledgerName == null) return Set.of();
-        Path classes = outputDir.getParent();
-        if (classes == null || !"classes".equals(String.valueOf(classes.getFileName()))) return Set.of();
-        Path target = classes.getParent();
-        if (target == null) return Set.of();
+        Path target = outputDir.getParent();
+        if (target == null || !BuildLayout.TARGET.equals(String.valueOf(target.getFileName()))) return Set.of();
         return read(target.resolve("incremental").resolve(ledgerName));
     }
 

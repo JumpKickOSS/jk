@@ -291,7 +291,7 @@ class AndroidSpikeTest {
         BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        return new Built(project, CACHE, SDK_ROOT, project.resolve("target/lib/hello-1.0.0.apk"));
+        return new Built(project, CACHE, SDK_ROOT, project.resolve("target/hello-1.0.0.apk"));
     }
 
     /**

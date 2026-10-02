@@ -37,7 +37,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * End-to-end: a dependency's body-only edit, and the revert that returns it to a cached key, leave
- * the dependent module's {@code classes/main} whole.
+ * the dependent module's {@code target/classes} whole.
  *
  * <p>The dependent's compile sees the upstream change only through its classpath, and it is keyed
  * on that classpath's API, not its bytes: a body-only upstream edit leaves the dependent's stamp
@@ -46,7 +46,7 @@ import org.junit.jupiter.api.io.TempDir;
  * restores by pruning every file the record does not own before copying the record's outputs
  * back. Each of those steps is a place where a partial tree — a compile that touched a subset, a
  * record that lists a subset — becomes the module's whole output: the classes that are missing
- * from {@code classes/main} are missing from the jar, and the next module to compile against it
+ * from {@code target/classes} are missing from the jar, and the next module to compile against it
  * fails with {@code cannot find symbol} on a class nobody edited.
  *
  * <p>What this asserts is the invariant every one of those paths must keep: after every build in

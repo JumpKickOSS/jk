@@ -48,7 +48,7 @@ public final class TestClassIndex {
     }
 
     /**
-     * The guard lane's {@code test-guard.idx} beside {@code target/classes/test}, when its stamps
+     * The guard lane's {@code test-guard.idx} beside {@code target/test-classes}, when its stamps
      * still match the class files: the same facts read once, not a second ASM pass. Absent or stale
      * (no guards, or classes recompiled since), the class files are read directly.
      */

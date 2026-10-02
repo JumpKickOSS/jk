@@ -184,7 +184,7 @@ class SharedCacheAcrossCheckoutsE2eTest {
     }
 
     private static Path classesDir(Path ws, String module) {
-        return ws.resolve("target").resolve(module).resolve("classes/main");
+        return ws.resolve(module).resolve("target/classes");
     }
 
     private static Set<String> children(Path dir) throws IOException {
