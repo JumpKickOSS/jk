@@ -146,8 +146,8 @@ public final class MavenPackageSource implements PackageSource {
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, Set<String>>> declaredVersions =
             new ConcurrentHashMap<>();
 
-    /** The graph's exact roots when they override transitive constraints (see {@link NearestPins}). */
-    private final NearestPins nearestPins = new NearestPins();
+    /** The versions an earlier graph fixed on this graph's classpath (see {@link GoverningVersions}). */
+    private final GoverningVersions governing = new GoverningVersions();
 
     /** One sentence per edge whose classifier reads the running host; see {@link #hostClassifierNotes}. */
     private final Set<String> hostClassifierNotes = ConcurrentHashMap.newKeySet();
@@ -371,9 +371,9 @@ public final class MavenPackageSource implements PackageSource {
         declaredVersions.clear();
     }
 
-    /** The exact roots of the graph about to be solved, or empty when pins are plain constraints. */
-    public void setNearestPins(Map<String, String> gaToVersion) {
-        nearestPins.set(gaToVersion);
+    /** The versions an earlier graph fixed on the classpath of the graph about to be solved. */
+    public void setGoverningVersions(Map<String, String> gaToVersion) {
+        governing.set(gaToVersion);
     }
 
     /** Every root the project declares with an exact pin, {@code group:artifact → version}. */
@@ -465,9 +465,9 @@ public final class MavenPackageSource implements PackageSource {
                 + " credentials, or remove it from [repositories]";
     }
 
-    /** Every transitive constraint a nearest pin overrode so far, one rendered line each, sorted. */
-    public List<String> nearestOverrides() {
-        return nearestPins.renderedOverrides();
+    /** Every transitive constraint a governing version overrode so far, one rendered line each, sorted. */
+    public List<String> governingOverrides() {
+        return governing.renderedOverrides();
     }
 
     /**
@@ -481,8 +481,8 @@ public final class MavenPackageSource implements PackageSource {
         return List.copyOf(out);
     }
 
-    private VersionSet nearestOrOwn(String parentPkg, String parentVersion, RawEdge edge) {
-        return nearestPins.constraintFor(
+    private VersionSet governedOrOwn(String parentPkg, String parentVersion, RawEdge edge) {
+        return governing.constraintFor(
                 parentPkg, parentVersion, edge.depPkg(), edge.constraint(), edge.declaredVersion());
     }
 
@@ -797,7 +797,7 @@ public final class MavenPackageSource implements PackageSource {
                 // unless an edge brings it in, and then sits within the constraint.
                 if (edge.declaredVersion() != null) declare(edge.depPkg(), edge.declaredVersion(), pkg, version);
                 out.add(Term.negative(
-                        edge.depPkg(), nearestOrOwn(pkg, version, edge).complement()));
+                        edge.depPkg(), governedOrOwn(pkg, version, edge).complement()));
                 continue;
             }
             if (isExcluded(edge.depPkg(), excl)) {
@@ -822,7 +822,7 @@ public final class MavenPackageSource implements PackageSource {
             addManagedExclusions(child, edge.depPkg());
             exclusions.register(edge.depPkg(), child);
             if (edge.declaredVersion() != null) declare(edge.depPkg(), edge.declaredVersion(), pkg, version);
-            out.add(Term.positive(edge.depPkg(), nearestOrOwn(pkg, version, edge)));
+            out.add(Term.positive(edge.depPkg(), governedOrOwn(pkg, version, edge)));
         }
         // Remember what this expansion dropped so the resolver can detect a stale expansion
         // after the exclusion sets converge (they only ever narrow).

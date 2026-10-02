@@ -168,7 +168,9 @@ public final class LockPipeline {
              * not quietly rewrite it — only {@code jk update}, whose job is moving forward, does.
              * Distinct from {@link #keepPins}, which is about reusing the resolved graph.
              */
-            boolean keepToolchainSuggestion) {}
+            boolean keepToolchainSuggestion,
+            /** Whether each exact pin reads as a floor the graph may raise (see {@link LockMode.PinFloors}). */
+            boolean pinsAsFloors) {}
 
     private final Path lockDir;
     private final JkBuild effective;
@@ -209,9 +211,25 @@ public final class LockPipeline {
     private static Policy policyFor(LockMode mode, JkBuild effective) {
         return switch (mode) {
             case LockMode.Keep(boolean sources) ->
-                new Policy(OfflineReuse.REQUIRED, true, true, false, sources, platformPolicy(effective, null), true);
+                new Policy(
+                        OfflineReuse.REQUIRED,
+                        true,
+                        true,
+                        false,
+                        sources,
+                        platformPolicy(effective, null),
+                        true,
+                        false);
             case LockMode.Latest(boolean sources) ->
-                new Policy(OfflineReuse.REQUIRED, false, true, false, sources, platformPolicy(effective, null), true);
+                new Policy(
+                        OfflineReuse.REQUIRED,
+                        false,
+                        true,
+                        false,
+                        sources,
+                        platformPolicy(effective, null),
+                        true,
+                        false);
             case LockMode.Update(String platformOverride) ->
                 new Policy(
                         OfflineReuse.NEVER,
@@ -220,9 +238,14 @@ public final class LockPipeline {
                         true,
                         false,
                         platformPolicy(effective, platformOverride),
+                        false,
                         false);
             case LockMode.Freshen ignored ->
-                new Policy(OfflineReuse.PREFERRED, true, true, false, false, platformPolicy(effective, null), true);
+                new Policy(
+                        OfflineReuse.PREFERRED, true, true, false, false, platformPolicy(effective, null), true, false);
+            case LockMode.PinFloors ignored ->
+                new Policy(
+                        OfflineReuse.NEVER, false, false, false, false, platformPolicy(effective, null), false, true);
         };
     }
 
@@ -320,7 +343,7 @@ public final class LockPipeline {
                 .withJvmEnvironment(PluginContributions.jvmEnvironment(pathPrep.project(), lockDir))
                 .withPlatformPolicy(policy.platform())
                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
-                .withPinPolicy(pathPrep.project().build().pinPolicy());
+                .withPinsAsFloors(policy.pinsAsFloors());
 
         boolean keepPins = policy.keepPins() && existing != null;
         // Compiler pins first: the solve injects each language's stdlib pinned to its compiler.

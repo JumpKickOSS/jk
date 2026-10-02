@@ -7,10 +7,12 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
@@ -105,11 +107,67 @@ public final class ManifestUpdates {
         }
     }
 
+    /** Where one exact pin of the manifest under {@code dir} moves, or {@code null} to leave it. */
+    @FunctionalInterface
+    private interface Move {
+        @Nullable
+        String to(Path dir, RepoGroup repos, String module, String current);
+    }
+
     /**
      * Plan the rewrites for the lock scope rooted at {@code lockDir} (a workspace root or a
      * standalone project). Throws like {@link JkBuildParser#parse} when a manifest does not parse.
      */
     public static Plan plan(Path lockDir, @Nullable URI repoUrl, Selection selection) throws IOException {
+        Map<String, List<String>> versionsByModule = new HashMap<>();
+        return plan(
+                lockDir,
+                repoUrl,
+                selection,
+                (dir, repos, module, current) ->
+                        newer(current, available(module, repos, versionsByModule), selection.major()),
+                true);
+    }
+
+    /**
+     * The pins a highest-wins solve raised: each exact dependency pin in the lock scope at {@code
+     * lockDir} that {@code probe}, a lock resolved with pins read as floors, holds at a higher
+     * version moves to it. A workspace member's pin is read against the member's rows.
+     */
+    public static Plan raise(Path lockDir, Lockfile probe) throws IOException {
+        return plan(
+                lockDir,
+                null,
+                Selection.ALL,
+                (dir, repos, module, current) -> {
+                    String held = held(lockDir, dir, probe, module);
+                    return held != null && Versions.compare(held, current) > 0 ? held : null;
+                },
+                false);
+    }
+
+    /**
+     * The highest version {@code probe} holds for {@code module} as the manifest under {@code dir}
+     * reads it: a member its own view, the root the workspace's plain rows.
+     */
+    private static @Nullable String held(Path lockDir, Path dir, Lockfile probe, String module) {
+        Path root = lockDir.toAbsolutePath().normalize();
+        Path here = dir.toAbsolutePath().normalize();
+        boolean atRoot = here.equals(root);
+        Lockfile view = atRoot
+                ? probe
+                : probe.forMember(root.relativize(here).toString().replace('\\', '/'));
+        String best = null;
+        for (Lockfile.Artifact a : view.artifacts()) {
+            if ((atRoot && a.isPartition()) || !PackageId.isMavenPackageKey(a.name())) continue;
+            if (!PackageId.parse(a.name()).ga().equals(module)) continue;
+            if (best == null || Versions.compare(a.version(), best) > 0) best = a.version();
+        }
+        return best;
+    }
+
+    private static Plan plan(Path lockDir, @Nullable URI repoUrl, Selection selection, Move move, boolean toolPins)
+            throws IOException {
         JkBuild root = JkBuildParser.parse(lockDir.resolve(ManifestPaths.MANIFEST));
         JkBuild effectiveRoot = LockPlans.applyWorkspaceContextIfModule(lockDir, root);
 
@@ -128,7 +186,7 @@ public final class ManifestUpdates {
 
         List<Rewrite> rewrites = new ArrayList<>();
         Map<Path, String> contents = new LinkedHashMap<>();
-        Map<String, List<String>> versionsByModule = new HashMap<>();
+        Map<String, List<String>> toolVersions = new HashMap<>();
         for (Map.Entry<Path, JkBuild> scope : declared.entrySet()) {
             Path dir = scope.getKey();
             Path manifest = dir.resolve(ManifestPaths.MANIFEST);
@@ -148,8 +206,7 @@ public final class ManifestUpdates {
                     }
                     if (!(dep.version() instanceof VersionSelector.Exact exact)) continue;
                     if (!selection.selects(dep.library(), dep.module())) continue;
-                    String to =
-                            newer(exact.version(), available(dep.module(), repos, versionsByModule), selection.major());
+                    String to = move.to(dir, repos, dep.module(), exact.version());
                     if (to == null) continue;
                     String rewritten;
                     try {
@@ -169,13 +226,13 @@ public final class ManifestUpdates {
                 Workspace.WorkspaceDependency wd = e.getValue();
                 if (!(wd.version() instanceof VersionSelector.Exact exact)) continue;
                 if (!selection.selects(e.getKey(), wd.module())) continue;
-                String to = newer(exact.version(), available(wd.module(), repos, versionsByModule), selection.major());
+                String to = move.to(dir, repos, wd.module(), exact.version());
                 if (to == null) continue;
                 text = JkBuildEditor.setWorkspaceDependencyVersion(text, e.getKey(), to);
                 rewrites.add(
                         new Rewrite(dir, moduleLabel, WORKSPACE_TABLE, e.getKey(), wd.module(), exact.version(), to));
             }
-            text = moveToolPins(dir, moduleLabel, build, text, repos, selection, versionsByModule, rewrites);
+            if (toolPins) text = moveToolPins(dir, moduleLabel, build, text, repos, selection, toolVersions, rewrites);
             if (!text.equals(before)) contents.put(manifest, text);
         }
         return new Plan(rewrites, contents);

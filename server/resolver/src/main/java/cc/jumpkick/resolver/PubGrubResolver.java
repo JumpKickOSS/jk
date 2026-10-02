@@ -48,6 +48,8 @@ public final class PubGrubResolver implements Resolver {
     /** Optional live graph progress (package key, version) during PubGrub decisions. */
     private @Nullable BiConsumer<String, String> onDecision;
 
+    private Map<String, String> pinFloors = Map.of();
+
     public PubGrubResolver(MavenRepo repo) {
         this(RepoGroup.of(repo));
     }
@@ -118,6 +120,12 @@ public final class PubGrubResolver implements Resolver {
         this.source = Objects.requireNonNull(source, "source");
         this.pomBuilder = pomBuilder;
         this.kmp = kmp == null ? KmpRedirects.NONE : kmp;
+    }
+
+    /** Roots' exact pins read as floors, by {@code group:artifact}; see {@link PubGrubSolver#withPinFloors}. */
+    public PubGrubResolver withPinFloors(Map<String, String> gaToVersion) {
+        this.pinFloors = Map.copyOf(gaToVersion);
+        return this;
     }
 
     /**fire during each PubGrub decision so lock progress can advance mid-scope. */
@@ -277,7 +285,7 @@ public final class PubGrubResolver implements Resolver {
     private Map<String, String> solveFor(List<Term> rootTerms) throws IOException, InterruptedException {
         Map<String, String> decisions;
         try {
-            PubGrubSolver solver = new PubGrubSolver(source);
+            PubGrubSolver solver = new PubGrubSolver(source).withPinFloors(pinFloors);
             if (onDecision != null) solver.withOnDecision(onDecision);
             try {
                 decisions = solver.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
@@ -287,7 +295,8 @@ public final class PubGrubResolver implements Resolver {
                 // revisits the starved package. Source caches make the retry cheap; a real
                 // unsat fails again and its (better-informed) diagnostics win.
                 if (!solver.maybeIncomplete()) throw first;
-                PubGrubSolver wide = new PubGrubSolver(source).withWideUniverses();
+                PubGrubSolver wide =
+                        new PubGrubSolver(source).withPinFloors(pinFloors).withWideUniverses();
                 if (onDecision != null) wide.withOnDecision(onDecision);
                 decisions = wide.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
             }

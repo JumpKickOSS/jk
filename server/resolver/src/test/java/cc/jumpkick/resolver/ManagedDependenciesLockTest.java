@@ -7,10 +7,8 @@ import static org.assertj.core.api.Assertions.tuple;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -76,31 +74,24 @@ class ManagedDependenciesLockTest {
     }
 
     @Test
-    void a_managed_entry_pins_a_transitive_nothing_declares_under_both_policies(@TempDir Path tempDir)
-            throws Exception {
+    void a_managed_entry_pins_a_transitive_nothing_declares(@TempDir Path tempDir) throws Exception {
         JkBuild project = project(Map.of(
                 Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))),
                 Scope.MANAGED, List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("1.0")))));
 
-        for (PinPolicy policy : PinPolicy.values()) {
-            Lockfile lock = new LockOrchestrator(repoGroup(tempDir.resolve(policy.name())))
-                    .withPinPolicy(policy)
-                    .lock(project, "test");
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
 
-            Lockfile.Artifact leaf = row(lock, LEAF);
-            assertThat(leaf.version()).as(policy.name()).isEqualTo("1.0");
-            assertThat(leaf.pinnedBy()).as(policy.name()).isEqualTo("jk.toml:leaf");
-            assertThat(new EdgeSelectors(repoGroup(tempDir.resolve(policy.name())), lock)
-                            .declared(row(lock, "com.foo:middle:jar:"), leaf))
-                    .as("middle's POM still says what it asked for")
-                    .isEqualTo("1.5");
-            assertThat(lock.platformPins()).as("a manifest entry is not a BOM").doesNotContainKey("jk.toml");
-        }
+        Lockfile.Artifact leaf = row(lock, LEAF);
+        assertThat(leaf.version()).isEqualTo("1.0");
+        assertThat(leaf.pinnedBy()).isEqualTo("jk.toml:leaf");
+        assertThat(new EdgeSelectors(repoGroup(tempDir), lock).declared(row(lock, "com.foo:middle:jar:"), leaf))
+                .as("middle's POM still says what it asked for")
+                .isEqualTo("1.5");
+        assertThat(lock.platformPins()).as("a manifest entry is not a BOM").doesNotContainKey("jk.toml");
     }
 
     @Test
-    void a_managed_entry_beats_a_bom_under_the_exact_policy_and_the_lock_says_so(@TempDir Path tempDir)
-            throws Exception {
+    void a_managed_entry_beats_a_bom_and_the_lock_says_so(@TempDir Path tempDir) throws Exception {
         JkBuild project = project(Map.of(
                 Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))),
                 Scope.MANAGED, List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("1.0"))),
@@ -108,9 +99,8 @@ class ManagedDependenciesLockTest {
                         List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0")))));
         List<String> overrides = new ArrayList<>();
 
-        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.EXACT)
-                .lock(project, "test", List.of(), true, recording(overrides));
+        Lockfile lock =
+                new LockOrchestrator(repoGroup(tempDir)).lock(project, "test", List.of(), true, recording(overrides));
 
         assertThat(row(lock, LEAF).version()).isEqualTo("1.0");
         assertThat(row(lock, LEAF).pinnedBy()).isEqualTo("jk.toml:leaf");
@@ -143,16 +133,13 @@ class ManagedDependenciesLockTest {
         JkBuild root = JkBuild.builder(new Project("com.example", "parent", "1.0", 25))
                 .workspace(new Workspace(List.of("app")))
                 .dependencies(new JkBuild.Dependencies(rootDeps))
-                .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
         EnumMap<Scope, List<Dependency>> appDeps = new EnumMap<>(Scope.class);
         appDeps.put(Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
         JkBuild app = new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(appDeps));
         JkBuild merged = WorkspaceMerge.merge(root, List.of(app));
 
-        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
-                .lock(merged, "test");
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(merged, "test");
 
         assertThat(row(lock, LEAF).version()).isEqualTo("1.0");
         assertThat(row(lock, LEAF).pinnedBy()).isEqualTo("jk.toml:leaf");

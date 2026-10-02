@@ -17,7 +17,7 @@ import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
@@ -270,13 +270,13 @@ class JkBuildRendererTest {
                 .build();
         assertThat(JkBuildRenderer.render(plain)).doesNotContain("[resolve]");
 
-        JkBuild nearest = JkBuild.builder(
+        JkBuild floor = JkBuild.builder(
                         Project.builder("com.example", "widget", "1.0.0").build())
-                .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build(BuildBlock.EMPTY.withPlatformPolicy(PlatformPolicy.FLOOR))
                 .build();
-        String out = JkBuildRenderer.render(nearest);
-        assertThat(out).contains("[resolve]\npins = \"nearest\"").doesNotContain("platform =");
-        assertThat(JkBuildParser.parse(out).build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
+        String out = JkBuildRenderer.render(floor);
+        assertThat(out).contains("[resolve]\nplatform = \"floor\"").doesNotContain("unmapped =");
+        assertThat(JkBuildParser.parse(out).build().platformPolicy()).isEqualTo(PlatformPolicy.FLOOR);
     }
 
     @Test

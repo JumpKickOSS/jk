@@ -42,12 +42,13 @@ class WorkspaceMergeTest {
 
     @Test
     void merge_carries_the_roots_resolve_policies() {
-        JkBuild root = workspaceRoot("jk", List.of("a")).withBuild(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST));
+        JkBuild root =
+                workspaceRoot("jk", List.of("a")).withBuild(BuildBlock.EMPTY.withPlatformPolicy(PlatformPolicy.FLOOR));
         JkBuild module = newProject("a", Map.of(Scope.MAIN, List.of(dep("b", "com.foo:b", "2.0"))));
 
         JkBuild merged = WorkspaceMerge.merge(root, List.of(module));
 
-        assertThat(merged.build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
+        assertThat(merged.build().platformPolicy()).isEqualTo(PlatformPolicy.FLOOR);
     }
 
     @Test

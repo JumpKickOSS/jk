@@ -349,18 +349,11 @@ manages a row's module at the version the workspace's row took anyway, the row c
 first member's in `[workspace] modules` order whose graph reaches the row — so the lock says who
 pinned the version for every member that reads it, and `jk why` says it again.
 
-Under `[resolve] pins = "nearest"` (what `jk import` writes for a Maven POM) the picked version can
-sit below the declared one: the project pinned `jakarta.inject-api` at `2.0.1` and a parent's floor
-of `2.0.1.MR` gave way to it, as a transitive's version gives way to a direct dependency's under
-Maven. The lock carries the pinned `2.0.1`; `jk lock` prints one note per pinned module, naming the
-pin, how many dependencies it overrode and what each asked for, and `jk why` shows the floor beside
-the step that declared it. A floor written as an open range (`[2.0.18,)`) gives way the same way.
-A workspace resolves under its root's `[resolve]` table, and a pin is the version of the member
-that declares it and of the members that depend on that member: every other member resolves on its
-own graph and reads a row of its own where that graph asks for another version
-([Workspaces](workspaces.md#members-that-disagree)). Under the
-default `pins = "exact"` a pin below a floor the member's own graph declares is a conflict the
-lock refuses instead; see [Dependencies](dependencies.md#coordinates).
+A workspace pin is the version of the member that declares it and of the members that depend on
+that member: every other member resolves on its own graph and reads a row of its own where that
+graph asks for another version ([Workspaces](workspaces.md#members-that-disagree)). A pin below a
+floor the member's own graph declares is a conflict the lock refuses; see
+[Dependencies](dependencies.md#coordinates).
 
 A test-scope exact pin on a module the main graph resolves at another version gives way to main's:
 the test classpath is the main classpath plus the test rows, so main's version is the one there
@@ -376,13 +369,9 @@ what the dependency asked for), but the test classpath still carries main's vers
 notes the module, both versions and the test dependency holding the floor. Declare the module in a
 main scope at the version the tests need, or pick a test dependency that accepts main's.
 
-`nearest` covers direct pins and BOM order and nothing else: a module only transitive POMs name
-resolves highest-declared under both policies, so a lock row can sit above the version Maven's
-nearer declaration gives the same module. Measured on the Maven top-20 corpus in jk-examples, over
-the 16 repositories that lock and their 493 modules, 225 modules differ from Maven on some version;
-depth mediation accounts for 367 of the 713 differing (module, coordinate) pairs, two BOMs managing
-one module for 137, and a parent that already differs for 102. The policy table is in
-[Platforms](platforms.md#two-boms-that-manage-one-module).
+A module only transitive POMs name resolves highest-declared, so a lock row can sit above the
+version Maven's nearer declaration gives the same module; [Platforms](platforms.md#two-boms-that-manage-one-module)
+measures how often that happens on real Maven projects.
 
 ## Rows a member owns
 

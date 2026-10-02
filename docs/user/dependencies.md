@@ -187,15 +187,13 @@ same rule as the plain module — two POMs naming it at different versions media
 declared, and a platform pin on the module governs its classified edges as it does the plain one.
 Conflicts get PubGrub prose. With a BOM: [Platforms](platforms.md).
 
-Your own exact pin is one constraint among the transitives' by default: a pin below a floor some
-POM declares is a conflict, explained. `[resolve] pins = "nearest"` makes the pin the version
-instead, as a direct dependency's is under Maven's nearest-wins — the transitive's range on that
-module is reported as a warning, not enforced, and `jk why` shows it beside the step that asked.
-`jk import` writes that line for a Maven POM so the imported project resolves as Maven resolved it;
-a transitive with no pin on it keeps the highest-declared rule either way.
+Your own exact pin is one constraint among the transitives': a pin below a floor some POM declares
+is a conflict, explained — raise the pin to the version the floor names. There is no nearest-wins
+mode; `jk import` does that raise for you where a POM's direct version sits below what its
+dependencies need ([Migration](migration.md)).
 
 The test classpath is the main classpath plus the test rows, so an exact pin in a main scope is the
-version on it too, under both policies: a test dependency's edge onto the pinned module takes the
+version on it too: a test dependency's edge onto the pinned module takes the
 pin, the edge records what it asked for, and the lock carries one row with both scopes rather than
 a test row above the pin. A test-scope pin of its own stays a test fact — it has no say on the main
 classpath.

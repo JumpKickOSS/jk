@@ -146,6 +146,7 @@ public final class LockPlans {
             case LockMode.Keep ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
             case LockMode.Latest ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
             case LockMode.Freshen ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
+            case LockMode.PinFloors ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
             // ~10% of the bar for parse/preflight, so the last resolve tick lands near 100% rather
             // than stuck at an equal split.
             case LockMode.Update ignored ->
@@ -307,7 +308,7 @@ public final class LockPlans {
 
             @Override
             public void onOverride(String line) {
-                ctx.warn("nearest-wins", line);
+                ctx.warn("lock-override", line);
                 observer.onOverride(line);
             }
 

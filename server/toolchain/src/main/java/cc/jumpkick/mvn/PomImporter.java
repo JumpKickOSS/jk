@@ -15,7 +15,6 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
@@ -348,7 +347,7 @@ public final class PomImporter {
             TestPlugins.TestSettings tests,
             ImportReport.Builder report) {
         // A POM's direct version is the version Maven used, whatever a transitive asked for.
-        BuildBlock build = BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST);
+        BuildBlock build = BuildBlock.EMPTY;
         PluginFacts.CompilerArgs args = PluginFacts.compilerArgs(model);
         if (args.split()) {
             build = build.withJavac(new JavacConfig(Map.of(), args.main(), new JavacConfig(Map.of(), args.test())));
@@ -523,7 +522,7 @@ public final class PomImporter {
                         leaves.stream().map(ReactorModules.Leaf::path).toList(), shared.dependencies()))
                 .repositories(WorkspaceRepositories.hoistRepositories(rootRepositories, members.values()))
                 .application(rootApplication)
-                .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build(BuildBlock.EMPTY)
                 .build();
         // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
         Map<String, String> siblingByGa = SiblingEdges.siblingGaIndex(rootJkBuild, members.values());

@@ -99,11 +99,6 @@ public record BuildBlock(
          */
         UnmappedPolicy unmappedPolicy,
         /**
-         * {@code [resolve] pins}: how the project's own exact pin meets a transitive's constraint
-         * on the same module. Default {@link PinPolicy#EXACT}.
-         */
-        PinPolicy pinPolicy,
-        /**
          * {@code [test] env} — what every forked test JVM's environment gets, in the order the
          * manifest lists it. Test-scoped like {@code testPluginJars}, hence its home here.
          *
@@ -193,7 +188,6 @@ public record BuildBlock(
             false,
             PlatformPolicy.ENFORCED,
             UnmappedPolicy.MEDIATE,
-            PinPolicy.EXACT,
             List.of(),
             List.of(),
             TestJvm.EMPTY,
@@ -226,7 +220,6 @@ public record BuildBlock(
         testClassSuites = suiteClasses(testClassSuites);
         platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
         unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
-        pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
         testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
         testTools = testTools == null ? List.of() : List.copyOf(testTools);
         testJvm = testJvm == null ? TestJvm.EMPTY : testJvm;
@@ -275,11 +268,6 @@ public record BuildBlock(
 
     public BuildBlock withPlatformPolicy(PlatformPolicy policy) {
         return with(f -> f.platformPolicy = policy == null ? PlatformPolicy.ENFORCED : policy);
-    }
-
-    /** The same block with {@code [resolve] pins} set. */
-    public BuildBlock withPinPolicy(PinPolicy policy) {
-        return with(f -> f.pinPolicy = policy == null ? PinPolicy.EXACT : policy);
     }
 
     /** The same block with {@code [[kotlin-plugins]]} set. */

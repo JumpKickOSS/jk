@@ -39,8 +39,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * End-to-end: a directory with a {@code pom.xml} and no {@code jk.toml} builds and tests in place.
  * The manifest is the shadow rendered from the effective POM under {@code target/jk/shadow/}, the
- * lock sits beside it, the repository gains no {@code jk.toml} or {@code jk-lock.toml}, the POM's
- * direct versions win ({@code pins = "nearest"}), a Tier-3 row of the import report is one warning
+ * lock sits beside it, the repository gains no {@code jk.toml} or {@code jk-lock.toml}, the POM
+ * resolves highest-wins like any manifest, a Tier-3 row of the import report is one warning
  * with the {@code jk import} remedy, and {@code jk explain} plans the same steps a {@code jk.toml}
  * module with the same manifest gets. A reactor builds as a workspace whose root shadow lists the
  * leaves and whose lock sits beside the root shadow; a shadow lists the POM files it read, so an
@@ -104,7 +104,7 @@ class CoexistenceBuildE2eTest {
         assertThat(shadow).isEqualTo(ManifestPaths.shadowManifestPath(project)).isRegularFile();
         String toml = Files.readString(shadow);
         assertThat(toml).startsWith("# shadow of pom.xml ");
-        assertThat(toml).contains("pins = \"nearest\"");
+        assertThat(toml).doesNotContain("[resolve]");
         Path twin = tmp.resolve("twin");
         copyTree(project.resolve("src"), twin.resolve("src"));
         Files.writeString(twin.resolve("jk.toml"), toml.substring(toml.indexOf('\n') + 1));

@@ -12,7 +12,6 @@ import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
@@ -201,14 +200,12 @@ public final class JkBuildRenderer {
     private static void renderResolve(StringBuilder sb, BuildBlock build) {
         boolean platform = build.platformPolicy() != PlatformPolicy.ENFORCED;
         boolean unmapped = build.unmappedPolicy() != UnmappedPolicy.MEDIATE;
-        boolean pins = build.pinPolicy() != PinPolicy.EXACT;
-        if (!platform && !unmapped && !pins) return;
+        if (!platform && !unmapped) return;
         sb.append("\n[resolve]\n");
         if (platform)
             sb.append("platform = \"").append(build.platformPolicy().wireName()).append("\"\n");
         if (unmapped)
             sb.append("unmapped = \"").append(build.unmappedPolicy().wireName()).append("\"\n");
-        if (pins) sb.append("pins = \"").append(build.pinPolicy().wireName()).append("\"\n");
     }
 
     /**
