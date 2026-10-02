@@ -65,10 +65,9 @@ class GroovyBuildE2eTest {
         BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Greeting.class"))
-                .exists();
+        assertThat(project.resolve("target/classes/com/example/Greeting.class")).exists();
         // Groovy-only modules still stamp + package.
-        assertThat(project.resolve("target/classes/main/.gstamp")).exists();
+        assertThat(project.resolve("target/classes/.gstamp")).exists();
         try (var walk = Files.walk(project.resolve("target"))) {
             assertThat(walk.anyMatch(f -> f.getFileName().toString().equals("gapp-1.0.0.jar")))
                     .as("packaged jar")
@@ -123,7 +122,7 @@ class GroovyBuildE2eTest {
         BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        Path classes = project.resolve("target/classes/main/com/example");
+        Path classes = project.resolve("target/classes/com/example");
         assertThat(classes.resolve("Util.class")).exists();
         assertThat(classes.resolve("Greeter.class")).exists();
         assertThat(classes.resolve("Main.class")).exists();

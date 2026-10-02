@@ -100,7 +100,7 @@ class AndroidRemoteAarTest {
         assertThat(Files.readString(depR)).contains("package androidx.core;").contains("0x7f");
 
         // The APK exists — compile (ContextCompat reference) and the dexed closure both held.
-        assertThat(project.resolve("target/lib/remote-1.0.0.apk")).exists();
+        assertThat(project.resolve("target/remote-1.0.0.apk")).exists();
     }
 
     private static void acceptLicenses() throws Exception {

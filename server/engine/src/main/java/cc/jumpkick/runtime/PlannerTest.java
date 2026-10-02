@@ -62,7 +62,7 @@ public final class PlannerTest {
 
     private PlannerTest() {}
 
-    /** Where compile-test records the suite selection that produced {@code classes/test}. */
+    /** Where compile-test records the suite selection that produced {@code target/test-classes}. */
     private static final String SUITE_MARKER = ".jk-suites";
 
     static Task compileTestStep(BuildPlanner.Ctx cx, boolean hasFixtures, @Nullable PluginDeclarations pluginDecls) {
@@ -73,7 +73,7 @@ public final class PlannerTest {
         boolean compact = cx.compact();
         // AFTER_COMPILE scripts may generate types tests import. copy-resources is a real
         // input, not just ordering: the test classpath (and its action-key fingerprint)
-        // includes classes/main, which copy-resources writes — racing it fingerprints a
+        // includes target/classes, which copy-resources writes — racing it fingerprints a
         // half-copied dir and intermittently crashes on vanishing files under -r.
         List<String> requires = new ArrayList<>(
                 List.of(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES));
@@ -271,7 +271,7 @@ public final class PlannerTest {
         return out;
     }
 
-    /** classes/main, own fixtures, the resolved test compile classpath, and the Groovy jar when needed. */
+    /** target/classes, own fixtures, the resolved test compile classpath, and the Groovy jar when needed. */
     private static List<Path> testCompileClasspath(TaskContext ctx, BuildPlanner.Ctx cx, Cas cas, TestSources src)
             throws Exception {
         List<Path> compileCp = ctx.require(COMPILE_TEST_CP);
@@ -288,7 +288,7 @@ public final class PlannerTest {
     }
 
     /**
-     * All suites share classes/test and run-tests scans it: when the SELECTION changes, wipe the
+     * All suites share target/test-classes and run-tests scans it: when the SELECTION changes, wipe the
      * shared output and the per-language merge sources, or the previous selection's classes and
      * copied resources keep running/shadowing under the new one indefinitely. {@value #SUITE_MARKER}
      * records the selection that produced the tree (excluded from action stores/fingerprints by
@@ -484,7 +484,7 @@ public final class PlannerTest {
      * Test resources ride the test classpath next to compiled tests, so getResourceAsStream
      * fixtures resolve. Every
      * suite in this run's selection is copied (default test/resources/ + e.g.
-     * integration/resources/). Fixtures affect test outcomes but classes/test is not on the
+     * integration/resources/). Fixtures affect test outcomes but target/test-classes is not on the
      * runtime cp — run-tests folds these dirs into its TestStamp key.
      */
     private static void copySuiteResources(

@@ -75,17 +75,16 @@ class BuildLogicCodegenE2eTest {
         BuildPlanResult first = build(project, cache);
         assertThat(first.errors()).isEmpty();
         assertThat(first.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Generated.class"))
+        assertThat(project.resolve("target/classes/com/example/Generated.class"))
                 .as("generated source reached javac")
                 .exists();
-        assertThat(project.resolve("target/classes/main/com/example/App.class")).exists();
-        assertThat(project.resolve("target/classes/main/com/example/Generated.java"))
-                .doesNotExist();
+        assertThat(project.resolve("target/classes/com/example/App.class")).exists();
+        assertThat(project.resolve("target/classes/com/example/Generated.java")).doesNotExist();
 
         BuildPlanResult second = build(project, cache);
         assertThat(second.errors()).isEmpty();
         assertThat(second.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Generated.class"))
+        assertThat(project.resolve("target/classes/com/example/Generated.class"))
                 .as("cache hit leaves the source root usable")
                 .exists();
     }

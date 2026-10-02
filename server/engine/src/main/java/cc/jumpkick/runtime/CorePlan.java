@@ -432,7 +432,7 @@ final class CorePlan {
             if (cx.mixed() || cx.mixedGroovy()) after.add(TaskNames.ASSEMBLE_CLASSES);
             if (s.hasGuardSuite()) after.add(TaskNames.COMPILE_GUARD);
             // The lane indexes the test classes exactly when the plan compiles them, and then waits
-            // for compile-test; without the edge a rebuild rewrites classes/test under the indexer.
+            // for compile-test; without the edge a rebuild rewrites target/test-classes under the indexer.
             boolean afterTests = PlannerGuards.indexesTestClasses(in);
             if (afterTests) after.add(TaskNames.COMPILE_TEST);
             BuildStage guardStage = afterTests ? BuildStage.TEST : BuildStage.COMPILE;
@@ -461,7 +461,7 @@ final class CorePlan {
     /**
      * `jk compile` stops here: lock → sync → compile (+ freshness stamps) and the resource copy,
      * no test or package. The resources are part of the tree, not of packaging: a dependent
-     * compiles against this module's {@code classes/main}, a processor sibling is found through
+     * compiles against this module's {@code target/classes}, a processor sibling is found through
      * the service registration the copy lands there, and a tree published without them is one
      * the next build rewrites under its consumers' keys. Everything later depends on these steps.
      */

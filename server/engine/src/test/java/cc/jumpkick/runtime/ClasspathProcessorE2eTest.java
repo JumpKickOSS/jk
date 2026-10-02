@@ -77,9 +77,8 @@ class ClasspathProcessorE2eTest {
 
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Person.class"))
-                .exists();
-        assertThat(project.resolve("target/classes/main/com/example/App.class")).exists();
+        assertThat(project.resolve("target/classes/com/example/Person.class")).exists();
+        assertThat(project.resolve("target/classes/com/example/App.class")).exists();
     }
 
     @Test
@@ -135,7 +134,7 @@ class ClasspathProcessorE2eTest {
 
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/DaggerAppComponent.class"))
+        assertThat(project.resolve("target/classes/com/example/DaggerAppComponent.class"))
                 .exists();
     }
 

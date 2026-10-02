@@ -61,7 +61,7 @@ class KotlinCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        Path jar = tempDir.resolve("target/lib/widget-0.1.0.jar");
+        Path jar = tempDir.resolve("target/widget-0.1.0.jar");
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
             // Top-level Kotlin function -> <FilenameKt> class.
@@ -83,8 +83,8 @@ class KotlinCompilationTest {
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
-        Path ktClass = tempDir.resolve("target/classes/main/example/HelloKt.class");
-        Path stamp = tempDir.resolve("target/classes/main/.kstamp");
+        Path ktClass = tempDir.resolve("target/classes/example/HelloKt.class");
+        Path stamp = tempDir.resolve("target/classes/.kstamp");
         assertThat(stamp).exists(); // freshness stamp written
         assertThat(ktClass).exists();
         long firstMtime = Files.getLastModifiedTime(ktClass).toMillis();
@@ -110,7 +110,7 @@ class KotlinCompilationTest {
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
-        Path ktClass = tempDir.resolve("target/classes/main/example/HelloKt.class");
+        Path ktClass = tempDir.resolve("target/classes/example/HelloKt.class");
         long firstMtime = Files.getLastModifiedTime(ktClass).toMillis();
 
         // Edit the source forward in time so its mtime exceeds the stamp; the
@@ -173,8 +173,7 @@ class KotlinCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        try (JarFile jf =
-                new JarFile(tempDir.resolve("target/lib/mixed-0.1.0.jar").toFile())) {
+        try (JarFile jf = new JarFile(tempDir.resolve("target/mixed-0.1.0.jar").toFile())) {
             assertThat(jf.getJarEntry("example/Hub.class")).isNotNull();
             assertThat(jf.getJarEntry("example/GreeterKt.class")).isNotNull();
         }
@@ -210,8 +209,7 @@ class KotlinCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        try (JarFile jf =
-                new JarFile(tempDir.resolve("target/lib/mixed-0.1.0.jar").toFile())) {
+        try (JarFile jf = new JarFile(tempDir.resolve("target/mixed-0.1.0.jar").toFile())) {
             assertThat(jf.getJarEntry("example/Greeter.class")).isNotNull();
             assertThat(jf.getJarEntry("example/App.class")).isNotNull();
         }

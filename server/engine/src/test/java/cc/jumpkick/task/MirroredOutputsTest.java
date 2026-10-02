@@ -16,8 +16,8 @@ class MirroredOutputsTest {
 
     @Test
     void a_recorded_resource_is_dropped_and_a_class_stays(@TempDir Path tmp) throws Exception {
-        Path classes = Files.createDirectories(tmp.resolve("classes/main"));
-        Path ledger = tmp.resolve("incremental").resolve(MirroredOutputs.MAIN_LEDGER);
+        Path classes = Files.createDirectories(tmp.resolve("target/classes"));
+        Path ledger = tmp.resolve("target/incremental").resolve(MirroredOutputs.MAIN_LEDGER);
         Files.createDirectories(ledger.getParent());
         Files.writeString(ledger, "application.properties\nMETA-INF/services/com.example.Spi\n");
 
@@ -40,7 +40,7 @@ class MirroredOutputsTest {
 
     @Test
     void a_restore_does_not_rewrite_or_drop_a_mirrored_resource(@TempDir Path tmp) throws Exception {
-        Path classes = Files.createDirectories(tmp.resolve("target/classes/main"));
+        Path classes = Files.createDirectories(tmp.resolve("target/classes"));
         Files.createDirectories(classes.resolve("com/example"));
         Files.writeString(classes.resolve("com/example/App.class"), "class-v1");
         Files.writeString(classes.resolve("application.properties"), "from-the-compile");

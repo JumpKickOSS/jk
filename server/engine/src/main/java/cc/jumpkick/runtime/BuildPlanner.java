@@ -135,7 +135,7 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
 
-    /** Suite resource dirs copied into classes/test — a TestStamp input. */
+    /** Suite resource dirs copied into target/test-classes — a TestStamp input. */
     public static final BuildPlanKey<List<Path>> TEST_RESOURCE_DIRS =
             BuildPlanKey.list("test-resource-dirs", Path.class);
 

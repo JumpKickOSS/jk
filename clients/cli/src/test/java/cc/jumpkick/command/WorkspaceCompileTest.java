@@ -27,9 +27,9 @@ class WorkspaceCompileTest {
         Path root = workspace(tempDir);
         assertThat(run("compile", "-C", root.toString(), "--cache-dir", cache(tempDir)))
                 .isZero();
-        assertThat(root.resolve("target/libs/core/classes")).isDirectory();
-        assertThat(root.resolve("target/lib/classes")).isDirectory();
-        assertThat(root.resolve("target/app/classes")).isDirectory();
+        assertThat(root.resolve("libs/core/target/classes")).isDirectory();
+        assertThat(root.resolve("lib/target/classes")).isDirectory();
+        assertThat(root.resolve("app/target/classes")).isDirectory();
     }
 
     @Test
@@ -37,8 +37,8 @@ class WorkspaceCompileTest {
         Path root = workspace(tempDir);
         assertThat(run("compile", "-C", root.toString(), "--cache-dir", cache(tempDir), "-m", "lib"))
                 .isZero();
-        assertThat(root.resolve("target/lib/classes")).isDirectory();
-        assertThat(root.resolve("target/app/classes")).doesNotExist();
+        assertThat(root.resolve("lib/target/classes")).isDirectory();
+        assertThat(root.resolve("app/target/classes")).doesNotExist();
     }
 
     @Test
@@ -46,7 +46,7 @@ class WorkspaceCompileTest {
         Path root = workspace(tempDir);
         assertThat(run("compile", "-C", root.resolve("app").toString(), "--cache-dir", cache(tempDir)))
                 .isZero();
-        assertThat(root.resolve("target/app/classes")).isDirectory();
+        assertThat(root.resolve("app/target/classes")).isDirectory();
     }
 
     /** A member below the root's own directory — the module path has a separator in it. */
@@ -55,7 +55,7 @@ class WorkspaceCompileTest {
         Path root = workspace(tempDir);
         assertThat(run("compile", "-C", root.resolve("libs/core").toString(), "--cache-dir", cache(tempDir)))
                 .isZero();
-        assertThat(root.resolve("target/libs/core/classes")).isDirectory();
+        assertThat(root.resolve("libs/core/target/classes")).isDirectory();
     }
 
     @Test
@@ -63,7 +63,7 @@ class WorkspaceCompileTest {
         Path root = workspace(tempDir);
         assertThat(run("compile", "-C", root.toString(), "--cache-dir", cache(tempDir), "--output", "json"))
                 .isZero();
-        assertThat(root.resolve("target/app/classes")).isDirectory();
+        assertThat(root.resolve("app/target/classes")).isDirectory();
     }
 
     /**

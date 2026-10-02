@@ -62,7 +62,7 @@ class WorkspaceFixturesRestoreE2eTest {
         assertThat(libFixture).as("lib's fixtures compile").isRegularFile();
         assertThat(appTest).as("app's tests compile against them").isRegularFile();
 
-        PathUtil.deleteRecursively(ws.resolve("target"));
+        wipeTargets(ws);
         WorkspaceSpec install = WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"));
         build(ws, cache, true, install, "the install --skip-tests on an empty target/");
         assertThat(lib.mainJar()).as("main outputs come back").isRegularFile();
@@ -191,5 +191,12 @@ class WorkspaceFixturesRestoreE2eTest {
                 }
                 """);
         return ws;
+    }
+
+    /** Every build output of {@code ws}: the root's {@code target/} and each member's. */
+    private static void wipeTargets(Path ws) {
+        PathUtil.deleteRecursively(ws.resolve("target"));
+        for (String module : List.of("lib", "mid", "app"))
+            PathUtil.deleteRecursively(ws.resolve(module).resolve("target"));
     }
 }

@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Warms the Kotlin ABI memo for a module's consumers the moment its classes tree is whole. A
- * Kotlin consumer compiles against the sibling's {@code classes/main} and its compile key needs
+ * Kotlin consumer compiles against the sibling's {@code target/classes} and its compile key needs
  * each classpath entry's snapshot digest; on a cold memo the first consumer to meet a freshly
  * compiled sibling forks the Kotlin worker's {@code snapshot} op before its own compile can start.
  * The producer knows the tree as soon as its compile and resource copy have run, so the workspace

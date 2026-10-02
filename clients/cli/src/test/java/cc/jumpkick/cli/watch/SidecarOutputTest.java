@@ -91,18 +91,17 @@ class SidecarOutputTest {
     @Test
     void dev_ready_names_the_front_door_only_when_a_sidecar_is_it() {
         FakeClock clock = new FakeClock();
-        String sidecar =
-                SidecarOutput.devReady(clock, "http://localhost:5173", "java -cp target/classes/main demo.Api");
+        String sidecar = SidecarOutput.devReady(clock, "http://localhost:5173", "java -cp target/classes demo.Api");
         assertThat(Jsonl.str(sidecar, "type")).isEqualTo("dev-ready");
         assertThat(Jsonl.str(sidecar, "url")).isEqualTo("http://localhost:5173");
-        assertThat(Jsonl.str(sidecar, "app")).isEqualTo("java -cp target/classes/main demo.Api");
+        assertThat(Jsonl.str(sidecar, "app")).isEqualTo("java -cp target/classes demo.Api");
         assertThat(Jsonl.longValue(sidecar, "ts", -1)).isEqualTo(clock.millis());
 
-        String app = SidecarOutput.devReady(clock, "", "java -cp target/classes/main demo.Api");
+        String app = SidecarOutput.devReady(clock, "", "java -cp target/classes demo.Api");
         assertThat(Jsonl.has(app, "url"))
                 .as("the app is the front door: no url")
                 .isFalse();
-        assertThat(Jsonl.str(app, "app")).isEqualTo("java -cp target/classes/main demo.Api");
+        assertThat(Jsonl.str(app, "app")).isEqualTo("java -cp target/classes demo.Api");
     }
 
     @Test
@@ -157,9 +156,9 @@ class SidecarOutputTest {
 
     @Test
     void the_ready_line_names_the_front_door_and_drops_the_brackets_when_the_app_is_it() {
-        assertThat(SidecarOutput.readyLine("http://localhost:5173", "java -cp target/classes/main demo.Api"))
-                .isEqualTo("ready \u00b7 http://localhost:5173 (java -cp target/classes/main demo.Api)");
-        assertThat(SidecarOutput.readyLine("", "java -cp target/classes/main demo.Api"))
-                .isEqualTo("ready \u00b7 java -cp target/classes/main demo.Api");
+        assertThat(SidecarOutput.readyLine("http://localhost:5173", "java -cp target/classes demo.Api"))
+                .isEqualTo("ready \u00b7 http://localhost:5173 (java -cp target/classes demo.Api)");
+        assertThat(SidecarOutput.readyLine("", "java -cp target/classes demo.Api"))
+                .isEqualTo("ready \u00b7 java -cp target/classes demo.Api");
     }
 }

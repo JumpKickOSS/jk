@@ -22,9 +22,7 @@ import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -381,33 +379,16 @@ public final class JUnitLauncher {
     private boolean shortTempDirFactory;
 
     /**
-     * The module root a test classes dir belongs to, under either jk layout: {@code
-     * <module>/target/classes/test} for a standalone module, {@code
-     * <workspace>/target/<module-rel>/classes/test} for a workspace member — the central out tree
-     * {@link BuildLayout#moduleTargetDir} lays down, inverted. A member whose {@code module-rel}
-     * names no directory under the workspace is not a module, and a layout with no {@code target}
-     * ancestor is not jk's; both are null.
+     * The module a test classes dir belongs to: {@code <module>} for {@code
+     * <module>/target/test-classes}, and null for a directory jk did not lay out.
      */
     static @Nullable Path inferModuleDir(@Nullable Path testClassesDir) {
         if (testClassesDir == null) return null;
         Path p = testClassesDir.toAbsolutePath().normalize();
-        if (!"test".equals(name(p))) return null;
-        Path classes = p.getParent();
-        if (classes == null || !"classes".equals(name(classes))) return null;
-        // Everything between `target` and `classes` is the member's path relative to the root.
-        List<String> rel = new ArrayList<>();
-        Path cursor = classes.getParent();
-        while (cursor != null && !BuildLayout.TARGET.equals(name(cursor))) {
-            rel.add(0, name(cursor));
-            cursor = cursor.getParent();
-        }
-        if (cursor == null) return null;
-        Path root = cursor.getParent();
-        if (root == null) return null;
-        if (rel.isEmpty()) return root;
-        Path module = root;
-        for (String segment : rel) module = module.resolve(segment);
-        return Files.isDirectory(module) ? module : null;
+        if (!"test-classes".equals(name(p))) return null;
+        Path target = p.getParent();
+        if (target == null || !BuildLayout.TARGET.equals(name(target))) return null;
+        return target.getParent();
     }
 
     /**
@@ -600,13 +581,7 @@ public final class JUnitLauncher {
         // One debugger, one JVM: a pool would have every shard contend for the same port.
         int wanted = debug != null ? 1 : workers;
         this.workerJarProps = workerJarProps == null ? Map.of() : Map.copyOf(workerJarProps);
-        // Quarkus's PathTestHelper maps a test classes dir to the main one by known fragments
-        // (Maven, Gradle, IDE layouts); jk's target/classes/test → target/classes/main is registered
-        // through TEST_TO_MAIN_MAPPINGS (BootstrapConstants). The application model itself is the
-        // Quarkus plugin's serialized test model, not a workspace read off a pom.xml.
         Map<String, String> defaults = new LinkedHashMap<>();
-        defaults.put(
-                "TEST_TO_MAIN_MAPPINGS", "classes" + File.separator + "test" + ":classes" + File.separator + "main");
         // Suite JVMs must never prompt on the developer's controlling TTY (Confirm/Wizard via JLine
         // system terminal) or hang waiting for a keystroke during `jk build` / `jk test`.
         defaults.put("JK_NONINTERACTIVE", "1");

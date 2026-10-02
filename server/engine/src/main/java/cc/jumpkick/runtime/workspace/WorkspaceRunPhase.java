@@ -228,7 +228,7 @@ final class WorkspaceRunPhase {
     }
 
     /**
-     * Module dirs whose {@code classes/test} some sibling consumes, and whose artifact publish
+     * Module dirs whose {@code target/test-classes} some sibling consumes, and whose artifact publish
      * therefore still has to wait for {@code compile-test}.
      *
      * <p>A {@code kind = "tests"} edge is the only thing that puts one module's test output on
@@ -239,7 +239,7 @@ final class WorkspaceRunPhase {
      * <p>Refs resolve the way {@link WorkspaceClasspath} resolves them, against the same manifests:
      * a {@code workspace:<name>} placeholder by module name, anything else by coord. A ref matching
      * no unit is an external Maven test-jar or a broken edge, and neither selects a sibling's
-     * classes/test — the same conclusion WorkspaceClasspath reaches when its sibling index misses.
+     * target/test-classes — the same conclusion WorkspaceClasspath reaches when its sibling index misses.
      */
     static Set<Path> testClassesConsumed(List<BuildGraph.BuildUnit> units) {
         Map<String, Path> dirByCoord = new HashMap<>();

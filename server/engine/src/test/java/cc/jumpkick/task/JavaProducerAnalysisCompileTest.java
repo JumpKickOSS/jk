@@ -24,8 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Two modules laid out the way a workspace lays them out — {@code target/<module>/classes/main}
- * and {@code target/<module>/lib/<module>.jar}, every compile's state under one incremental root
+ * Two modules laid out the way a workspace lays them out — {@code <module>/target/classes} and
+ * {@code <module>/target/<module>.jar}, every compile's state under one incremental root
  * keyed by its output dir — compiled through {@link JavaCompile} and the Zinc worker. The consumer
  * is handed the producer's analysis without either test or planner naming it.
  */
@@ -150,9 +150,9 @@ class JavaProducerAnalysisCompileTest {
         Module(Workspace ws, String name) throws IOException {
             this.ws = ws;
             this.src = ws.root.resolve(name).resolve("src/main/java");
-            Path target = ws.root.resolve("target").resolve(name);
-            this.classes = target.resolve("classes").resolve("main");
-            this.jar = target.resolve("lib").resolve(name + "-1.0.jar");
+            Path target = ws.root.resolve(name).resolve("target");
+            this.classes = target.resolve("classes");
+            this.jar = target.resolve(name + "-1.0.jar");
             this.taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, classes);
             this.stateDir = ws.incrementalRoot.resolve(taskId);
             this.gen = target.resolve("gen");

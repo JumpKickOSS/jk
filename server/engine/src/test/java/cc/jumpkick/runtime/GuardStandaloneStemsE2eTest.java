@@ -43,7 +43,7 @@ class GuardStandaloneStemsE2eTest {
                 .as("the guard anchor ran over the module stem without a refusal")
                 .isEqualTo(TaskStatus.SUCCESS);
         assertThat(status(r, TaskNames.GUARD_TREE)).isEqualTo(TaskStatus.SUCCESS);
-        assertThat(project.resolve("target/classes/main/stamp.txt"))
+        assertThat(project.resolve("target/classes/stamp.txt"))
                 .as("the after-resources stem ran on the build the guard rides on")
                 .hasContent("ok");
     }
