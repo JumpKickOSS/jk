@@ -57,4 +57,21 @@ class OutputDirsTest {
                 .as("a module, whatever its name")
                 .isFalse();
     }
+
+    @Test
+    void target_beside_a_module_manifest_or_a_pom_is_output(@TempDir Path dir) throws Exception {
+        Path jk = Files.createDirectories(dir.resolve("jk"));
+        Files.writeString(jk.resolve("jk.toml"), "name = \"m\"\n");
+        Path maven = Files.createDirectories(dir.resolve("maven"));
+        Files.writeString(maven.resolve("pom.xml"), "<project/>");
+        Path pkg = Files.createDirectories(jk.resolve("src/main/java/com/acme/target"));
+
+        assertThat(OutputDirs.isBuildOutputDir(Files.createDirectories(jk.resolve("target"))))
+                .isTrue();
+        assertThat(OutputDirs.isBuildOutputDir(Files.createDirectories(maven.resolve("target"))))
+                .isTrue();
+        assertThat(OutputDirs.isBuildOutputDir(pkg))
+                .as("a package named target is source")
+                .isFalse();
+    }
 }
