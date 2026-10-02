@@ -89,12 +89,15 @@ public record Reconciliation(
         }
         List<Entry> stale = new ArrayList<>();
         for (Entry e : slice) if (!seen.contains(e.key())) stale.add(e);
-        Map<String, Long> newPopulation = shrunk == null ? population : before.population(lane);
-        RuleBaseline after = before.withLane(lane, newPopulation, kept);
-        boolean tightening = shrunk == null
-                && (!stale.isEmpty()
-                        || !after.entries(lane).equals(slice)
-                        || !after.population(lane).equals(before.population(lane)));
+        // The population is the floor a shrunken scope is judged against, not a measurement to keep
+        // current: it is rewritten with the entries, or when none was recorded, never for growth alone.
+        boolean entriesChanged = !stale.isEmpty()
+                || !before.withLane(lane, before.population(lane), kept)
+                        .entries(lane)
+                        .equals(slice);
+        boolean unrecorded = before.population(lane).isEmpty() && !population.isEmpty();
+        boolean tightening = shrunk == null && (entriesChanged || unrecorded);
+        RuleBaseline after = before.withLane(lane, tightening ? population : before.population(lane), kept);
         return new Reconciliation(ruleId, lane, fresh, baselined, stale, after, tightening, shrunk, population);
     }
 
