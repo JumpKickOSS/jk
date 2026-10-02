@@ -69,6 +69,16 @@ class BaselineTest {
         assertThat(host.stale()).extracting(Entry::key).containsExactly("h.H#f()V -> x");
         assertThat(host.tightened().entries("clients/cli")).hasSize(1);
         assertThat(host.tightened().population("clients/cli")).containsEntry("classes", 200L);
+        Reconciliation grown = Reconciliation.of(
+                "walks",
+                rb,
+                List.of(Observation.site("h.H#f()V -> x", null, 0, "")),
+                Map.of("classes", 70L),
+                "shared/host");
+        assertThat(grown.tighteningNeeded())
+                .as("a scope that only grew leaves the baseline as it is")
+                .isFalse();
+        assertThat(grown.tightened().population("shared/host")).containsEntry("classes", 50L);
         Reconciliation shrunk = Reconciliation.of("walks", rb, List.of(), Map.of("classes", 30L), "shared/host");
         assertThat(shrunk.scopeShrunk()).isEqualTo("classes: 50 → 30");
         RuleBaseline frozen = Reconciliation.of(
