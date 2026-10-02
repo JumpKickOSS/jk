@@ -41,6 +41,7 @@ public final class BuildPlanner {
         // Wire session cancel into TaskContext.cancelled (lazy; pool tasks see it via
         // SessionContext propagation on JkThreads).
         SessionCancel.bind(() -> SessionContext.current().cancelled());
+        SessionCancel.bindHold(() -> SessionContext.current().cancel().awaitResumed());
     }
 
     private BuildPlanner() {}

@@ -216,7 +216,8 @@ public final class EngineProbe {
             long sinceMillis,
             int workers,
             long lastEventAt,
-            int ahead) {
+            int ahead,
+            boolean suspended) {
 
         static Job decode(String json) {
             String kind = Jsonl.str(json, "kind");
@@ -225,11 +226,12 @@ public final class EngineProbe {
                     Jsonl.longValue(json, "jid", -1),
                     kind == null ? "" : kind,
                     dir == null ? "" : dir,
-                    "live".equals(Jsonl.str(json, "state")),
+                    !"queued".equals(Jsonl.str(json, "state")),
                     Jsonl.longValue(json, "since", -1),
                     Jsonl.intValue(json, "workers", -1),
                     Jsonl.longValue(json, "lastEventAt", -1),
-                    Jsonl.intValue(json, "ahead", -1));
+                    Jsonl.intValue(json, "ahead", -1),
+                    "suspended".equals(Jsonl.str(json, "state")));
         }
 
         static List<Job> decodeAll(String ack) {
@@ -244,7 +246,7 @@ public final class EngineProbe {
                     .number("jid", jid)
                     .string("kind", kind)
                     .string("dir", dir)
-                    .string("state", live ? "live" : "queued")
+                    .string("state", suspended ? "suspended" : live ? "live" : "queued")
                     .number("since", sinceMillis)
                     .number("workers", workers)
                     .number("lastEventAt", lastEventAt)

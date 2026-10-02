@@ -102,6 +102,17 @@ public final class EngineCancel {
      * @param forgetJid when ≥ 0, removed from {@link ActiveJobs} on a positive ack
      */
     private static Optional<String> cancelOnce(Path socket, String requestLine, long forgetJid) throws IOException {
+        Optional<String> ack = requestOnce(socket, requestLine, EngineProtocol.CANCEL_ACK);
+        if (ack.isPresent() && forgetJid >= 0) ActiveJobs.forget(forgetJid);
+        return ack;
+    }
+
+    /**
+     * Send {@code requestLine} on a fresh connection and return the first line of type {@code
+     * ackType}, or empty when the engine closed without one. Bounded by a socket watchdog, so a
+     * signal handler never hangs on a wedged engine.
+     */
+    static Optional<String> requestOnce(Path socket, String requestLine, String ackType) throws IOException {
         try (SocketChannel ch = EngineWire.connect(socket)) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
@@ -110,7 +121,6 @@ public final class EngineCancel {
             writer.write(requestLine);
             writer.write('\n');
             writer.flush();
-            // Watchdog: SIGINT must not hang waiting for a wedged engine.
             Thread watchdog = new Thread(
                     () -> {
                         try {
@@ -120,16 +130,13 @@ public final class EngineCancel {
                             // done
                         }
                     },
-                    "jk-cancel-watchdog");
+                    "jk-request-watchdog");
             watchdog.setDaemon(true);
             watchdog.start();
             try {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (EngineProtocol.CANCEL_ACK.equals(EngineProtocol.typeOf(line))) {
-                        if (forgetJid >= 0) ActiveJobs.forget(forgetJid);
-                        return Optional.of(line);
-                    }
+                    if (ackType.equals(EngineProtocol.typeOf(line))) return Optional.of(line);
                 }
             } finally {
                 watchdog.interrupt();

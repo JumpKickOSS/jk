@@ -140,16 +140,31 @@ public record Session(
     }
 
     /**
-     * Cooperative cancellation for one session. Front-end calls {@link #cancel}; engine polls
-     * {@link #cancelled}. Thread-safe.
+     * Cooperative job control for one session: cancellation, and suspension (a client's Ctrl-Z).
+     * Front-end calls {@link #cancel} / {@link #suspend}; engine polls {@link #cancelled} and holds
+     * new steps in {@link #awaitResumed}. Thread-safe.
      */
     public interface CancelToken {
 
         /** Whether cancellation has been requested. */
         boolean cancelled();
 
-        /** Request cancellation. Idempotent; safe to call from any thread. */
+        /** Request cancellation. Idempotent; safe to call from any thread. A suspended session resumes to end. */
         void cancel();
+
+        /** Whether the session is suspended. */
+        default boolean suspended() {
+            return false;
+        }
+
+        /** Hold every step that has not started yet until {@link #resume}. Idempotent. */
+        default void suspend() {}
+
+        /** Let held steps start. Idempotent. */
+        default void resume() {}
+
+        /** Return once the session is not suspended, or is cancelled. */
+        default void awaitResumed() throws InterruptedException {}
 
         /** A shared, inert token: {@link #cancelled()} is always {@code false} and {@link #cancel()} is a no-op. */
         CancelToken NONE = new CancelToken() {
@@ -174,9 +189,33 @@ public record Session(
                     return flag.get();
                 }
 
+                private boolean held;
+
                 @Override
                 public void cancel() {
                     flag.set(true);
+                    resume();
+                }
+
+                @Override
+                public synchronized boolean suspended() {
+                    return held;
+                }
+
+                @Override
+                public synchronized void suspend() {
+                    if (!flag.get()) held = true;
+                }
+
+                @Override
+                public synchronized void resume() {
+                    held = false;
+                    notifyAll();
+                }
+
+                @Override
+                public synchronized void awaitResumed() throws InterruptedException {
+                    while (held && !flag.get()) wait();
                 }
             };
         }

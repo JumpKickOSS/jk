@@ -4,6 +4,7 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
+import cc.jumpkick.cli.tui.GlobalSuspend;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.Session;
@@ -71,6 +72,7 @@ public final class Jk {
             return;
         }
         GlobalCancel.install();
+        GlobalSuspend.install();
         int code;
         try {
             code = execute(args);

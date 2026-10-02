@@ -86,6 +86,15 @@ public final class EngineProtocol {
     public static final String CANCEL_ACK = "cancel-ack";
 
     /**
+     * Client → server (any connection): suspend or resume a live job by {@code jid} — the client's
+     * Ctrl-Z and {@code fg}. Terminal: {@link #JOB_CONTROL_ACK}.
+     */
+    public static final String JOB_CONTROL_REQUEST = "job-control-request";
+
+    /** Server → client: outcome of {@link #JOB_CONTROL_REQUEST}. */
+    public static final String JOB_CONTROL_ACK = "job-control-ack";
+
+    /**
      * Server → client: the job is waiting for coordinator memory behind {@code ahead} others;
      * carries {@code jid} (already the cancel handle), {@code ahead}, {@code reason}, {@code
      * waitedMs} and the {@code live} jobs holding the heap. Sent when the job first queues and
