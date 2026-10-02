@@ -153,7 +153,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES);
+        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         String line = failureSizedLine();
         // Twice the byte bound: whatever the pipe's own buffer swallows, the queue crosses it.
         long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
@@ -188,7 +188,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0, spillDir, 0);
+        WireWriter.bind(writer, 0, spillDir, 0, bytes -> true);
         String line = failureSizedLine();
         long lines = 4 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
         CountDownLatch blocked = new CountDownLatch(1);
@@ -237,7 +237,7 @@ class WireWriterTest {
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
         long idleMs = 2_000;
-        WireWriter.bind(writer, idleMs, spillDir, 0);
+        WireWriter.bind(writer, idleMs, spillDir, 0, bytes -> true);
         String line = failureSizedLine();
         int lines = (int) (2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1));
 
@@ -296,7 +296,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES);
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         String pad = "x".repeat(38_000);
         int lines = (int) (3 * WireWriter.MAX_QUEUED_BYTES / (pad.length() + 16));
 
@@ -330,6 +330,40 @@ class WireWriterTest {
         Await.until(Duration.ofSeconds(5), () -> spillFiles().isEmpty());
     }
 
+    /**
+     * A volume at its free-space floor takes no more spill: the producer waits in memory for the
+     * client instead, and a client still reading is never dropped for it.
+     */
+    @Test
+    @Timeout(60)
+    void a_volume_at_its_floor_paces_in_memory_instead_of_spilling() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        AtomicLong asked = new AtomicLong();
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> {
+            asked.incrementAndGet();
+            return false;
+        });
+        String line = failureSizedLine();
+        long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
+        Thread producer = Thread.ofPlatform().start(() -> {
+            for (long i = 0; i < lines; i++) WireWriter.sendQuiet(writer, line);
+        });
+        Await.until(Duration.ofSeconds(10), () -> asked.get() > 0);
+        producer.join(500);
+        assertThat(producer.isAlive())
+                .as("paced behind the client, not spilled")
+                .isTrue();
+        assertThat(spillFiles()).isEmpty();
+
+        var in = new BufferedReader(Channels.newReader(pipe.source(), StandardCharsets.UTF_8));
+        for (long i = 0; i < lines; i++) assertThat(in.readLine()).isEqualTo(line);
+        producer.join(Duration.ofSeconds(10).toMillis());
+        assertThat(producer.isAlive()).isFalse();
+        assertThat(pipe.sink().isOpen()).isTrue();
+    }
+
     /** A dropped client's spill file goes with it. */
     @Test
     @Timeout(60)
@@ -337,7 +371,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES);
+        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         String line = failureSizedLine();
         for (long i = 0; i < 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1); i++) {
             WireWriter.sendQuiet(writer, line);
@@ -366,7 +400,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 20_000, spillDir, 0);
+        WireWriter.bind(writer, 20_000, spillDir, 0, bytes -> true);
         String line = failureSizedLine();
         long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
         ForkJoinPool pool = new ForkJoinPool(1);
@@ -398,7 +432,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 20_000, spillDir, WireWriter.MAX_SPILL_BYTES);
+        WireWriter.bind(writer, 20_000, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         String line = failureSizedLine();
         long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
         long started = System.nanoTime();
@@ -421,7 +455,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES);
+        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         // Enough to fill any pipe buffer, so the writer thread is blocked in the socket.
         String line = line(0, 0);
         for (int i = 0; i < 2_000; i++) WireWriter.sendQuiet(writer, line);
@@ -446,7 +480,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES);
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         WireWriter.idleBound(writer, 300);
         String line = line(0, 0);
         for (int i = 0; i < 2_000; i++) WireWriter.sendQuiet(writer, line);
@@ -466,7 +500,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES);
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         WireWriter.sendQuiet(writer, "{\"type\":\"progress\"}");
         WireWriter.sendQuiet(writer, "{\"type\":\"job-finish\"}");
         WireWriter.release(writer);

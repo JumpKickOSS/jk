@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.host.DiskRoom;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
@@ -72,16 +73,6 @@ public final class DiskFloor {
         String volume(Path path);
     }
 
-    /**
-     * The floor for a volume of {@code totalBytes}: at least 1 GiB, at least 2% of the volume, and
-     * at most 2 GiB.
-     */
-    public static long floorBytes(long totalBytes) {
-        if (totalBytes <= 0) return GIB;
-        long twoPercent = Math.max(0, totalBytes / 50);
-        return Math.min(2 * GIB, Math.max(GIB, twoPercent));
-    }
-
     /** The job directory, its {@link BuildLayout#TARGET} when that exists, and the artifact store. */
     public static List<Path> paths(@Nullable String dir) {
         List<Path> out = new ArrayList<>();
@@ -151,7 +142,7 @@ public final class DiskFloor {
                 continue;
             }
             if (total <= 0 || usable < 0) continue;
-            long floor = floorBytes(total);
+            long floor = DiskRoom.floorBytes(total);
             if (usable < floor) return new Shortage(path, usable, floor);
         }
         return null;
