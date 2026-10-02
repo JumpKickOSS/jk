@@ -502,8 +502,8 @@ public final class PlannerNative {
     /**
      * Run native-image with the stage-progress listener, keep its output as a report, fail on a
      * non-zero exit, and move a framework's own binary to {@code out}. The builder's heap is the
-     * module's {@link NativeHeap} unless the args pin one; a learned heap that runs out is retried
-     * once at the generous heap, and a successful build records what it was built from.
+     * module's {@link NativeHeap} unless the args pin one; a build that ends for memory gets its one
+     * {@link NativeHeap#retry}, and a successful build records what it was built from.
      */
     private static void runDriver(
             TaskContext ctx,
@@ -545,27 +545,22 @@ public final class PlannerNative {
                 shared,
                 key,
                 true);
-        if (heap != null
-                && heap.learned()
-                && (run.cause() == WorkerFate.Cause.HEAP_EXHAUSTED
-                        || run.cause() == WorkerFate.Cause.KILLED_FOR_MEMORY)) {
-            HeapNotes.note(
-                    HeapNotes.line(generous, heap.xmxBytes(), run.cause() == WorkerFate.Cause.KILLED_FOR_MEMORY));
+        NativeHeap.Retry retry = NativeHeap.retry(
+                heap,
+                run.cause(),
+                generous,
+                Runtime.getRuntime().availableProcessors(),
+                allArgs.stream().anyMatch(a -> a.startsWith("--parallelism")));
+        if (retry != null) {
+            HeapNotes.note(retry.note());
             HeapNotes.flush(ctx);
-            NativeHeap.Choice wide = new NativeHeap.Choice(generous, false, "retry");
+            List<String> args = withHeap(allArgs, new NativeHeap.Choice(retry.xmxBytes(), false, "retry"));
+            if (retry.parallelism() > 0) {
+                args = new ArrayList<>(args);
+                args.add("--parallelism=" + retry.parallelism());
+            }
             run = attempt(
-                    ctx,
-                    project,
-                    dir,
-                    javaHome,
-                    frameworkSources,
-                    withHeap(allArgs, wide),
-                    classpath,
-                    mainClass,
-                    out,
-                    shared,
-                    key,
-                    false);
+                    ctx, project, dir, javaHome, frameworkSources, args, classpath, mainClass, out, shared, key, false);
         }
         Path niReport = layout.reportsDir().resolve("native-image.out");
         try {
