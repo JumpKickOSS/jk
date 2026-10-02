@@ -4,9 +4,11 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -27,7 +29,7 @@ import org.jspecify.annotations.Nullable;
  * rule, and a filter, a transformer or a relocation shape jk's rules do not cover is a row. {@code spring-boot-maven-plugin} is the {@code [spring-boot]} table at the Boot
  * version the chain resolves; {@code quarkus-maven-plugin} is the {@code [quarkus]} table at the
  * platform version; {@code native-maven-plugin} is {@code [native]}. Jib's and the Docker plugins'
- * base and target images are the {@code [image]} table, and a war has no jk shape at all.
+ * base and target images are the {@code [image]} table, and {@code war} packaging is {@code [war]}.
  */
 final class PackagingPlugins {
 
@@ -42,9 +44,11 @@ final class PackagingPlugins {
             JkBuild.@Nullable NativeConfig nativeConfig,
             @Nullable PluginConfig springBoot,
             @Nullable PluginConfig quarkus,
-            ImageTable image) {}
+            ImageTable image,
+            BuildBlock.@Nullable War war) {}
 
     private static final String SHADE = "maven-shade-plugin";
+    private static final String WAR = "maven-war-plugin";
     private static final String ASSEMBLY = "maven-assembly-plugin";
     private static final String SPRING_BOOT = "spring-boot-maven-plugin";
     private static final String QUARKUS = "quarkus-maven-plugin";
@@ -82,17 +86,72 @@ final class PackagingPlugins {
                 .orElse(ImageTable.EMPTY);
         // Packaging decides: a parent's <build><plugins> declaration of the war plugin is inherited
         // by every jar module and binds nothing there.
-        if ("war".equals(model.getPackaging())) {
-            report.error("packaging `war` (`maven-war-plugin`) is not supported: jk builds jars, Boot jars and"
-                    + " native images. Keep building this module with `jk mvn package`.");
-        }
+        BuildBlock.War war = "war".equals(model.getPackaging()) ? mapWar(em, report) : null;
         return new Packaging(
                 fatJar,
                 Collections.unmodifiableMap(new LinkedHashMap<>(relocate)),
                 nativeConfig,
                 springBoot,
                 quarkus,
-                image);
+                image,
+                war);
+    }
+
+    /** War plugin options jk's {@code [war]} does not model; each one is reported. */
+    private static final List<String> UNMAPPED_WAR_OPTIONS = List.of(
+            "webResources",
+            "overlays",
+            "packagingExcludes",
+            "packagingIncludes",
+            "warSourceExcludes",
+            "warSourceIncludes",
+            "filteringDeploymentDescriptors",
+            "outputFileNameMapping",
+            "archiveClasses",
+            "attachClasses",
+            "classifier",
+            "webXml");
+
+    /**
+     * {@code [war]} for a {@code war}-packaged module: {@code <warName>} or a {@code <finalName>}
+     * other than Maven's default as its name, {@code <warSourceDirectory>} as its webapp.
+     */
+    static BuildBlock.War mapWar(EffectiveModel em, ImportReport.Builder report) {
+        Model model = em.model();
+        String name = null;
+        String webapp = null;
+        Optional<Plugin> plugin = PluginFacts.plugin(model, WAR);
+        for (Xpp3Dom config : plugin.map(PluginFacts::configurations).orElse(List.of())) {
+            String warName = PluginFacts.child(config, "warName");
+            if (warName != null) name = warName;
+            String source = PluginFacts.child(config, "warSourceDirectory");
+            if (source != null) webapp = moduleRelative(source, model.getProjectDirectory());
+            for (String option : UNMAPPED_WAR_OPTIONS) {
+                if (PluginFacts.child(config, option) != null) {
+                    report.warning("`maven-war-plugin` `<" + option + ">` is not carried into `[war]`: the war holds"
+                            + " the webapp directory, WEB-INF/classes and WEB-INF/lib as they are.");
+                }
+            }
+        }
+        String finalName = model.getBuild() == null ? null : model.getBuild().getFinalName();
+        if (name == null && finalName != null && !finalName.equals(model.getArtifactId() + "-" + model.getVersion())) {
+            name = finalName;
+        }
+        return new BuildBlock.War(name, webapp == null ? BuildBlock.War.DEFAULT_WEBAPP : webapp);
+    }
+
+    /** {@code path} relative to {@code moduleDir}, with a leading {@code ${basedir}} or an absolute prefix dropped. */
+    private static String moduleRelative(String path, java.io.@Nullable File projectDir) {
+        String p = path.replace('\\', '/');
+        for (String prefix : List.of("${basedir}/", "${project.basedir}/")) {
+            if (p.startsWith(prefix)) return p.substring(prefix.length());
+        }
+        Path asPath = Path.of(p).normalize();
+        if (projectDir == null || !asPath.isAbsolute()) return p;
+        Path moduleDir = projectDir.toPath().toAbsolutePath().normalize();
+        return asPath.startsWith(moduleDir)
+                ? moduleDir.relativize(asPath).toString().replace('\\', '/')
+                : p;
     }
 
     /** Every {@code <relocation>} of the module's shade plugin, in declaration order; empty without the plugin. */

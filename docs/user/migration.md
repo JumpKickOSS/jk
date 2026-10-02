@@ -239,7 +239,7 @@ graph; in a leaf it builds that module and what it depends on, exactly as in a `
 workspace. Nested aggregators belong to the outermost root; a module listed only by a profile
 Maven does not activate on this machine is not built.
 
-What the import report would grade Tier 3 (a `<build><extensions>` entry jk has no role for, a Tycho or OSGi-bundle packaging, a `war` packaging, a
+What the import report would grade Tier 3 (a `<build><extensions>` entry jk has no role for, a Tycho or OSGi-bundle packaging, a
 `system`-scoped dependency, a parent no repository serves) is not an error here: the build after
 a POM change reports each row once, under Warnings, with the remedy — `jk import pom.xml` writes
 a `jk.toml` you can edit.

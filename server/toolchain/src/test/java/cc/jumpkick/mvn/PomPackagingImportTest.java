@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
@@ -344,7 +345,7 @@ class PomPackagingImportTest {
     }
 
     @Test
-    void a_war_is_a_tier_three_row(@TempDir Path tempDir) throws Exception {
+    void war_packaging_is_the_war_table(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -359,9 +360,60 @@ class PomPackagingImportTest {
                   </plugin></plugins></build>
                 </project>
                 """);
-        assertThat(result.report().hasErrors()).isTrue();
+        assertThat(result.report().hasErrors()).isFalse();
+        assertThat(result.jkBuild().build().war()).isEqualTo(new BuildBlock.War(null, BuildBlock.War.DEFAULT_WEBAPP));
+        assertThat(JkBuildRenderer.render(result.jkBuild()))
+                .contains("\n[war]\n")
+                .doesNotContain("webapp =");
+    }
+
+    @Test
+    void a_final_name_and_a_war_source_directory_are_the_war_s_name_and_webapp(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>web</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>war</packaging>
+                  <build>
+                    <finalName>ROOT</finalName>
+                    <plugins><plugin>
+                      <groupId>org.apache.maven.plugins</groupId>
+                      <artifactId>maven-war-plugin</artifactId>
+                      <version>3.4.0</version>
+                      <configuration>
+                        <warSourceDirectory>${basedir}/web</warSourceDirectory>
+                        <filteringDeploymentDescriptors>true</filteringDeploymentDescriptors>
+                      </configuration>
+                    </plugin></plugins>
+                  </build>
+                </project>
+                """);
+        BuildBlock.War war = result.jkBuild().build().war();
+        assertThat(war).isEqualTo(new BuildBlock.War("ROOT", "web"));
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("packaging `war` (`maven-war-plugin`) is not supported"))
-                .noneMatch(m -> m.startsWith("`<plugin>"));
+                .anyMatch(m -> m.startsWith("`maven-war-plugin` `<filteringDeploymentDescriptors>` is not carried"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("\n[war]\nname = \"ROOT\"\nwebapp = \"web\"\n");
+        assertThat(JkBuildParser.parse(rendered).build().war()).isEqualTo(war);
+    }
+
+    @Test
+    void a_jar_module_under_a_parent_that_declares_the_war_plugin_has_no_war(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>core</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-war-plugin</artifactId>
+                    <version>3.4.0</version>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        assertThat(result.jkBuild().build().war()).isNull();
     }
 }

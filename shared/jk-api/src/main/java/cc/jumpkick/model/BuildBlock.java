@@ -163,7 +163,9 @@ public record BuildBlock(
          * {@code [multi-release]} — the extra source sets compiled at a newer release into the jar's
          * {@code META-INF/versions/<N>/}, in ascending release order. Empty for an ordinary jar.
          */
-        List<ReleaseSources> multiRelease) {
+        List<ReleaseSources> multiRelease,
+        /** {@code [war]} — the web archive the module packages beside its jar; {@code null} for none. */
+        @Nullable War war) {
 
     /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
     public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -201,7 +203,8 @@ public record BuildBlock(
             EnvConfig.EMPTY,
             null,
             Dokka.DEFAULT,
-            List.of());
+            List.of(),
+            null);
 
     public BuildBlock {
         orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -378,6 +381,11 @@ public record BuildBlock(
         return !multiRelease.isEmpty();
     }
 
+    /** The same block with the {@code [war]} table set. */
+    public BuildBlock withWar(@Nullable War war) {
+        return with(f -> f.war = war);
+    }
+
     /** The same block with the {@code [dokka]} table set. */
     public BuildBlock withDokka(Dokka dokka) {
         return with(f -> f.dokka = dokka);
@@ -476,6 +484,27 @@ public record BuildBlock(
 
         public BuildInfo {
             file = file == null || file.isBlank() ? DEFAULT_FILE : file;
+        }
+    }
+
+    /**
+     * {@code [war]}: a web archive of the module's classes in {@code WEB-INF/classes}, its runtime
+     * dependencies (not {@code provided} ones) in {@code WEB-INF/lib}, and the {@code webapp}
+     * directory's files at its root, written exploded to {@code target/<file name>/} and archived to
+     * {@code target/<file name>.war}.
+     *
+     * @param name the file name without {@code .war}, Maven's {@code finalName}; {@code null} is
+     *     {@code <name>-<version>}
+     * @param webapp the module-relative directory of the web resources, default {@value
+     *     #DEFAULT_WEBAPP}
+     */
+    public record War(@Nullable String name, String webapp) {
+
+        public static final String DEFAULT_WEBAPP = "src/main/webapp";
+
+        public War {
+            if (name != null && name.isBlank()) name = null;
+            webapp = webapp == null || webapp.isBlank() ? DEFAULT_WEBAPP : webapp;
         }
     }
 

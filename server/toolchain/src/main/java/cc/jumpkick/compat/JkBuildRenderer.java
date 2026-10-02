@@ -69,6 +69,7 @@ public final class JkBuildRenderer {
         renderWorkspace(sb, jkBuild);
         renderBuild(sb, jkBuild.build());
         renderBuildInfo(sb, jkBuild.build().buildInfo());
+        renderWar(sb, jkBuild.build().war());
         renderDokka(sb, jkBuild.build().dokka());
         renderResolve(sb, jkBuild.build());
         renderJavac(sb, jkBuild.build().javac());
@@ -148,6 +149,16 @@ public final class JkBuildRenderer {
             sb.append("file = ").append(quote(info.file())).append('\n');
         }
         if (info.buildTime()) sb.append("time = \"build\"\n");
+    }
+
+    /** {@code [war]}, its keys only when off their defaults. */
+    private static void renderWar(StringBuilder sb, BuildBlock.@Nullable War war) {
+        if (war == null) return;
+        sb.append("\n[war]\n");
+        if (war.name() != null) sb.append("name = ").append(quote(war.name())).append('\n');
+        if (!war.webapp().equals(BuildBlock.War.DEFAULT_WEBAPP)) {
+            sb.append("webapp = ").append(quote(war.webapp())).append('\n');
+        }
     }
 
     /** {@code [dokka]} — only when a key is off its default. */

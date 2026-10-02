@@ -60,6 +60,8 @@ final class BuildFields {
     BuildBlock.Dokka dokka;
     List<ReleaseSources> multiRelease;
 
+    BuildBlock.@Nullable War war;
+
     private BuildFields(BuildBlock b) {
         orderAfter = b.orderAfter();
         testPluginJars = b.testPluginJars();
@@ -94,6 +96,7 @@ final class BuildFields {
         buildInfo = b.buildInfo();
         dokka = b.dokka();
         multiRelease = b.multiRelease();
+        war = b.war();
     }
 
     BuildBlock build() {
@@ -130,6 +133,7 @@ final class BuildFields {
                 env,
                 buildInfo,
                 dokka,
-                multiRelease);
+                multiRelease,
+                war);
     }
 }

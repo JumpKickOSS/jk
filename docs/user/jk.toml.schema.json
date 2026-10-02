@@ -544,6 +544,15 @@
       },
       "additionalProperties": false
     },
+    "war": {
+      "type": "object",
+      "description": "[war]: package a web archive beside the jar, exploded to target/<name>/ and archived to target/<name>.war (docs/user/packaging.md). The table alone is the whole declaration.",
+      "properties": {
+        "name": { "type": "string", "description": "The file name without .war (Maven's finalName). Default <name>-<version>." },
+        "webapp": { "type": "string", "description": "Module-relative directory copied to the war's root. Default \"src/main/webapp\"." }
+      },
+      "additionalProperties": false
+    },
     "multi-release": {
       "type": "object",
       "description": "[multi-release]: each key a Java release (9 or newer), each value the source root or roots compiled at that release into the jar's META-INF/versions/<release>/ (docs/user/packaging.md). The jar gets Multi-Release: true.",

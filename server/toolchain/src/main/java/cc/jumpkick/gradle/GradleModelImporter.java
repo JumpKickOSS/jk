@@ -343,6 +343,7 @@ final class GradleModelImporter {
         String mainClass = p.mainClass() != null ? p.mainClass() : manifest.remove("Main-Class");
         manifest.remove("Main-Class");
         BuildBlock build = BuildBlock.EMPTY;
+        if (applied.contains("war")) build = build.withWar(new BuildBlock.War(null, BuildBlock.War.DEFAULT_WEBAPP));
         if (p.bootBuildInfo() || applied.contains(GradleImporter.GIT_PROPERTIES_PLUGIN)) {
             build = build.withBuildInfo(BuildBlock.BuildInfo.DEFAULT);
         }
@@ -686,8 +687,6 @@ final class GradleModelImporter {
             if (SILENT_PLUGINS.contains(id)
                     || GradleImporter.pluginImportRules().containsKey(id)) continue;
             switch (id) {
-                case "war" ->
-                    local.warning("plugin `war` is applied: jk builds a jar; a war packaging is not imported.");
                 case "groovy", "scala" ->
                     local.warning("plugin `" + id + "` is applied: set `project." + id
                             + "` to the compiler version the build uses.");
