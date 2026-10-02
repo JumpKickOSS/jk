@@ -274,7 +274,10 @@ dashboard's Admin page shows the same line.
 A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
 resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
 the metaspace and code cache a compiler or test worker holds on top of that. A process
-that is not a JVM leases 64 MiB. `native-image` with no `-J-Xmx` gets a builder heap
+that is not a JVM leases 64 MiB. A JVM that names no heap leases what it likely uses: its
+learned peak, else a quarter of the budget up to 2 GiB, never more than its `-XX:MaxRAMPercentage`
+(25% by default) of memory; it keeps its own ceiling, and the ledger charges its measured resident
+set when that is larger. `native-image` with no `-J-Xmx` gets a builder heap
 jk passes as `-J-Xmx` and leases with its overhead. A module's first native build gets the
 generous heap, 85% of the per-worker cap (what GraalVM's driver would take on its own). Later
 builds get twice the largest peak the module's earlier builds reached, at least 2 GiB, scaled up
