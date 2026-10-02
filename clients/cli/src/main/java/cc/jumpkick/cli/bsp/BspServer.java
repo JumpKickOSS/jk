@@ -10,6 +10,7 @@ import cc.jumpkick.ide.BspConnectionFile;
 import cc.jumpkick.ide.IdeSourceRoots;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ProjectInfo;
@@ -270,6 +271,7 @@ public final class BspServer {
                         && mains.get(i) != null
                         && !mains.get(i).isBlank();
                 targets.add(targetJson(id, name, pathUri(Path.of(dirs.get(i))), canRun, model, i));
+                addSuiteTargets(targets, id, name, Path.of(dirs.get(i)));
             }
         } else {
             String display = info.coord() != null && !info.coord().isBlank() ? info.coord() : "root";
@@ -279,8 +281,48 @@ public final class BspServer {
                     && model.mainClasses().getFirst() != null
                     && !model.mainClasses().getFirst().isBlank();
             targets.add(targetJson(rootUri + "#root", display, rootUri, canRun, model, 0));
+            addSuiteTargets(targets, rootUri + "#root", display, ide.projectDir());
         }
         return JsonFields.object().token("targets", arrayOf(targets)).finish();
+    }
+
+    /** What separates a module's target id from one of its suites: {@code <module id>::<suite>}. */
+    static final String SUITE_SEPARATOR = "::";
+
+    /** One test target per suite of {@code moduleDir} beside its default suite, directory or class pattern. */
+    private static void addSuiteTargets(List<String> targets, String moduleId, String display, Path moduleDir) {
+        for (String suite : IdeSourceRoots.suites(moduleDir)) {
+            if (!TestSuites.DEFAULT.equals(suite)) targets.add(suiteTargetJson(moduleId, display, suite));
+        }
+    }
+
+    /**
+     * A test target for {@code suite} of the module {@code moduleId} names: no sources and no
+     * languages of its own (the module's target owns them), so testing it is the one thing it does,
+     * {@code jk test --suite <suite>} for that module.
+     */
+    static String suiteTargetJson(String moduleId, String display, String suite) {
+        return JsonFields.object()
+                .token("id", uriJson(moduleId + SUITE_SEPARATOR + suite))
+                .string("displayName", display + " · " + suite)
+                .array("tags", List.of("test"))
+                .array("languageIds", List.of())
+                .token("dependencies", arrayOf(List.of(uriJson(moduleId))))
+                .token(
+                        "capabilities",
+                        JsonFields.object()
+                                .bool("canCompile", false)
+                                .bool("canTest", true)
+                                .bool("canRun", false)
+                                .finish())
+                .finish();
+    }
+
+    /** The suite a target id names after {@link #SUITE_SEPARATOR}, or {@code null} for a module's own target. */
+    static @Nullable String suiteOf(String targetUri) {
+        int hash = targetUri.indexOf('#');
+        int at = targetUri.indexOf(SUITE_SEPARATOR, Math.max(0, hash));
+        return hash < 0 || at < 0 ? null : targetUri.substring(at + SUITE_SEPARATOR.length());
     }
 
     /** Package-visible for contract tests. */
@@ -636,7 +678,7 @@ public final class BspServer {
      * echoed in the result's {@code data} under {@code dataKind} {@value #DEBUG_DATA_KIND}.
      */
     private String testJson(String requestJson, @Nullable Path moduleDir) throws IOException {
-        var selection = parseTestSelectionData(requestJson);
+        var selection = withTargetSuite(parseTestSelectionData(requestJson), extractTargetUris(requestJson));
         DebugJvm debug = armDebug(requestJson);
         var outcome = ide.testModule(moduleDir, null, selection, debug);
         return statusResult(outcome, "test failed", debug);
@@ -793,6 +835,18 @@ public final class BspServer {
     }
 
     /**
+     * {@code selection} for a test of one suite target: that suite, unless the request's data
+     * already named suites. A module's own target, or several targets, leave it as it is.
+     */
+    static TestSelection withTargetSuite(TestSelection selection, List<String> targetUris) {
+        if (targetUris.size() != 1 || !selection.suites().isEmpty() || selection.allSuites()) return selection;
+        String suite = suiteOf(targetUris.getFirst());
+        if (suite == null) return selection;
+        return TestSelection.of(List.of(suite), false, selection.includeTags(), selection.excludeTags())
+                .withClasses(selection.classes());
+    }
+
+    /**
      * The {@code data.debug} field of a BSP test/run request as a {@link DebugJvm}, or null when
      * absent or false. Accepted shapes: {@code true} (the defaults), an object with optional
      * {@code host}, {@code port} and {@code suspend}, or the {@code --debug-jvm} spec as a string.
@@ -870,6 +924,8 @@ public final class BspServer {
         int hash = uri.indexOf('#');
         if (hash < 0) return null;
         String name = uri.substring(hash + 1);
+        int suite = name.indexOf(SUITE_SEPARATOR);
+        if (suite >= 0) name = name.substring(0, suite);
         if (name.isBlank() || name.equals("root")) return null;
         IdeWireModel model = model();
         if (model == null || model.moduleDirs() == null) return null;
