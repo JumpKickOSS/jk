@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
@@ -25,6 +26,9 @@ public final class HeapScope {
 
     /** A module's test suite, one-shot or pull. */
     public static final String TEST = "test";
+
+    /** A GraalVM native-image build; its heap is the builder's. */
+    public static final String NATIVE_IMAGE = TaskNames.NATIVE_IMAGE;
 
     /** Any other plugin worker. */
     public static final String PLUGIN = "plugin";

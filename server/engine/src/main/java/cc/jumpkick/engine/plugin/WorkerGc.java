@@ -78,7 +78,7 @@ public final class WorkerGc {
     static boolean logged(List<String> command) {
         if (command == null) return false;
         for (String arg : command) {
-            if (arg != null && arg.startsWith(FLAG_PREFIX)) return true;
+            if (arg != null && (arg.startsWith(FLAG_PREFIX) || arg.startsWith("-J" + FLAG_PREFIX))) return true;
         }
         return false;
     }
@@ -105,7 +105,8 @@ public final class WorkerGc {
             Path log = create();
             List<String> next = new ArrayList<>(command.size() + 1);
             next.addAll(command.subList(0, javaAt + 1));
-            next.add(flag(log));
+            // native-image hands -J flags to its builder JVM, whose heap is the one learned.
+            next.add((WorkerLeases.nativeImageCommand(command) ? "-J" : "") + flag(log));
             next.addAll(command.subList(javaAt + 1, command.size()));
             return new Watch(List.copyOf(next), log, key, heaps);
         } catch (IOException e) {

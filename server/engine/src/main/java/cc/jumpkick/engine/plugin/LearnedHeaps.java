@@ -23,7 +23,9 @@ import org.jspecify.annotations.Nullable;
  * A key keeps its last {@value #WINDOW} peaks, newest first, and a known-good heap: the largest one
  * it finished at after running out of a smaller one. The next {@code -Xmx} is {@link #size} of the
  * peaks' maximum, never below the known-good heap. A key with no record starts at {@link
- * #firstHeap}. Deleting the project's file forgets them. A user-pinned heap is never written.
+ * #firstHeap}. A key may also keep a fingerprint of the inputs its peaks were measured on ({@link
+ * #inputs}), so a caller can tell when they no longer apply. Deleting the project's file forgets
+ * them. A user-pinned heap is never written.
  */
 public final class LearnedHeaps {
 
@@ -165,7 +167,10 @@ public final class LearnedHeaps {
     /** As {@link #note(HeapScope.Key, long)}. */
     public void note(Path project, String module, String kind, int jdk, long peakBytes) {
         if (project == null || module == null || module.isBlank() || peakBytes <= 0) return;
-        update(project, row(module, kind, jdk), stored -> new Row(prepend(stored.peaks(), peakBytes), stored.good()));
+        update(
+                project,
+                row(module, kind, jdk),
+                stored -> new Row(prepend(stored.peaks(), peakBytes), stored.good(), stored.inputs()));
     }
 
     /**
@@ -177,7 +182,24 @@ public final class LearnedHeaps {
         update(
                 key.project(),
                 row(key.module(), key.kind(), key.jdk()),
-                stored -> new Row(stored.peaks(), Math.max(stored.good(), heapBytes)));
+                stored -> new Row(stored.peaks(), Math.max(stored.good(), heapBytes), stored.inputs()));
+    }
+
+    /** The input fingerprint stored for {@code key}, or {@code ""} when it has none. */
+    public String inputs(HeapScope.@Nullable Key key) {
+        if (key == null) return "";
+        Row row = stored(key.project(), key.module(), key.kind(), key.jdk());
+        return row == null ? "" : row.inputs();
+    }
+
+    /** Store {@code fingerprint} as the inputs {@code key}'s next peaks are measured on. Tabs and newlines are dropped. */
+    public void inputs(HeapScope.@Nullable Key key, String fingerprint) {
+        if (key == null || key.module().isBlank() || fingerprint == null) return;
+        String clean = fingerprint.replace('\t', ' ').replace('\n', ' ');
+        update(
+                key.project(),
+                row(key.module(), key.kind(), key.jdk()),
+                stored -> new Row(stored.peaks(), stored.good(), clean));
     }
 
     private void update(Path project, String row, UnaryOperator<Row> change) {
@@ -260,11 +282,11 @@ public final class LearnedHeaps {
         for (String line : text.split("\n", -1)) {
             if (line.isBlank() || line.charAt(0) == '#') continue;
             String[] p = line.split("\t", -1);
-            if (p.length != 5) continue;
+            if (p.length != 6) continue;
             long[] peaks = parse(p[3]);
             long good = positive(p[4]);
-            if (peaks.length == 0 && good == 0) continue;
-            out.put(p[0] + "\t" + p[1] + "\t" + p[2], new Row(peaks, good));
+            if (peaks.length == 0 && good == 0 && p[5].isBlank()) continue;
+            out.put(p[0] + "\t" + p[1] + "\t" + p[2], new Row(peaks, good, p[5]));
         }
         return out;
     }
@@ -295,7 +317,7 @@ public final class LearnedHeaps {
 
     private static String write(Map<String, Row> rows) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# module\tkind\tjdk\tpeaks\tgood\n");
+        sb.append("# module\tkind\tjdk\tpeaks\tgood\tinputs\n");
         for (var e : rows.entrySet()) {
             sb.append(e.getKey()).append('\t');
             long[] peaks = e.getValue().peaks();
@@ -303,13 +325,17 @@ public final class LearnedHeaps {
                 if (i > 0) sb.append(',');
                 sb.append(peaks[i]);
             }
-            sb.append('\t').append(e.getValue().good()).append('\n');
+            sb.append('\t').append(e.getValue().good());
+            sb.append('\t').append(e.getValue().inputs()).append('\n');
         }
         return sb.toString();
     }
 
-    /** One key's peaks, newest first, and its known-good heap ({@code 0} when it has none). */
-    private record Row(long[] peaks, long good) {
-        static final Row EMPTY = new Row(new long[0], 0L);
+    /**
+     * One key's peaks, newest first, its known-good heap ({@code 0} when it has none), and the
+     * fingerprint of the inputs they were measured on ({@code ""} when none was stored).
+     */
+    private record Row(long[] peaks, long good, String inputs) {
+        static final Row EMPTY = new Row(new long[0], 0L, "");
     }
 }

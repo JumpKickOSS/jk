@@ -10,7 +10,13 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.engine.plugin.NativeHeap;
+import cc.jumpkick.engine.plugin.WorkerFate;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -36,8 +42,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -144,7 +152,19 @@ public final class PlannerNative {
             return;
         }
         reserveNativeWeight(ctx, dir, classpath, out);
-        runDriver(ctx, project, dir, layout, javaHome, frameworkSources, allArgs, classpath, mainClass, out, shared);
+        runDriver(
+                ctx,
+                project,
+                dir,
+                layout,
+                javaHome,
+                frameworkSources,
+                allArgs,
+                classpath,
+                reach.metadataDirs(),
+                mainClass,
+                out,
+                shared);
         // Final tick: completes the last native-image step (or the only tick
         // when no progress headers were emitted).
         ctx.progress(1);
@@ -481,7 +501,9 @@ public final class PlannerNative {
 
     /**
      * Run native-image with the stage-progress listener, keep its output as a report, fail on a
-     * non-zero exit, and move a framework's own binary to {@code out}.
+     * non-zero exit, and move a framework's own binary to {@code out}. The builder's heap is the
+     * module's {@link NativeHeap} unless the args pin one; a learned heap that runs out is retried
+     * once at the generous heap, and a successful build records what it was built from.
      */
     private static void runDriver(
             TaskContext ctx,
@@ -492,66 +514,76 @@ public final class PlannerNative {
             @Nullable Path frameworkSources,
             List<String> allArgs,
             List<Path> classpath,
+            List<Path> metadataDirs,
             @Nullable String mainClass,
             Path out,
             boolean shared)
             throws Exception {
-        // Progress listener: parse [N/M] headers from native-image stdout.
-        // ticks(10) is declared upfront (preamble + 8 GraalVM stages + done).
-        // Ticks: 1 preamble (when step 1 first appears) +
-        // 8 steps ([1/8]…[8/8]) +
-        // 1 final (ctx.progress after run returns) = 10.
-        // Fallback: if no [N/M] headers appear (older GraalVM, --quiet),
-        // the listener never fires and the single ctx.progress(1) at the end
-        // is the only tick — the bar jumps to 1/10, which is acceptable.
-        java.util.concurrent.atomic.AtomicBoolean preambleDone = new java.util.concurrent.atomic.AtomicBoolean(false);
-        NativeImageDriver.ProgressListener listener = (current, total, label) -> {
-            if (preambleDone.compareAndSet(false, true)) {
-                ctx.progress(1); // preamble done (output before [1/N])
-            }
-            ctx.label("[" + current + "/" + total + "] " + label);
-            ctx.progress(1); // stage N started = stage N-1 done
-        };
-
-        // Run the framework's list; jk's classpath and [application] main describe a
-        // different image entirely (Quarkus enters through a generated --features
-        // class, not a main method).
-        var request = frameworkSources != null
-                ? NativeImageDriver.Request.verbatim(
-                        javaHome, frameworkSources, frameworkNativeArgs(frameworkSources, allArgs), out)
-                : new NativeImageDriver.Request(javaHome, classpath, mainClass, out, allArgs, shared);
-        if (frameworkSources != null) {
-            ctx.label("native-image from "
-                    + ActivePlugins.packager(project, dir)
-                            .map(a -> a.manifest().id())
-                            .orElse("plugin")
-                    + " sources");
+        HeapScope.Key key = new HeapScope.Key(
+                dir,
+                project.project().group() + ":" + project.project().name(),
+                HeapScope.NATIVE_IMAGE,
+                JvmOptions.hostFeature(javaHome));
+        NativeHeap.Inputs inputs = NativeHeap.Inputs.of(classpath, metadataDirs);
+        long generous = NativeHeap.generous(WorkerLeases.engine().capacityBytes());
+        NativeHeap.Choice heap = JvmOptions.userPinnedHeap(allArgs)
+                ? null
+                : NativeHeap.choose(LearnedHeaps.engine(), key, inputs, generous);
+        if (heap != null) {
+            ctx.output("native-image heap " + WorkerLeases.format(heap.xmxBytes()) + " (" + heap.why() + ")");
         }
-        // Capture Graal stdout/stderr for progress parsing, a durable report, and the
-        // plan output channel. The CLI buffers output for Ctrl-O peek (hidden by
-        // default); --verbose streams it live. Do not gate on verbose/failure only —
-        // that left the peek buffer empty during a successful native-image run.
-        List<String> niLog = java.util.Collections.synchronizedList(new ArrayList<>());
-        int exit = NativeImageDriver.run(request, listener, line -> {
-            niLog.add(line);
-            ctx.output(line);
-        });
+        Attempt run = attempt(
+                ctx,
+                project,
+                dir,
+                javaHome,
+                frameworkSources,
+                withHeap(allArgs, heap),
+                classpath,
+                mainClass,
+                out,
+                shared,
+                key,
+                true);
+        if (heap != null
+                && heap.learned()
+                && (run.cause() == WorkerFate.Cause.HEAP_EXHAUSTED
+                        || run.cause() == WorkerFate.Cause.KILLED_FOR_MEMORY)) {
+            HeapNotes.note(
+                    HeapNotes.line(generous, heap.xmxBytes(), run.cause() == WorkerFate.Cause.KILLED_FOR_MEMORY));
+            HeapNotes.flush(ctx);
+            NativeHeap.Choice wide = new NativeHeap.Choice(generous, false, "retry");
+            run = attempt(
+                    ctx,
+                    project,
+                    dir,
+                    javaHome,
+                    frameworkSources,
+                    withHeap(allArgs, wide),
+                    classpath,
+                    mainClass,
+                    out,
+                    shared,
+                    key,
+                    false);
+        }
         Path niReport = layout.reportsDir().resolve("native-image.out");
         try {
             Files.createDirectories(niReport.getParent());
-            String body = niLog.isEmpty() ? "" : String.join("\n", niLog) + "\n";
+            String body = run.log().isEmpty() ? "" : String.join("\n", run.log()) + "\n";
             Files.writeString(niReport, body);
         } catch (IOException ioe) {
             // Best-effort report; never fail the image over log write.
         }
-        if (exit != 0) {
-            String how = WorkerContainment.failure(exit, "exited " + exit);
+        if (run.exit() != 0) {
+            String how = WorkerFate.phrase(run.cause(), "exited " + run.exit());
             ctx.error(
                     "native",
                     "native-image " + how + (Files.isRegularFile(niReport) ? " (full log: " + niReport + ")" : ""));
             throw new RuntimeException("native-image "
-                    + (WorkerContainment.KILLED_FOR_MEMORY.equals(how) ? how : "failed (exit " + exit + ")"));
+                    + (run.cause() == WorkerFate.Cause.OTHER ? "failed (exit " + run.exit() + ")" : how));
         }
+        if (heap != null) LearnedHeaps.engine().inputs(key, inputs.encode());
         // The framework's args name their own output, inside its sources dir.
         if (frameworkSources != null) {
             Path produced = frameworkBinary(frameworkSources);
@@ -562,6 +594,74 @@ public final class PlannerNative {
             Files.move(produced, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             out.toFile().setExecutable(true);
         }
+    }
+
+    /** One native-image run: its exit, how it ended, and its output. */
+    private record Attempt(int exit, WorkerFate.Cause cause, List<String> log) {}
+
+    /**
+     * Run native-image once under {@code key}. Its {@code [N/M]} stage headers label the step, and
+     * tick it when {@code ticks}: a retry repeats stages the first run already counted.
+     */
+    private static Attempt attempt(
+            TaskContext ctx,
+            JkBuild project,
+            Path dir,
+            Path javaHome,
+            @Nullable Path frameworkSources,
+            List<String> args,
+            List<Path> classpath,
+            @Nullable String mainClass,
+            Path out,
+            boolean shared,
+            HeapScope.Key key,
+            boolean ticks)
+            throws Exception {
+        // Ticks: 1 preamble (when step 1 first appears) + 8 steps ([1/8]…[8/8]) + 1 final
+        // (ctx.progress after run returns) = 10. Without [N/M] headers (older GraalVM, --quiet)
+        // the final tick is the only one.
+        AtomicBoolean preambleDone = new AtomicBoolean(false);
+        NativeImageDriver.ProgressListener listener = (current, total, label) -> {
+            if (ticks && preambleDone.compareAndSet(false, true)) ctx.progress(1);
+            ctx.label("[" + current + "/" + total + "] " + label);
+            if (ticks) ctx.progress(1);
+        };
+        // Run the framework's list; jk's classpath and [application] main describe a
+        // different image entirely (Quarkus enters through a generated --features
+        // class, not a main method).
+        var request = frameworkSources != null
+                ? NativeImageDriver.Request.verbatim(
+                        javaHome, frameworkSources, frameworkNativeArgs(frameworkSources, args), out)
+                : new NativeImageDriver.Request(javaHome, classpath, mainClass, out, args, shared);
+        if (frameworkSources != null) {
+            ctx.label("native-image from "
+                    + ActivePlugins.packager(project, dir)
+                            .map(a -> a.manifest().id())
+                            .orElse("plugin")
+                    + " sources");
+        }
+        // Graal's output feeds progress parsing, the durable report and the plan output channel,
+        // which the CLI buffers for Ctrl-O peek and --verbose streams live.
+        List<String> log = Collections.synchronizedList(new ArrayList<>());
+        int exit = HeapScope.call(
+                key,
+                () -> NativeImageDriver.run(request, listener, line -> {
+                    log.add(line);
+                    ctx.output(line);
+                }));
+        WorkerFate.Cause cause = exit == 0 ? WorkerFate.Cause.OTHER : WorkerFate.classify(exit, String.join("\n", log));
+        return new Attempt(exit, cause, List.copyOf(log));
+    }
+
+    /** {@code args} with the builder heap {@code heap} chose, marked as jk's; {@code args} as they are without one. */
+    private static List<String> withHeap(List<String> args, NativeHeap.@Nullable Choice heap) {
+        if (heap == null) return args;
+        String flag = "-J-Xmx" + Math.max(1, heap.xmxBytes() >> 20) + "m";
+        JvmOptions.notePlannedHeap(flag);
+        List<String> out = new ArrayList<>(args.size() + 1);
+        out.add(flag);
+        out.addAll(args);
+        return out;
     }
 
     // ---- helpers --------------------------------------------------------

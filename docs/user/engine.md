@@ -274,9 +274,15 @@ dashboard's Admin page shows the same line.
 A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
 resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
 the metaspace and code cache a compiler or test worker holds on top of that. A process
-that is not a JVM leases 64 MiB. `native-image` with no `-J-Xmx` is given 85% of the per-worker
-cap as its builder's `-J-Xmx` — what GraalVM's driver would take on its own — and leases that
-plus overhead, so the image build is charged for the memory it uses. A lease bigger than the whole budget is not refused. A heap jk chose is lowered
+that is not a JVM leases 64 MiB. `native-image` with no `-J-Xmx` gets a builder heap
+jk passes as `-J-Xmx` and leases with its overhead. A module's first native build gets the
+generous heap, 85% of the per-worker cap (what GraalVM's driver would take on its own). Later
+builds get twice the largest peak the module's earlier builds reached, at least 2 GiB, scaled up
+with classpath growth. jk goes back to the generous heap when a dependency is added, removed or
+moved to another version, when reachability metadata changes, or when the classpath grew more
+than 25%. If a learned heap runs out, the build is rerun once at the generous heap. The step's
+output names the heap and why it was chosen. A `-J-Xmx` in `[native] args` is yours and is left
+alone. A lease bigger than the whole budget is not refused. A heap jk chose is lowered
 so the worker still fits, and the engine log says so. A heap you pinned — `[jvm] args`,
 `[test] jvm-args`, a module `-J` flag, `--ram-percent`, or any other `-Xmx` /
 `-XX:MaxRAM*` you passed — is left as you wrote it. That worker leases the whole budget
