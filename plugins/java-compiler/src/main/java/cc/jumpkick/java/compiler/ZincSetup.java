@@ -76,7 +76,7 @@ final class ZincSetup {
      * directory is another sub-project with its own analysis: {@code ClasspathCache} hashes a
      * directory entry to a constant, so an "unchanged classpath" makes Zinc consult {@link
      * ClasspathLookup#analysis} for every library class instead of comparing stamps, and jk answers
-     * "no analysis" — a class rewritten in place inside {@code classes/main} (a test compile's own
+     * "no analysis" — a class rewritten in place inside {@code target/classes} (a test compile's own
      * main output, or an upstream module wired as a directory) is invisible to the dependent
      * compile. Hashing a directory by its listing (path, size, mtime of every file) flips the
      * classpath hash whenever its contents move, which sends Zinc down its origin-lookup path: find

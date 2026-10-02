@@ -128,8 +128,7 @@ class CoexistenceMirrorE2eTest {
 
         assertThat(built.errors()).isEmpty();
         assertThat(built.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Shop.class"))
-                .exists();
+        assertThat(project.resolve("target/classes/com/example/Shop.class")).exists();
         assertThat(nexus.requested).contains(POM_PATH, JAR_PATH);
         assertThat(nexus.requested)
                 .as("the test runner's own dependencies came through the mirror too")

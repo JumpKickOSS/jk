@@ -836,7 +836,7 @@ final class ModuleForecast {
         List<Path> ktSrc = prepared.ktSrc();
         List<Path> gvSrc = prepared.gvSrc();
         // ---- package-jar ----
-        // Tokens MUST match BuildPlanner.packageJarStep (classes/main/sbom/manifest).
+        // Tokens MUST match BuildPlanner.packageJarStep (target/classes/sbom/manifest).
         // After jk clean the classes tree is gone: reconstruct the classes: token from the
         // compile action record + resource roots (same merge the live build produces) so we
         // still hit the packaging action cache instead of forecasting perpetual "repackage".

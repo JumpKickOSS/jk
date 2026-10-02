@@ -47,7 +47,7 @@ public final class AbiIndex {
      * The previous index advanced by one compile: only the classes of the sources that actually
      * recompiled are re-hashed (their class file gone → row dropped); every other row carries
      * forward. This is what keeps an incremental build from re-reading and re-hashing the whole
-     * {@code classes/main} tree per compile. Sources that resolve to no FQC (secondary
+     * {@code target/classes} tree per compile. Sources that resolve to no FQC (secondary
      * top-level classes, unknown roots) are ignored; a stale row for them is harmless — ranking
      * re-hashes the class file itself for "current", the index is only ever the "pre" baseline.
      */

@@ -213,7 +213,7 @@ class VscodeCommandTest {
         // Processor-only dep is NOT a compile lib entry...
         assertThat(cp).doesNotContain("myprocessor");
         // ...but the generated-sources root is present.
-        assertThat(cp).contains("target/generated/sources/annotations/main");
+        assertThat(cp).contains("target/generated-sources/annotations");
     }
 
     @Test

@@ -445,7 +445,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                 .as("hosted compile succeeded; diagnostics: " + diagnostics)
                 .isTrue();
         // The engine (not the client) ran the compile.
-        assertThat(Files.isRegularFile(project.resolve("target/classes/main/example/Hello.class")))
+        assertThat(Files.isRegularFile(project.resolve("target/classes/example/Hello.class")))
                 .isTrue();
 
         server.close();

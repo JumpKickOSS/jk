@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Resolves workspace-sibling dependencies (and tests kinds / fixtures) for one module's build.
  * Workspace coords are not in the lockfile; matching siblings contribute under the shared {@link
- * BuildLayout} {@code target/}: their {@code classes/main} tree to a compile classpath and their
+ * BuildLayout} {@code target/}: their {@code target/classes} tree to a compile classpath and their
  * main jar to a runtime one, their test classes when an edge selects {@link DependencyKind#TESTS},
  * and their fixtures directory when {@code fixtures = true}.
  *
@@ -74,7 +74,7 @@ public final class WorkspaceClasspath {
 
     /**
      * The module refs this manifest selects with {@code kind = "tests"} — the direct edges that put
-     * a sibling's {@code classes/test} on this module's classpath, and so the only reason anything
+     * a sibling's {@code target/test-classes} on this module's classpath, and so the only reason anything
      * outside a module can read its test compilation.
      *
      * <p>Direct edges only, because a tests kind never rides transitively: {@code workspaceClosure}

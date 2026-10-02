@@ -96,10 +96,9 @@ class ModulePathE2eTest {
 
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/module-info.class")).exists();
-        assertThat(project.resolve("target/classes/main/com/example/Greeting.class"))
-                .exists();
-        assertThat(project.resolve("target/classes/test/com/example/GreetingTest.class"))
+        assertThat(project.resolve("target/classes/module-info.class")).exists();
+        assertThat(project.resolve("target/classes/com/example/Greeting.class")).exists();
+        assertThat(project.resolve("target/test-classes/com/example/GreetingTest.class"))
                 .exists();
     }
 

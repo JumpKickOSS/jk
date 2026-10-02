@@ -142,7 +142,7 @@ class GrailsBuildE2eTest {
         assertThat(result.success()).isTrue();
 
         // compile-groovy swept the grails-app roots (manifest source-roots, not src/).
-        Path classes = project.resolve("target/classes/main");
+        Path classes = project.resolve("target/classes");
         assertThat(classes.resolve("com/example/Note.class")).exists();
         assertThat(classes.resolve("com/example/NoteController.class")).exists();
         assertThat(classes.resolve("com/example/Application.class")).exists();
@@ -154,7 +154,7 @@ class GrailsBuildE2eTest {
         assertThat(reader.getInterfaces()).anyMatch(i -> i.equals("org/grails/datastore/gorm/GormEntity"));
 
         // The grails-jar packager replaced the main artifact with a Boot-launcher jar.
-        Path jar = project.resolve("target/lib/gnotes-1.0.0.jar");
+        Path jar = project.resolve("target/gnotes-1.0.0.jar");
         if (!Files.isRegularFile(jar)) {
             try (var walk = Files.walk(project.resolve("target"))) {
                 jar = walk.filter(f -> f.getFileName().toString().equals("gnotes-1.0.0.jar"))

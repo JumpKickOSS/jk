@@ -45,7 +45,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The test-model step forks {@link QuarkusTestModelMain} on the same tool classpath before the
  * module's tests run: it resolves the locked test closure into Quarkus's {@code ApplicationModel},
- * with {@code target/classes/main} as the one application root, and serializes it where {@code
+ * with {@code target/classes} as the one application root, and serializes it where {@code
  * @QuarkusTest}'s bootstrap reads a serialized model instead of discovering a Maven workspace. The
  * forked test JVM receives the path as {@code -Dquarkus-internal-test.serialized-app-model.path}.
  */
@@ -141,7 +141,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
 
     /**
      * Resolve the locked test closure into a serialized {@code ApplicationModel} and hand the
-     * forked test JVM its path. The model names {@code target/classes/main} as the application's
+     * forked test JVM its path. The model names {@code target/classes} as the application's
      * one root, so the test bootstrap indexes the application archive once — a Maven workspace read
      * off the module's {@code pom.xml} would add {@code target/classes}, the parent of both class
      * trees, and every bean would register twice.

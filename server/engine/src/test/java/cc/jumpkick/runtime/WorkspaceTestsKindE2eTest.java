@@ -55,11 +55,11 @@ class WorkspaceTestsKindE2eTest {
         Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
         Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
 
-        // Build lib first (incl. tests) so classes/test exists for the kind=tests edge.
+        // Build lib first (incl. tests) so test-classes exists for the kind=tests edge.
         assertThat(build(ws.resolve("lib"), cache).success())
                 .as("lib build+test")
                 .isTrue();
-        Path libTestClasses = ws.resolve("target/lib/classes/test");
+        Path libTestClasses = ws.resolve("lib/target/test-classes");
         assertThat(libTestClasses).isDirectory();
         try (var walk = Files.walk(libTestClasses)) {
             assertThat(walk.anyMatch(p -> p.getFileName().toString().endsWith("LibTestHelper.class")))
@@ -69,11 +69,11 @@ class WorkspaceTestsKindE2eTest {
 
         // Classpath contract before app tests run.
         var testCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
-        assertThat(testCp.jars()).anyMatch(p -> p.endsWith(Path.of("classes/test")));
+        assertThat(testCp.jars()).anyMatch(p -> p.endsWith(Path.of("test-classes")));
         assertThat(testCp.missingSiblingJars()).isEmpty();
 
         var mainCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN));
-        assertThat(mainCp.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("classes/test"));
+        assertThat(mainCp.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("test-classes"));
 
         // App tests must pass only if kind=tests put the helper on the test CP.
         assertThat(build(app, cache).success())
@@ -115,7 +115,7 @@ class WorkspaceTestsKindE2eTest {
                 .isTrue();
 
         // lib's test classes are the artifact the edge selects: they must be on disk, complete.
-        Path libTestClasses = ws.resolve("target/lib/classes/test");
+        Path libTestClasses = ws.resolve("lib/target/test-classes");
         assertThat(libTestClasses).isDirectory();
         try (var walk = Files.walk(libTestClasses)) {
             assertThat(walk.anyMatch(p -> p.getFileName().toString().equals("LibTestHelper.class")))
@@ -124,7 +124,7 @@ class WorkspaceTestsKindE2eTest {
     }
 
     /**
-     * lib publishes a test helper only its own {@code classes/test} carries; app selects it with
+     * lib publishes a test helper only its own {@code test-classes} carries; app selects it with
      * {@code kind = "tests"}. The one workspace both tests read, so the classpath contract and the
      * scheduler's publish gate cannot be checked against two different shapes.
      */

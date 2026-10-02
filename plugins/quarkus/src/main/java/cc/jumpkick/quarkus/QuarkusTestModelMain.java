@@ -27,7 +27,7 @@ import java.util.List;
  * #SERIALIZED_TEST_APP_MODEL} system property before it looks for a Maven or Gradle workspace —
  * the seam its Gradle plugin uses. jk writes that model: the locked test closure resolved the way
  * {@link QuarkusAugmentMain} resolves the runtime closure, the application artifact pointing at
- * {@code target/classes/main} as its one root, and a workspace module naming the module directory
+ * {@code target/classes} as its one root, and a workspace module naming the module directory
  * so the test harness knows whose tests these are, and the deployment jars the resolve had to
  * download kept beside the model. With the model in hand the bootstrap indexes the application
  * archive once, augments once per test profile, and never reads a {@code pom.xml}.
@@ -125,10 +125,9 @@ public final class QuarkusTestModelMain {
                 .build();
     }
 
-    /** {@code <build>/classes/main} names {@code <build>}; a classes dir shaped otherwise falls back to the module. */
+    /** {@code <build>/classes} names {@code <build>}; a classes dir with no parent falls back to the module. */
     private static Path buildDirOf(Path classesDir, Path moduleDir) {
-        Path classes = classesDir.getParent();
-        Path build = classes == null ? null : classes.getParent();
+        Path build = classesDir.getParent();
         return build == null ? moduleDir : build;
     }
 

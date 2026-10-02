@@ -300,17 +300,17 @@ class IdeIdeaGenerationTest {
                 .contains("<annotationProcessing>")
                 .contains("profile name=\"jk-widget\"")
                 .contains("myprocessor-1.0.0.jar") // repo path with proper Maven name + .jar
-                .contains("target/generated/sources/annotations/main")
+                .contains("target/generated-sources/annotations")
                 // test sources get processed too — into the "test" generated dir.
-                .contains("<sourceTestOutputDir name=\"target/generated/sources/annotations/test\" />");
+                .contains("<sourceTestOutputDir name=\"target/generated-test-sources/test-annotations\" />");
 
         String iml = Files.readString(ws.resolve("widget.iml"));
         // Generated source root present (main + test)...
         assertThat(iml)
-                .contains("url=\"file://$MODULE_DIR$/target/generated/sources/annotations/main\" "
+                .contains("url=\"file://$MODULE_DIR$/target/generated-sources/annotations\" "
                         + "isTestSource=\"false\" generated=\"true\"");
         assertThat(iml)
-                .contains("url=\"file://$MODULE_DIR$/target/generated/sources/annotations/test\" "
+                .contains("url=\"file://$MODULE_DIR$/target/generated-test-sources/test-annotations\" "
                         + "isTestSource=\"true\" generated=\"true\"");
         // ...and the processor is NOT a compile-scoped library order entry.
         assertThat(iml).doesNotContain("org.example:myprocessor:1.0.0");

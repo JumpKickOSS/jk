@@ -22,9 +22,9 @@ class PublishDisplayPathTest {
     void a_workspace_member_s_document_is_shown_relative_to_the_workspace_root() {
         Path ws = tmp.resolve("ws");
         Path member = ws.resolve("libs/widget");
-        Path doc = ws.resolve("target/libs/widget/sbom/widget-1.0.0.cdx.json");
+        Path doc = ws.resolve("libs/widget/target/sbom/widget-1.0.0.cdx.json");
         assertThat(PublishCommand.displayPath(doc, ws, member))
-                .isEqualTo("target/libs/widget/sbom/widget-1.0.0.cdx.json");
+                .isEqualTo("libs/widget/target/sbom/widget-1.0.0.cdx.json");
     }
 
     @Test

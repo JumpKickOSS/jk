@@ -70,7 +70,7 @@ class CliSessionTranscriptTest {
                 List.of(),
                 List.of(),
                 false);
-        session.absorb(result).wedge("Build successful. Built target/lib/app.jar");
+        session.absorb(result).wedge("Build successful. Built target/app.jar");
 
         Optional<Path> written = session.finish(0);
         assertTrue(written.isPresent());

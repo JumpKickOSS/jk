@@ -188,7 +188,7 @@ public final class TestStamp {
             }
 
             // Suite resource dirs (test/resources/, <suite>/resources/) by tree content
-            // fixtures reach tests via classes/test, which is NOT on runtimeCp.
+            // fixtures reach tests via target/test-classes, which is NOT on runtimeCp.
             if (resourceRoots != null) {
                 List<Path> sortedRes = new ArrayList<>(resourceRoots);
                 sortedRes.sort(Comparator.comparing(Path::toString));

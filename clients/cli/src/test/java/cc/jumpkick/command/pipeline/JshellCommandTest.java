@@ -45,7 +45,7 @@ class JshellCommandTest {
 
         // Drive jshell non-interactively via the same binary jk would use, with stdin.
         // (Jk.execute does not pipe stdin; this still validates the jshell + classes path.)
-        Path classes = tempDir.resolve("target/classes/main");
+        Path classes = tempDir.resolve("target/classes");
         assertThat(Files.isDirectory(classes)).isTrue();
         Path jshell = JshellCommand.findJshell();
         assertThat(jshell).as("jshell beside the test JVM").isNotNull();

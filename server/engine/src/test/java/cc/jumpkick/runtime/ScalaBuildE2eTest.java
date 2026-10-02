@@ -56,7 +56,7 @@ class ScalaBuildE2eTest {
                 """);
         BuildPlanResult result = build(project, cache());
         assertThat(result.errors()).as("errors=%s", result.errors()).isEmpty();
-        assertThat(project.resolve("target/lib/newer-1.0.0.jar")).exists();
+        assertThat(project.resolve("target/newer-1.0.0.jar")).exists();
     }
 
     @Test
@@ -82,8 +82,7 @@ class ScalaBuildE2eTest {
         BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Greeting.class"))
-                .exists();
+        assertThat(project.resolve("target/classes/com/example/Greeting.class")).exists();
         try (var walk = Files.walk(project.resolve("target"))) {
             assertThat(walk.anyMatch(f -> f.getFileName().toString().equals("sapp-1.0.0.jar")))
                     .as("packaged jar")
@@ -123,10 +122,8 @@ class ScalaBuildE2eTest {
         BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).as("errors=%s", result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Over.class"))
-                .exists();
-        assertThat(project.resolve("target/classes/main/com/example/Plain.class"))
-                .exists();
+        assertThat(project.resolve("target/classes/com/example/Over.class")).exists();
+        assertThat(project.resolve("target/classes/com/example/Plain.class")).exists();
     }
 
     @Test
@@ -157,8 +154,8 @@ class ScalaBuildE2eTest {
         BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/A.class")).exists();
-        assertThat(project.resolve("target/classes/main/B.class")).exists();
+        assertThat(project.resolve("target/classes/A.class")).exists();
+        assertThat(project.resolve("target/classes/B.class")).exists();
     }
 
     @Test

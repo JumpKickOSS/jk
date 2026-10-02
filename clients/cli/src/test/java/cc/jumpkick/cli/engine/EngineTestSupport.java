@@ -95,12 +95,10 @@ public final class EngineTestSupport {
         Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
         String ver = JkVersion.VERSION;
         // Walk cwd → parent → grandparent so a nested run (user.dir = clients/cli) and a
-        // checkout-root run both find the jar. Layouts: target/<rel>/, module-local target/, dist/.
+        // checkout-root run both find the jar: the module's own target/, then dist/.
         Path walk = cwd;
         for (int up = 0; up < 3 && walk != null; up++, walk = walk.getParent()) {
             for (Path cand : List.of(
-                    walk.resolve("target/server/engine/jk-engine-" + ver + "-all.jar"),
-                    walk.resolve("target/server/engine/jk-engine-" + ver + ".jar"),
                     walk.resolve("server/engine/target/jk-engine-" + ver + "-all.jar"),
                     walk.resolve("server/engine/target/jk-engine-" + ver + ".jar"),
                     walk.resolve("target/dist/lib/jk-engine-" + ver + ".jar"))) {

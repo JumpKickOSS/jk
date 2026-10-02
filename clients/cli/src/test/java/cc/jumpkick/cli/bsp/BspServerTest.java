@@ -159,7 +159,7 @@ class BspServerTest {
         assertThat(responses).contains("\"dataKind\":\"scala\"");
         assertThat(responses).contains("\"scalaVersion\":\"3.8.4\"").contains("\"scalaBinaryVersion\":\"3\"");
         assertThat(responses).contains("\"scalaOrganization\":\"org.scala-lang\"");
-        String classes = dir.toRealPath().resolve("target/classes/main").toUri().toString();
+        String classes = dir.toRealPath().resolve("target/classes").toUri().toString();
         assertThat(responses)
                 .contains("\"options\":[\"-java-output-version\",\"25\"]")
                 .contains("\"classDirectory\":\"" + classes + "\"");

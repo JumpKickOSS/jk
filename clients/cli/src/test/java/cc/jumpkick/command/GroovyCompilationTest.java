@@ -37,7 +37,7 @@ class GroovyCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        Path jar = tempDir.resolve("target/lib/widget-0.1.0.jar");
+        Path jar = tempDir.resolve("target/widget-0.1.0.jar");
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
             assertThat(jf.getJarEntry("com/example/Calc.class")).isNotNull();
@@ -51,8 +51,8 @@ class GroovyCompilationTest {
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
-        Path gvClass = tempDir.resolve("target/classes/main/com/example/Calc.class");
-        Path stamp = tempDir.resolve("target/classes/main/.gstamp");
+        Path gvClass = tempDir.resolve("target/classes/com/example/Calc.class");
+        Path stamp = tempDir.resolve("target/classes/.gstamp");
         assertThat(stamp).exists(); // freshness stamp written
         assertThat(gvClass).exists();
         long firstMtime = Files.getLastModifiedTime(gvClass).toMillis();
@@ -72,7 +72,7 @@ class GroovyCompilationTest {
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
-        Path gvClass = tempDir.resolve("target/classes/main/com/example/Calc.class");
+        Path gvClass = tempDir.resolve("target/classes/com/example/Calc.class");
         long firstMtime = Files.getLastModifiedTime(gvClass).toMillis();
 
         // Edit the source forward in time so its mtime exceeds the stamp; the
@@ -158,8 +158,7 @@ class GroovyCompilationTest {
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        try (JarFile jf =
-                new JarFile(tempDir.resolve("target/lib/mixed-0.1.0.jar").toFile())) {
+        try (JarFile jf = new JarFile(tempDir.resolve("target/mixed-0.1.0.jar").toFile())) {
             assertThat(jf.getJarEntry("com/example/Util.class")).isNotNull();
             assertThat(jf.getJarEntry("com/example/Greeter.class")).isNotNull();
             assertThat(jf.getJarEntry("com/example/App.class")).isNotNull();

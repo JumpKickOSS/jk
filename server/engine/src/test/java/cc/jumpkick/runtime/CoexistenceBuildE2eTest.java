@@ -115,8 +115,7 @@ class CoexistenceBuildE2eTest {
 
         assertThat(built.errors()).isEmpty();
         assertThat(built.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Greeter.class"))
-                .exists();
+        assertThat(project.resolve("target/classes/com/example/Greeter.class")).exists();
         TestSummary tests = first.get(BuildPlanner.TEST_RESULT).orElseThrow();
         assertThat(tests.total()).isEqualTo(1);
         assertThat(tests.failed()).isZero();

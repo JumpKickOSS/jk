@@ -47,7 +47,7 @@ import org.junit.jupiter.api.io.TempDir;
  * as soon as that tree is whole, while everything that runs the sibling still reads its jar.
  *
  * <p>The edge a consumer's compile has to a sibling is compile-to-compile: {@code app}'s javac
- * reads {@code lib}'s {@code classes/main}, which exists once lib has compiled and copied its
+ * reads {@code lib}'s {@code target/classes}, which exists once lib has compiled and copied its
  * resources, and nothing app compiles needs lib's jar. So app is admitted then — before lib
  * packages, tests or builds a native tail — and the two modules overlap where a jar-shaped edge
  * would serialize them. The jar is still what app's package and test steps read, so those wait
@@ -172,7 +172,7 @@ class WorkspaceSiblingClassesE2eTest {
                 .as("initial build; failed steps " + first.failed())
                 .isTrue();
 
-        PathUtil.deleteRecursively(ws.resolve("target"));
+        wipeTargets(ws);
 
         List<TaskForecast.Module> plan = forecast(ws, cache);
         TaskForecast.Task libCompile = step(plan, "lib", TaskNames.COMPILE_MAIN);
@@ -213,7 +213,7 @@ class WorkspaceSiblingClassesE2eTest {
                 .as("initial build; failed steps " + first.failed())
                 .isTrue();
 
-        PathUtil.deleteRecursively(ws.resolve("target"));
+        wipeTargets(ws);
 
         List<TaskForecast.Module> plan = forecast(ws, cache);
         assertThat(step(plan, "lib", TaskNames.COMPILE_KOTLIN).cached())
@@ -257,7 +257,7 @@ class WorkspaceSiblingClassesE2eTest {
                 .isTrue();
         assertThat(first.label("app", TaskNames.COMPILE_KOTLIN)).startsWith("compiling");
 
-        PathUtil.deleteRecursively(ws.resolve("target"));
+        wipeTargets(ws);
 
         List<TaskForecast.Module> plan = forecast(ws, cache);
         assertThat(step(plan, "lib", TaskNames.COMPILE_MAIN).cached()).isTrue();
@@ -645,5 +645,12 @@ class WorkspaceSiblingClassesE2eTest {
                 """);
         Path src = Files.createDirectories(app.resolve("src/com/example/app"));
         Files.writeString(src.resolve("Main.java"), main);
+    }
+
+    /** Every build output of {@code ws}: the root's {@code target/} and each member's. */
+    private static void wipeTargets(Path ws) {
+        PathUtil.deleteRecursively(ws.resolve("target"));
+        for (String module : List.of("lib", "mid", "app"))
+            PathUtil.deleteRecursively(ws.resolve(module).resolve("target"));
     }
 }
