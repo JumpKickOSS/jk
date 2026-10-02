@@ -1680,7 +1680,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 4074 }
+population = { units = 4174 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1779,7 +1779,7 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java"
-value  = 20
+value  = 17
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "server/engine/src/test/java/cc/jumpkick/engine/plugin/JvmOptionsTest.java"
