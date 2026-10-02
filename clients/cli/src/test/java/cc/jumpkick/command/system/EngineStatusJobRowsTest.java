@@ -15,18 +15,19 @@ class EngineStatusJobRowsTest {
     @Test
     void a_live_row_names_the_job_its_age_workers_and_silence() {
         EngineProbe.Job live =
-                new EngineProbe.Job(739, "test", "/home/me/app", true, NOW - 7_500_000L, 1, NOW - 180_000L, -1);
+                new EngineProbe.Job(739, "test", "/home/me/app", true, NOW - 7_500_000L, 1, NOW - 180_000L, -1, false);
         assertThat(EngineStatusCommand.jobLine(live, NOW))
                 .startsWith("#739 test /home/me/app · since ")
                 .endsWith(" (2h 05m) · 1 worker · last event 3m ago");
         EngineProbe.Job silentSinceStart =
-                new EngineProbe.Job(740, "build", "/home/me/lib", true, NOW - 40_000L, 2, 0L, -1);
+                new EngineProbe.Job(740, "build", "/home/me/lib", true, NOW - 40_000L, 2, 0L, -1, false);
         assertThat(EngineStatusCommand.jobLine(silentSinceStart, NOW)).endsWith(" (40s) · 2 workers");
     }
 
     @Test
     void a_queued_row_names_its_position_and_wait() {
-        EngineProbe.Job queued = new EngineProbe.Job(741, "format", "/home/me/tool", false, NOW - 720_000L, -1, -1, 1);
+        EngineProbe.Job queued =
+                new EngineProbe.Job(741, "format", "/home/me/tool", false, NOW - 720_000L, -1, -1, 1, false);
         assertThat(EngineStatusCommand.jobLine(queued, NOW))
                 .isEqualTo("#741 format /home/me/tool · behind 1 · waiting 12m");
     }
@@ -34,12 +35,20 @@ class EngineStatusJobRowsTest {
     @Test
     void the_json_array_carries_the_engines_own_fields() {
         String json = EngineStatusCommand.jobsJson(List.of(
-                new EngineProbe.Job(739, "test", "/home/me/app", true, 1_000L, 1, 1_500L, -1),
-                new EngineProbe.Job(741, "format", "/home/me/tool", false, 2_000L, -1, -1, 0)));
+                new EngineProbe.Job(739, "test", "/home/me/app", true, 1_000L, 1, 1_500L, -1, false),
+                new EngineProbe.Job(741, "format", "/home/me/tool", false, 2_000L, -1, -1, 0, false)));
         assertThat(json)
                 .isEqualTo("[{\"jid\":739,\"kind\":\"test\",\"dir\":\"/home/me/app\",\"state\":\"live\",\"since\":1000,"
                         + "\"workers\":1,\"lastEventAt\":1500,\"ahead\":-1},"
                         + "{\"jid\":741,\"kind\":\"format\",\"dir\":\"/home/me/tool\",\"state\":\"queued\",\"since\":2000,"
                         + "\"workers\":-1,\"lastEventAt\":-1,\"ahead\":0}]");
+    }
+
+    @Test
+    void a_suspended_job_says_so_and_how_to_resume_it() {
+        EngineProbe.Job held =
+                new EngineProbe.Job(739, "test", "/home/me/app", true, NOW - 60_000L, 2, NOW - 30_000L, -1, true);
+        assertThat(EngineStatusCommand.jobLine(held, NOW)).contains(" · suspended (Ctrl-Z; fg resumes)");
+        assertThat(held.toJson()).contains("\"state\":\"suspended\"");
     }
 }

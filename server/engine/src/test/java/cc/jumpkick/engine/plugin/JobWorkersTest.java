@@ -5,12 +5,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.Sleepers;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 @Tag("integration")
 class JobWorkersTest {
@@ -34,6 +41,65 @@ class JobWorkersTest {
             if (p.isAlive()) p.destroyForcibly();
             JobWorkers.close();
             JobWorkers.clear(req);
+        }
+    }
+
+    /**
+     * A suspended job's workers are stopped and no fork of its starts until it resumes; a cancel of
+     * a suspended job continues them so they can act on the SIGTERM.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_held_request_stops_its_workers_and_its_next_fork_until_released() throws Exception {
+        long req = 4242L;
+        JobWorkers.open(req);
+        Process p = Sleepers.sleeper(60).start();
+        try {
+            JobWorkers.register(p);
+            assertThat(JobWorkers.hold(req)).isEqualTo(1);
+            Await.until(Duration.ofSeconds(5), () -> state(p.pid()) == 'T');
+
+            CountDownLatch forked = new CountDownLatch(1);
+            Thread fork = Thread.ofPlatform().start(() -> {
+                JobWorkers.bind(req);
+                try {
+                    Process next = JobWorkers.start(Sleepers.sleeper(1));
+                    forked.countDown();
+                    next.waitFor();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+            });
+            assertThat(forked.await(500, TimeUnit.MILLISECONDS))
+                    .as("held at the fork")
+                    .isFalse();
+
+            assertThat(JobWorkers.release(req)).isEqualTo(1);
+            assertThat(forked.await(5, TimeUnit.SECONDS)).isTrue();
+            Await.until(Duration.ofSeconds(5), () -> state(p.pid()) != 'T');
+            fork.join(5_000);
+
+            JobWorkers.hold(req);
+            Await.until(Duration.ofSeconds(5), () -> state(p.pid()) == 'T');
+            JobWorkers.shutdownForRequest(req, 2_000);
+            assertThat(p.waitFor(5, TimeUnit.SECONDS))
+                    .as("a stopped worker still ends on cancel")
+                    .isTrue();
+        } finally {
+            if (p.isAlive()) p.destroyForcibly();
+            JobWorkers.release(req);
+            JobWorkers.close();
+            JobWorkers.clear(req);
+        }
+    }
+
+    /** The process state letter from {@code /proc/<pid>/stat} ({@code T} = stopped), or {@code ?}. */
+    private static char state(long pid) {
+        try {
+            String stat = Files.readString(Path.of("/proc", Long.toString(pid), "stat"));
+            return stat.charAt(stat.lastIndexOf(')') + 2);
+        } catch (Exception e) {
+            return '?';
         }
     }
 

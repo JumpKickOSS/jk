@@ -26,6 +26,7 @@ Every engine-hosted operation gets a **jid** at admission.
 | **Ctrl-C** | Cancels the engine job(s) for this project, then exits (bounded teardown; `JK_CANCEL_GRACE_MS`) |
 | **`jk cancel`** | All live jobs for the current project directory |
 | **`jk cancel <jid>`** | That job (unknown/finished jid → clear error) |
+| **Ctrl-Z** / **`fg`** | Suspend the build jk started from this terminal, then resume it: a suspended job starts no new step, its forked workers are stopped (POSIX), and it keeps its memory; `jk engine status` shows it suspended and `jk cancel` still ends it |
 | **Web / MCP** | `POST /api/cancel` with `{"jid":N}` · MCP `cancel` |
 
 A second same-kind build in the same checkout is rejected: **Build #N already running**.
@@ -496,13 +497,13 @@ a request is held to the same `JK_STREAM_IDLE_MS` bound the client applies to th
 while a build owns the connection). `jk engine status` prints the count as a `Dropped` row;
 `--output json` and `GET /api/status` carry it as `idleDropped`.
 
-A client that stops reading — a terminal suspended mid-build, a pipe nobody drains — costs the
+A client that stops reading — a pipe nobody drains, a process stopped without Ctrl-Z — costs the
 other clients nothing. Each connection is served on its own thread and its lines are written by
 its own writer, so a build's progress goes into that client's queue; `jk engine status` and a
 new client's handshake are answered as usual. Once 8 MiB of lines wait for a client in memory, the rest go to a spill file under
 `~/.jk/state/tmp/wire-spill/` and reach the client in order as it reads them, so a client that reads
-slowly or not at all — a pipe into a file on a busy disk, a pager nobody scrolls, a suspended
-terminal — never holds its build: the build runs to its end and lets go of the test gate and the
+slowly or not at all — a pipe into a file on a busy disk, a pager nobody scrolls, an agent that
+stopped draining — never holds its build: the build runs to its end and lets go of the test gate and the
 memory it held, and the client reads the rest when it resumes. Only past 1 GiB on disk, or when the
 volume nears its free-space floor (the one a build refuses to start under), does the build wait
 for its client. A client that reads nothing at all for `JK_STREAM_IDLE_MS` while it

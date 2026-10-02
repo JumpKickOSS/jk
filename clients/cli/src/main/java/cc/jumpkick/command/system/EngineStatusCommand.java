@@ -202,6 +202,7 @@ public final class EngineStatusCommand implements CliCommand {
                     .append(")");
             if (job.workers() >= 0)
                 line.append(" · ").append(job.workers()).append(job.workers() == 1 ? " worker" : " workers");
+            if (job.suspended()) line.append(" · suspended (Ctrl-Z; fg resumes)");
             if (job.lastEventAt() > 0) {
                 line.append(" · last event ")
                         .append(formatAge(nowMillis - job.lastEventAt()))

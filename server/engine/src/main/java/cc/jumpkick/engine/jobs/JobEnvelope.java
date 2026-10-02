@@ -698,6 +698,11 @@ public final class JobEnvelope {
         return live.cancelJob(jid) || admission.cancel(jid);
     }
 
+    /** Suspend or resume a live job; see {@link LiveJobRegistry#holdJob}. */
+    public boolean holdJob(long jid, boolean suspend) {
+        return live.holdJob(jid, suspend);
+    }
+
     /**
      * The drain deadline passed: cancel every live job with {@code reason} on its wire and in the
      * journal. Queued jobs are already refused by the drain. Returns the jids cancelled.

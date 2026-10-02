@@ -16,6 +16,8 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.JobControlAckFrame;
+import cc.jumpkick.wire.protocol.JobControlFrame;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -232,6 +234,7 @@ final class EngineConnection {
                 ctx.drain().predecessorDraining(Jsonl.longValue(line, "pid", -1), Jsonl.intValue(line, "plans", 0));
             case EngineProtocol.DRAIN_DONE -> ctx.drain().predecessorFinished(Jsonl.longValue(line, "pid", -1));
             case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
+            case EngineProtocol.JOB_CONTROL_REQUEST -> handleJobControlRequest(line, writer);
             default ->
                 WireWriter.sendQuiet(
                         writer, ProtoLifecycle.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
@@ -267,6 +270,13 @@ final class EngineConnection {
                 yield false;
             }
         };
+    }
+
+    /** Suspend or resume a live job: its client's Ctrl-Z and {@code fg}. */
+    private void handleJobControlRequest(String requestLine, BufferedWriter writer) throws IOException {
+        JobControlFrame request = JobControlFrame.decode(requestLine);
+        boolean applied = request.jid() >= 0 && ctx.jobs().holdJob(request.jid(), request.suspend());
+        WireWriter.send(writer, new JobControlAckFrame(request.jid(), applied).encode());
     }
 
     private void handleCancelRequest(String requestLine, BufferedWriter writer) throws IOException {
