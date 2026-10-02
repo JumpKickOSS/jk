@@ -3,7 +3,6 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.PackageId;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import java.io.IOException;
@@ -46,7 +45,7 @@ final class ScopeSolves {
     private final @Nullable MavenPackageSource sharedSource;
     private final EffectivePomBuilder pomBuilder;
     private final KmpRedirects kmp;
-    private final PinPolicy pinPolicy;
+    private final boolean pinsAsFloors;
 
     /** One sentence per test-scope exact pin that gave way to main's version. */
     private final List<String> overrides = new ArrayList<>();
@@ -54,19 +53,20 @@ final class ScopeSolves {
     /**
      * @param resolverOverride a test's stand-in solver, or {@code null} for PubGrub over {@code sharedSource}
      * @param sharedSource the package source shared by all three graphs; {@code null} only with an override
-     * @param pinPolicy whether each graph's exact roots override the transitive constraints on them
+     * @param pinsAsFloors whether each root's exact pin is read as a floor the graph may raise
+     *     (highest wins) rather than as the version
      */
     ScopeSolves(
             @Nullable Resolver resolverOverride,
             @Nullable MavenPackageSource sharedSource,
             EffectivePomBuilder pomBuilder,
             KmpRedirects kmp,
-            PinPolicy pinPolicy) {
+            boolean pinsAsFloors) {
         this.resolverOverride = resolverOverride;
         this.sharedSource = sharedSource;
         this.pomBuilder = pomBuilder;
         this.kmp = kmp;
-        this.pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
+        this.pinsAsFloors = pinsAsFloors;
     }
 
     /** Solve every graph in {@link #ORDER}, seeding each with {@code lockedVersionPrefs} plus every earlier decision. */
@@ -182,18 +182,32 @@ final class ScopeSolves {
         Map<String, String> wanted = new LinkedHashMap<>(exact);
         inheritedPins.forEach(wanted::putIfAbsent);
         sharedSource.setExactRoots(wanted);
-        // Nearest-wins is a per-graph fact: a test-only pin has no say on the main classpath. A
-        // pin inherited from main governs here under both policies: main's classpath already
-        // fixed the version, and its own graph judged the pin against main's edges.
-        Map<String, String> pins = new LinkedHashMap<>(pinPolicy == PinPolicy.NEAREST ? exact : Map.of());
-        for (var e : inheritedPins.entrySet()) if (!exact.containsKey(e.getKey())) pins.put(e.getKey(), e.getValue());
-        sharedSource.setNearestPins(pins);
+        if (pinsAsFloors) roots = asFloors(roots);
+        // Main's classpath already fixed these versions; a module this graph pins itself keeps its own.
+        Map<String, String> governing = new LinkedHashMap<>();
+        for (var e : inheritedPins.entrySet()) {
+            if (!exact.containsKey(e.getKey())) governing.put(e.getKey(), e.getValue());
+        }
+        sharedSource.setGoverningVersions(governing);
         // exclusion state is per-graph; main's clean paths must not bleed into
         // the test/processor solves.
         sharedSource.resetSolveScopedState();
         return new PubGrubResolver(sharedSource, pomBuilder, kmp)
+                .withPinFloors(pinsAsFloors ? exact : Map.of())
                 .withOnDecision(progress::graphPackage)
                 .resolve(roots);
+    }
+
+    /** {@code roots} with each exact pin a floor: {@code 1.2} reads as {@code >=1.2}. */
+    private static List<Dependency> asFloors(List<Dependency> roots) {
+        List<Dependency> out = new ArrayList<>(roots.size());
+        for (Dependency d : roots) {
+            out.add(
+                    !d.isWorkspace() && d.version() instanceof VersionSelector.Exact exact
+                            ? d.withVersion(VersionSelector.parse(">=" + exact.version()))
+                            : d);
+        }
+        return out;
     }
 
     /** {@code group:artifact → version} for every root declared with an exact pin. */

@@ -11,7 +11,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -191,41 +190,13 @@ class LockOrchestratorEntryPointsTest {
         assertThat(file.sourcesChecksum()).isNull();
     }
 
-    @Test
-    void two_platform_boms_that_disagree_are_named_in_one_sentence_with_both_versions(@TempDir Path dir) {
-        upstream.pom(
-                        "org.example",
-                        "bom-a",
-                        "1.0",
-                        MavenStub.bom("org.example", "bom-a", "1.0", List.of("com.foo:widget:1.0")))
-                .pom(
-                        "org.example",
-                        "bom-b",
-                        "1.0",
-                        MavenStub.bom("org.example", "bom-b", "1.0", List.of("com.foo:widget:2.0")));
-        JkBuild project = project(Map.of(
-                Scope.PLATFORM,
-                List.of(
-                        Dependency.of("bom-a", "org.example:bom-a", VersionSelector.parse("=1.0")),
-                        Dependency.of("bom-b", "org.example:bom-b", VersionSelector.parse("=1.0")))));
-
-        assertThatThrownBy(() -> new LockOrchestrator(repos(dir)).lock(project, "test"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage(
-                        "platform BOM conflict on `com.foo:widget`: org.example:bom-a:1.0 constrains to 1.0,"
-                                + " but org.example:bom-b:1.0 constrains to 2.0. Pick one BOM, pin the coord explicitly,"
-                                + " or set [resolve] pins = \"nearest\" to take the first-declared BOM's version as Maven does.");
-    }
-
     /**
-     * Under {@code [resolve] pins = "nearest"} the same two BOMs resolve as Maven resolves two
-     * dependencyManagement imports: the first-declared entry's version stands, the row names that
-     * BOM as {@code pinned-by}, and the lock reports the later BOM's say in one line per module.
-     * Swapping the declaration order swaps the winner.
+     * Two BOMs that manage one module at different versions resolve as every other disagreement
+     * does: the higher version stands whichever BOM is declared first, the row names that BOM as
+     * {@code pinned-by}, and the lock reports the other BOM's say in one line per module.
      */
     @Test
-    void under_nearest_pins_the_first_declared_bom_wins_and_the_later_one_is_reported(@TempDir Path dir)
-            throws Exception {
+    void two_boms_that_disagree_take_the_higher_version_in_either_order(@TempDir Path dir) throws Exception {
         upstream.metadata("com.foo", "widget", "1.0", "2.0")
                 .pom("com.foo", "widget", "1.0", MavenStub.emptyPom("com.foo", "widget", "1.0"))
                 .pom("com.foo", "widget", "2.0", MavenStub.emptyPom("com.foo", "widget", "2.0"))
@@ -256,35 +227,25 @@ class LockOrchestratorEntryPointsTest {
             }
         };
 
-        Lockfile aFirst = new LockOrchestrator(repos(dir.resolve("a-first")))
-                .withPinPolicy(PinPolicy.NEAREST)
-                .lock(
-                        project(Map.of(Scope.PLATFORM, List.of(bomA, bomB), Scope.MAIN, List.of(widget))),
-                        "test",
-                        List.of(),
-                        true,
-                        observer);
+        for (List<Dependency> order : List.of(List.of(bomA, bomB), List.of(bomB, bomA))) {
+            overrides.clear();
+            String label = order.getFirst().library() + "-first";
+            Lockfile lock = new LockOrchestrator(repos(dir.resolve(label)))
+                    .lock(
+                            project(Map.of(Scope.PLATFORM, order, Scope.MAIN, List.of(widget))),
+                            "test",
+                            List.of(),
+                            true,
+                            observer);
 
-        assertThat(version(aFirst, "com.foo:widget:jar:")).isEqualTo("1.0");
-        assertThat(row(aFirst, "com.foo:widget:jar:").pinnedBy()).isEqualTo("org.example:bom-a:1.0");
-        assertThat(overrides)
-                .containsExactly("com.foo:widget 1.0 is org.example:bom-a:1.0's, the first [platform-dependencies]"
-                        + " entry that manages it; org.example:bom-b:1.0 constrains to 2.0"
-                        + " — the first-declared BOM wins, as the first import does under Maven");
-
-        overrides.clear();
-        Lockfile bFirst = new LockOrchestrator(repos(dir.resolve("b-first")))
-                .withPinPolicy(PinPolicy.NEAREST)
-                .lock(
-                        project(Map.of(Scope.PLATFORM, List.of(bomB, bomA), Scope.MAIN, List.of(widget))),
-                        "test",
-                        List.of(),
-                        true,
-                        observer);
-
-        assertThat(version(bFirst, "com.foo:widget:jar:")).isEqualTo("2.0");
-        assertThat(row(bFirst, "com.foo:widget:jar:").pinnedBy()).isEqualTo("org.example:bom-b:1.0");
-        assertThat(overrides).singleElement().asString().startsWith("com.foo:widget 2.0 is org.example:bom-b:1.0's");
+            assertThat(version(lock, "com.foo:widget:jar:")).as(label).isEqualTo("2.0");
+            assertThat(row(lock, "com.foo:widget:jar:").pinnedBy()).as(label).isEqualTo("org.example:bom-b:1.0");
+            assertThat(overrides)
+                    .as(label)
+                    .containsExactly("com.foo:widget 2.0 is org.example:bom-b:1.0's, the highest a"
+                            + " [platform-dependencies] entry manages; org.example:bom-a:1.0 constrains to 1.0"
+                            + " — the highest version wins");
+        }
     }
 
     /**
@@ -329,7 +290,6 @@ class LockOrchestratorEntryPointsTest {
         };
 
         new LockOrchestrator(repos(dir))
-                .withPinPolicy(PinPolicy.NEAREST)
                 .lock(
                         project(Map.of(
                                 Scope.PLATFORM,
@@ -344,9 +304,9 @@ class LockOrchestratorEntryPointsTest {
                         observer);
 
         assertThat(overrides)
-                .containsExactly("org.example:bom-a:1.0 wins over org.example:bom-b:1.0 on 2 modules it manages first:"
-                        + " com.foo:gadget 1.0 over 3.0, com.foo:widget 1.0 over 2.0"
-                        + " — the first-declared BOM wins, as the first import does under Maven");
+                .containsExactly("org.example:bom-b:1.0 wins over org.example:bom-a:1.0 on 2 modules it manages higher:"
+                        + " com.foo:gadget 3.0 over 1.0, com.foo:widget 2.0 over 1.0"
+                        + " — the highest version wins");
     }
 
     /**

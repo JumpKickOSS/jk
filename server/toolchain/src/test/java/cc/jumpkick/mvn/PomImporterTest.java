@@ -12,7 +12,6 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.PomParseException;
 import java.nio.file.Files;
@@ -124,11 +123,11 @@ class PomImporterTest {
     }
 
     /**
-     * A POM's direct version is the version Maven built with, whatever a transitive asked for; the
-     * imported manifest says so, and so does the workspace root that owns the lock.
+     * An imported manifest resolves as every other does, highest wins: neither a single POM's
+     * manifest nor a reactor's root and members carry a {@code [resolve]} table.
      */
     @Test
-    void an_imported_pom_resolves_its_pins_nearest_wins(@TempDir Path root) throws Exception {
+    void an_imported_pom_writes_no_resolve_policy(@TempDir Path root) throws Exception {
         PomImporter.Result single = TestImporters.importXml(root, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -137,7 +136,7 @@ class PomImporterTest {
                   <version>1.0.0</version>
                 </project>
                 """);
-        assertThat(single.jkBuild().build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
+        assertThat(JkBuildRenderer.render(single.jkBuild())).doesNotContain("[resolve]");
 
         Files.writeString(root.resolve("pom.xml"), """
                 <project>
@@ -162,8 +161,9 @@ class PomImporterTest {
                 </project>
                 """);
         PomImporter.WorkspaceImportResult ws = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
-        assertThat(ws.root().build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
-        assertThat(requireNonNull(ws.modules().get("lib")).build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
+        assertThat(JkBuildRenderer.render(ws.root())).doesNotContain("[resolve]");
+        assertThat(JkBuildRenderer.render(requireNonNull(ws.modules().get("lib"))))
+                .doesNotContain("[resolve]");
     }
 
     @Test

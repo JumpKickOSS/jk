@@ -30,7 +30,8 @@ class ProjectImportTest {
                 null,
                 false,
                 null,
-                note -> {});
+                note -> {},
+                ProjectImport.PinRaise.NONE);
 
         assertThat(outcome.exit()).isEqualTo(Exit.CANT_CREATE);
         assertThat(outcome.wrote()).isEmpty();
@@ -58,7 +59,8 @@ class ProjectImportTest {
                 null,
                 true,
                 root.resolve("report.md"),
-                note -> {});
+                note -> {},
+                ProjectImport.PinRaise.NONE);
 
         assertThat(outcome.exit()).isZero();
         assertThat(outcome.wrote())

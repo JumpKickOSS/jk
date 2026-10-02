@@ -402,7 +402,20 @@
     },
     "resolve": {
       "type": "object",
-      "description": "[resolve] table; keys are documented in docs/user."
+      "description": "[resolve] table: how platform BOMs and unmanaged diamonds resolve. Your own exact pins and every transitive resolve highest-wins; there is no pin policy.",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": ["enforced", "floor"],
+          "description": "enforced (default): a BOM's version is the version. floor: a BOM's version is a lower bound highest-wins may raise."
+        },
+        "unmapped": {
+          "type": "string",
+          "enum": ["mediate", "strict"],
+          "description": "mediate (default): a module no BOM manages resolves to the highest version its POMs declare. strict: an unmanaged diamond is an error."
+        }
+      },
+      "additionalProperties": false
     },
     "variants": {
       "type": "object",

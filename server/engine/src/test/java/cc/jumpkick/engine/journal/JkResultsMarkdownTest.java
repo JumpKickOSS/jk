@@ -490,7 +490,7 @@ class JkResultsMarkdownTest {
     void lock_notes_have_their_own_section_apart_from_the_warnings_cap() {
         List<BuildRecord.Diag> diags = new ArrayList<>();
         for (int i = 0; i < JkResultsMarkdown.MAX_WARNINGS + 5; i++) {
-            diags.add(planWarning("nearest-wins", "com.foo:m" + i + " 1.0 is the project's pin"));
+            diags.add(planWarning("lock-override", "com.foo:m" + i + " 1.0 is the main graph's version"));
         }
         String note = "lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)";
         diags.add(planWarning("lock-note", note));
@@ -512,10 +512,10 @@ class JkResultsMarkdownTest {
     @Test
     void a_long_warning_is_capped_on_one_line_with_a_visible_cut() {
         StringBuilder folded = new StringBuilder(
-                "org.example:bom-a:1.0 wins over org.example:bom-b:1.0 on 9 modules" + " it manages first:");
+                "org.example:bom-a:1.0 wins over org.example:bom-b:1.0 on 9 modules" + " it manages higher:");
         for (int i = 0; i < 9; i++)
-            folded.append(" com.example.group:artifact-").append(i).append(" 1.0.0 over 2.0.0,");
-        folded.append(" and more — the first-declared BOM wins, as the first import does under Maven");
+            folded.append(" com.example.group:artifact-").append(i).append(" 2.0.0 over 1.0.0,");
+        folded.append(" and more — the highest version wins");
         assertThat(folded.length()).isGreaterThan(JkResultsMarkdown.MAX_WARNING_LINE);
         BuildRecord r = record(true, List.of(), List.of(planWarning("bom-override", folded.toString())), List.of());
 
@@ -525,7 +525,7 @@ class JkResultsMarkdownTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(line).endsWith("…");
-        assertThat(line).contains("com.example.group:artifact-0 1.0.0 over 2.0.0");
+        assertThat(line).contains("com.example.group:artifact-0 2.0.0 over 1.0.0");
         assertThat(line.length())
                 .isLessThanOrEqualTo(JkResultsMarkdown.MAX_WARNING_LINE + "- `resolve-deps` …".length());
     }

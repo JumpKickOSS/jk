@@ -72,6 +72,17 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void resolve_properties_are_exactly_the_parser_s_resolve_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String resolve = table(table(schema, "properties"), "resolve");
+        assertThat(keysOf(table(resolve, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuild.RESOLVE_KEYS);
+        assertThat(Jsonl.bool(resolve, "additionalProperties", true))
+                .as("an unknown key under [resolve] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
     void javac_properties_are_exactly_the_parser_s_javac_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
         String javac = table(table(schema, "properties"), "javac");

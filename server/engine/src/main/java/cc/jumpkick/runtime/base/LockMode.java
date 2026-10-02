@@ -38,4 +38,10 @@ public sealed interface LockMode {
      * back to solving from the warm store rather than failing the command that triggered it.
      */
     record Freshen() implements LockMode {}
+
+    /**
+     * {@code jk import}'s probe: every exact pin reads as a floor the graph may raise, so the lock it
+     * resolves, never written, shows the version highest-wins gives each pinned module.
+     */
+    record PinFloors() implements LockMode {}
 }

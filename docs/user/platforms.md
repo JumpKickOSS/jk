@@ -62,23 +62,18 @@ declares win over the BOMs it imports, and among imports the first wins.
 
 ## Two BOMs that manage one module
 
-`[platform-dependencies]` is an ordered table. When two of its BOMs manage the same module at
-different versions, what happens is decided by `[resolve] pins`:
-
-| Policy | Two BOMs disagree on a module |
-|--------|-------------------------------|
-| `pins = "exact"` (default, hand-written manifests) | `jk lock` refuses: `platform BOM conflict on g:a: X constrains to 2.10.1, but Y constrains to 2.13.2` — pick one BOM, pin the module yourself, or opt into the rule below |
-| `pins = "nearest"` (what `jk import` writes) | Maven's rule: the first-declared BOM that manages the module wins, the later BOM's say is dropped, the lock row's `pinned-by` names the winner, and `jk lock` prints one line per pair of winning and overridden BOM, counting the modules they disagree on and naming the first three |
-
-The rule is Maven's for `<dependencyManagement>` imports — the first `import` that manages a
-coordinate wins, in declaration order — and `jk import` writes the BOMs in the order the POM
-declares them, so an imported project resolves to the versions Maven built with. Your own exact
-pin on the module beats every BOM under both policies, and so does a
+When two `[platform-dependencies]` BOMs manage the same module at different versions, the higher
+version wins, whichever BOM is declared first — the rule every other disagreement in the graph
+follows. The lock row's `pinned-by` names the winning BOM, and `jk lock` prints one line per pair
+of winning and overridden BOM, counting the modules they disagree on and naming the first three.
+Maven takes the first-declared import instead; jk does not, and `jk import` keeps the POM's BOM
+order only so the file reads like the POM. Your own exact
+pin on the module beats every BOM, and so does a
 [`[managed-dependencies]`](dependencies.md#managed-versions) entry — the POM's own
 `dependencyManagement` line, which under Maven beats every import; `jk lock` prints the BOM it
 overrode. In a workspace the rows every member reads are solved under the BOMs every member
 holds — the root's entries, then any BOM every member declares, in `[workspace] modules` order and
-each in its own declaration order — so a BOM the root declares wins over one a member declares. A
+each in its own declaration order — and where two of those disagree the higher version wins. A
 member's own table is the root's entries, then its own, then those of the siblings it depends on:
 a member's BOM constrains its own graph and the graphs of members that depend on it, not an
 unrelated member's and not the workspace's plain rows — the member reads rows of its own where its
@@ -86,11 +81,10 @@ BOM's version differs from the workspace's ([Workspaces](workspaces.md#members-t
 member's `[managed-dependencies]` entries fold by the same rule: an entry every member declares
 alike constrains the workspace's rows, one only some members hold constrains the holders' graphs.
 
-`nearest` adopts exactly two of Maven's rules: a direct pin is the version, over any transitive's
-floor, and the first-declared BOM wins over a later one. It does not adopt Maven's mediation between
-transitives by depth and declaration order: an unmanaged module that two POMs ask for at different
-versions resolves to the highest declared version under both policies. A workspace member's pin is
-that member's version, as under Maven ([Workspaces](workspaces.md#members-that-disagree)). On the
+jk does not adopt Maven's mediation between transitives by depth and declaration order either: an
+unmanaged module that two POMs ask for at different versions resolves to the highest declared
+version. A workspace member's pin is that member's version, as under Maven
+([Workspaces](workspaces.md#members-that-disagree)). On the
 Maven top-20 corpus in jk-examples, the 16 repositories
 that lock were compared module by module against Maven's own resolution, their manifests imported
 and their locks written by the jk under test: 225 of 493 modules differ on at least one version,

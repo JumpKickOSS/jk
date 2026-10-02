@@ -7,7 +7,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
-import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
@@ -63,8 +62,8 @@ public final class LockOrchestrator {
     /** Unmapped-fill policy; default {@link cc.jumpkick.model.UnmappedPolicy#MEDIATE}. */
     private UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
 
-    /** How a declared exact pin meets a transitive's constraint; default {@link PinPolicy#EXACT}. */
-    private PinPolicy pinPolicy = PinPolicy.EXACT;
+    /** Whether each root's exact pin reads as a floor the graph may raise; see {@link #withPinsAsFloors}. */
+    private boolean pinsAsFloors;
 
     /** The workspace members behind a merged manifest, each with its own effective manifest. */
     private List<Member> members = List.of();
@@ -139,9 +138,13 @@ public final class LockOrchestrator {
         return this;
     }
 
-    /** Direct-pin policy (see {@link PinPolicy}). */
-    public LockOrchestrator withPinPolicy(PinPolicy policy) {
-        if (policy != null) this.pinPolicy = policy;
+    /**
+     * Read every root's exact pin as a floor: the graph raises a pin a parent needs higher, as
+     * highest-wins does, and the lock records the raised version. The import's probe solve; a
+     * project's own lock keeps its pins exact.
+     */
+    public LockOrchestrator withPinsAsFloors(boolean floors) {
+        this.pinsAsFloors = floors;
         return this;
     }
 
@@ -332,7 +335,7 @@ public final class LockOrchestrator {
         // ... and one table per BOM, shared by the merged manifest's platform table and every member's.
         PlatformConstraints.BomTables bomTables = new PlatformConstraints.BomTables();
         PlatformConstraints constraints =
-                PlatformConstraints.collect(sharedPlatform(project), repos, pomBuilder, bomTables, pinPolicy);
+                PlatformConstraints.collect(sharedPlatform(project), repos, pomBuilder, bomTables);
         adoptVersionlessRoots(project, constraints, pomBuilder, bomTables);
         Solve union = solveManifest(
                 projectDir,
@@ -384,7 +387,7 @@ public final class LockOrchestrator {
                 }
             };
             MemberPartitions partitions = new MemberPartitions(
-                    union, repos, pomBuilder, bomTables, pinPolicy, featuresRequested, withDefaults, workspaceVersions);
+                    union, repos, pomBuilder, bomTables, featuresRequested, withDefaults, workspaceVersions);
             ResolveProfile.Phases pass = ResolveProfile.phases();
             pass.begin(ResolveProfile::phasePartition);
             try {
@@ -531,7 +534,7 @@ public final class LockOrchestrator {
         List<PlatformConstraints> tables = new ArrayList<>(members.size());
         for (Member member : members) {
             tables.add(PlatformConstraints.collect(
-                    MemberPartitions.solvable(member.manifest()), repos, pomBuilder, bomTables, pinPolicy));
+                    MemberPartitions.solvable(member.manifest()), repos, pomBuilder, bomTables));
         }
         return tables;
     }
@@ -599,11 +602,11 @@ public final class LockOrchestrator {
         }
 
         progress.graphPhase(roots.declaredCount());
-        ScopeSolves scopeSolves = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinPolicy);
+        ScopeSolves scopeSolves = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinsAsFloors);
         ScopeSolves.Solved solved = scopeSolves.solve(roots, prefs, progress);
         for (String line : scopeSolves.overrides()) observer.onOverride(line);
         if (sharedSource != null) {
-            for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
+            for (String line : sharedSource.governingOverrides()) observer.onOverride(line);
             for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);
             for (String line : sharedSource.workspaceSubstitutionNotes()) observer.onNote(line);
             declaredRepositories.putAll(sharedSource.declaredRepositoriesByUrl());

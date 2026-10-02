@@ -486,10 +486,10 @@ coordinate = "org.springframework:spring-core:6.0.0"
 jk = "application/jk.toml"
 pom = "application/pom.xml"
 gradle = "application/build.gradle"
-# Imported from Maven, jk keeps nearest-wins pins (`pins = "nearest"`), so the old spring-core
-# wins on every tool and the application's Boot context fails at test time. The pin is the
-# application's alone: the library resolves on its own graph and its test passes, as under Maven.
-kind = "test"
+# Maven's nearest-wins and Gradle's `strictly` take the old spring-core, and the application's Boot
+# context fails at test time; jk resolves highest-wins, so the pin below Boot's floor is a conflict
+# the lock names. The pin is the application's alone: the library resolves on its own graph.
+kind = { jk = "resolve", gradle = "test", mvn = "test" }
 tests = ["com.example.multimodule.application.DemoApplicationTest"]
 
 [repos.junit-starter-maven]

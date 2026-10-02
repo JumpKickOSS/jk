@@ -59,7 +59,8 @@ public final class ProjectImport {
             @Nullable Path tmpDir,
             boolean force,
             @Nullable Path report,
-            Consumer<String> progress) {
+            Consumer<String> progress,
+            PinRaise raise) {
         if (source == null || out == null) {
             return new Outcome(Exit.USAGE, 0, "import requires source and out", List.of());
         }
@@ -101,6 +102,11 @@ public final class ProjectImport {
                 wrote.add(e.getKey());
             }
 
+            importReport = raised(
+                    importReport,
+                    raise,
+                    Objects.requireNonNull(out.toAbsolutePath().getParent()));
+
             Path reportTarget = report;
             if (reportTarget == null && tmpDir != null) {
                 var proj = root.project();
@@ -123,6 +129,41 @@ public final class ProjectImport {
         } catch (IOException e) {
             return new Outcome(1, 0, e.getMessage(), List.of());
         }
+    }
+
+    /**
+     * Raises the written project's exact pins that a highest-wins solve needs higher, returning one
+     * line per raise. The engine supplies it; the import alone cannot solve.
+     */
+    @FunctionalInterface
+    public interface PinRaise {
+        List<String> raise(Path lockDir) throws Exception;
+
+        PinRaise NONE = lockDir -> List.of();
+    }
+
+    /** {@code report} with one warning per raised pin, or one naming why the pins were not checked. */
+    private static ImportReport raised(ImportReport report, PinRaise raise, Path lockDir) {
+        List<String> lines;
+        String failed = null;
+        try {
+            lines = raise.raise(lockDir);
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            lines = List.of();
+            failed = "the imported pins were not checked against the versions their dependencies need ("
+                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())
+                    + "); `jk lock` names any pin a dependency needs higher";
+        }
+        if (lines.isEmpty() && failed == null) return report;
+        ImportReport.Builder out = ImportReport.builder();
+        for (ImportReport.Issue issue : report.issues()) {
+            if (issue.severity() == ImportReport.Severity.ERROR) out.error(issue.message());
+            else out.warning(issue.message());
+        }
+        for (String line : lines) out.warning(line);
+        if (failed != null) out.warning(failed);
+        return out.build();
     }
 
     /**

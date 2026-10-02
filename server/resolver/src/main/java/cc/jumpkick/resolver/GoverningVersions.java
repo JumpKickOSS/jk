@@ -15,13 +15,12 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The graph's exact roots under {@code [resolve] pins = "nearest"}, keyed {@code group:artifact →
- * version}. Every transitive edge onto one of these modules takes the pin, as a direct
- * dependency's version does under Maven; an edge the pin does not satisfy is remembered as an
- * override so the lock can say so. Empty under the default policy, when every edge keeps its own
- * constraint.
+ * The versions an earlier graph fixed on this graph's classpath, keyed {@code group:artifact →
+ * version}: the test graph's classpath carries main's, so every test-graph edge onto one of these
+ * modules takes main's version. An edge that version does not satisfy is remembered as an override
+ * so the lock can say so. Empty for the main graph.
  */
-final class NearestPins {
+final class GoverningVersions {
 
     private Map<String, String> pins = Map.of();
 
@@ -29,12 +28,12 @@ final class NearestPins {
     private final Set<Override> overrides = ConcurrentHashMap.newKeySet();
 
     /**
-     * A transitive's constraint on a module the project pins that the pin does not satisfy.
+     * A transitive's constraint on a governed module that the governing version does not satisfy.
      *
      * @param parent the {@code group:artifact version} whose POM declared the edge
-     * @param module the pinned {@code group:artifact}
+     * @param module the governed {@code group:artifact}
      * @param asked the selector the POM wrote
-     * @param pin the version the project declared
+     * @param pin the governing version
      */
     record Override(String parent, String module, String asked, String pin) {
         /** What the parent asked, as one clause of the module's line. */
@@ -43,9 +42,9 @@ final class NearestPins {
         }
     }
 
-    /** One line per pinned module: the pin, then every dependency it overrode and what each asked for. */
+    /** One line per governed module: its version, then every dependency it overrode and what each asked for. */
     static String render(String module, String pin, List<Override> overrides) {
-        StringBuilder out = new StringBuilder(module).append(' ').append(pin).append(" is the project's pin; ");
+        StringBuilder out = new StringBuilder(module).append(' ').append(pin).append(" is the main graph's version; ");
         if (overrides.size() == 1) {
             out.append(overrides.getFirst().asking());
         } else {
@@ -53,18 +52,17 @@ final class NearestPins {
                     .append(" dependencies asked for other versions: ")
                     .append(overrides.stream().map(Override::asking).collect(Collectors.joining(", ")));
         }
-        return out.append(" — the pin wins, as a direct dependency does under Maven")
-                .toString();
+        return out.append(" — the test classpath carries main's version").toString();
     }
 
-    /** The exact roots of the graph about to be solved, or empty when pins are plain constraints. */
+    /** The governing versions of the graph about to be solved; empty for the main graph. */
     void set(Map<String, String> gaToVersion) {
         this.pins = Map.copyOf(Objects.requireNonNull(gaToVersion, "gaToVersion"));
     }
 
     /**
      * The constraint an edge from {@code parentPkg@parentVersion} onto {@code depPkg} carries into
-     * the solve: the nearest pin when the project has one on that module, else {@code own}.
+     * the solve: the governing version when one governs that module, else {@code own}.
      *
      * @param declared the plain version the POM wrote, or {@code null} for a range
      */
@@ -81,7 +79,7 @@ final class NearestPins {
         return VersionSet.exact(pin);
     }
 
-    /** Every override recorded so far, one line per pinned module, sorted by module. */
+    /** Every override recorded so far, one line per governed module, sorted by module. */
     List<String> renderedOverrides() {
         Map<String, List<Override>> byModule = new TreeMap<>();
         for (Override o : overrides) {

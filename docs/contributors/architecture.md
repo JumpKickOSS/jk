@@ -718,9 +718,9 @@ beside the owner's shadow and later builds reuse it; the repository gains no fil
 `LockPaths.lockOwnerDir` keeps answering a project directory — the module itself, or the reactor
 root for a leaf — and `LockPaths.lockFile` places the file under that owner's `target/jk/shadow/`
 when the owner is shadowed, so every site that resolves modules, `.env` files or JDK pins against
-the lock owner reads the real tree. The POM's direct versions win over transitive requests
-(`[resolve] pins = "nearest"`, the policy `jk import` writes), bare versions are exact pins and
-BOM imports are enforced platforms; transitives resolve by PubGrub.
+the lock owner reads the real tree. Bare versions are exact pins, BOM imports are enforced
+platforms, and everything resolves highest-wins by PubGrub, as a `jk.toml` does; a POM pin below a
+transitive's floor is a refusal here, which `jk import` (`ImportPinRaises`) raises instead.
 A `<mirror>` in Maven's `settings.xml` (`cc.jumpkick.m2.MavenSettings`) is applied where the
 repository group is built (`RepoMirrors`, on every `MavenRepo` including the ones a dependency's
 POM declares): the repository keeps its name, URL and store, and only the URL its requests open
