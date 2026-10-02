@@ -89,6 +89,10 @@ public final class PlannerTails {
                 b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_ASSEMBLY);
             }
+            if (PlannerWar.declared(project)) {
+                b.addTask(PlannerWar.warStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+                leaves.add(TaskNames.PACKAGE_WAR);
+            }
             if (project.minified()) {
                 b.addTask(minifiedStep(in, graalHome));
                 leaves.add(TaskNames.PACKAGE_MINIFIED);

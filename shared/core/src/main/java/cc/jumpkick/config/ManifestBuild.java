@@ -92,6 +92,7 @@ public final class ManifestBuild {
                 "guards",
                 "dokka",
                 ManifestTables.MULTI_RELEASE,
+                ManifestTables.WAR,
                 TaskNames.BUILD_INFO));
         for (Scope scope : Scope.values()) out.add(scope.tomlSection()); // [dependencies] + scoped spellings
         return Set.copyOf(out);
@@ -333,7 +334,8 @@ public final class ManifestBuild {
                     EnvConfig.EMPTY,
                     null,
                     BuildBlock.Dokka.DEFAULT,
-                    List.of());
+                    List.of(),
+                    null);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
         JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
@@ -370,7 +372,8 @@ public final class ManifestBuild {
                 EnvConfig.EMPTY,
                 null,
                 BuildBlock.Dokka.DEFAULT,
-                List.of());
+                List.of(),
+                null);
     }
 
     /** The three {@code [resolve]} policies, at their defaults when the table or key is absent. */

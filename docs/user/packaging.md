@@ -14,6 +14,7 @@ R8 minification is **opt-in**, never the default.
 | Javadoc jar `*-javadoc.jar` | library, unless `javadoc = false` | `jk build` / `jk package` |
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
 | Minified jar `*-min.jar` | `[application] minified = true` | `jk assemble` / `jk build` (also builds the fat jar) |
+| War `target/<name>-<version>.war`, exploded beside it | `[war]` | `jk build` |
 | Spring Boot jar | spring-boot plugin | `jk build` |
 | Quarkus fast-jar / uber-jar | `[quarkus]` | `jk build` |
 | Grails jar (Boot layout) | grails plugin | `jk build` |
@@ -108,6 +109,27 @@ outside a git checkout (an exported tree) builds with a warning and no `git.prop
 
 `jk import` writes the table for `git-commit-id-maven-plugin`, `pl.project13.maven:git-commit-id-plugin`,
 Boot's `build-info` goal, `com.gorylenko.gradle-git-properties` and `springBoot { buildInfo() }`.
+
+## War
+
+`[war]` packages a web archive beside the jar, laid out as Maven's war plugin lays it out:
+
+```toml
+[war]                       # the table alone is the whole declaration
+# name   = "ROOT"           # file name without .war; default <name>-<version>
+# webapp = "src/main/webapp"
+```
+
+| In the war | From |
+|---|---|
+| the root | the `webapp` directory (`WEB-INF/web.xml` included, when there is one) |
+| `WEB-INF/classes/` | the module's classes and resources |
+| `WEB-INF/lib/` | the runtime dependencies and workspace siblings; `provided` ones are left out |
+
+The exploded tree is `target/<name>/` and the archive `target/<name>.war`. Its manifest is the
+`[manifest]` table, plus `Main-Class` when `[application] main` is set. `jk import` writes `[war]`
+for `<packaging>war</packaging>`, taking `<finalName>` or `<warName>` as `name` and
+`<warSourceDirectory>` as `webapp`, and for Gradle's `war` plugin.
 
 ## Multi-release jars
 

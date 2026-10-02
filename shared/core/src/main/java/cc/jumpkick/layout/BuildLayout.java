@@ -3,6 +3,7 @@ package cc.jumpkick.layout;
 
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import java.io.IOException;
@@ -414,6 +415,20 @@ public final class BuildLayout {
     /** {@code <artifactDir>/<artifact>-<version>.jar} — the main jar. */
     public Path mainJar() {
         return artifactDir().resolve(artifact + "-" + version + ".jar");
+    }
+
+    /** {@code <artifactDir>/<file name>.war}, the archive of {@code war}. */
+    public Path warFile(BuildBlock.War war) {
+        return artifactDir().resolve(warName(war) + ".war");
+    }
+
+    /** {@code <artifactDir>/<file name>/}, {@code war} exploded. */
+    public Path explodedWarDir(BuildBlock.War war) {
+        return artifactDir().resolve(warName(war));
+    }
+
+    private String warName(BuildBlock.War war) {
+        return war.name() != null ? war.name() : artifact + "-" + version;
     }
 
     /** {@code <artifactDir>/<artifact>-<version>-all.jar} — the fat / shaded jar (deps included). */
