@@ -309,6 +309,31 @@ public final class ManifestTables {
                 new BuildBlock.BuildInfo(file == null ? BuildBlock.BuildInfo.DEFAULT_FILE : file, buildTime));
     }
 
+    /** The {@code [war]} table. */
+    static final String WAR = "war";
+
+    static final List<String> WAR_KEYS = List.of("name", "webapp");
+
+    /** {@code [war]}: present (even empty) means the module packages a war. */
+    static Optional<BuildBlock.War> parseWar(TomlTable root) {
+        if (root.contains(WAR) && !root.isTable(WAR)) {
+            throw new JkBuildParseException("`war` must be a table — use [war], optionally with name and webapp keys");
+        }
+        TomlTable table = root.getTable(WAR);
+        if (table == null) return Optional.empty();
+        rejectUnknownKeys(table, WAR_KEYS, "[war]");
+        String name = stringOrThrow(table, "name", "war.name");
+        if (name != null && (name.contains("/") || name.contains("\\") || name.endsWith(".war"))) {
+            throw new JkBuildParseException("[war] name is the file name without .war, such as \"ROOT\"");
+        }
+        String webapp = stringOrThrow(table, "webapp", "war.webapp");
+        if (webapp != null && (webapp.startsWith("/") || webapp.contains(".."))) {
+            throw new JkBuildParseException(
+                    "[war] webapp must be a directory inside the module, such as src/main/webapp");
+        }
+        return Optional.of(new BuildBlock.War(name, webapp == null ? BuildBlock.War.DEFAULT_WEBAPP : webapp));
+    }
+
     static final List<String> PUBLISH_KEYS = List.of("name", "url", "licenses", "developers", "scm");
     static final List<String> PUBLISH_LICENSE_KEYS = List.of("name", "url");
     static final List<String> PUBLISH_DEVELOPER_KEYS = List.of("id", "name", "email");

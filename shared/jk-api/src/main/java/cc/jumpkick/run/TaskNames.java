@@ -105,6 +105,9 @@ public final class TaskNames {
 
     public static final String PACKAGE_SOURCES = "package-sources";
 
+    /** The {@code [war]} web archive, exploded and archived beside the module jar. */
+    public static final String PACKAGE_WAR = "package-war";
+
     /** {@code -javadoc.jar} for a library, built from its Java sources beside the module jar. */
     public static final String PACKAGE_JAVADOC = "package-javadoc";
 
@@ -138,7 +141,7 @@ public final class TaskNames {
      * and this tail, not the sum of its steps.
      */
     public static final Set<String> PACKAGING_TAILS =
-            Set.of(PACKAGE_ASSEMBLY, PACKAGE_MINIFIED, NATIVE_IMAGE, PACKAGE_SOURCES, PACKAGE_JAVADOC);
+            Set.of(PACKAGE_ASSEMBLY, PACKAGE_MINIFIED, NATIVE_IMAGE, PACKAGE_SOURCES, PACKAGE_JAVADOC, PACKAGE_WAR);
 
     public static final String SET_DEFAULT = "set-default";
     public static final String SYNC_CAS = "sync-cas";

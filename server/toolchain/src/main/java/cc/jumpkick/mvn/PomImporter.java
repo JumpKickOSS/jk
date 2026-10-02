@@ -325,7 +325,8 @@ public final class PomImporter {
         JkBuild jkBuild = builder.build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
                         .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(BuildBlock.Dokka.DEFAULT))
-                        .withMultiRelease(releases))
+                        .withMultiRelease(releases)
+                        .withWar(packaging.war()))
                 .build();
         Map<String, String> manifest = new LinkedHashMap<>(PluginFacts.manifestEntries(em.model()));
         // A [multi-release] jar carries the attribute already.

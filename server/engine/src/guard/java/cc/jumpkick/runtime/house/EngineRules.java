@@ -61,6 +61,7 @@ final class EngineRules {
     private static final Map<String, Object[]> UNPAIRED = Map.of(
             "PlannerTails.java|key",
                     new Object[] {"package-sources", false, "explain does not forecast the sources jar at all"},
+            "PlannerWar.java|key", new Object[] {"package-war", false, "explain does not forecast the war at all"},
             "PlannerNative.java|nKey",
                     new Object[] {
                         "native-image",

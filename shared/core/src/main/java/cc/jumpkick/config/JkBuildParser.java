@@ -428,6 +428,8 @@ public final class JkBuildParser {
         Optional<BuildBlock.BuildInfo> buildInfo = ManifestTables.parseBuildInfo(result);
         if (buildInfo.isPresent()) build = build.withBuildInfo(buildInfo.get());
         // [dokka] shapes the javadoc jar of a Kotlin module; it folds in beside [build-info].
+        Optional<BuildBlock.War> war = ManifestTables.parseWar(result);
+        if (war.isPresent()) build = build.withWar(war.get());
         Optional<BuildBlock.Dokka> dokka = ManifestTables.parseDokka(result);
         if (dokka.isPresent()) build = build.withDokka(dokka.get());
         // [multi-release] adds release source sets to the compile and the jar.
