@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.test.FailureClip;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NullMarked;
@@ -31,7 +32,7 @@ final class JkResultsStack {
         if (stack == null || stack.isEmpty()) return "";
         String[] lines = stack.trim().split("\n", -1);
         if (lines.length <= maxLines) return stack.trim();
-        int test = testFrame(lines, testClass);
+        int test = FailureClip.testFrame(lines, testClass);
         // Inside the head cut already — or absent — so the plain cut keeps it.
         if (test < 0 || test < maxLines) return JkResultsMarkdown.clipLines(stack, maxLines);
         int head = Math.max(1, maxLines - 3);
@@ -45,39 +46,5 @@ final class JkResultsStack {
         int rest = lines.length - 1 - test;
         if (rest > 0) out.add("… " + rest + (rest == 1 ? " frame" : " frames"));
         return String.join("\n", out);
-    }
-
-    /**
-     * Index of the first frame (top down) whose class is {@code testClass} or a nested class of it;
-     * else the first frame in the test's package; else {@code -1}.
-     */
-    static int testFrame(String[] lines, @Nullable String testClass) {
-        if (testClass == null || testClass.isBlank()) return -1;
-        int dot = testClass.lastIndexOf('.');
-        String pkg = dot < 0 ? "" : testClass.substring(0, dot + 1);
-        int inPackage = -1;
-        for (int i = 0; i < lines.length; i++) {
-            String cls = frameClass(lines[i]);
-            if (cls == null) continue;
-            if (cls.equals(testClass) || cls.startsWith(testClass + "$")) return i;
-            if (inPackage < 0 && !pkg.isEmpty() && cls.startsWith(pkg)) inPackage = i;
-        }
-        return inPackage;
-    }
-
-    /**
-     * The declaring class of an {@code at pkg.Class.method(File.java:NN)} line — module prefix
-     * ({@code java.base/}) and class-loader prefix stripped — or {@code null} for any other line.
-     */
-    static @Nullable String frameClass(String line) {
-        String s = line.strip();
-        if (!s.startsWith("at ")) return null;
-        s = s.substring(3).strip();
-        int paren = s.indexOf('(');
-        if (paren > 0) s = s.substring(0, paren);
-        int slash = s.lastIndexOf('/');
-        if (slash >= 0) s = s.substring(slash + 1);
-        int method = s.lastIndexOf('.');
-        return method <= 0 ? null : s.substring(0, method);
     }
 }
