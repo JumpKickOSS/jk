@@ -500,8 +500,9 @@ new client's handshake are answered as usual. Once 8 MiB of lines wait for a cli
 `~/.jk/state/tmp/wire-spill/` and reach the client in order as it reads them, so a client that reads
 slowly or not at all — a pipe into a file on a busy disk, a pager nobody scrolls, a suspended
 terminal — never holds its build: the build runs to its end and lets go of the test gate and the
-memory it held, and the client reads the rest when it resumes. Only past 1 GiB on disk does the
-build wait for its client. A client that reads nothing at all for `JK_STREAM_IDLE_MS` while it
+memory it held, and the client reads the rest when it resumes. Only past 1 GiB on disk, or when the
+volume nears its free-space floor (the one a build refuses to start under), does the build wait
+for its client. A client that reads nothing at all for `JK_STREAM_IDLE_MS` while it
 has lines waiting is dropped: its connection is closed, its spill file deleted, its job ends the
 way it does when a client disconnects, and the engine log says `dropped a client that stopped
 reading its stream`. A `jk cancel` of a job whose client is not reading ends any wait at once: the

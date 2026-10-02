@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.api;
 
+import cc.jumpkick.host.DiskRoom;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
@@ -20,6 +21,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongPredicate;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -57,6 +59,9 @@ public final class WireWriter {
     /** Bytes of lines one stream holds on disk past {@link #MAX_QUEUED_BYTES} before a paced producer waits. */
     static final long MAX_SPILL_BYTES = 1L << 30;
 
+    /** Bytes a stream spills between looks at its volume's free space. */
+    static final long ROOM_CHECK_BYTES = 8L << 20;
+
     /** A line longer than this is written and flushed in slices this long, each one counted as progress. */
     static final int WRITE_CHUNK_CHARS = 8_192;
 
@@ -76,12 +81,16 @@ public final class WireWriter {
      * writer nobody bound uses the process-wide stream-idle bound.
      */
     public static void bind(BufferedWriter writer, long idleBoundMillis) {
-        bind(writer, idleBoundMillis, spillDir(), MAX_SPILL_BYTES);
+        Path dir = spillDir();
+        bind(writer, idleBoundMillis, dir, MAX_SPILL_BYTES, bytes -> DiskRoom.fits(dir, bytes));
     }
 
-    /** {@link #bind} with the stream's spill directory and spill cap in bytes. */
-    static void bind(BufferedWriter writer, long idleBoundMillis, Path spillDir, long spillCap) {
-        STREAMS.put(writer, new Stream(writer, idleBoundMillis, spillDir, spillCap));
+    /**
+     * {@link #bind} with the stream's spill directory, spill cap in bytes, and {@code room}: whether
+     * its volume stays above its free-space floor after that many more bytes.
+     */
+    static void bind(BufferedWriter writer, long idleBoundMillis, Path spillDir, long spillCap, LongPredicate room) {
+        STREAMS.put(writer, new Stream(writer, idleBoundMillis, spillDir, spillCap, room));
     }
 
     /**
@@ -182,9 +191,15 @@ public final class WireWriter {
     }
 
     private static Stream stream(BufferedWriter writer) {
-        return STREAMS.computeIfAbsent(
-                writer,
-                w -> new Stream(w, BoundedLineReader.streamIdleMillis(JkDirs::env), spillDir(), MAX_SPILL_BYTES));
+        return STREAMS.computeIfAbsent(writer, w -> {
+            Path dir = spillDir();
+            return new Stream(
+                    w,
+                    BoundedLineReader.streamIdleMillis(JkDirs::env),
+                    dir,
+                    MAX_SPILL_BYTES,
+                    bytes -> DiskRoom.fits(dir, bytes));
+        });
     }
 
     private static Path spillDir() {
@@ -236,6 +251,13 @@ public final class WireWriter {
 
         private final Path spillDir;
         private final long spillCap;
+        private final LongPredicate room;
+
+        /** Bytes spilled since the volume's free space was last looked at. */
+        private long spilledSinceCheck;
+
+        /** Whether the log already says this stream stopped spilling at the volume's floor. */
+        private boolean roomWarned;
 
         /** Lines past the memory bound, behind every line in {@link #queue}; null while none wait on disk. */
         private @Nullable SpillFile spill;
@@ -250,11 +272,12 @@ public final class WireWriter {
         /** Whether spilling failed once: the stream then paces in memory alone. */
         private boolean spillBroken;
 
-        Stream(BufferedWriter writer, long idleBoundMillis, Path spillDir, long spillCap) {
+        Stream(BufferedWriter writer, long idleBoundMillis, Path spillDir, long spillCap, LongPredicate room) {
             this.writer = writer;
             this.idleBoundMillis = Math.max(0L, idleBoundMillis);
             this.spillDir = spillDir;
             this.spillCap = spillCap;
+            this.room = room;
         }
 
         void idleBound(long millis) {
@@ -296,7 +319,7 @@ public final class WireWriter {
             if (!onDisk && (hasRoom(p) || !paced)) {
                 queue.addLast(p);
                 queuedBytes += p.bytes();
-            } else if (paced && (spillBroken || !spillFits) || !spillTo(p)) {
+            } else if (paced && (spillBroken || !spillFits || !roomOnDisk(p)) || !spillTo(p)) {
                 return false;
             }
             if (!wasBusy) progressNanos = now;
@@ -336,7 +359,29 @@ public final class WireWriter {
             if (landed != null) spillWaiters.addLast(new SpillWaiter(spilledLines, landed));
             spilledLines++;
             spilledBytes += p.bytes();
+            spilledSinceCheck += p.bytes();
             return true;
+        }
+
+        /**
+         * Caller holds the monitor. Whether the spill volume keeps its free-space floor: looked at
+         * when a file is opened and every {@link #ROOM_CHECK_BYTES} after. A volume at its floor
+         * leaves paced lines waiting in memory.
+         */
+        private boolean roomOnDisk(Pending p) {
+            if (spill != null && spilledSinceCheck + p.bytes() <= ROOM_CHECK_BYTES) return true;
+            if (room.test(ROOM_CHECK_BYTES)) {
+                spilledSinceCheck = 0;
+                return true;
+            }
+            if (!roomWarned) {
+                roomWarned = true;
+                Log.warn(
+                        "jk engine: a slow client's stream reached the disk's free-space floor; pacing it in memory",
+                        "dir",
+                        spillDir);
+            }
+            return false;
         }
 
         /** Caller holds the monitor. Lines on disk the writer thread has not read yet. */

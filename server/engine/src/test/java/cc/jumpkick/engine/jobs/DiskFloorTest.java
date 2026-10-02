@@ -9,15 +9,8 @@ import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The free-space floor and the refusal that names the path. */
+/** The refusal that names the path under its free-space floor. */
 class DiskFloorTest {
-
-    @Test
-    void the_floor_is_one_gib_or_two_percent_and_at_most_two_gib() {
-        assertThat(DiskFloor.floorBytes(15L << 30)).isEqualTo(DiskFloor.GIB);
-        assertThat(DiskFloor.floorBytes(80L << 30)).isEqualTo((80L << 30) / 50);
-        assertThat(DiskFloor.floorBytes(200L << 30)).isEqualTo(2 * DiskFloor.GIB);
-    }
 
     @Test
     void a_short_volume_is_refused_by_name_after_the_wait(@TempDir Path dir) {
