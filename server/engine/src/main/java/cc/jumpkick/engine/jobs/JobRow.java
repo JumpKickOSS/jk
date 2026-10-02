@@ -18,25 +18,38 @@ import java.util.Map;
  * event, both {@code -1} for a queued job; {@code ahead} is {@code -1} for a live one.
  */
 public record JobRow(
-        long jid, String kind, String dir, boolean live, long sinceMillis, int workers, long lastEventAt, int ahead) {
+        long jid,
+        String kind,
+        String dir,
+        boolean live,
+        long sinceMillis,
+        int workers,
+        long lastEventAt,
+        int ahead,
+        boolean suspended) {
 
     private static final DateTimeFormatter WALL_CLOCK = DateTimeFormatter.ofPattern("HH:mm");
 
     public static JobRow live(long jid, String kind, String dir, long sinceMillis, int workers, long lastEventAt) {
-        return new JobRow(jid, kind, dir, true, sinceMillis, workers, lastEventAt, -1);
+        return new JobRow(jid, kind, dir, true, sinceMillis, workers, lastEventAt, -1, false);
+    }
+
+    /** This live row, suspended by its client's Ctrl-Z. */
+    public JobRow asSuspended() {
+        return new JobRow(jid, kind, dir, live, sinceMillis, workers, lastEventAt, ahead, true);
     }
 
     public static JobRow queued(long jid, String kind, String dir, long sinceMillis, int ahead) {
-        return new JobRow(jid, kind, dir, false, sinceMillis, -1, -1, ahead);
+        return new JobRow(jid, kind, dir, false, sinceMillis, -1, -1, ahead, false);
     }
 
-    /** The row as the status vitals carry it; {@code state} is {@code live} or {@code queued}. */
+    /** The row as the status vitals carry it; {@code state} is {@code live}, {@code suspended} or {@code queued}. */
     public Map<String, Object> toJson() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("jid", jid);
         m.put("kind", kind);
         m.put("dir", dir);
-        m.put("state", live ? "live" : "queued");
+        m.put("state", suspended ? "suspended" : live ? "live" : "queued");
         m.put("since", sinceMillis);
         m.put("workers", workers);
         m.put("lastEventAt", lastEventAt);

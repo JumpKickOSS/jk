@@ -97,6 +97,24 @@ public final class Terminals {
         WindowsUtf8.restoreCodePages();
     }
 
+    /**
+     * Before this process stops itself (Ctrl-Z): the terminal back to the shell's settings and the
+     * cursor shown. {@link #resumeAfterStop} puts jk's mode back.
+     */
+    public static void suspendForStop() {
+        NativeTerminal s = singleton;
+        if (s != null) s.suspendForStop();
+        System.err.print("\u001B[?25h");
+        System.out.flush();
+        System.err.flush();
+    }
+
+    /** After this process continues ({@code fg}): jk's terminal mode again. */
+    public static void resumeAfterStop() {
+        NativeTerminal s = singleton;
+        if (s != null) s.resumeAfterStop();
+    }
+
     public static void restoreForChild() {
         NativeTerminal s = singleton;
         if (s != null) {

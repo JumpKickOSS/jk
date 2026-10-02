@@ -509,6 +509,12 @@ public final class BuildPlan {
     }
 
     private TaskStatus runOneStep(Task step, int initialTicks, int weight) {
+        // A suspended session (the client's Ctrl-Z) starts no new step until it resumes.
+        try {
+            SessionCancel.awaitResumed();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         Instant start = clock.instant();
         long startNum = numerator.sum();
         long startNanos = clock.nanos();

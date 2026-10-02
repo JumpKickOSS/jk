@@ -134,8 +134,9 @@ public final class LiveJobRegistry {
         for (var e : liveJobs.entrySet()) {
             LiveJob j = e.getValue();
             long jid = e.getKey();
-            out.add(JobRow.live(
-                    jid, j.kind(), j.dir(), j.sinceMillis(), workersOf.applyAsInt(jid), lastEventAt.applyAsLong(jid)));
+            JobRow row = JobRow.live(
+                    jid, j.kind(), j.dir(), j.sinceMillis(), workersOf.applyAsInt(jid), lastEventAt.applyAsLong(jid));
+            out.add(j.token().suspended() ? row.asSuspended() : row);
         }
         out.sort(Comparator.comparingLong(JobRow::sinceMillis).thenComparingLong(JobRow::jid));
         return out;
@@ -161,6 +162,26 @@ public final class LiveJobRegistry {
         pushCancelledTerminal(job);
         // Remote `jk cancel` / POST /api/cancel — an explicit signal.
         beginUserCancel(jid, job.token(), job.runnerRef(), cancelGraceMs, true);
+        return true;
+    }
+
+    /**
+     * Suspend one live job (its client's Ctrl-Z) or resume it ({@code fg}). Suspended, it starts
+     * no new step, its forked workers are stopped, and it keeps its leases; a cancel still ends it.
+     * Returns {@code false} if the jid is unknown or already finished.
+     */
+    public boolean holdJob(long jid, boolean suspend) {
+        LiveJob job = liveJobs.get(jid);
+        if (job == null) return false;
+        if (suspend) {
+            job.token().suspend();
+            int stopped = JobWorkers.hold(jid);
+            log.accept("jk engine: suspended job " + jid + " (" + stopped + " worker process(es) stopped)");
+        } else {
+            JobWorkers.release(jid);
+            job.token().resume();
+            log.accept("jk engine: resumed job " + jid);
+        }
         return true;
     }
 

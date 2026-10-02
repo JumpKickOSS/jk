@@ -161,6 +161,26 @@ final class NativeTerminal implements TerminalSession {
         }
     }
 
+    /** Hand the shell its original attrs for a stop, keeping the mode stack for {@link #resumeAfterStop}. */
+    void suspendForStop() {
+        lock.lock();
+        try {
+            restore();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Put back the mode on top of the stack after the process continues. */
+    void resumeAfterStop() {
+        lock.lock();
+        try {
+            if (live && !stack.isEmpty()) apply(stack.peek());
+        } finally {
+            lock.unlock();
+        }
+    }
+
     void restoreForChild() {
         lock.lock();
         try {

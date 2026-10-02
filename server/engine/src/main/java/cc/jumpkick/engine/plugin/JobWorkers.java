@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepScope;
@@ -67,6 +68,9 @@ public final class JobWorkers {
     private static final InheritableThreadLocal<Long> CURRENT = new InheritableThreadLocal<>();
 
     private static final ConcurrentHashMap<Long, Set<Process>> BY_REQUEST = new ConcurrentHashMap<>();
+
+    /** Requests whose workers are stopped: no new fork of theirs starts until {@link #release}. */
+    private static final Set<Long> HELD = ConcurrentHashMap.newKeySet();
 
     /**
      * Requests whose shutdown already ran. A cpu-pool thread still draining after cancel can call
@@ -307,6 +311,7 @@ public final class JobWorkers {
             LearnedHeaps heaps)
             throws IOException {
         Long request = track ? CURRENT.get() : null;
+        if (request != null) awaitReleased(request);
         WorkerLeases.Grant grant;
         try {
             grant = resident != null
@@ -389,6 +394,64 @@ public final class JobWorkers {
     }
 
     /**
+     * Stop ({@code SIGSTOP}) every process {@code requestId} forked, children included, and hold
+     * its next forks until {@link #release}: a suspended job's workers keep their memory and use no
+     * CPU. POSIX only; returns how many processes were stopped.
+     */
+    public static int hold(long requestId) {
+        HELD.add(requestId);
+        return signalRequest(requestId, "-STOP");
+    }
+
+    /** Continue ({@code SIGCONT}) what {@link #hold} stopped and let held forks start. Idempotent. */
+    public static int release(long requestId) {
+        if (!HELD.remove(requestId)) return 0;
+        synchronized (HELD) {
+            HELD.notifyAll();
+        }
+        return signalRequest(requestId, "-CONT");
+    }
+
+    /** Wait while {@code requestId} is held. */
+    private static void awaitReleased(long requestId) throws InterruptedIOException {
+        synchronized (HELD) {
+            while (HELD.contains(requestId)) {
+                try {
+                    HELD.wait(1_000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new InterruptedIOException("cancelled while suspended");
+                }
+            }
+        }
+    }
+
+    /** Send {@code signal} to every live process {@code requestId} forked and its descendants, in one {@code kill}. */
+    private static int signalRequest(long requestId, String signal) {
+        if (Os.isWindows()) return 0;
+        Set<Process> set = BY_REQUEST.get(requestId);
+        if (set == null) return 0;
+        List<String> command = new ArrayList<>(List.of("kill", signal));
+        for (Process p : set) {
+            if (!p.isAlive()) continue;
+            command.add(Long.toString(p.pid()));
+            for (ProcessHandle h : descendantsOf(p)) command.add(Long.toString(h.pid()));
+        }
+        int n = command.size() - 2;
+        if (n == 0) return 0;
+        try {
+            Process kill = new ProcessBuilder(command).redirectErrorStream(true).start();
+            kill.getInputStream().readAllBytes();
+            kill.waitFor(5, TimeUnit.SECONDS);
+        } catch (IOException e) {
+            Log.debug("job " + requestId + ": kill " + signal + " failed", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return n;
+    }
+
+    /**
      * Shut down <em>all</em> workers for {@code requestId}
      *
      * <ol>
@@ -405,6 +468,8 @@ public final class JobWorkers {
      * <p>On Windows, step 1 may already be terminal (no SIGTERM); step 2 still bounds our wait.
      */
     public static int shutdownForRequest(long requestId, long graceMs) {
+        // A stopped worker would not act on SIGTERM until continued.
+        release(requestId);
         // Tombstone FIRST so a register racing us kills its process on arrival, and drop any
         // lease still queued for this job so a fork blocked in launch does not outlive the cancel.
         if (TOMBSTONES.size() >= MAX_TOMBSTONES) TOMBSTONES.clear();
