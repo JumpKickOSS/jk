@@ -14,8 +14,10 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -93,9 +95,10 @@ final class NodeKeys {
             NodeTable.Command command,
             Map<String, String> env,
             String installed,
-            String nodeToken)
+            String nodeToken,
+            List<String> later)
             throws IOException {
-        Map<String, String> inputs = tree(nodeDir, List.of(project.out()));
+        Map<String, String> inputs = tree(nodeDir, withOut(project, later));
         inputs.put("command:", command.kind().key() + " " + command.value());
         inputs.put("out:", project.out());
         envInputs(inputs, env, project.envPrefixes());
@@ -104,16 +107,121 @@ final class NodeKeys {
         return keyed(TaskNames.NODE_BUILD, nodeDir, inputs);
     }
 
-    /** {@code node-test}'s key: as {@link #build}'s, with the test script for the command. */
+    /**
+     * A {@code [[node.steps]]} entry's key: the files its {@code inputs} name, or with none the node
+     * tree less {@code out} and every step's outputs; its command, the environment, the install and
+     * Node.
+     * {@code fetched} is the {@code pkg@version} an unlocked npx runs, else {@code null}.
+     */
+    static Keyed step(
+            Path nodeDir,
+            Path moduleDir,
+            NodeProject project,
+            NodeTable.Step step,
+            List<String> outputs,
+            Map<String, String> env,
+            String installed,
+            String nodeToken,
+            @Nullable String fetched)
+            throws IOException {
+        // A step that names what it reads is keyed on that alone; one that names nothing reads the tree.
+        Map<String, String> inputs = step.inputs().isEmpty() ? tree(nodeDir, outputs) : new TreeMap<>();
+        inputs.putAll(inputFiles(moduleDir, step.inputs()));
+        inputs.put(
+                "command:", step.command().kind().key() + " " + step.command().value());
+        inputs.put("outputs:", String.join(",", step.outputs()));
+        if (fetched != null) inputs.put("fetched:", fetched);
+        envInputs(inputs, env, project.envPrefixes());
+        inputs.put("installed:", installed);
+        inputs.put("node:", nodeToken);
+        return keyed(stepTask(step), nodeDir, inputs);
+    }
+
+    private static List<String> withOut(NodeProject project, List<String> later) {
+        List<String> all = new ArrayList<>(later);
+        all.add(project.out());
+        return all;
+    }
+
+    /** The task a {@code [[node.steps]]} entry runs as. */
+    static String stepTask(NodeTable.Step step) {
+        return TaskNames.NODE_STEP_PREFIX + step.name();
+    }
+
+    /**
+     * The files {@code patterns} name, relative to {@code moduleDir}, keyed {@code input:<path>}: a
+     * file, every file under a directory, or a glob's matches; a path that names nothing is
+     * {@code absent}, so its appearance re-runs the step.
+     */
+    static Map<String, String> inputFiles(Path moduleDir, List<String> patterns) throws IOException {
+        Map<String, String> files = new TreeMap<>();
+        for (String pattern : patterns) {
+            String norm = pattern.replace('\\', '/');
+            int glob = firstGlob(norm);
+            if (glob < 0) {
+                Path target = moduleDir.resolve(norm).normalize();
+                if (Files.isRegularFile(target)) {
+                    files.put(INPUT + norm, FileHashMemo.contentHash(target));
+                } else if (Files.isDirectory(target)) {
+                    PathUtil.forEachRegularFile(
+                            target,
+                            dir -> NEVER_INPUT.contains(String.valueOf(dir.getFileName())),
+                            (file, attrs) -> files.put(
+                                    INPUT + norm + "/" + rel(target, file), FileHashMemo.contentHash(file, attrs)));
+                } else {
+                    files.put(INPUT + norm, "absent");
+                }
+                continue;
+            }
+            int slash = norm.lastIndexOf('/', glob);
+            Path base = moduleDir
+                    .resolve(slash < 0 ? "." : norm.substring(0, slash))
+                    .normalize();
+            if (!Files.isDirectory(base)) continue;
+            PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + norm);
+            PathUtil.forEachRegularFile(
+                    base, dir -> NEVER_INPUT.contains(String.valueOf(dir.getFileName())), (file, attrs) -> {
+                        String rel = rel(moduleDir, file);
+                        if (matcher.matches(Path.of(rel)))
+                            files.put(INPUT + rel, FileHashMemo.contentHash(file, attrs));
+                    });
+        }
+        return files;
+    }
+
+    private static final String INPUT = "input:";
+
+    private static int firstGlob(String pattern) {
+        for (int i = 0; i < pattern.length(); i++) {
+            if ("*?[{".indexOf(pattern.charAt(i)) >= 0) return i;
+        }
+        return -1;
+    }
+
+    /** {@code file} relative to {@code dir}, {@code ../} where it lies outside, with forward slashes. */
+    private static String rel(Path dir, Path file) {
+        return dir.toAbsolutePath()
+                .normalize()
+                .relativize(file.toAbsolutePath().normalize())
+                .toString()
+                .replace(File.separatorChar, '/');
+    }
+
+    /**
+     * {@code node-test}'s key: as {@link #build}'s, with the test script for the command. {@code
+     * later}, here and in {@link #build}: the outputs of steps that run after this one, which it
+     * never reads.
+     */
     static Keyed test(
             Path nodeDir,
             NodeProject project,
             String script,
             Map<String, String> env,
             String installed,
-            String nodeToken)
+            String nodeToken,
+            List<String> later)
             throws IOException {
-        Map<String, String> inputs = tree(nodeDir, List.of(project.out()));
+        Map<String, String> inputs = tree(nodeDir, withOut(project, later));
         inputs.put("test:", script);
         envInputs(inputs, env, project.envPrefixes());
         inputs.put("installed:", installed);
@@ -132,7 +240,7 @@ final class NodeKeys {
     /**
      * Every file under {@code nodeDir} by its path relative to it, valued by content: dot-files
      * included ({@code .env}, a framework's config), {@link #NEVER_INPUT} and {@code outputs}
-     * (paths relative to {@code nodeDir}) left out.
+     * (files or directories relative to {@code nodeDir}) left out.
      */
     static Map<String, String> tree(Path nodeDir, List<String> outputs) throws IOException {
         Map<String, String> files = new TreeMap<>();
@@ -141,9 +249,12 @@ final class NodeKeys {
         PathUtil.forEachRegularFile(
                 nodeDir,
                 dir -> NEVER_INPUT.contains(String.valueOf(dir.getFileName())) || skipped.contains(dir.normalize()),
-                (file, attrs) -> files.put(
-                        nodeDir.relativize(file).toString().replace(File.separatorChar, '/'),
-                        FileHashMemo.contentHash(file, attrs)));
+                (file, attrs) -> {
+                    if (skipped.contains(file.normalize())) return;
+                    files.put(
+                            nodeDir.relativize(file).toString().replace(File.separatorChar, '/'),
+                            FileHashMemo.contentHash(file, attrs));
+                });
         return files;
     }
 
@@ -179,6 +290,7 @@ final class NodeKeys {
             if (Objects.equals(prior.get(k), now.get(k))) continue;
             if (k.endsWith(":")) named.add(k.substring(0, k.length() - 1));
             else if (k.startsWith("env:")) named.add("$" + k.substring(4));
+            else if (k.startsWith(INPUT)) named.add(k.substring(INPUT.length()));
             else if (INSTALL_FILES.contains(k)) named.add(k);
             else files++;
         }

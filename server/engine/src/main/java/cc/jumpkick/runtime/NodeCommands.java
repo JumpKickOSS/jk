@@ -80,6 +80,54 @@ final class NodeCommands {
         throw new IllegalStateException(command.kind().toString());
     }
 
+    /** The package an npx command names: its first word, less a {@code @version}. */
+    static String npxPackage(String value) {
+        List<String> words = split(value);
+        String word = words.isEmpty() ? "" : words.get(0);
+        int at = word.lastIndexOf('@');
+        return at > 0 ? word.substring(0, at) : word;
+    }
+
+    /** The {@code @version} an npx command's first word pins, or {@code null}. */
+    static @Nullable String npxVersion(String value) {
+        List<String> words = split(value);
+        String word = words.isEmpty() ? "" : words.get(0);
+        int at = word.lastIndexOf('@');
+        return at > 0 ? word.substring(at + 1) : null;
+    }
+
+    /**
+     * Whether {@code nodeDir}'s install resolves {@code name}: a binary of that name or a package of
+     * that name in {@code node_modules}. An install with no {@code node_modules} (Yarn's Plug'n'Play)
+     * answers {@code true}: its manager resolves from the lockfile and fetches nothing either way.
+     */
+    static boolean locked(Path nodeDir, String name) {
+        Path modules = nodeDir.resolve("node_modules");
+        if (!Files.isDirectory(modules)) return true;
+        if (Files.isRegularFile(modules.resolve(name).resolve("package.json"))) return true;
+        Path bin = modules.resolve(".bin");
+        return Files.exists(bin.resolve(name))
+                || Files.exists(bin.resolve(name + ".cmd"))
+                || Files.exists(bin.resolve(name + ".exe"));
+    }
+
+    /**
+     * An npx command of a package the lockfile does not hold, fetched at exactly {@code pkgAtVersion}:
+     * {@code npm exec --yes}, {@code pnpm dlx}, {@code yarn dlx} or {@code bun x}.
+     */
+    static List<String> fetch(NodeHome home, String pkgAtVersion, String value) throws IOException {
+        List<String> argv = new ArrayList<>(home.managerCommand());
+        switch (home.packageManager()) {
+            case NPM -> argv.addAll(List.of("exec", "--yes", "--"));
+            case PNPM, YARN -> argv.add("dlx");
+            case BUN -> argv.add("x");
+        }
+        argv.add(pkgAtVersion);
+        List<String> words = split(value);
+        argv.addAll(words.subList(Math.min(1, words.size()), words.size()));
+        return argv;
+    }
+
     /** {@code words} with its program resolved: through the home first, then {@code path}. */
     static List<String> program(NodeHome home, List<String> words, String path) throws IOException {
         List<String> argv = new ArrayList<>(words);
