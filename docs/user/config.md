@@ -113,14 +113,12 @@ no-proxy = ["nexus.corp", ".internal.corp", "10.0.0.5:8081"]
 ```
 
 Without a `[network]` table, an active `<proxy>` in Maven's `~/.m2/settings.xml` decides for
-**repository traffic** — artifacts, POMs and metadata from Maven Central, your repositories and
-the plugin repository — for the protocol it names (`https` for https targets, `http` for http
-ones, as Maven matches them), its username and password sent as Basic and its `nonProxyHosts`
-going direct — see
+**every request** — artifacts, JDK and tool distributions, forge APIs, release checks — for the
+protocol it names (`https` for https targets, `http` for http ones, as Maven matches them), its
+username and password sent as Basic and its `nonProxyHosts` going direct — see
 [Repositories § Maven `settings.xml`](repositories.md#maven-settingsxml-mirrors-proxies-profiles).
-Maven scopes its proxies to repositories and jk keeps that scope: a JDK or tool distribution, a
-forge API call, the engine jar or a release check never goes through a settings.xml proxy, so a
-proxy that admits only the artifact host does not break them. Failing both, the shell's
+A proxy that admits only the artifact host lists the other hosts in `nonProxyHosts`, or you write
+a `[network]` table. Failing both, the shell's
 `https_proxy` / `HTTPS_PROXY` (https targets),
 `http_proxy` / `HTTP_PROXY` (http targets) and `no_proxy` / `NO_PROXY` decide — lower case wins
 when both are set, and both `no-proxy` lists apply. A proxy URL is
@@ -132,7 +130,7 @@ Loopback targets always go direct.
 
 Every download jk makes — Maven Central and your repositories, JDK and tool distributions, the
 engine jar, release checks — goes through `Http`, so one `[network]` table or one set of shell
-variables covers them all; only the settings.xml proxy stops at repositories. The decision is
+variables covers them all, and so does a settings.xml proxy. The decision is
 made per request: `[network]` is read once per `jk` command and re-read when the file changes
 (an edit is seen by the next command), and the six proxy variables ride
 each request from the shell running `jk`, so exporting new ones in a terminal is enough — the

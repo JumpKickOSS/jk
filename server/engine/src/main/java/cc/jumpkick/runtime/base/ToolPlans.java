@@ -64,8 +64,7 @@ public final class ToolPlans {
                     ctx.label("resolve " + coordLabel);
                     Cas cas = JkStores.storeCas();
                     URI url = repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url();
-                    RepoGroup repos =
-                            RepoGroup.of(new MavenRepo(RepositorySpec.CENTRAL, url, Http.forRepositories(), cas));
+                    RepoGroup repos = RepoGroup.of(new MavenRepo(RepositorySpec.CENTRAL, url, new Http(), cas));
                     try {
                         ctx.put(
                                 TOOL_ENV,

@@ -94,7 +94,7 @@ public final class DeclaredPins {
      */
     static RepoGroup lockRepos(RepoGroup base, JkBuild imported, Cas cas) {
         List<MavenRepo> declared = new ArrayList<>();
-        Http http = Http.forRepositories();
+        Http http = new Http();
         for (RepositorySpec spec : imported.repositories()) {
             if (base.repos().stream().anyMatch(r -> r.baseUrl().equals(spec.url()))) continue;
             declared.add(

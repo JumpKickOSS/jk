@@ -222,8 +222,7 @@ class RepoGroupUnreachableTest {
             throws Exception {
         Cas cas = new Cas(tmp.resolve("cas"));
         try (DeadEndpoint dead = DeadEndpoint.open()) {
-            MavenRepo nexus = new MavenRepo(
-                    "nexus", dead.uri("/maven2/"), Http.forRepositories().withoutSilenceRetries(), cas);
+            MavenRepo nexus = new MavenRepo("nexus", dead.uri("/maven2/"), new Http().withoutSilenceRetries(), cas);
             RepoGroup group = new RepoGroup(List.of(nexus, good(tmp, cas)));
 
             assertThatThrownBy(() -> nexus.fetchPom(Coordinate.of("com.example", "lib", "1.0")))

@@ -90,7 +90,7 @@ public final class GitSourceResolution {
                 extraRepos.add(new MavenRepo(
                         RepoArtifactResolver.GIT_SOURCE_PREFIX + m.coordinate() + ":" + m.version(),
                         m.repoUrl(),
-                        Http.forRepositories(),
+                        new Http(),
                         cas));
                 gitInfo.put(provenanceKey(m.coordinate(), m.version()), m.gitInfo());
             }

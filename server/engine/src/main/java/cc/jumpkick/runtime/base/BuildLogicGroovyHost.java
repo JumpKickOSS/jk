@@ -274,7 +274,7 @@ public final class BuildLogicGroovyHost {
         MavenRepo central = new MavenRepo(
                 RepositorySpec.MAVEN_CENTRAL.name(),
                 RepositorySpec.MAVEN_CENTRAL.url(),
-                Http.forRepositories(),
+                new Http(),
                 JkStores.storeCas());
         try {
             return central.fetchArtifact(jar.coordinate(), jar.sha256(), () -> false)

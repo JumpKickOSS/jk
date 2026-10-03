@@ -205,7 +205,7 @@ public final class MavenRepo {
      * written without.
      */
     public MavenRepo mirroredThrough(Mirror mirror) {
-        Http client = http != null ? http : Http.forRepositories();
+        Http client = http != null ? http : new Http();
         return new MavenRepo(
                 name,
                 baseUrl,
@@ -328,7 +328,7 @@ public final class MavenRepo {
      * passable}, as Maven falls through a POM's repository that answers nothing.
      */
     public MavenRepo declaredByPom(String name, URI url, boolean releases, boolean snapshots) {
-        Http client = (http != null ? http : Http.forRepositories()).withoutSilenceRetries();
+        Http client = (http != null ? http : new Http()).withoutSilenceRetries();
         return new MavenRepo(
                 name,
                 url,
