@@ -176,6 +176,48 @@ class JavaCompilerHostPoolTest {
     }
 
     @Test
+    void a_plan_whose_spec_write_throws_unchecked_fails_its_forecast_and_keeps_the_lane(@TempDir Path dir)
+            throws Exception {
+        // writeSpec refuses a classpath jar that is not on disk with an IllegalStateException. Before
+        // a build that is ordinary: a forecast plans a module whose sibling jar is not built yet.
+        Path badRoot = dir.resolve("bad");
+        SpecFile specs = req -> {
+            if (req.classOutput().startsWith(badRoot)) {
+                throw new IllegalStateException("the javac classpath names 1 jar(s) that are not on disk");
+            }
+            return Files.writeString(
+                    dir.resolve(requireNonNull(req.classOutput().getParent()).getFileName() + ".spec"), "spec");
+        };
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<Session> lane = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> {
+                    Session s = new Session(owner, 9L, index, self -> release.await());
+                    lane.set(s);
+                    return s;
+                },
+                specs);
+        CompileWork bad = CompileWork.plan(request(dir, "bad"));
+        CompileWork good = CompileWork.plan(request(dir, "good"));
+        pool.enqueue(bad);
+        pool.enqueue(good);
+
+        List<String> sent = new ArrayList<>();
+        lane.get().onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent));
+
+        assertThat(bad.forecast)
+                .as("the forecast that could not be written is answered, not left waiting")
+                .isCompletedExceptionally();
+        assertThat(sent).hasSize(1);
+        assertThat(sent.getFirst()).startsWith("PLAN ").endsWith("good.spec");
+        assertThat(lane.get().alive()).isTrue();
+
+        release.countDown();
+        awaitTrue(good.forecast::isDone, "the lane's death fails the item it had on the wire");
+    }
+
+    @Test
     void a_lane_that_has_taken_an_item_but_not_yet_dispatched_it_is_not_free(@TempDir Path dir) throws Exception {
         // Between take() and the COMPILE line the lane holds the item. Growth must not count it as
         // capacity, or the next module queues behind a wait a fresh lane would have skipped.

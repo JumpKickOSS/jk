@@ -949,7 +949,10 @@ public final class JavaCompilerHost {
                     remember(next);
                     convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
                     return;
-                } catch (IOException e) {
+                } catch (IOException | RuntimeException e) {
+                    // Whatever the spec write threw (a classpath jar not on disk is an
+                    // IllegalStateException), it fails this item alone. Escaping here would end the
+                    // lane with the item neither queued nor in flight, and its caller would wait forever.
                     next.compile.completeExceptionally(e);
                     next.forecast.completeExceptionally(e);
                     busy = false;
