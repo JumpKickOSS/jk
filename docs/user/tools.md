@@ -73,7 +73,7 @@ verifies against the record ([Migration](migration.md)).
 
 Node is verified against the `SHASUMS256.txt` nodejs.org publishes for each release; pnpm, Yarn
 and bun against the npm registry's `dist.integrity`. Neither ever needs `--accept-unverified-tool`.
-Where they come from is set in `~/.jk/config.toml` ([Config § Node sources](config.md#node-sources)).
+Where they come from is set in `~/.jk/config.toml` ([Config § Node network](config.md#node-network)).
 
 ## Lint is a build step, not a tool
 

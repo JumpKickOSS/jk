@@ -27,8 +27,10 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.zip.GZIPInputStream;
 import org.jspecify.annotations.Nullable;
 
@@ -61,6 +63,8 @@ public final class Http {
      * direct must not hand the proxy's password to that host.
      */
     private static final String PROXY_AUTHORIZATION = "Proxy-Authorization";
+
+    private static final Function<URI, Optional<String>> NO_AUTHORIZATION = uri -> Optional.empty();
 
     private static final Duration[] BACKOFFS = {
         Duration.ofMillis(100),
@@ -107,6 +111,9 @@ public final class Http {
      * retried; false gives up at the first such attempt, while a 5xx is still retried.
      */
     private final boolean retriesSilence;
+
+    /** The {@code Authorization} a request for a URI carries, by its origin; none by default. */
+    private final Function<URI, Optional<String>> authorization;
 
     /**
      * A comma-separated list of hosts this process must not reach; a request to one fails at once
@@ -248,7 +255,17 @@ public final class Http {
             ProxyEnvironment proxies,
             Set<String> deniedHosts,
             Duration requestTimeout) {
-        this(client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, requestTimeout, true);
+        this(
+                client,
+                backoffs,
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                requestTimeout,
+                true,
+                NO_AUTHORIZATION);
     }
 
     private Http(
@@ -260,7 +277,8 @@ public final class Http {
             ProxyEnvironment proxies,
             Set<String> deniedHosts,
             Duration requestTimeout,
-            boolean retriesSilence) {
+            boolean retriesSilence,
+            Function<URI, Optional<String>> authorization) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
@@ -270,6 +288,7 @@ public final class Http {
         this.deniedHosts = deniedHosts;
         this.requestTimeout = requestTimeout;
         this.retriesSilence = retriesSilence;
+        this.authorization = authorization;
     }
 
     /**
@@ -278,13 +297,50 @@ public final class Http {
      * when nothing answers there, so finding that out costs one attempt, not the ladder.
      */
     public Http withoutSilenceRetries() {
-        return new Http(client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, requestTimeout, false);
+        return new Http(
+                client,
+                backoffs,
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                requestTimeout,
+                false,
+                authorization);
+    }
+
+    /**
+     * This client sending the {@code Authorization} {@code authorization} answers for each request's
+     * URI, a redirect's target included; a redirect to another origin never carries the first's.
+     */
+    public Http withAuthorization(Function<URI, Optional<String>> authorization) {
+        return new Http(
+                client,
+                backoffs,
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                requestTimeout,
+                retriesSilence,
+                Objects.requireNonNull(authorization, "authorization"));
     }
 
     /** Visible for tests — this client with another {@link #REQUEST_TIMEOUT}, so a silent server is proven in milliseconds. */
     Http withRequestTimeout(Duration timeout) {
         return new Http(
-                client, backoffs, centralMirror, cooldown, clock, proxies, deniedHosts, timeout, retriesSilence);
+                client,
+                backoffs,
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                timeout,
+                retriesSilence,
+                authorization);
     }
 
     /** Maven Central and its failover mirror, as a {@link #DENY_HOSTS_ENV} value. */
@@ -304,9 +360,10 @@ public final class Http {
         return Set.copyOf(out);
     }
 
-    /** {@code builder} with the proxy credential the request for {@code uri} needs, if any. */
+    /** {@code builder} with the proxy credential and the origin's credential the request for {@code uri} needs. */
     private HttpRequest.Builder withProxyAuthorization(HttpRequest.Builder builder, URI uri) {
         proxies.proxyAuthorization(uri).ifPresent(value -> builder.setHeader(PROXY_AUTHORIZATION, value));
+        authorization.apply(uri).ifPresent(value -> builder.setHeader("Authorization", value));
         return builder;
     }
 

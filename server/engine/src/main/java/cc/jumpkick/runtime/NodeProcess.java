@@ -54,27 +54,31 @@ final class NodeProcess {
     /** Run {@code argv} in {@code dir} under {@code env}; output goes to {@code ctx}. */
     static Result run(TaskContext ctx, List<String> argv, Path dir, Map<String, String> env)
             throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(argv).directory(dir.toFile()).redirectErrorStream(true);
-        pb.environment().clear();
-        pb.environment().putAll(env);
-        Process proc = JobWorkers.start(pb);
-        Deque<String> tail = new ArrayDeque<>();
-        List<Diagnostic> diagnostics = new ArrayList<>();
-        try (BufferedReader out =
-                new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = out.readLine()) != null) {
-                ctx.output(line);
-                if (tail.size() == TAIL) tail.removeFirst();
-                tail.addLast(line);
-                Diagnostic d = diagnostic(line);
-                if (d != null) diagnostics.add(d);
+        try {
+            ProcessBuilder pb = new ProcessBuilder(argv).directory(dir.toFile()).redirectErrorStream(true);
+            pb.environment().clear();
+            pb.environment().putAll(env);
+            Process proc = JobWorkers.start(pb);
+            Deque<String> tail = new ArrayDeque<>();
+            List<Diagnostic> diagnostics = new ArrayList<>();
+            try (BufferedReader out =
+                    new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = out.readLine()) != null) {
+                    ctx.output(line);
+                    if (tail.size() == TAIL) tail.removeFirst();
+                    tail.addLast(line);
+                    Diagnostic d = diagnostic(line);
+                    if (d != null) diagnostics.add(d);
+                }
+            } catch (IOException e) {
+                proc.destroyForcibly();
+                throw e;
             }
-        } catch (IOException e) {
-            proc.destroyForcibly();
-            throw e;
+            return new Result(proc.waitFor(), List.copyOf(tail), diagnostics);
+        } finally {
+            NodeNetwork.discard(env);
         }
-        return new Result(proc.waitFor(), List.copyOf(tail), diagnostics);
     }
 
     /** The diagnostic {@code line} names, or {@code null}; ANSI colour is ignored. */

@@ -290,4 +290,36 @@ public final class ProxyEnvironment extends ProxySelector {
     public Optional<String> proxyAuthorization(URI target) {
         return endpointFor(target, settings()).flatMap(Endpoint::proxyAuthorization);
     }
+
+    /**
+     * The proxy a child process should use for {@code target}, as {@code http://[user:password@]host[:port]},
+     * or empty when the request goes direct. For handing to tools that read a proxy URL (npm and its
+     * peers); jk's own requests use {@link #select}.
+     */
+    public Optional<String> proxyUrl(URI target) {
+        Settings settings = settings();
+        if (endpointFor(target, settings).isEmpty()) return Optional.empty();
+        Source source = "https".equalsIgnoreCase(target.getScheme()) ? settings.https() : settings.http();
+        if (source == null) return Optional.empty();
+        String value = source.value();
+        return Optional.of(value.contains("://") ? value : "http://" + value);
+    }
+
+    /**
+     * The hosts that go direct, as a {@code no_proxy} list: the {@code no-proxy} entries of the
+     * file and the shell, and the {@code nonProxyHosts} of a settings.xml proxy in use.
+     */
+    public List<String> noProxyHosts() {
+        Settings settings = settings();
+        List<String> hosts = new ArrayList<>(settings.noProxy());
+        for (Source source : new Source[] {settings.http(), settings.https()}) {
+            if (source == null || source.maven() == null) continue;
+            for (String glob : source.maven().nonProxyHosts()) {
+                String host = glob.strip();
+                if (host.startsWith("*.")) host = host.substring(1);
+                if (!host.isEmpty() && !hosts.contains(host)) hosts.add(host);
+            }
+        }
+        return List.copyOf(hosts);
+    }
 }
