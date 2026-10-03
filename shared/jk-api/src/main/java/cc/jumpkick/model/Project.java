@@ -32,7 +32,8 @@ public record Project(
         boolean m2install,
         Layout layout,
         Set<ProjectInherit> workspaceInherits,
-        ToolchainSpec jdkSpec) {
+        ToolchainSpec jdkSpec,
+        ToolchainSpec nodeSpec) {
 
     /**
      * Sentinel for string fields declared with {@code <field>.workspace = true} until
@@ -58,6 +59,7 @@ public record Project(
         workspaceInherits =
                 workspaceInherits == null || workspaceInherits.isEmpty() ? Set.of() : Set.copyOf(workspaceInherits);
         if (jdkSpec == null) jdkSpec = ToolchainSpec.NONE;
+        if (nodeSpec == null) nodeSpec = ToolchainSpec.NONE;
     }
 
     /**
@@ -95,6 +97,7 @@ public record Project(
                 m2install,
                 layout,
                 workspaceInherits,
+                ToolchainSpec.NONE,
                 ToolchainSpec.NONE);
     }
 
@@ -131,7 +134,8 @@ public record Project(
                 m2install,
                 layout,
                 workspaceInherits,
-                jdkSpec);
+                jdkSpec,
+                ToolchainSpec.NONE);
     }
 
     /** Unset Scala pin; {@code workspaceInherits} as given. */
@@ -253,6 +257,7 @@ public record Project(
         if (workspaceInherits.isEmpty()) return this;
         EnumSet<ProjectInherit> next = EnumSet.copyOf(workspaceInherits);
         next.remove(ProjectInherit.JDK);
+        next.remove(ProjectInherit.NODE);
         next.remove(ProjectInherit.JAVA);
         next.remove(ProjectInherit.KOTLIN);
         next.remove(ProjectInherit.GROOVY);
@@ -280,7 +285,8 @@ public record Project(
                 m2install,
                 layout,
                 next,
-                jdkSpec);
+                jdkSpec,
+                nodeSpec);
     }
 
     /** True when this project declared {@code version.workspace = true} and is not yet resolved. */
@@ -315,7 +321,8 @@ public record Project(
         boolean inst = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
         Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
         ToolchainSpec js = inherits(ProjectInherit.JDK) ? root.jdkSpec() : jdkSpec;
-        return new Project(g, name, v, j, ja, kt, gr, sc, src, jd, desc, m2, inst, lay, Set.of(), js);
+        ToolchainSpec ns = inherits(ProjectInherit.NODE) ? root.nodeSpec() : nodeSpec;
+        return new Project(g, name, v, j, ja, kt, gr, sc, src, jd, desc, m2, inst, lay, Set.of(), js, ns);
     }
 
     private static String requireRoot(String value, String field) {
@@ -350,7 +357,8 @@ public record Project(
                 m2install,
                 layout,
                 next,
-                jdkSpec);
+                jdkSpec,
+                nodeSpec);
     }
 
     /** Library project — bare-major {@code jdk} (0 → unset). */
@@ -389,6 +397,7 @@ public record Project(
         private final String version;
         private @Nullable String jdk;
         private ToolchainSpec jdkSpec = ToolchainSpec.NONE;
+        private ToolchainSpec nodeSpec = ToolchainSpec.NONE;
         private int java;
         private @Nullable VersionSelector kotlin;
         private @Nullable VersionSelector groovy;
@@ -475,6 +484,12 @@ public record Project(
             return this;
         }
 
+        /** The {@code node} declaration: the Node.js toolchain a node build runs on. */
+        public Builder nodeSpec(ToolchainSpec nodeSpec) {
+            this.nodeSpec = nodeSpec;
+            return this;
+        }
+
         public Project build() {
             return new Project(
                     group,
@@ -492,7 +507,8 @@ public record Project(
                     m2install,
                     layout,
                     Set.of(),
-                    jdkSpec);
+                    jdkSpec,
+                    nodeSpec);
         }
     }
 

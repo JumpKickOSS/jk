@@ -37,6 +37,15 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void node_properties_are_exactly_the_parser_s_node_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String node = table(table(schema, "properties"), "node");
+        assertThat(keysOf(table(node, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestNode.KEYS);
+        String step = table(table(table(node, "properties"), "steps"), "items");
+        assertThat(keysOf(table(step, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestNode.STEP_KEYS);
+    }
+
+    @Test
     void application_properties_are_exactly_the_parser_s_application_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
         String application = table(table(schema, "properties"), "application");

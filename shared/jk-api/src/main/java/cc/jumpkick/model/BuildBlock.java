@@ -162,7 +162,9 @@ public record BuildBlock(
          */
         List<ReleaseSources> multiRelease,
         /** {@code [war]} — the web archive the module packages beside its jar; {@code null} for none. */
-        @Nullable War war) {
+        @Nullable War war,
+        /** {@code [node]} as written; {@code null} when the table is absent. */
+        @Nullable NodeTable node) {
 
     /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
     public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -201,6 +203,7 @@ public record BuildBlock(
             null,
             Dokka.DEFAULT,
             List.of(),
+            null,
             null);
 
     public BuildBlock {
@@ -375,6 +378,11 @@ public record BuildBlock(
     /** True when the module packages a multi-release jar. */
     public boolean isMultiRelease() {
         return !multiRelease.isEmpty();
+    }
+
+    /** The same block with the {@code [node]} table set. */
+    public BuildBlock withNode(@Nullable NodeTable node) {
+        return with(f -> f.node = node);
     }
 
     /** The same block with the {@code [war]} table set. */

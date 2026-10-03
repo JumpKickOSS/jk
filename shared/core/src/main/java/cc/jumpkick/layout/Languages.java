@@ -18,16 +18,27 @@ import java.util.Set;
  * src/main/groovy}/{@code .groovy}, and {@code src/main/scala}/{@code .scala}. Files under
  * resource trees ({@code src/<slot>/resources}, compact {@code resources/}) are ignored. A
  * project with nothing to go on defaults to Java (a bare {@code jdk = N} project). A declaration
- * that leaves out a language whose sources exist is what {@link #undeclaredWithSources} names.
+ * that leaves out a language whose sources exist is what {@link #undeclaredWithSources} names. A
+ * dedicated node module ({@link NodeShape#isNodeModule}) compiles no JVM language, whatever it
+ * inherits.
  */
-public record Languages(boolean java, boolean kotlin, boolean groovy, boolean scala) {
+public record Languages(boolean java, boolean kotlin, boolean groovy, boolean scala, boolean node) {
+
+    /** No node build. */
+    public Languages(boolean java, boolean kotlin, boolean groovy, boolean scala) {
+        this(java, kotlin, groovy, scala, false);
+    }
 
     /** Unset Scala flag. */
     public Languages(boolean java, boolean kotlin, boolean groovy) {
-        this(java, kotlin, groovy, false);
+        this(java, kotlin, groovy, false, false);
     }
 
+    /** A dedicated node module: no JVM language. */
+    public static final Languages NODE = new Languages(false, false, false, false, true);
+
     public static Languages resolve(Project project, Path projectDir) {
+        if (NodeShape.isNodeModule(project, projectDir)) return NODE;
         boolean javaDeclared = project.java() > 0;
         boolean kotlinDeclared = project.isKotlin();
         boolean groovyDeclared = project.isGroovy();

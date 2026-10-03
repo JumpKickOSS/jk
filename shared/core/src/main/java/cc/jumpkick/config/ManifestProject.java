@@ -34,6 +34,7 @@ public final class ManifestProject {
             "jdk",
             "jdk-vendor",
             "jdk-version",
+            "node",
             "java",
             "kotlin",
             "groovy",
@@ -105,6 +106,12 @@ public final class ManifestProject {
             jdkSpec = ToolchainSpec.NONE;
         } else {
             jdkSpec = parseJdkToolchain(root);
+        }
+
+        ToolchainSpec nodeSpec = parseNodeToolchain(root);
+        if (nodeSpec == null) {
+            nodeSpec = ToolchainSpec.NONE;
+            if (!workspaceRoot) inherits.add(ProjectInherit.NODE);
         }
 
         int java;
@@ -212,7 +219,8 @@ public final class ManifestProject {
                 m2install,
                 layout,
                 inherits,
-                jdkSpec);
+                jdkSpec,
+                nodeSpec);
     }
 
     /** {@code javadoc}: {@code false} → no javadoc jar, {@code "strict"} → doclint on, else lenient. */
@@ -351,6 +359,52 @@ public final class ManifestProject {
         if (spec.isEmpty() || ToolchainSpec.isKeyword(spec.version())) return spec;
         if (spec.version().isEmpty()) return spec; // vendor alone; the major comes from `java`
         requireSupportedMajor("jdk", Project.majorOf(spec.version()));
+        return spec;
+    }
+
+    /**
+     * The Node.js version: {@code node = 24} at the root, or {@code version} inside a {@code [node]}
+     * table (TOML allows one or the other). A major is a floor, a point release a suggestion, a
+     * leading {@code =} an exact pin, {@code lts} the newest Active LTS; Node has no vendor axis.
+     * {@code null} when this manifest declares none, or marks it {@code workspace = true}.
+     */
+    static @Nullable ToolchainSpec parseNodeToolchain(TomlTable root) {
+        String raw;
+        if (root.isTable("node")) {
+            TomlTable node = root.getTable("node");
+            if (node == null) return null;
+            boolean inherit = node.contains("workspace");
+            if (inherit && !Boolean.TRUE.equals(node.get("workspace"))) {
+                throw new JkBuildParseException("[node] workspace must be `true` (the only legal value)");
+            }
+            raw = scalarSpec(node, "version", "[node] version", "24 or \"=24.21.0\"");
+            if (inherit && raw != null) {
+                throw new JkBuildParseException("[node] sets both version and workspace = true — keep one");
+            }
+        } else {
+            raw = scalarSpec(root, "node", "node", "24 or \"=24.21.0\"");
+        }
+        if (raw == null) return null;
+        if (raw.startsWith("=") && raw.indexOf('.') < 0) {
+            throw new JkBuildParseException("node = \"" + raw + "\" pins nothing — an = version needs a point"
+                    + " release, e.g. \"=24.21.0\"; a bare major (node = 24) is already a floor");
+        }
+        ToolchainSpec spec;
+        try {
+            spec = ToolchainSpec.parse("node", raw);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(e.getMessage());
+        }
+        if (!spec.vendor().isEmpty()) {
+            throw new JkBuildParseException("node takes a version, not a vendor: node = \"" + raw
+                    + "\" — write node = 24, \"24.21.0\", \"=24.21.0\" or \"lts\"");
+        }
+        String v = spec.version();
+        boolean lts = "lts".equalsIgnoreCase(v);
+        if (!v.isEmpty() && !lts && (ToolchainSpec.isKeyword(v) || Project.majorOf(v) <= 0)) {
+            throw new JkBuildParseException(
+                    "node must be a version or lts, e.g. 24, \"=24.21.0\" or \"lts\", got \"" + raw + "\"");
+        }
         return spec;
     }
 

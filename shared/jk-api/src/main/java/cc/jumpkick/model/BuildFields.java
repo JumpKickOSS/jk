@@ -62,6 +62,9 @@ final class BuildFields {
 
     BuildBlock.@Nullable War war;
 
+    @Nullable
+    NodeTable node;
+
     private BuildFields(BuildBlock b) {
         orderAfter = b.orderAfter();
         testPluginJars = b.testPluginJars();
@@ -97,6 +100,7 @@ final class BuildFields {
         dokka = b.dokka();
         multiRelease = b.multiRelease();
         war = b.war();
+        node = b.node();
     }
 
     BuildBlock build() {
@@ -134,6 +138,7 @@ final class BuildFields {
                 buildInfo,
                 dokka,
                 multiRelease,
-                war);
+                war,
+                node);
     }
 }

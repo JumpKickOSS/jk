@@ -9,6 +9,7 @@ public enum ProjectInherit {
     GROUP,
     VERSION,
     JDK,
+    NODE,
     JAVA,
     KOTLIN,
     GROOVY,

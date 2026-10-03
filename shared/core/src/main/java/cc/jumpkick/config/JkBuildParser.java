@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildBlock;
@@ -11,6 +12,7 @@ import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.PomMetadata;
@@ -179,7 +181,9 @@ public final class JkBuildParser {
      */
     public static JkBuild parse(Path file) throws IOException {
         Path abs = file.toAbsolutePath().normalize();
-        JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDirOf(abs), parseLocal(file));
+        Path moduleDir = moduleDirOf(abs);
+        JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDir, parseLocal(file));
+        NodeShape.check(resolved, moduleDir);
         List<PluginDeclaration> user = UserPlugins.fromConfig();
         if (user.isEmpty()) return resolved;
         return resolved.withPlugins(UserPlugins.merge(user, resolved.plugins()));
@@ -429,6 +433,8 @@ public final class JkBuildParser {
         Optional<BuildBlock.BuildInfo> buildInfo = ManifestTables.parseBuildInfo(result);
         if (buildInfo.isPresent()) build = build.withBuildInfo(buildInfo.get());
         // [dokka] shapes the javadoc jar of a Kotlin module; it folds in beside [build-info].
+        Optional<NodeTable> node = ManifestNode.parse(result);
+        if (node.isPresent()) build = build.withNode(node.get());
         Optional<BuildBlock.War> war = ManifestTables.parseWar(result);
         if (war.isPresent()) build = build.withWar(war.get());
         Optional<BuildBlock.Dokka> dokka = ManifestTables.parseDokka(result);
