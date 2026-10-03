@@ -169,7 +169,7 @@ class ConfigShapeTest {
                 .withNoProgress(false)
                 .withQuiet(false)
                 .withVerbose(false)
-                .withDirectory(Path.of("/tmp/jk-dir-a"))
+                .withDir(Path.of("/tmp/jk-dir-a"))
                 .withForce(false)
                 .withNoAnsi(false)
                 .withForceAnsi(false)
@@ -186,7 +186,7 @@ class ConfigShapeTest {
                 new Wither("withNoProgress", new Object[] {true}, List.of("noProgress")),
                 new Wither("withQuiet", new Object[] {true}, List.of("quiet")),
                 new Wither("withVerbose", new Object[] {true}, List.of("verbose")),
-                new Wither("withDirectory", new Object[] {Path.of("/tmp/jk-dir-b")}, List.of("directory")),
+                new Wither("withDir", new Object[] {Path.of("/tmp/jk-dir-b")}, List.of("dir")),
                 new Wither("withForce", new Object[] {true}, List.of("force")),
                 new Wither("withNoAnsi", new Object[] {true}, List.of("noAnsi")),
                 new Wither("withForceAnsi", new Object[] {true}, List.of("forceAnsi")),

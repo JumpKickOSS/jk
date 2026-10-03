@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,7 +19,7 @@ class JkConfigLoaderTest {
         JkConfig empty = JkConfig.empty();
         assertThat(empty.color()).isNull();
         assertThat(empty.offline()).isNull();
-        assertThat(empty.directory()).isNull();
+        assertThat(empty.dir()).isNull();
     }
 
     @Test
@@ -190,5 +191,31 @@ class JkConfigLoaderTest {
         JkConfig unset = JkConfig.empty();
         assertThat(unset.rebuildOr(true)).isTrue(); // both empty -> fallback
         assertThat(unset.rebuildOr(false)).isFalse();
+    }
+
+    @Test
+    void dir_is_the_default_working_directory(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, """
+            [config]
+            dir = "app"
+            """);
+        assertThat(JkConfigLoader.loadTomlOrEmpty(toml).dir()).isEqualTo(Path.of("app"));
+    }
+
+    @Test
+    void a_project_config_table_refuses_a_key_it_does_not_have(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("jk.toml");
+        Files.writeString(toml, """
+            name = "m"
+            group = "g"
+            version = "1.0"
+
+            [config]
+            directory = "app"
+            """);
+        assertThatThrownBy(() -> JkBuildParser.parse(toml))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[config] unknown key `directory`");
     }
 }

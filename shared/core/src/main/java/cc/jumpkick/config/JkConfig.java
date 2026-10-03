@@ -30,7 +30,7 @@ public record JkConfig(
         @With @Nullable Boolean noProgress,
         @With @Nullable Boolean quiet,
         @With @Nullable Boolean verbose,
-        @With @Nullable Path directory,
+        @With @Nullable Path dir,
         /** Bypass all caching for this invocation (recompile, re-resolve, rerun tests). */
         @With @Nullable Boolean force,
         /**
@@ -115,7 +115,7 @@ public record JkConfig(
                 set(over.noProgress, noProgress),
                 set(over.quiet, quiet),
                 set(over.verbose, verbose),
-                set(over.directory, directory),
+                set(over.dir, dir),
                 set(over.force, force),
                 set(over.noAnsi, noAnsi),
                 set(over.forceAnsi, forceAnsi),
@@ -184,9 +184,9 @@ public record JkConfig(
         return verbose != null ? verbose : fallback;
     }
 
-    /** The {@code -C}/{@code --directory} / {@code config.directory} root, or {@code fallback}. */
-    public Path directoryOr(Path fallback) {
-        return directory != null ? directory : fallback;
+    /** The {@code -C}/{@code --dir} / {@code config.dir} root, or {@code fallback}. */
+    public Path dirOr(Path fallback) {
+        return dir != null ? dir : fallback;
     }
 
     /** Notify policy with fallback (default {@link NotifyChoice#AUTO}). */

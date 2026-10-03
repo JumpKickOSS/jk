@@ -411,6 +411,15 @@ public final class ManifestTables {
         return out;
     }
 
+    /** A {@code [config]} table's keys are {@link JkConfigLoader#KEYS}. */
+    static void checkConfig(TomlTable root) {
+        if (root.contains("config") && !root.isTable("config")) {
+            throw new JkBuildParseException("`config` must be a table — use [config]");
+        }
+        TomlTable table = root.getTable("config");
+        if (table != null) rejectUnknownKeys(table, JkConfigLoader.KEYS, "[config]");
+    }
+
     private static void rejectUnknownKeys(TomlTable table, List<String> known, String where) {
         for (String key : table.keySet()) {
             if (!known.contains(key)) {
