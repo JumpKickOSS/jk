@@ -46,6 +46,26 @@ class RequestScopeTest {
     }
 
     @Test
+    void a_fact_may_ask_for_other_facts_while_it_is_computed() {
+        // A module list probes each module's sources, a fact of its own: computing one fact inside
+        // another must not re-enter the map, whichever bins the keys land in.
+        inRequest(() -> {
+            for (int outer = 0; outer < 200; outer++) {
+                int o = outer;
+                String v = RequestScope.current().get("outer-" + o, k -> {
+                    StringBuilder all = new StringBuilder();
+                    for (int inner = 0; inner < 50; inner++) {
+                        String piece = RequestScope.current().get("inner-" + o + "-" + inner, ik -> "x");
+                        all.append(piece);
+                    }
+                    return all.toString();
+                });
+                assertThat(v).hasSize(50);
+            }
+        });
+    }
+
+    @Test
     void a_second_request_does_not_see_the_first_ones_facts() {
         // The property that makes invalidation unnecessary: a new request is a new ledger, so it is a
         // new scope. This is what a `jk watch` iteration gets.
