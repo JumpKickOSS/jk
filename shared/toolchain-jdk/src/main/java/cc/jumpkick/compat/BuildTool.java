@@ -2,6 +2,7 @@
 package cc.jumpkick.compat;
 
 import cc.jumpkick.host.Os;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -10,12 +11,21 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
- * External tools for {@code jk mvn}/{@code jk gradle} passthroughs: cache slug and bin names.
+ * The distributions jk provisions under {@code $JK_STORE_DIR/tools/}: the {@code jk mvn} / {@code
+ * jk gradle} passthroughs, the Kotlin compiler, Node and the Node package managers.
  */
 public enum BuildTool {
     MAVEN("maven", "mvn", "mvn.cmd", List.of(PublishedChecksum.SHA512, PublishedChecksum.SHA1)),
     GRADLE("gradle", "gradle", "gradle.bat", List.of(PublishedChecksum.SHA256)),
-    KOTLIN("kotlin", "kotlinc", "kotlinc.bat", List.of(PublishedChecksum.SHA256));
+    KOTLIN("kotlin", "kotlinc", "kotlinc.bat", List.of(PublishedChecksum.SHA256)),
+    /** Node.js; its Windows zip is flat, so {@code node.exe} sits at the home's root. */
+    NODE("node", "node", "node.exe", List.of()),
+    /** pnpm: a JS entry point before 12, a native binary from 12; launched through its shim. */
+    PNPM("pnpm", "pnpm", "pnpm.cmd", List.of()),
+    /** Yarn Berry ({@code @yarnpkg/cli-dist}); {@code node} runs its entry point. */
+    YARN("yarn", "yarn.js", "yarn.js", List.of()),
+    /** Bun's platform package, a native binary. */
+    BUN("bun", "bun", "bun.exe", List.of());
 
     private final String slug;
     private final String posixBinary;
@@ -54,6 +64,13 @@ public enum BuildTool {
     /** Binary name under {@code <home>/bin/} on the current OS. */
     public String binaryName() {
         return Os.isWindows() ? windowsBinary : posixBinary;
+    }
+
+    /** The launcher of an install rooted at {@code home} on the current OS. */
+    public Path launcher(Path home) {
+        if (this == NODE && Os.isWindows()) return home.resolve(binaryName());
+        if (this == PNPM) return home.resolve("jk-bin").resolve(binaryName());
+        return home.resolve("bin").resolve(binaryName());
     }
 
     /**

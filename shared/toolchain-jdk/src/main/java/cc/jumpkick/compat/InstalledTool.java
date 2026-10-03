@@ -13,8 +13,8 @@ public record InstalledTool(BuildTool tool, String version, Path home) {
         Objects.requireNonNull(home, "home");
     }
 
-    /** Absolute path to the launcher under {@code <home>/bin/}. */
+    /** Absolute path to the tool's launcher. */
     public Path binary() {
-        return home.resolve("bin").resolve(tool.binaryName());
+        return tool.launcher(home);
     }
 }

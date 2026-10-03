@@ -50,8 +50,9 @@ public final class ToolUninstallCommand implements CliCommand {
         return List.of(Param.of(
                 "name",
                 Arity.ONE,
-                "Launcher name (matches `jk tool list` first column), or a\n" + "build tool as <tool>:<version> ("
-                        + BuildTool.slugs() + ")."));
+                "Launcher name (matches `jk tool list` first column), or a\n"
+                        + "build tool as <tool>:<version>, <tool> one of\n"
+                        + BuildTool.slugs() + "."));
     }
 
     @Override

@@ -268,6 +268,39 @@ public final class GlobalConfig {
         }
     }
 
+    // Node sources
+
+    /**
+     * {@code [node] dist-mirror} and {@code registry} of {@code ~/.jk/config.toml}: where Node
+     * distributions and package-manager tarballs come from. Null for an absent key; lenient, as the
+     * rest of the file is.
+     */
+    public record NodeSources(
+            @Nullable String distMirror, @Nullable String registry) {
+        public static final NodeSources EMPTY = new NodeSources(null, null);
+    }
+
+    public static NodeSources nodeSources() {
+        return nodeSources(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #nodeSources()} but against an explicit config file — for tests. */
+    static NodeSources nodeSources(Path configFile) {
+        try {
+            return parseConfig(configFile)
+                    .map(toml -> toml.getTable("node"))
+                    .map(t -> new NodeSources(
+                            blankToNull(t.getString("dist-mirror")), blankToNull(t.getString("registry"))))
+                    .orElse(NodeSources.EMPTY);
+        } catch (RuntimeException e) {
+            return NodeSources.EMPTY;
+        }
+    }
+
+    private static @Nullable String blankToNull(@Nullable String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
     // Repositories
 
     /**

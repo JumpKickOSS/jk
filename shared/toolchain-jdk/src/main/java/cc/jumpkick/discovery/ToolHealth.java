@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkVendor;
@@ -194,7 +195,10 @@ public final class ToolHealth {
             case "maven" -> home.resolve("bin").resolve(win ? "mvn.cmd" : "mvn");
             case "gradle" -> home.resolve("bin").resolve(win ? "gradle.bat" : "gradle");
             case "kotlin" -> home.resolve("bin").resolve(win ? "kotlinc.bat" : "kotlinc");
-            default -> throw new IllegalArgumentException("unknown tool kind: " + spec.kind());
+            default ->
+                BuildTool.bySlug(spec.kind())
+                        .map(tool -> tool.launcher(home))
+                        .orElseThrow(() -> new IllegalArgumentException("unknown tool kind: " + spec.kind()));
         };
     }
 
