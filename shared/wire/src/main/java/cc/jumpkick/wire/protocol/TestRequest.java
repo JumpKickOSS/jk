@@ -26,13 +26,15 @@ public record TestRequest(
         /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
         boolean coverage,
         /** {@code fail} or {@code report} over every module's {@code [test] failures}; null for the modules' own. */
-        @Nullable String testFailures) {
+        @Nullable String testFailures,
+        /** {@code --skip-node}: no module's node steps run. */
+        boolean skipNode) {
 
     public TestRequest {
         selection = selection == null ? TestSelection.DEFAULT : selection;
     }
 
-    /** No coverage, and the modules' own test-failure modes. */
+    /** No coverage, the modules' own test-failure modes, and node steps that run. */
     public TestRequest(
             @Nullable String dir,
             @Nullable String cache,
@@ -62,7 +64,8 @@ public record TestRequest(
                 trigger,
                 progressMode,
                 false,
-                null);
+                null,
+                false);
     }
 
     public String encode() {
@@ -82,6 +85,7 @@ public record TestRequest(
                 .optionalNonBlankString("progressMode", progressMode)
                 .optionalTrue(ProtoJobs.COVERAGE, coverage)
                 .optionalNonBlankString(ProtoJobs.TEST_FAILURES, testFailures)
+                .optionalTrue(ProtoJobs.SKIP_NODE, skipNode)
                 .finish();
     }
 
@@ -101,6 +105,7 @@ public record TestRequest(
                 Jsonl.str(json, "trigger"),
                 Jsonl.str(json, "progressMode"),
                 Jsonl.bool(json, ProtoJobs.COVERAGE, false),
-                Jsonl.str(json, ProtoJobs.TEST_FAILURES));
+                Jsonl.str(json, ProtoJobs.TEST_FAILURES),
+                Jsonl.bool(json, ProtoJobs.SKIP_NODE, false));
     }
 }

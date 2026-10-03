@@ -2,6 +2,7 @@
 package cc.jumpkick.layout;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -65,6 +66,60 @@ public final class NodeShape {
                         .normalize();
             case SIDE_BY_SIDE -> moduleDir.resolve(sideBySideDir(build.node())).normalize();
         };
+    }
+
+    /**
+     * As {@link #nodeDir} from a line scan of {@code moduleDir}'s manifest, for the native client,
+     * which parses no TOML: a {@code package.json} at {@code [node] dir}, else the module root, else
+     * {@code src/main/node}, beside a manifest that names {@code node}.
+     */
+    public static @Nullable Path scannedNodeDir(Path moduleDir) {
+        TomlScan scan = scan(moduleDir);
+        if (scan == null) return null;
+        boolean declared =
+                scan.get("node") != null || scan.get("node.version") != null || scan.get("node.workspace") != null;
+        String dir = scan.get("node.dir");
+        if (!declared && dir == null) return null;
+        Path nodeDir = dir != null
+                ? moduleDir.resolve(dir)
+                : Files.isRegularFile(moduleDir.resolve(NodeProject.PACKAGE_JSON))
+                        ? moduleDir
+                        : moduleDir.resolve(NodeTable.SIDE_BY_SIDE_DIR);
+        return Files.isRegularFile(nodeDir.resolve(NodeProject.PACKAGE_JSON)) ? nodeDir.normalize() : null;
+    }
+
+    /** As {@link #outputDir} from a line scan; see {@link #scannedNodeDir}. */
+    public static @Nullable Path scannedOutputDir(Path moduleDir) {
+        Path nodeDir = scannedNodeDir(moduleDir);
+        TomlScan scan = scan(moduleDir);
+        if (nodeDir == null || scan == null) return null;
+        String out = scan.get("node.out");
+        if (out == null) {
+            String framework = scan.get("node.framework");
+            NodeTable table = framework == null
+                    ? NodeTable.EMPTY
+                    : new NodeTable(
+                            null, framework, null, null, null, null, null, null, null, null, null, null, null, false,
+                            List.of(), Map.of());
+            out = NodeProject.infer(nodeDir, table).out();
+        }
+        return nodeDir.resolve(out).normalize();
+    }
+
+    private static @Nullable TomlScan scan(Path moduleDir) {
+        Path manifest = ManifestPaths.manifestIn(moduleDir);
+        if (!Files.isRegularFile(manifest)) return null;
+        return TomlScan.scan(
+                manifest, "node", "node.version", "node.workspace", "node.dir", "node.out", "node.framework");
+    }
+
+    /** The node build's output directory in {@code moduleDir}, or {@code null} when it has no node build. */
+    public static @Nullable Path outputDir(JkBuild build, Path moduleDir) {
+        Path nodeDir = nodeDir(build, moduleDir);
+        return nodeDir == null
+                ? null
+                : nodeDir.resolve(NodeProject.infer(nodeDir, build.node()).out())
+                        .normalize();
     }
 
     /**

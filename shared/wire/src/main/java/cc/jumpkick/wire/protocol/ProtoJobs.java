@@ -21,6 +21,9 @@ public final class ProtoJobs {
     /** {@code --test-failures} / {@code JK_TEST_FAILURES}: {@code fail} or {@code report}; absent for the modules' own. */
     public static final String TEST_FAILURES = "testFailures";
 
+    /** {@code --skip-node} / {@code JK_SKIP_NODE}: present and true only when no node step runs. */
+    public static final String SKIP_NODE = "skipNode";
+
     private ProtoJobs() {}
 
     /** Per-request progress mode, falling back to the engine environment when omitted. */

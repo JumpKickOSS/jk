@@ -5,9 +5,13 @@ import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.NodeProject;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -49,6 +53,8 @@ public final class ModuleOutputs {
      */
     public static boolean packageOutputsMissing(
             Path workspaceRoot, Path moduleDir, JkBuild build, @Nullable ActionCache actionCache) {
+        if (NodeShape.kind(build, moduleDir) == NodeShape.Kind.MODULE)
+            return nodeOutputsMissing(moduleDir, build, actionCache);
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         if (hasMainSources(moduleDir, build)) {
             if (!Files.isRegularFile(layout.mainJar())) return true;
@@ -60,6 +66,34 @@ public final class ModuleOutputs {
         if (build.assembly() && !Files.isRegularFile(layout.assemblyJar())) return true;
         if (build.nativeMode() == JkBuild.NativeMode.ALWAYS && !nativePresent(layout, build)) return true;
         return false;
+    }
+
+    /**
+     * A node module's outputs: its {@code node_modules}, and the build's output directory holding
+     * every file the last {@code node-build} record names (with {@code actionCache}; without one,
+     * present at all). A skipped node build has none to miss.
+     */
+    static boolean nodeOutputsMissing(Path moduleDir, JkBuild build, @Nullable ActionCache actionCache) {
+        if (build.node().skip() || SessionContext.current().skipNode()) return false;
+        Path nodeDir = NodeShape.nodeDir(build, moduleDir);
+        if (nodeDir == null) return false;
+        if (!Files.isDirectory(nodeDir.resolve("node_modules"))) return true;
+        NodeProject node = NodeProject.infer(nodeDir, build.node());
+        if (node.build() == null) return false;
+        Path out = nodeDir.resolve(node.out());
+        if (!Files.isDirectory(out)) return true;
+        if (actionCache == null) return false;
+        try {
+            Optional<ActionCache.ActionRecord> last =
+                    actionCache.lastFor(ActionKey.qualifiedTaskId(TaskNames.NODE_BUILD, nodeDir));
+            if (last.isEmpty()) return false;
+            for (String rel : last.get().outputs().keySet()) {
+                if (!Files.isRegularFile(out.resolve(rel))) return true;
+            }
+            return false;
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     /**

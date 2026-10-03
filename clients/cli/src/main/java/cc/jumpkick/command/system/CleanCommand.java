@@ -18,6 +18,7 @@ import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -79,7 +80,7 @@ public final class CleanCommand implements CliCommand {
         }
 
         long startMs = System.currentTimeMillis();
-        List<Path> roots = deleteRoots(workspaceRoot, projectDirs, keepArtifacts);
+        List<Path> roots = deleteRoots(workspaceRoot, projectDirs, keepArtifacts, force);
         var tally = new PathUtil.Removed();
 
         // The row opens before anything is counted so a big tree gets chrome from the first
@@ -194,7 +195,8 @@ public final class CleanCommand implements CliCommand {
 
     /**
      * Every root the clean removes, for one pooled delete: each project's {@code target/} (or, with
-     * {@code keepArtifacts}, only its intermediates).
+     * {@code keepArtifacts}, only its intermediates), and a node build's output directory. Its
+     * {@code node_modules} goes only under {@code force}: it is an install, not build output.
      *
      * <p>The module's test sandbox home goes too. It is not under {@code target/} — it holds jk's
      * whole layout and a directory of that shape inside a source tree is what a stray {@code git}
@@ -202,9 +204,10 @@ public final class CleanCommand implements CliCommand {
      * full clean: {@code --keep-artifacts} keeps intermediates, and a warm store is the most
      * intermediate thing here.
      */
-    static List<Path> deleteRoots(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts) {
+    static List<Path> deleteRoots(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, boolean force) {
         List<Path> roots = new ArrayList<>();
         for (Path projectDir : projectDirs) {
+            roots.addAll(nodeRoots(projectDir, force));
             Path target = BuildLayout.moduleTargetDir(projectDir);
             if (!keepArtifacts) {
                 roots.add(target);
@@ -214,6 +217,18 @@ public final class CleanCommand implements CliCommand {
             }
         }
         return roots;
+    }
+
+    /** A node build's output directory, and with {@code force} its {@code node_modules}; none without one. */
+    static List<Path> nodeRoots(Path projectDir, boolean force) {
+        try {
+            Path nodeDir = NodeShape.scannedNodeDir(projectDir);
+            Path out = NodeShape.scannedOutputDir(projectDir);
+            if (nodeDir == null || out == null) return List.of();
+            return force ? List.of(out, nodeDir.resolve("node_modules")) : List.of(out);
+        } catch (RuntimeException e) {
+            return List.of(); // a package.json the build would refuse; clean leaves its node build alone
+        }
     }
 
     /**

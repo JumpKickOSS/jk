@@ -78,6 +78,16 @@ public record NodeProject(
                 table.envPrefixes() != null ? table.envPrefixes() : d.envPrefixes());
     }
 
+    /** The text of {@code package.json}'s script {@code name} in {@code dir}; {@code null} when it has none. */
+    public static @Nullable String script(Path dir, String name) {
+        return MiniJson.str(MiniJson.get(packageJson(dir), "scripts"), name);
+    }
+
+    /** Whether {@code package.json} in {@code dir} depends on {@code pkg}, at runtime or in development. */
+    public static boolean dependsOn(Path dir, String pkg) {
+        return depends(packageJson(dir), pkg);
+    }
+
     /** {@code package.json} parsed; an empty object when it is unreadable as JSON. */
     static @Nullable Object packageJson(Path dir) {
         Path file = dir.resolve(PACKAGE_JSON);

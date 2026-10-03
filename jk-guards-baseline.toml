@@ -21,7 +21,7 @@ population = { files = 2203 }
 
 [blind-tree-walks]
 [blind-tree-walks.populations]
-"clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli" = { classes = 720, sites = 44920 }
 "plugins/android" = { classes = 29, sites = 1906 }
 "plugins/formatter" = { classes = 14, sites = 856 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
@@ -47,10 +47,6 @@ population = { files = 2203 }
 [[blind-tree-walks.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.cli.engine.EngineFleet#addGenerationPids(Ljava/nio/file/Path;Ljava/util/Set;Ljava/util/List;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.watch.SourceWatch#registerTree(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "clients/cli"

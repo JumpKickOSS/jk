@@ -115,11 +115,12 @@ class ProtoSessionRequestTest {
     @Test
     void a_coverage_request_on_the_line_lands_on_the_session_and_is_absent_otherwise() {
         String test = new TestRequest(
-                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, true, null)
+                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, true, null,
+                        false)
                 .encode();
         String build = new BuildRequest(
                         DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
-                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, true, null)
+                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, true, null, false)
                 .encode();
         assertThat(ProtoSession.sessionOf(test, TOKEN).coverage()).isTrue();
         assertThat(ProtoSession.sessionOf(build, TOKEN).coverage()).isTrue();
@@ -134,16 +135,33 @@ class ProtoSessionRequestTest {
     void a_test_failure_mode_on_the_line_lands_on_the_session() {
         String test = new TestRequest(
                         DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, false,
-                        "report")
+                        "report", false)
                 .encode();
         String build = new BuildRequest(
                         DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
-                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, false, "fail")
+                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, false, "fail", false)
                 .encode();
         assertThat(ProtoSession.sessionOf(test, TOKEN).testFailures()).isEqualTo(TestFailureMode.REPORT);
         assertThat(ProtoSession.sessionOf(build, TOKEN).testFailures()).isEqualTo(TestFailureMode.FAIL);
         assertThat(ProtoSession.sessionOf(testLine(), TOKEN).testFailures()).isNull();
         assertThat(testLine()).doesNotContain("\"testFailures\"");
+    }
+
+    /** {@code --skip-node} on a test or build line lands on the session; a silent line runs the node steps. */
+    @Test
+    void skip_node_on_the_line_lands_on_the_session() {
+        String test = new TestRequest(
+                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, false, null,
+                        true)
+                .encode();
+        String build = new BuildRequest(
+                        DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
+                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, false, null, true)
+                .encode();
+        assertThat(ProtoSession.sessionOf(test, TOKEN).skipNode()).isTrue();
+        assertThat(ProtoSession.sessionOf(build, TOKEN).skipNode()).isTrue();
+        assertThat(ProtoSession.sessionOf(testLine(), TOKEN).skipNode()).isFalse();
+        assertThat(testLine()).doesNotContain("\"skipNode\"");
     }
 
     @Test
