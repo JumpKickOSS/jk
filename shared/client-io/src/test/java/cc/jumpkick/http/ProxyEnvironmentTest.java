@@ -311,6 +311,29 @@ class ProxyEnvironmentTest {
                 .isEqualTo(at("file.proxy", 3));
     }
 
+    /** What a child process is handed: the proxy URL with its credential, and every host that goes direct. */
+    @Test
+    void a_child_process_gets_the_proxy_url_and_the_hosts_that_go_direct(@TempDir Path dir) throws Exception {
+        MavenSettings maven = maven(dir, """
+                <settings><proxies>
+                  <proxy><id>corp</id><protocol>https</protocol><host>maven.proxy</host><port>3129</port>
+                    <username>u</username><password>p</password>
+                    <nonProxyHosts>*.corp|nexus.local</nonProxyHosts></proxy>
+                </proxies></settings>
+                """);
+        Map<String, String> shell = Map.of("no_proxy", "intranet");
+        ProxyEnvironment env = new ProxyEnvironment(() -> NetworkConfig.EMPTY, () -> maven, () -> shell::get);
+
+        assertThat(env.proxyUrl(URI.create("https://registry.npmjs.org/"))).contains("http://u:p@maven.proxy:3129");
+        assertThat(env.proxyUrl(URI.create("https://npm.corp/")))
+                .as("a nonProxyHosts host")
+                .isEmpty();
+        assertThat(env.proxyUrl(URI.create("http://registry.npmjs.org/")))
+                .as("the proxy is for https only")
+                .isEmpty();
+        assertThat(env.noProxyHosts()).containsExactly("intranet", ".corp", "nexus.local");
+    }
+
     private static MavenSettings maven(Path dir, String xml) throws Exception {
         Path file = dir.resolve("settings.xml");
         Files.writeString(file, xml);

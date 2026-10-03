@@ -29,7 +29,7 @@ public final class PackageManagerResolver {
     private final URI registry;
 
     public PackageManagerResolver() {
-        this(new Http(), NodeSources.registry());
+        this(NodeSources.http(), NodeSources.registry());
     }
 
     public PackageManagerResolver(Http http, URI registry) {

@@ -48,7 +48,7 @@ public final class NodeProvisioning {
     public NodeProvisioning() {
         this(
                 new ToolRegistry(JkDirs.tools()),
-                new Http(),
+                NodeSources.http(),
                 new NodeDiscovery(),
                 NodeSources.distBase(),
                 new PackageManagerResolver(),

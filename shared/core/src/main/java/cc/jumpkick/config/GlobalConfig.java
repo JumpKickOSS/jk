@@ -8,11 +8,14 @@ import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlParseResult;
+import org.tomlj.TomlTable;
 
 /**
  * Machine-scoped preferences from {@code ~/.jk/config.toml}: root-level UI flags (e.g.
@@ -275,9 +278,18 @@ public final class GlobalConfig {
      * distributions and package-manager tarballs come from. Null for an absent key; lenient, as the
      * rest of the file is.
      */
+    /**
+     * {@code [node]} of {@code ~/.jk/config.toml}: the distribution mirror, the npm registry and
+     * {@code [node.scopes]} (an {@code @scope} to its registry), as written, {@code ${VAR}}
+     * references unexpanded.
+     */
     public record NodeSources(
-            @Nullable String distMirror, @Nullable String registry) {
-        public static final NodeSources EMPTY = new NodeSources(null, null);
+            @Nullable String distMirror, @Nullable String registry, Map<String, String> scopes) {
+        public static final NodeSources EMPTY = new NodeSources(null, null, Map.of());
+
+        public NodeSources {
+            scopes = Map.copyOf(scopes);
+        }
     }
 
     public static NodeSources nodeSources() {
@@ -290,11 +302,23 @@ public final class GlobalConfig {
             return parseConfig(configFile)
                     .map(toml -> toml.getTable("node"))
                     .map(t -> new NodeSources(
-                            blankToNull(t.getString("dist-mirror")), blankToNull(t.getString("registry"))))
+                            blankToNull(t.getString("dist-mirror")),
+                            blankToNull(t.getString("registry")),
+                            nodeScopes(t.getTable("scopes"))))
                     .orElse(NodeSources.EMPTY);
         } catch (RuntimeException e) {
             return NodeSources.EMPTY;
         }
+    }
+
+    private static Map<String, String> nodeScopes(@Nullable TomlTable scopes) {
+        if (scopes == null) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String scope : scopes.keySet()) {
+            String url = blankToNull(scopes.getString(List.of(scope)));
+            if (url != null) out.put(scope.startsWith("@") ? scope : "@" + scope, url);
+        }
+        return out;
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {
