@@ -42,8 +42,8 @@ import org.jspecify.annotations.Nullable;
  * that hands a download to a CDN must not hand the CDN the repository token with it.
  *
  * <p>Whether a request goes through a proxy is decided per request by {@link ProxyEnvironment}:
- * {@code ~/.jk/config.toml [network]}, then — for a {@link #forRepositories() repository} client —
- * Maven's {@code settings.xml} {@code <proxy>}, then the caller's {@code http_proxy} /
+ * {@code ~/.jk/config.toml [network]}, then Maven's {@code settings.xml} {@code <proxy>}, then the
+ * caller's {@code http_proxy} /
  * {@code https_proxy} / {@code no_proxy}. A proxy URL's credential rides the request as {@code Proxy-Authorization},
  * recomputed for every redirect hop so it reaches the proxy and never an origin, and is never part
  * of a message.
@@ -118,17 +118,9 @@ public final class Http {
 
     private static final Set<String> DENIED_BY_ENV = deniedHosts(System.getenv(DENY_HOSTS_ENV));
 
-    /** A client for {@link ProxyEnvironment.Traffic#GENERAL} traffic: JDKs, tools, forges, release checks. */
+    /** A client whose requests go through {@link ProxyEnvironment#ambient()}. */
     public Http() {
         this(ProxyEnvironment.ambient(), BACKOFFS);
-    }
-
-    /**
-     * A client for Maven repository traffic — artifacts, POMs, metadata — the one kind a
-     * {@code settings.xml} {@code <proxy>} applies to, as it does under Maven.
-     */
-    public static Http forRepositories() {
-        return new Http(ProxyEnvironment.ambient(ProxyEnvironment.Traffic.REPOSITORY), BACKOFFS);
     }
 
     /**

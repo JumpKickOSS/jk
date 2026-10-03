@@ -62,7 +62,7 @@ final class HardwareProbe {
 
     static final String CENTRAL_BASE = RepositorySpec.MAVEN_CENTRAL.url().toString();
 
-    private static final Http HTTP = Http.forRepositories();
+    private static final Http HTTP = new Http();
 
     /** Pinned Jupiter set for the optional real-JUnit probe (matches first-party jk.toml pins ~6.x). */
     private static final String JUNIT_VER = "5.11.4";

@@ -61,7 +61,7 @@ final class RepoModelResolver implements ModelResolver {
     RepoModelResolver(RepoGroup repos, Cas cas) {
         this(
                 repos,
-                Http.forRepositories(),
+                new Http(),
                 cas,
                 new HashSet<>(),
                 new AtomicLong(),

@@ -74,7 +74,7 @@ public final class PathSourceResolution {
                 extraRepos.add(new MavenRepo(
                         RepoArtifactResolver.GIT_SOURCE_PREFIX + m.coordinate() + ":" + m.version(),
                         m.repoUrl(),
-                        Http.forRepositories(),
+                        new Http(),
                         cas));
             }
         }

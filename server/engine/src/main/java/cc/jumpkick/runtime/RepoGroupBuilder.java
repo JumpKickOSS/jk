@@ -158,7 +158,7 @@ public final class RepoGroupBuilder {
         boolean mirrorToM2 = project.project().m2integration();
         if (overrideUrl != null) {
             // Tests pin one URL; project-declared repos are ignored.
-            Http http = Http.forRepositories();
+            Http http = new Http();
             return new RepoGroup(List.of(new MavenRepo(
                     RepositorySpec.CENTRAL, overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2)));
         }
@@ -195,7 +195,7 @@ public final class RepoGroupBuilder {
      */
     private static RepoGroup build(
             List<RepositorySpec> projectRepos, boolean mirrorToM2, Cas cas, Function<String, @Nullable String> env) {
-        Http http = Http.forRepositories();
+        Http http = new Http();
         List<MavenRepo> repos = new ArrayList<>();
         List<RepositorySpec> globalRepos = GlobalConfig.repositories();
 
