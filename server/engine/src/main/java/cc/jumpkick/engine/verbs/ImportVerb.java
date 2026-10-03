@@ -88,6 +88,7 @@ public final class ImportVerb implements HostedVerb {
                         spec.dir(),
                         JkDirs.tmp().toString(),
                         false,
+                        false,
                         null,
                         JkDirs.cache().toString(),
                         List.of())
@@ -133,6 +134,7 @@ public final class ImportVerb implements HostedVerb {
                         baseDir,
                         Path.of(body.tmpDir()),
                         body.force(),
+                        body.dryRun(),
                         body.report() != null ? Path.of(body.report()) : null,
                         lockDir -> SessionContext.where(session, () -> ImportPinRaises.apply(lockDir, cache)),
                         (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));

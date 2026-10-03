@@ -63,6 +63,29 @@ resource jar under `classpath-root` for a JVM dependant, or web content under `w
 `[war]` dependant; a node build inside a JVM module goes into that module's jar or war. A node
 module whose framework produces a server runs with `jk run` ([Run](run.md#node-modules)).
 
+## Importing frontend-maven-plugin
+
+`jk import pom.xml` turns the plugin's executions into a node build. The version an install goal
+pins is `node = "=<version>"`; a frozen install (`npm ci`, `yarn install`) is jk's own
+`node-install`; the `build` and `test` scripts are jk's build and test; every other command is a
+`[[node.steps]]` entry placed by the phase it ran in (`npx` and `yarn exec` as `npx` steps).
+`corepack yarn …` imports as `yarn …`, run by the Yarn jk provisions from `packageManager`.
+
+Where the build lands depends on where its bundler (webpack's `output.path`, Vite's
+`build.outDir`) wrote:
+
+- into the module's own war or resources: a side-by-side build in that module, `[node] dir` set to
+  the plugin's `workingDirectory`, the output placed by `webapp-root` or `classpath-root`;
+- from a `pom` module, or into another module: a generated node module (`web/`). The import moves
+  `package.json`, the lockfile, the package manager's and the tools' config files and the source
+  directories the bundler config names into it, and the consuming module depends on it with the
+  old output path as its `webapp-root` or `classpath-root`.
+
+Either way the bundler config is rewritten to write `dist/`, and jk places the output; nothing is
+built into `src/`. `jk import --dry-run` prints every move and rewrite and changes nothing. Bower and
+the task-runner goals (grunt, gulp, karma, webpack, ember, jspm) are not imported: run them from an
+npm script or an `npx` step. Yarn 1 is not supported.
+
 ## Registries and mirrors
 
 `~/.jk/config.toml` `[node]` sets `dist-mirror`, `registry` and per-scope registries; credentials

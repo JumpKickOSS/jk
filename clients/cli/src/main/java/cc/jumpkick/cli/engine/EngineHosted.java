@@ -241,6 +241,7 @@ final class EngineHosted {
                                 Objects.toString(req.baseDir(), null),
                                 req.tmpDir().toString(),
                                 req.force(),
+                                req.dryRun(),
                                 req.report() != null ? req.report().toString() : null,
                                 req.cache().toString(),
                                 req.profiles())

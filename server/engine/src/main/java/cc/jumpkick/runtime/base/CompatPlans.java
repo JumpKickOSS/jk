@@ -59,6 +59,7 @@ public final class CompatPlans {
             Path baseDir,
             Path tmpDir,
             boolean force,
+            boolean dryRun,
             @Nullable Path report,
             ProjectImport.PinRaise raise,
             NoteObserver observer) {
@@ -75,6 +76,7 @@ public final class CompatPlans {
                             baseDir == null ? null : baseDir.toAbsolutePath(),
                             tmpDir == null ? null : tmpDir.toAbsolutePath(),
                             force,
+                            dryRun,
                             report == null ? null : report.toAbsolutePath(),
                             note -> observer.onNote("note", note),
                             raise);

@@ -12,6 +12,7 @@ public record ImportRequest(
         @Nullable String baseDir,
         @Nullable String tmpDir,
         boolean force,
+        boolean dryRun,
         @Nullable String report,
         @Nullable String cache,
         List<String> profiles) {
@@ -23,6 +24,7 @@ public record ImportRequest(
                 .string("baseDir", baseDir)
                 .string("tmpDir", tmpDir)
                 .bool("force", force)
+                .bool("dryRun", dryRun)
                 .string("report", report)
                 .string("cache", cache)
                 .array("profiles", profiles)
@@ -36,6 +38,7 @@ public record ImportRequest(
                 Jsonl.str(json, "baseDir"),
                 Jsonl.str(json, "tmpDir"),
                 Jsonl.bool(json, "force", false),
+                Jsonl.bool(json, "dryRun", false),
                 Jsonl.str(json, "report"),
                 Jsonl.str(json, "cache"),
                 Jsonl.strArray(json, "profiles"));
