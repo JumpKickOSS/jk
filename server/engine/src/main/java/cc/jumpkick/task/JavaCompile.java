@@ -287,24 +287,30 @@ public final class JavaCompile {
         if (workerJar != null && Files.isRegularFile(workerJar)) {
             Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
             Files.createDirectories(gen);
-            ForkedJavac.Plan plan = ForkedJavac.plan(new ForkedJavac.Request(
-                            request.javaHome(),
-                            workerJar,
-                            request.sources(),
-                            request.classpath(),
-                            request.processorPath(),
-                            Objects.requireNonNull(request.outputDir(), "outputDir"),
-                            gen,
-                            request.release(),
-                            request.extraOptions(),
-                            stateDir,
-                            request.scalaVersion(),
-                            request.compilerClasspath(),
-                            request.scalaLibraryJar(),
-                            request.scalaCompilerJar(),
-                            request.scalaBridgeJar(),
-                            env)
-                    .withClasspathAnalyses(producerAnalyses(request, stateDir)));
+            ForkedJavac.Plan plan;
+            try {
+                plan = ForkedJavac.plan(new ForkedJavac.Request(
+                                request.javaHome(),
+                                workerJar,
+                                request.sources(),
+                                request.classpath(),
+                                request.processorPath(),
+                                Objects.requireNonNull(request.outputDir(), "outputDir"),
+                                gen,
+                                request.release(),
+                                request.extraOptions(),
+                                stateDir,
+                                request.scalaVersion(),
+                                request.compilerClasspath(),
+                                request.scalaLibraryJar(),
+                                request.scalaCompilerJar(),
+                                request.scalaBridgeJar(),
+                                env)
+                        .withClasspathAnalyses(producerAnalyses(request, stateDir)));
+            } catch (RuntimeException e) {
+                // A plan the worker cannot make (a sibling jar not built yet, say) is a full compile.
+                return new Prediction(Outcome.FULL, key, request.sources().size(), "no plan: " + e.getMessage());
+            }
             List<Path> files = plan.sources();
             if (plan.full()) {
                 return new Prediction(
