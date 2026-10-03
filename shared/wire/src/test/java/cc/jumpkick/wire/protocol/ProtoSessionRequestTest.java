@@ -9,6 +9,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
@@ -114,11 +115,11 @@ class ProtoSessionRequestTest {
     @Test
     void a_coverage_request_on_the_line_lands_on_the_session_and_is_absent_otherwise() {
         String test = new TestRequest(
-                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, true)
+                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, true, null)
                 .encode();
         String build = new BuildRequest(
                         DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
-                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, true)
+                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, true, null)
                 .encode();
         assertThat(ProtoSession.sessionOf(test, TOKEN).coverage()).isTrue();
         assertThat(ProtoSession.sessionOf(build, TOKEN).coverage()).isTrue();
@@ -126,6 +127,23 @@ class ProtoSessionRequestTest {
         assertThat(testLine()).as("a plain run does not spell the flag").doesNotContain("\"coverage\"");
         assertThat(TestRequest.decode(test).coverage()).isTrue();
         assertThat(BuildRequest.decode(build).coverage()).isTrue();
+    }
+
+    /** A test-failure mode on a test or build line lands on the session; a silent line leaves each module's own. */
+    @Test
+    void a_test_failure_mode_on_the_line_lands_on_the_session() {
+        String test = new TestRequest(
+                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, false,
+                        "report")
+                .encode();
+        String build = new BuildRequest(
+                        DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
+                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, false, "fail")
+                .encode();
+        assertThat(ProtoSession.sessionOf(test, TOKEN).testFailures()).isEqualTo(TestFailureMode.REPORT);
+        assertThat(ProtoSession.sessionOf(build, TOKEN).testFailures()).isEqualTo(TestFailureMode.FAIL);
+        assertThat(ProtoSession.sessionOf(testLine(), TOKEN).testFailures()).isNull();
+        assertThat(testLine()).doesNotContain("\"testFailures\"");
     }
 
     @Test

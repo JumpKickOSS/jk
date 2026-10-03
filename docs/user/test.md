@@ -18,6 +18,7 @@ jk test --class OrdersTest           # one class (simple or qualified name, * wi
 jk test --class OrdersTest#refunds   # one method of it (* wildcards in the method too)
 jk test --debug-jvm                  # suspended test JVM listening on localhost:5005 — attach and go
 jk test --coverage                   # JaCoCo agent on every suite JVM; Coverage block in jk-results.md, HTML per module
+jk test --test-failures=report       # failing tests are reported, the run still exits 0
 jk test --affected                   # ranked classes for the working tree (does not run them)
 jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
 jk build --guard                      # package with the guards green (same flag on assemble, image, native, install)
@@ -530,6 +531,20 @@ bytes and keeps the failure when the class declares a test method or a test anno
 JUnit 4's, TestNG's, or one of your own composed of them), extends a class that does, or extends a
 specification base such as Spock's. A helper under the test root that cannot load — a fixture
 compiled against a dependency absent at test time — is left where discovery left it.
+
+## Failures that do not fail the run (`[test] failures`)
+
+```toml
+[test]
+failures = "report"   # default "fail"
+```
+
+Under `report` every suite runs, every failing test is in `jk-results.md`, `details.jsonl` and the
+JUnit XML, and the run still exits `0`: Maven's `maven.test.failure.ignore`. The headline says so
+(`Tests: **1 failed** · … · _reported, not failing: [test] failures = "report"_`), and so does the
+agent verdict. A compile error, a test JVM that crashed or a timeout fails the run either way.
+`--test-failures=fail|report` on `jk test` and `jk build`, or `JK_TEST_FAILURES`, overrides every
+module's setting for one run (flag, then environment, then `jk.toml`).
 
 ## Coverage (`--coverage`, `[test] coverage`)
 

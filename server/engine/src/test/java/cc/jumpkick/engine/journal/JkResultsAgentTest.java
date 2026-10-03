@@ -119,6 +119,14 @@ class JkResultsAgentTest {
     }
 
     @Test
+    void a_run_that_passed_with_failing_tests_says_they_were_reported() {
+        BuildRecord r = record("test", true, false, 500, new BuildRecord.Tests(3, 2, 1, 0), List.of(), List.of());
+        assertThat(JkResultsAgent.render(r))
+                .startsWith("OK test rest-service · 1 of 3 failed · 500ms — test failures reported, not failing:"
+                        + " [test] failures = \"report\"\n");
+    }
+
+    @Test
     void a_compile_error_names_the_line_and_quotes_it() {
         BuildRecord.Diag err = diag(
                 "compile-java",

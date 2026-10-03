@@ -133,11 +133,13 @@ public final class JkResultsAgent {
         if (decided != null) loci.remove(decided);
         StringBuilder sb = new StringBuilder();
         sb.append(headline(record, loci, tests));
-        String reason = decided != null ? decided.message() : decidingWarning(record, loci, tests);
+        boolean reported = record.success() && !record.cancelled() && failedTests(record, tests) > 0;
+        String reason =
+                decided != null ? decided.message() : reported ? REPORTED : decidingWarning(record, loci, tests);
         if (reason != null && !reason.isBlank()) sb.append(" — ").append(one(reason, record.dir()));
         sb.append('\n');
         appendMemoryEvents(sb, record);
-        if (record.success() && !record.cancelled()) return sb.toString();
+        if (record.success() && !record.cancelled() && !reported) return sb.toString();
         sb.append(body(record, loci, tests, opt));
         String delta = deltaLine(record);
         if (delta != null) sb.append(delta).append('\n');
@@ -248,6 +250,23 @@ public final class JkResultsAgent {
         if (!loci.isEmpty() || !failedWithoutLocus(r, loci, tests)) return null;
         BuildRecord.Diag warning = JkResultsWarnings.deciding(r);
         return warning == null ? null : JkResultsHints.firstLine(warning.message());
+    }
+
+    /** Why a run with failing tests still passed. */
+    static final String REPORTED = "test failures reported, not failing: [test] failures = \"report\"";
+
+    /** The run's failed tests: the record's summary, else the suites' entries. */
+    private static long failedTests(BuildRecord r, @Nullable List<MarkdownTestReport.ModuleRun> tests) {
+        BuildRecord.Tests summary = r.tests();
+        if (summary != null && summary.total() > 0) return summary.failed();
+        long failed = 0;
+        if (tests != null) {
+            for (MarkdownTestReport.ModuleRun run : tests) {
+                if (run == null || run.entries() == null) continue;
+                for (MarkdownTestReport.Entry e : run.entries()) if (e.isFail()) failed++;
+            }
+        }
+        return failed;
     }
 
     private static String outcome(BuildRecord r) {

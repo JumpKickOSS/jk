@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.TestFailureMode;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,8 @@ public final class ProtoSession {
                 .withTestSelection(ProtoJobs.testSelectionOf(request))
                 .withDebugJvm(ProtoJobs.debugJvmOf(request))
                 .withCoverage(Jsonl.bool(request, ProtoJobs.COVERAGE, false))
-                .withCoverage(Jsonl.bool(request, ProtoJobs.COVERAGE, false))
+                .withTestFailures(TestFailureMode.parse(Jsonl.str(request, ProtoJobs.TEST_FAILURES))
+                        .orElse(null))
                 .withAffected(Jsonl.bool(request, "affected", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
                 .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request), javaHomeOf(request))

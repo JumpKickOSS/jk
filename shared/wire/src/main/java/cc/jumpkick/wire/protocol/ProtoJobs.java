@@ -18,6 +18,9 @@ public final class ProtoJobs {
     /** {@code --coverage}: present and true only on a coverage run. */
     public static final String COVERAGE = "coverage";
 
+    /** {@code --test-failures} / {@code JK_TEST_FAILURES}: {@code fail} or {@code report}; absent for the modules' own. */
+    public static final String TEST_FAILURES = "testFailures";
+
     private ProtoJobs() {}
 
     /** Per-request progress mode, falling back to the engine environment when omitted. */
