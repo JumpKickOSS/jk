@@ -84,7 +84,8 @@ class WireProducersFrozenBytesTest {
                         new ExecPlan.Probe("http://localhost:5173", "", 60000L),
                         true,
                         Sidecar.Restart.NEVER)),
-                new ExecPlan.Probe("http://localhost:8080/health", "", 90000L));
+                new ExecPlan.Probe("http://localhost:8080/health", "", 90000L),
+                Map.of("PORT", "3000"));
         assertThat(plan.encode())
                 .isEqualTo("{\"type\":\"exec-plan-ack\",\"error\":null,\"mainIssue\":\"issue\",\"kind\":\"run\","
                         + "\"argv\":[\"java\",\"-jar\"],\"workingDir\":\"/w\",\"display\":\"disp\",\"javaHome\":\"/jdk\","
@@ -96,7 +97,7 @@ class WireProducersFrozenBytesTest {
                         + "\"env\":{\"PORT\":\"5173\"},\"ready\":\"http://localhost:5173\",\"readyPattern\":\"\","
                         + "\"readyTimeoutMillis\":60000,\"frontDoor\":true,\"restart\":\"never\"}],"
                         + "\"appReady\":\"http://localhost:8080/health\",\"appReadyPattern\":\"\","
-                        + "\"appReadyTimeoutMillis\":90000}");
+                        + "\"appReadyTimeoutMillis\":90000,\"appEnv\":{\"PORT\":\"3000\"}}");
         assertThat(ExecPlan.decode(plan.encode())).isEqualTo(plan);
         String ide =
                 "{\"type\":\"ide-model-ack\",\"error\":\"e\",\"wsRoot\":\"/w\",\"rootName\":\"r\",\"workspace\":true,"

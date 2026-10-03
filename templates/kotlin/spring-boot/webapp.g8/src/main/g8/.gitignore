@@ -2,7 +2,7 @@
 target/
 .jk/selective-plan.json
 
-# the front end: its dependencies, and the bundle Vite writes into the web module's resource root
+# the front end: its dependencies and the bundle Vite writes
 web/node_modules/
-web/resources/
+web/dist/
 web/.vite/

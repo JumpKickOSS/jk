@@ -132,8 +132,9 @@ public final class NodeShape {
 
     /**
      * Refuse a node build jk cannot run, each with its one-line fix: {@code [node]} without a {@code
-     * package.json}, a {@code [node]} table that would build at a JVM module's root, a node build with
-     * no {@code node} declared, and whatever {@link NodeProject#infer} refuses (Yarn 1).
+     * package.json}, a {@code [node]} table that would build at a JVM module's root, a module whose only
+     * sources are a {@code package.json} with no {@code node} declared, and whatever {@link
+     * NodeProject#infer} refuses (Yarn 1).
      */
     public static void check(JkBuild build, Path moduleDir) {
         if (exempt(build, moduleDir)) return;
@@ -148,6 +149,12 @@ public final class NodeShape {
             throw new JkBuildParseException(where + ": package.json sits beside the JVM sources — move the node"
                     + " build into " + NodeTable.SIDE_BY_SIDE_DIR + ", or set [node] dir");
         }
+        if (!jvm && hasPackageJson(moduleDir) && build.project().nodeSpec().isEmpty() && !build.declaresNodeTable()) {
+            Proposal p = propose(moduleDir);
+            throw new JkBuildParseException(
+                    where + ": package.json found but no node toolchain is declared — add node = " + p.spec()
+                            + (p.source() == null ? "" : " (from " + p.source() + ")"));
+        }
         Kind kind = kind(build, moduleDir);
         if (kind == Kind.NONE) {
             if (build.declaresNodeTable()) {
@@ -159,9 +166,6 @@ public final class NodeShape {
         }
         Path nodeDir = nodeDir(build, moduleDir);
         if (nodeDir == null) return;
-        // A package.json with neither node nor [node] is not refused: the webapp template's web module
-        // is such a module, a resources jar its app depends on.
-        if (build.project().nodeSpec().isEmpty() && !build.declaresNodeTable()) return;
         if (build.project().nodeSpec().isEmpty()) {
             Proposal p = propose(nodeDir);
             throw new JkBuildParseException(

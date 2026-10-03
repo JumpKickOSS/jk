@@ -284,6 +284,8 @@ final class WorkspaceRunPhase {
             if (present.contains(step)) wait.add(step);
         }
         if (relocates && present.contains(TaskNames.PACKAGE_ASSEMBLY)) wait.add(TaskNames.PACKAGE_ASSEMBLY);
+        // A node module's resource jar is what its dependents compile against.
+        if (present.contains(TaskNames.NODE_PACKAGE)) wait.add(TaskNames.NODE_PACKAGE);
         return wait;
     }
 
@@ -310,8 +312,11 @@ final class WorkspaceRunPhase {
         Set<String> present = new HashSet<>();
         for (Task step : plan.steps()) present.add(step.name());
         Set<String> wait = new HashSet<>();
-        for (String main :
-                List.of(TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_ASSEMBLY, TaskNames.COMPILE_TEST_FIXTURES)) {
+        for (String main : List.of(
+                TaskNames.PACKAGE_JAR,
+                TaskNames.PACKAGE_ASSEMBLY,
+                TaskNames.COMPILE_TEST_FIXTURES,
+                TaskNames.NODE_PACKAGE)) {
             if (present.contains(main)) wait.add(main);
         }
         if (present.contains(TaskNames.COMPILE_TEST) && (testClassesConsumed || wait.isEmpty())) {

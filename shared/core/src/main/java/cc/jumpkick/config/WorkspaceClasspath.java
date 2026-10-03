@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
@@ -297,6 +298,10 @@ public final class WorkspaceClasspath {
                 relocating.add(coord);
                 siblingJarByModule.put(coord, layout.assemblyJar());
                 siblingClassesByModule.put(coord, layout.assemblyJar());
+            } else if (NodeShape.kind(unit, unitDir) == NodeShape.Kind.MODULE) {
+                // A node module compiles nothing; its resource jar is the sibling in both views.
+                siblingJarByModule.put(coord, layout.mainJar());
+                siblingClassesByModule.put(coord, layout.mainJar());
             } else {
                 siblingJarByModule.put(coord, layout.mainJar());
                 siblingClassesByModule.put(coord, layout.classesDir());

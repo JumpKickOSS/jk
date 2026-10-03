@@ -83,7 +83,7 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 | `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
 | `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |
 | `webmvc-security-actuator-jpa-h2` | spring-boot | java, kotlin | WebMVC + JPA/H2 + Actuator | `spring` |
-| `webapp` | spring-boot | java, kotlin | Boot API + Vite/React SPA in a resource-only `web` module; `jk dev` runs Vite as a sidecar | `spring`, `monorepo` |
+| `webapp` | spring-boot | java, kotlin | Boot API + Vite/React SPA; `web` is a node module jk builds and packages as a resource jar; `jk dev` runs Vite as a sidecar | `spring`, `monorepo` |
 | `mcp` | spring-boot | java | Boot MCP server | `spring` |
 | `hello` | quarkus | java, kotlin | Plugin REST app | `quarkus` |
 | `hello` | micronaut | java, kotlin | Plugin HTTP service | — |

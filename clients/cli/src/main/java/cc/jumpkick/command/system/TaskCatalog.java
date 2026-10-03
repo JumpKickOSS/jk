@@ -67,6 +67,7 @@ final class TaskCatalog {
             def(TaskNames.NODE_INSTALL, "Install a node build's locked dependencies (frozen)", null),
             def(TaskNames.NODE_BUILD, "Run a node build's build command", null),
             def(TaskNames.NODE_TEST, "Run a node build's test script", null),
+            def(TaskNames.NODE_PACKAGE, "Package a node module's build output as a resource jar", null),
             def(TaskNames.BUILD_LOGIC_BEFORE_COMPILE, "Project build-logic (BEFORE_COMPILE)", null),
             def(
                     TaskNames.COMPILE_JAVA,

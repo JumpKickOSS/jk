@@ -1,5 +1,5 @@
 language = "kotlin"
 framework = "spring-boot"
 name = "webapp"
-description = "Kotlin Spring Boot API + Vite/React SPA: a resource-only web module the app serves from classpath:static"
+description = "Kotlin Spring Boot API + Vite/React SPA: a node web module jk builds and the app serves from classpath:static"
 layouts = ["traditional"]

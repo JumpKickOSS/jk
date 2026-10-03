@@ -7,6 +7,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.node.NodeHome;
+import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,7 +38,11 @@ final class NodeEnv {
             boolean production) {
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("npm_config_cache", in.cache().resolve("npm").toString());
-        vars.put("npm_config_store_dir", JkDirs.store().resolve("pnpm-store").toString());
+        // pnpm's own key; npm warns about every config it does not know.
+        if (home.packageManager() == PackageManager.PNPM) {
+            vars.put(
+                    "npm_config_store_dir", JkDirs.store().resolve("pnpm-store").toString());
+        }
         vars.put("npm_config_update_notifier", "false");
         vars.putAll(network());
         vars.putAll(keyed(project, node, moduleDir, false));

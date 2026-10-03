@@ -32,6 +32,10 @@ public final class WarPackager {
         PathUtil.deleteRecursivelyOrThrow(exploded);
         Files.createDirectories(exploded);
         if (request.webapp() != null) PathUtil.copyTree(request.webapp(), exploded);
+        for (Map.Entry<Path, String> content : request.webContent().entrySet()) {
+            Path into = content.getValue().isEmpty() ? exploded : exploded.resolve(content.getValue());
+            PathUtil.copyTree(content.getKey(), into);
+        }
         Path classes = exploded.resolve(CLASSES);
         PathUtil.copyTree(request.classes(), classes);
         deleteStamps(classes);
@@ -93,6 +97,8 @@ public final class WarPackager {
      * @param webapp the web resources directory; {@code null} when the module has none
      * @param libs the runtime jars, in classpath order
      * @param attributes the archive manifest's attributes beyond {@code Manifest-Version}
+     * @param webContent directories copied into the war after the webapp, each under its war-relative
+     *     path ({@code ""} for the root): a node sibling's build output
      */
     public record WarRequest(
             Path classes,
@@ -100,13 +106,15 @@ public final class WarPackager {
             List<Path> libs,
             Path explodedDir,
             Path warFile,
-            Map<String, String> attributes) {
+            Map<String, String> attributes,
+            Map<Path, String> webContent) {
 
         public WarRequest {
             Objects.requireNonNull(classes, "classes");
             Objects.requireNonNull(explodedDir, "explodedDir");
             Objects.requireNonNull(warFile, "warFile");
             libs = List.copyOf(libs);
+            webContent = Map.copyOf(webContent);
             attributes = Map.copyOf(attributes);
         }
     }

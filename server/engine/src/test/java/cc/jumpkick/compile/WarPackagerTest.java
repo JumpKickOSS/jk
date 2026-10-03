@@ -31,7 +31,13 @@ class WarPackagerTest {
 
         new WarPackager()
                 .packageWar(new WarPackager.WarRequest(
-                        classes, webapp, List.of(guava), exploded, war, Map.of("Main-Class", "com.acme.Main")));
+                        classes,
+                        webapp,
+                        List.of(guava),
+                        exploded,
+                        war,
+                        Map.of("Main-Class", "com.acme.Main"),
+                        Map.of()));
 
         assertThat(exploded.resolve("index.html")).hasContent("<html/>");
         assertThat(exploded.resolve("WEB-INF/web.xml")).exists();
@@ -60,11 +66,11 @@ class WarPackagerTest {
         Path first = dir.resolve("a/web.war");
         Path second = dir.resolve("b/web.war");
         new WarPackager()
-                .packageWar(
-                        new WarPackager.WarRequest(classes, null, List.of(), dir.resolve("a/web"), first, Map.of()));
+                .packageWar(new WarPackager.WarRequest(
+                        classes, null, List.of(), dir.resolve("a/web"), first, Map.of(), Map.of()));
         new WarPackager()
-                .packageWar(
-                        new WarPackager.WarRequest(classes, null, List.of(), dir.resolve("b/web"), second, Map.of()));
+                .packageWar(new WarPackager.WarRequest(
+                        classes, null, List.of(), dir.resolve("b/web"), second, Map.of(), Map.of()));
 
         assertThat(Files.readAllBytes(first)).isEqualTo(Files.readAllBytes(second));
     }

@@ -121,6 +121,14 @@ final class NodeKeys {
         return keyed(TaskNames.NODE_TEST, nodeDir, inputs);
     }
 
+    /** {@code node-package}'s key: the output's files, the root they sit under and the manifest attributes. */
+    static Keyed pkg(Path nodeDir, Path out, String root, Map<String, String> manifest) throws IOException {
+        Map<String, String> inputs = tree(out, List.of());
+        inputs.put("root:", root);
+        inputs.put("manifest:", new TreeMap<>(manifest).toString());
+        return keyed(TaskNames.NODE_PACKAGE, nodeDir, inputs);
+    }
+
     /**
      * Every file under {@code nodeDir} by its path relative to it, valued by content: dot-files
      * included ({@code .env}, a framework's config), {@link #NEVER_INPUT} and {@code outputs}

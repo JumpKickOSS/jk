@@ -205,6 +205,7 @@ public enum BuildStage {
             case TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS, TaskNames.NODE_TEST -> TEST;
             case TaskNames.PACKAGE_JAR,
                     TaskNames.PACKAGE_ASSEMBLY,
+                    TaskNames.NODE_PACKAGE,
                     TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
                     TaskNames.BUILD_LOGIC_AFTER_BUILD,
                     TaskNames.BUILD_LOGIC_GUARD -> PACKAGE;
