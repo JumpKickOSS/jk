@@ -113,7 +113,7 @@ public final class GlobalOptions {
 
     public @Nullable Path configFile;
     public boolean noConfig;
-    public @Nullable Path directory;
+    public @Nullable Path dir;
 
     /**
      * Resolve the working directory: explicit {@code -C}/{@code --dir} if set (either on this mixin
@@ -122,9 +122,9 @@ public final class GlobalOptions {
      * path so callers can pass it into IO without worrying about whether {@code -C} was supplied.
      */
     public Path workingDir() {
-        Path raw = directory;
+        Path raw = dir;
         if (raw == null) {
-            raw = SessionContext.current().config().directoryOr(Path.of(""));
+            raw = SessionContext.current().config().dirOr(Path.of(""));
         }
         // Canonicalize symlinks (macOS /tmp → /private/tmp, symlinked checkouts): action-cache
         // task pointers hash this path's TEXT, and BuildCommand already realpaths its dir
@@ -204,7 +204,7 @@ public final class GlobalOptions {
         // (applyCliOverrides already merged early argv; this covers flags after the subcommand.)
         // offline + rebuild ride the overlay too: the engine reads them off the session wire, and
         // Jk.applyCliOverrides only catches exact tokens — a bundled `-rq` or abbreviated `--red` /
-        // `--offl` lands here, in the parsed Invocation. `directory` and `build-output` are absent
+        // `--offl` lands here, in the parsed Invocation. `dir` and `build-output` are absent
         // on purpose: the first is not a config layer and the second is config/env only.
         JkConfig cliOverlay = JkConfig.empty()
                 .withOffline(flag(g.offline))
@@ -222,7 +222,7 @@ public final class GlobalOptions {
         g.output = in.value("output").orElse(null);
         g.configFile = in.value("config-file").map(Path::of).orElse(null);
         g.noConfig = in.isSet("no-config");
-        g.directory = in.value("dir").map(Path::of).orElse(null);
+        g.dir = in.value("dir").map(Path::of).orElse(null);
         g.maxRamPercent = in.value("ram-percent")
                 .map(s -> {
                     try {
@@ -291,8 +291,7 @@ public final class GlobalOptions {
                 Opt.value("<WHEN>", "When to colorize output: auto, always, never", "--color"),
                 Opt.value("<FILE>", "Use this jk.toml for configuration", "--config-file"),
                 Opt.flag("Skip jk.toml discovery; use defaults", "--no-config"),
-                Opt.value("<DIR>", "Change to this directory before running", "-C", "--dir")
-                        .alias("--directory"),
+                Opt.value("<DIR>", "Change to this directory before running", "-C", "--dir"),
                 Opt.value("<N>", "Module/worker concurrency (0=max, 1=serial)", "-j", "--jobs"),
                 Opt.value("<PCT>", "Worker-JVM max heap as % of RAM", "--ram-percent")
                         .alias("--max-ram-percent"),

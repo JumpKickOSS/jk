@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -31,6 +32,21 @@ public final class JkConfigLoader {
 
     private JkConfigLoader() {}
 
+    /** The keys of a {@code [config]} table; a project's {@code jk.toml} refuses any other. */
+    public static final List<String> KEYS = List.of(
+            "color",
+            "offline",
+            "no-progress",
+            "quiet",
+            "verbose",
+            "dir",
+            "force",
+            "no-ansi",
+            "force-ansi",
+            "no-osc",
+            "notify",
+            "build-output");
+
     /**
      * File layers (from {@code startDir}) then env. Caller overlays CLI flags via
      * {@link JkConfig#mergedWith}.
@@ -50,22 +66,8 @@ public final class JkConfigLoader {
     /** Parse a TOML file's {@code [config]} table into a config layer; missing/malformed → empty. */
     static JkConfig loadTomlOrEmpty(Path path) throws IOException {
         // Missing/malformed → empty layer. TomlScan (flat scalars; no full TOML parser).
-        TomlScan scan = TomlScan.scan(
-                path,
-                "config.color",
-                "config.offline",
-                "config.rerun",
-                "config.refresh",
-                "config.no-progress",
-                "config.quiet",
-                "config.verbose",
-                "config.directory",
-                "config.force",
-                "config.no-ansi",
-                "config.force-ansi",
-                "config.no-osc",
-                "config.notify",
-                "config.build-output");
+        TomlScan scan =
+                TomlScan.scan(path, KEYS.stream().map(k -> "config." + k).toArray(String[]::new));
         return new JkConfig(
                 JkConfig.ColorChoice.parse(scan.get("config.color")).orElse(null),
                 scanBool(scan, "config.offline"),
@@ -73,9 +75,7 @@ public final class JkConfigLoader {
                 scanBool(scan, "config.no-progress"),
                 scanBool(scan, "config.quiet"),
                 scanBool(scan, "config.verbose"),
-                Optional.ofNullable(scan.get("config.directory"))
-                        .map(Paths::get)
-                        .orElse(null),
+                Optional.ofNullable(scan.get("config.dir")).map(Paths::get).orElse(null),
                 scanBool(scan, "config.force"),
                 scanBool(scan, "config.no-ansi"),
                 scanBool(scan, "config.force-ansi"),
@@ -108,7 +108,7 @@ public final class JkConfigLoader {
                 envBool(env, ENV_NO_PROGRESS),
                 envBool(env, ENV_QUIET),
                 envBool(env, ENV_VERBOSE),
-                null, // directory isn't env-var-driven
+                null, // dir isn't env-var-driven
                 envBool(env, ENV_FORCE),
                 envBool(env, ENV_NO_ANSI),
                 envBool(env, ENV_FORCE_ANSI),

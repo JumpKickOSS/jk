@@ -51,7 +51,7 @@ class JkOwnArgsScanTest {
         var cfg = SessionContext.current().config();
         assertThat(cfg.quietOr(false)).isFalse();
         assertThat(cfg.offlineOr(false)).isFalse();
-        assertThat(cfg.directoryOr(UNSET)).isEqualTo(UNSET);
+        assertThat(cfg.dirOr(UNSET)).isEqualTo(UNSET);
     }
 
     @Test
@@ -59,7 +59,7 @@ class JkOwnArgsScanTest {
         Jk.applyCliOverrides(new String[] {"mvn", "-C", "install", "-q"});
 
         var cfg = SessionContext.current().config();
-        assertThat(cfg.directoryOr(UNSET)).isEqualTo(UNSET);
+        assertThat(cfg.dirOr(UNSET)).isEqualTo(UNSET);
         assertThat(cfg.quietOr(false)).isFalse();
     }
 
@@ -70,7 +70,7 @@ class JkOwnArgsScanTest {
         var cfg = SessionContext.current().config();
         assertThat(cfg.quietOr(false)).isTrue();
         assertThat(cfg.verboseOr(false)).isFalse();
-        assertThat(cfg.directoryOr(UNSET)).isEqualTo(Path.of("app"));
+        assertThat(cfg.dirOr(UNSET)).isEqualTo(Path.of("app"));
     }
 
     @Test

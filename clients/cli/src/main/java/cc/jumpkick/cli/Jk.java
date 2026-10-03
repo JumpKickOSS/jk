@@ -256,7 +256,7 @@ public final class Jk {
                     if (i + 1 < end)
                         color = JkConfig.ColorChoice.parse(args[++i]).orElse(null);
                 }
-                case "-C", "--dir", "--directory" -> {
+                case "-C", "--dir" -> {
                     if (i + 1 < end) directory = Path.of(args[++i]);
                 }
                 default -> {
@@ -265,8 +265,6 @@ public final class Jk {
                                 .orElse(null);
                     } else if (a.startsWith("--dir=")) {
                         directory = Path.of(a.substring("--dir=".length()));
-                    } else if (a.startsWith("--directory=")) {
-                        directory = Path.of(a.substring("--directory=".length()));
                     }
                 }
             }
