@@ -355,7 +355,8 @@ public final class ProjectInfoPlans {
                     p.m2install(),
                     p.layout(),
                     Set.of(),
-                    p.jdkSpec());
+                    p.jdkSpec(),
+                    p.nodeSpec());
             return build.withProject(resolved);
         } catch (Exception e) {
             return build;

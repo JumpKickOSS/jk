@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
@@ -59,8 +60,8 @@ public final class CompileSupport {
     }
 
     /**
-     * A workspace root that carries no sources: it coordinates members and compiles, tests and
-     * packages nothing itself.
+     * A workspace root that carries no sources, or a dedicated node module: it compiles, tests and
+     * packages nothing on the JVM itself.
      *
      * <p>One answer, because two planners ask it and a disagreement is a broken plan rather than a
      * wrong number. {@code coreBuilder} stops such a unit after its build logic, and {@code
@@ -68,7 +69,8 @@ public final class CompileSupport {
      * package-jar} that is not there — the same reason it returns early for {@code jk compile}.
      */
     public static boolean coordinatorOnly(JkBuild project, Path projectDir) {
-        return project.isWorkspaceRoot() && !hasSources(projectDir);
+        return (project.isWorkspaceRoot() && !hasSources(projectDir))
+                || NodeShape.isNodeModule(project.project(), projectDir);
     }
 
     /** Whether this project uses the flat ({@code src/}/{@code test/}) layout. */

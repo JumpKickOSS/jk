@@ -136,6 +136,17 @@ public record JkBuild(
         return application != null;
     }
 
+    /** The {@code [node]} table; {@link NodeTable#EMPTY} when it is absent. */
+    public NodeTable node() {
+        NodeTable node = build().node();
+        return node == null ? NodeTable.EMPTY : node;
+    }
+
+    /** Whether the manifest writes a {@code [node]} table, empty or not. */
+    public boolean declaresNodeTable() {
+        return build().node() != null;
+    }
+
     public Optional<Application> applicationOpt() {
         return Optional.ofNullable(application);
     }

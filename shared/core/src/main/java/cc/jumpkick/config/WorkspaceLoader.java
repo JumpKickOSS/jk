@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -123,7 +124,9 @@ public final class WorkspaceLoader {
                         + workspaceRoot
                         + "`.");
             }
-            modules.put(moduleDir, inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root));
+            JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root);
+            NodeShape.check(member, moduleDir);
+            modules.put(moduleDir, member);
         }
         if (!bad.isEmpty()) {
             throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
