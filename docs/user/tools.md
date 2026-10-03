@@ -44,12 +44,15 @@ not perform tool installs.
 ## Build tools
 
 The same verb installs the **build-tool distributions** jk provisions for itself — Kotlin
-(for `.kt` sources and `.kts` build logic), Maven and Gradle (for `jk mvn` / `jk gradle`):
+(for `.kt` sources and `.kts` build logic), Maven and Gradle (for `jk mvn` / `jk gradle`), Node
+and its package managers pnpm, Yarn (Berry only) and bun:
 
 ```bash
 jk install kotlin:latest        # the version jk would provision on demand
 jk tool install kotlin:2.4.10   # a specific one
 jk tool install maven:3.9.9
+jk tool install node:24         # the newest 24.x; node:lts, node:lts/krypton, node:24.21.0
+jk tool install pnpm:latest     # the registry's newest
 jk tool list                    # build tools, then CLI tools
 jk tool uninstall kotlin:2.4.10 # version required — several may be installed
 jk tool dir                     # $JK_STORE_DIR/tools
@@ -67,6 +70,10 @@ download instead of linking a host install. A distribution no published checksum
 accepts that one download — the same consent `jk mvn` takes: the archive installs, its SHA-256
 is recorded as `tools/<tool>/<version>.accepted.sha256`, and every later download of that version
 verifies against the record ([Migration](migration.md)).
+
+Node is verified against the `SHASUMS256.txt` nodejs.org publishes for each release; pnpm, Yarn
+and bun against the npm registry's `dist.integrity`. Neither ever needs `--accept-unverified-tool`.
+Where they come from is set in `~/.jk/config.toml` ([Config § Node sources](config.md#node-sources)).
 
 ## Lint is a build step, not a tool
 

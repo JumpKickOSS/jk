@@ -67,15 +67,26 @@ public final class MiseProbe implements LocalToolProbe {
         return hits;
     }
 
+    /** The variable naming the XDG data directory version managers install under. */
+    public static final String DATA_HOME_ENV = "XDG_DATA_HOME";
+
     /**
      * Resolve mise's data dir per <a href="https://mise.jdx.dev/configuration.html">mise's config
      * docs</a>.
      */
-    static Path resolveDataDir(Function<String, @Nullable String> env, String userHome) {
+    public static Path resolveDataDir(Function<String, @Nullable String> env, String userHome) {
         String miseData = env.apply("MISE_DATA_DIR");
         if (miseData != null && !miseData.isBlank()) return Path.of(miseData);
-        String xdg = env.apply("XDG_DATA_HOME");
-        if (xdg != null && !xdg.isBlank()) return Path.of(xdg, "mise");
-        return Path.of(userHome, ".local", "share", "mise");
+        return xdgDataHome(env, userHome).resolve("mise");
+    }
+
+    /**
+     * The XDG data directory mise and fnm keep their installs under: {@value #DATA_HOME_ENV}, else
+     * {@code ~/.local/share}.
+     */
+    public static Path xdgDataHome(Function<String, @Nullable String> env, String userHome) {
+        String xdg = env.apply(DATA_HOME_ENV);
+        if (xdg != null && !xdg.isBlank()) return Path.of(xdg);
+        return Path.of(userHome, ".local", "share");
     }
 }

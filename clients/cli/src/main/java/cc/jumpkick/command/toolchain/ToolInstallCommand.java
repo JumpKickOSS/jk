@@ -104,7 +104,8 @@ public final class ToolInstallCommand implements CliCommand {
         return List.of(Param.of(
                 "target",
                 Arity.ZERO_OR_ONE,
-                "Build tool (" + BuildTool.slugs() + ", optionally :<version>),\n"
+                "Build tool, optionally :<version>:\n"
+                        + BuildTool.slugs() + ";\n"
                         + "catalog name, Maven coordinate spec (g:a[:version|@selector]),\n"
                         + "script/jar file, project directory, or git URL. Omit to\n"
                         + "install the current jk.toml project."));

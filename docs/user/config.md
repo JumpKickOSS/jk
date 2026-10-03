@@ -144,6 +144,20 @@ wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.
 in its own processes unless you set that property yourself. `--offline` still refuses every
 request before any proxy is consulted.
 
+## Node sources
+
+Node distributions come from `https://nodejs.org/dist/` and pnpm, Yarn and bun from
+`https://registry.npmjs.org/` unless a mirror is set:
+
+```toml
+# ~/.jk/config.toml
+[node]
+dist-mirror = "https://nexus.corp/repository/nodejs-dist/"   # laid out as nodejs.org/dist
+registry    = "https://nexus.corp/repository/npm-all/"
+```
+
+`JK_NODE_DIST_MIRROR` and `JK_NODE_REGISTRY` override the file.
+
 ## Other env
 
 Every boolean jk reads — from a `JK_*` variable, from `CI`, or from a quoted value in
