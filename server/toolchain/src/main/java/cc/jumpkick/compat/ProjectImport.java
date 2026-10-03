@@ -2,10 +2,13 @@
 package cc.jumpkick.compat;
 
 import cc.jumpkick.gradle.GradleBuildImport;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.DeclaredPins;
+import cc.jumpkick.mvn.FrontendCollector;
+import cc.jumpkick.mvn.FrontendFiles;
 import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.util.MarkdownReports;
 import cc.jumpkick.util.OwnerOnlyFiles;
@@ -58,6 +61,7 @@ public final class ProjectImport {
             @Nullable Path baseDir,
             @Nullable Path tmpDir,
             boolean force,
+            boolean dryRun,
             @Nullable Path report,
             Consumer<String> progress,
             PinRaise raise) {
@@ -69,12 +73,20 @@ public final class ProjectImport {
             JkBuild root;
             Map<String, JkBuild> modules = new LinkedHashMap<>();
             ImportReport importReport;
+            FrontendFiles frontend = FrontendFiles.NONE;
 
             if (filename.endsWith("pom.xml")) {
-                PomImporter.WorkspaceImportResult result = poms.importWorkspace(source);
+                FrontendCollector frontends = new FrontendCollector();
+                PomImporter.WorkspaceImportResult result;
+                try {
+                    result = poms.frontends(frontends).importWorkspace(source);
+                } finally {
+                    poms.frontends(FrontendCollector.OFF);
+                }
                 root = result.root();
                 modules.putAll(result.modules());
                 importReport = DeclaredPins.check(root, modules, result.report(), poms);
+                frontend = frontends.files();
             } else if (GradleBuildImport.isGradleSource(filename)) {
                 GradleBuildImport.Result result = gradle.importBuild(source, progress);
                 root = result.root();
@@ -90,22 +102,36 @@ public final class ProjectImport {
             for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
                 manifests.put(effectiveBaseDir.resolve(e.getKey()).resolve(ManifestPaths.MANIFEST), e.getValue());
             }
-            if (!force) {
+            if (!force && !dryRun) {
                 String refusal = overwriteRefusal(manifests.keySet(), effectiveBaseDir);
                 if (refusal != null) return new Outcome(Exit.CANT_CREATE, 0, refusal, List.of());
             }
             List<Path> wrote = new ArrayList<>();
-            for (Map.Entry<Path, JkBuild> e : manifests.entrySet()) {
-                Path dir = e.getKey().getParent();
-                if (dir != null) Files.createDirectories(dir);
-                Files.writeString(e.getKey(), JkBuildRenderer.render(e.getValue()), StandardCharsets.UTF_8);
-                wrote.add(e.getKey());
+            if (dryRun) {
+                importReport = dryRun(importReport, manifests.keySet(), frontend, effectiveBaseDir);
+                for (ImportReport.Issue issue : importReport.issues()) progress.accept(issue.message());
+            } else {
+                for (FrontendFiles.Move move : frontend.moves()) {
+                    Path dir = move.to().getParent();
+                    if (dir != null) Files.createDirectories(dir);
+                    Files.move(move.from(), move.to());
+                    pruneEmpty(move.from().getParent(), effectiveBaseDir);
+                }
+                for (Map.Entry<Path, JkBuild> e : manifests.entrySet()) {
+                    Path dir = e.getKey().getParent();
+                    if (dir != null) Files.createDirectories(dir);
+                    Files.writeString(e.getKey(), JkBuildRenderer.render(e.getValue()), StandardCharsets.UTF_8);
+                    wrote.add(e.getKey());
+                }
+                for (Map.Entry<Path, String> e : frontend.rewrites().entrySet()) {
+                    Files.writeString(e.getKey(), e.getValue(), StandardCharsets.UTF_8);
+                    wrote.add(e.getKey());
+                }
+                importReport = raised(
+                        importReport,
+                        raise,
+                        Objects.requireNonNull(out.toAbsolutePath().getParent()));
             }
-
-            importReport = raised(
-                    importReport,
-                    raise,
-                    Objects.requireNonNull(out.toAbsolutePath().getParent()));
 
             Path reportTarget = report;
             if (reportTarget == null && tmpDir != null) {
@@ -129,6 +155,42 @@ public final class ProjectImport {
         } catch (IOException e) {
             return new Outcome(1, 0, e.getMessage(), List.of());
         }
+    }
+
+    /** Delete {@code dir} and its parents up to {@code stop} while a move left them empty. */
+    private static void pruneEmpty(@Nullable Path dir, Path stop) throws IOException {
+        Path base = stop.toAbsolutePath().normalize();
+        for (Path d = dir;
+                d != null
+                        && d.toAbsolutePath().normalize().startsWith(base)
+                        && !d.toAbsolutePath().normalize().equals(base);
+                d = d.getParent()) {
+            boolean[] empty = {true};
+            PathUtil.forEachChild(d, (child, attrs) -> empty[0] = false);
+            if (!empty[0]) return;
+            Files.delete(d);
+        }
+    }
+
+    /** {@code report} with what a dry run would have written, moved and rewritten, and that it did none of it. */
+    private static ImportReport dryRun(
+            ImportReport report, Collection<Path> manifests, FrontendFiles frontend, Path baseDir) {
+        ImportReport.Builder out = ImportReport.builder();
+        for (ImportReport.Issue issue : report.issues()) {
+            if (issue.severity() == ImportReport.Severity.ERROR) out.error(issue.message());
+            else out.warning(issue.message());
+        }
+        for (Path m : manifests) out.warning("dry run: would write `" + relative(baseDir, m) + "`");
+        for (Path r : frontend.rewrites().keySet())
+            out.warning("dry run: would rewrite `" + relative(baseDir, r) + "`");
+        out.warning("dry run: nothing was written or moved");
+        return out.build();
+    }
+
+    private static String relative(Path baseDir, Path p) {
+        Path a = p.toAbsolutePath().normalize();
+        Path b = baseDir.toAbsolutePath().normalize();
+        return (a.startsWith(b) ? b.relativize(a).toString() : a.toString()).replace('\\', '/');
     }
 
     /**

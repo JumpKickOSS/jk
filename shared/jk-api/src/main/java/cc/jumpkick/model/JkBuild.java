@@ -485,6 +485,32 @@ public record JkBuild(
         return b.build();
     }
 
+    /** Same build with a replacement {@code [workspace]} block. */
+    public JkBuild withWorkspace(@Nullable Workspace workspace) {
+        if (Objects.equals(workspace, this.workspace)) return this;
+        Builder b = builder(project)
+                .dependencies(dependencies)
+                .repositories(repositories)
+                .profiles(profiles)
+                .features(features)
+                .workspace(workspace)
+                .manifest(manifest)
+                .plugins(plugins)
+                .application(application)
+                .nativeConfig(nativeConfig)
+                .build(build)
+                .format(format)
+                .variants(variants)
+                .install(install)
+                .publish(publish)
+                .image(image)
+                .library(library);
+        for (PluginConfig config : pluginConfigs.values()) {
+            b.pluginConfig(config);
+        }
+        return b.build();
+    }
+
     /** Mutable accumulator for {@link JkBuild}. */
     public static final class Builder {
         private final Project project;

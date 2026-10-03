@@ -29,6 +29,7 @@ class ProjectImportTest {
                 root,
                 null,
                 false,
+                false,
                 null,
                 note -> {},
                 ProjectImport.PinRaise.NONE);
@@ -58,6 +59,7 @@ class ProjectImportTest {
                 root,
                 null,
                 true,
+                false,
                 root.resolve("report.md"),
                 note -> {},
                 ProjectImport.PinRaise.NONE);

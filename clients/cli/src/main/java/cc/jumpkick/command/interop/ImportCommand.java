@@ -59,7 +59,8 @@ public final class ImportCommand implements CliCommand {
                 Opt.value("<file>", "Path to write the import report.", "--report"),
                 Opt.value("<id>", "Activate Maven profiles by id (mvn -P).", "-P", "--activate-profiles")
                         .repeat(),
-                Opt.flag("Overwrite existing jk.toml.", "--overwrite"));
+                Opt.flag("Overwrite existing jk.toml.", "--overwrite"),
+                Opt.flag("Print the plan; write and move nothing.", "--dry-run"));
     }
 
     @Override
@@ -72,6 +73,7 @@ public final class ImportCommand implements CliCommand {
         Path source =
                 in.positionals().isEmpty() ? null : Path.of(in.positionals().get(0));
         boolean force = in.isSet("overwrite");
+        boolean dryRun = in.isSet("dry-run");
         GlobalOptions global = GlobalOptions.from(in);
         Path baseDir = global.workingDir();
         // Every path the command line names is the user's, so a relative one is read against the
@@ -108,7 +110,7 @@ public final class ImportCommand implements CliCommand {
 
         Path projectDir = Objects.requireNonNull(source.toAbsolutePath().getParent(), "project dir");
         Path target = out != null ? out : projectDir.resolve(ManifestPaths.MANIFEST);
-        if (Files.exists(target) && !force) {
+        if (Files.exists(target) && !force && !dryRun) {
             CommandWedge.printFail(
                     "Import", "refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (pass --overwrite).");
             return Exit.CANT_CREATE;
@@ -139,6 +141,7 @@ public final class ImportCommand implements CliCommand {
                             projectDir,
                             JkDirs.tmp(),
                             force,
+                            dryRun,
                             reportPath,
                             cache,
                             profiles),
