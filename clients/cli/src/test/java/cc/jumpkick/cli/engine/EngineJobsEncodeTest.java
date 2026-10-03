@@ -59,11 +59,19 @@ class EngineJobsEncodeTest {
         TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
 
         String json = new SingleBuildRequest(
-                        "/proj", "/cache", null, 0, null, false, false, false, false, null, widened)
+                        "/proj", "/cache", null, 0, null, false, false, false, false, null, widened, null, false)
                 .encode();
 
         assertThat(SingleBuildRequest.decode(json).selection()).isEqualTo(widened);
-        assertThat(new SingleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false, null, null)
+        SingleBuildRequest flagged = SingleBuildRequest.decode(new SingleBuildRequest(
+                        "/proj", "/cache", null, 0, null, false, false, false, false, null, widened, "report", true)
+                .encode());
+        assertThat(flagged.testFailures())
+                .as("a single build carries --test-failures")
+                .isEqualTo("report");
+        assertThat(flagged.skipNode()).as("and --skip-node").isTrue();
+        assertThat(new SingleBuildRequest(
+                                "/proj", "/cache", null, 0, null, false, false, false, false, null, null, null, false)
                         .encode())
                 .doesNotContain("allSuites");
     }
@@ -96,7 +104,9 @@ class EngineJobsEncodeTest {
                                 false,
                                 false,
                                 "/jdks/graalvm-25",
-                                null)
+                                null,
+                                null,
+                                false)
                         .encode())
                 .contains("\"graalHome\":\"/jdks/graalvm-25\"");
     }

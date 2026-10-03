@@ -43,7 +43,7 @@ class SpringBootPlanTest {
         // The AOT step output is declared even when the step is not: its absence is its own
         // fingerprint, so turning AOT on later re-packages.
         assertThat(arrayOf(packager, "inputs"))
-                .containsExactly("classes", "runtime-entries", "step:spring-aot", "config");
+                .containsExactly("classes", "runtime-entries", "step:spring-aot", "step:node-classpath", "config");
         assertThat(lines).noneMatch(l -> l.contains("\"t\":\"command\""));
     }
 

@@ -157,6 +157,12 @@ module that depends on a node module carries its output as web content under `we
 a jar in `WEB-INF/lib`. A node module whose framework produces a server (`[node] start`) runs with
 `jk run` ([Run](run.md#node-modules)).
 
+A node build can also live inside a JVM module, in `src/main/node` (or `[node] dir`). Its output is
+merged into that module's jar under `[node] classpath-root` (`static` by default), a Boot jar
+included, or, in a `[war]` module, into the war under `[node] webapp-root`, as frontend-maven-plugin
+writing into `target/classes/static` or `src/main/webapp` would. Nothing is written into `src/`. The
+dedicated node module stays the preferred shape ([Node.js](node.md)).
+
 ## Multi-release jars
 
 ```toml

@@ -86,6 +86,7 @@ final class CorePlan {
         if (workspaceNoSources) return workspaceRootPlan(b, cx);
         addCompile(b, cx, s);
         if (in.compileOnly()) return compileOnlyPlan(b, cx, s);
+        if (nodeKind == NodeShape.Kind.SIDE_BY_SIDE) PlannerNode.planSideBySide(b, nodeUnit());
         boolean skipJUnit = PlannerResources.skipJUnit(in);
         addTestsAndPackaging(b, cx, s, skipJUnit);
         return terminal(b, cx, skipJUnit);
@@ -344,7 +345,8 @@ final class CorePlan {
                 plugins == null ? null : plugins.packager(),
                 pluginDecls,
                 variantSecrets,
-                PlannerVersions.declared(parsedBuild));
+                PlannerVersions.declared(parsedBuild),
+                nodeKind == NodeShape.Kind.SIDE_BY_SIDE && !in.testOnly());
         Task writeStamp = PlannerPackage.writeStampStep(cx);
         // Kotlin's freshness companion (cf. write-stamp for Java). Mirrors the
         // input set compile-kotlin checked: Kotlin sources, plus Java sources in
@@ -391,11 +393,7 @@ final class CorePlan {
      * invocation root.
      */
     private BuildPlan.Builder nodeModulePlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
-        JkBuild project = Objects.requireNonNull(parsedBuild, "node module manifest");
-        Path nodeDir = Objects.requireNonNull(NodeShape.nodeDir(project, in.dir()), "node directory");
-        NodeProject node = NodeProject.infer(nodeDir, project.node());
-        List<String> leaves =
-                new ArrayList<>(PlannerNode.plan(b, new PlannerNode.Unit(in, project, in.dir(), nodeDir, node)));
+        List<String> leaves = new ArrayList<>(PlannerNode.plan(b, nodeUnit()));
         String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
         if (guardTerminal != null) leaves.add(guardTerminal);
         if (leaves.size() == 1) return b.terminal(leaves.get(0));
@@ -409,6 +407,13 @@ final class CorePlan {
                 })
                 .build());
         return b.terminal(BuildPlanner.DELIVER_JOIN);
+    }
+
+    /** The module's node build: a dedicated node module's, or the one beside its JVM sources. */
+    private PlannerNode.Unit nodeUnit() {
+        JkBuild project = Objects.requireNonNull(parsedBuild, "node build manifest");
+        Path nodeDir = Objects.requireNonNull(NodeShape.nodeDir(project, in.dir()), "node directory");
+        return new PlannerNode.Unit(in, project, in.dir(), nodeDir, NodeProject.infer(nodeDir, project.node()));
     }
 
     private BuildPlan.Builder workspaceRootPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {

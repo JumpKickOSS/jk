@@ -68,6 +68,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 ### Ship
 
 - [Packaging](packaging.md)
+- [Node.js](node.md) — `node =`, node modules and `src/main/node`, steps, packaging, registries
 - [Native images](native.md)
 - [Container images](images.md)
 - [Publish and supply chain](publish.md)

@@ -10,17 +10,20 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.build.In;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Where a node build's output goes: into its module's resource jar under the classpath root, which
- * a JVM dependant puts on its classpath, or into a war dependant's root under the webapp root.
+ * a JVM dependant puts on its classpath, or into a war dependant's root under the webapp root. A
+ * JVM module's own node build goes into that module's jar or war.
  */
 final class NodePackaging {
 
@@ -67,6 +70,11 @@ final class NodePackaging {
      */
     static List<WebContent> webContent(Path moduleDir, JkBuild project) throws IOException {
         List<WebContent> out = new ArrayList<>();
+        if (NodeShape.kind(project, moduleDir) == NodeShape.Kind.SIDE_BY_SIDE) {
+            Path own = NodeShape.outputDir(project, moduleDir);
+            String root = project.node().webappRoot();
+            if (own != null) out.add(new WebContent(own, root == null ? "" : trim(root)));
+        }
         for (Map.Entry<Path, JkBuild> sibling : WorkspaceClasspath.closureSiblings(
                         moduleDir, project, WorkspaceClasspath.RUNTIME_SCOPES)
                 .entrySet()) {
@@ -93,6 +101,49 @@ final class NodePackaging {
                     .normalize());
         }
         return jars;
+    }
+
+    /**
+     * Where a JVM module's own node build ({@code src/main/node}) is staged for its packaging: the
+     * output under the classpath root, merged into the module's jar like its classes. {@code null}
+     * for a module without one, and for a {@code [war]} module, whose war takes the output instead.
+     */
+    static @Nullable Path sideBySideStage(@Nullable JkBuild project, BuildLayout layout) {
+        if (project == null || project.build().war() != null) return null;
+        if (NodeShape.kind(project, layout.moduleRoot()) != NodeShape.Kind.SIDE_BY_SIDE) return null;
+        return PluginBuild.taskScratch(layout, In.NODE_CLASSPATH);
+    }
+
+    /** {@link #sideBySideStage} when it has been staged, for the packaged dirs. */
+    static List<Path> packagedRoot(@Nullable JkBuild project, BuildLayout layout) {
+        Path stage = sideBySideStage(project, layout);
+        return stage != null && Files.isDirectory(stage) ? List.of(stage) : List.of();
+    }
+
+    /** The root a JVM module's own node output sits under in its jar: {@code [node] classpath-root}, else {@value #DEFAULT_CLASSPATH_ROOT}. */
+    static String sideBySideRoot(JkBuild project) {
+        String declared = project.node().classpathRoot();
+        return declared == null ? DEFAULT_CLASSPATH_ROOT : trim(declared);
+    }
+
+    /**
+     * Make {@code stage} hold exactly {@code out}'s files under {@code root}: what is already the same
+     * is left alone, what the output no longer has is removed.
+     */
+    static void stage(Path out, Path stage, String root) throws IOException {
+        Path into = root.isEmpty() ? stage : stage.resolve(root);
+        if (Files.isDirectory(stage)) {
+            List<Path> stale = new ArrayList<>();
+            try (Stream<Path> files = Files.find(stage, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
+                files.filter(f -> !f.startsWith(into)
+                                || !Files.isRegularFile(
+                                        out.resolve(into.relativize(f).toString())))
+                        .forEach(stale::add);
+            }
+            for (Path f : stale) Files.deleteIfExists(f);
+        }
+        Files.createDirectories(into);
+        PathUtil.copyTree(out, into);
     }
 
     /** Write {@code jar} with {@code out}'s files under {@code root}, staged in {@code stage}. */
