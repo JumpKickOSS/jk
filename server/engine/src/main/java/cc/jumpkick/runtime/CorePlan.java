@@ -9,6 +9,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.VariantApply;
@@ -58,6 +59,7 @@ final class CorePlan {
 
     private ActivePlugins.@Nullable Declared plugins;
     private @Nullable PluginDeclarations pluginDecls;
+    private boolean nodeBuild;
 
     CorePlan(BuildPlanner.Inputs in, boolean forceRebuild) {
         this.in = in;
@@ -77,6 +79,10 @@ final class CorePlan {
                 .addTask(s.parseBuild())
                 .addTask(s.syncDeps())
                 .addTask(s.ensureJdk());
+        if (nodeBuild) {
+            // Nothing requires it until the node steps do; kept so the plan provisions Node.
+            b.addTask(PlannerNodeSetup.ensureNodeStep()).alsoKeep(TaskNames.ENSURE_NODE);
+        }
         if (workspaceNoSources) return workspaceRootPlan(b, cx);
         addCompile(b, cx, s);
         if (in.compileOnly()) return compileOnlyPlan(b, cx, s);
@@ -119,6 +125,7 @@ final class CorePlan {
                 useJava = true;
             }
             compactLayout = CompileSupport.isSimpleLayout(project, in.dir());
+            nodeBuild = NodeShape.kind(jkBuild, in.dir()) != NodeShape.Kind.NONE;
             // Workspace root with no source tree: nothing to compile or package.
             if (CompileSupport.coordinatorOnly(jkBuild, in.dir())) {
                 useJava = false;

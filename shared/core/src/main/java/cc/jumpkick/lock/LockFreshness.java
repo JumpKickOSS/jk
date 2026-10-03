@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,6 +58,8 @@ public final class LockFreshness {
      *   <li>Missing, blank, or invalid digest: <strong>always stale</strong> (force re-lock to stamp).
      *   <li>Digest clean but the manifests build a native image and the lock carries no
      *       {@code [native]} pin: stale (re-lock to stamp the pin).
+     *   <li>Digest clean but a manifest declares {@code node} and the lock carries no {@code [node]}
+     *       pin: stale.
      * </ul>
      *
      * <p>Both the project {@code jk.toml} and the lock must exist for a non-stale answer; missing
@@ -74,7 +79,7 @@ public final class LockFreshness {
             Path owner = LockPaths.lockOwnerDir(dir);
             String live = LockManifestDigest.compute(owner);
             if (!stored.equalsIgnoreCase(live)) return true;
-            return missingNativePin(owner, lock);
+            return missingNativePin(owner, lock) || missingNodePin(owner, lock);
         } catch (Exception e) {
             return true; // unreadable lock / digest failure → re-lock
         }
@@ -92,6 +97,19 @@ public final class LockFreshness {
         } catch (IllegalStateException conflictingSelectors) {
             return true;
         }
+    }
+
+    /** True when a manifest under {@code owner} declares a Node.js version and {@code lock} pins none. */
+    private static boolean missingNodePin(Path owner, Lockfile lock) throws IOException {
+        if (lock.node() != null) return false;
+        Path dir = owner.toAbsolutePath().normalize();
+        JkBuild root = JkBuildParser.parseLocal(ManifestPaths.manifestIn(dir));
+        if (!root.project().nodeSpec().isEmpty()) return true;
+        if (!root.isWorkspaceRoot()) return false;
+        for (JkBuild member : WorkspaceLoader.loadModules(dir, root).values()) {
+            if (!member.project().nodeSpec().isEmpty()) return true;
+        }
+        return false;
     }
 
     /** {@code true} when {@code hex} is a 64-char hex SHA-256 (case-insensitive). */

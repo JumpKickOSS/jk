@@ -13,7 +13,9 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
@@ -46,6 +48,7 @@ public final class LockfileReader {
             "manifests-sha256",
             "module",
             "native",
+            "node",
             "plugin",
             "project-id",
             "resolution-algorithm",
@@ -250,7 +253,8 @@ public final class LockfileReader {
                 manifestsSha,
                 projectId,
                 toNativeMetadata(tableOrFail(result, "native", origin)),
-                toWriterBuild(result));
+                toWriterBuild(result),
+                toNodePin(tableOrFail(result, "node", origin)));
     }
 
     /**
@@ -330,6 +334,33 @@ public final class LockfileReader {
         if (version == null || version.isBlank()) return null;
         String checksum = table.getString("checksum");
         return new Lockfile.NativeMetadata(version, checksum == null || checksum.isBlank() ? null : checksum);
+    }
+
+    /** The keys a {@code [node]} table holds; anything else is refused. */
+    private static final Set<String> NODE_KEYS = Set.of("version", "npm", "package-manager", "sha256");
+
+    /** The {@code [node]} pin, or null when the lock has none. */
+    private static @Nullable NodePin toNodePin(@Nullable LockToml table) {
+        if (table == null) return null;
+        Set<String> unknown = new TreeSet<>(table.keySet());
+        unknown.removeAll(NODE_KEYS);
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "[node] has unknown key(s) " + unknown + " — re-run `jk lock` to rewrite it");
+        }
+        String version = table.getString("version");
+        if (version == null || version.isBlank()) {
+            throw new IllegalArgumentException("[node] names no version — re-run `jk lock`");
+        }
+        Map<String, String> shas = new TreeMap<>();
+        LockToml sha256 = table.getTable("sha256");
+        if (sha256 != null) {
+            for (String platform : sha256.keySet()) {
+                String hex = sha256.getString(platform);
+                if (hex != null && !hex.isBlank()) shas.put(platform, hex.trim());
+            }
+        }
+        return new NodePin(version.trim(), table.getString("npm"), table.getString("package-manager"), shas);
     }
 
     private static Lockfile.Artifact toArtifact(LockToml table) {

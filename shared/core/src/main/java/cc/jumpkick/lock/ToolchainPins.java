@@ -7,13 +7,16 @@ import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The workspace lock's {@code [jdk]} / {@code [graal]} toolchain pins, read by line scan — not
+ * The workspace lock's {@code [jdk]} / {@code [graal]} toolchain pins and {@code [node]} version, read by line scan — not
  * {@link LockfileReader} — because the lockfile can be large and callers include the per-prompt
  * shell hook. A table naming neither a vendor nor a version reads as absent.
  */
-public record ToolchainPins(@Nullable JdkPin jdk, @Nullable GraalPin graal) {
+public record ToolchainPins(
+        @Nullable JdkPin jdk,
+        @Nullable GraalPin graal,
+        @Nullable String node) {
 
-    public static final ToolchainPins NONE = new ToolchainPins(null, null);
+    public static final ToolchainPins NONE = new ToolchainPins(null, null, null);
 
     private static final String[] FIELDS = {
         "suggested-vendor", "suggested-version", "required-vendor", "required-version"
@@ -23,13 +26,16 @@ public record ToolchainPins(@Nullable JdkPin jdk, @Nullable GraalPin graal) {
     public static ToolchainPins scan(Path projectDir) {
         Path lockPath = LockPaths.lockFile(projectDir);
         if (!Files.isRegularFile(lockPath)) return NONE;
-        String[] keys = new String[FIELDS.length * 2];
+        String[] keys = new String[FIELDS.length * 2 + 1];
         for (int i = 0; i < FIELDS.length; i++) {
             keys[i] = "jdk." + FIELDS[i];
             keys[FIELDS.length + i] = "graal." + FIELDS[i];
         }
+        keys[FIELDS.length * 2] = "node.version";
         TomlScan scan = TomlScan.scanScalarHead(lockPath, keys);
-        return new ToolchainPins(pin(scan, "jdk", JdkPin::new), pin(scan, "graal", GraalPin::new));
+        String node = ToolchainPin.blankToEmpty(scan.get("node.version"));
+        return new ToolchainPins(
+                pin(scan, "jdk", JdkPin::new), pin(scan, "graal", GraalPin::new), node.isEmpty() ? null : node);
     }
 
     private static <T extends ToolchainPin> @Nullable T pin(TomlScan scan, String table, Pins<T> factory) {

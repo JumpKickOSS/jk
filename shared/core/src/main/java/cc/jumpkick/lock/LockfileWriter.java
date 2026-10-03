@@ -162,6 +162,7 @@ public final class LockfileWriter {
         // The [[artifact]] rows below close whatever table is open.
         writeToolchain(out, "jdk", lockfile.jdk());
         writeToolchain(out, "graal", lockfile.graal());
+        writeNode(out, lockfile.node());
         Lockfile.NativeMetadata pin = lockfile.nativeMetadata();
         if (pin != null) {
             out.append("\n[native]\n");
@@ -319,6 +320,22 @@ public final class LockfileWriter {
         field(out, "suggested-version", pin.suggestedVersion());
         field(out, "required-vendor", pin.requiredVendor());
         field(out, "required-version", pin.requiredVersion());
+    }
+
+    /** The {@code [node]} table; each platform's sha is a dotted key, which the lock's row grammar reads. */
+    private static void writeNode(StringBuilder out, @Nullable NodePin pin) {
+        if (pin == null) return;
+        out.append("\n[node]\n");
+        field(out, "version", pin.version());
+        field(out, "npm", pin.npm());
+        field(out, "package-manager", pin.packageManager());
+        for (var sha : pin.sha256().entrySet()) {
+            out.append("sha256.")
+                    .append(sha.getKey())
+                    .append(" = ")
+                    .append(quote(sha.getValue()))
+                    .append('\n');
+        }
     }
 
     private static void field(StringBuilder out, String key, @Nullable String value) {

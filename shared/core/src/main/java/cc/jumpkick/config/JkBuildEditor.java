@@ -752,6 +752,36 @@ public final class JkBuildEditor {
     }
 
     /**
+     * Rewrite the value of {@code key} in the table {@code [tablePath]} in place with {@code value},
+     * already TOML-encoded as for {@link #setRootScalar}, keeping the author's spacing and any
+     * trailing comment.
+     *
+     * @throws IllegalStateException when the table or the key is absent
+     */
+    public static String setTableScalar(String content, String tablePath, String key, String value) {
+        List<String> lines = splitPreservingTerminator(content);
+        Pattern header = Pattern.compile("^\\s*\\[" + Pattern.quote(tablePath) + "]\\s*$");
+        int headerLine = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (header.matcher(lines.get(i)).matches()) {
+                headerLine = i;
+                break;
+            }
+        }
+        if (headerLine < 0) throw new IllegalStateException("[" + tablePath + "] not found in jk.toml");
+        int end = endOfTable(lines, headerLine);
+        Pattern entry = Pattern.compile("^([ \\t]*)" + Pattern.quote(key) + "([ \\t]*=[ \\t]*)");
+        for (int i = headerLine + 1; i < end; i++) {
+            Matcher m = entry.matcher(lines.get(i));
+            if (!m.find()) continue;
+            String comment = trailingComment(lines.get(i).substring(m.end()));
+            lines.set(i, m.group() + value + comment);
+            return validated(join(lines));
+        }
+        throw new IllegalStateException("[" + tablePath + "] has no `" + key + "` to rewrite");
+    }
+
+    /**
      * Set a root-level scalar key, creating it when absent and replacing its value when present.
      *
      * <p>Insertion position is the whole point: a bare key written after a {@code [table]} header

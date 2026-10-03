@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -78,7 +79,12 @@ class LockRowParserTest {
                 "ca15c7a42c4048bd5320cd9280fcd1734c58322e432462c0a56c56ebb4bdd2db",
                 "6cae4ae05a1df8b09b0db36dad722df4",
                 new Lockfile.NativeMetadata("0.3.16", "sha256:0123"),
-                null);
+                null,
+                new NodePin(
+                        "24.21.0",
+                        "11.6.0",
+                        "pnpm@10.18.1",
+                        Map.of("linux-x64", "a".repeat(64), "win-arm64", "b".repeat(64))));
     }
 
     @Test
