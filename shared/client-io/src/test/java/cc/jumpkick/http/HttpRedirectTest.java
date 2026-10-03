@@ -4,6 +4,7 @@ package cc.jumpkick.http;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.io.IOException;
 import java.net.URI;
@@ -12,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -166,6 +168,27 @@ class HttpRedirectTest {
         assertThat(Http.followable(URI.create("http://repo.example.com/a.jar"), secure))
                 .as("upgrading is fine")
                 .isTrue();
+    }
+
+    @Test
+    void a_client_s_origin_credential_rides_its_own_origin_and_never_a_redirect_s_other_one() throws Exception {
+        elsewhere.serve("/cdn/c.tgz", "pkg");
+        origin.redirect("/npm/c.tgz", elsewhere.base().resolve("/cdn/c.tgz"));
+        URI ours = origin.base();
+        Http http = http().withAuthorization(
+                        uri -> RepositorySpec.sameOrigin(ours, uri) ? Optional.of(TOKEN) : Optional.empty());
+
+        HttpResponse<byte[]> response = http.get(origin.base().resolve("/npm/c.tgz"));
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(origin.headersFor("/npm/c.tgz"))
+                .get()
+                .extracting(h -> h.get("Authorization"))
+                .isEqualTo(List.of(TOKEN));
+        assertThat(elsewhere.headersFor("/cdn/c.tgz"))
+                .get()
+                .extracting(h -> h.get("Authorization"))
+                .isNull();
     }
 
     /** Production's client, a short backoff. */

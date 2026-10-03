@@ -82,6 +82,7 @@ final class NodeKeys {
         inputs.put("node:", nodeToken);
         inputs.put("platform:", NodePlatform.host().key());
         inputs.put("install:", installOverride == null ? "frozen" : installOverride);
+        NodeNetwork.keyed().forEach((name, value) -> inputs.put("network:" + name, value));
         return keyed(TaskNames.NODE_INSTALL, nodeDir, inputs);
     }
 

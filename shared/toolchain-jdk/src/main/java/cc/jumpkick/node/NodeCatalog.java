@@ -43,7 +43,7 @@ public final class NodeCatalog {
     private Consumer<String> warn = s -> {};
 
     public NodeCatalog() {
-        this(new Http(), NodeSources.distBase(), JkDirs.store(), DEFAULT_TTL);
+        this(NodeSources.http(), NodeSources.distBase(), JkDirs.store(), DEFAULT_TTL);
     }
 
     public NodeCatalog(Http http, URI distBase, Path storeDir, Duration ttl) {

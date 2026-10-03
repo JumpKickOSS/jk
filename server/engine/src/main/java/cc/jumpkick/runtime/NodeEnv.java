@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,7 +36,8 @@ final class NodeEnv {
             NodeProject node,
             NodeHome home,
             Path moduleDir,
-            boolean production) {
+            boolean production)
+            throws IOException {
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("npm_config_cache", in.cache().resolve("npm").toString());
         // pnpm's own key; npm warns about every config it does not know.
@@ -44,7 +46,7 @@ final class NodeEnv {
                     "npm_config_store_dir", JkDirs.store().resolve("pnpm-store").toString());
         }
         vars.put("npm_config_update_notifier", "false");
-        vars.putAll(network());
+        vars.putAll(NodeNetwork.env(BuildLayout.moduleTargetDir(moduleDir).resolve("node")));
         vars.putAll(keyed(project, node, moduleDir, false));
         Map<String, String> env = new LinkedHashMap<>(
                 WorkerEnv.forModule(project.build().env(), moduleDir, BuildLayout.moduleTargetDir(moduleDir))
@@ -69,10 +71,5 @@ final class NodeEnv {
         vars.putAll(BuildEnv.nodeFromRequest(prefixes));
         if (production) vars.putIfAbsent("NODE_ENV", "production");
         return vars;
-    }
-
-    /** The registry, scopes and proxy the package managers reach the network with; none yet beyond the shell's. */
-    static Map<String, String> network() {
-        return Map.of();
     }
 }

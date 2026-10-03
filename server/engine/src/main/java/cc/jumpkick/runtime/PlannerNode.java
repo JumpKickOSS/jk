@@ -79,7 +79,7 @@ final class PlannerNode {
         }
 
         /** The environment a step's process starts with; {@code production} for a build. */
-        Map<String, String> env(NodeHome home, boolean production) {
+        Map<String, String> env(NodeHome home, boolean production) throws IOException {
             return NodeEnv.of(in, project, node, home, moduleDir, production);
         }
 
