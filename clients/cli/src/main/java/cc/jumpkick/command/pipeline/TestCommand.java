@@ -38,6 +38,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Profiles;
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -93,6 +94,7 @@ public final class TestCommand implements CliCommand {
         opts.add(CommonOpts.cacheDir());
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.keepGoing());
+        opts.add(CommonOpts.testFailures());
         opts.addAll(CommonOpts.moduleSelection(
                 Opt.flag("Ranked WIP tests (does not run)", "--affected"),
                 Opt.value("<git-ref>", "Ranked tests since ref (no run)", "--affected-since")));
@@ -152,6 +154,9 @@ public final class TestCommand implements CliCommand {
     /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
     boolean coverage;
 
+    @Nullable
+    TestFailureMode testFailures;
+
     private @Nullable CliSessionTranscript session;
 
     @Override
@@ -176,6 +181,7 @@ public final class TestCommand implements CliCommand {
             this.testSelection = resolveTestSelection(in);
             this.debugJvm = DebugAttach.fromFlag(in);
             this.coverage = in.isSet("coverage");
+            this.testFailures = CommonOpts.testFailuresValue(in, System::getenv);
         } catch (IllegalArgumentException e) {
             CommandWedge.printFail("Test", e.getMessage());
             return Exit.CONFIG;
@@ -186,7 +192,8 @@ public final class TestCommand implements CliCommand {
         SessionContext.install(SessionContext.current()
                 .withParallelTests(parallelTests)
                 .withTestSelection(testSelection)
-                .withCoverage(coverage));
+                .withCoverage(coverage)
+                .withTestFailures(testFailures));
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);
@@ -597,6 +604,12 @@ public final class TestCommand implements CliCommand {
     static String testSummary(TestSummary testResult, BuildPlanResult result, boolean servedFromCache) {
         if (testResult == null || testResult.total() == 0) return "No tests";
         long total = testResult.total();
+        if (!testResult.allPassed()) {
+            // A run that succeeded with failing tests is one whose failures are reported, not failing.
+            return Theme.colorize("Passed", Theme.active().focused()) + " with " + testResult.failed() + " of " + total
+                    + " test" + (total == 1 ? "" : "s")
+                    + " failing (reported, not failing: [test] failures = \"report\")";
+        }
         String passed = Theme.colorize("Passed", Theme.active().focused());
         return passed + " " + total + " test" + (total == 1 ? "" : "s")
                 + (servedFromCache ? " (served from cache)" : "");

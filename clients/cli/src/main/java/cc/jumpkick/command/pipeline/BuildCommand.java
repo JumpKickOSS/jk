@@ -35,6 +35,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -73,6 +74,7 @@ public final class BuildCommand implements CliCommand {
     public List<Opt> options() {
         List<Opt> opts = new ArrayList<>(PlanOptions.options());
         opts.add(CommonOpts.cacheDir());
+        opts.add(CommonOpts.testFailures());
         opts.add(CommonOpts.keepGoing());
         opts.add(Opt.flag("Package with JVM startup AOT cache", "--aot-cache"));
         opts.addAll(CommonOpts.moduleSelection());
@@ -138,8 +140,10 @@ public final class BuildCommand implements CliCommand {
         // Suite/tag widening rides the session exactly as `jk test`; the wire
         // adapters read it for both workspace and single-project requests.
         TestSelection testSelection;
+        TestFailureMode testFailures;
         try {
             testSelection = TestCommand.resolveTestSelection(in);
+            testFailures = CommonOpts.testFailuresValue(in, System::getenv);
         } catch (IllegalArgumentException e) {
             CommandWedge.printFail("Build", e.getMessage());
             return Exit.CONFIG;
@@ -155,8 +159,10 @@ public final class BuildCommand implements CliCommand {
         this.buildOpts.skipTests = planOpts.skipTests();
         this.jobs = planOpts.jobs();
         this.parallelTests = planOpts.parallelTests();
-        SessionContext.install(
-                SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
+        SessionContext.install(SessionContext.current()
+                .withParallelTests(parallelTests)
+                .withTestSelection(testSelection)
+                .withTestFailures(testFailures));
         Path startDir = global.workingDir();
         if (ProjectContext.require(startDir, "Build").isEmpty()) return Exit.CONFIG;
         // Variant selection (--release / --variant <dim>=<value>): rides the request as a compact

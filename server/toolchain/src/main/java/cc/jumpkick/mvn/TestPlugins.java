@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.TestJvm;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -43,9 +44,10 @@ final class TestPlugins {
             List<String> excludeClasses,
             List<String> excludeDependencies,
             @Nullable ClassSuite integration,
-            TestJvm jvm) {
+            TestJvm jvm,
+            TestFailureMode failures) {
         static final TestSettings NONE =
-                new TestSettings(List.of(), List.of(), List.of(), List.of(), null, TestJvm.EMPTY);
+                new TestSettings(List.of(), List.of(), List.of(), List.of(), null, TestJvm.EMPTY, TestFailureMode.FAIL);
     }
 
     private static final String SUREFIRE = "maven-surefire-plugin";
@@ -76,7 +78,32 @@ final class TestPlugins {
                 tags.excludeClasses(),
                 tags.excludeDependencies(),
                 integration,
-                jvm.toTestJvm());
+                jvm.toTestJvm(),
+                failures(model, report));
+    }
+
+    /**
+     * {@code report} when Maven would keep going past a failing test: {@code maven.test.failure.ignore}
+     * set to true, or Surefire's or Failsafe's {@code <testFailureIgnore>}. jk's mode covers every
+     * suite of the module, so a Failsafe-only setting is noted as widening to the unit tests.
+     */
+    static TestFailureMode failures(Model model, ImportReport.Builder report) {
+        boolean property = Boolean.parseBoolean(model.getProperties().getProperty("maven.test.failure.ignore"));
+        boolean surefire = ignoresFailures(model, SUREFIRE);
+        boolean failsafe = ignoresFailures(model, FAILSAFE);
+        if (!property && !surefire && !failsafe) return TestFailureMode.FAIL;
+        if (failsafe && !property && !surefire) {
+            report.warning("`maven-failsafe-plugin` `<testFailureIgnore>` is written as `[test] failures = \"report\"`,"
+                    + " which covers every suite of the module, unit tests included.");
+        }
+        return TestFailureMode.REPORT;
+    }
+
+    private static boolean ignoresFailures(Model model, String plugin) {
+        return PluginFacts.plugin(model, plugin)
+                .map(p -> PluginFacts.configurations(p).stream()
+                        .anyMatch(config -> Boolean.parseBoolean(PluginFacts.child(config, "testFailureIgnore"))))
+                .orElse(false);
     }
 
     private static TestSettings mapSurefire(Plugin surefire, Model model, ImportReport.Builder report, Jvm jvm) {
@@ -99,7 +126,8 @@ final class TestPlugins {
                 List.copyOf(excludeClasses),
                 List.copyOf(excludeDependencies),
                 null,
-                TestJvm.EMPTY);
+                TestJvm.EMPTY,
+                TestFailureMode.FAIL);
     }
 
     /**

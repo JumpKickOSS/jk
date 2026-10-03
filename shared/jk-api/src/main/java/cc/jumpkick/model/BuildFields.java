@@ -42,6 +42,7 @@ final class BuildFields {
     Map<String, ClassSuite> testClassSuites;
     boolean testAssertions;
     boolean testCoverage;
+    TestFailureMode testFailures;
     PlatformPolicy platformPolicy;
     UnmappedPolicy unmappedPolicy;
     List<EnvDecl> testEnv;
@@ -82,6 +83,7 @@ final class BuildFields {
         testClassSuites = b.testClassSuites();
         testAssertions = b.testAssertions();
         testCoverage = b.testCoverage();
+        testFailures = b.testFailures();
         platformPolicy = b.platformPolicy();
         unmappedPolicy = b.unmappedPolicy();
         testEnv = b.testEnv();
@@ -119,6 +121,7 @@ final class BuildFields {
                 testClassSuites,
                 testAssertions,
                 testCoverage,
+                testFailures,
                 platformPolicy,
                 unmappedPolicy,
                 testEnv,

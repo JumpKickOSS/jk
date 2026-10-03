@@ -4,11 +4,13 @@ package cc.jumpkick.cli.api;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -137,6 +139,28 @@ public final class CommonOpts {
     /** Skip compiling and running tests — shared by build / native / install-style verbs. */
     public static Opt skipTests() {
         return Opt.flag("Skip compiling and running tests.", "--skip-tests");
+    }
+
+    /** {@code --test-failures <mode>}: over every module's {@code [test] failures}. */
+    public static Opt testFailures() {
+        return Opt.value("<MODE>", "fail (default) or report test failures", "--test-failures");
+    }
+
+    /** {@code JK_TEST_FAILURES}: the default for {@code --test-failures}. */
+    public static final String TEST_FAILURES_ENV = "JK_TEST_FAILURES";
+
+    /**
+     * {@code --test-failures}, else {@code JK_TEST_FAILURES}; null when neither is set, so each
+     * module's {@code [test] failures} applies. A value that is neither mode is refused.
+     */
+    public static @Nullable TestFailureMode testFailuresValue(Invocation in, Function<String, @Nullable String> env) {
+        String flag = in.value("test-failures").orElse(null);
+        String raw = flag != null ? flag : env.apply(TEST_FAILURES_ENV);
+        if (raw == null || raw.isBlank()) return null;
+        String source = flag != null ? "--test-failures" : TEST_FAILURES_ENV;
+        return TestFailureMode.parse(raw)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(source + " must be fail or report (got `" + raw.trim() + "`)"));
     }
 
     /**

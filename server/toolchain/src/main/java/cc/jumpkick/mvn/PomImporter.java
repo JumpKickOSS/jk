@@ -347,7 +347,7 @@ public final class PomImporter {
             TestPlugins.TestSettings tests,
             ImportReport.Builder report) {
         // A POM's direct version is the version Maven used, whatever a transitive asked for.
-        BuildBlock build = BuildBlock.EMPTY;
+        BuildBlock build = BuildBlock.EMPTY.withTestFailures(tests.failures());
         PluginFacts.CompilerArgs args = PluginFacts.compilerArgs(model);
         if (args.split()) {
             build = build.withJavac(new JavacConfig(Map.of(), args.main(), new JavacConfig(Map.of(), args.test())));

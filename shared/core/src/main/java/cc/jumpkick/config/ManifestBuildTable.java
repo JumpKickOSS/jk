@@ -5,6 +5,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.DebugInfo;
+import cc.jumpkick.model.TestFailureMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,6 +55,7 @@ final class ManifestBuildTable {
         final Map<String, ClassSuite> testClassSuites = new LinkedHashMap<>();
         boolean testAssertions = true;
         boolean testCoverage = false;
+        TestFailureMode testFailures = TestFailureMode.FAIL;
         final List<String> testTools = new ArrayList<>();
         final List<String> testJvmArgs = new ArrayList<>();
         final Map<String, String> testSystemProperties = new LinkedHashMap<>();
@@ -236,6 +238,12 @@ final class ManifestBuildTable {
                 throw new JkBuildParseException("[test].coverage must be true or false");
             }
             s.testCoverage = coverage;
+        }
+        // [test] failures — "report" keeps every failure in the results and lets the run succeed.
+        if (test.contains("failures")) {
+            String raw = test.get("failures") instanceof String str ? str : "";
+            s.testFailures = TestFailureMode.parse(raw)
+                    .orElseThrow(() -> new JkBuildParseException("[test].failures must be \"fail\" or \"report\""));
         }
         // [test] tools — external executables the suite shells out to, by the bare name the tests
         // invoke; each one's PATH location and --version become run-tests inputs. A path is refused:

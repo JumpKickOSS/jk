@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
@@ -30,6 +31,7 @@ import org.jspecify.annotations.Nullable;
  * @param testSelection suite/tag selection for {@code jk test}+)
  * @param debugJvm JDWP listener for the JVM under test/run, or {@code null}
  * @param coverage the suite JVMs run under the JaCoCo agent and the test step writes a report
+ * @param testFailures the run's failure mode over each module's, or {@code null}
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  */
 public record Session(
@@ -92,6 +94,8 @@ public record Session(
          * writes {@code reports/jacoco.xml}. A coverage run never replays a green marker.
          */
         @With boolean coverage,
+        /** {@code --test-failures} / {@code JK_TEST_FAILURES}: overrides every module's {@code [test] failures}; null for none. */
+        @With @Nullable TestFailureMode testFailures,
         /** {@code run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
@@ -134,6 +138,7 @@ public record Session(
                 testSelection,
                 debugJvm,
                 coverage,
+                testFailures,
                 affected,
                 affectedChanged,
                 io);
@@ -247,6 +252,7 @@ public record Session(
                 TestSelection.DEFAULT,
                 null,
                 false,
+                null,
                 false,
                 new AffectedChanged(),
                 IoLedger.currentOrNew());
@@ -273,6 +279,7 @@ public record Session(
                 testSelection,
                 debugJvm,
                 coverage,
+                testFailures,
                 affected,
                 affectedChanged,
                 io);
@@ -299,6 +306,7 @@ public record Session(
                 testSelection,
                 debugJvm,
                 coverage,
+                testFailures,
                 affected,
                 affectedChanged,
                 io);
@@ -330,6 +338,7 @@ public record Session(
                 testSelection,
                 debugJvm,
                 coverage,
+                testFailures,
                 affected,
                 affectedChanged,
                 io);

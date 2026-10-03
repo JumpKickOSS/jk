@@ -25,6 +25,9 @@ final class JkResultsTestsSection {
 
     private JkResultsTestsSection() {}
 
+    /** Beside the count when a run succeeded with failing tests, which only {@code [test] failures = "report"} allows. */
+    static final String REPORTED = "_reported, not failing: [test] failures = \"report\"_";
+
     /** The headline's {@code Tests:} line; {@code true} when one was written. */
     static boolean appendCount(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
         if (hasTestEntries(tests)) {
@@ -37,6 +40,7 @@ final class JkResultsTestsSection {
             if (roll.skip > 0) sb.append(", ").append(roll.skip).append(" skipped");
             sb.append(" (").append(roll.total).append(" total)");
             if (runTestsFailed(r) && roll.fail == 0) sb.append(" · **run-tests failed**");
+            if (r.success() && roll.fail > 0) sb.append(" · ").append(REPORTED);
             if (roll.ms > 0) sb.append(" · _took ").append(fmtDuration(roll.ms)).append('_');
             sb.append('\n');
             return true;
@@ -47,7 +51,9 @@ final class JkResultsTestsSection {
             if (t.failed() > 0) sb.append("**").append(t.failed()).append(" failed**, ");
             sb.append(t.succeeded()).append(" passed");
             if (t.skipped() > 0) sb.append(", ").append(t.skipped()).append(" skipped");
-            sb.append(" (").append(t.total()).append(" total)\n");
+            sb.append(" (").append(t.total()).append(" total)");
+            if (r.success() && t.failed() > 0) sb.append(" · ").append(REPORTED);
+            sb.append('\n');
             return true;
         }
         return false;
