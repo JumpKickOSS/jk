@@ -81,11 +81,21 @@ public final class RequestScope {
         return ambientLedger() != null;
     }
 
-    /** {@code compute}'s value for {@code key}, computed once per request. */
+    /**
+     * {@code compute}'s value for {@code key}, computed once per request. {@code compute} may ask
+     * this scope for other facts: it runs outside the map, so a nested fact never re-enters the map
+     * mid-update. Two threads racing on one key may both compute; the first value stored is the one
+     * every caller gets.
+     */
     @SuppressWarnings("unchecked")
     public <K, V> V get(K key, Function<K, V> compute) {
         if (this == UNSCOPED) return compute.apply(key);
-        return (V) facts.computeIfAbsent(key, k -> compute.apply((K) k));
+        Object known = facts.get(key);
+        if (known != null) return (V) known;
+        V computed = compute.apply(key);
+        // A null fact is not remembered, as computeIfAbsent would not remember it.
+        Object prior = computed == null ? null : facts.putIfAbsent(key, computed);
+        return prior != null ? (V) prior : computed;
     }
 
     /** How many facts this scope holds. Test seam. */
