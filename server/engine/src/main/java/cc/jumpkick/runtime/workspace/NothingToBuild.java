@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
@@ -45,11 +46,12 @@ final class NothingToBuild {
     /**
      * The root of a declared workspace enters the graph only when it has sources or build logic,
      * so its presence is the proof. Any other unit produces something when it has a source tree, an
-     * extra source root or build logic.
+     * extra source root, a node build or build logic.
      */
     private static boolean productive(BuildGraph.BuildUnit unit, boolean declaredWorkspace) {
         if (declaredWorkspace && unit.origin() == BuildGraph.Origin.ROOT) return true;
         Path dir = unit.dir();
+        if (NodeShape.kind(unit.manifest(), dir) != NodeShape.Kind.NONE) return true;
         if (CompileSupport.hasSources(dir)
                 || Files.isDirectory(dir.resolve("src"))
                 || Files.isDirectory(dir.resolve("test"))) {

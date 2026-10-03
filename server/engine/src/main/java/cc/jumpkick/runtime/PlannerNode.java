@@ -105,9 +105,14 @@ final class PlannerNode {
     static List<String> plan(BuildPlan.Builder b, Unit unit) {
         BuildPlanner.Inputs in = unit.in();
         List<String> leaves = new ArrayList<>();
+        boolean packages = !in.testOnly() && !in.compileOnly();
         if (skipped(in, unit.project())) {
             b.addTask(skippedStep(unit));
             leaves.add(TaskNames.NODE_BUILD);
+            if (packages) {
+                b.addTask(packageStep(unit));
+                leaves.add(TaskNames.NODE_PACKAGE);
+            }
             return leaves;
         }
         b.addTask(installStep(unit));
@@ -115,12 +120,72 @@ final class PlannerNode {
             b.addTask(buildStep(unit));
             leaves.add(TaskNames.NODE_BUILD);
         }
+        if (packages) {
+            b.addTask(packageStep(unit));
+            leaves.add(TaskNames.NODE_PACKAGE);
+        }
         if (!in.compileOnly() && !PlannerResources.skipJUnit(in) && unit.node().test() != null) {
             b.addTask(testStep(unit));
             leaves.add(TaskNames.NODE_TEST);
         }
         if (leaves.isEmpty()) leaves.add(TaskNames.NODE_INSTALL);
         return leaves;
+    }
+
+    /**
+     * The module's resource jar: the build output under {@link NodePackaging#classpathRoot}, or a
+     * step that says nothing is packaged when the module names no root and nothing depends on it.
+     */
+    static Task packageStep(Unit unit) {
+        return Task.builder(TaskNames.NODE_PACKAGE)
+                .stage(BuildStage.PACKAGE)
+                .label("Packaging")
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.NODE_BUILD)
+                .ticks(1)
+                .execute(ctx -> {
+                    JkBuild project = unit.project();
+                    String root = NodePackaging.classpathRoot(project, unit.moduleDir());
+                    if (root == null) {
+                        ctx.label("not packaged · nothing depends on this module and [node] classpath-root is unset");
+                        ctx.progress(1);
+                        return;
+                    }
+                    Path out = ctx.get(NODE_OUT).orElse(null);
+                    if (out == null || !Files.isDirectory(out)) {
+                        throw new IOException(unit.module() + ": no "
+                                + unit.node().out() + "/ to package — run the build once without --skip-node");
+                    }
+                    BuildLayout layout = BuildLayout.of(unit.moduleDir(), project);
+                    Path jar = layout.mainJar();
+                    NodeKeys.Keyed keyed = NodeKeys.pkg(unit.nodeDir(), out, root, project.manifest());
+                    Path cacheRoot = unit.in().cache();
+                    String where = root.isEmpty() ? "the jar root" : root + "/";
+                    if (PlannerSupport.restorePackaged(cacheRoot, keyed.key(), jar.getParent())) {
+                        ctx.label(jar.getFileName() + " up-to-date · " + where);
+                        ctx.cached();
+                        ctx.progress(1);
+                        return;
+                    }
+                    ctx.label(
+                            "package " + jar.getFileName() + " · " + unit.node().out() + "/ under " + where);
+                    NodePackaging.packageJar(
+                            out, root, layout.targetDir().resolve("node-jar"), jar, project.manifest());
+                    PlannerSupport.storePackaged(
+                            cacheRoot,
+                            keyed.taskId(),
+                            keyed.key(),
+                            keyed.inputs().entrySet().stream()
+                                    .map(e -> e.getKey() + "=" + e.getValue())
+                                    .toList(),
+                            jar.getParent(),
+                            List.of(jar),
+                            !unit.in().ephemeralActions());
+                    PlannerPackage.writeSidecarPom(project, layout, jar);
+                    ctx.put(BUILD_OUTCOME, "built");
+                    ctx.progress(1);
+                })
+                .build();
     }
 
     /** The one step of a skipped node build: the output on disk, if any, is what the build has. */

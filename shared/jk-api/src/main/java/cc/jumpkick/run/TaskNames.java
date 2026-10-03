@@ -97,6 +97,9 @@ public final class TaskNames {
     /** A node build's test script, the fast tier of a node module. */
     public static final String NODE_TEST = "node-test";
 
+    /** A node module's build output as a resource jar under its classpath root. */
+    public static final String NODE_PACKAGE = "node-package";
+
     public static final String FETCH_CATALOG = "fetch-catalog";
     public static final String FETCH_GIT = "fetch-git";
     public static final String IMAGE_PLAN = "image-plan";

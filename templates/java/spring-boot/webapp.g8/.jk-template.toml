@@ -1,5 +1,5 @@
 language = "java"
 framework = "spring-boot"
 name = "webapp"
-description = "Spring Boot API + Vite/React SPA: a resource-only web module the app serves from classpath:static"
+description = "Spring Boot API + Vite/React SPA: a node web module jk builds and the app serves from classpath:static"
 layouts = ["traditional"]

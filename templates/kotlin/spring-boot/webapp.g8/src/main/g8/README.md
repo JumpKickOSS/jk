@@ -9,16 +9,12 @@ web/   the front end: Vite + React + TypeScript; no JVM sources, only the bundle
 
 ## The classpath seam
 
-`web` is a **resource-only module**. Its `jk.toml` declares no sources, so with the simple layout
-`web/resources/` is its resource root — and `web/vite.config.ts` sets `build.outDir` to
-`resources/static`, so `npm run build` writes the bundle straight there. `app` depends on the module
-(`web = { workspace = true }`), which puts the bundle on the app's classpath as a sibling jar with
-`static/` at its root. Spring Boot serves `classpath:/static/` by default, so `index.html` and the
-hashed `assets/` are reachable with no copy step between the two builds. jk refuses cross-module file
-copies on purpose; a dependency edge is the sanctioned way for one module's output to reach another.
-
-`web/resources/` is build output and is gitignored. Without it — no `npm` on the machine — the app
-still builds and its API still serves; the module's jar is simply empty, and page requests are 404s.
+`web` is a **node module**: its `jk.toml` declares `node = 24` and nothing else. `jk build`
+provisions that Node.js, installs from the committed `package-lock.json`, runs the `build` script and
+packages Vite's `dist/` under `static/` in the module's jar. `app` depends on the module
+(`web = { workspace = true }`), which puts the bundle on the app's classpath; Spring Boot serves
+`classpath:/static/` by default, so `index.html` and the hashed `assets/` are reachable with no copy
+step between the two builds. Every step is cached: a second `jk build` installs and bundles nothing.
 
 `SpaFallback` handles client-side routing: a `GET` (or `HEAD`) that reaches no handler and no static
 file, sits outside `/api`, has no file extension in its last segment, and accepts HTML gets
@@ -29,9 +25,8 @@ itself is Boot's welcome page, the same `index.html`.
 ## Build
 
 ```bash
-(cd web && npm ci && npm run build)   # the bundle, into web/resources/static
-jk build                              # both modules; app's tests drive it over HTTP
-jk run -m app                         # http://localhost:8080
+jk build          # Node.js, the bundle and the app; app's tests drive it over HTTP
+jk run -m app     # http://localhost:8080
 ```
 
 The app's tests check `/api/hello`, a `/api` miss, and — when the bundle is present — that a client

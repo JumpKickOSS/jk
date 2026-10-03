@@ -36,7 +36,7 @@ class ApplicationTest {
     fun clientRouteGetsTheShell() {
         assumeTrue(
             javaClass.getResource("/static/index.html") != null,
-            "the SPA bundle is not built: npm ci && npm run build in web/",
+            "the SPA bundle is not built: jk build without --skip-node",
         )
         val res = get("/some/client/route", "text/html")
         assertThat(res.statusCode()).isEqualTo(200)

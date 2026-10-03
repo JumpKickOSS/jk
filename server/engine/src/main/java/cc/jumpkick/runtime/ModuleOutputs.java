@@ -69,9 +69,9 @@ public final class ModuleOutputs {
     }
 
     /**
-     * A node module's outputs: its {@code node_modules}, and the build's output directory holding
-     * every file the last {@code node-build} record names (with {@code actionCache}; without one,
-     * present at all). A skipped node build has none to miss.
+     * A node module's outputs: its {@code node_modules}, its resource jar when it packages one, and
+     * the build's output directory holding every file the last {@code node-build} record names (with
+     * {@code actionCache}; without one, present at all). A skipped node build has none to miss.
      */
     static boolean nodeOutputsMissing(Path moduleDir, JkBuild build, @Nullable ActionCache actionCache) {
         if (build.node().skip() || SessionContext.current().skipNode()) return false;
@@ -82,6 +82,14 @@ public final class ModuleOutputs {
         if (node.build() == null) return false;
         Path out = nodeDir.resolve(node.out());
         if (!Files.isDirectory(out)) return true;
+        try {
+            if (NodePackaging.classpathRoot(build, moduleDir) != null
+                    && !Files.isRegularFile(BuildLayout.of(moduleDir, build).mainJar())) {
+                return true;
+            }
+        } catch (IOException e) {
+            return true;
+        }
         if (actionCache == null) return false;
         try {
             Optional<ActionCache.ActionRecord> last =

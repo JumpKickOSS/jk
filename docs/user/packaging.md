@@ -15,6 +15,7 @@ R8 minification is **opt-in**, never the default.
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
 | Minified jar `*-min.jar` | `[application] minified = true` | `jk assemble` / `jk build` (also builds the fat jar) |
 | War `target/<name>-<version>.war`, exploded beside it | `[war]` | `jk build` |
+| Node module's resource jar `target/<name>-<version>.jar` | a node module a sibling depends on, or `[node] classpath-root` | `jk build` |
 | Spring Boot jar | spring-boot plugin | `jk build` |
 | Quarkus fast-jar / uber-jar | `[quarkus]` | `jk build` |
 | Grails jar (Boot layout) | grails plugin | `jk build` |
@@ -125,11 +126,36 @@ Boot's `build-info` goal, `com.gorylenko.gradle-git-properties` and `springBoot 
 | the root | the `webapp` directory (`WEB-INF/web.xml` included, when there is one) |
 | `WEB-INF/classes/` | the module's classes and resources |
 | `WEB-INF/lib/` | the runtime dependencies and workspace siblings; `provided` ones are left out |
+| `[node] webapp-root` of a node sibling (the root by default) | that node module's build output |
 
 The exploded tree is `target/<name>/` and the archive `target/<name>.war`. Its manifest is the
 `[manifest]` table, plus `Main-Class` when `[application] main` is set. `jk import` writes `[war]`
 for `<packaging>war</packaging>`, taking `<finalName>` or `<warName>` as `name` and
 `<warSourceDirectory>` as `webapp`, and for Gradle's `war` plugin.
+
+## Node modules
+
+A node module's build output (`dist/` for Vite, per framework, or `[node] out`) is packaged as the
+module's jar under a classpath root, so a JVM module that depends on it serves it from the
+classpath:
+
+```toml
+# web/jk.toml
+node = 24
+# [node] classpath-root = "public"   # default "static" when a sibling depends on web
+# [node] webapp-root   = "ui"       # where it lands in a [war] dependant; default the war root
+```
+
+```toml
+# app/jk.toml
+[dependencies]
+web = { workspace = true }          # Boot serves classpath:/static/index.html
+```
+
+With no dependant and no `classpath-root`, nothing is packaged and the step says so. A `[war]`
+module that depends on a node module carries its output as web content under `webapp-root`, not as
+a jar in `WEB-INF/lib`. A node module whose framework produces a server (`[node] start`) runs with
+`jk run` ([Run](run.md#node-modules)).
 
 ## Multi-release jars
 
