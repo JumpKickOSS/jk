@@ -100,6 +100,9 @@ public final class TaskNames {
     /** A node module's build output as a resource jar under its classpath root. */
     public static final String NODE_PACKAGE = "node-package";
 
+    /** A {@code [[node.steps]]} entry runs as this prefix and its name. */
+    public static final String NODE_STEP_PREFIX = "node-step-";
+
     public static final String FETCH_CATALOG = "fetch-catalog";
     public static final String FETCH_GIT = "fetch-git";
     public static final String IMAGE_PLAN = "image-plan";

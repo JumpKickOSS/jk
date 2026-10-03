@@ -58,6 +58,13 @@ public final class PackageManagerResolver {
         return new ToolDistribution(tool, version, URI.create(tarball), "tar.gz", null, sha512Hex(pkg, version, dist));
     }
 
+    /** The {@code latest} dist-tag of {@code pkg} on the registry. */
+    public String latest(String pkg) throws IOException, InterruptedException {
+        String latest = MiniJson.str(MiniJson.get(metadata(pkg), "dist-tags"), "latest");
+        if (latest == null) throw new IOException(pkg + " has no latest version at " + registry);
+        return latest;
+    }
+
     private @Nullable Object metadata(String pkg) throws IOException, InterruptedException {
         URI uri =
                 registry.resolve(URLEncoder.encode(pkg, StandardCharsets.UTF_8).replace("%40", "@"));
