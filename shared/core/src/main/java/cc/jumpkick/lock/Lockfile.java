@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * In-memory {@code jk-lock.toml} (schema {@code version = 1}). Optional fields ({@code [jdk]},
- * {@code [graal]}, {@code kotlin}, {@code scala}, plugins, SDK, modules, {@code manifests-sha256})
+ * {@code [graal]}, {@code [node]}, {@code kotlin}, {@code scala}, plugins, SDK, modules, {@code manifests-sha256})
  * may be null/empty for older lockfiles. Additive only — schema stays at 1 until 1.0.
  */
 public record Lockfile(
@@ -39,7 +39,9 @@ public record Lockfile(
         /** Resolved {@code [native] metadata-repository} pin; null when no module declares one. */
         @Nullable NativeMetadata nativeMetadata,
         /** The code archive that wrote this lock; null when the writer ran from none, or the lock predates the stamp. */
-        @Nullable WriterBuild writerBuild) {
+        @Nullable WriterBuild writerBuild,
+        /** The {@code [node]} pin; null when no module declares a Node.js version. */
+        @Nullable NodePin node) {
 
     /**
      * The GraalVM reachability-metadata repository release a native build reads, resolved from
@@ -112,6 +114,7 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 null,
+                null,
                 null);
     }
 
@@ -158,7 +161,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** This lock as written by another jk: {@code generated-by} names the writer, nothing else moves. */
@@ -179,7 +183,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** This lock as written by the build {@code build} names; null when the writer ran from no archive. */
@@ -200,7 +205,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                build);
+                build,
+                node);
     }
 
     /** This lock with a content digest of the manifests used to produce it. */
@@ -221,7 +227,8 @@ public record Lockfile(
                 digest,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** This lock with a durable project identity. */
@@ -242,7 +249,8 @@ public record Lockfile(
                 manifestsSha256,
                 id,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /**
@@ -267,7 +275,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** This lock with the resolved reachability-metadata repository pin. */
@@ -288,7 +297,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 pin,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** This lock with a resolved JDK pin. */
@@ -309,7 +319,30 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
+    }
+
+    /** This lock with a resolved Node.js pin (null clears it). */
+    public Lockfile withNode(@Nullable NodePin pin) {
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                graal,
+                kotlin,
+                scala,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId,
+                nativeMetadata,
+                writerBuild,
+                pin);
     }
 
     /** This lock with a resolved GraalVM pin (null clears it). */
@@ -330,7 +363,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** Constructor without SDK entries. */
@@ -389,7 +423,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** Return a copy with the resolved Scala 3 compiler version stamped in. */
@@ -410,7 +445,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** Return a copy with the given plugin entries (replaces any existing). */
@@ -431,7 +467,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /** Return a copy with the given provisioned-SDK component pins (replaces any existing). */
@@ -452,7 +489,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /**
@@ -483,7 +521,8 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata,
-                writerBuild);
+                writerBuild,
+                node);
     }
 
     /**
@@ -522,6 +561,7 @@ public record Lockfile(
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
                 null,
                 null,
                 null,

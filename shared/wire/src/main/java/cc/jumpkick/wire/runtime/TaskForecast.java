@@ -177,6 +177,7 @@ public final class TaskForecast {
             return switch (stepName) {
                 case TaskNames.PARSE_BUILD,
                         TaskNames.ENSURE_JDK,
+                        TaskNames.ENSURE_NODE,
                         TaskNames.RESOLVE_DEPS,
                         TaskNames.WRITE_STAMP,
                         TaskNames.WRITE_STAMP_KOTLIN,

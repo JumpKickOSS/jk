@@ -11,6 +11,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.SessionCancel;
@@ -50,6 +51,10 @@ public final class BuildPlanner {
     public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.scalar("project", JkBuild.class);
     public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.scalar("lockfile", Lockfile.class);
     public static final BuildPlanKey<Path> JAVA_HOME = BuildPlanKey.scalar("java-home", Path.class);
+
+    /** The locked Node.js home with its package manager; published by {@code ensure-node}. */
+    public static final BuildPlanKey<NodeHome> NODE_HOME = BuildPlanKey.scalar("node-home", NodeHome.class);
+
     public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.scalar("release", Integer.class);
 
     public static final BuildPlanKey<List<Path>> CLASSPATH = BuildPlanKey.list("classpath", Path.class);
@@ -171,6 +176,7 @@ public final class BuildPlanner {
             PROJECT,
             LOCKFILE,
             JAVA_HOME,
+            NODE_HOME,
             RELEASE,
             CLASSPATH,
             JAVA_SOURCES,

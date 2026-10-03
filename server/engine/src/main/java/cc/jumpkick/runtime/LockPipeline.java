@@ -40,6 +40,10 @@ import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.node.NodeCatalog;
+import cc.jumpkick.node.NodePlatform;
+import cc.jumpkick.node.NodeResolver;
+import cc.jumpkick.node.PackageManagerResolver;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
@@ -71,6 +75,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -371,8 +376,25 @@ public final class LockPipeline {
                         .map(NativeConfig::graalSpec)
                         .orElse(ToolchainSpec.NONE),
                 pathPrep.project().graal() != null));
+        lock = NodeLockStamp.apply(
+                lock,
+                policy.keepToolchainSuggestion() ? existing : null,
+                NodeLockStamp.declared(nodeModules(members)),
+                new NodeResolver(new NodeCatalog()),
+                new PackageManagerResolver(),
+                NodePlatform.host());
         trust = pathPrep.repos().trust();
         return lock;
+    }
+
+    /** The root and every member, each with inheritance applied, for the {@code [node]} stamp. */
+    private Map<Path, JkBuild> nodeModules(LockPlans.LockMembers members) {
+        Map<Path, JkBuild> out = new LinkedHashMap<>();
+        out.put(lockDir, effective);
+        for (LockOrchestrator.Member m : members.members()) {
+            out.put(lockDir.resolve(m.path()).normalize(), m.manifest());
+        }
+        return out;
     }
 
     /** See {@link RepoGroup#trust()}: the verified / unverified-allowed counts and plaintext repositories of the last resolve. */

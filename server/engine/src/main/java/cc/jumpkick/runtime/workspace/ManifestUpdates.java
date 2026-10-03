@@ -17,6 +17,8 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.WorkspaceMerge;
+import cc.jumpkick.node.NodeCatalog;
+import cc.jumpkick.node.NodeRelease;
 import cc.jumpkick.repo.MavenMetadataCache;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.runtime.LockPlans;
@@ -34,6 +36,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -187,6 +191,9 @@ public final class ManifestUpdates {
         List<Rewrite> rewrites = new ArrayList<>();
         Map<Path, String> contents = new LinkedHashMap<>();
         Map<String, List<String>> toolVersions = new HashMap<>();
+        AtomicReference<@Nullable List<NodeRelease>> nodeReleases = new AtomicReference<>();
+        Supplier<List<NodeRelease>> releases =
+                () -> nodeReleases.updateAndGet(r -> r != null ? r : NodeUpdates.releases(new NodeCatalog()));
         for (Map.Entry<Path, JkBuild> scope : declared.entrySet()) {
             Path dir = scope.getKey();
             Path manifest = dir.resolve(ManifestPaths.MANIFEST);
@@ -233,6 +240,14 @@ public final class ManifestUpdates {
                         new Rewrite(dir, moduleLabel, WORKSPACE_TABLE, e.getKey(), wd.module(), exact.version(), to));
             }
             if (toolPins) text = moveToolPins(dir, moduleLabel, build, text, repos, selection, toolVersions, rewrites);
+            if (toolPins && selection.major() && selection.selects(NodeUpdates.HANDLE, NodeUpdates.HANDLE)) {
+                NodeUpdates.Move node = NodeUpdates.major(text, releases);
+                if (node != null) {
+                    text = node.text();
+                    rewrites.add(new Rewrite(
+                            dir, moduleLabel, node.table(), NodeUpdates.HANDLE, "nodejs", node.from(), node.to()));
+                }
+            }
             if (!text.equals(before)) contents.put(manifest, text);
         }
         return new Plan(rewrites, contents);
