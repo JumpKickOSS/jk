@@ -32,6 +32,7 @@ import org.jspecify.annotations.Nullable;
  * @param debugJvm JDWP listener for the JVM under test/run, or {@code null}
  * @param coverage the suite JVMs run under the JaCoCo agent and the test step writes a report
  * @param testFailures the run's failure mode over each module's, or {@code null}
+ * @param skipNode {@code --skip-node} / {@code JK_SKIP_NODE}: no node step runs
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  */
 public record Session(
@@ -96,6 +97,8 @@ public record Session(
         @With boolean coverage,
         /** {@code --test-failures} / {@code JK_TEST_FAILURES}: overrides every module's {@code [test] failures}; null for none. */
         @With @Nullable TestFailureMode testFailures,
+        /** {@code --skip-node} / {@code JK_SKIP_NODE}: no module's node steps run, as if each said {@code [node] skip}. */
+        @With boolean skipNode,
         /** {@code run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
@@ -139,6 +142,7 @@ public record Session(
                 debugJvm,
                 coverage,
                 testFailures,
+                skipNode,
                 affected,
                 affectedChanged,
                 io);
@@ -254,6 +258,7 @@ public record Session(
                 false,
                 null,
                 false,
+                false,
                 new AffectedChanged(),
                 IoLedger.currentOrNew());
     }
@@ -280,6 +285,7 @@ public record Session(
                 debugJvm,
                 coverage,
                 testFailures,
+                skipNode,
                 affected,
                 affectedChanged,
                 io);
@@ -307,6 +313,7 @@ public record Session(
                 debugJvm,
                 coverage,
                 testFailures,
+                skipNode,
                 affected,
                 affectedChanged,
                 io);
@@ -339,6 +346,7 @@ public record Session(
                 debugJvm,
                 coverage,
                 testFailures,
+                skipNode,
                 affected,
                 affectedChanged,
                 io);

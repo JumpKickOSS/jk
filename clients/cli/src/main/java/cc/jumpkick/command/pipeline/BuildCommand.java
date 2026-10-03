@@ -75,6 +75,7 @@ public final class BuildCommand implements CliCommand {
         List<Opt> opts = new ArrayList<>(PlanOptions.options());
         opts.add(CommonOpts.cacheDir());
         opts.add(CommonOpts.testFailures());
+        opts.add(CommonOpts.skipNode());
         opts.add(CommonOpts.keepGoing());
         opts.add(Opt.flag("Package with JVM startup AOT cache", "--aot-cache"));
         opts.addAll(CommonOpts.moduleSelection());
@@ -162,7 +163,8 @@ public final class BuildCommand implements CliCommand {
         SessionContext.install(SessionContext.current()
                 .withParallelTests(parallelTests)
                 .withTestSelection(testSelection)
-                .withTestFailures(testFailures));
+                .withTestFailures(testFailures)
+                .withSkipNode(CommonOpts.skipNodeValue(in, System::getenv)));
         Path startDir = global.workingDir();
         if (ProjectContext.require(startDir, "Build").isEmpty()) return Exit.CONFIG;
         // Variant selection (--release / --variant <dim>=<value>): rides the request as a compact

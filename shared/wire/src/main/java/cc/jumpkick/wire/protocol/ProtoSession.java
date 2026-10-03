@@ -49,6 +49,7 @@ public final class ProtoSession {
                 .withCoverage(Jsonl.bool(request, ProtoJobs.COVERAGE, false))
                 .withTestFailures(TestFailureMode.parse(Jsonl.str(request, ProtoJobs.TEST_FAILURES))
                         .orElse(null))
+                .withSkipNode(Jsonl.bool(request, ProtoJobs.SKIP_NODE, false))
                 .withAffected(Jsonl.bool(request, "affected", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
                 .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request), javaHomeOf(request))

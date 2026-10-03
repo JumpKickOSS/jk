@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
@@ -16,6 +17,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
@@ -866,10 +868,33 @@ public final class PreflightMemo {
                             md, moduleDir, ref.path(), ref.size(), ref.mtimeMillis(), ref.mtimeNanos(), mtimeMode);
                 }
             }
+            feedNodeBuild(md, moduleDir);
             return new Known(Hashing.hex(md.digest()));
         } catch (Exception e) {
             return uncertain(moduleDir, e);
         }
+    }
+
+    /**
+     * A node build's inputs, when the module has one: its tree as {@code node-build} keys it, the
+     * request's framework variables, and whether this run skips it — a skipped run must not leave
+     * the module recorded as built from inputs no node step read.
+     */
+    private static void feedNodeBuild(MessageDigest md, Path moduleDir) throws IOException {
+        Path nodeDir = NodeShape.scannedNodeDir(moduleDir);
+        if (nodeDir == null) return;
+        Path out = NodeShape.scannedOutputDir(moduleDir);
+        List<String> outputs =
+                out == null ? List.of() : List.of(nodeDir.relativize(out).toString());
+        for (Map.Entry<String, String> e : NodeKeys.tree(nodeDir, outputs).entrySet()) {
+            feed(md, "node:" + e.getKey());
+            feed(md, e.getValue());
+        }
+        for (Map.Entry<String, String> e :
+                BuildEnv.nodeFromRequest(BuildEnv.NODE_PREFIXES).entrySet()) {
+            feed(md, "env:" + e.getKey() + "=" + Hashing.sha256Hex(e.getValue()));
+        }
+        feed(md, "skip-node=" + SessionContext.current().skipNode());
     }
 
     /**

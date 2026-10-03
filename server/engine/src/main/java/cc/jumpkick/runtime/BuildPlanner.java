@@ -55,6 +55,12 @@ public final class BuildPlanner {
     /** The locked Node.js home with its package manager; published by {@code ensure-node}. */
     public static final BuildPlanKey<NodeHome> NODE_HOME = BuildPlanKey.scalar("node-home", NodeHome.class);
 
+    /** A node build's output directory, once {@code node-build} has written or restored it. */
+    public static final BuildPlanKey<Path> NODE_OUT = BuildPlanKey.scalar("node-out", Path.class);
+
+    /** The {@code node-install} key {@code node_modules} answers to; later node steps hash it. */
+    public static final BuildPlanKey<String> NODE_INSTALLED = BuildPlanKey.scalar("node-installed", String.class);
+
     public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.scalar("release", Integer.class);
 
     public static final BuildPlanKey<List<Path>> CLASSPATH = BuildPlanKey.list("classpath", Path.class);
@@ -177,6 +183,8 @@ public final class BuildPlanner {
             LOCKFILE,
             JAVA_HOME,
             NODE_HOME,
+            NODE_OUT,
+            NODE_INSTALLED,
             RELEASE,
             CLASSPATH,
             JAVA_SOURCES,

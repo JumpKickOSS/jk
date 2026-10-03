@@ -95,6 +95,7 @@ public final class TestCommand implements CliCommand {
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.keepGoing());
         opts.add(CommonOpts.testFailures());
+        opts.add(CommonOpts.skipNode());
         opts.addAll(CommonOpts.moduleSelection(
                 Opt.flag("Ranked WIP tests (does not run)", "--affected"),
                 Opt.value("<git-ref>", "Ranked tests since ref (no run)", "--affected-since")));
@@ -193,7 +194,8 @@ public final class TestCommand implements CliCommand {
                 .withParallelTests(parallelTests)
                 .withTestSelection(testSelection)
                 .withCoverage(coverage)
-                .withTestFailures(testFailures));
+                .withTestFailures(testFailures)
+                .withSkipNode(CommonOpts.skipNodeValue(in, System::getenv)));
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);

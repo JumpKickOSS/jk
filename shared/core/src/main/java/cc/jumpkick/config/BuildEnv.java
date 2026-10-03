@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -123,6 +124,17 @@ public final class BuildEnv {
      */
     public static final List<String> JDK_ROOT = List.of("JK_JDKS_DIR");
 
+    /**
+     * What a front-end build reads from the shell that runs it: {@code NODE_ENV}, and every variable
+     * under a framework's public prefix ({@code VITE_API_URL}). Forwarded like {@link #PROXY}, by
+     * name and prefix, because the engine is a daemon; they reach a node step's process and enter
+     * its key by value, and reach no other worker.
+     */
+    public static final List<String> NODE = List.of("NODE_ENV");
+
+    /** The public prefixes of the frameworks a node build infers; see {@link #NODE}. */
+    public static final List<String> NODE_PREFIXES = List.of("VITE_", "NEXT_PUBLIC_", "NUXT_PUBLIC_", "PUBLIC_");
+
     private BuildEnv() {}
 
     /**
@@ -221,6 +233,18 @@ public final class BuildEnv {
     public static SecretRedactor secretsFor(Path moduleDir) {
         if (moduleDir == null) return SecretRedactor.none();
         return SecretRedactor.from(lookupFor(moduleDir));
+    }
+
+    /** The request's {@link #NODE} variables and those under {@code prefixes}; empty outside a request. */
+    public static Map<String, String> nodeFromRequest(List<String> prefixes) {
+        Map<String, String> out = new TreeMap<>();
+        for (Map.Entry<String, String> e : clientEnv().entrySet()) {
+            String name = e.getKey();
+            boolean wanted = NODE.contains(name);
+            for (String prefix : prefixes) wanted |= name.startsWith(prefix);
+            if (wanted) out.put(name, e.getValue());
+        }
+        return out;
     }
 
     private static Map<String, String> clientEnv() {

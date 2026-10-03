@@ -9,6 +9,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
+import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Variants;
@@ -28,6 +29,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -59,7 +61,7 @@ final class CorePlan {
 
     private ActivePlugins.@Nullable Declared plugins;
     private @Nullable PluginDeclarations pluginDecls;
-    private boolean nodeBuild;
+    private NodeShape.Kind nodeKind = NodeShape.Kind.NONE;
 
     CorePlan(BuildPlanner.Inputs in, boolean forceRebuild) {
         this.in = in;
@@ -79,10 +81,8 @@ final class CorePlan {
                 .addTask(s.parseBuild())
                 .addTask(s.syncDeps())
                 .addTask(s.ensureJdk());
-        if (nodeBuild) {
-            // Nothing requires it until the node steps do; kept so the plan provisions Node.
-            b.addTask(PlannerNodeSetup.ensureNodeStep()).alsoKeep(TaskNames.ENSURE_NODE);
-        }
+        if (nodeKind != NodeShape.Kind.NONE) b.addTask(PlannerNodeSetup.ensureNodeStep());
+        if (nodeKind == NodeShape.Kind.MODULE) return nodeModulePlan(b, cx);
         if (workspaceNoSources) return workspaceRootPlan(b, cx);
         addCompile(b, cx, s);
         if (in.compileOnly()) return compileOnlyPlan(b, cx, s);
@@ -125,7 +125,7 @@ final class CorePlan {
                 useJava = true;
             }
             compactLayout = CompileSupport.isSimpleLayout(project, in.dir());
-            nodeBuild = NodeShape.kind(jkBuild, in.dir()) != NodeShape.Kind.NONE;
+            nodeKind = NodeShape.kind(jkBuild, in.dir());
             // Workspace root with no source tree: nothing to compile or package.
             if (CompileSupport.coordinatorOnly(jkBuild, in.dir())) {
                 useJava = false;
@@ -386,6 +386,31 @@ final class CorePlan {
      * `after-build` logic. The graph orders this unit behind every member, so by the time the
      * step executes the whole workspace is built.
      */
+    /**
+     * A dedicated node module: its node steps, joined with the root guard lanes when it is the
+     * invocation root.
+     */
+    private BuildPlan.Builder nodeModulePlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
+        JkBuild project = Objects.requireNonNull(parsedBuild, "node module manifest");
+        Path nodeDir = Objects.requireNonNull(NodeShape.nodeDir(project, in.dir()), "node directory");
+        NodeProject node = NodeProject.infer(nodeDir, project.node());
+        List<String> leaves =
+                new ArrayList<>(PlannerNode.plan(b, new PlannerNode.Unit(in, project, in.dir(), nodeDir, node)));
+        String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
+        if (guardTerminal != null) leaves.add(guardTerminal);
+        if (leaves.size() == 1) return b.terminal(leaves.get(0));
+        b.addTask(Task.builder(BuildPlanner.DELIVER_JOIN)
+                .stage(BuildStage.NATIVE)
+                .requires(leaves.toArray(String[]::new))
+                .weight(0)
+                .ticks(0)
+                .execute(ctx -> {
+                    /* join only */
+                })
+                .build());
+        return b.terminal(BuildPlanner.DELIVER_JOIN);
+    }
+
     private BuildPlan.Builder workspaceRootPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
         String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
         if (guardTerminal != null) {
