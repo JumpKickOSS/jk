@@ -100,6 +100,9 @@ public final class TaskNames {
     /** A node module's build output as a resource jar under its classpath root. */
     public static final String NODE_PACKAGE = "node-package";
 
+    /** A JVM module's own node output, staged for that module's packaging. */
+    public static final String NODE_STAGE = "node-stage";
+
     /** A {@code [[node.steps]]} entry runs as this prefix and its name. */
     public static final String NODE_STEP_PREFIX = "node-step-";
 

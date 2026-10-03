@@ -1011,6 +1011,7 @@ public final class PlannerSupport {
     static List<Path> packagedDirs(@Nullable PluginDeclarations decls, BuildLayout layout, @Nullable JkBuild project) {
         List<Path> out = new ArrayList<>(existingContributedDirs(decls, layout));
         out.addAll(PlannerVersions.packagedRoot(project, layout));
+        out.addAll(NodePackaging.packagedRoot(project, layout));
         return out;
     }
 

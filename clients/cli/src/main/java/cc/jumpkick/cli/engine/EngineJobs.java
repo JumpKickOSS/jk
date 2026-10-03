@@ -234,7 +234,9 @@ final class EngineJobs {
                                                         ? req.graalHome().toString()
                                                         : null,
                                                 // jk build --all / tag flags on a single project.
-                                                session.testSelection())
+                                                session.testSelection(),
+                                                testFailures(session),
+                                                session.skipNode())
                                         .encode(),
                                 req.variant(),
                                 req.clientEnv(),

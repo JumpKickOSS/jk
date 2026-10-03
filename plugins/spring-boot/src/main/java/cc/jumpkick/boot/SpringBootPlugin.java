@@ -70,7 +70,12 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
 
     @Override
     public void pack(PackageContext ctx) {
-        ctx.inputs(In.classes(), In.runtimeEntries(), In.stepOutput("spring-aot"), In.config())
+        ctx.inputs(
+                        In.classes(),
+                        In.runtimeEntries(),
+                        In.stepOutput("spring-aot"),
+                        In.stepOutput(In.NODE_CLASSPATH),
+                        In.config())
                 .produce("boot-jar", SpringBootPlugin::produceBootJar);
     }
 
@@ -182,6 +187,9 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
                         + " artifacts will be ignored at runtime");
             }
         }
+
+        // The module's own node build, staged under its classpath root, merges after the classes.
+        io.stepOutput(In.NODE_CLASSPATH).filter(Files::isDirectory).ifPresent(aotDirs::add);
 
         io.label("package " + io.artifactPath().getFileName() + " (boot)");
         Map<String, String> attributes = new LinkedHashMap<>(io.project().manifest());

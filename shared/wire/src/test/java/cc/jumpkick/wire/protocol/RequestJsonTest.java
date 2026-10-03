@@ -124,7 +124,7 @@ class RequestJsonTest {
                         "\"m2Dir\"");
 
         String single = new SingleBuildRequest(
-                        null, null, null, 0, null, false, false, false, false, null, TestSelection.DEFAULT)
+                        null, null, null, 0, null, false, false, false, false, null, TestSelection.DEFAULT, null, false)
                 .encode();
         assertThat(single).doesNotContain("\"allSuites\"", "\"suites\"", "\"includeTags\"");
 

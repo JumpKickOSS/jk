@@ -54,7 +54,8 @@ public final class PlannerPackage {
             @Nullable ActivePlugin pluginActive,
             @Nullable PluginDeclarations pluginDecls,
             Map<String, String> variantSecrets,
-            boolean multiRelease) {
+            boolean multiRelease,
+            boolean nodeStage) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -74,7 +75,8 @@ public final class PlannerPackage {
                 .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
-                .requires(packageRequires(in, pluginDecls, javaStamp, kotlinModule, groovyModule, multiRelease))
+                .requires(packageRequires(
+                        in, pluginDecls, javaStamp, kotlinModule, groovyModule, multiRelease, nodeStage))
                 .weight(() -> plan.get().pkg())
                 .ticks(1)
                 .execute(ctx -> {
@@ -184,8 +186,8 @@ public final class PlannerPackage {
     }
 
     /**
-     * package-jar's requires: BEFORE_PACKAGE build-logic (which itself waits on resources), plus
-     * every before-PACKAGE plugin step.
+     * package-jar's requires: BEFORE_PACKAGE build-logic (which itself waits on resources), every
+     * before-PACKAGE plugin step, and the module's own node output when it has one.
      */
     static String[] packageRequires(
             BuildPlanner.Inputs in,
@@ -193,10 +195,12 @@ public final class PlannerPackage {
             boolean useJava,
             boolean useKotlin,
             boolean useGroovy,
-            boolean multiRelease) {
+            boolean multiRelease,
+            boolean nodeStage) {
         List<String> requires = new ArrayList<>();
         requires.add(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
         if (multiRelease) requires.add(TaskNames.COMPILE_VERSIONS);
+        if (nodeStage) requires.add(TaskNames.NODE_STAGE);
         // Freshness stamps must stay on the package path so target-closure prune retains them.
         if (useJava) requires.add(TaskNames.WRITE_STAMP);
         if (useKotlin) requires.add(TaskNames.WRITE_STAMP_KOTLIN);

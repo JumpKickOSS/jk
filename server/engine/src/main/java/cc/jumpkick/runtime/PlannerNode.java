@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.BUILD_OUTCOME;
+import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_INSTALLED;
@@ -99,21 +100,40 @@ final class PlannerNode {
 
     /**
      * Add the node steps for {@code unit} to {@code b} and return the leaves the plan's terminal
-     * must keep: the build (unless the plan only tests) and the tests (unless they are skipped or
-     * the plan only compiles). A skipped node build plans one step that says so.
+     * must keep: the build (unless the plan only tests), the resource jar (when it packages) and the
+     * tests (unless they are skipped or the plan only compiles). A skipped node build plans one step
+     * that says so.
      */
     static List<String> plan(BuildPlan.Builder b, Unit unit) {
+        Planned planned = steps(b, unit);
+        List<String> leaves = new ArrayList<>(planned.leaves());
+        if (!unit.in().testOnly() && !unit.in().compileOnly()) {
+            b.addTask(packageStep(unit, planned.last()));
+            leaves.add(TaskNames.NODE_PACKAGE);
+        }
+        return leaves;
+    }
+
+    /**
+     * A JVM module's own node build ({@code src/main/node}): its steps, kept beside the module's
+     * plan, and {@code node-stage}, which package-jar waits on, when the plan packages.
+     */
+    static void planSideBySide(BuildPlan.Builder b, Unit unit) {
+        Planned planned = steps(b, unit);
+        b.alsoKeep(planned.leaves().toArray(String[]::new));
+        if (!unit.in().testOnly() && !unit.in().compileOnly()) b.addTask(stageStep(unit, planned.last()));
+    }
+
+    /** The steps short of packaging: the last one packaging waits on, and the leaves to keep. */
+    private record Planned(String last, List<String> leaves) {}
+
+    private static Planned steps(BuildPlan.Builder b, Unit unit) {
         BuildPlanner.Inputs in = unit.in();
         List<String> leaves = new ArrayList<>();
-        boolean packages = !in.testOnly() && !in.compileOnly();
         if (skipped(in, unit.project())) {
             b.addTask(skippedStep(unit));
             leaves.add(TaskNames.NODE_BUILD);
-            if (packages) {
-                b.addTask(packageStep(unit, TaskNames.NODE_BUILD));
-                leaves.add(TaskNames.NODE_PACKAGE);
-            }
-            return leaves;
+            return new Planned(TaskNames.NODE_BUILD, leaves);
         }
         b.addTask(installStep(unit));
         boolean build = !in.testOnly();
@@ -124,17 +144,49 @@ final class PlannerNode {
             b.addTask(buildStep(unit, orInstall(steps.beforeBuild())));
             leaves.add(TaskNames.NODE_BUILD);
         }
-        if (packages) {
-            b.addTask(packageStep(unit, steps.beforePackage() == null ? TaskNames.NODE_BUILD : steps.beforePackage()));
-            leaves.add(TaskNames.NODE_PACKAGE);
-        }
         if (testStep) {
             b.addTask(testStep(unit, orInstall(steps.beforeTest())));
             leaves.add(TaskNames.NODE_TEST);
         }
         leaves.addAll(steps.leaves());
         if (leaves.isEmpty()) leaves.add(TaskNames.NODE_INSTALL);
-        return leaves;
+        String last = steps.beforePackage() != null
+                ? steps.beforePackage()
+                : build ? TaskNames.NODE_BUILD : TaskNames.NODE_INSTALL;
+        return new Planned(last, leaves);
+    }
+
+    /**
+     * Hand a JVM module's own node output to its packaging: staged under {@code [node]
+     * classpath-root} for the jar, or left where it is for a {@code [war]} module, whose war reads it.
+     */
+    static Task stageStep(Unit unit, String after) {
+        return Task.builder(TaskNames.NODE_STAGE)
+                .stage(BuildStage.PACKAGE)
+                .label("Node output")
+                .kind(TaskKind.IO)
+                .requires(after)
+                .ticks(1)
+                .execute(ctx -> {
+                    Path out = ctx.get(NODE_OUT).orElse(unit.out());
+                    if (!Files.isDirectory(out)) {
+                        throw new IOException(unit.module() + ": no "
+                                + unit.node().out() + "/ to package — run the build once without --skip-node");
+                    }
+                    JkBuild project = unit.project();
+                    Path stage = NodePackaging.sideBySideStage(project, ctx.require(LAYOUT));
+                    if (stage == null) {
+                        String root = project.node().webappRoot();
+                        ctx.label(unit.node().out() + "/ → the war"
+                                + (root == null || root.isBlank() ? " root" : " under " + root));
+                    } else {
+                        String root = NodePackaging.sideBySideRoot(project);
+                        NodePackaging.stage(out, stage, root);
+                        ctx.label(unit.node().out() + "/ → " + (root.isEmpty() ? "the jar root" : root + "/"));
+                    }
+                    ctx.progress(1);
+                })
+                .build();
     }
 
     /**
