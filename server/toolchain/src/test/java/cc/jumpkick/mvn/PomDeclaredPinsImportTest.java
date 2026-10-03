@@ -127,6 +127,7 @@ class PomDeclaredPinsImportTest {
                 pom.getParent(),
                 null,
                 true,
+                false,
                 report,
                 note -> {},
                 ProjectImport.PinRaise.NONE);

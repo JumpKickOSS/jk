@@ -385,6 +385,28 @@ public record Project(
         return major > 0 ? Integer.toString(major) : null;
     }
 
+    /** The same project with {@code nodeSpec} as its {@code node =} toolchain. */
+    public Project withNodeSpec(ToolchainSpec nodeSpec) {
+        return new Project(
+                group,
+                name,
+                version,
+                jdk,
+                java,
+                kotlin,
+                groovy,
+                scala,
+                sourcesMode,
+                javadocMode,
+                description,
+                m2integration,
+                m2install,
+                layout,
+                workspaceInherits,
+                jdkSpec,
+                nodeSpec);
+    }
+
     /** Fluent builder; only group/name/version are required. */
     public static Builder builder(String group, String name, String version) {
         return new Builder(group, name, version);

@@ -95,6 +95,8 @@ public final class PomImporter {
     /** The profile ids activated by name ({@code jk import -P}), beside what each POM activates itself. */
     private List<String> activeProfiles = List.of();
 
+    private FrontendCollector frontends = FrontendCollector.OFF;
+
     /**
      * Maven's {@code settings.xml}: the repositories of its active profiles join every imported
      * manifest's {@code [repositories]}, the way Maven consults them beside a POM's own.
@@ -144,6 +146,12 @@ public final class PomImporter {
      */
     public PomImporter activeProfiles(List<String> ids) {
         this.activeProfiles = List.copyOf(ids);
+        return this;
+    }
+
+    /** Place frontend-maven-plugin builds into {@code frontends}; only {@code jk import} moves files. */
+    public PomImporter frontends(FrontendCollector frontends) {
+        this.frontends = frontends;
         return this;
     }
 
@@ -236,31 +244,8 @@ public final class PomImporter {
 
         /** The result with each dependency on a module of {@code supplied} written without a version. */
         Result platformManaged(Set<String> supplied) {
-            return new Result(withPlatformManaged(jkBuild, supplied), report);
+            return new Result(PlatformManaged.apply(jkBuild, supplied), report);
         }
-    }
-
-    /**
-     * {@code build} with each dependency on a module of {@code platformSupplied} left to the
-     * platform: the {@code [platform-dependencies]} entry that supplied the version under Maven
-     * keeps owning it under jk, as {@code spring-boot-starter-web = "managed"}.
-     */
-    static JkBuild withPlatformManaged(JkBuild build, Set<String> platformSupplied) {
-        if (platformSupplied.isEmpty()) return build;
-        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-        for (Map.Entry<Scope, List<Dependency>> e :
-                build.dependencies().byScope().entrySet()) {
-            List<Dependency> deps = new ArrayList<>(e.getValue().size());
-            for (Dependency d : e.getValue()) {
-                boolean supplied = e.getKey() != Scope.PLATFORM
-                        && e.getKey() != Scope.MANAGED
-                        && platformSupplied.contains(d.module())
-                        && d.version() instanceof VersionSelector.Exact;
-                deps.add(supplied ? d.asPlatformManaged() : d);
-            }
-            byScope.put(e.getKey(), deps);
-        }
-        return build.withDependencies(new JkBuild.Dependencies(byScope));
     }
 
     /**
@@ -331,6 +316,7 @@ public final class PomImporter {
         // A [multi-release] jar carries the attribute already.
         if (!releases.isEmpty()) manifest.remove(Attributes.Name.MULTI_RELEASE.toString());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
+        jkBuild = frontends.member(em.model(), jkBuild, report, inherited == null);
         return new Imported(jkBuild, report.build(), platformSupplied, bomSupplied, reactorSupplied);
     }
 
@@ -557,7 +543,9 @@ public final class PomImporter {
             report.warning("`" + bom + "` is a BOM (packaging `pom`, a `<dependencyManagement>` table and nothing"
                     + " else) that no module of the reactor imports; it is not a workspace module.");
         }
-        return new WorkspaceImportResult(rootJkBuild, rewritten, report.build(), found.pomFiles());
+        FrontendImport.Relocated placed = frontends.place(
+                rootModel.model(), Objects.requireNonNull(rootFile.getParent()), rootJkBuild, rewritten, report);
+        return new WorkspaceImportResult(placed.root(), placed.members(), report.build(), found.pomFiles());
     }
 
     /**

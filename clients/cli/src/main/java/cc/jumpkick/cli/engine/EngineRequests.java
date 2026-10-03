@@ -528,6 +528,7 @@ public final class EngineRequests {
             @Nullable Path baseDir,
             Path tmpDir,
             boolean force,
+            boolean dryRun,
             @Nullable Path report,
             Path cache,
             List<String> profiles) {}

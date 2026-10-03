@@ -60,6 +60,7 @@ public final class JkBuildRenderer {
         Objects.requireNonNull(catalog, "catalog");
         StringBuilder sb = new StringBuilder();
         renderProject(sb, jkBuild.project());
+        NodeTomlRenderer.renderNodeKey(sb, jkBuild);
         renderPluginTables(sb, jkBuild);
         renderApplication(sb, jkBuild.applicationOpt().orElse(null));
         renderLibrary(sb, jkBuild.libraryOpt().orElse(null));
@@ -70,6 +71,8 @@ public final class JkBuildRenderer {
         renderBuild(sb, jkBuild.build());
         renderBuildInfo(sb, jkBuild.build().buildInfo());
         renderWar(sb, jkBuild.build().war());
+        NodeTomlRenderer.renderNode(sb, jkBuild);
+        NodeTomlRenderer.renderEnv(sb, jkBuild.build().env());
         renderDokka(sb, jkBuild.build().dokka());
         renderResolve(sb, jkBuild.build());
         renderJavac(sb, jkBuild.build().javac());
@@ -280,7 +283,7 @@ public final class JkBuildRenderer {
     }
 
     /** A TOML array of quoted strings. */
-    private static String list(List<String> values) {
+    static String list(List<String> values) {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < values.size(); i++) {
             if (i > 0) sb.append(", ");
@@ -724,7 +727,7 @@ public final class JkBuildRenderer {
      * A TOML key: bare when every character is one of {@code A-Za-z0-9_-} (the bare-key alphabet
      * of the TOML spec; a letter outside ASCII is not in it), quoted otherwise.
      */
-    private static String safeKey(String name) {
+    static String safeKey(String name) {
         if (name.isEmpty()) return quote(name);
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
