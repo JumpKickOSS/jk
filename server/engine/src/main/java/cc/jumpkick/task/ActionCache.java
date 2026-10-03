@@ -638,6 +638,19 @@ public final class ActionCache {
      * {@code false} (restoring nothing) if any cached blob is missing, so the caller rebuilds.
      */
     public boolean restoreArtifacts(ActionRecord record, Path baseDir) throws IOException {
+        return restoreArtifacts(record, baseDir, true);
+    }
+
+    /**
+     * As {@link #restoreArtifacts(ActionRecord, Path)}, writing the recorded files and nothing else:
+     * for outputs that sit among sources (a generated file in {@code src/}), where the directory
+     * they share is not the task's to clear.
+     */
+    public boolean restoreFiles(ActionRecord record, Path baseDir) throws IOException {
+        return restoreArtifacts(record, baseDir, false);
+    }
+
+    private boolean restoreArtifacts(ActionRecord record, Path baseDir, boolean pruneRoots) throws IOException {
         if (record.outputs().isEmpty()) return false;
         for (String sha : record.outputs().values()) {
             if (!hasBlob(sha)) return false;
@@ -656,7 +669,7 @@ public final class ActionCache {
         // re-copies it with a fresh mtime — which is the precise churn removed, since
         // FreshnessStamp compares classpath entries by mtime. Dropping only the files this record
         // does NOT own clears stale extras just as well and leaves the unchanged ones alone.
-        if (!dirRoots.isEmpty()) {
+        if (pruneRoots && !dirRoots.isEmpty()) {
             Set<Path> owned = new HashSet<>();
             for (String rel : record.outputs().keySet()) {
                 owned.add(baseDir.resolve(rel).normalize());

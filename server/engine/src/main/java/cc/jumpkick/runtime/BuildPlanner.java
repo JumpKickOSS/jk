@@ -61,6 +61,10 @@ public final class BuildPlanner {
     /** The {@code node-install} key {@code node_modules} answers to; later node steps hash it. */
     public static final BuildPlanKey<String> NODE_INSTALLED = BuildPlanKey.scalar("node-installed", String.class);
 
+    /** {@code [node] exports}: each name to the output it names, once the node build has it on disk. */
+    public static final BuildPlanKey<Map<String, Path>> NODE_EXPORTS =
+            BuildPlanKey.map("node-exports", String.class, Path.class);
+
     public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.scalar("release", Integer.class);
 
     public static final BuildPlanKey<List<Path>> CLASSPATH = BuildPlanKey.list("classpath", Path.class);
@@ -185,6 +189,7 @@ public final class BuildPlanner {
             NODE_HOME,
             NODE_OUT,
             NODE_INSTALLED,
+            NODE_EXPORTS,
             RELEASE,
             CLASSPATH,
             JAVA_SOURCES,

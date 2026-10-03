@@ -820,9 +820,9 @@
               "exec": { "type": "string" },
               "before": { "type": "string", "enum": ["build", "test", "package"] },
               "tier": { "type": "string", "enum": ["build", "test"] },
-              "inputs": { "type": "array", "items": { "type": "string" } },
-              "outputs": { "type": "array", "items": { "type": "string" } },
-              "allow-unlocked": { "type": "boolean" }
+              "inputs": { "type": "array", "items": { "type": "string" }, "description": "Module-relative files, directories or globs the step reads (../ allowed). With inputs the step is keyed on them alone; without, on the whole node tree." },
+              "outputs": { "type": "array", "items": { "type": "string" }, "description": "Paths relative to the node directory the step writes, cached and restored. A step with none is a check, cached as passed." },
+              "allow-unlocked": { "type": "boolean", "description": "An npx of a package the install does not hold is fetched (at its @version, else the registry's latest, which enters the key) instead of refused." }
             },
             "required": ["name"],
             "additionalProperties": false

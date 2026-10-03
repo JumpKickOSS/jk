@@ -110,24 +110,29 @@ final class PlannerNode {
             b.addTask(skippedStep(unit));
             leaves.add(TaskNames.NODE_BUILD);
             if (packages) {
-                b.addTask(packageStep(unit));
+                b.addTask(packageStep(unit, TaskNames.NODE_BUILD));
                 leaves.add(TaskNames.NODE_PACKAGE);
             }
             return leaves;
         }
         b.addTask(installStep(unit));
-        if (!in.testOnly()) {
-            b.addTask(buildStep(unit));
+        boolean build = !in.testOnly();
+        boolean tests = !in.compileOnly() && !PlannerResources.skipJUnit(in);
+        boolean testStep = tests && unit.node().test() != null;
+        PlannerNodeSteps.Planned steps = PlannerNodeSteps.plan(b, unit, build, tests, testStep);
+        if (build) {
+            b.addTask(buildStep(unit, orInstall(steps.beforeBuild())));
             leaves.add(TaskNames.NODE_BUILD);
         }
         if (packages) {
-            b.addTask(packageStep(unit));
+            b.addTask(packageStep(unit, steps.beforePackage() == null ? TaskNames.NODE_BUILD : steps.beforePackage()));
             leaves.add(TaskNames.NODE_PACKAGE);
         }
-        if (!in.compileOnly() && !PlannerResources.skipJUnit(in) && unit.node().test() != null) {
-            b.addTask(testStep(unit));
+        if (testStep) {
+            b.addTask(testStep(unit, orInstall(steps.beforeTest())));
             leaves.add(TaskNames.NODE_TEST);
         }
+        leaves.addAll(steps.leaves());
         if (leaves.isEmpty()) leaves.add(TaskNames.NODE_INSTALL);
         return leaves;
     }
@@ -136,12 +141,12 @@ final class PlannerNode {
      * The module's resource jar: the build output under {@link NodePackaging#classpathRoot}, or a
      * step that says nothing is packaged when the module names no root and nothing depends on it.
      */
-    static Task packageStep(Unit unit) {
+    static Task packageStep(Unit unit, String after) {
         return Task.builder(TaskNames.NODE_PACKAGE)
                 .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
-                .requires(TaskNames.NODE_BUILD)
+                .requires(after)
                 .ticks(1)
                 .execute(ctx -> {
                     JkBuild project = unit.project();
@@ -188,6 +193,10 @@ final class PlannerNode {
                 .build();
     }
 
+    private static String orInstall(@Nullable String step) {
+        return step == null ? TaskNames.NODE_INSTALL : step;
+    }
+
     /** The one step of a skipped node build: the output on disk, if any, is what the build has. */
     static Task skippedStep(Unit unit) {
         return Task.builder(TaskNames.NODE_BUILD)
@@ -201,6 +210,7 @@ final class PlannerNode {
                     Path out = unit.out();
                     if (Files.isDirectory(out)) {
                         ctx.put(NODE_OUT, out);
+                        PlannerNodeSteps.publishExports(ctx, unit);
                         ctx.label("skipped · using " + unit.node().out() + "/ as it is");
                     } else {
                         ctx.label("skipped · no " + unit.node().out() + "/ yet");
@@ -275,21 +285,26 @@ final class PlannerNode {
                 + " install once and commit it");
     }
 
-    static Task buildStep(Unit unit) {
+    static Task buildStep(Unit unit, String requires) {
         return Task.builder(TaskNames.NODE_BUILD)
                 .stage(BuildStage.COMPILE)
                 .label("Node build")
                 .kind(TaskKind.CPU)
-                .requires(TaskNames.NODE_INSTALL)
+                .requires(requires)
                 .ticks(1)
                 .execute(ctx -> {
                     NodeTable.Command command = unit.node().build();
                     if (command == null) {
+                        PlannerNodeSteps.publishExports(ctx, unit);
                         ctx.label("nothing to build");
                         ctx.progress(1);
                         return;
                     }
                     requireScript(unit, command);
+                    if (command.kind() == NodeTable.Command.Kind.NPX) {
+                        String pkg = NodeCommands.npxPackage(command.value());
+                        if (!NodeCommands.locked(unit.nodeDir(), pkg)) throw PlannerNodeSteps.unlocked(unit, pkg, null);
+                    }
                     NodeHome home = ctx.require(NODE_HOME);
                     Map<String, String> env = unit.env(home, true);
                     NodeKeys.Keyed keyed = NodeKeys.build(
@@ -298,13 +313,15 @@ final class PlannerNode {
                             command,
                             NodeEnv.keyed(unit.project(), unit.node(), unit.moduleDir(), true),
                             ctx.require(NODE_INSTALLED),
-                            PlannerNodeSetup.token(ctx.require(LOCKFILE)));
+                            PlannerNodeSetup.token(ctx.require(LOCKFILE)),
+                            PlannerNodeSteps.afterBuild(unit.project()));
                     Path out = unit.out();
                     ActionCache cache = unit.actionCache();
                     Optional<ActionCache.ActionRecord> hit =
                             unit.rebuild() ? Optional.empty() : cache.lookup(keyed.key());
                     if (hit.isPresent() && cache.restore(hit.get(), out)) {
                         ctx.put(NODE_OUT, out);
+                        PlannerNodeSteps.publishExports(ctx, unit);
                         ctx.label(unit.node().out() + "/ up-to-date");
                         ctx.cached();
                         ctx.progress(1);
@@ -329,18 +346,19 @@ final class PlannerNode {
                     }
                     cache.store(keyed.taskId(), keyed.key(), keyed.inputs(), out);
                     ctx.put(NODE_OUT, out);
+                    PlannerNodeSteps.publishExports(ctx, unit);
                     ctx.put(BUILD_OUTCOME, "built");
                     ctx.progress(1);
                 })
                 .build();
     }
 
-    static Task testStep(Unit unit) {
+    static Task testStep(Unit unit, String requires) {
         return Task.builder(TaskNames.NODE_TEST)
                 .stage(BuildStage.TEST)
                 .label("Node tests")
                 .kind(TaskKind.CPU)
-                .requires(TaskNames.NODE_INSTALL)
+                .requires(requires)
                 .ticks(1)
                 .execute(ctx -> {
                     String script = unit.node().test();
@@ -358,7 +376,8 @@ final class PlannerNode {
                             script,
                             NodeEnv.keyed(unit.project(), unit.node(), unit.moduleDir(), false),
                             ctx.require(NODE_INSTALLED),
-                            PlannerNodeSetup.token(ctx.require(LOCKFILE)));
+                            PlannerNodeSetup.token(ctx.require(LOCKFILE)),
+                            PlannerNodeSteps.afterTest(unit.project()));
                     ActionCache cache = unit.actionCache();
                     boolean coverage = unit.in().session().coverage();
                     if (!unit.rebuild() && !coverage && replayGreen(ctx, cache, keyed.key())) {
@@ -433,15 +452,51 @@ final class PlannerNode {
                                 TaskForecast.Status.RUN,
                                 node.packageManager() + " install",
                                 null));
+        List<String> outputs = new ArrayList<>();
+        outputs.add(node.out());
+        for (NodeTable.Step s : project.node().steps()) outputs.addAll(s.outputs());
+        for (NodeTable.Step step : project.node().steps()) {
+            if (skipTests && step.tier() == NodeTable.Tier.TEST) continue;
+            if (step.command().kind() == NodeTable.Command.Kind.NPX
+                    && !NodeCommands.locked(
+                            nodeDir, NodeCommands.npxPackage(step.command().value()))) {
+                steps.add(new TaskForecast.Task(
+                        NodeKeys.stepTask(step), TaskForecast.Status.RUN, "npx · not in the lockfile", null));
+                continue;
+            }
+            NodeKeys.Keyed keyed = NodeKeys.step(
+                    nodeDir,
+                    moduleDir,
+                    node,
+                    step,
+                    outputs,
+                    NodeEnv.keyed(project, node, moduleDir, false),
+                    install.key(),
+                    token,
+                    null);
+            steps.add(forecastStep(cache, keyed, NodeKeys.stepTask(step), describe(step.command()), null));
+        }
         NodeTable.Command command = node.build();
         if (command != null) {
             NodeKeys.Keyed build = NodeKeys.build(
-                    nodeDir, node, command, NodeEnv.keyed(project, node, moduleDir, true), install.key(), token);
+                    nodeDir,
+                    node,
+                    command,
+                    NodeEnv.keyed(project, node, moduleDir, true),
+                    install.key(),
+                    token,
+                    PlannerNodeSteps.afterBuild(project));
             steps.add(forecastStep(cache, build, TaskNames.NODE_BUILD, describe(command), nodeDir.resolve(node.out())));
         }
         if (!skipTests && node.test() != null && NodeProject.script(nodeDir, node.test()) != null) {
             NodeKeys.Keyed test = NodeKeys.test(
-                    nodeDir, node, node.test(), NodeEnv.keyed(project, node, moduleDir, false), install.key(), token);
+                    nodeDir,
+                    node,
+                    node.test(),
+                    NodeEnv.keyed(project, node, moduleDir, false),
+                    install.key(),
+                    token,
+                    PlannerNodeSteps.afterTest(project));
             steps.add(forecastStep(cache, test, TaskNames.NODE_TEST, "run " + node.test(), null));
         }
         return steps;
@@ -544,7 +599,7 @@ final class PlannerNode {
     }
 
     /** A {@code run} command names a script {@code package.json} has. */
-    private static void requireScript(Unit unit, NodeTable.Command command) throws IOException {
+    static void requireScript(Unit unit, NodeTable.Command command) throws IOException {
         if (command.kind() != NodeTable.Command.Kind.RUN) return;
         if (NodeProject.script(unit.nodeDir(), command.value()) == null) {
             throw new IOException(unit.project().project().name() + ": package.json has no `" + command.value()
@@ -552,7 +607,7 @@ final class PlannerNode {
         }
     }
 
-    private static String describe(NodeTable.Command command) {
+    static String describe(NodeTable.Command command) {
         return switch (command.kind()) {
             case RUN -> "run " + command.value();
             case NPX -> "npx " + command.value();
@@ -565,7 +620,7 @@ final class PlannerNode {
         return new IOException(exited(what, r));
     }
 
-    private static String exited(String what, NodeProcess.Result r) {
+    static String exited(String what, NodeProcess.Result r) {
         StringBuilder sb =
                 new StringBuilder("`").append(what).append("` exited ").append(r.exit());
         for (String line : r.tail()) sb.append('\n').append("  ").append(line);
