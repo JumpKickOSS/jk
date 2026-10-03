@@ -43,7 +43,16 @@ public record ExecPlan(
         /** {@code [dev.sidecars]} resolved for this module — dev plans only; every other kind carries none. */
         List<Sidecar> sidecars,
         /** {@code [dev] ready} — the app's own probe; {@link Probe#NONE} on every plan but a dev plan that declares one. */
-        Probe appReady) {
+        Probe appReady,
+        /**
+         * Values the client lays over its own environment for the app — a node server's {@code PATH},
+         * {@code PORT} — and, when set, the app starts in {@code workingDir}; empty for a JVM app.
+         */
+        Map<String, String> appEnv) {
+
+    public ExecPlan {
+        appEnv = appEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(appEnv));
+    }
 
     /**
      * A readiness probe as the manifest states it — the application's under {@code [dev]}, a
@@ -185,7 +194,8 @@ public record ExecPlan(
                 libPaths,
                 deployCommand,
                 sidecars,
-                appReady);
+                appReady,
+                appEnv);
     }
 
     /** As {@link #error(String, String)}, tagging the failure as an unresolved main-class scan. */
@@ -214,7 +224,8 @@ public record ExecPlan(
                 List.of(),
                 "",
                 List.of(),
-                Probe.NONE);
+                Probe.NONE,
+                Map.of());
     }
 
     public String encode() {
@@ -245,6 +256,7 @@ public record ExecPlan(
                 .string("appReady", appReady.ready())
                 .string("appReadyPattern", appReady.readyPattern())
                 .number("appReadyTimeoutMillis", appReady.readyTimeoutMillis())
+                .map("appEnv", appEnv)
                 .finish();
     }
 
@@ -273,7 +285,8 @@ public record ExecPlan(
                 Jsonl.strArray(line, "libPaths"),
                 orEmptyDeploy(Jsonl.str(line, "deployCommand")),
                 Sidecar.decodeAll(line),
-                Probe.decode(line));
+                Probe.decode(line),
+                Jsonl.strMap(line, "appEnv"));
     }
 
     private static String orEmptyDeploy(@Nullable String s) {

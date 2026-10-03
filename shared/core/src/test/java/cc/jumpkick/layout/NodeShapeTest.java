@@ -131,6 +131,17 @@ class NodeShapeTest {
     }
 
     @Test
+    void a_module_whose_only_sources_are_a_package_json_must_declare_node() throws IOException {
+        Path web = module("web", "");
+        write(web.resolve("package.json"), "{\"scripts\": {\"build\": \"vite build\"}}");
+        write(web.resolve(".nvmrc"), "22\n");
+        assertThatThrownBy(() -> parse(web))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessage("web/jk.toml: package.json found but no node toolchain is declared — add node = 22"
+                        + " (from .nvmrc)");
+    }
+
+    @Test
     void the_proposal_reads_the_ecosystem_files_in_order() throws IOException {
         Path dir = Files.createDirectories(tmp.resolve("p"));
         write(dir.resolve("package.json"), """

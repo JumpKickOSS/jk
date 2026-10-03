@@ -13,6 +13,15 @@ is not available on this path.
 `jk run` is a **wrapper** around the process: Ctrl-C is owned by JumpKick (cancels the
 engine job, then the process). It is not `exec`-replace.
 
+### Node modules
+
+In a node module, `jk run` starts its server: `[node] start`, else what the framework produces
+(`node build/index.js` for SvelteKit's node adapter, `node .output/server/index.mjs` for Nuxt,
+`node .next/standalone/server.js` for a standalone Next build), else the `start` script. It runs
+under the locked Node.js, from the module's node directory, with the module's `[env]`, `PORT` from
+`.env` when set and `NODE_ENV=production` unless set. A module whose build is only static files
+has nothing to start; a JVM module that depends on it serves the files.
+
 ### Debug the app JVM
 
 ```bash

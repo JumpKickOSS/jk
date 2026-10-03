@@ -22,6 +22,7 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -39,6 +40,7 @@ import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.runtime.InstallPlans;
+import cc.jumpkick.runtime.NodeRun;
 import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -181,7 +183,8 @@ public final class ExecPlans {
                 paths,
                 "",
                 List.of(),
-                ExecPlan.Probe.NONE);
+                ExecPlan.Probe.NONE,
+                Map.of());
     }
 
     /**
@@ -258,6 +261,10 @@ public final class ExecPlans {
             }
             return devicePlan(dir, dev, deployCommand, dev ? DevSidecars.resolve(dir, project, clientEnv) : List.of());
         }
+        if (NodeShape.kind(project, dir) == NodeShape.Kind.MODULE) {
+            String path = clientEnv.get("PATH");
+            return NodeRun.plan(dir, project, dev, path != null ? path : System.getenv("PATH"));
+        }
         Path javaHome = projectJavaHome(dir);
         String java = javaBin(javaHome);
 
@@ -319,7 +326,8 @@ public final class ExecPlans {
                 List.of(),
                 deployCommand,
                 sidecars,
-                ExecPlan.Probe.NONE);
+                ExecPlan.Probe.NONE,
+                Map.of());
     }
 
     /**
@@ -626,7 +634,8 @@ public final class ExecPlans {
                 List.of(),
                 "",
                 sidecars,
-                appReady);
+                appReady,
+                Map.of());
     }
 
     /**
@@ -847,7 +856,8 @@ public final class ExecPlans {
                 List.of(),
                 "",
                 List.of(),
-                ExecPlan.Probe.NONE);
+                ExecPlan.Probe.NONE,
+                Map.of());
     }
 
     /** {@code jk build --aot-cache}: everything the client's layout/training step needs. */
@@ -909,7 +919,8 @@ public final class ExecPlans {
                 libPaths,
                 "",
                 List.of(),
-                ExecPlan.Probe.NONE);
+                ExecPlan.Probe.NONE,
+                Map.of());
     }
 
     // ------------------------------------------------------------- helpers

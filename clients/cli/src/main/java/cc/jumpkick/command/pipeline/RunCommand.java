@@ -169,8 +169,10 @@ public final class RunCommand {
         // computed engine-side against the just-built outputs. A device artifact (an APK)
         // never forks on the host — the plan names the plugin's deploy command instead.
         List<String> command;
+        ExecPlan launched;
         try {
             ExecPlan plan = execPlan(projectDir);
+            launched = plan;
             if (!plan.deployCommand().isEmpty()) {
                 if (debugJvm != null) {
                     CommandWedge.printFail(
@@ -211,11 +213,21 @@ public final class RunCommand {
         command.addAll(appArgs);
         // The program's own stdout is the last thing on this terminal — `jk run > app.out` must
         // not collect jk's closing blank.
-        Process p = CliOutput.handOffTerminal(new ProcessBuilder(command));
+        Process p = CliOutput.handOffTerminal(processFor(command, launched));
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
         return p.waitFor();
+    }
+
+    /** {@code command} as the plan launches it: a node server in its directory with the plan's environment. */
+    private static ProcessBuilder processFor(List<String> command, ExecPlan plan) {
+        ProcessBuilder builder = new ProcessBuilder(command);
+        if (!plan.appEnv().isEmpty()) {
+            builder.environment().putAll(plan.appEnv());
+            builder.directory(Path.of(plan.workingDir()).toFile());
+        }
+        return builder;
     }
 
     /**

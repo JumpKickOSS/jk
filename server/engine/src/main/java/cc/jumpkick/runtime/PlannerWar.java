@@ -57,7 +57,16 @@ final class PlannerWar {
                     Path classes = ctx.require(MAIN_CLASSES);
                     List<Path> contributed =
                             packagedDirs(pluginDeclarationsFor(project, layout, cache), layout, project);
-                    List<Path> libs = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
+                    // A node sibling's output is web content under its webapp root, not a jar in WEB-INF/lib.
+                    List<Path> nodeJars = NodePackaging.nodeJars(layout.moduleRoot(), project);
+                    List<Path> libs = new ArrayList<>();
+                    for (Path lib : assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache)) {
+                        if (!nodeJars.contains(lib.toAbsolutePath().normalize())) libs.add(lib);
+                    }
+                    Map<Path, String> webContent = new LinkedHashMap<>();
+                    for (NodePackaging.WebContent content : NodePackaging.webContent(layout.moduleRoot(), project)) {
+                        webContent.put(content.out(), content.root());
+                    }
                     Path webapp = layout.moduleRoot().resolve(war.webapp());
                     Path warFile = layout.warFile(war);
                     Path exploded = layout.explodedWarDir(war);
@@ -71,6 +80,7 @@ final class PlannerWar {
                             "contrib:" + contributionsToken(contributed),
                             "libs:" + ClasspathFingerprint.of(libs),
                             "webapp:" + (Files.isDirectory(webapp) ? ClasspathFingerprint.entry(webapp) : ""),
+                            "web:" + webTokens(webContent),
                             "manifest:" + new TreeMap<>(manifest));
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_WAR, warFile);
                     String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
@@ -91,7 +101,8 @@ final class PlannerWar {
                                     libs,
                                     exploded,
                                     warFile,
-                                    manifest));
+                                    manifest,
+                                    webContent));
                     ctx.put(BUILD_OUTCOME, "built");
                     List<Path> outputs = new ArrayList<>(files(exploded));
                     outputs.add(warFile);
@@ -99,6 +110,16 @@ final class PlannerWar {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /** Each web content directory's fingerprint and the path it lands under. */
+    private static String webTokens(Map<Path, String> webContent) throws IOException {
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<Path, String> e : webContent.entrySet()) {
+            parts.add(
+                    e.getValue() + "=" + (Files.isDirectory(e.getKey()) ? ClasspathFingerprint.entry(e.getKey()) : ""));
+        }
+        return String.join(";", parts);
     }
 
     /**
