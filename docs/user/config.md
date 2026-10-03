@@ -17,7 +17,7 @@ no-osc = false
 notify = "auto"         # auto | always | never
 build-output = false    # live-plan process-output peek (Ctrl-O)
 force = false
-# directory = "/path"   # optional default -C
+# dir = "/path"         # optional default -C
 ```
 
 | Setting | CLI | Env |

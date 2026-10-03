@@ -95,8 +95,7 @@ public final class NewCommand implements CliCommand {
 
     @Override
     public List<Param> parameters() {
-        return List.of(
-                Param.of("directory", Arity.ZERO_OR_ONE, "Target directory. Default: cwd or a ./<name> subdir."));
+        return List.of(Param.of("dir", Arity.ZERO_OR_ONE, "Target directory. Default: cwd or a ./<name> subdir."));
     }
 
     @Nullable

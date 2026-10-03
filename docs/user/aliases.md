@@ -73,7 +73,6 @@ their arguments unchanged, so scripted spellings keep working while staying out 
 | Alias          | Canonical    |
 | -------------- | ------------ |
 | `--rebuild`    | `-r/--redo`  |
-| `--directory`  | `--dir`      |
 
 ## Hidden global options
 

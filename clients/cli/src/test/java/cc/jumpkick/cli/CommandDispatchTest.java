@@ -81,9 +81,8 @@ class CommandDispatchTest {
     }
 
     @Test
-    void commandIndex_directoryAliasStillConsumesValue() {
-        // Hidden alias --directory of --dir remains accepted.
-        assertThat(CommandDispatch.commandIndex(List.of("--directory", "/tmp", "build")))
+    void commandIndex_dirConsumesValue() {
+        assertThat(CommandDispatch.commandIndex(List.of("--dir", "/tmp", "build")))
                 .isEqualTo(2);
     }
 
@@ -160,7 +159,7 @@ class CommandDispatchTest {
         var byCanonical = new HashMap<String, Opt>();
         for (var g : GlobalOptions.globalOpts()) byCanonical.put(g.canonicalName(), g);
         assertThat(global(byCanonical, "redo").aliases()).containsExactly("--rebuild");
-        assertThat(global(byCanonical, "dir").aliases()).containsExactly("--directory");
+        assertThat(global(byCanonical, "dir").aliases()).isEmpty();
         assertThat(global(byCanonical, "ram-percent").aliases()).containsExactly("--max-ram-percent");
     }
 

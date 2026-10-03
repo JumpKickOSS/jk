@@ -308,6 +308,12 @@ audience. A format changes in place; an older shape is not kept beside it.
 **Exception:** pure internal constants (metrics/journal experiments) may already differ; do not
 proliferate new schema versions. When in doubt, keep `1` and document the field in prose.
 
+### Key spelling in `jk.toml` and `config.toml`
+
+Keys are kebab-case. A key whose value is a directory is `dir` or `<thing>-dir` (`[node] dir`,
+`app-dir`, `[config] dir`), never `directory`; the CLI spells it `--dir`. A table refuses a key it
+does not have, so a misspelt or retired key is an error, not a silent default.
+
 ## Repository layout
 
 Build: **jk** (the root `jk.toml` workspace; `jk-lock.toml`; `.jk/*.kts` build scripts). Runtime modules:

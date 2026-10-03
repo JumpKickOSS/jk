@@ -95,7 +95,7 @@ public final class JshellCommand implements CliCommand {
             bb.flag("skip-tests", true);
             bb.flag("no-timeline", true);
             // Preserve -C / working dir for the nested build.
-            bb.putValue("directory", dir.toString());
+            bb.putValue("dir", dir.toString());
             if (in.value("cache-dir").isPresent()) {
                 bb.putValue("cache-dir", cacheDir.toString());
             }

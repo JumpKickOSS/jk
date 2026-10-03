@@ -425,6 +425,7 @@ public final class JkBuildParser {
         List<BuildBlock.AuditIgnore> auditIgnores = ManifestBuild.parseAuditIgnores(result);
         if (!auditIgnores.isEmpty()) build = build.withAuditIgnores(auditIgnores);
         // [build-info] shapes the jar's resources; it folds into the same block as [javac].
+        ManifestTables.checkConfig(result);
         Optional<BuildBlock.BuildInfo> buildInfo = ManifestTables.parseBuildInfo(result);
         if (buildInfo.isPresent()) build = build.withBuildInfo(buildInfo.get());
         // [dokka] shapes the javadoc jar of a Kotlin module; it folds in beside [build-info].
