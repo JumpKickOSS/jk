@@ -46,4 +46,17 @@ class UnsizedHeapTest {
             Files.deleteIfExists(LearnedHeaps.engine().file(dir));
         }
     }
+
+    /** A node build or test process is leased what a bundler holds, up to half the host. */
+    @Test
+    void a_node_process_is_leased_the_node_default() {
+        long budget = 8 * GIB;
+        assertThat(UnsizedHeap.nodeCommand(List.of("/opt/node/bin/node", "/opt/npm/bin/npm-cli.js", "ci")))
+                .isTrue();
+        assertThat(UnsizedHeap.nodeCommand(List.of("/opt/pnpm/pnpm.exe", "install")))
+                .isTrue();
+        assertThat(UnsizedHeap.nodeCommand(List.of("java", "-version"))).isFalse();
+        assertThat(UnsizedHeap.lease(List.of("/opt/node/bin/node", "build.js"), budget))
+                .isEqualTo(Math.min(LearnedHeaps.firstHeap(UnsizedHeap.NODE_BYTES, budget), RAM / 2));
+    }
 }

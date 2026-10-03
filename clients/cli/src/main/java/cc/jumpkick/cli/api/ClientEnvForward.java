@@ -52,6 +52,10 @@ import org.jspecify.annotations.Nullable;
  * ensure-jdk must then look in that same root, not in the one of the shell that started the
  * daemon, or it downloads the JDK a second time somewhere else.
  *
+ * <p><b>A front-end build's variables ride too</b> — {@link BuildEnv#NODE} by name and
+ * {@link BuildEnv#NODE_PREFIXES} by prefix. A Vite or Next build reads them from the shell that runs
+ * it; they reach node steps alone, and enter those steps' keys by value.
+ *
  * <p><b>Deliberately not in any action key.</b> Keying on {@code PATH} would mean a laptop and a CI
  * runner never share a cached result, and two terminals on one machine often would not either. The
  * cost of leaving it out is bounded and known: a suite whose outcome depends on a tool being on
@@ -78,7 +82,8 @@ public final class ClientEnvForward {
     /**
      * Those of {@link #names()} the caller actually has, in listed order, then the
      * {@link BuildEnv#PROXY} and {@link BuildEnv#DISPLAY} variables it has, the
-     * {@link BuildEnv#JDK_ROOT} it has, then every {@link #REPO_PREFIX} variable.
+     * {@link BuildEnv#JDK_ROOT} and {@link BuildEnv#NODE} it has, then every {@link #REPO_PREFIX} and
+     * {@link BuildEnv#NODE_PREFIXES} variable.
      * {@code System::getenv} is passed explicitly — the client resolves from its own shell, never
      * from a session's {@code clientEnv}. The proxy, display, JDK-root and repository names also
      * honour the {@code jk.env.*} seam, so a test varies one of them per invocation.
@@ -88,8 +93,9 @@ public final class ClientEnvForward {
         out.putAll(BuildEnv.resolve(BuildEnv.PROXY, System::getenv));
         out.putAll(BuildEnv.resolve(BuildEnv.DISPLAY, System::getenv));
         out.putAll(BuildEnv.resolve(BuildEnv.JDK_ROOT, System::getenv));
+        out.putAll(BuildEnv.resolve(BuildEnv.NODE, System::getenv));
         for (Map.Entry<String, String> e : System.getenv().entrySet()) {
-            if (e.getKey().startsWith(REPO_PREFIX)) out.put(e.getKey(), e.getValue());
+            if (e.getKey().startsWith(REPO_PREFIX) || nodePrefixed(e.getKey())) out.put(e.getKey(), e.getValue());
         }
         for (String property : System.getProperties().stringPropertyNames()) {
             if (!property.startsWith(SEAM)) continue;
@@ -101,9 +107,19 @@ public final class ClientEnvForward {
         return Collections.unmodifiableMap(out);
     }
 
+    /** Whether {@code name} is under a front-end framework's public prefix. */
+    private static boolean nodePrefixed(String name) {
+        for (String prefix : BuildEnv.NODE_PREFIXES) {
+            if (name.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
     /** Whether {@code name} rides by exact spelling or by the repository prefix. */
     private static boolean byName(String name) {
         return name.startsWith(REPO_PREFIX)
+                || nodePrefixed(name)
+                || BuildEnv.NODE.contains(name)
                 || BuildEnv.PROXY.contains(name)
                 || BuildEnv.DISPLAY.contains(name)
                 || BuildEnv.JDK_ROOT.contains(name);

@@ -64,6 +64,9 @@ final class TaskCatalog {
             def(TaskNames.RESOLVE_DEPS, "Resolve dependencies / lock materialize", null),
             def(TaskNames.ENSURE_JDK, "Ensure configured JDK is available", null),
             def(TaskNames.ENSURE_NODE, "Ensure the locked Node.js and package manager are available", null),
+            def(TaskNames.NODE_INSTALL, "Install a node build's locked dependencies (frozen)", null),
+            def(TaskNames.NODE_BUILD, "Run a node build's build command", null),
+            def(TaskNames.NODE_TEST, "Run a node build's test script", null),
             def(TaskNames.BUILD_LOGIC_BEFORE_COMPILE, "Project build-logic (BEFORE_COMPILE)", null),
             def(
                     TaskNames.COMPILE_JAVA,

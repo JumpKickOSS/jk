@@ -163,6 +163,19 @@ public final class CommonOpts {
                         new IllegalArgumentException(source + " must be fail or report (got `" + raw.trim() + "`)"));
     }
 
+    /** {@code --skip-node}: no module's node steps run; a node output already on disk is used as it is. */
+    public static Opt skipNode() {
+        return Opt.flag("Skip node builds and tests", "--skip-node");
+    }
+
+    /** {@code JK_SKIP_NODE}: the default for {@code --skip-node}. */
+    public static final String SKIP_NODE_ENV = "JK_SKIP_NODE";
+
+    /** {@code --skip-node}, else a true {@code JK_SKIP_NODE}. */
+    public static boolean skipNodeValue(Invocation in, Function<String, @Nullable String> env) {
+        return in.isSet("skip-node") || EnvValues.bool(env, SKIP_NODE_ENV).orElse(false);
+    }
+
     /**
      * {@code --guard}: the guard lanes (tree, fixtures), the integration suite and the root's guard
      * scripts — on every verb that builds through the test stage, so the share-the-commit bar is one

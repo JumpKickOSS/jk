@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.watch;
 
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.NodeProject;
+import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -11,9 +14,11 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -21,8 +26,10 @@ import java.util.concurrent.TimeUnit;
  * implementation for all verbs.
  *
  * <p>By default only {@code src/} and {@code test/} trees are watched (plus {@code jk.toml} at the
- * project root). Build outputs ({@code target/}, {@code out/}, {@code build/}), VCS dirs, and editor
- * junk are not registered — so they never wake the loop.
+ * project root). Build outputs ({@code target/}, {@code out/}, {@code build/}), {@code
+ * node_modules}, VCS dirs, editor junk and the {@code skipped} trees a caller names are not
+ * registered — so they never wake the loop. A node module watches its whole directory, its root
+ * files ({@code package.json}, a bundler's config) included.
  */
 public final class SourceWatch implements AutoCloseable {
 
@@ -33,11 +40,16 @@ public final class SourceWatch implements AutoCloseable {
     private final Map<WatchKey, Path> keys = new HashMap<>();
     private final Path projectDir;
     private final long debounceMillis;
+    private final Set<Path> skipped;
 
-    private SourceWatch(WatchService watcher, Path projectDir, long debounceMillis) {
+    /** The project directory is itself a root: its own files are sources, not only {@code jk.toml}. */
+    private boolean wholeDir;
+
+    private SourceWatch(WatchService watcher, Path projectDir, long debounceMillis, Set<Path> skipped) {
         this.watcher = watcher;
         this.projectDir = projectDir;
         this.debounceMillis = Math.max(0, debounceMillis);
+        this.skipped = skipped;
     }
 
     /** Open a watch over {@code roots} (and the project dir for {@code jk.toml}). */
@@ -47,8 +59,19 @@ public final class SourceWatch implements AutoCloseable {
 
     /** Open a watch with a custom debounce window (milliseconds). */
     public static SourceWatch open(Path projectDir, List<Path> roots, long debounceMillis) throws IOException {
+        return open(projectDir, roots, debounceMillis, List.of());
+    }
+
+    /** As {@link #open(Path, List, long)}, never registering a tree under {@code skipped}. */
+    public static SourceWatch open(Path projectDir, List<Path> roots, long debounceMillis, List<Path> skipped)
+            throws IOException {
         WatchService ws = FileSystems.getDefault().newWatchService();
-        SourceWatch sw = new SourceWatch(ws, projectDir, debounceMillis);
+        Set<Path> skip = new HashSet<>();
+        for (Path p : skipped) skip.add(p.toAbsolutePath().normalize());
+        SourceWatch sw = new SourceWatch(ws, projectDir, debounceMillis, skip);
+        sw.wholeDir = roots.stream().anyMatch(r -> r.toAbsolutePath()
+                .normalize()
+                .equals(projectDir.toAbsolutePath().normalize()));
         for (Path root : roots) {
             if (Files.isDirectory(root)) sw.registerTree(root);
             else if (Files.isRegularFile(root) && root.getParent() != null) sw.registerDir(root.getParent());
@@ -88,11 +111,17 @@ public final class SourceWatch implements AutoCloseable {
     }
 
     private void registerTree(Path root) throws IOException {
-        try (var stream = Files.walk(root)) {
-            for (Path dir : stream.filter(Files::isDirectory).toList()) {
-                registerDir(dir);
-            }
-        }
+        if (skip(root)) return;
+        PathUtil.forEachEntry(root, this::skip, (path, attrs) -> {
+            if (attrs.isDirectory()) registerDir(path);
+            return true;
+        });
+    }
+
+    /** A tree no change under wakes the loop: build output, an install, VCS, or one the caller named. */
+    private boolean skip(Path dir) {
+        return WalkSkip.workspaceKey(dir)
+                || skipped.contains(dir.toAbsolutePath().normalize());
     }
 
     private void registerDir(Path dir) throws IOException {
@@ -121,9 +150,10 @@ public final class SourceWatch implements AutoCloseable {
                 if (!(event.context() instanceof Path rel) || dir == null) continue;
                 Path changed = dir.resolve(rel);
                 String name = rel.getFileName().toString();
+                if (skip(changed)) continue;
                 if (dir.equals(projectDir)) {
                     if (name.equals(ManifestPaths.MANIFEST)) manifest = true;
-                    continue;
+                    if (!wholeDir) continue;
                 }
                 if (Files.isDirectory(changed) && event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
                     registerTree(changed);
@@ -158,6 +188,10 @@ public final class SourceWatch implements AutoCloseable {
 
     /** Default source roots for a simple project layout. */
     public static List<Path> defaultRoots(Path projectDir) {
+        if (Files.isRegularFile(projectDir.resolve(NodeProject.PACKAGE_JSON))
+                && !Files.isDirectory(projectDir.resolve("src/main"))) {
+            return List.of(projectDir);
+        }
         return List.of(projectDir.resolve("src"), projectDir.resolve("test").resolve("src")).stream()
                 .filter(Files::isDirectory)
                 .toList();

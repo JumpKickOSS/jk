@@ -12,7 +12,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code jk clean} works on each module's own {@code target/}: a full clean removes it, {@code
- * --keep-artifacts} removes the intermediates and keeps the jars at the target root.
+ * --keep-artifacts} removes the intermediates and keeps the jars at the target root. A node build's
+ * output directory goes too, and its {@code node_modules} only under {@code --force}.
  */
 class CleanCommandTargetsTest {
 
@@ -28,7 +29,7 @@ class CleanCommandTargetsTest {
         Files.writeString(ws.resolve("target/classes/Root.class"), "x");
 
         var stats = new PathUtil.Removed();
-        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), true), stats);
+        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), true, false), stats);
 
         assertThat(appOut.resolve("classes")).doesNotExist();
         assertThat(appOut.resolve("surefire-reports")).doesNotExist();
@@ -45,9 +46,31 @@ class CleanCommandTargetsTest {
         Files.writeString(ws.resolve("app/target/app.jar"), "x");
 
         var stats = new PathUtil.Removed();
-        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), false), stats);
+        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), false, false), stats);
 
         assertThat(ws.resolve("target")).doesNotExist();
         assertThat(ws.resolve("app/target")).doesNotExist();
+    }
+
+    @Test
+    void a_node_build_loses_its_output_and_keeps_node_modules_unless_forced(@TempDir Path ws) throws Exception {
+        Path web = Files.createDirectories(ws.resolve("web"));
+        Files.writeString(web.resolve("jk.toml"), "name = \"web\"\ngroup = \"g\"\nversion = \"1.0\"\nnode = 24\n");
+        Files.writeString(web.resolve("package.json"), "{\"scripts\":{\"build\":\"node build.js\"}}");
+        Files.createDirectories(web.resolve("dist"));
+        Files.writeString(web.resolve("dist/main.js"), "x");
+        Files.createDirectories(web.resolve("node_modules/left-pad"));
+        Files.writeString(web.resolve("node_modules/left-pad/index.js"), "x");
+
+        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, web), false, false), new PathUtil.Removed());
+        assertThat(web.resolve("dist")).doesNotExist();
+        assertThat(web.resolve("node_modules"))
+                .as("an install, not build output")
+                .exists();
+
+        PathUtil.deleteTrees(CleanCommand.deleteRoots(ws, List.of(ws, web), false, true), new PathUtil.Removed());
+        assertThat(web.resolve("node_modules"))
+                .as("--force takes the install too")
+                .doesNotExist();
     }
 }

@@ -169,6 +169,7 @@ public enum BuildStage {
                     TaskNames.RESOLVE_DEPS,
                     TaskNames.ENSURE_JDK,
                     TaskNames.ENSURE_NODE,
+                    TaskNames.NODE_INSTALL,
                     TaskNames.READ_LOCK,
                     TaskNames.PARSE_LOCK,
                     TaskNames.FETCH_CATALOG,
@@ -198,9 +199,10 @@ public enum BuildStage {
                     TaskNames.WRITE_STAMP_KOTLIN,
                     TaskNames.WRITE_STAMP_GROOVY,
                     TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                    TaskNames.KSP -> COMPILE;
+                    TaskNames.KSP,
+                    TaskNames.NODE_BUILD -> COMPILE;
             // GENERATE reserved for explicit stage / future before-compile codegen tasks
-            case TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS -> TEST;
+            case TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS, TaskNames.NODE_TEST -> TEST;
             case TaskNames.PACKAGE_JAR,
                     TaskNames.PACKAGE_ASSEMBLY,
                     TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,

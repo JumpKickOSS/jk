@@ -29,7 +29,7 @@ class CleanCommandCountTest {
         Files.writeString(outside.resolve("keep.txt"), "keep");
         Symlinks.create(ws.resolve("target/app/link-out"), outside);
 
-        List<Path> roots = CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), false);
+        List<Path> roots = CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), false, false);
         PathUtil.Removed counted = PathUtil.measureTrees(roots);
         assertThat(counted.files()).as("regular files only; the link is a leaf").isEqualTo(15);
 
@@ -49,7 +49,7 @@ class CleanCommandCountTest {
         plant(ws.resolve("app/target/reports"), 2);
         Files.writeString(ws.resolve("app/target/app-1.0.0.jar"), "jar-bytes");
 
-        List<Path> roots = CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), true);
+        List<Path> roots = CleanCommand.deleteRoots(ws, List.of(ws, ws.resolve("app")), true, false);
         assertThat(PathUtil.measureTrees(roots).files()).isEqualTo(6);
 
         var tally = new PathUtil.Removed();
@@ -60,7 +60,7 @@ class CleanCommandCountTest {
 
     @Test
     void nothing_to_remove_is_a_zero_count(@TempDir Path ws) throws Exception {
-        List<Path> roots = CleanCommand.deleteRoots(ws, List.of(ws), false);
+        List<Path> roots = CleanCommand.deleteRoots(ws, List.of(ws), false, false);
         assertThat(PathUtil.measureTrees(roots).files()).isZero();
     }
 }

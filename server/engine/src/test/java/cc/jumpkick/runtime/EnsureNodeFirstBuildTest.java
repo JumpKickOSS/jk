@@ -58,7 +58,10 @@ class EnsureNodeFirstBuildTest {
         http.served().put(path, archive);
 
         Path web = Files.createDirectories(tmp.resolve("web"));
-        Files.writeString(web.resolve("jk.toml"), "name = \"web\"\ngroup = \"g\"\nversion = \"1.0\"\nnode = 24\n");
+        // The archive's node only prints its version, so the install it runs is one that asks nothing more.
+        Files.writeString(
+                web.resolve("jk.toml"),
+                "name = \"web\"\ngroup = \"g\"\nversion = \"1.0\"\n[node]\nversion = 24\ninstall = \"node\"\n");
         Files.writeString(web.resolve("package.json"), "{}");
         LockfileWriter.write(
                 Lockfile.empty("1.0.0")

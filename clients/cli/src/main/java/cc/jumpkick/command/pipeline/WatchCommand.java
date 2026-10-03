@@ -11,6 +11,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.watch.AppWatchLoop;
 import cc.jumpkick.cli.watch.SourceWatch;
 import cc.jumpkick.command.VariantSelection;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -171,7 +172,7 @@ public final class WatchCommand implements CliCommand {
         CommandWedge.printWorking(
                 "Watch", verb + " on change (src/, test/src/, jk.toml; debounce " + debounceMs + "ms). Ctrl-C stops.");
 
-        try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs)) {
+        try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs, nodeOutput(projectDir))) {
             while (true) {
                 watch.awaitChange();
                 CommandWedge.printWorking("Watch", "change detected — " + verb);
@@ -184,6 +185,16 @@ public final class WatchCommand implements CliCommand {
             Thread.currentThread().interrupt();
             CommandWedge.printFail("Watch", "interrupted");
             return Exit.INTERRUPTED;
+        }
+    }
+
+    /** A node build's output directory, which its own build rewrites and must not wake the loop; none without one. */
+    static List<Path> nodeOutput(Path projectDir) {
+        try {
+            Path out = NodeShape.scannedOutputDir(projectDir);
+            return out == null ? List.of() : List.of(out);
+        } catch (RuntimeException e) {
+            return List.of();
         }
     }
 

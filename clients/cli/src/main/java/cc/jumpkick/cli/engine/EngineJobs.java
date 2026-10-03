@@ -133,7 +133,8 @@ final class EngineJobs {
                                 RequestEnvironment.trigger(),
                                 RequestEnvironment.progressMode(),
                                 session.coverage(),
-                                testFailures(session))
+                                testFailures(session),
+                                session.skipNode())
                         .encode(),
                 null,
                 RequestEnvironment.session());
@@ -182,7 +183,8 @@ final class EngineJobs {
                                                         RequestEnvironment.trigger(),
                                                         RequestEnvironment.progressMode(),
                                                         req.coverage() || session.coverage(),
-                                                        testFailures(session))
+                                                        testFailures(session),
+                                                        session.skipNode())
                                                 .encode(),
                                         null,
                                         RequestEnvironment.session()),

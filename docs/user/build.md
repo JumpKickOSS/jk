@@ -257,6 +257,33 @@ The engine's own environment is the shell that started it, not the one running `
 from the proxy and display variables above, a variable set for one command reaches a worker only
 through `vars` or `[test] env`.
 
+## Node modules
+
+A module with `package.json` beside a `jk.toml` that declares `node` builds with three steps,
+on the Node.js and package manager the lock pins:
+
+| Step | Runs | Keyed on |
+|---|---|---|
+| `node-install` | the frozen install: `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable`, `bun install --frozen-lockfile`, or `[node] install` | `package.json`, the lockfile, `.npmrc` / `.yarnrc.yml` / `pnpm-workspace.yaml`, Node.js, the platform |
+| `node-build` | the `build` script, or `[node] build` (`"script"`, `{ npx = "ng build" }`, `{ exec = "…" }`) | the module's tree less `node_modules`, the output and tool caches; `NODE_ENV`; the framework's public variables; the install |
+| `node-test` | the `test` script, with a JUnit reporter added for vitest, jest (with `jest-junit`) and `node --test` | as the build, with the test script |
+
+`node_modules` is not cached: the install writes `target/node-install.stamp`, and a build whose
+key matches the stamp with `node_modules` present installs nothing. A missing lockfile fails with
+the command that writes it. The build's output directory (`dist/`, `.next/`, … from the framework,
+or `[node] out`) is cached and restored like a classes tree. A tool's `file(line,col): message`
+lines become diagnostics in `jk-results.md`.
+
+Steps run with `CI=true`, the build with `NODE_ENV=production` unless set. `NODE_ENV` and the
+variables under `VITE_`, `NEXT_PUBLIC_`, `NUXT_PUBLIC_` and `PUBLIC_` travel from the shell
+running `jk` and enter the keys by value; npm's cache lives under `JK_CACHE_DIR` and pnpm's store
+under `JK_STORE_DIR`.
+
+`--skip-node` (or `JK_SKIP_NODE=1`, or `[node] skip = true`) runs no node step, on `jk build` and
+`jk test`: the output already on disk is used as it is. `[test] failures = "report"` covers a node
+test step as it does a JVM suite. `jk clean` removes the output directory and keeps
+`node_modules`; `jk clean --force` removes it too.
+
 ## Parallelism (`-j`)
 
 Module graph concurrency:

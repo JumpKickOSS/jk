@@ -88,6 +88,15 @@ public final class TaskNames {
     /** The locked Node.js and package manager, provisioned for a module with a node build. */
     public static final String ENSURE_NODE = "ensure-node";
 
+    /** A node build's frozen dependency install; {@code node_modules} is the side cache it vouches for. */
+    public static final String NODE_INSTALL = "node-install";
+
+    /** A node build's build command; its output directory is the step's cached output. */
+    public static final String NODE_BUILD = "node-build";
+
+    /** A node build's test script, the fast tier of a node module. */
+    public static final String NODE_TEST = "node-test";
+
     public static final String FETCH_CATALOG = "fetch-catalog";
     public static final String FETCH_GIT = "fetch-git";
     public static final String IMAGE_PLAN = "image-plan";

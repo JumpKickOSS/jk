@@ -573,6 +573,8 @@ public final class TaskForecaster {
             @Nullable Path workerJar,
             @Nullable String profile,
             @Nullable Path m2Dir) {
+        TaskForecast.Module node = PlannerNode.forecastModule(u, LockPaths.lockFile(u.dir()), actionCache, skipTests);
+        if (node != null) return node;
         return new ModuleForecast(
                         u,
                         dep,

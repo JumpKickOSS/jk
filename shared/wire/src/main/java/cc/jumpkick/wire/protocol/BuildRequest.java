@@ -47,7 +47,9 @@ public record BuildRequest(
         /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
         boolean coverage,
         /** {@code fail} or {@code report} over every module's {@code [test] failures}; null for the modules' own. */
-        @Nullable String testFailures) {
+        @Nullable String testFailures,
+        /** {@code --skip-node}: no module's node steps run. */
+        boolean skipNode) {
 
     public BuildRequest {
         dirtyHint = dirtyHint == null || dirtyHint.isEmpty() ? null : List.copyOf(dirtyHint);
@@ -57,7 +59,7 @@ public record BuildRequest(
         graalHomes = graalHomes == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(graalHomes));
     }
 
-    /** No coverage, and the modules' own test-failure modes. */
+    /** No coverage, the modules' own test-failure modes, and node steps that run. */
     public BuildRequest(
             @Nullable String dir,
             @Nullable String cache,
@@ -109,7 +111,8 @@ public record BuildRequest(
                 trigger,
                 progressMode,
                 false,
-                null);
+                null,
+                false);
     }
 
     public String encode() {
@@ -140,6 +143,7 @@ public record BuildRequest(
                 .optionalNonBlankString("progressMode", progressMode)
                 .optionalTrue(ProtoJobs.COVERAGE, coverage)
                 .optionalNonBlankString(ProtoJobs.TEST_FAILURES, testFailures)
+                .optionalTrue(ProtoJobs.SKIP_NODE, skipNode)
                 .finish();
     }
 
@@ -171,6 +175,7 @@ public record BuildRequest(
                 Jsonl.str(json, "trigger"),
                 Jsonl.str(json, "progressMode"),
                 Jsonl.bool(json, ProtoJobs.COVERAGE, false),
-                Jsonl.str(json, ProtoJobs.TEST_FAILURES));
+                Jsonl.str(json, ProtoJobs.TEST_FAILURES),
+                Jsonl.bool(json, ProtoJobs.SKIP_NODE, false));
     }
 }
