@@ -302,6 +302,7 @@
           "type": "boolean",
           "description": "Run every forked test JVM with -ea, as Surefire and Gradle do. Default true; false runs the suite with Java and Kotlin assert statements disabled. A run-tests input: flipping it re-runs the suite."
         },
+        "failures": { "type": "string", "enum": ["fail", "report"], "description": "Whether a failing test fails the run. \"report\" keeps every failure in jk-results.md and the JUnit XML and lets the run succeed (Maven's maven.test.failure.ignore); a compile error, a crashed test JVM or a timeout still fails. Default \"fail\". --test-failures and JK_TEST_FAILURES override it."},
         "exclude-classes": {
           "type": "array",
           "items": { "type": "string" },

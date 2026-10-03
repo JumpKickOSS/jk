@@ -20,6 +20,7 @@ import cc.jumpkick.model.ReleaseSources;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
@@ -111,6 +112,7 @@ public final class JkBuildRenderer {
                 && build.testExcludeClasses().isEmpty()
                 && build.testExcludeSrc().isEmpty()
                 && build.testExcludeDependencies().isEmpty()
+                && build.testFailures() == TestFailureMode.FAIL
                 && build.testJvm().isEmpty()) {
             return;
         }
@@ -130,6 +132,10 @@ public final class JkBuildRenderer {
         if (!build.testExcludeDependencies().isEmpty())
             sb.append("exclude-dependencies = ")
                     .append(list(build.testExcludeDependencies()))
+                    .append('\n');
+        if (build.testFailures() != TestFailureMode.FAIL)
+            sb.append("failures = ")
+                    .append(quote(build.testFailures().wireName()))
                     .append('\n');
         if (!build.testJvm().jvmArgs().isEmpty())
             sb.append("jvm-args = ").append(list(build.testJvm().jvmArgs())).append('\n');

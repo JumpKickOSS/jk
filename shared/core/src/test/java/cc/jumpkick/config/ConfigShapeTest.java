@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.task.IoLedger;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -145,6 +146,7 @@ class ConfigShapeTest {
                         List.of("testSelection")),
                 new Wither("withDebugJvm", new Object[] {DebugJvm.parse("0")}, List.of("debugJvm")),
                 new Wither("withCoverage", new Object[] {true}, List.of("coverage")),
+                new Wither("withTestFailures", new Object[] {TestFailureMode.REPORT}, List.of("testFailures")),
                 new Wither("withAffected", new Object[] {false}, List.of("affected")),
                 new Wither("withAffectedChanged", new Object[] {new AffectedChanged()}, List.of("affectedChanged")),
                 new Wither("withIo", new Object[] {new IoLedger()}, List.of("io")),

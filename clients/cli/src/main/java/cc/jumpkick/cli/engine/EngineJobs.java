@@ -87,6 +87,11 @@ final class EngineJobs {
      * ride the wire or the engine falls back to each module's {@code [test]} excludes and a
      * widened tier is silently served from the unit-tier stamp.
      */
+    /** The session's {@code --test-failures} override as the wire spells it; null for the modules' own. */
+    private static @Nullable String testFailures(Session session) {
+        return session.testFailures() == null ? null : session.testFailures().wireName();
+    }
+
     static String encodeWorkspaceRequest(WorkspaceRequest req, Session session) {
         WorkspaceSpec spec = req.spec();
         Map<String, String> graalHomes = new LinkedHashMap<>();
@@ -127,7 +132,8 @@ final class EngineJobs {
                                         : null,
                                 RequestEnvironment.trigger(),
                                 RequestEnvironment.progressMode(),
-                                session.coverage())
+                                session.coverage(),
+                                testFailures(session))
                         .encode(),
                 null,
                 RequestEnvironment.session());
@@ -175,7 +181,8 @@ final class EngineJobs {
                                                         ProtoJobs.debugJvmSpelling(debug),
                                                         RequestEnvironment.trigger(),
                                                         RequestEnvironment.progressMode(),
-                                                        req.coverage() || session.coverage())
+                                                        req.coverage() || session.coverage(),
+                                                        testFailures(session))
                                                 .encode(),
                                         null,
                                         RequestEnvironment.session()),

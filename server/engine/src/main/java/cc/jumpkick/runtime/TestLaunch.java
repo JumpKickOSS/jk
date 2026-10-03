@@ -21,6 +21,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
@@ -411,6 +412,9 @@ final class TestLaunch {
         }
     }
 
+    /** The warning a run whose failing tests did not fail it carries; readers key on it. */
+    public static final String FAILURES_REPORTED = "test-failures-reported";
+
     /**
      * A red marker on failure: the next build re-runs (only a green marker skips), and the
      * forecast prices that re-run as a suite rather than as a drifted stamp — a module whose only
@@ -447,7 +451,12 @@ final class TestLaunch {
             }
             for (String line : TestSupport.renderFailures(result, in.dir(), snippets)) ctx.output(line);
             if (SessionCancel.cancelled()) throw new RuntimeException("test run cancelled");
-            throw new RuntimeException(result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
+            String failed = result.failed() + " test failure" + (result.failed() == 1 ? "" : "s");
+            if (failureMode(in, ctx.require(PROJECT)) == TestFailureMode.REPORT) {
+                ctx.warn(FAILURES_REPORTED, failed + " reported, not failing: [test] failures = \"report\"");
+                return;
+            }
+            throw new RuntimeException(failed);
         }
         if (stampKey == null) return;
         switch (PlannerTest.stampFor(result, testSourcesExist, SessionCancel.cancelled())) {
@@ -460,5 +469,11 @@ final class TestLaunch {
             case NO_TESTS -> actionCache.storeWithOutputs(testTaskId, stampKey, Map.of(), TestStamp.noTestsOutcome());
             case NONE -> {}
         }
+    }
+
+    /** The run's {@code --test-failures} / {@code JK_TEST_FAILURES}, else the module's {@code [test] failures}. */
+    static TestFailureMode failureMode(BuildPlanner.Inputs in, JkBuild project) {
+        TestFailureMode run = in.session().testFailures();
+        return run != null ? run : project.build().testFailures();
     }
 }

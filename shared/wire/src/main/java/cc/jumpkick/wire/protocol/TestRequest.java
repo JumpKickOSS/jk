@@ -24,13 +24,15 @@ public record TestRequest(
         /** Progress-bar mode the requester's environment asked for; null for auto. */
         @Nullable String progressMode,
         /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
-        boolean coverage) {
+        boolean coverage,
+        /** {@code fail} or {@code report} over every module's {@code [test] failures}; null for the modules' own. */
+        @Nullable String testFailures) {
 
     public TestRequest {
         selection = selection == null ? TestSelection.DEFAULT : selection;
     }
 
-    /** No coverage. */
+    /** No coverage, and the modules' own test-failure modes. */
     public TestRequest(
             @Nullable String dir,
             @Nullable String cache,
@@ -59,7 +61,8 @@ public record TestRequest(
                 debugJvm,
                 trigger,
                 progressMode,
-                false);
+                false,
+                null);
     }
 
     public String encode() {
@@ -78,6 +81,7 @@ public record TestRequest(
                 .optionalNonBlankString("trigger", trigger)
                 .optionalNonBlankString("progressMode", progressMode)
                 .optionalTrue(ProtoJobs.COVERAGE, coverage)
+                .optionalNonBlankString(ProtoJobs.TEST_FAILURES, testFailures)
                 .finish();
     }
 
@@ -96,6 +100,7 @@ public record TestRequest(
                 Jsonl.str(json, ProtoJobs.DEBUG_JVM),
                 Jsonl.str(json, "trigger"),
                 Jsonl.str(json, "progressMode"),
-                Jsonl.bool(json, ProtoJobs.COVERAGE, false));
+                Jsonl.bool(json, ProtoJobs.COVERAGE, false),
+                Jsonl.str(json, ProtoJobs.TEST_FAILURES));
     }
 }

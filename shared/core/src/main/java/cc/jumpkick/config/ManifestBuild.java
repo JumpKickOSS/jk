@@ -17,6 +17,7 @@ import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Sidecar;
+import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.UnmappedPolicy;
@@ -321,6 +322,7 @@ public final class ManifestBuild {
                     Map.of(),
                     true,
                     false,
+                    TestFailureMode.FAIL,
                     policies.platform(),
                     policies.unmapped(),
                     List.of(),
@@ -358,6 +360,7 @@ public final class ManifestBuild {
                 s.testClassSuites,
                 s.testAssertions,
                 s.testCoverage,
+                s.testFailures,
                 policies.platform(),
                 policies.unmapped(),
                 List.of(),

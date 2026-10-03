@@ -88,6 +88,8 @@ public record BuildBlock(
          * {@code --coverage} on the command line. Default {@code false}.
          */
         boolean testCoverage,
+        /** {@code [test] failures}: whether a test failure fails the run. Default {@link TestFailureMode#FAIL}. */
+        TestFailureMode testFailures,
         /**
          * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
          * {@link PlatformPolicy#ENFORCED}.
@@ -186,6 +188,7 @@ public record BuildBlock(
             Map.of(),
             true,
             false,
+            TestFailureMode.FAIL,
             PlatformPolicy.ENFORCED,
             UnmappedPolicy.MEDIATE,
             List.of(),
@@ -207,6 +210,7 @@ public record BuildBlock(
         kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
         kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
         javac = javac == null ? JavacConfig.EMPTY : javac;
+        testFailures = testFailures == null ? TestFailureMode.FAIL : testFailures;
         extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
         testExtraSrc = testExtraSrc == null ? List.of() : List.copyOf(testExtraSrc);
         if (fixtures != null && fixtures.isBlank()) fixtures = null;
@@ -325,6 +329,10 @@ public record BuildBlock(
     }
 
     /** The same block with {@code [test] jvm-args} / {@code system-properties} set. */
+    public BuildBlock withTestFailures(TestFailureMode failures) {
+        return with(f -> f.testFailures = failures);
+    }
+
     public BuildBlock withTestJvm(TestJvm jvm) {
         return with(f -> f.testJvm = jvm);
     }
