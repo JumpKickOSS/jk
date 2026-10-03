@@ -168,6 +168,7 @@ public enum BuildStage {
             case TaskNames.PARSE_BUILD,
                     TaskNames.RESOLVE_DEPS,
                     TaskNames.ENSURE_JDK,
+                    TaskNames.ENSURE_NODE,
                     TaskNames.READ_LOCK,
                     TaskNames.PARSE_LOCK,
                     TaskNames.FETCH_CATALOG,

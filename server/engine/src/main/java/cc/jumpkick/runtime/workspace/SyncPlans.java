@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
@@ -16,6 +17,7 @@ import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.NodePin;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
@@ -30,6 +32,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.AutoLock;
 import cc.jumpkick.runtime.LockFlow;
+import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.JkPluginSync;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
@@ -105,6 +108,7 @@ public final class SyncPlans {
                 .stateKeys(LOCKFILE, BUILD, JDK_OUTCOME, CAS_REPORT, WORKER_REPORT, WORKSPACE_MODULES, LOCKFILE_CREATED)
                 .addTask(parseLockStep(dir, cache, lockFile, repoUrl))
                 .addTask(ensureJdkStep(dir, jdksDir, allowJdkInstall))
+                .addTask(ensureNodeStep())
                 .addTask(syncCasStep(dir, cache, repoUrl, preScanDenominator, label, totalFetched, totalUpToDate))
                 .addTask(syncSourcesStep(sources))
                 .addTask(syncPluginsStep(dir, cache, repoUrl))
@@ -186,6 +190,26 @@ public final class SyncPlans {
                     } catch (Exception e) {
                         ctx.error("jdk", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
                         throw e;
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /** The lock's Node.js and package manager, when it pins one, on disk for the IDE and the build. */
+    private static Task ensureNodeStep() {
+        return Task.builder(TaskNames.ENSURE_NODE)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_LOCK)
+                .ticks(1)
+                .execute(ctx -> {
+                    NodePin pin = ctx.require(LOCKFILE).node();
+                    if (pin != null) {
+                        ctx.label("resolve Node.js");
+                        PlannerNodeSetup.ensure(
+                                new NodeProvisioning(),
+                                pin,
+                                PlannerNodeSetup.progress(ctx, "Node.js " + pin.version()));
                     }
                     ctx.progress(1);
                 })

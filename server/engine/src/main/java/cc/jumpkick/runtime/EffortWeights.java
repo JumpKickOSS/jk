@@ -506,6 +506,7 @@ public final class EffortWeights {
             case TaskNames.RESOLVE_DEPS,
                     TaskNames.PARSE_BUILD,
                     TaskNames.ENSURE_JDK,
+                    TaskNames.ENSURE_NODE,
                     TaskNames.COPY_RESOURCES,
                     TaskNames.COPY_TEST_RESOURCES,
                     TaskNames.BUILD_INFO,
@@ -1076,6 +1077,7 @@ public final class EffortWeights {
         return switch (s) {
             case TaskNames.PARSE_BUILD,
                     TaskNames.ENSURE_JDK,
+                    TaskNames.ENSURE_NODE,
                     TaskNames.RESOLVE_DEPS,
                     TaskNames.RESTORE_OUTPUTS,
                     TaskNames.BUILD_LOGIC_BEFORE_COMPILE,

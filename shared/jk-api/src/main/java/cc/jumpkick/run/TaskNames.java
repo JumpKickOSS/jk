@@ -84,6 +84,10 @@ public final class TaskNames {
     public static final String GUARD_FIXTURES = "guard-fixtures";
 
     public static final String ENSURE_JDK = "ensure-jdk";
+
+    /** The locked Node.js and package manager, provisioned for a module with a node build. */
+    public static final String ENSURE_NODE = "ensure-node";
+
     public static final String FETCH_CATALOG = "fetch-catalog";
     public static final String FETCH_GIT = "fetch-git";
     public static final String IMAGE_PLAN = "image-plan";

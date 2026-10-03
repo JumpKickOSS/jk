@@ -196,6 +196,35 @@ Locks written before this shape (a bare `vendor` / `version` pair under `[jdk]`)
 rather than guessed at — re-run `jk lock`. The lockfile's `version` stays `1` until JumpKick 1.0;
 the shape changes in place, never by a new number.
 
+### Node.js
+
+A project that declares `node` gets a `[node]` table: the exact release that built the lock, the
+npm bundled with it, the package manager a node build names (omitted for npm), and the sha256 of
+each platform's archive, so a machine on another OS verifies its download against the lock:
+
+```toml
+[node]
+version = "24.21.0"
+npm = "11.6.0"
+package-manager = "pnpm@10.18.1"
+sha256.darwin-arm64 = "…"
+sha256.linux-x64 = "…"
+sha256.win-x64 = "…"
+```
+
+| jk.toml | `jk lock` | `jk update` |
+| --- | --- | --- |
+| `node = 24` | keeps the locked 24.x | the newest 24.x; `--major` rewrites `node` to the newest LTS major |
+| `node = "24.21"` | keeps the locked 24.21.x | the newest 24.21.x |
+| `node = "=24.21.0"` | exactly 24.21.0 | unchanged |
+| `node = "lts"` | keeps the locked release | the newest LTS |
+
+A workspace has one Node.js and one package manager: two members that declare different ones are
+refused. A `packageManager` without a version, or a lockfile alone (`pnpm-lock.yaml`, …), locks the
+registry's newest and keeps it on the next `jk lock`. A lock without `[node]` for a project that
+declares `node` is stale. Every build of a node module provisions the locked release
+(`ensure-node`); offline, a release already on disk is enough.
+
 ## Pre-release pins
 
 A lock that records an RC/M/beta is kept by `jk lock` when it still satisfies the declared

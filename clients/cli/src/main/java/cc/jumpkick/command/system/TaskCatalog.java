@@ -63,6 +63,7 @@ final class TaskCatalog {
             def(TaskNames.PARSE_BUILD, "Parse jk.toml / workspace modules", null),
             def(TaskNames.RESOLVE_DEPS, "Resolve dependencies / lock materialize", null),
             def(TaskNames.ENSURE_JDK, "Ensure configured JDK is available", null),
+            def(TaskNames.ENSURE_NODE, "Ensure the locked Node.js and package manager are available", null),
             def(TaskNames.BUILD_LOGIC_BEFORE_COMPILE, "Project build-logic (BEFORE_COMPILE)", null),
             def(
                     TaskNames.COMPILE_JAVA,

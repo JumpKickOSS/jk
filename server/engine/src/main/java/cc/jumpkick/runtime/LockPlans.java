@@ -466,7 +466,8 @@ public final class LockPlans {
                 oldLock != null && oldLock.nativeMetadata() != null
                         ? oldLock.nativeMetadata()
                         : newLock.nativeMetadata(),
-                newLock.writerBuild());
+                newLock.writerBuild(),
+                oldLock != null && oldLock.node() != null ? oldLock.node() : newLock.node());
         pipeline.write(finalLock, manifestsSha);
         return refreshed;
     }
