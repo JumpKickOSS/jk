@@ -360,7 +360,9 @@ class EngineServerRequestTest extends EngineServerHarness {
                             false,
                             false,
                             null,
-                            TestSelection.DEFAULT)
+                            TestSelection.DEFAULT,
+                            null,
+                            false)
                     .encode();
 
             // First build: real compile, stamps + caches populated.

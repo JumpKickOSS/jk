@@ -707,6 +707,8 @@ public final class PlannerPlugin {
             Path scratch = PluginBuild.taskScratch(layout, step.name());
             if (Files.isDirectory(scratch)) spec.stepOutput(step.name(), scratch);
         }
+        Path nodeStage = NodePackaging.sideBySideStage(project, layout);
+        if (nodeStage != null && Files.isDirectory(nodeStage)) spec.stepOutput(In.NODE_CLASSPATH, nodeStage);
         Path specFile = spec.writeTempSpec();
         // A stale conventional sibling from an earlier run must never survive a re-package.
         String staleName = jarPath.getFileName().toString();

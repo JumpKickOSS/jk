@@ -98,6 +98,12 @@ public record In(Kind kind, @Nullable String step) {
         return new In(Kind.CONFIG, null);
     }
 
+    /**
+     * The step output a JVM module's own node build ({@code src/main/node}) is staged at: its
+     * output under the classpath root, for a packager to merge into the module's classes.
+     */
+    public static final String NODE_CLASSPATH = "node-classpath";
+
     public static In stepOutput(String step) {
         return new In(Kind.STEP_OUTPUT, step);
     }

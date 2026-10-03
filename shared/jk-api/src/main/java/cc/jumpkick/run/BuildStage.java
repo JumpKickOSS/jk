@@ -206,6 +206,7 @@ public enum BuildStage {
             case TaskNames.PACKAGE_JAR,
                     TaskNames.PACKAGE_ASSEMBLY,
                     TaskNames.NODE_PACKAGE,
+                    TaskNames.NODE_STAGE,
                     TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
                     TaskNames.BUILD_LOGIC_AFTER_BUILD,
                     TaskNames.BUILD_LOGIC_GUARD -> PACKAGE;
