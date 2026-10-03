@@ -279,41 +279,33 @@ class ProxyEnvironmentTest {
     }
 
     /**
-     * Maven scopes a settings.xml proxy to repository traffic, and so does jk: a repository client
-     * takes it, a general client (a JDK download, a forge API) reads the file and the shell alone.
+     * One rule for every request: a settings.xml proxy carries a JDK download as it carries Central,
+     * its {@code nonProxyHosts} go direct, it outranks the shell, and {@code [network]} outranks it.
      */
     @Test
-    void a_settings_xml_proxy_reaches_repository_traffic_and_no_other(@TempDir Path dir) throws Exception {
+    void a_settings_xml_proxy_reaches_every_request(@TempDir Path dir) throws Exception {
         MavenSettings maven = maven(dir, """
                 <settings><proxies>
-                  <proxy><id>corp</id><protocol>https</protocol><host>maven.proxy</host><port>3129</port></proxy>
+                  <proxy><id>corp</id><protocol>https</protocol><host>maven.proxy</host><port>3129</port>
+                    <nonProxyHosts>nexus.corp</nonProxyHosts></proxy>
                 </proxies></settings>
                 """);
         Map<String, String> shell = Map.of("https_proxy", "http://shell.proxy:1");
         URI jdk = URI.create("https://api.adoptium.net/v3/assets/latest/25/hotspot");
+        URI nexus = URI.create("https://nexus.corp/repository/maven-public/");
 
-        ProxyEnvironment repository = ProxyEnvironment.of(
-                ProxyEnvironment.Traffic.REPOSITORY, () -> NetworkConfig.EMPTY, () -> maven, () -> shell::get);
-        ProxyEnvironment general = ProxyEnvironment.of(
-                ProxyEnvironment.Traffic.GENERAL, () -> NetworkConfig.EMPTY, () -> maven, () -> shell::get);
+        ProxyEnvironment env = new ProxyEnvironment(() -> NetworkConfig.EMPTY, () -> maven, () -> shell::get);
 
-        assertThat(repository.select(CENTRAL))
+        assertThat(env.select(CENTRAL))
                 .singleElement()
                 .extracting(Proxy::address)
                 .isEqualTo(at("maven.proxy", 3129));
-        assertThat(general.select(CENTRAL))
-                .singleElement()
-                .extracting(Proxy::address)
-                .isEqualTo(at("shell.proxy", 1));
-        assertThat(general.select(jdk))
-                .singleElement()
-                .extracting(Proxy::address)
-                .isEqualTo(at("shell.proxy", 1));
-        // The user's own [network] table and the shell reach every kind of traffic.
+        assertThat(env.select(jdk)).singleElement().extracting(Proxy::address).isEqualTo(at("maven.proxy", 3129));
+        assertThat(env.select(nexus)).containsExactly(Proxy.NO_PROXY);
+
         NetworkConfig file = new NetworkConfig("http://file.proxy:3", null, List.of());
-        ProxyEnvironment generalFromFile =
-                ProxyEnvironment.of(ProxyEnvironment.Traffic.GENERAL, () -> file, () -> maven, () -> shell::get);
-        assertThat(generalFromFile.select(jdk))
+        ProxyEnvironment fromFile = new ProxyEnvironment(() -> file, () -> maven, () -> shell::get);
+        assertThat(fromFile.select(jdk))
                 .singleElement()
                 .extracting(Proxy::address)
                 .isEqualTo(at("file.proxy", 3));

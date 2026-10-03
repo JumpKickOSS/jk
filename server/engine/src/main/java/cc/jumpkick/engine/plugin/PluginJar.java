@@ -155,7 +155,7 @@ public enum PluginJar {
         String pomRel = relPath.substring(0, relPath.length() - 4) + ".pom";
         URI jarUri = base.resolve(relPath);
         URI pomUri = base.resolve(pomRel);
-        Http http = Http.forRepositories();
+        Http http = new Http();
         HttpResponse<byte[]> jarResp;
         try {
             jarResp = http.get(jarUri);

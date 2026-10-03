@@ -571,7 +571,7 @@ public final class AddCommand implements CliCommand {
         URI probe = repoBase.resolve(versionless ? MavenLayout.metadataPath(coord) : MavenLayout.pomPath(coord));
         String coordStr = versionless ? coord.group() + ":" + coord.artifact() : Coords.gav(coord);
 
-        var http = Http.forRepositories();
+        var http = new Http();
         var response = http.get(probe);
 
         if (response.statusCode() == 200) {
