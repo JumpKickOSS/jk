@@ -782,6 +782,55 @@
           }
         ]
       }
+    },
+    "node": {
+      "description": "The Node.js toolchain and node build (docs/user/node.md). At the top: node = 24 (a floor), \"24.21.0\" (a suggestion), \"=24.21.0\" (exact) or \"lts\". As a table: [node] with version and the build settings; every setting is inferred from package.json and the lockfile when unset.",
+      "type": ["integer", "string", "object"],
+      "properties": {
+        "version": { "type": ["integer", "string"], "description": "The node version, as for node = … at the top." },
+        "workspace": { "type": "boolean", "const": true, "description": "Inherit the version from the workspace root." },
+        "package-manager": { "type": "string", "enum": ["npm", "pnpm", "yarn", "bun"], "description": "Default from the lockfile, then packageManager / devEngines, else npm. Yarn means Berry." },
+        "framework": { "type": "string", "enum": ["vite", "next", "angular", "nuxt", "sveltekit", "astro", "solid-start", "tanstack-start", "react-router", "plain"], "description": "Default from scripts and config files." },
+        "install": { "type": "string", "description": "The install command, replacing jk's frozen install." },
+        "build": {
+          "description": "What jk build runs: a package.json script name, or { npx = \"…\" } / { exec = \"…\" }.",
+          "type": ["string", "object"],
+          "properties": { "run": { "type": "string" }, "npx": { "type": "string" }, "exec": { "type": "string" } },
+          "additionalProperties": false
+        },
+        "test": { "type": "string", "description": "The test script." },
+        "dev": { "type": "string", "description": "The dev-server script jk dev runs." },
+        "start": { "type": "string", "description": "The argv that runs a server output." },
+        "out": { "type": "string", "description": "The build output directory, per framework by default." },
+        "classpath-root": { "type": "string", "description": "The root the output is packaged under in a jar." },
+        "webapp-root": { "type": "string", "description": "The path the output is packaged under in a war." },
+        "env-prefixes": { "type": "array", "items": { "type": "string" }, "description": "Environment variable prefixes hashed into the build key; the framework's by default." },
+        "dev-port": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "The dev server's port." },
+        "dir": { "type": "string", "description": "The directory holding package.json: the module itself, or src/main/node in a JVM module." },
+        "skip": { "type": "boolean", "description": "true: no node step of the module runs." },
+        "steps": {
+          "type": "array",
+          "description": "[[node.steps]]: extra cached steps.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "run": { "type": "string" },
+              "npx": { "type": "string" },
+              "exec": { "type": "string" },
+              "before": { "type": "string", "enum": ["build", "test", "package"] },
+              "tier": { "type": "string", "enum": ["build", "test"] },
+              "inputs": { "type": "array", "items": { "type": "string" } },
+              "outputs": { "type": "array", "items": { "type": "string" } },
+              "allow-unlocked": { "type": "boolean" }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          }
+        },
+        "exports": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Named outputs a sibling module may consume: name = path." }
+      },
+      "additionalProperties": false
     }
   },
   "$defs": {

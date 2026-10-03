@@ -93,6 +93,7 @@ public final class ManifestBuild {
                 "dokka",
                 ManifestTables.MULTI_RELEASE,
                 ManifestTables.WAR,
+                ManifestNode.TABLE,
                 TaskNames.BUILD_INFO));
         for (Scope scope : Scope.values()) out.add(scope.tomlSection()); // [dependencies] + scoped spellings
         return Set.copyOf(out);
@@ -335,6 +336,7 @@ public final class ManifestBuild {
                     null,
                     BuildBlock.Dokka.DEFAULT,
                     List.of(),
+                    null,
                     null);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
@@ -373,6 +375,7 @@ public final class ManifestBuild {
                 null,
                 BuildBlock.Dokka.DEFAULT,
                 List.of(),
+                null,
                 null);
     }
 

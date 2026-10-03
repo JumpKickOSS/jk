@@ -201,7 +201,8 @@ public final class LocalProjectBuilder {
                 p.m2install(),
                 p.layout(),
                 Set.of(),
-                p.jdkSpec());
+                p.jdkSpec(),
+                p.nodeSpec());
         return JkBuild.builder(overridden)
                 .dependencies(project.dependencies())
                 .repositories(project.repositories())
