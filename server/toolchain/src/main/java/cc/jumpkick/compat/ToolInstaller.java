@@ -6,10 +6,12 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.MinimalTar;
+import cc.jumpkick.node.PackageManagerShims;
 import cc.jumpkick.util.JkOwnership;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +27,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
@@ -53,6 +57,23 @@ public final class ToolInstaller {
     /** An install and how its archive was verified, in the words the {@code downloaded} line prints. */
     public record Installed(InstalledTool tool, String verification) {}
 
+    /** The archive being streamed and the tree being staged, unlinked by {@link #reapInFlight}. */
+    private static final Set<Path> IN_FLIGHT = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Unlink this process's in-flight scratch: a cancel that halts the process runs no {@code
+     * finally}. Never throws; returns how many entries it removed.
+     */
+    public static int reapInFlight() {
+        int removed = 0;
+        for (Path p : IN_FLIGHT) {
+            IN_FLIGHT.remove(p);
+            PathUtil.deleteRecursively(p);
+            removed++;
+        }
+        return removed;
+    }
+
     private final Http http;
     private final ToolRegistry registry;
 
@@ -70,6 +91,12 @@ public final class ToolInstaller {
      * digest and no published checksum through, recording its SHA-256 for the next time.
      */
     public Installed install(ToolDistribution dist, boolean acceptUnverified) throws IOException, InterruptedException {
+        return install(dist, acceptUnverified, bytes -> {});
+    }
+
+    /** As {@link #install(ToolDistribution, boolean)}, reporting the archive's bytes as they arrive. */
+    public Installed install(ToolDistribution dist, boolean acceptUnverified, LongConsumer onBytesRead)
+            throws IOException, InterruptedException {
         Path target = registry.installDir(dist.tool(), dist.version());
         if (Files.isDirectory(target)) {
             return new Installed(new InstalledTool(dist.tool(), dist.version(), target), "installed earlier");
@@ -78,8 +105,9 @@ public final class ToolInstaller {
 
         ExpectedDigest expected = expectedDigest(dist, acceptUnverified);
         Path archive = Files.createTempFile("jk-tool-", "-" + dist.archiveType());
+        IN_FLIGHT.add(archive);
         try {
-            fetch(dist, archive);
+            fetch(dist, archive, onBytesRead);
             String actual = Hashing.fileHex(expected.algorithm(), archive);
             if (expected.hex() == null) {
                 // Accepted by name: the archive's own digest becomes the record later downloads
@@ -104,9 +132,11 @@ public final class ToolInstaller {
             // — and a cross-filesystem /tmp (tmpfs) can't fail the per-directory moves
             // (Files.move of a non-empty dir across filesystems always throws).
             Path stagingDir = Files.createTempDirectory(target.getParent(), "jk-tool-stage-");
+            IN_FLIGHT.add(stagingDir);
             try {
                 extract(archive, stagingDir, dist.archiveType());
                 Path effectiveRoot = flattenedRoot(stagingDir);
+                PackageManagerShims.write(dist.tool(), effectiveRoot);
                 try {
                     Files.move(effectiveRoot, target, StandardCopyOption.ATOMIC_MOVE);
                 } catch (IOException moveFailed) {
@@ -120,9 +150,11 @@ public final class ToolInstaller {
                 JkOwnership.mark(target);
             } finally {
                 deleteRecursively(stagingDir); // leftover shell when the root was nested, or on failure
+                IN_FLIGHT.remove(stagingDir);
             }
         } finally {
             Files.deleteIfExists(archive);
+            IN_FLIGHT.remove(archive);
         }
         return new Installed(new InstalledTool(dist.tool(), dist.version(), target), expected.source());
     }
@@ -135,7 +167,8 @@ public final class ToolInstaller {
     }
 
     /** Copy the distribution's archive to {@code archive}: from disk for a {@code file:} URI, else by download. */
-    private void fetch(ToolDistribution dist, Path archive) throws IOException, InterruptedException {
+    private void fetch(ToolDistribution dist, Path archive, LongConsumer onBytesRead)
+            throws IOException, InterruptedException {
         URI uri = dist.downloadUri();
         if (isFile(uri)) {
             Path source = localFile(uri, dist);
@@ -155,7 +188,15 @@ public final class ToolInstaller {
             if (response.statusCode() != 200) {
                 throw new IOException(dist.tool().slug() + " download " + uri + " returned " + response.statusCode());
             }
-            Files.copy(body, archive, StandardCopyOption.REPLACE_EXISTING);
+            try (OutputStream out = Files.newOutputStream(archive)) {
+                byte[] buf = new byte[64 * 1024];
+                long total = 0;
+                for (int n; (n = body.read(buf)) > 0; ) {
+                    out.write(buf, 0, n);
+                    total += n;
+                    onBytesRead.accept(total);
+                }
+            }
         }
         SessionContext.current().io().remoteDown(archive);
     }
@@ -192,10 +233,14 @@ public final class ToolInstaller {
      */
     private ExpectedDigest expectedDigest(ToolDistribution dist, boolean acceptUnverified)
             throws IOException, InterruptedException {
+        String pinned512 = dist.sha512();
+        if (pinned512 != null && !pinned512.isBlank()) {
+            return new ExpectedDigest(
+                    "sha512", "SHA-512", pinned512.trim(), "verified against the registry's integrity");
+        }
         String pinned = dist.sha256();
         if (pinned != null && !pinned.isBlank()) {
-            return new ExpectedDigest(
-                    "sha256", "SHA-256", pinned.trim(), "pinned by the wrapper's distributionSha256Sum");
+            return new ExpectedDigest("sha256", "SHA-256", pinned.trim(), "verified against its pinned sha256");
         }
         Path accepted = registry.acceptedDigest(dist.tool(), dist.version());
         if (Files.isRegularFile(accepted)) {
@@ -316,7 +361,7 @@ public final class ToolInstaller {
      * the +x bit. Set it explicitly so {@code ProcessBuilder} can exec the launcher.
      */
     private static void ensureBinaryExecutable(Path home, BuildTool tool) {
-        Path bin = home.resolve("bin").resolve(tool.binaryName());
+        Path bin = tool.launcher(home);
         if (!Files.exists(bin)) return;
         try {
             Set<PosixFilePermission> perms = EnumSet.copyOf(Files.getPosixFilePermissions(bin));

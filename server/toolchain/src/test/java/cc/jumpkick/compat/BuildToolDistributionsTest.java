@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.gradle.GradleResolver;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.mvn.MavenResolver;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -20,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class BuildToolDistributionsTest {
 
     @Test
-    void latest_is_what_the_engine_would_provision_on_demand() {
+    void latest_is_what_the_engine_would_provision_on_demand() throws Exception {
         assertThat(BuildToolDistributions.of(BuildTool.KOTLIN, BuildTool.LATEST))
                 .isEqualTo(KotlinResolver.defaultDistribution());
         assertThat(BuildToolDistributions.of(BuildTool.MAVEN, BuildTool.LATEST))
@@ -30,7 +31,7 @@ class BuildToolDistributionsTest {
     }
 
     @Test
-    void an_absent_or_blank_version_means_the_same_as_latest() {
+    void an_absent_or_blank_version_means_the_same_as_latest() throws Exception {
         for (BuildTool tool : BuildTool.values()) {
             assertThat(BuildToolDistributions.of(tool, null)).isEqualTo(BuildToolDistributions.of(tool, "latest"));
             assertThat(BuildToolDistributions.of(tool, "  ")).isEqualTo(BuildToolDistributions.of(tool, "LATEST"));
@@ -38,7 +39,7 @@ class BuildToolDistributionsTest {
     }
 
     @Test
-    void an_explicit_version_lands_in_the_url_and_in_the_install_dir() {
+    void an_explicit_version_lands_in_the_url_and_in_the_install_dir() throws Exception {
         ToolDistribution kotlin = BuildToolDistributions.of(BuildTool.KOTLIN, "2.3.1");
         assertThat(kotlin.version()).isEqualTo("2.3.1");
         assertThat(kotlin.downloadUri().toString()).contains("2.3.1");
@@ -52,13 +53,18 @@ class BuildToolDistributionsTest {
         assertThat(gradle.downloadUri().toString()).contains("8.14");
     }
 
-    /** Every tool a user can name is one the dispatcher resolves — the switch is exhaustive. */
+    /**
+     * Every tool a user can name round-trips by slug; the ones whose default needs no network (Node
+     * and the package managers ask a catalog) resolve to a distribution of that tool.
+     */
     @Test
-    void every_build_tool_slug_round_trips_to_a_distribution() {
+    void every_build_tool_slug_round_trips_to_a_distribution() throws Exception {
         for (BuildTool tool : BuildTool.values()) {
             assertThat(BuildTool.bySlug(tool.slug())).contains(tool);
-            assertThat(BuildToolDistributions.of(tool, BuildTool.LATEST).tool()).isEqualTo(tool);
             assertThat(BuildTool.slugs()).contains(tool.slug());
+        }
+        for (BuildTool tool : List.of(BuildTool.MAVEN, BuildTool.GRADLE, BuildTool.KOTLIN)) {
+            assertThat(BuildToolDistributions.of(tool, BuildTool.LATEST).tool()).isEqualTo(tool);
         }
         assertThat(BuildTool.bySlug("not-a-build-tool")).isEmpty();
         assertThat(BuildTool.bySlug(null)).isEmpty();
