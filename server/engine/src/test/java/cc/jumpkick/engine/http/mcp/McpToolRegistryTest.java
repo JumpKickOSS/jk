@@ -112,7 +112,7 @@ class McpToolRegistryTest {
         assertThat(listed).isEqualTo(tools.names());
         assertThat(listed).doesNotHaveDuplicates();
         assertThat(listed).noneMatch(n -> n.startsWith("jk_"));
-        assertThat(listed).contains("why", "outdated", "history", "jdk", "bind");
+        assertThat(listed).contains("why", "outdated", "history", "jdk", "node", "bind");
         assertThat(listed).doesNotContain("jk_tools");
         assertThat(listed.size()).isGreaterThan(McpTools.LOOP.size());
     }

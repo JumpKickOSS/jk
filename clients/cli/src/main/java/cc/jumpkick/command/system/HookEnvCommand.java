@@ -17,7 +17,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * Hidden {@code jk hook-env}: shell exports for {@code JAVA_HOME}/{@code GRAALVM_HOME} and a
+ * Hidden {@code jk hook-env}: shell exports for {@code JAVA_HOME}/{@code GRAALVM_HOME}, the
+ * project's Node.js ({@code JK_NODE_HOME} / {@code JK_NODE_SHIMS}) and a
  * surgical {@code PATH} toolchain-bin swap, undoing via {@code __JK_DIFF} when leaving or switching
  * projects. {@code PATH} itself is never frozen in the diff — only the homes are — so user PATH
  * edits (nvm, etc.) survive every prompt.
@@ -115,9 +116,12 @@ public final class HookEnvCommand implements CliCommand {
         //    activation prepends ahead of it, so leaving needs no re-add. Only emit
         //    when we manage a toolchain now or a prior diff did (so leave/deactivate
         //    strips cleanly) — never rewrite PATH on a no-op prompt with no jk state.
-        boolean managing = managed.containsKey(JkEnv.JAVA_HOME) || managed.containsKey(JkEnv.GRAALVM_HOME);
+        boolean managing = managed.containsKey(JkEnv.JAVA_HOME)
+                || managed.containsKey(JkEnv.GRAALVM_HOME)
+                || managed.containsKey(JkEnv.NODE_HOME);
         boolean wasManaging = prevDiff.keys().contains(JkEnv.JAVA_HOME)
                 || prevDiff.keys().contains(JkEnv.GRAALVM_HOME)
+                || prevDiff.keys().contains(JkEnv.NODE_HOME)
                 || prevDiff.keys().contains(JkEnv.PATH);
         if (managing || wasManaging) {
             String path = ToolchainPath.swap(
@@ -126,6 +130,14 @@ public final class HookEnvCommand implements CliCommand {
                     prevDiff.keys().contains(JkEnv.GRAALVM_HOME) ? snapshot.get(JkEnv.GRAALVM_HOME) : null,
                     managed.get(JkEnv.JAVA_HOME),
                     managed.get(JkEnv.GRAALVM_HOME));
+            // Node.js after the JDK: its bins and the manager's shims go first, and only the dirs
+            // a prior jk export named are stripped.
+            path = ToolchainPath.swapDirs(
+                    path,
+                    JkEnv.nodeDirs(
+                            prevDiff.keys().contains(JkEnv.NODE_HOME) ? snapshot.get(JkEnv.NODE_HOME) : null,
+                            prevDiff.keys().contains(JkEnv.NODE_SHIMS) ? snapshot.get(JkEnv.NODE_SHIMS) : null),
+                    JkEnv.nodeDirs(managed.get(JkEnv.NODE_HOME), managed.get(JkEnv.NODE_SHIMS)));
             out.append(shell.setEnv(JkEnv.PATH, path));
         }
 
