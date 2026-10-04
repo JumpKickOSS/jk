@@ -204,7 +204,8 @@ final class MetricEvaluator implements BatchEvaluator {
         @Override
         boolean wants(TextFiles.Entry f) {
             // a language the cap table does not name is not measured
-            return f.language().code && inScope(f) && bound.limitFor(extension(f.rel())) != null;
+            boolean measured = f.language().code || (measure.equals("lines") && TextFiles.markupSource(f.rel()));
+            return measured && inScope(f) && bound.limitFor(extension(f.rel())) != null;
         }
 
         @Override

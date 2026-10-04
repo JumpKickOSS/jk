@@ -291,15 +291,18 @@ public final class CodeText {
         return out;
     }
 
+    /** Extensions lexed with JS template literals. */
+    private static final Set<String> JS_FAMILY = Set.of("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx");
+
     /**
      * Code lines: comments, blank lines and {@code package} / {@code import} lines do not count. A
      * statement with a trailing comment still counts. String and text-block contents count — a
-     * fixture is data. {@code extension} selects JS template-literal lexing for {@code js}/{@code mjs}.
+     * fixture is data. {@code extension} selects JS template-literal lexing for the JS and TS family.
      */
     public static int codeLines(String src, String extension) {
         if (src.isEmpty()) return 0;
         String ext = extension.toLowerCase(Locale.ROOT);
-        boolean js = ext.equals("js") || ext.equals("mjs");
+        boolean js = JS_FAMILY.contains(ext);
         String[] visible = blank(src, Blank.COMMENTS, js).split("\n", -1);
         String[] code = blank(src, Blank.COMMENTS_AND_STRINGS, js).split("\n", -1);
         int lines = 0;

@@ -82,6 +82,23 @@ class MetricEvaluatorTest {
     }
 
     @Test
+    void lines_measure_front_end_sources_beside_code(@TempDir Path root) throws Exception {
+        Path app = Files.createDirectories(root.resolve("web/app"));
+        Files.writeString(app.resolve("page.tsx"), "export default function P() {\n  return <p>hi</p>;\n}\n");
+        Files.writeString(app.resolve("view.jsx"), "export const V = () => <div/>;\n");
+        Files.writeString(app.resolve("main.css"), "/* theme */\nbody {\n  color: red;\n}\n");
+        Files.writeString(app.resolve("Card.vue"), "<template>\n  <div/>\n</template>\n");
+        Files.writeString(app.resolve("notes.md"), "# not code\n");
+
+        Evaluation ev = one(root, rule("measure = \"lines\"\nfiles = [\"web/**\"]\ncap = 2\n"));
+
+        assertThat(ev.population()).containsEntry("units", 4L);
+        assertThat(ev.observations())
+                .extracting(Observation::key)
+                .containsExactlyInAnyOrder("web/app/page.tsx", "web/app/main.css", "web/app/Card.vue");
+    }
+
+    @Test
     void per_language_table_measures_only_the_languages_it_names(@TempDir Path root) throws Exception {
         tree(root);
         Evaluation ev = one(root, rule("measure = \"lines\"\ncap = { kt = 2 }\n"));
