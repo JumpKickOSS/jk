@@ -98,6 +98,7 @@ class SelfHostingTomlTest {
                         "plugins/localizer",
                         "plugins/antlr",
                         "plugins/taglib",
+                        "plugins/jenkins-test",
                         "plugins/avro",
                         "plugins/jaxb",
                         "plugins/jooq",

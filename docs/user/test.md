@@ -670,6 +670,20 @@ plugin's contributed provided classpath rides the same way. A `[multi-release]` 
 versioned classes come ahead of its main classes for every release the test JDK reaches
 ([Packaging](packaging.md#multi-release-jars)).
 
+**Jenkins plugins for JenkinsRule (`[jenkins-test]`).** A Jenkins test installs the plugins it
+uses from `test-dependencies/` on its classpath, which Maven fills with `maven-hpi-plugin`'s
+`resolve-test-dependencies` goal. `[jenkins-test]` does the same: the step `jenkins-test-plugins`
+finds every jar in the test closure whose manifest names a Jenkins plugin, fetches its `.hpi`
+from the module's repositories and writes `test-dependencies/<artifactId>.jpi` and `index`.
+Without it a plugin's classes are on the classpath but the plugin never starts.
+
+```toml
+[jenkins-test]                 # the table alone is the whole declaration
+# exclude = ["credentials"]    # artifactIds not installed for the tests
+```
+
+`jk import` writes the table for a POM that runs `resolve-test-dependencies`.
+
 ## Isolation contract
 
 Tests never run in the engine process (always a forked JVM). Defaults assume tests are

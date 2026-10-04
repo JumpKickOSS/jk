@@ -652,4 +652,49 @@ class PomGeneratorImportTest {
         assertThat(result.jkBuild().pluginConfig("taglib")).isEmpty();
         assertThat(messages(result)).anyMatch(m -> m.contains("`<plugin>maven-hpi-plugin</plugin>` was not imported"));
     }
+
+    /** Jenkins core's test module: the hpi plugin installs the test closure's plugins for JenkinsRule. */
+    @Test
+    void hpi_resolve_test_dependencies_is_the_jenkins_test_table(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.jenkins-ci.main</groupId>
+                  <artifactId>jenkins-test</artifactId>
+                  <version>2.583</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jenkins-ci.tools</groupId>
+                        <artifactId>maven-hpi-plugin</artifactId>
+                        <version>3.1838.va_13472137a_6a_</version>
+                        <extensions>true</extensions>
+                        <executions>
+                          <execution>
+                            <id>prepare-test-plugins</id>
+                            <goals><goal>resolve-test-dependencies</goal></goals>
+                            <phase>test-compile</phase>
+                          </execution>
+                          <execution>
+                            <id>test-runtime</id>
+                            <goals><goal>test-runtime</goal></goals>
+                            <phase>test</phase>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().pluginConfig("jenkins-test")).isPresent();
+        assertThat(result.jkBuild().pluginConfig("taglib")).isEmpty();
+        assertThat(messages(result))
+                .anyMatch(m -> m.startsWith("`maven-hpi-plugin` `resolve-test-dependencies` is `[jenkins-test]`"))
+                .anyMatch(m -> m.startsWith("`maven-hpi-plugin` goal `test-runtime` was not imported"))
+                .noneMatch(m -> m.contains("`<plugin>maven-hpi-plugin</plugin>` was not imported"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("[jenkins-test]");
+        assertThat(JkBuildParser.parse(rendered).pluginConfig("jenkins-test")).isPresent();
+    }
 }

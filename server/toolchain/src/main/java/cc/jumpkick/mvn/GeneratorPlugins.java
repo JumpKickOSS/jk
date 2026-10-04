@@ -54,6 +54,7 @@ final class GeneratorPlugins {
             @Nullable PluginConfig localizer,
             @Nullable PluginConfig antlr,
             @Nullable PluginConfig taglib,
+            @Nullable PluginConfig jenkinsTest,
             @Nullable PluginConfig avro,
             @Nullable PluginConfig jaxb,
             @Nullable PluginConfig jooq,
@@ -65,8 +66,9 @@ final class GeneratorPlugins {
         /** Every table the POM's generators add, in declaration order, the absent ones left out. */
         List<PluginConfig> tables() {
             List<PluginConfig> tables = new ArrayList<>();
-            for (PluginConfig table :
-                    new PluginConfig[] {openapi, protobuf, localizer, antlr, taglib, avro, jaxb, jooq, generate}) {
+            for (PluginConfig table : new PluginConfig[] {
+                openapi, protobuf, localizer, antlr, taglib, jenkinsTest, avro, jaxb, jooq, generate
+            }) {
                 if (table != null) tables.add(table);
             }
             return tables;
@@ -139,6 +141,7 @@ final class GeneratorPlugins {
                 localizer.table(),
                 antlr.table(),
                 taglib.table(),
+                taglib.testPlugins(),
                 avro.table(),
                 jaxb.table(),
                 jooq.table(),
