@@ -43,6 +43,7 @@ public final class ManifestImage {
                 nonBlank(project.dockerExecutable()) != null ? project.dockerExecutable() : global.dockerExecutable();
         String dockerFile = nonBlank(project.dockerFile()) != null ? project.dockerFile() : global.dockerFile();
         Boolean aotCache = project.aotCache() != null ? project.aotCache() : global.aotCache();
+        String kind = nonBlank(project.kind()) != null ? project.kind() : global.kind();
         return new ImageTable(
                 base,
                 name,
@@ -56,7 +57,8 @@ public final class ManifestImage {
                 main,
                 dockerExecutable,
                 dockerFile,
-                aotCache);
+                aotCache,
+                kind);
     }
 
     /**
@@ -65,12 +67,14 @@ public final class ManifestImage {
      * {@code labels}, {@code platforms}, {@code docker-executable}, {@code aot-cache} — and the
      * member's own value wins per key, as it does over the user-global table. What names one image
      * never flows down: {@code name}, {@code main}, {@code ports} and {@code docker-file} stay the
-     * member's, so two members cannot inherit one image name and push over each other.
+     * member's, so two members cannot inherit one image name and push over each other. A {@code
+     * nodeModule} takes neither the root's {@code base} nor its {@code aot-cache}.
      */
-    public static ImageTable inheritFromRoot(ImageTable member, ImageTable root) {
+    public static ImageTable inheritFromRoot(ImageTable member, ImageTable root, boolean nodeModule) {
         if (root.isEmpty()) return member;
+        // A node module's image runs Node.js: the root's JRE base and JVM AOT cache are not its.
         ImageTable shared = new ImageTable(
-                root.base(),
+                nodeModule ? null : root.base(),
                 null,
                 root.user(),
                 List.of(),
@@ -82,7 +86,8 @@ public final class ManifestImage {
                 null,
                 root.dockerExecutable(),
                 null,
-                root.aotCache());
+                nodeModule ? null : root.aotCache(),
+                null);
         return merge(member, shared);
     }
 
@@ -107,7 +112,18 @@ public final class ManifestImage {
                 image.getString("main"),
                 image.getString("docker-executable"),
                 image.getString("docker-file"),
-                image.getBoolean("aot-cache"));
+                image.getBoolean("aot-cache"),
+                kind(image));
+    }
+
+    /** {@code image.kind}: unset for the module's own image, {@code "static"} for an nginx image of a node build. */
+    private static @Nullable String kind(TomlTable image) {
+        String kind = image.getString("kind");
+        if (kind != null && !kind.equals(ImageTable.KIND_STATIC)) {
+            throw new JkBuildParseException(
+                    "[image] kind must be \"" + ImageTable.KIND_STATIC + "\" or unset, got `" + kind + "`");
+        }
+        return kind;
     }
 
     private static List<String> optionalStringList(TomlTable table, String key) {

@@ -64,6 +64,41 @@ final class ImageWrite {
             Path workerJar,
             WorkerFork fork)
             throws IOException {
+        restoreOrBuild(
+                ctx,
+                project,
+                layout,
+                config,
+                cache,
+                tarballPath,
+                base -> ImagePlans.imageTokens(
+                        layout.mainJar(),
+                        jars,
+                        classesDir,
+                        chosen,
+                        base,
+                        config,
+                        appTreeToken(project, layout),
+                        workerJar),
+                fork);
+    }
+
+    /** What the image tarball is a function of, given the resolved {@code base}. */
+    interface Tokens {
+        List<String> of(String base) throws IOException;
+    }
+
+    /** As above, with the action-key tokens from {@code tokens}. */
+    static void restoreOrBuild(
+            TaskContext ctx,
+            JkBuild project,
+            BuildLayout layout,
+            ImageConfig config,
+            Path cache,
+            @Nullable Path tarballPath,
+            Tokens tokens,
+            WorkerFork fork)
+            throws IOException {
         boolean offline = SessionContext.current().offline();
         // Packaging cache — tarball only. A registry push is a network
         // side-effect (the remote's state is unknown), so it's never skipped.
@@ -92,10 +127,8 @@ final class ImageWrite {
                 && !SessionContext.current().config().rebuildOr(false);
         String imgTask = null, imgKey = null;
         if (tarballPath != null && useCache) {
-            List<String> tokens = ImagePlans.imageTokens(
-                    layout.mainJar(), jars, classesDir, chosen, base, config, appTreeToken(project, layout), workerJar);
             imgTask = ActionKey.qualifiedTaskId(TaskNames.WRITE_IMAGE, tarballPath);
-            imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens);
+            imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens.of(base));
             var hit = ac.lookup(imgKey);
             Path tarballDir = Objects.requireNonNull(tarballPath.getParent(), "tarball dir");
             if (hit.isPresent() && ac.restoreArtifacts(hit.get(), tarballDir)) {
