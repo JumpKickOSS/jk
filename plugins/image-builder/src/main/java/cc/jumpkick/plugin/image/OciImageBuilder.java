@@ -90,7 +90,6 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         PluginConfig c = ctx.config();
         String artifact = c.string("artifact");
         String version = c.string("version");
-        String mainClass = c.string("mainClass");
         List<Integer> ports = new ArrayList<>();
         for (String p : c.stringList("ports")) {
             try {
@@ -117,7 +116,9 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                     + (registry == null ? "" : " (and the push to " + registry + ")")));
         }
 
+        // A node or static image has no main class: it names its own layers and entrypoint.
         if (c.stringOpt("kind").isPresent()) return layered(ctx, c, artifact, version, base, registry, tag);
+        String mainClass = c.string("mainClass");
 
         Path mainJar = ctx.mainArtifact().orElseThrow(() -> new IOException("image goal needs a built main artifact"));
         List<Path> depJars = new ArrayList<>();
