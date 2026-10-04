@@ -416,7 +416,7 @@ public final class ToolRunCommand implements CliCommand {
         this.toolArgs = targetGiven ? positionals.subList(1, positionals.size()) : positionals;
         this.mainClass = in.value("main").orElse(null);
         this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        this.stateDirOverride = in.value("state-dir").map(Path::of).orElse(null);
+        this.stateDirOverride = in.value("state-dir").map(CliPaths::abs).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.forceRecompile = in.isSet("force");

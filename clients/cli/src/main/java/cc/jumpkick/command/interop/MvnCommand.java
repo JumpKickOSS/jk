@@ -2,6 +2,7 @@
 package cc.jumpkick.command.interop;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -98,7 +99,7 @@ public final class MvnCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.directory = in.value("dir").map(Path::of).orElse(null);
-        this.toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
+        this.toolsDir = in.value("tools-dir").map(CliPaths::abs).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.noDiscover = in.isSet("no-discover");
         this.acceptUnverified = CommonOpts.acceptUnverifiedTool(in);

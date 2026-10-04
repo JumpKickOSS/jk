@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineHeapDump;
@@ -78,7 +79,7 @@ public final class DoctorCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
-        Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
+        Path toolsDir = in.value("tools-dir").map(CliPaths::abs).orElse(null);
         boolean verifyLinked = in.isSet("verify-linked");
         Path root = toolsDir != null ? toolsDir : JkDirs.tools();
 

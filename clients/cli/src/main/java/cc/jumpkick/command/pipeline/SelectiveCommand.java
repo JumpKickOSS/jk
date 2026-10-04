@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ProjectContext;
@@ -113,7 +114,7 @@ public final class SelectiveCommand implements CliCommand {
         String since = in.value("since").or(() -> in.value("affected-since")).orElse(null);
         String modules = CommonOpts.modulesSpec(in);
         boolean json = in.isSet("json");
-        Path planPath = in.value("plan").map(Path::of).orElse(dir.resolve(PLAN_REL));
+        Path planPath = in.value("plan").map(CliPaths::abs).orElse(dir.resolve(PLAN_REL));
 
         return switch (action) {
             case "resolve" -> resolve(dir, proj.buildFile(), since, modules, json, null);

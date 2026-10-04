@@ -2,6 +2,7 @@
 package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Arity;
@@ -43,7 +44,7 @@ public final class TrustCommand extends GroupCommand {
     }
 
     private static Path stateDir(Invocation in) {
-        return in.value("state-dir").map(Path::of).orElseGet(JkDirs::state);
+        return in.value("state-dir").map(CliPaths::abs).orElseGet(JkDirs::state);
     }
 
     private static Opt stateDirOpt() {
@@ -241,7 +242,7 @@ public final class TrustCommand extends GroupCommand {
                 return Exit.USAGE;
             }
             Path source = in.value("file")
-                    .map(Path::of)
+                    .map(CliPaths::abs)
                     .orElseGet(() -> Path.of(System.getProperty("user.home"), ".jbang", "trusted-sources.json"));
             if (!Files.isRegularFile(source)) {
                 CommandWedge.printFail("Trust", source + " not found.");

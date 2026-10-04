@@ -2,6 +2,7 @@
 package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -47,8 +48,8 @@ public final class JdkUpdateShellCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         String shellOverride = in.value("shell").orElse(null);
-        Path homeOverride = in.value("home").map(Path::of).orElse(null);
-        Path binDirOverride = in.value("bin-dir").map(Path::of).orElse(null);
+        Path homeOverride = in.value("home").map(CliPaths::abs).orElse(null);
+        Path binDirOverride = in.value("bin-dir").map(CliPaths::abs).orElse(null);
 
         Path home = homeOverride != null ? homeOverride : Path.of(System.getProperty("user.home"));
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
