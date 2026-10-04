@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * What the {@code jk node} verbs share beyond {@link NodeInstalls}: an engine-hosted install of what
  * is missing, running a command under a Node.js home, and the {@code --output json} rows.
  */
-final class NodeCli {
+public final class NodeCli {
 
     static final String WEDGE = "Node";
 
@@ -62,10 +62,7 @@ final class NodeCli {
         BuildTool tool = spec.manager().tool().orElse(null);
         if (tool == null) return home;
         Optional<InstalledTool> have = installs().managedTool(tool, spec.version());
-        Path managerHome = have.isPresent()
-                ? have.get().home()
-                : Path.of(Objects.requireNonNull(
-                        provision(tool.slug(), spec.version()).bin()));
+        Path managerHome = have.isPresent() ? have.get().home() : provisionedHome(tool, spec.version());
         return home.withManager(new NodeHome.ManagerHome(spec.manager(), spec.version(), managerHome));
     }
 
@@ -73,7 +70,7 @@ final class NodeCli {
      * The install {@code spec} names when given ({@code --node}), else the project's Node.js,
      * installing what is missing. Empty when neither names one.
      */
-    static Optional<NodeHome> home(Path dir, @Nullable String spec) throws IOException {
+    public static Optional<NodeHome> home(Path dir, @Nullable String spec) throws IOException {
         if (spec != null && !spec.isBlank()) {
             Optional<NodeInstalls.Install> found = installed(NodeSpec.parse(spec));
             NodeInstalls.Install i =
@@ -99,9 +96,33 @@ final class NodeCli {
         return p;
     }
 
-    private static NodeInstalls.Install fromProvision(HostedEvents.Provision p) {
-        return new NodeInstalls.Install(
-                Objects.requireNonNullElse(p.version(), ""), "jk", Path.of(Objects.requireNonNull(p.bin())));
+    /** Install {@code tool} at {@code version} and return its home, not the launcher the provision names. */
+    private static Path provisionedHome(BuildTool tool, @Nullable String version) throws IOException {
+        HostedEvents.Provision p = provision(tool.slug(), version);
+        String installed = Objects.requireNonNullElse(p.version(), "");
+        Optional<InstalledTool> home =
+                installed.isEmpty() ? Optional.empty() : installs().managedTool(tool, installed);
+        if (home.isPresent()) return home.get().home();
+        return Objects.requireNonNull(
+                Path.of(Objects.requireNonNull(p.bin())).toRealPath().getParent(), "tool home");
+    }
+
+    /**
+     * The install a provision reports. Its {@code bin} is a launcher in the shared tools {@code bin}
+     * directory, so the home is looked up by the version just installed, else read through the
+     * launcher's link.
+     */
+    private static NodeInstalls.Install fromProvision(HostedEvents.Provision p) throws IOException {
+        String version = Objects.requireNonNullElse(p.version(), "");
+        if (!version.isEmpty()) {
+            for (NodeInstalls.Install i : installs().managed()) {
+                if (i.version().equals(version)) return i;
+            }
+        }
+        Path launcher = Path.of(Objects.requireNonNull(p.bin())).toRealPath();
+        Path home = Objects.requireNonNull(launcher.getParent(), "launcher dir");
+        if (!Os.isWindows()) home = Objects.requireNonNull(home.getParent(), "node home");
+        return new NodeInstalls.Install(version, "jk", home);
     }
 
     /** The catalog, its warnings on stderr. */
@@ -110,7 +131,7 @@ final class NodeCli {
     }
 
     /** The catalog's releases, or none when it cannot be read. */
-    static List<NodeRelease> releasesOrNone() {
+    public static List<NodeRelease> releasesOrNone() {
         try {
             return catalog().releases();
         } catch (IOException e) {
@@ -126,7 +147,7 @@ final class NodeCli {
      * the terminal handed over, and return its exit code. A bare program name is looked up there
      * first: the JVM resolves one against its own {@code PATH}, not the child's.
      */
-    static int exec(NodeHome home, List<String> argv, Path dir) throws IOException, InterruptedException {
+    public static int exec(NodeHome home, List<String> argv, Path dir) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>(argv);
         command.set(0, resolve(home, argv.get(0)));
         ProcessBuilder pb = new ProcessBuilder(command).directory(dir.toFile());

@@ -77,13 +77,14 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<group>", "Maven groupId (default: from git config).", "--group"),
                 // --jdk rides the GLOBAL option (same canonical key "jdk"); a local
                 // re-declaration would collide with it in the dispatcher.
-                Opt.value("<lang>", "Language: java|kotlin|groovy|scala; default java", "--lang"),
+                Opt.value("<lang>", "java (default), kotlin, groovy, scala or node", "--lang"),
                 Opt.flag("Executable project (default is a library).", "--executable")
                         .negate(),
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
                 Opt.flag("Wire a GraalVM native-image build.", "--native"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
                 Opt.value("<ref>", "Giter8 path, name, framework/name, or URL", "-t", "--template"),
+                Opt.value("<fw>", "Swap web/ for this front end", "--frontend"),
                 Opt.value("<k=v>", "Template property k=v (repeatable)", "--param")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
@@ -121,6 +122,9 @@ public final class NewCommand implements CliCommand {
     String templateRef;
 
     List<String> templateParams = List.of();
+
+    @Nullable
+    String frontend;
 
     @Nullable
     String depsCsv;
@@ -258,6 +262,7 @@ public final class NewCommand implements CliCommand {
         this.plugin = in.isSet("plugin");
         this.templateRef = in.value("template").orElse(null);
         this.templateParams = in.values("param");
+        this.frontend = in.value("frontend").orElse(null);
         this.depsCsv = in.value("deps").orElse(null);
         this.layoutFlag = in.value("layout").orElse(null);
         this.kotlinModule = in.value("kotlin-module").orElse(null);
@@ -292,6 +297,17 @@ public final class NewCommand implements CliCommand {
         this.parent = resolveParent(detectionStartDir(cwd));
         this.defaultJdk = NewJdkChoice.defaultJdk();
 
+        if ("node".equalsIgnoreCase(lang)) {
+            return NewNode.apply(new NewNode.Args(
+                    templateRef,
+                    templateParams,
+                    name,
+                    group,
+                    directory,
+                    cwd,
+                    parent == null ? null : parent.root(),
+                    global.offline));
+        }
         if (templateRef != null && !templateRef.isBlank()) {
             return NewTemplate.apply(new NewTemplate.Args(
                     templateRef,
@@ -304,7 +320,8 @@ public final class NewCommand implements CliCommand {
                     cwd,
                     plugin,
                     parent == null,
-                    global.offline));
+                    global.offline,
+                    frontend));
         }
 
         if (shouldRunWizard()) {

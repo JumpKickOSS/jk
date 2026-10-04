@@ -3,6 +3,7 @@ package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ImportedKotlin;
+import cc.jumpkick.compat.NodeImportMapping;
 import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.layout.Languages;
@@ -77,6 +78,7 @@ final class GradleModelImporter {
 
     /** Plugin ids whose effect needs no row: implicit in jk, or absorbed by another mapping. */
     private static final Set<String> SILENT_PLUGINS = Set.of(
+            GradleNodeImport.PLUGIN,
             "java",
             "java-library",
             "application",
@@ -374,6 +376,10 @@ final class GradleModelImporter {
         for (PluginConfig config : plugins) builder.pluginConfig(config);
         JkBuild jkBuild = builder.build();
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
+        Path projectDir = buildRoot.resolve(p.dir());
+        NodeImportMapping.Mapped node = GradleNodeImport.map(projectDir, applied, local);
+        if (node == null) node = NodeImportMapping.quinoa(projectDir, local);
+        jkBuild = NodeImportMapping.apply(jkBuild, node);
         rows.addAll(modulePath, local.build());
         return jkBuild;
     }

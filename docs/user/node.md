@@ -98,6 +98,22 @@ See [Run § Sidecars](run.md#sidecars-devsidecars).
 the locked major; a static module gets an nginx image with `[image] kind = "static"`, and none
 without it. Layers, defaults and inheritance: [Images § Node modules](images.md#node-modules).
 
+## New projects and adoption
+
+`jk new --lang node -t <framework> <name>` runs the framework's own generator under the newest LTS
+Node.js and writes the `jk.toml` that pins it ([Templates](templates.md#node-front-ends---lang-node)).
+`jk new -t webapp --frontend <framework>` swaps the webapp template's front end.
+
+`jk init` in a directory holding a `package.json` (and no JVM sources) makes it a node module,
+pinned to what `.nvmrc`, `.node-version` or `package.json` (`devEngines`, `volta`, `engines`)
+suggest, and says which file it read. At a root whose subdirectories hold a `package.json`, `jk init`
+adds each as a workspace member the same way.
+
+`jk import` maps gradle-node-plugin's `node { version }` and `nodeProjectDir` (a module with no JVM
+sources is a node module; a front end in a subdirectory of a JVM module is a `[node] dir` build), and
+Quarkus Quinoa's `quarkus.quinoa.package-manager-install.node-version` and `ui-dir` (a `[node] dir`
+build served from `META-INF/resources`).
+
 ## Importing frontend-maven-plugin
 
 `jk import pom.xml` turns the plugin's executions into a node build. The version an install goal

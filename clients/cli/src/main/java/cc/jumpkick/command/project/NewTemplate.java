@@ -49,7 +49,8 @@ final class NewTemplate {
             Path cwd,
             boolean plugin,
             boolean standalone,
-            boolean offline) {}
+            boolean offline,
+            @Nullable String frontend) {}
 
     static int apply(Args args) {
         if (args.plugin()) {
@@ -120,6 +121,11 @@ final class NewTemplate {
             if (ack.error() != null && !ack.error().isBlank()) {
                 CommandWedge.printFail("New", ack.error());
                 return ack.error().contains("not found") ? Exit.USAGE : Exit.SOFTWARE;
+            }
+            if (args.frontend() != null && !args.frontend().isBlank()) {
+                int swapped =
+                        NewNode.replaceFrontend(target.resolve("web"), args.frontend(), List.of(), args.offline());
+                if (swapped != Exit.SUCCESS) return swapped;
             }
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(
