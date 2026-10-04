@@ -641,6 +641,10 @@ in     = "plugins/android -> shared/client-io"
 reason = "the SDK license feed is downloaded through Http, the one client jk routes through the configured proxy"
 
 [[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/jenkins-test -> shared/client-io"
+reason = "the Jenkins plugin archives the tests install are downloaded through Http, the one client jk routes through the configured proxy"
+
+[[guards.plugin-sdk-boundary.allow]]
 in     = "plugins/image-builder -> shared/jk-api"
 reason = "image configuration and repository credentials are public model types"
 

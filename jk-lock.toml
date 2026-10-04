@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.14.0"
-generated-by-build = "3101168b6f2b"
-generated-by-build-time = "2026-10-01T19:04:38Z"
+generated-by-build = "1a11d9588cb0"
+generated-by-build-time = "2026-10-04T18:10:36Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "9b50dc718961782da552c23477d92696ad7a665e9e0fbe8f7f0505167a51df27"
+manifests-sha256 = "3881b4479ba1c9e363f1f0530df9aa15447798a23ee8e2f1998db047cbc3e5f7"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -38,6 +38,17 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "com.eed3si9n:shaded-jawn-parser_3:jar:"
+version  = "1.3.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5b815a3b05960149a8310a288c2f5f3662fc833c1474079e76b31b2c4dc6d4b3"
+scopes   = ["main"]
+members  = ["plugins/java-compiler"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.9.0",
+]
+
+[[artifact]]
+name     = "com.eed3si9n:shaded-jawn-parser_3:jar:"
 version  = "1.7.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d4d812ffe12e9d910cf4bf32b6e93a311e90238cc9a59af04ee99b5887e0f5b0"
@@ -52,6 +63,17 @@ version  = "1.0.0-M4"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d4997e6dfcdc24db0502a7bae6d44ac2e78e6f683e61b287cb756d9b2559cd33"
 scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.9.0",
+]
+
+[[artifact]]
+name     = "com.eed3si9n:sjson-new-core_3:jar:"
+version  = "0.15.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b51f27ada484f6aedfcf15ac86d27029e23422a4ebf50eef0e0a93e93a8b2fdf"
+scopes   = ["main"]
+members  = ["plugins/java-compiler"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0",
 ]
@@ -3782,6 +3804,14 @@ name    = "jk-jaxb"
 version = "0.14.0"
 java    = 25
 description = "JumpKick's JAXB preset: [jaxb] as one generator entry running the xjc schema compiler over a module's XML schemas"
+
+[[module]]
+path    = "plugins/jenkins-test"
+group   = "cc.jumpkick"
+name    = "jk-jenkins-test"
+version = "0.14.0"
+java    = 25
+description = "JumpKick's Jenkins test-plugins step: [jenkins-test] installs the test closure's Jenkins plugins where JenkinsRule loads them"
 
 [[module]]
 path    = "plugins/jooq"

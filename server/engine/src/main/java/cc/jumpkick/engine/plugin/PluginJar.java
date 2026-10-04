@@ -49,6 +49,7 @@ public enum PluginJar {
     LOCALIZER("jk-localizer", "jk.localizer.plugin.jar"),
     ANTLR("jk-antlr", "jk.antlr.plugin.jar"),
     TAGLIB("jk-taglib", "jk.taglib.plugin.jar"),
+    JENKINS_TEST("jk-jenkins-test", "jk.jenkins-test.plugin.jar"),
     AVRO("jk-avro", "jk.avro.plugin.jar"),
     JAXB("jk-jaxb", "jk.jaxb.plugin.jar"),
     JOOQ("jk-jooq", "jk.jooq.plugin.jar"),

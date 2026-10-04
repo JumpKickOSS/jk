@@ -19,13 +19,15 @@ import org.jspecify.annotations.Nullable;
  * {@code maven-hpi-plugin}'s {@code generate-taglib-interface} goal is the {@code [taglib]}
  * preset: the POM's resource directories are {@code resources}, and the goal's
  * {@code <outputDirectory>} is the preset's own contribution, so an {@code add-source} root inside
- * it is not written as an {@code extra-src}. The plugin is then imported; any other goal it runs
- * is a row of its own, since the preset is that one generator.
+ * it is not written as an {@code extra-src}. Its {@code resolve-test-dependencies} goal is
+ * {@code [jenkins-test]}, which installs the test closure's Jenkins plugins for JenkinsRule. Any
+ * other goal is a row of its own.
  */
 final class TaglibPlugin {
 
     static final String ARTIFACT = "maven-hpi-plugin";
     static final String GOAL = "generate-taglib-interface";
+    static final String TEST_GOAL = "resolve-test-dependencies";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
     static final String ADD_SOURCE_ROW = "the taglib preset's output; `[taglib]` folds the generated tag-library"
@@ -34,9 +36,16 @@ final class TaglibPlugin {
     private static final String DEFAULT_OUTPUT = "target/generated-sources/taglib-interface";
     private static final String MAIN_RESOURCES = "src/main/resources";
 
-    /** The table (null without the goal), the output root it fills, the plugins it consumed. */
-    record Mapped(@Nullable PluginConfig table, Map<String, String> outputRoots, Set<String> consumed) {
-        static final Mapped NONE = new Mapped(null, Map.of(), Set.of());
+    /**
+     * The taglib table (null without its goal), the {@code [jenkins-test]} table (null without
+     * {@value #TEST_GOAL}), the output root the taglib fills, the plugins they consumed.
+     */
+    record Mapped(
+            @Nullable PluginConfig table,
+            @Nullable PluginConfig testPlugins,
+            Map<String, String> outputRoots,
+            Set<String> consumed) {
+        static final Mapped NONE = new Mapped(null, null, Map.of(), Set.of());
     }
 
     private TaglibPlugin() {}
@@ -48,9 +57,14 @@ final class TaglibPlugin {
                 ? null
                 : model.getProjectDirectory().toPath();
         String output = null;
+        boolean testPlugins = false;
         List<String> otherGoals = new ArrayList<>();
         for (PluginExecution execution : plugin.getExecutions()) {
             for (String goal : execution.getGoals()) {
+                if (TEST_GOAL.equals(goal)) {
+                    testPlugins = true;
+                    continue;
+                }
                 if (!GOAL.equals(goal)) {
                     if (!otherGoals.contains(goal)) otherGoals.add(goal);
                     continue;
@@ -61,18 +75,31 @@ final class TaglibPlugin {
                 if (declared != null) output = SourceTreePlugins.moduleRelative(declared, baseDir);
             }
         }
-        if (output == null) return Mapped.NONE;
-        Map<String, Object> values = new LinkedHashMap<>();
-        List<String> resourceDirs = LocalizerPlugin.resourceDirs(model, baseDir);
-        if (!resourceDirs.equals(List.of(MAIN_RESOURCES))) values.put("resources", resourceDirs);
-        report.warning("`" + ARTIFACT + "` `" + GOAL + "` is `[taglib]`: the typed tag-library interfaces are"
-                + " generated into the compile from the tag libraries under " + String.join(", ", resourceDirs)
-                + "; the module's `org.kohsuke.stapler:stapler-groovy` dependency stays, the interfaces read it at"
-                + " compile time.");
-        for (String goal : otherGoals) {
-            report.warning(
-                    "`" + ARTIFACT + "` goal `" + goal + "` was not imported; only `" + GOAL + "` maps to a jk table.");
+        if (output == null && !testPlugins) return Mapped.NONE;
+        PluginConfig taglib = null;
+        if (output != null) {
+            Map<String, Object> values = new LinkedHashMap<>();
+            List<String> resourceDirs = LocalizerPlugin.resourceDirs(model, baseDir);
+            if (!resourceDirs.equals(List.of(MAIN_RESOURCES))) values.put("resources", resourceDirs);
+            report.warning("`" + ARTIFACT + "` `" + GOAL + "` is `[taglib]`: the typed tag-library interfaces are"
+                    + " generated into the compile from the tag libraries under " + String.join(", ", resourceDirs)
+                    + "; the module's `org.kohsuke.stapler:stapler-groovy` dependency stays, the interfaces read it"
+                    + " at compile time.");
+            taglib = new PluginConfig("taglib", values);
         }
-        return new Mapped(new PluginConfig("taglib", values), Map.of(output, ADD_SOURCE_ROW), Set.of(ARTIFACT));
+        if (testPlugins) {
+            report.warning("`" + ARTIFACT + "` `" + TEST_GOAL + "` is `[jenkins-test]`: the Jenkins plugins of the"
+                    + " test closure are installed under test-dependencies/ on the test classpath, where JenkinsRule"
+                    + " loads them.");
+        }
+        for (String goal : otherGoals) {
+            report.warning("`" + ARTIFACT + "` goal `" + goal + "` was not imported; only `" + GOAL + "` and `"
+                    + TEST_GOAL + "` map to jk tables.");
+        }
+        return new Mapped(
+                taglib,
+                testPlugins ? new PluginConfig("jenkins-test", Map.of()) : null,
+                output == null ? Map.of() : Map.of(output, ADD_SOURCE_ROW),
+                Set.of(ARTIFACT));
     }
 }
