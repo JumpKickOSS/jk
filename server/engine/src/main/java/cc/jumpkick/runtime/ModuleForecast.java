@@ -786,7 +786,7 @@ final class ModuleForecast {
         testResourceDrift = false;
         knownResourceDrift = null;
         if (!compileDirty && Files.isDirectory(layout.classesDir())) {
-            mainResourceDrift = TaskForecaster.mainResourcesOutOfSync(dir, compact, layout.classesDir());
+            mainResourceDrift = TaskForecaster.mainResourcesOutOfSync(dir, project, compact, layout.classesDir());
             BuildBlock.BuildInfo buildInfo = project.build().buildInfo();
             if (buildInfo != null) {
                 // A rewritten git.properties changes the classes tree package-jar keys on, so the

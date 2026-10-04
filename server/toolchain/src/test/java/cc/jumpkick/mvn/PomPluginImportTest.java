@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
@@ -105,9 +106,9 @@ class PomPluginImportTest {
         assertThat(build.manifest()).containsEntry("Implementation-Title", "lib");
         assertThat(build.project().java()).isEqualTo(21);
 
-        assertThat(messages)
-                .anyMatch(m -> m.startsWith("`<resources>` with `<filtering>true</filtering>` on src/main/resources"));
-        assertThat(messages).anyMatch(m -> m.startsWith("`<resources>` directory src/main/config is outside"));
+        assertThat(build.build().resources())
+                .as("<resources> map to [resources] only for directories that exist; this fixture has none")
+                .isEqualTo(BuildBlock.Resources.EMPTY);
         assertThat(messages).noneMatch(m -> m.contains("javadoc"));
         assertThat(messages)
                 .anyMatch(

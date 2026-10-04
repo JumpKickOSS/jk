@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.SourcesMode;
 import java.nio.file.Files;
@@ -12,11 +13,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.maven.model.Build;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
-import org.apache.maven.model.Resource;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
@@ -28,14 +27,19 @@ import org.jspecify.annotations.Nullable;
  * default, and becomes {@code javadoc = "strict"} when its configuration keeps doclint on and fails
  * on error — {@code <doclint>none</doclint>} turns doclint off, so that plugin stays lenient. An
  * {@code add-source} root inside a generator's output directory is that generator's contribution,
- * not an extra root. Resource filtering has no jk equivalent, so a filtered directory is a report
- * row, as is a resource directory outside the fixed layout. Everything else under
+ * not an extra root. {@code <resources>} / {@code <testResources>} are {@code [resources]}
+ * ({@link ResourcePlugins}). Everything else under
  * {@code <build><plugins>} gets the generic row.
  */
 final class SourceTreePlugins {
 
     /** The source-tree settings a POM's plugins add to the module. */
-    record SourceTree(List<String> extraSrc, List<String> testExtraSrc, SourcesMode sources, JavadocMode javadoc) {}
+    record SourceTree(
+            List<String> extraSrc,
+            List<String> testExtraSrc,
+            SourcesMode sources,
+            JavadocMode javadoc,
+            BuildBlock.Resources resources) {}
 
     private static final String MAIN_RESOURCES = "src/main/resources";
     private static final String TEST_RESOURCES = "src/test/resources";
@@ -63,7 +67,7 @@ final class SourceTreePlugins {
                 : model.getProjectDirectory().toPath();
         PluginFacts.plugin(model, "build-helper-maven-plugin")
                 .ifPresent(helper -> addSourceRoots(helper, baseDir, generatorOutputs, extraSrc, testExtraSrc, report));
-        reportResources(model, report);
+        BuildBlock.Resources resources = ResourcePlugins.map(model, report);
         SourcesMode sources = PluginFacts.plugin(model, "maven-source-plugin").isPresent()
                 ? SourcesMode.ALWAYS
                 : SourcesMode.DISABLED;
@@ -72,7 +76,7 @@ final class SourceTreePlugins {
                 .map(p -> JavadocMode.STRICT)
                 .orElse(JavadocMode.LENIENT);
         reportUnmappedPlugins(em, consumedPlugins, report, inherited, isRoot);
-        return new SourceTree(extraSrc, testExtraSrc, sources, javadoc);
+        return new SourceTree(extraSrc, testExtraSrc, sources, javadoc, resources);
     }
 
     /**
@@ -226,45 +230,6 @@ final class SourceTreePlugins {
         int i = 0;
         while (i < s.length() && s.charAt(i) == '/') i++;
         return s.substring(i);
-    }
-
-    /**
-     * A {@code <resource>} that filters, or lives outside {@code src/main/resources} /
-     * {@code src/test/resources}, is a row: jk copies resources from the fixed layout as written.
-     */
-    private static void reportResources(Model model, ImportReport.Builder report) {
-        Build build = model.getBuild();
-        if (build == null) return;
-        Path baseDir = model.getProjectDirectory() == null
-                ? null
-                : model.getProjectDirectory().toPath();
-        reportResources(build.getResources(), MAIN_RESOURCES, "`<resources>`", baseDir, report);
-        reportResources(build.getTestResources(), TEST_RESOURCES, "`<testResources>`", baseDir, report);
-    }
-
-    private static void reportResources(
-            List<Resource> resources,
-            String layoutDir,
-            String element,
-            @Nullable Path baseDir,
-            ImportReport.Builder report) {
-        List<String> filtered = new ArrayList<>();
-        List<String> elsewhere = new ArrayList<>();
-        for (Resource resource : resources) {
-            String raw = resource.getDirectory();
-            String dir = raw == null || raw.isBlank() ? layoutDir : moduleRelative(raw.trim(), baseDir);
-            if (resource.isFiltering()) filtered.add(dir);
-            if (!dir.equals(layoutDir)) elsewhere.add(dir);
-        }
-        if (!filtered.isEmpty()) {
-            report.warning(element + " with `<filtering>true</filtering>` on " + String.join(", ", filtered)
-                    + " — jk has no resource filtering; `${...}` placeholders in those files are copied as"
-                    + " written. Read the values at runtime or check the filled-in file in.");
-        }
-        if (!elsewhere.isEmpty()) {
-            report.warning(element + " directory " + String.join(", ", elsewhere) + " is outside `" + layoutDir
-                    + "` — jk's layout reads `" + layoutDir + "` only; move the files there.");
-        }
     }
 
     /**

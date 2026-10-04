@@ -30,6 +30,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestFailureSource;
@@ -51,6 +52,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -498,7 +500,13 @@ public final class PlannerTest {
             boolean mixedTest,
             boolean mixedTestGv)
             throws IOException {
-        List<Path> suiteResDirs = ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames);
+        List<Path> suiteResDirs = new ArrayList<>(ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames));
+        if (suiteNames.contains(TestSuites.DEFAULT)) {
+            Set<String> unresolved = new TreeSet<>();
+            suiteResDirs.addAll(
+                    FilteredResources.testRoots(in.dir(), ctx.require(PROJECT), ctx.require(LAYOUT), unresolved));
+            PlannerResources.warnUnresolved(ctx, unresolved);
+        }
         Files.createDirectories(testClasses);
         // adoptUnowned: a test-resource copy that predates the ledger left files this mirror
         // must still remove. A file the compile just wrote is protected; main classes already
