@@ -8,6 +8,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.command.toolchain.NodeCli;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildEditor;
+import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
@@ -86,6 +87,7 @@ final class NewNode {
                     StandardCharsets.UTF_8);
             ignore(target);
             if (root != null) join(root, target);
+            else JkSkill.mergeAgentsGuide(target);
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(
                     Glyphs.CHECK,

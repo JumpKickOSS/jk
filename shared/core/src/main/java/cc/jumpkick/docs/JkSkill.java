@@ -109,6 +109,26 @@ public final class JkSkill {
         return true;
     }
 
+    /**
+     * Put jk's guide at the top of {@code dir}'s {@code AGENTS.md}: written when the file is missing,
+     * placed above a generator's own content otherwise, which stays below it (a framework's managed
+     * block, such as Next's, keeps its markers and is not re-added). A file that already starts with
+     * the guide is left alone.
+     *
+     * @return {@code true} when the file changed
+     */
+    public static boolean mergeAgentsGuide(Path dir) throws IOException {
+        Path file = dir.resolve("AGENTS.md");
+        if (!Files.exists(file)) return ensureAgentsGuide(dir);
+        String existing = Files.readString(file, StandardCharsets.UTF_8);
+        if (existing.startsWith(AGENTS_MD)) return false;
+        String rest = existing.startsWith("# AGENTS.md")
+                ? existing.substring("# AGENTS.md".length()).stripLeading()
+                : existing;
+        Files.writeString(file, AGENTS_MD + "\n" + rest, StandardCharsets.UTF_8);
+        return true;
+    }
+
     private static String load(String name) {
         String resource = RESOURCE_DIR + name;
         try (InputStream in = JkSkill.class.getResourceAsStream(resource)) {

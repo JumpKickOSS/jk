@@ -157,6 +157,10 @@ output.
 Node.js and writes the `jk.toml` that pins it ([Templates](templates.md#node-front-ends---lang-node)).
 `jk new -t webapp --frontend <framework>` swaps the webapp template's front end.
 
+A standalone project gets jk's `AGENTS.md`. When the generator wrote one of its own, jk's guide goes
+on top and the generator's text stays below it; Next.js's managed block keeps its markers, so `next
+dev` finds it and leaves the file alone (`agentRules: false` in `next.config` stops Next writing it).
+
 `jk init` in a directory holding a `package.json` (and no JVM sources) makes it a node module,
 pinned to what `.nvmrc`, `.node-version` or `package.json` (`devEngines`, `volta`, `engines`)
 suggest, and says which file it read. At a root whose subdirectories hold a `package.json`, `jk init`
