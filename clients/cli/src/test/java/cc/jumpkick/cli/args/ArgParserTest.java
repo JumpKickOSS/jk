@@ -125,6 +125,9 @@ class ArgParserTest {
         Invocation in = parse(c, "--", "--quiet", "-x", "foo");
         assertThat(in.isSet("quiet")).isFalse();
         assertThat(in.positionals()).containsExactly("--quiet", "-x", "foo");
+        assertThat(in.positionalsBeforeEndOfOptions()).isZero();
+        assertThat(parse(c, "a", "--", "b").positionalsBeforeEndOfOptions()).isEqualTo(1);
+        assertThat(parse(c, "a", "b").positionalsBeforeEndOfOptions()).isEqualTo(2);
     }
 
     @Test
