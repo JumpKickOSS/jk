@@ -42,6 +42,28 @@ under `[node]` in `jk-lock.toml` ([Lockfile](lockfile.md#nodejs)). A build provi
 or reuses one nvm, fnm, volta, mise, asdf, Homebrew or the `PATH` already has. Package managers
 are npm, pnpm, Yarn (Berry only) and bun.
 
+## Commands
+
+`jk node` manages Node.js the way `jk jdk` manages JDKs; `jk nvm` is the same command.
+
+| Command | Does |
+|---|---|
+| `jk node list` | Installed versions: jk's own and those nvm, fnm, volta, mise, asdf, Homebrew or the `PATH` put there; `*` marks the project's |
+| `jk node list-remote` | Releases you can install, the newest of each major; `--lts`, `--major 24`, `--all` (also `ls-remote`) |
+| `jk node install [spec]` | Install `24`, `24.21.0`, `lts` (the default) or `latest` into jk's store; `--no-discover` downloads even when another manager has it. `jk tool install node:24` is the same install |
+| `jk node uninstall <version>` | Remove one of jk's installs; another manager's is never touched |
+| `jk node which` | Print the `node` the project uses: the lock's version, else the newest install that satisfies `node =` (also `home`) |
+| `jk node exec -- <cmd…>` | Run a command with the project's Node.js and package manager first on `PATH`, installing them if missing; `--node <spec>` uses another once |
+| `jk node run <script>` | Run a `package.json` script with the project's package manager |
+| `jk node pin [spec]` | Write `node =` (or `[node] version` when the module has a `[node]` table) into the nearest `jk.toml` and relock. With no spec: what `.nvmrc`, `.node-version` or `package.json` names, else the newest LTS. `-m <module>` pins a member; `--file` also writes `.node-version` for editors; `--no-lock` skips the relock |
+| `jk node verify` | Check each of jk's installs still runs and reports its version |
+| `jk node update` | Refresh the release index and report the project's pin against the newest of its major (`jk update` moves the lock) |
+
+Every command takes `--output json` ([machine output](machine-output.md#jk-node)). With the shell
+hook installed (`jk activate`), entering a project puts its locked Node.js and its package
+manager's shims first on `PATH` (`JK_NODE_HOME`, `JK_NODE_SHIMS`), beside `JAVA_HOME`; leaving takes
+them off. `jk shell` does the same for a subshell.
+
 ## Steps
 
 | Step | What it runs | Cached on |

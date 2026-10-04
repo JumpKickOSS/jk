@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.compat.InstalledTool;
+import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
@@ -12,10 +16,17 @@ import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.ToolchainPins;
+import cc.jumpkick.node.DiscoveredNode;
+import cc.jumpkick.node.NodeDiscovery;
+import cc.jumpkick.node.PackageManagerShims;
+import cc.jumpkick.node.PackageManagerSpec;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -33,10 +44,18 @@ public final class JkEnv {
     public static final String GRAALVM_HOME = "GRAALVM_HOME";
     public static final String PATH = "PATH";
 
+    /** The project's Node.js home; its binaries go first on {@code PATH}. */
+    public static final String NODE_HOME = "JK_NODE_HOME";
+
+    /** The shims of the project's package manager ({@code pnpm}, {@code yarn}), first on {@code PATH}. */
+    public static final String NODE_SHIMS = "JK_NODE_SHIMS";
+
     private final JdkRegistry registry;
     private final String basePath;
     private final @Nullable String liveJavaHome;
     private final @Nullable String liveGraalHome;
+    private final @Nullable String liveNodeHome;
+    private final @Nullable String liveNodeShims;
     private final JdkInventory globalDefault;
 
     public JkEnv(JdkRegistry registry, String basePath) {
@@ -53,11 +72,24 @@ public final class JkEnv {
             JdkInventory globalDefault,
             @Nullable String liveJavaHome,
             @Nullable String liveGraalHome) {
+        this(registry, basePath, globalDefault, liveJavaHome, liveGraalHome, null, null);
+    }
+
+    public JkEnv(
+            JdkRegistry registry,
+            @Nullable String basePath,
+            JdkInventory globalDefault,
+            @Nullable String liveJavaHome,
+            @Nullable String liveGraalHome,
+            @Nullable String liveNodeHome,
+            @Nullable String liveNodeShims) {
         this.registry = registry;
         this.basePath = basePath == null ? "" : basePath;
         this.globalDefault = globalDefault;
         this.liveJavaHome = liveJavaHome;
         this.liveGraalHome = liveGraalHome;
+        this.liveNodeHome = liveNodeHome;
+        this.liveNodeShims = liveNodeShims;
     }
 
     /** Real-world entry: probe chain + live {@code PATH} / toolchain homes (never a frozen copy). */
@@ -67,7 +99,9 @@ public final class JkEnv {
                 System.getenv("PATH"),
                 JdkInventory.current(),
                 System.getenv(JAVA_HOME),
-                System.getenv(GRAALVM_HOME));
+                System.getenv(GRAALVM_HOME),
+                System.getenv(NODE_HOME),
+                System.getenv(NODE_SHIMS));
     }
 
     /**
@@ -107,10 +141,74 @@ public final class JkEnv {
                 null,
                 System::getenv);
         var resolved = JdkResolution.resolveForHook(req, registry, globalDefault);
-        if (resolved.jdkOpt().isEmpty()) return Target.empty();
+        Map<String, String> node = nodeVars(lockPins);
+        if (resolved.jdkOpt().isEmpty()) {
+            if (node.isEmpty()) return Target.empty();
+            var vars = new LinkedHashMap<>(node);
+            vars.put(PATH, swapNode(basePath, node));
+            return new Target(root, vars);
+        }
         var home = resolved.jdkOpt().get().home();
         var jdk = new ResolvedJdk(home, matchVendor(home));
-        return targetFor(root, jdk, resolveGraalHome(projectGraal, lockPins.graal()));
+        Target target = targetFor(root, jdk, resolveGraalHome(projectGraal, lockPins.graal()));
+        if (node.isEmpty()) return target;
+        var vars = new LinkedHashMap<>(target.vars());
+        vars.putAll(node);
+        vars.put(PATH, swapNode(vars.get(PATH), node));
+        return new Target(root, vars);
+    }
+
+    /**
+     * {@link #NODE_HOME} and {@link #NODE_SHIMS} for the lock's Node.js: jk's own install of that
+     * version, else one another manager made; the shims when the lock names a manager jk installed.
+     * Never installs; empty when the lock names no Node.js or nothing has it yet.
+     */
+    static Map<String, String> nodeVars(ToolchainPins pins) {
+        var vars = new LinkedHashMap<String, String>();
+        String version = pins.node();
+        if (version == null) return vars;
+        ToolRegistry tools = new ToolRegistry(JkDirs.tools());
+        Optional<Path> home = tools.find(BuildTool.NODE, version).map(InstalledTool::home);
+        if (home.isEmpty()) {
+            home = new NodeDiscovery()
+                    .discover().stream()
+                            .filter(d -> d.version().equals(version))
+                            .findFirst()
+                            .map(DiscoveredNode::home);
+        }
+        if (home.isEmpty()) return vars;
+        vars.put(NODE_HOME, home.get().toString());
+        String pm = pins.nodePackageManager();
+        if (pm != null) {
+            try {
+                PackageManagerSpec spec = PackageManagerSpec.parse(pm);
+                spec.manager()
+                        .tool()
+                        .flatMap(t -> tools.find(t, spec.version()))
+                        .ifPresent(t -> vars.put(
+                                NODE_SHIMS,
+                                t.home().resolve(PackageManagerShims.DIR).toString()));
+            } catch (IllegalArgumentException unreadable) {
+                // a lock this jk cannot read the manager of exports Node.js alone
+            }
+        }
+        return vars;
+    }
+
+    /** {@code path} with the Node.js dirs jk exported before swapped for {@code node}'s. */
+    private String swapNode(@Nullable String path, Map<String, String> node) {
+        return ToolchainPath.swapDirs(
+                path, nodeDirs(liveNodeHome, liveNodeShims), nodeDirs(node.get(NODE_HOME), node.get(NODE_SHIMS)));
+    }
+
+    /** The {@code PATH} entries a Node.js home and its shims stand for: shims first, then the binaries. */
+    public static List<String> nodeDirs(@Nullable String home, @Nullable String shims) {
+        List<String> out = new ArrayList<>(2);
+        if (shims != null && !shims.isBlank()) out.add(shims);
+        if (home != null && !home.isBlank()) {
+            out.add(Os.isWindows() ? home : Path.of(home).resolve("bin").toString());
+        }
+        return out;
     }
 
     /**

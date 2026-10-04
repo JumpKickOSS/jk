@@ -21,6 +21,7 @@ import cc.jumpkick.engine.http.mcp.tools.InstallTool;
 import cc.jumpkick.engine.http.mcp.tools.JdkTool;
 import cc.jumpkick.engine.http.mcp.tools.ManifestTool;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
+import cc.jumpkick.engine.http.mcp.tools.NodeTool;
 import cc.jumpkick.engine.http.mcp.tools.OutdatedTool;
 import cc.jumpkick.engine.http.mcp.tools.ProjectTool;
 import cc.jumpkick.engine.http.mcp.tools.RunAliasTool;
@@ -162,6 +163,7 @@ public final class McpTools {
                         new ConfigTool(),
                         new DiskTool(),
                         new JdkTool(),
+                        new NodeTool(),
                         new NewTool(),
                         new RunAliasTool(
                                 "publish",

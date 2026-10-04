@@ -152,6 +152,7 @@ These commands intentionally emit only machine-consumable stdout. Every row but 
 | `jk activate <shell>` | PATH + hooks + completions | `eval "$("$HOME/.jk/bin/jk" activate bash)"` |
 | `jk hook-env -s <shell>` | Env sync lines | shell hook |
 | `jk jdk home` | `export JAVA_HOME=…` | `eval "$(jk jdk home)"` |
+| `jk node which` (also `home`) | Path of the project's `node` | command substitution |
 | `jk auth token [provider]` | Single-line token | scripts / curl |
 | `jk show` / `jk tasks show` | Absolute path (or `coord\tpath`) | command substitution |
 | `jk tool dir` / `jk cache dir` / `jk storage dir` | Path | scripts / installers |

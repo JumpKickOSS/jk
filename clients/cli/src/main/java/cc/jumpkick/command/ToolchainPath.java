@@ -5,6 +5,7 @@ import cc.jumpkick.host.SearchPath;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,6 +44,29 @@ public final class ToolchainPath {
             path = SearchPath.prepend(javaBin, path);
         }
         return path;
+    }
+
+    /**
+     * Remove every entry naming one of {@code remove} or {@code prepend}, then put {@code prepend} in
+     * front, in its order. Directories are matched as {@link Path}s, as in {@link #swap}.
+     */
+    public static String swapDirs(@Nullable String currentPath, List<String> remove, List<String> prepend) {
+        String path = currentPath == null ? "" : currentPath;
+        List<Path> drop = new ArrayList<>();
+        for (String d : remove) if (d != null && !d.isBlank()) drop.add(Path.of(d));
+        for (String d : prepend) if (d != null && !d.isBlank()) drop.add(Path.of(d));
+        var kept = new ArrayList<String>();
+        for (String entry : SearchPath.entries(path)) {
+            boolean match = false;
+            for (Path d : drop) match |= samePath(entry, d);
+            if (!match) kept.add(entry);
+        }
+        String out = String.join(SearchPath.SEPARATOR, kept);
+        for (int i = prepend.size() - 1; i >= 0; i--) {
+            String d = prepend.get(i);
+            if (d != null && !d.isBlank()) out = SearchPath.prepend(d, out);
+        }
+        return out;
     }
 
     static @Nullable String binOf(@Nullable String home) {

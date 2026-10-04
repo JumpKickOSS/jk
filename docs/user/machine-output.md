@@ -241,6 +241,28 @@ goes out, and the stream opens with a one-task **`toolchain`** plan ahead of the
 (`fetch-catalog`, `select`, `install`, `set-default` tasks; the `install` task carries the same
 `downloading …` / `installing …` labels).
 
+### `jk node`
+
+Each `jk node` command under `--output json` prints one line per row, in the usual envelope, and
+nothing else on stdout:
+
+| `type` | Command | Fields |
+|---|---|---|
+| `node-list` | `list` | `version`, `source` (`jk`, `nvm`, `fnm`, `volta`, `mise`, `asdf`, `brew`, `system`), `home`, `current` |
+| `node-remote` | `list-remote` | `version`, `lts` (codename, absent for a Current release), `npm`, `security` |
+| `node-provisioned` | `install` | `version`, `home`, `source` (`downloaded`, `cached`, …), `verification` |
+| `node-removed` | `uninstall` | `version`, `home` |
+| `node-which` | `which` | `version`, `node`, `home`, `source` |
+| `node-pinned` | `pin` | `manifest`, `spec`, `from` (the file the spec came from), `locked` |
+| `node-verify` | `verify` | `version`, `home`, `ok`, `detail` |
+| `node-update` | `update` | `releases`, `current`, `newest`, `behind` |
+
+```json
+{"schema":1,"ts":1721664000123,"type":"node-list","version":"24.21.0","source":"jk","home":"/home/u/.jk/store/tools/node/24.21.0","current":true}
+```
+
+`exec` and `run` print what the command prints; their exit code is its exit code.
+
 ### `jk dev`
 
 `jk dev --output json` (and `jk watch run`) keeps the workspace envelope for every build the loop

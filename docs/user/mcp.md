@@ -166,6 +166,7 @@ The whole registry:
 | **`config`** | Machine config get/set, or `apply_preset=ci` |
 | **`disk`** | Cache/store usage; `clean`/`nuke` require `confirm=true` |
 | **`jdk`** | List / install / uninstall (`confirm=true` for uninstall) |
+| **`node`** | Node.js: `list` (installs, jk's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
 | **`doctor`** | Host health snapshot |
 | **`new`** | Scaffold; `action=templates` lists ids; `preview=true` does not write |
 | **`publish`** | Validate the publish bundle — **always a dry-run** |

@@ -35,6 +35,7 @@ class ScriptModeAllowlistTest {
             "jk cache dir",
             "jk hook-env",
             "jk jdk home",
+            "jk node which",
             "jk mcp", // MCP JSON-RPC on stdio
             "jk skill",
             "jk show",
