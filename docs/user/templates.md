@@ -90,6 +90,36 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 | `hello` | grails | groovy | Grails 8 REST | — |
 | `compose` | android | kotlin | Jetpack Compose app (debug APK, `jk run` deploy) | `android` |
 
+`webapp --frontend <framework>` swaps the Vite/React `web` module for another front end, generated
+as below; the default stays the offline Vite/React one.
+
+## Node front ends (`--lang node`)
+
+```bash
+jk new --lang node -t vite-react web     # web/ with jk.toml (node = the newest LTS) and the starter
+jk new -t webapp --frontend angular shop # the webapp template with an Angular web/
+```
+
+jk writes only `jk.toml` and `.gitignore`. The tree is the framework's own starter, made by its
+generator under the Node.js jk provisions, so it is always the framework's newest. A generator that
+installs nothing is followed by `npm install`, so the lockfile `jk build` needs is there. Generators
+come from the npm registry: there is no offline form. `--param` passes a flag through (`k=v` as
+`--k=v`).
+
+| `-t` | Generator | Output |
+|------|-----------|--------|
+| `vite-react`, `vite-vue`, `vite-preact`, `vite-solid`, `vite-svelte` | `create-vite` (TypeScript template) | static |
+| `angular` | `@angular/cli new` | static |
+| `astro` | `create-astro` | static |
+| `next` | `create-next-app` | server |
+| `nuxt` | `create-nuxt` | server |
+| `sveltekit` | `sv create` | server |
+| `react-router` | `create-react-router` | server |
+| `tanstack-start` | `@tanstack/create-start` | server |
+
+A static front end is packaged into what depends on it; a server one is runnable by `jk run` and
+imageable by `jk image` ([Node.js](node.md)).
+
 A template with a rule pack writes `jk-guards.toml` with `[guards] extends =
 ["cc.jumpkick.guards:<pack>:<jk version>"]`: the pack's house rules run inside `jk build` from the
 first build, `jk lock` pins it, and `jk guard explain` lists its rules with their source. Add your
