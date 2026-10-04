@@ -85,6 +85,13 @@ resource jar under `classpath-root` for a JVM dependant, or web content under `w
 `[war]` dependant; a node build inside a JVM module goes into that module's jar or war. A node
 module whose framework produces a server runs with `jk run` ([Run](run.md#node-modules)).
 
+## `jk dev`
+
+`jk dev` in a JVM module runs the `dev` script of every node module it depends on, and of its own
+`src/main/node`, beside the app under the locked Node.js — no `[dev.sidecars]` to write. In a node
+module it runs that module's dev server alone; at a workspace root, every runnable member at once.
+See [Run § Sidecars](run.md#sidecars-devsidecars).
+
 ## Images
 
 `jk image` in a node module with a server output builds a Node.js image on the distroless base of

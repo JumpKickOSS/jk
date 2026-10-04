@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -15,7 +16,9 @@ import org.jspecify.annotations.Nullable;
  * environment. {@code ready} is the sidecar's readiness probe — {@code ready} /
  * {@code ready-pattern} / {@code ready-timeout}, the same {@link DevReady} the application's own
  * {@code [dev]} probe is — and {@code null} means "ready once it has stayed alive for a second".
- * {@code frontDoor} names the URL {@code jk dev} prints once everything is ready.
+ * {@code frontDoor} names the URL {@code jk dev} prints once everything is ready. {@code declared}
+ * holds the keys the manifest wrote, so an entry can be laid over the sidecar {@code jk dev} infers
+ * for a node module of the same name key by key; only such an entry may leave out {@code command}.
  */
 public record Sidecar(
         String name,
@@ -24,12 +27,16 @@ public record Sidecar(
         Map<String, String> env,
         @Nullable DevReady ready,
         boolean frontDoor,
-        Restart restart) {
+        Restart restart,
+        Set<String> declared) {
 
     public Sidecar {
         Objects.requireNonNull(name, "name");
         command = List.copyOf(command);
-        if (command.isEmpty()) throw new IllegalArgumentException("sidecar `" + name + "` has an empty command");
+        declared = Set.copyOf(declared);
+        if (command.isEmpty() && declared.contains("command")) {
+            throw new IllegalArgumentException("sidecar `" + name + "` has an empty command");
+        }
         cwd = cwd == null || cwd.isBlank() ? "." : cwd;
         env = env == null || env.isEmpty() ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
         restart = restart == null ? Restart.NEVER : restart;

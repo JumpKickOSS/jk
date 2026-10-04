@@ -276,10 +276,10 @@ is one JSONL stream from the first byte to the last; on a terminal the app owns 
 | `sidecar-output` | `name`, `stream` (`stdout` / `stderr`), `line` | One line of the sidecar's output; carriage-return repaints are collapsed to the row's final state |
 | `sidecar-ready` | `name`, `url` (its `ready` URL, when it has one), `frontDoor` (only when `true`) | Its probe passed |
 | `sidecar-exited` | `name`, `pid`, `exit`, `restartInMs` (only when a relaunch is scheduled), `gaveUp` (only when the five-restart budget is spent) | The sidecar exited on its own |
-| `app-started` | `pid` | The app JVM was started or restarted |
-| `app-output` | `stream`, `line` | One line of the app's stdout or stderr |
-| `app-exited` | `pid`, `exit` | The app exited or was stopped for a restart |
-| `dev-ready` | `url` (the `front-door` sidecar's `ready` URL, else the app's own `[dev] ready` URL; absent when neither names one), `app` (the app's command as displayed) | The whole stack is up: every sidecar's probe passed, and the app's own `[dev] ready` / `ready-pattern` probe when it declares one — without it the app counts as ready once forked. Emitted again after each process restart of the app when the app is the front door — a sidecar outlives the restart, the app's process does not |
+| `app-started` | `module` (a workspace root's member; absent for one app), `pid` | The app was started or restarted |
+| `app-output` | `module`, `stream`, `line` | One line of the app's stdout or stderr |
+| `app-exited` | `module`, `pid`, `exit` | The app exited or was stopped for a restart |
+| `dev-ready` | `url` (the first front door: a `front-door` sidecar's `ready` URL, else the app's own `[dev] ready` URL; absent when neither names one), `urls` (every front door, when there is one), `app` (the app's command as displayed, or a workspace root's members) | The whole stack is up: every sidecar's probe passed, and the app's own `[dev] ready` / `ready-pattern` probe when it declares one — without it the app counts as ready once forked. Emitted again after each process restart of the app when the app is the front door — a sidecar outlives the restart, the app's process does not |
 
 ```json
 {"schema":1,"ts":1721664002000,"type":"sidecar-started","name":"web","pid":48213}

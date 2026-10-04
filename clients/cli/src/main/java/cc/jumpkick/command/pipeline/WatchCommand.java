@@ -58,7 +58,8 @@ public final class WatchCommand implements CliCommand {
                         "<ms>",
                         "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
                         "--debounce-ms"),
-                Opt.flag("Run the app alone, no [dev.sidecars]", "--no-sidecars")));
+                Opt.flag("Run the app alone, no [dev.sidecars]", "--no-sidecars"),
+                CommonOpts.modules("At a workspace root: members to run (repeatable)")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -131,7 +132,8 @@ public final class WatchCommand implements CliCommand {
                                 "jk watch run",
                                 in.flag("no-sidecars").orElse(false),
                                 recompiler(global),
-                                rebuilder(global, jdksDir))
+                                rebuilder(global, jdksDir),
+                                members(in))
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
             case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
             default -> {
@@ -139,6 +141,17 @@ public final class WatchCommand implements CliCommand {
                 yield Exit.USAGE;
             }
         };
+    }
+
+    /** Every {@code -m} member name, the comma spelling and the repeated one alike. */
+    static List<String> members(Invocation in) {
+        String spec = CommonOpts.modulesSpec(in);
+        if (spec == null) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String name : spec.split(",")) {
+            if (!name.isBlank()) out.add(name.trim());
+        }
+        return List.copyOf(out);
     }
 
     /** The dev loop's recompile: the same single-plan-or-workspace choice as {@code jk compile}. */

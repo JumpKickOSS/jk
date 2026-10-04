@@ -141,9 +141,10 @@ class SidecarOutputTest {
     @Test
     void the_app_s_own_events_name_the_stream_and_the_pid() {
         FakeClock clock = new FakeClock();
-        String started = SidecarOutput.appStarted(clock, 7);
-        String out = SidecarOutput.appOutput(clock, "stdout", "Started App in 0.4s");
-        String exited = SidecarOutput.appExited(clock, 7, 143);
+        String started = SidecarOutput.appStarted(clock, "", 7);
+        String out = SidecarOutput.appOutput(clock, "", "stdout", "Started App in 0.4s");
+        String exited = SidecarOutput.appExited(clock, "", 7, 143);
+        assertThat(Jsonl.has(started, "module")).as("one app needs no name").isFalse();
         assertThat(Jsonl.longValue(started, "ts", -1)).isEqualTo(clock.millis());
         assertThat(Jsonl.str(started, "type")).isEqualTo("app-started");
         assertThat(Jsonl.longValue(started, "pid", -1)).isEqualTo(7);
@@ -152,6 +153,23 @@ class SidecarOutputTest {
         assertThat(Jsonl.str(out, "line")).isEqualTo("Started App in 0.4s");
         assertThat(Jsonl.str(exited, "type")).isEqualTo("app-exited");
         assertThat(Jsonl.intValue(exited, "exit", -1)).isEqualTo(143);
+    }
+
+    @Test
+    void a_stack_s_events_name_their_member_and_its_ready_line_lists_every_front_door() {
+        FakeClock clock = new FakeClock();
+        assertThat(Jsonl.str(SidecarOutput.appStarted(clock, "api", 7), "module"))
+                .isEqualTo("api");
+        assertThat(Jsonl.str(SidecarOutput.appOutput(clock, "api", "stdout", "up"), "module"))
+                .isEqualTo("api");
+        assertThat(Jsonl.str(SidecarOutput.appExited(clock, "api", 7, 0), "module"))
+                .isEqualTo("api");
+        String ready = SidecarOutput.devReady(
+                clock, List.of("http://localhost:5173", "http://localhost:3000"), "api, admin, shop");
+        assertThat(Jsonl.str(ready, "url")).isEqualTo("http://localhost:5173");
+        assertThat(Jsonl.strArray(ready, "urls")).containsExactly("http://localhost:5173", "http://localhost:3000");
+        assertThat(SidecarOutput.readyLine(List.of("http://localhost:5173", "http://localhost:3000"), "api, admin"))
+                .isEqualTo("ready \u00b7 http://localhost:5173, http://localhost:3000 (api, admin)");
     }
 
     @Test

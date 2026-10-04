@@ -21,7 +21,9 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -65,6 +67,17 @@ public final class AppWatchLoop {
     /** The full rebuild a manifest or resource change triggers; same shape, different plan. */
     private final Compiler builder;
 
+    /** {@code -m}: the members of a workspace root's stack to run; empty runs every one. */
+    private final List<String> modules;
+
+    /** The app's name for {@link DevUrls}, and what every process of the session is handed. */
+    private String appName = "";
+
+    private Map<String, String> exports = Map.of();
+
+    /** The transcript {@link #interrupted} finishes; set once {@link #run} opens it. */
+    private @Nullable CliSessionTranscript currentSession;
+
     /** Guards {@link #over}, so an event lands on stdout and in the transcript, or in neither. */
     private final Object eventsLock = new Object();
 
@@ -84,6 +97,7 @@ public final class AppWatchLoop {
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
         CliSessionTranscript session = CliSessionTranscript.openAcrossJobs(projectDir, "dev", devArgv(appArgs));
         if (session != null) session.announceIf(global.verbose);
+        currentSession = session;
         // Ctrl-C stops the children from the signal handler, and the loop on this thread sees them
         // die — an app gone before its probe passed, a poll that returns nothing — and returns a
         // failure of its own. Two threads then finish the one transcript, and the first writer
@@ -132,6 +146,14 @@ public final class AppWatchLoop {
             CliOutput.err(logPrefix + ": " + plan.error());
             return Exit.SOFTWARE;
         }
+        if (ExecPlan.DEV_STACK.equals(plan.kind())) {
+            return new StackWatchLoop(this, plan, modules).run(cache, appArgs);
+        }
+        if (!modules.isEmpty()) {
+            CliOutput.err(
+                    logPrefix + ": -m selects the members a workspace root runs; " + projectDir + " runs one app");
+            return Exit.USAGE;
+        }
         if (!plan.deployCommand().isEmpty()) {
             return deviceLoop(projectDir, cache, plan, appArgs);
         }
@@ -146,11 +168,15 @@ public final class AppWatchLoop {
 
         // Sidecars start once and outlive every app restart below; they go down with the session.
         List<ExecPlan.Sidecar> sidecarSpecs = plan.sidecars();
-        Sidecars.Listener recorder = SidecarOutput.jsonl(events, Clock.SYSTEM);
-        Sidecars.Listener listener =
-                json() ? recorder : SidecarOutput.both(SidecarOutput.terminal(CliOutput::err), recorder);
-        Sidecars sidecars =
-                Sidecars.start(noSidecars ? List.of() : sidecarSpecs, listener, Clock.SYSTEM, Sidecars.Sleeper.REAL);
+        appName = String.valueOf(projectDir.getFileName());
+        Map<String, String> urls = new LinkedHashMap<>(DevUrls.of(noSidecars ? List.of() : sidecarSpecs));
+        urls.put(appName, plan.appReady().ready());
+        exports = DevUrls.exports(urls);
+        Sidecars sidecars = Sidecars.start(
+                noSidecars ? List.of() : DevUrls.withExports(sidecarSpecs, exports),
+                sidecarListener(),
+                Clock.SYSTEM,
+                Sidecars.Sleeper.REAL);
         App app;
         try {
             app = startApp(plan, appArgs);
@@ -319,20 +345,44 @@ public final class AppWatchLoop {
         return report.exit();
     }
 
-    private boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
+    /** Sidecar lines prefixed on a terminal and recorded as events, or events alone under {@code --output json}. */
+    Sidecars.Listener sidecarListener() {
+        Sidecars.Listener recorder = SidecarOutput.jsonl(events, Clock.SYSTEM);
+        return json() ? recorder : SidecarOutput.both(SidecarOutput.terminal(CliOutput::err), recorder);
+    }
+
+    boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
         return builder.compile(projectDir, cache);
     }
 
-    private boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
+    boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
         return compiler.compile(projectDir, cache);
     }
 
-    private ExecPlan devPlan(Path projectDir, Path cache) throws IOException {
+    ExecPlan devPlan(Path projectDir, Path cache) throws IOException {
         return EngineClient.execPlan(EnginePaths.current(), projectDir, cache, "dev", null, null);
     }
 
-    private boolean json() {
+    boolean json() {
         return global.outputIsJson();
+    }
+
+    boolean noSidecars() {
+        return noSidecars;
+    }
+
+    String logPrefix() {
+        return logPrefix;
+    }
+
+    /** Where the session's events go; see {@link #events}. */
+    void emit(String event) {
+        events.accept(event);
+    }
+
+    /** End the session as Ctrl-C does: its transcript finished with the interrupt's code. */
+    void interrupted() {
+        finish(currentSession, Exit.INTERRUPTED, false);
     }
 
     /** The running app and the probe that says when it is listening; a new pair per start. */
@@ -343,6 +393,8 @@ public final class AppWatchLoop {
         command.addAll(appArgs);
         ProcessBuilder pb =
                 new ProcessBuilder(command).directory(Path.of(plan.workingDir()).toFile());
+        pb.environment().putAll(plan.appEnv());
+        pb.environment().putAll(DevUrls.forApp(appName, exports));
         // Under --output json stdout is a JSONL stream, so the app is piped and its lines ride the
         // stream as events, after its app-started; stdin is still the user's. A pattern probe pipes
         // the app on a terminal too — a probe cannot read a terminal the app owns — and relays each
@@ -352,7 +404,7 @@ public final class AppWatchLoop {
         Process process =
                 piped ? pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start() : CliOutput.handOffTerminal(pb);
         ReadyProbe probe = new ReadyProbe("app", plan.appReady(), 0, process, Clock.SYSTEM);
-        events.accept(SidecarOutput.appStarted(Clock.SYSTEM, process.pid()));
+        events.accept(SidecarOutput.appStarted(Clock.SYSTEM, "", process.pid()));
         if (piped) {
             pumpApp("stdout", process.getInputStream(), probe);
             pumpApp("stderr", process.getErrorStream(), probe);
@@ -369,7 +421,7 @@ public final class AppWatchLoop {
             try (Reader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
                 OutputLines.read(reader, line -> {
                     if (json()) {
-                        events.accept(SidecarOutput.appOutput(Clock.SYSTEM, stream, line));
+                        events.accept(SidecarOutput.appOutput(Clock.SYSTEM, "", stream, line));
                     } else if ("stderr".equals(stream)) {
                         CliOutput.err(line);
                     } else {
@@ -388,7 +440,7 @@ public final class AppWatchLoop {
      * terminal the loop's own line says it.
      */
     private void appExited(Process app) {
-        events.accept(SidecarOutput.appExited(Clock.SYSTEM, app.pid(), app.exitValue()));
+        events.accept(SidecarOutput.appExited(Clock.SYSTEM, "", app.pid(), app.exitValue()));
     }
 
     private App restartApp(App app, ExecPlan plan, List<String> appArgs) throws IOException, InterruptedException {
