@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
@@ -56,7 +57,7 @@ public final class IdeSupport {
      * {@code jk ide} keeps a single {@code IDE} wedge (no nested Sync chip).
      */
     public static IdeModel build(Invocation in, @Nullable IdeChrome chrome) throws IOException {
-        Path ideConfigDir = in.value("ide-config-dir").map(Path::of).orElse(null);
+        Path ideConfigDir = in.value("ide-config-dir").map(CliPaths::abs).orElse(null);
         return IdeModel.fromWire(wireModel(in, chrome), ideConfigDir);
     }
 

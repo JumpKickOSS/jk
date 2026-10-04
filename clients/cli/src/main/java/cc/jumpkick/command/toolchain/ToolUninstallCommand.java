@@ -2,6 +2,7 @@
 package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
@@ -65,8 +66,8 @@ public final class ToolUninstallCommand implements CliCommand {
             CommandWedge.printFail("Uninstall", invalidName.get());
             return Exit.USAGE;
         }
-        Path stateDir = in.value("state-dir").map(Path::of).orElse(null);
-        Path binDirOverride = in.value("bin-dir").map(Path::of).orElse(null);
+        Path stateDir = in.value("state-dir").map(CliPaths::abs).orElse(null);
+        Path binDirOverride = in.value("bin-dir").map(CliPaths::abs).orElse(null);
         Path state = stateDir != null ? stateDir : JkDirs.state();
         Path bin = binDirOverride != null ? binDirOverride : JkDirs.binDir();
         Path envDir = LauncherName.resolveChild(JkDirs.toolEnvsDir(state), name);

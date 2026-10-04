@@ -101,12 +101,17 @@ public final class ImageCommand implements CliCommand {
     BuildOptions buildOpts;
     GlobalOptions global;
 
+    /** {@code --tarball}, absolute against the invocation directory: the engine writes it, and its cwd is not ours. */
+    static @Nullable String tarballPath(Invocation in) {
+        return in.value("tarball").map(t -> CliPaths.abs(t).toString()).orElse(null);
+    }
+
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.mainClass = in.value("main").orElse(null);
         this.registry = in.value("registry").orElse(null);
         this.tag = in.value("tag").orElse(null);
-        this.tarballArg = in.value("tarball").orElse(null);
+        this.tarballArg = tarballPath(in);
         this.dockerExecutableArg = in.value("docker-executable").orElse(null);
         this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
