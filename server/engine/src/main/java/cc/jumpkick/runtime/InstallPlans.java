@@ -17,6 +17,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.lock.ModuleEntry;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
@@ -503,12 +504,15 @@ public final class InstallPlans {
         return List.copyOf(out.values());
     }
 
-    /** The module's lock, or null when it has none or it does not read. */
+    /**
+     * The module's view of its lock, or null when it has none or it does not read. A workspace
+     * lock holds a row per member graph wherever the graphs differ; the module's POM reads its own.
+     */
     static @Nullable Lockfile lockOf(Path moduleDir) {
         try {
             Path lockFile = LockPaths.lockFile(moduleDir);
             if (lockFile == null || !Files.isRegularFile(lockFile)) return null;
-            return LockfileReader.read(lockFile);
+            return MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
         } catch (Exception e) {
             return null;
         }
