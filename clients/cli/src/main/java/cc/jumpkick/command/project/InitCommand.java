@@ -3,11 +3,13 @@ package cc.jumpkick.command.project;
 
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * {@code jk init} — initialize a jk project in the current directory. Delegates to {@link
@@ -53,6 +55,14 @@ public final class InitCommand implements CliCommand {
         delegate.noModule = in.isSet("no-module");
         delegate.directory = Path.of(".");
         delegate.global = GlobalOptions.from(in);
-        return delegate.callBody();
+        Path cwd = delegate.global.workingDir();
+        if (!"java".equalsIgnoreCase(delegate.lang) && delegate.templateRef == null) {
+            Optional<Integer> node = InitNode.module(cwd, delegate.name, delegate.group);
+            if (node.isPresent()) return node.get();
+        }
+        List<Path> members = InitNode.members(cwd);
+        int exit = delegate.callBody();
+        if (exit == Exit.SUCCESS && !members.isEmpty()) InitNode.addMembers(cwd, members);
+        return exit;
     }
 }

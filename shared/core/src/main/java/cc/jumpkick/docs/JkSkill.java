@@ -51,6 +51,8 @@ public final class JkSkill {
             - `jk.toml` — the manifest.
             - `jk-lock.toml` — the lockfile, committed. `jk build` does not re-resolve while it is valid.
             - `target/jk-results.md` — the human report. Agents read the verdict: MCP `run`, or `jk --agent`.
+            - `node = 24` in a module's `jk.toml` pins its Node.js; jk provisions it and locks the exact
+              release. Use `jk node exec -- <cmd>` or `jk node run <script>`, never a host `node` or `npm`.
 
             ## Loop
 

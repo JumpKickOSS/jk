@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ImportedKotlin;
+import cc.jumpkick.compat.NodeImportMapping;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.InFlightRequests;
@@ -317,6 +318,11 @@ public final class PomImporter {
         if (!releases.isEmpty()) manifest.remove(Attributes.Name.MULTI_RELEASE.toString());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
         jkBuild = frontends.member(em.model(), jkBuild, report, inherited == null);
+        if (jkBuild.project().nodeSpec().isEmpty() && em.model().getProjectDirectory() != null) {
+            jkBuild = NodeImportMapping.apply(
+                    jkBuild,
+                    NodeImportMapping.quinoa(em.model().getProjectDirectory().toPath(), report));
+        }
         return new Imported(jkBuild, report.build(), platformSupplied, bomSupplied, reactorSupplied);
     }
 
