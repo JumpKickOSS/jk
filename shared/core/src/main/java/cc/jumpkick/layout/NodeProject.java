@@ -160,7 +160,7 @@ public record NodeProject(
         if (Files.exists(dir.resolve("angular.json")) || runs(scripts, "ng")) return "angular";
         if (config(dir, "next.config") || runs(scripts, "next")) return "next";
         if (config(dir, "nuxt.config") || runs(scripts, "nuxt")) return "nuxt";
-        if (config(dir, "svelte.config") && depends(pkg, "@sveltejs/kit")) return "sveltekit";
+        if (depends(pkg, "@sveltejs/kit")) return "sveltekit";
         if (config(dir, "astro.config") || runs(scripts, "astro")) return "astro";
         if (config(dir, "react-router.config") || runs(scripts, "react-router")) return "react-router";
         if (depends(pkg, "@tanstack/react-start") || depends(pkg, "@tanstack/solid-start")) return "tanstack-start";

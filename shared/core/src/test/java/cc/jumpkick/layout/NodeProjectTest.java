@@ -34,6 +34,18 @@ class NodeProjectTest {
     }
 
     @Test
+    void sveltekit_configured_in_vite_config_alone_is_sveltekit() throws IOException {
+        // The current `sv create` shape: the kit plugin in vite.config.ts, no svelte.config.js.
+        NodeProject p = infer("""
+                {"scripts": {"dev": "vite dev", "build": "vite build"},
+                 "devDependencies": {"@sveltejs/kit": "2", "@sveltejs/adapter-node": "5", "vite": "7"}}
+                """, "vite.config.ts", "package-lock.json");
+        assertThat(p.framework()).isEqualTo("sveltekit");
+        assertThat(p.out()).isEqualTo("build");
+        assertThat(p.start()).isEqualTo("node build/index.js");
+    }
+
+    @Test
     void a_vite_app_builds_dist_on_5173_with_vite_env() throws IOException {
         NodeProject p = infer("""
                 {"scripts": {"dev": "vite", "build": "tsc -b && vite build", "test": "vitest run"}}
