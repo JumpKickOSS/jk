@@ -8,15 +8,16 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
+import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
@@ -25,6 +26,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -63,9 +66,10 @@ public final class PlannerResources {
                     Path classes = ctx.require(MAIN_CLASSES);
                     // SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
                     // Plugin-contributed resource roots (grails-app/conf, i18n, views) merge after.
-                    List<Path> resDirs = new ArrayList<>();
-                    Path resMain = ModuleLayout.mainResourcesDir(in.dir(), compact);
-                    if (Files.isDirectory(resMain)) resDirs.add(resMain);
+                    Set<String> unresolved = new TreeSet<>();
+                    List<Path> resDirs = new ArrayList<>(FilteredResources.mainRoots(
+                            in.dir(), ctx.require(PROJECT), ctx.require(LAYOUT), compact, unresolved));
+                    warnUnresolved(ctx, unresolved);
                     for (var root : ModuleLayoutPlugins.pluginContributedRoots(in.dir())) {
                         if (!root.resource()) continue;
                         Path dir = in.dir().resolve(root.relative());
@@ -132,6 +136,15 @@ public final class PlannerResources {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /** One warning per filtered-resource reference that had no value. */
+    static void warnUnresolved(TaskContext ctx, Set<String> unresolved) {
+        for (String name : unresolved) {
+            ctx.warn(
+                    "resources",
+                    "${" + name + "} has no value and is copied as written; set it under [resources.properties]");
+        }
     }
 
     /**

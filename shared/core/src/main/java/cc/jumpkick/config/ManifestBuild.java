@@ -93,6 +93,7 @@ public final class ManifestBuild {
                 "dokka",
                 ManifestTables.MULTI_RELEASE,
                 ManifestTables.WAR,
+                ManifestResources.TABLE,
                 ManifestNode.TABLE,
                 TaskNames.BUILD_INFO));
         for (Scope scope : Scope.values()) out.add(scope.tomlSection()); // [dependencies] + scoped spellings
@@ -337,7 +338,8 @@ public final class ManifestBuild {
                     BuildBlock.Dokka.DEFAULT,
                     List.of(),
                     null,
-                    null);
+                    null,
+                    BuildBlock.Resources.EMPTY);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
         JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
@@ -376,7 +378,8 @@ public final class ManifestBuild {
                 BuildBlock.Dokka.DEFAULT,
                 List.of(),
                 null,
-                null);
+                null,
+                BuildBlock.Resources.EMPTY);
     }
 
     /** The keys {@code [resolve]} may carry; the schema names exactly these. */

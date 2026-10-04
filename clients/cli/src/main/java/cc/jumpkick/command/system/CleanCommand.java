@@ -191,7 +191,9 @@ public final class CleanCommand implements CliCommand {
             "surefire-reports",
             "failsafe-reports",
             "reports",
-            "site");
+            "site",
+            "filtered-resources",
+            "filtered-test-resources");
 
     /**
      * Every root the clean removes, for one pooled delete: each project's {@code target/} (or, with

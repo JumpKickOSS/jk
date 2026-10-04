@@ -71,6 +71,7 @@ public final class JkBuildRenderer {
         renderBuild(sb, jkBuild.build());
         renderBuildInfo(sb, jkBuild.build().buildInfo());
         renderWar(sb, jkBuild.build().war());
+        renderResources(sb, jkBuild.build().resources());
         NodeTomlRenderer.renderNode(sb, jkBuild);
         NodeTomlRenderer.renderEnv(sb, jkBuild.build().env());
         renderDokka(sb, jkBuild.build().dokka());
@@ -160,6 +161,30 @@ public final class JkBuildRenderer {
     }
 
     /** {@code [war]}, its keys only when off their defaults. */
+    /** {@code [resources]}, each list only when non-empty, then {@code [resources.properties]}. */
+    private static void renderResources(StringBuilder sb, BuildBlock.Resources resources) {
+        if (resources.isEmpty()) return;
+        sb.append("\n[resources]\n");
+        renderDirList(sb, "dirs", resources.dirs());
+        renderDirList(sb, "filtered", resources.filtered());
+        renderDirList(sb, "test-dirs", resources.testDirs());
+        renderDirList(sb, "test-filtered", resources.testFiltered());
+        if (!resources.properties().isEmpty()) {
+            sb.append("\n[resources.properties]\n");
+            resources
+                    .properties()
+                    .forEach((k, v) ->
+                            sb.append(safeKey(k)).append(" = ").append(quote(v)).append('\n'));
+        }
+    }
+
+    private static void renderDirList(StringBuilder sb, String key, List<String> dirs) {
+        if (dirs.isEmpty()) return;
+        sb.append(key).append(" = [");
+        for (int i = 0; i < dirs.size(); i++) sb.append(i == 0 ? "" : ", ").append(quote(dirs.get(i)));
+        sb.append("]\n");
+    }
+
     private static void renderWar(StringBuilder sb, BuildBlock.@Nullable War war) {
         if (war == null) return;
         sb.append("\n[war]\n");

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -164,7 +165,9 @@ public record BuildBlock(
         /** {@code [war]} — the web archive the module packages beside its jar; {@code null} for none. */
         @Nullable War war,
         /** {@code [node]} as written; {@code null} when the table is absent. */
-        @Nullable NodeTable node) {
+        @Nullable NodeTable node,
+        /** {@code [resources]}: extra and filtered resource roots; {@link Resources#EMPTY} when absent. */
+        Resources resources) {
 
     /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
     public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -204,9 +207,11 @@ public record BuildBlock(
             Dokka.DEFAULT,
             List.of(),
             null,
-            null);
+            null,
+            Resources.EMPTY);
 
     public BuildBlock {
+        resources = resources == null ? Resources.EMPTY : resources;
         orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
         testPluginJars = testPluginJars == null ? List.of() : List.copyOf(testPluginJars);
         debug = debug == null ? DebugInfo.FULL : debug;
@@ -385,6 +390,11 @@ public record BuildBlock(
         return with(f -> f.node = node);
     }
 
+    /** The same block with the {@code [resources]} table set. */
+    public BuildBlock withResources(Resources resources) {
+        return with(f -> f.resources = resources);
+    }
+
     /** The same block with the {@code [war]} table set. */
     public BuildBlock withWar(@Nullable War war) {
         return with(f -> f.war = war);
@@ -488,6 +498,38 @@ public record BuildBlock(
 
         public BuildInfo {
             file = file == null || file.isBlank() ? DEFAULT_FILE : file;
+        }
+    }
+
+    /**
+     * {@code [resources]}: resource roots beyond the layout's ({@code dirs}, copied as written), roots
+     * whose files are expanded while copied ({@code filtered}; a layout root may be listed), the same
+     * two for the test classpath, and the values {@code ${name}} and {@code @name@} expand to.
+     * Paths are module-relative.
+     */
+    public record Resources(
+            List<String> dirs,
+            List<String> filtered,
+            List<String> testDirs,
+            List<String> testFiltered,
+            Map<String, String> properties) {
+
+        public static final Resources EMPTY = new Resources(List.of(), List.of(), List.of(), List.of(), Map.of());
+
+        public Resources {
+            dirs = dirs == null ? List.of() : List.copyOf(dirs);
+            filtered = filtered == null ? List.of() : List.copyOf(filtered);
+            testDirs = testDirs == null ? List.of() : List.copyOf(testDirs);
+            testFiltered = testFiltered == null ? List.of() : List.copyOf(testFiltered);
+            properties = properties == null ? Map.of() : Collections.unmodifiableMap(new TreeMap<>(properties));
+        }
+
+        public boolean isEmpty() {
+            return dirs.isEmpty()
+                    && filtered.isEmpty()
+                    && testDirs.isEmpty()
+                    && testFiltered.isEmpty()
+                    && properties.isEmpty();
         }
     }
 

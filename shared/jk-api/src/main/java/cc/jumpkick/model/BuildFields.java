@@ -65,6 +65,8 @@ final class BuildFields {
     @Nullable
     NodeTable node;
 
+    BuildBlock.Resources resources;
+
     private BuildFields(BuildBlock b) {
         orderAfter = b.orderAfter();
         testPluginJars = b.testPluginJars();
@@ -101,6 +103,7 @@ final class BuildFields {
         multiRelease = b.multiRelease();
         war = b.war();
         node = b.node();
+        resources = b.resources();
     }
 
     BuildBlock build() {
@@ -139,6 +142,7 @@ final class BuildFields {
                 dokka,
                 multiRelease,
                 war,
-                node);
+                node,
+                resources);
     }
 }

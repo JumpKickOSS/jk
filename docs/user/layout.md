@@ -74,6 +74,27 @@ inner loop. Details: [Test](test.md).
 
 Suite resources ride the test classpath only when that suite is selected.
 
+### Extra and filtered resources
+
+`[resources]` adds resource roots beyond the layout's and expands placeholders while copying,
+as Maven's resource filtering does:
+
+```toml
+[resources]
+dirs = ["src/extra/resources"]          # copied as written
+filtered = ["src/filter/resources"]     # ${name} and @name@ become the value of name
+# test-dirs = […]  test-filtered = […]  # the same for the default test suite
+
+[resources.properties]
+"remoting.version" = "3391.va_37fa_a_305d6d"
+```
+
+A filtered file's `${name}` and `@name@` take their value from `[resources.properties]`, then
+from `project.groupId`, `project.artifactId` and `project.version`, which jk sets itself.
+`\${name}` stays `${name}`. A `${name}` with no value is copied as written and warned. Images and
+files that are not UTF-8 are copied as they are. A layout root may be listed as filtered.
+`jk import` writes the table from a POM's `<resources>`.
+
 ## Related
 
 [Projects](projects.md) · [Workspaces](workspaces.md) · [IDE](ide.md)

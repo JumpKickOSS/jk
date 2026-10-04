@@ -356,6 +356,7 @@ public final class PomImporter {
         }
         if (!sourceTree.extraSrc().isEmpty()) build = build.withExtraSrc(sourceTree.extraSrc());
         if (!sourceTree.testExtraSrc().isEmpty()) build = build.withTestExtraSrc(sourceTree.testExtraSrc());
+        if (!sourceTree.resources().isEmpty()) build = build.withResources(sourceTree.resources());
         if (!tests.includeTags().isEmpty() || !tests.excludeTags().isEmpty()) {
             build = build.withTestTags(tests.includeTags(), tests.excludeTags());
         }
