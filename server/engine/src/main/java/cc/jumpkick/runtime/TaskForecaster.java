@@ -558,6 +558,16 @@ public final class TaskForecaster {
                 .withProjectModules(projectModules);
     }
 
+    /**
+     * The {@code write-image} step of a {@code jk image} terminal module, or {@code null}. A push,
+     * docker load or tarball write is a side effect, never a cacheable output, so an up-to-date
+     * module still runs its image tail; without the step it is never scheduled and nothing is written.
+     */
+    static TaskForecast.@Nullable Task writeImageStep(WorkspaceTarget target, Set<Path> terminalDirs, Path dir) {
+        if (target != WorkspaceTarget.IMAGE || !terminalDirs.contains(dir)) return null;
+        return new TaskForecast.Task(TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null);
+    }
+
     private static TaskForecast.Module forecastModule(
             BuildGraph.BuildUnit u,
             DepDirtiness dep,
@@ -575,7 +585,21 @@ public final class TaskForecaster {
             @Nullable String profile,
             @Nullable Path m2Dir) {
         TaskForecast.Module node = PlannerNode.forecastModule(u, LockPaths.lockFile(u.dir()), actionCache, skipTests);
-        if (node != null) return node;
+        if (node != null) {
+            TaskForecast.Task image = writeImageStep(target, terminalDirs, u.dir());
+            if (image == null) return node;
+            List<TaskForecast.Task> steps = new ArrayList<>(node.steps());
+            steps.add(image);
+            return new TaskForecast.Module(
+                    node.dir(),
+                    node.coord(),
+                    steps,
+                    node.sourceCount(),
+                    node.testCount(),
+                    node.producesJar(),
+                    node.producesImage(),
+                    node.reason());
+        }
         return new ModuleForecast(
                         u,
                         dep,
