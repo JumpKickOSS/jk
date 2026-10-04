@@ -43,6 +43,9 @@ runtime download. Use `java = 17` / `java = 21` instead.
 
 Details: [JDK](jdk.md), [Projects](projects.md).
 
+Node.js is a toolchain the same way: `node = 24` in a front end's `jk.toml` is a floor the lock
+pins exactly, provisioned on demand ([Node.js](node.md)).
+
 ## Newest stable by default
 
 A version in `jk.toml` is an exact pin (`jackson2-databind = "2.22.2"`), so "newest stable" is a

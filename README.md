@@ -100,6 +100,7 @@ three skins** (TTY / browser / MCP) — never scrape wedges.
 | **Maven Central, not a new ecosystem** | Same coordinates, scopes, BOMs; `~/.m2`-friendly cache |
 | **Adoption without a rewrite** | `jk mvn` / `jk gradle` run your *real* build; `import` / `export` when ready |
 | **Batteries included** | JDK + shell activate, format, audit/SBOM, OCI images, `jkx`, web UI, git deps |
+| **Front ends in the same build** | `node = 24` pins and provisions Node.js; installs and bundles are cached steps, packaged where the JVM serves them ([Node.js](docs/user/node.md)) |
 
 **Coming from Maven:** Cargo-shaped UX on Central — same declarative philosophy, modern
 surface, real lockfile, agent-readable outcomes.

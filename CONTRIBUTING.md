@@ -29,15 +29,9 @@ JDK (`jk build` uses the one `--graal` / `GRAALVM_HOME` names, else an installed
 compile at **JDK 25**; the two JDK-17 libraries (`shared/host`, `shared/plugin-sdk`,
 `shared/guard-api`) say so in their manifests.
 
-Dashboard JS suites (`clients/web`, part of the fast tier) need **Node** at the version in
-[`.nvmrc`](.nvmrc). `nvm`, `fnm`, and `mise` all read that file:
-
-```bash
-nvm install   # or: fnm install / mise install
-nvm use
-```
-
-A missing `node` fails the gate rather than skipping. Opt out only with `JK_WEB_JS_SKIP=1`.
+Dashboard JS suites (`clients/web`, part of the fast tier) run under `node --test` on the Node.js
+`clients/web/jk.toml` declares: jk provisions it and pins it in `jk-lock.toml`, so a contributor
+needs no Node of their own. [`.nvmrc`](.nvmrc) names the same major for editors and CI's setup step.
 
 ## Build-family commands
 
