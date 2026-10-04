@@ -998,14 +998,8 @@ final class ModuleForecast {
     }
 
     private void writeImage(Prepared prepared) throws Exception {
-        // ---- write-image — jk image terminal on the selected module(s) ----
-        // ImagePlans' contract: a registry push/docker load/tarball write is a side-effect,
-        // never a cacheable output — an up-to-date module still runs its image tail. Without
-        // this step a clean workspace member forecast "not dirty", was never scheduled, and
-        // jk image reported success having pushed nothing.
-        if (target == WorkspaceTarget.IMAGE && terminalDirs.contains(dir)) {
-            steps.add(new TaskForecast.Task(TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
-        }
+        TaskForecast.Task image = TaskForecaster.writeImageStep(target, terminalDirs, dir);
+        if (image != null) steps.add(image);
     }
 
     private void cacheInstall(Prepared prepared) throws Exception {

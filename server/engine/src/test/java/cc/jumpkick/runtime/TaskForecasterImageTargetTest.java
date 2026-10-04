@@ -109,6 +109,49 @@ class TaskForecasterImageTargetTest {
     }
 
     @Test
+    void a_node_member_forecasts_write_image_under_image_target(@TempDir Path tmp) throws Exception {
+        Path root = tmp.toRealPath();
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.1.0"
+
+                [workspace]
+                modules = ["web"]
+                """);
+        Path web = Files.createDirectories(root.resolve("web")).toRealPath();
+        Files.writeString(web.resolve("jk.toml"), "name = \"web\"\nnode = 24\n");
+        Files.writeString(web.resolve("package.json"), "{\"name\":\"web\",\"scripts\":{\"start\":\"node server.js\"}}");
+        Files.writeString(web.resolve("package-lock.json"), "{\"lockfileVersion\":3,\"packages\":{}}");
+        Lockfile lf = new Lockfile(
+                Lockfile.CURRENT_VERSION, "test", "pubgrub-v1", null, null, List.of(), List.of(), List.of());
+        LockfileWriter.write(lf, root.resolve("jk-lock.toml"), LockManifestDigest.compute(root));
+        BuildGraph.Result graph =
+                BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
+        assertThat(graph.hasErrors()).isFalse();
+        Path cache = root.resolve("cache");
+
+        SessionContext.where(Session.defaults(), () -> {
+            var cas = JkStores.storeCas();
+            var ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
+            var img = TaskForecaster.of(graph, cas, ac, cache, false, WorkspaceTarget.IMAGE, Set.of(web));
+            var m = img.stream().filter(x -> x.dir().equals(web)).findFirst().orElseThrow();
+            assertThat(m.steps())
+                    .as("a node member's image is a side effect too: an up-to-date one is still written")
+                    .anyMatch(s -> "write-image".equals(s.name()) && !s.cached());
+
+            var pkg = TaskForecaster.of(graph, cas, ac, cache, false, WorkspaceTarget.PACKAGE, Set.of());
+            assertThat(pkg.stream()
+                            .filter(x -> x.dir().equals(web))
+                            .findFirst()
+                            .orElseThrow()
+                            .steps())
+                    .noneMatch(s -> "write-image".equals(s.name()));
+            return null;
+        });
+    }
+
+    @Test
     void terminalTargetDirs_mirrors_assemblePlan_eligibility(@TempDir Path tmp) throws Exception {
         Path root = tmp.toRealPath();
         Path app = workspaceWithModule(root);
