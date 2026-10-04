@@ -47,6 +47,7 @@ public final class ArgParser {
             }
             if (tok.equals("--")) {
                 positionalsOnly = true;
+                out.markEndOfOptions();
                 continue;
             }
 

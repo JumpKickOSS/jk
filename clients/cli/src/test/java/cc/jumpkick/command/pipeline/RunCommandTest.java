@@ -58,8 +58,7 @@ class RunCommandTest {
         assertThat(exit).isEqualTo(0);
         assertThat(tempDir.resolve("target/widget-0.1.0.jar")).exists();
 
-        // App args ride the `.` target (the first positional is always the target since
-        // the 2026-07-09 inversion made `jk run` the universal runner).
+        // App args follow the `.` target, or a `--` with no target before it.
         int withArgs = run(
                 "run",
                 "-C",
@@ -71,6 +70,16 @@ class RunCommandTest {
                 "b",
                 "c");
         assertThat(withArgs).isEqualTo(3);
+        String cache = TestCaches.dir("shared-cache").toString();
+        assertThat(run("run", "-C", tempDir.toString(), "--cache-dir", cache, "--", "x", "y"))
+                .as("jk run -C <dir> -- args")
+                .isEqualTo(2);
+        assertThat(run("-C", tempDir.toString(), "run", "--cache-dir", cache, "--", "x"))
+                .as("jk -C <dir> run -- args")
+                .isEqualTo(1);
+        assertThat(run("run", "-C", tempDir.toString(), "--cache-dir", cache, ".", "--", "--port", "9"))
+                .as("jk run . -- args")
+                .isEqualTo(2);
     }
 
     @Test

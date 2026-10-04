@@ -19,11 +19,17 @@ public final class Invocation {
     private final Map<String, List<String>> values; // value options: canonical → values
     private final Map<String, Boolean> flags; // boolean flags: canonical → state
     private final List<String> positionals;
+    private final int beforeEndOfOptions; // positionals before `--`; -1 when there was none
 
-    private Invocation(Map<String, List<String>> values, Map<String, Boolean> flags, List<String> positionals) {
+    private Invocation(
+            Map<String, List<String>> values,
+            Map<String, Boolean> flags,
+            List<String> positionals,
+            int beforeEndOfOptions) {
         this.values = values;
         this.flags = flags;
         this.positionals = List.copyOf(positionals);
+        this.beforeEndOfOptions = beforeEndOfOptions;
     }
 
     /** True when a flag was present (in either form) or a value option was given. */
@@ -57,6 +63,11 @@ public final class Invocation {
         return positionals;
     }
 
+    /** How many positionals came before a {@code --}; all of them when there was none. */
+    public int positionalsBeforeEndOfOptions() {
+        return beforeEndOfOptions < 0 ? positionals.size() : beforeEndOfOptions;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -66,6 +77,7 @@ public final class Invocation {
         private final Map<String, List<String>> values = new LinkedHashMap<>();
         private final Map<String, Boolean> flags = new LinkedHashMap<>();
         private final List<String> positionals = new ArrayList<>();
+        private int beforeEndOfOptions = -1;
 
         public Builder flag(String canonical, boolean state) {
             flags.put(canonical, state);
@@ -85,6 +97,12 @@ public final class Invocation {
             return this;
         }
 
+        /** A {@code --} was read: what follows is positional. Only the first counts. */
+        public Builder markEndOfOptions() {
+            if (beforeEndOfOptions < 0) beforeEndOfOptions = positionals.size();
+            return this;
+        }
+
         public Builder addPositional(String value) {
             positionals.add(value);
             return this;
@@ -99,12 +117,15 @@ public final class Invocation {
                 values.put(e.getKey(), new ArrayList<>(e.getValue()));
             }
             flags.putAll(other.flags);
+            if (beforeEndOfOptions < 0 && other.beforeEndOfOptions >= 0) {
+                beforeEndOfOptions = positionals.size() + other.beforeEndOfOptions;
+            }
             positionals.addAll(other.positionals);
             return this;
         }
 
         public Invocation build() {
-            return new Invocation(values, flags, positionals);
+            return new Invocation(values, flags, positionals, beforeEndOfOptions);
         }
     }
 }

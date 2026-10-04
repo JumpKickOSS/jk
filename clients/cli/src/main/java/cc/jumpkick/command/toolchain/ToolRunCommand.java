@@ -409,9 +409,11 @@ public final class ToolRunCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         List<String> positionals = in.positionals();
-        // No target = the current project (the `.` directory rules: jk.toml → build + exec).
-        this.target = positionals.isEmpty() ? "." : positionals.get(0);
-        this.toolArgs = positionals.size() > 1 ? positionals.subList(1, positionals.size()) : List.of();
+        // No target = the current project (the `.` directory rules: jk.toml → build + exec). A
+        // first positional after `--` is the program's argument, never a target: `jk run -- x`.
+        boolean targetGiven = in.positionalsBeforeEndOfOptions() > 0;
+        this.target = targetGiven ? positionals.get(0) : ".";
+        this.toolArgs = targetGiven ? positionals.subList(1, positionals.size()) : positionals;
         this.mainClass = in.value("main").orElse(null);
         this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.stateDirOverride = in.value("state-dir").map(Path::of).orElse(null);
