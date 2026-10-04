@@ -4,6 +4,11 @@ A JVM API and a single-page frontend have two live loops in development: the JVM
 source change, and Vite serving the page with hot module reload and `/api` proxied to the JVM. This
 sample runs both from one command — `jk dev` — with no wrapper script and no second terminal.
 
+This sample writes the sidecar by hand, which is how any dev server jk does not build runs beside
+the app. When the front end is a [node module](../../node.md) the app depends on, jk builds it and
+`jk dev` infers this entry — see [Run § Sidecars](../../run.md#sidecars-devsidecars) and
+[jk-examples `spring-boot/webapp`](https://github.com/JumpKickOSS/jk-examples/tree/main/spring-boot/webapp).
+
 ```text
 vite-sidecar/
   jk.toml                         # [application] main + one [dev.sidecars] entry

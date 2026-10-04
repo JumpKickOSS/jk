@@ -5,6 +5,7 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.Sidecar.Restart;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -48,10 +49,50 @@ public record ExecPlan(
          * Values the client lays over its own environment for the app — a node server's {@code PATH},
          * {@code PORT} — and, when set, the app starts in {@code workingDir}; empty for a JVM app.
          */
-        Map<String, String> appEnv) {
+        Map<String, String> appEnv,
+        /**
+         * {@code dev-stack} only: every runnable member of the workspace by name, its directory
+         * absolute; the client asks each for its own dev plan. Empty on every other plan.
+         */
+        Map<String, String> members) {
+
+    /** The {@code kind} of a workspace root's dev plan: the members to run, the root's own sidecars. */
+    public static final String DEV_STACK = "dev-stack";
 
     public ExecPlan {
         appEnv = appEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(appEnv));
+        members = members == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(members));
+    }
+
+    /** A workspace root's dev plan: {@code members} to run, {@code sidecars} the root declares. */
+    public static ExecPlan devStack(Path root, Map<String, String> members, List<Sidecar> sidecars) {
+        return new ExecPlan(
+                null,
+                "",
+                DEV_STACK,
+                List.of(),
+                root.toString(),
+                String.join(", ", members.keySet()),
+                "",
+                false,
+                false,
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                "",
+                "",
+                false,
+                "",
+                "",
+                "",
+                List.of(),
+                List.of(),
+                "",
+                sidecars,
+                Probe.NONE,
+                Map.of(),
+                members);
     }
 
     /**
@@ -195,7 +236,8 @@ public record ExecPlan(
                 deployCommand,
                 sidecars,
                 appReady,
-                appEnv);
+                appEnv,
+                members);
     }
 
     /** As {@link #error(String, String)}, tagging the failure as an unresolved main-class scan. */
@@ -225,6 +267,7 @@ public record ExecPlan(
                 "",
                 List.of(),
                 Probe.NONE,
+                Map.of(),
                 Map.of());
     }
 
@@ -257,6 +300,7 @@ public record ExecPlan(
                 .string("appReadyPattern", appReady.readyPattern())
                 .number("appReadyTimeoutMillis", appReady.readyTimeoutMillis())
                 .map("appEnv", appEnv)
+                .map("members", members)
                 .finish();
     }
 
@@ -286,7 +330,8 @@ public record ExecPlan(
                 orEmptyDeploy(Jsonl.str(line, "deployCommand")),
                 Sidecar.decodeAll(line),
                 Probe.decode(line),
-                Jsonl.strMap(line, "appEnv"));
+                Jsonl.strMap(line, "appEnv"),
+                Jsonl.strMap(line, "members"));
     }
 
     private static String orEmptyDeploy(@Nullable String s) {

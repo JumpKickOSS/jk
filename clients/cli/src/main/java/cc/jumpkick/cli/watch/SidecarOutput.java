@@ -74,16 +74,18 @@ public final class SidecarOutput {
         return Style.EMPTY.foreground(rgb[0], rgb[1], rgb[2]);
     }
 
-    /** The app's own {@code app-started} line. */
-    public static String appStarted(Clock clock, long pid) {
+    /** An app's {@code app-started} line; {@code module} names the member in a stack, else empty. */
+    public static String appStarted(Clock clock, String module, long pid) {
         return JsonlEnvelope.open(clock.millis(), APP_STARTED)
+                .optionalNonEmptyString("module", module)
                 .number("pid", pid)
                 .finish();
     }
 
-    /** The app's own {@code app-output} line; {@code stream} is {@code stdout} or {@code stderr}. */
-    public static String appOutput(Clock clock, String stream, String line) {
+    /** An app's {@code app-output} line; {@code stream} is {@code stdout} or {@code stderr}. */
+    public static String appOutput(Clock clock, String module, String stream, String line) {
         return JsonlEnvelope.open(clock.millis(), APP_OUTPUT)
+                .optionalNonEmptyString("module", module)
                 .string("stream", stream)
                 .string("line", line)
                 .finish();
@@ -98,21 +100,35 @@ public final class SidecarOutput {
         return url.isEmpty() ? "ready \u00b7 " + app : "ready \u00b7 " + url + " (" + app + ")";
     }
 
+    /** {@link #readyLine} for a stack: every front door, comma-separated, and the apps it runs. */
+    static String readyLine(List<String> urls, String apps) {
+        return readyLine(String.join(", ", urls), apps);
+    }
+
     /**
      * The session's {@code dev-ready} line: the stack is up. {@code url} is the front-door
      * sidecar's address, or empty when the app itself is the front door; {@code app} is the app's
      * command as displayed.
      */
     public static String devReady(Clock clock, String url, String app) {
-        return JsonlEnvelope.open(clock.millis(), DEV_READY)
-                .optionalNonEmptyString("url", url)
-                .string("app", app)
-                .finish();
+        return devReady(clock, url.isEmpty() ? List.of() : List.of(url), app);
     }
 
-    /** The app's own {@code app-exited} line. */
-    public static String appExited(Clock clock, long pid, int exit) {
+    /**
+     * {@link #devReady(Clock, String, String)} for any number of front doors: {@code url} is the
+     * first, {@code urls} all of them; a stack's {@code app} lists its members.
+     */
+    public static String devReady(Clock clock, List<String> urls, String app) {
+        var line = JsonlEnvelope.open(clock.millis(), DEV_READY)
+                .optionalNonEmptyString("url", urls.isEmpty() ? "" : urls.getFirst());
+        if (!urls.isEmpty()) line = line.array("urls", urls);
+        return line.string("app", app).finish();
+    }
+
+    /** An app's {@code app-exited} line. */
+    public static String appExited(Clock clock, String module, long pid, int exit) {
         return JsonlEnvelope.open(clock.millis(), APP_EXITED)
+                .optionalNonEmptyString("module", module)
                 .number("pid", pid)
                 .number("exit", exit)
                 .finish();

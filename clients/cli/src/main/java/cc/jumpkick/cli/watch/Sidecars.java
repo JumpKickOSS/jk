@@ -114,6 +114,16 @@ public final class Sidecars implements AutoCloseable {
         return Optional.empty();
     }
 
+    /** Every {@code front-door} sidecar's URL, in start order. */
+    public List<String> frontDoors() {
+        return snapshot().stream()
+                .map(r -> r.spec)
+                .filter(ExecPlan.Sidecar::frontDoor)
+                .map(s -> s.probe().ready())
+                .filter(url -> !url.isEmpty())
+                .toList();
+    }
+
     /** The URL the session prints once everything is ready: the sidecar marked {@code front-door}, if any. */
     public Optional<String> frontDoor() {
         return snapshot().stream()
