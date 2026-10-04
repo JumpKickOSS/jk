@@ -58,6 +58,7 @@ class LockfileNodePinTest {
         LockfileWriter.write(Lockfile.empty("1.0.0").withNode(PIN), dir.resolve("jk-lock.toml"));
 
         assertThat(ToolchainPins.scan(dir).node()).isEqualTo("24.21.0");
+        assertThat(ToolchainPins.scan(dir).nodePackageManager()).isEqualTo("pnpm@10.18.1");
     }
 
     @Test
