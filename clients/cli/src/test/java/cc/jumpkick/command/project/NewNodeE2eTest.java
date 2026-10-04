@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.node.NodePlatform;
@@ -99,6 +100,7 @@ class NewNodeE2eTest {
                 .contains("node_modules/")
                 .contains("target/");
         assertThat(web.resolve("package-lock.json")).exists();
+        assertThat(Files.readString(web.resolve("AGENTS.md"))).startsWith(JkSkill.AGENTS_MD);
     }
 
     @Test
@@ -119,6 +121,9 @@ class NewNodeE2eTest {
         assertThat(Files.readString(dir.resolve("storefront/jk.toml")))
                 .isEqualTo("name = \"storefront\"\n\nnode = 99\n");
         assertThat(Files.readString(dir.resolve("jk.toml"))).contains("\"storefront\"");
+        assertThat(dir.resolve("storefront/AGENTS.md"))
+                .as("a member takes the workspace's guide")
+                .doesNotExist();
     }
 
     @Test

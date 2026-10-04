@@ -47,6 +47,20 @@ class JkSkillTest {
     }
 
     @Test
+    void the_guide_goes_above_a_generators_agents_file_and_keeps_its_managed_block(@TempDir Path dir) throws Exception {
+        String next = "# AGENTS.md\n\n<!-- BEGIN:nextjs-agent-rules -->\nread the bundled docs\n"
+                + "<!-- END:nextjs-agent-rules -->\n";
+        Files.writeString(dir.resolve("AGENTS.md"), next, StandardCharsets.UTF_8);
+
+        assertThat(JkSkill.mergeAgentsGuide(dir)).isTrue();
+        String merged = Files.readString(dir.resolve("AGENTS.md"), StandardCharsets.UTF_8);
+        assertThat(merged).startsWith(JkSkill.AGENTS_MD);
+        assertThat(merged).contains("<!-- BEGIN:nextjs-agent-rules -->\nread the bundled docs\n");
+        assertThat(merged.indexOf("# AGENTS.md")).isEqualTo(merged.lastIndexOf("# AGENTS.md"));
+        assertThat(JkSkill.mergeAgentsGuide(dir)).as("already merged").isFalse();
+    }
+
+    @Test
     void agents_guide_writes_once(@TempDir Path dir) throws Exception {
         assertThat(JkSkill.ensureAgentsGuide(dir)).isTrue();
         assertThat(Files.readString(dir.resolve("AGENTS.md")))
