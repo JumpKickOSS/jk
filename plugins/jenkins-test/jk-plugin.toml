@@ -1,0 +1,18 @@
+# The Jenkins test-plugins step's declarative manifest. Owns [jenkins-test]; the code layer adds one
+# step that finds the Jenkins plugins in the module's test runtime closure, fetches each one's .hpi
+# and writes test-dependencies/<artifactId>.jpi plus an index onto the test classpath, which is
+# where JenkinsRule's plugin manager installs plugins from. `jk explain` shows it as
+# `jenkins-test-plugins`.
+
+[plugin]
+id        = "jenkins-test"
+table     = "jenkins-test"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-jenkins-test"
+protocol-prefix = "##JKJT:"
+
+[schema]
+exclude = { type = "string-list", default = [], example = "[\"credentials\"]", hint = "artifactIds of Jenkins plugins in the test closure that are not installed for the tests" }

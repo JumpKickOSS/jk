@@ -61,6 +61,7 @@ public final class PluginTableRegistry {
             "localizer.jk-plugin.toml",
             "antlr.jk-plugin.toml",
             "taglib.jk-plugin.toml",
+            "jenkins-test.jk-plugin.toml",
             "avro.jk-plugin.toml",
             "jaxb.jk-plugin.toml",
             "jooq.jk-plugin.toml",

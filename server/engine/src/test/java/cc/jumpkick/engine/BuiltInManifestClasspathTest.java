@@ -33,6 +33,7 @@ class BuiltInManifestClasspathTest {
                         "localizer",
                         "antlr",
                         "taglib",
+                        "jenkins-test",
                         "avro",
                         "jaxb",
                         "jooq",
