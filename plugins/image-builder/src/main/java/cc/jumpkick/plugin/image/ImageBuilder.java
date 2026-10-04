@@ -450,7 +450,7 @@ public final class ImageBuilder {
         try {
             return auth.containerize(builder, containerizer.setApplicationLayersCache(applicationLayers));
         } catch (RegistryException | ExecutionException | CacheDirectoryCreationException e) {
-            throw new IOException("image build failed: " + e.getMessage(), e);
+            throw new IOException("image build failed: " + causes(e), e);
         } finally {
             PathUtil.deleteRecursively(applicationLayers);
         }
@@ -483,5 +483,18 @@ public final class ImageBuilder {
     /** Convert parsed HOCON data into an {@link ImageConfig}. */
     public static ImageConfig fromParsed(Map<String, Object> envMap, ImageConfig defaults) {
         return defaults; // placeholder — see ImageCommand for the bridge.
+    }
+
+    /**
+     * {@code t}'s message and every cause's, outermost first: a class whose initializer failed is
+     * reported later as a bare {@code NoClassDefFoundError}, and only its cause names what failed.
+     */
+    static String causes(Throwable t) {
+        StringBuilder sb = new StringBuilder(String.valueOf(t.getMessage()));
+        for (Throwable c = t.getCause(); c != null && c != c.getCause(); c = c.getCause()) {
+            sb.append("; caused by ").append(c);
+            if (c.getCause() == null) break;
+        }
+        return sb.toString();
     }
 }
