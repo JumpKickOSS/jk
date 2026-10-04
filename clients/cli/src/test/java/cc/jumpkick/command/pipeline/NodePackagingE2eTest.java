@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -12,7 +13,9 @@ import cc.jumpkick.lock.NodePin;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.node.DiscoveredNode;
 import cc.jumpkick.node.NodeDiscovery;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -146,8 +149,25 @@ class NodePackagingE2eTest {
                 """);
         write(server.resolve(".env"), "PORT=4321\n");
         lock(server);
-        assertThat(run("run", "-C", server.toString(), "--cache-dir", cache(dir)))
-                .isZero();
+        var captured = new ByteArrayOutputStream();
+        var prevOut = System.out;
+        var prevErr = System.err;
+        var combined = new PrintStream(captured, true, StandardCharsets.UTF_8);
+        System.setOut(combined);
+        System.setErr(combined);
+        int started;
+        try {
+            started = run("run", "-C", server.toString(), "--cache-dir", cache(dir));
+        } finally {
+            System.setOut(prevOut);
+            System.setErr(prevErr);
+        }
+        assertThat(started).isZero();
+        String banner = TestAnsi.strip(captured.toString(StandardCharsets.UTF_8));
+        assertThat(banner)
+                .as("the banner shows the start command as declared: %s", banner)
+                .contains("Executing `node server.js`")
+                .doesNotContain("node node");
         assertThat(server.resolve("started.txt"))
                 .as("from the node directory, with .env's PORT, production and the locked Node.js")
                 .hasContent("4321 production v" + version);

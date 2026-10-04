@@ -78,7 +78,7 @@ public final class NodeRun {
                 "run",
                 argv,
                 nodeDir,
-                "node " + String.join(" ", NodeCommands.split(node.start())),
+                String.join(" ", NodeCommands.split(node.start())),
                 List.of(),
                 ExecPlan.Probe.NONE,
                 env);
