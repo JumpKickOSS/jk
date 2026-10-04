@@ -55,6 +55,7 @@ jk watch build               # package loop (--skip-tests)
 jk watch run
 jk dev                       # same as jk watch run
 jk dev -- --port=8080        # app args after --
+jk dev -m api,admin          # at a workspace root: only these members
 jk watch test --debounce-ms 300
 ```
 
@@ -64,7 +65,17 @@ otherwise process restart. Android projects redeploy via the packaging plugin.
 ## Sidecars (`[dev.sidecars]`)
 
 A service with a frontend has two live loops: the JVM, and the frontend's own dev server
-(Vite, webpack) with hot reload and `/api` proxied to the JVM. `jk dev` runs both:
+(Vite, webpack) with hot reload and `/api` proxied to the JVM. `jk dev` runs both.
+
+**Node builds need no entry.** For every [node module](node.md) the app depends on, and for its
+own `src/main/node`, `jk dev` runs the `dev` script under the locked Node.js as a sidecar named
+after the module (`<module>-node` for the side-by-side build), probed at the framework's dev port
+(`[node] dev-port` to set it). It is the front door when it is the only one and nothing else
+claims the role. An entry of the same name in `[dev.sidecars]` is laid over the inferred one key by
+key — `web = { ready-timeout = "2m" }` keeps the command and changes the timeout — and only such an
+entry may leave out `command`.
+
+Anything else — a docs server, a database, a dev server jk does not build — is an entry:
 
 ```toml
 # app/jk.toml
@@ -92,6 +103,24 @@ Sidecars start once per session and survive the app's restarts — Vite watches 
 stops the app and every sidecar together, along with everything they spawned. Editing
 `[dev.sidecars]` mid-session is reported, not applied — restart `jk dev`. `jk dev --no-sidecars`
 runs the app alone for one invocation.
+
+Every process with a `ready` URL is `JK_DEV_<NAME>_URL` in the environment of every other process
+of the session (`JK_DEV_WEB_URL=http://localhost:5173`), so a `vite.config.ts` can read the API's
+address instead of typing the port twice. The proxy itself stays the framework's (`server.proxy`).
+
+### A node module alone
+
+`jk dev` in a node module runs its `dev` script under the locked Node.js in the app's place — no
+JVM, nothing for jk to restart; the framework reloads itself.
+
+### The whole workspace
+
+`jk dev` at a workspace root runs every runnable member: each JVM application from its own dev
+plan, restarted when its own sources change, and each node module's dev server, all under one
+supervisor. Every line is prefixed with the member that wrote it, one `ready ·` line lists every
+front door (each node module's dev server, unless the root's `[dev.sidecars]` names one), and one
+Ctrl-C stops everything. `-m api,admin` narrows it to those members and the node modules they
+depend on. A root with only one runnable member runs it as `jk dev` in it would.
 
 ### Output
 

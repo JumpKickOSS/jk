@@ -184,6 +184,7 @@ public final class ExecPlans {
                 "",
                 List.of(),
                 ExecPlan.Probe.NONE,
+                Map.of(),
                 Map.of());
     }
 
@@ -262,8 +263,10 @@ public final class ExecPlans {
             return devicePlan(dir, dev, deployCommand, dev ? DevSidecars.resolve(dir, project, clientEnv) : List.of());
         }
         if (NodeShape.kind(project, dir) == NodeShape.Kind.MODULE) {
-            String path = clientEnv.get("PATH");
-            return NodeRun.plan(dir, project, dev, path != null ? path : System.getenv("PATH"));
+            String path = clientEnv.getOrDefault("PATH", System.getenv("PATH"));
+            return dev
+                    ? NodeRun.devPlan(dir, project, path, DevSidecars.resolve(dir, project, clientEnv))
+                    : NodeRun.plan(dir, project, path);
         }
         Path javaHome = projectJavaHome(dir);
         String java = javaBin(javaHome);
@@ -327,6 +330,7 @@ public final class ExecPlans {
                 deployCommand,
                 sidecars,
                 ExecPlan.Probe.NONE,
+                Map.of(),
                 Map.of());
     }
 
@@ -523,6 +527,16 @@ public final class ExecPlans {
         if (modules.isEmpty()) {
             return ExecPlan.error(kind, "workspace has no modules — nothing to run", "missing");
         }
+        if (dev) {
+            ExecPlan stack = DevStack.plan(root, rootBuild, modules, clientEnv);
+            if (stack != null) return stack;
+            Path only = DevStack.single(modules, clientEnv.getOrDefault("PATH", System.getenv("PATH")));
+            if (only != null
+                    && NodeShape.kind(Objects.requireNonNull(modules.get(only)), only) == NodeShape.Kind.MODULE) {
+                JkBuild mod = Objects.requireNonNull(modules.get(only));
+                return runPlan(only, cache, mod, BuildLayout.of(only, mod), true, clientEnv, debug);
+            }
+        }
 
         // 1) Declared [application] main wins — but only when it is unambiguous. Several declared
         // apps must be an error naming the candidates: silently launching whichever is listed
@@ -635,6 +649,7 @@ public final class ExecPlans {
                 "",
                 sidecars,
                 appReady,
+                Map.of(),
                 Map.of());
     }
 
@@ -857,6 +872,7 @@ public final class ExecPlans {
                 "",
                 List.of(),
                 ExecPlan.Probe.NONE,
+                Map.of(),
                 Map.of());
     }
 
@@ -920,6 +936,7 @@ public final class ExecPlans {
                 "",
                 List.of(),
                 ExecPlan.Probe.NONE,
+                Map.of(),
                 Map.of());
     }
 

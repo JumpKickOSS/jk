@@ -546,7 +546,9 @@ public final class ManifestBuild {
         }
         Object rawCommand = table.get(List.of("command"));
         List<String> command;
-        if (rawCommand instanceof String s) {
+        if (rawCommand == null) {
+            command = List.of();
+        } else if (rawCommand instanceof String s) {
             try {
                 command = ShellWords.split(s);
             } catch (IllegalArgumentException e) {
@@ -557,9 +559,10 @@ public final class ManifestBuild {
             for (int i = 0; i < arr.size(); i++) command.add(scalar(arr.get(i), where + ".command[" + i + "]"));
         } else {
             throw new JkBuildParseException(
-                    where + " needs command = \"npm run dev\" or command = [\"npm\", \"run\", \"dev\"]");
+                    where + ".command must be a string or an array: command = \"npm run dev\" or command = [\"npm\","
+                            + " \"run\", \"dev\"]");
         }
-        if (command.isEmpty()) throw new JkBuildParseException(where + " command is empty");
+        if (rawCommand != null && command.isEmpty()) throw new JkBuildParseException(where + " command is empty");
         String cwd = table.contains("cwd") ? scalar(table.get(List.of("cwd")), where + ".cwd") : ".";
         Map<String, String> env = new LinkedHashMap<>();
         if (table.contains("env")) {
@@ -590,10 +593,9 @@ public final class ManifestBuild {
                 throw new JkBuildParseException(where + ".restart " + e.getMessage());
             }
         }
-        DevReady ready = probe.url() == null && probe.pattern() == null
-                ? null
-                : new DevReady(probe.url(), probe.pattern(), probe.timeoutMillis());
-        return new Sidecar(name, command, cwd, env, ready, frontDoor, restart);
+        boolean probed = probe.url() != null || probe.pattern() != null || table.contains("ready-timeout");
+        DevReady ready = probed ? new DevReady(probe.url(), probe.pattern(), probe.timeoutMillis()) : null;
+        return new Sidecar(name, command, cwd, env, ready, frontDoor, restart, table.keySet());
     }
 
     private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*(ms|s|m)?");

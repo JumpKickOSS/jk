@@ -200,9 +200,9 @@ class JkBuildParserDevTest {
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                         [dev.sidecars]
-                        web = { cwd = "../web" }
+                        web = { command = 42 }
                         """))
-                .hasMessageContaining("needs command");
+                .hasMessageContaining("command must be a string or an array");
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                         [dev.sidecars]
@@ -215,5 +215,22 @@ class JkBuildParserDevTest {
     void no_dev_table_means_no_sidecars() {
         assertThat(JkBuildParser.parse(JkBuildParserFixtures.PROJECT).build().devSidecars())
                 .isEmpty();
+    }
+
+    @Test
+    void a_sidecar_without_a_command_keeps_the_keys_it_wrote_for_a_merge() {
+        var web = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [dev.sidecars]
+                        web = { ready-timeout = "2m" }
+                        """)
+                .build()
+                .devSidecars()
+                .getFirst();
+        assertThat(web.command()).isEmpty();
+        assertThat(web.declared()).containsExactly("ready-timeout");
+        var ready = Objects.requireNonNull(web.ready());
+        assertThat(ready.timeoutMillis()).isEqualTo(120_000);
+        assertThat(ready.url()).isNull();
     }
 }
