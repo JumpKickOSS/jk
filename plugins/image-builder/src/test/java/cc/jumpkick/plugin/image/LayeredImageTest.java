@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.image.ImageConfig;
+import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.build.ImageContext;
+import cc.jumpkick.plugin.build.PackageIo;
+import cc.jumpkick.plugin.build.ProjectFacts;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,6 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -71,6 +76,40 @@ class LayeredImageTest {
                 .contains("app/node_modules/greet/index.js")
                 .noneMatch(e -> e.contains(".bin"));
         assertThat(layers.get(1)).contains("app/server.js", "app/package.json");
+    }
+
+    @Test
+    void the_image_goal_builds_a_node_plan_that_names_no_main_class(@TempDir Path tmp) throws Exception {
+        Path app = tmp.resolve("app");
+        Files.createDirectories(app);
+        Files.writeString(app.resolve("server.js"), "console.log('up');");
+        Path tarball = tmp.resolve("out/image.tar");
+        Map<String, Object> config = Map.of(
+                "kind",
+                "node",
+                "artifact",
+                "web",
+                "version",
+                "1.0.0",
+                "mode",
+                "tarball",
+                "base",
+                baseRef,
+                "tarball",
+                tarball.toString(),
+                "layers",
+                List.of("app\t" + app.toAbsolutePath() + "\t/app"),
+                "entrypoint",
+                List.of("node", "server.js"),
+                "ports",
+                List.of("3000"),
+                "workdir",
+                "/app");
+
+        new OciImageBuilder().image(new NodeContext(config));
+
+        String imageConfig = new String(untar(Files.readAllBytes(tarball)).get("config.json"), StandardCharsets.UTF_8);
+        assertThat(imageConfig).contains("\"Entrypoint\":[\"node\",\"server.js\"]");
     }
 
     @Test
@@ -181,5 +220,56 @@ class LayeredImageTest {
         int end = at;
         while (end < at + len && tar[end] != 0) end++;
         return new String(tar, at, end - at, StandardCharsets.US_ASCII);
+    }
+
+    /** What the engine hands the image goal for a node module: config only, no jar or classes. */
+    private record NodeContext(Map<String, Object> values) implements ImageContext {
+        @Override
+        public PluginConfig config() {
+            return new PluginConfig("jk-image-builder", values);
+        }
+
+        @Override
+        public Optional<String> secret(String key) {
+            return Optional.empty();
+        }
+
+        @Override
+        public boolean offline() {
+            return false;
+        }
+
+        @Override
+        public ProjectFacts project() {
+            return new ProjectFacts("com.example", "web", "1.0.0", 25, null, false, false, Map.of());
+        }
+
+        @Override
+        public Path moduleDir() {
+            return Path.of(".");
+        }
+
+        @Override
+        public Optional<Path> mainArtifact() {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<PackageIo.RuntimeEntry> runtimeEntries() {
+            return List.of();
+        }
+
+        @Override
+        public Path javaHome() {
+            return Path.of(System.getProperty("java.home"));
+        }
+
+        @Override
+        public Optional<Path> classesDir() {
+            return Optional.empty();
+        }
+
+        @Override
+        public void label(String text) {}
     }
 }
