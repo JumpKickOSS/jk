@@ -109,6 +109,16 @@ final class TextFiles {
         return !rel.contains("/src/");
     }
 
+    /** Front-end sources that are not lexed but still have code lines: stylesheets and component files. */
+    private static final Set<String> MARKUP_SOURCES = Set.of("css", "scss", "sass", "less", "vue", "svelte", "astro");
+
+    /** A stylesheet or component file: not a code language, but its lines are code a size cap measures. */
+    static boolean markupSource(String fileName) {
+        String n = fileName.toLowerCase(Locale.ROOT);
+        int dot = n.lastIndexOf('.');
+        return dot >= 0 && MARKUP_SOURCES.contains(n.substring(dot + 1));
+    }
+
     static Language languageOf(String fileName) {
         String n = fileName.toLowerCase(Locale.ROOT);
         int dot = n.lastIndexOf('.');
@@ -116,7 +126,7 @@ final class TextFiles {
         return switch (ext) {
             case "java" -> Language.JAVA;
             case "kt", "kts" -> Language.KOTLIN;
-            case "js", "mjs", "cjs", "ts" -> Language.JS;
+            case "js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx" -> Language.JS;
             case "groovy", "gradle" -> Language.GROOVY;
             case "scala", "sc" -> Language.SCALA;
             case "md", "txt", "adoc", "rst" -> Language.PROSE;
