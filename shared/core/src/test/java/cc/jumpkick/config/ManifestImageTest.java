@@ -68,7 +68,8 @@ class ManifestImageTest {
                 "acme.Platform",
                 "podman",
                 "Dockerfile",
-                true);
+                true,
+                null);
         ImageTable member = new ImageTable(
                 null,
                 null,
@@ -82,9 +83,10 @@ class ManifestImageTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
-        ImageTable inherited = ManifestImage.inheritFromRoot(member, root);
+        ImageTable inherited = ManifestImage.inheritFromRoot(member, root, false);
 
         // workspace-wide facts flow down; the member's own value wins per key
         assertThat(inherited.base()).isEqualTo("eclipse-temurin:25-jre");
@@ -102,7 +104,46 @@ class ManifestImageTest {
         assertThat(inherited.ports()).containsExactly(8080);
         assertThat(inherited.dockerFile()).isNull();
         // a root with no table changes nothing
-        assertThat(ManifestImage.inheritFromRoot(member, ImageTable.EMPTY)).isSameAs(member);
+        assertThat(ManifestImage.inheritFromRoot(member, ImageTable.EMPTY, false))
+                .isSameAs(member);
+    }
+
+    @Test
+    void a_node_member_takes_neither_the_roots_jre_base_nor_its_aot_cache() {
+        ImageTable root = new ImageTable(
+                "eclipse-temurin:25-jre",
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of("team", "core"),
+                "ghcr.io/acme",
+                "edge",
+                List.of(),
+                null,
+                null,
+                null,
+                true,
+                null);
+
+        ImageTable inherited = ManifestImage.inheritFromRoot(ImageTable.EMPTY, root, true);
+
+        assertThat(inherited.base()).isNull();
+        assertThat(inherited.aotCache()).isNull();
+        assertThat(inherited.registry()).isEqualTo("ghcr.io/acme");
+        assertThat(inherited.tag()).isEqualTo("edge");
+        assertThat(inherited.labels()).containsEntry("team", "core");
+    }
+
+    @Test
+    void kind_is_static_or_unset() throws Exception {
+        assertThat(JkBuildParser.parse("group = \"g\"\nname = \"w\"\nversion = \"1\"\n[image]\nkind = \"static\"\n")
+                        .image()
+                        .kind())
+                .isEqualTo(ImageTable.KIND_STATIC);
+        assertThatThrownBy(() -> JkBuildParser.parse(
+                        "group = \"g\"\nname = \"w\"\nversion = \"1\"\n[image]\nkind = \"server\"\n"))
+                .hasMessageContaining("kind must be");
     }
 
     @Test
@@ -148,6 +189,7 @@ class ManifestImageTest {
                 null,
                 null,
                 null,
+                null,
                 null);
         var global = new ImageTable(
                 "global-base",
@@ -162,7 +204,8 @@ class ManifestImageTest {
                 null,
                 null,
                 null,
-                true);
+                true,
+                null);
         var merged = ManifestImage.merge(project, global);
         assertThat(merged.base()).isEqualTo("project-base");
         assertThat(merged.name())

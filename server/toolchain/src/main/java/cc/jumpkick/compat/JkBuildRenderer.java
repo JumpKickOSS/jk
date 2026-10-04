@@ -551,6 +551,8 @@ public final class JkBuildRenderer {
         string(sb, "docker-file", image.dockerFile());
         if (image.aotCache() != null)
             sb.append("aot-cache = ").append(image.aotCache()).append('\n');
+        if (image.kind() != null)
+            sb.append("kind = ").append(quote(image.kind())).append('\n');
     }
 
     private static void string(StringBuilder sb, String key, @Nullable String value) {

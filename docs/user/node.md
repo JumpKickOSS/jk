@@ -63,6 +63,12 @@ resource jar under `classpath-root` for a JVM dependant, or web content under `w
 `[war]` dependant; a node build inside a JVM module goes into that module's jar or war. A node
 module whose framework produces a server runs with `jk run` ([Run](run.md#node-modules)).
 
+## Images
+
+`jk image` in a node module with a server output builds a Node.js image on the distroless base of
+the locked major; a static module gets an nginx image with `[image] kind = "static"`, and none
+without it. Layers, defaults and inheritance: [Images § Node modules](images.md#node-modules).
+
 ## Importing frontend-maven-plugin
 
 `jk import pom.xml` turns the plugin's executions into a node build. The version an install goal

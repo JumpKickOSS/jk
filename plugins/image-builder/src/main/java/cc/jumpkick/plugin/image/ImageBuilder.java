@@ -335,7 +335,7 @@ public final class ImageBuilder {
                 builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
             }
             builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
-            return finish(builder, plan, containerizer, auth);
+            return finish(builder, plan.config(), containerizer, auth);
         }
 
         // AOT cache: the trainer stages the runnable layout at /app, trains, and hands back the
@@ -388,7 +388,7 @@ public final class ImageBuilder {
             entrypoint.add(plan.mainClass());
         }
         builder = builder.setEntrypoint(entrypoint);
-        return finish(builder, plan, containerizer, auth);
+        return finish(builder, plan.config(), containerizer, auth);
     }
 
     /**
@@ -403,10 +403,9 @@ public final class ImageBuilder {
     }
 
     /** Everything after the entrypoint: identity, ports, env, labels, platforms, and the build. */
-    private static JibContainer finish(
-            JibContainerBuilder builder, Plan plan, Containerizer containerizer, RegistryAuth auth)
+    static JibContainer finish(
+            JibContainerBuilder builder, ImageConfig cfg, Containerizer containerizer, RegistryAuth auth)
             throws IOException, InterruptedException, InvalidImageReferenceException {
-        ImageConfig cfg = plan.config();
 
         if (cfg.user() != null && !cfg.user().isBlank()) {
             builder = builder.setUser(cfg.user());

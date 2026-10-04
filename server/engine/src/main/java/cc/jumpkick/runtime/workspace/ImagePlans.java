@@ -131,6 +131,12 @@ public final class ImagePlans {
         if (decorate != null) inputs = decorate.apply(inputs);
 
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
+        if (NodeImagePlans.isNodeModule(jkBuildPath, projectDir)) {
+            return NodeImagePlans.tail(
+                            builder, inputs, projectDir, cache, registry, tag, tarballArg, dockerExecutableArg)
+                    .terminal(TaskNames.WRITE_IMAGE)
+                    .build();
+        }
         builder.stateKeys(CONFIG, TARBALL_PATH, RUNTIME_JARS, IMAGE_REF)
                 .addTask(imagePlanStep(
                         projectDir, cache, jkBuildPath, mainClass, registry, tag, tarballArg, dockerExecutableArg))
@@ -281,7 +287,7 @@ public final class ImagePlans {
         return new ModuleOutcome.Image(reference, tarball != null ? tarball.toString() : null, name, version, daemon);
     }
 
-    private static @Nullable Path resolveTarballPath(@Nullable String tarballArg, BuildLayout layout) {
+    static @Nullable Path resolveTarballPath(@Nullable String tarballArg, BuildLayout layout) {
         if (tarballArg == null) return null;
         if (tarballArg.isBlank()) return layout.ociImageTar();
         return Path.of(tarballArg);
@@ -446,8 +452,17 @@ public final class ImagePlans {
             @Nullable Path classesDir,
             @Nullable Path tarballPath) {
         try {
-            SpecWriter sw =
-                    imageWorkerSpec(cache, project, layout, config, base, chosen, jars, classesDir, tarballPath);
+            return forkWorker(
+                    workerJar,
+                    imageWorkerSpec(cache, project, layout, config, base, chosen, jars, classesDir, tarballPath));
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    /** Run the image worker on {@code sw}; the reference it built, or {@code ""} for a tarball. */
+    static String forkWorker(Path workerJar, SpecWriter sw) {
+        try {
             Path spec = ImageCredentials.newSpecFile();
             try {
                 Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
@@ -548,7 +563,7 @@ public final class ImagePlans {
      * downstream made the trainer's carefully written no-runtime diagnostic unreachable — the
      * plugin auto-detects (docker/podman/nerdctl) when nothing is configured.
      */
-    private static @Nullable String detectDockerExecutable() {
+    static @Nullable String detectDockerExecutable() {
         for (String candidate : new String[] {"docker", "podman"}) {
             try {
                 Process p = JobWorkers.start(new ProcessBuilder(candidate, "--version")
@@ -602,7 +617,7 @@ public final class ImagePlans {
     }
 
     /** Stable serialization of the image config for the packaging cache key. */
-    private static String imageConfigToken(ImageConfig c) {
+    static String imageConfigToken(ImageConfig c) {
         StringBuilder sb = new StringBuilder();
         sb.append("base=").append(c.base()).append(';');
         sb.append("user=").append(c.user()).append(';');
