@@ -801,37 +801,37 @@
       "properties": {
         "version": { "type": ["integer", "string"], "description": "The node version, as for node = … at the top." },
         "workspace": { "type": "boolean", "const": true, "description": "Inherit the version from the workspace root." },
-        "package-manager": { "type": "string", "enum": ["npm", "pnpm", "yarn", "bun"], "description": "Default from the lockfile, then packageManager / devEngines, else npm. Yarn means Berry." },
-        "framework": { "type": "string", "enum": ["vite", "next", "angular", "nuxt", "sveltekit", "astro", "solid-start", "tanstack-start", "react-router", "plain"], "description": "Default from scripts and config files." },
-        "install": { "type": "string", "description": "The install command, replacing jk's frozen install." },
+        "package-manager": { "type": "string", "enum": ["npm", "pnpm", "yarn", "bun"], "description": "The package manager that installs and runs scripts. By default the lockfile decides, then packageManager or devEngines in package.json, else npm. Yarn means Yarn Berry; Yarn 1 is refused." },
+        "framework": { "type": "string", "enum": ["vite", "next", "angular", "nuxt", "sveltekit", "astro", "solid-start", "tanstack-start", "react-router", "plain"], "description": "The framework, which sets the output directory, dev port, inlined variable prefixes and server start. By default jk reads it from the scripts and config files." },
+        "install": { "type": "string", "description": "The command that installs dependencies, in place of jk's frozen install (npm ci, pnpm install --frozen-lockfile, …)." },
         "build": {
           "description": "What jk build runs: a package.json script name, or { npx = \"…\" } / { exec = \"…\" }.",
           "type": ["string", "object"],
           "properties": { "run": { "type": "string" }, "npx": { "type": "string" }, "exec": { "type": "string" } },
           "additionalProperties": false
         },
-        "test": { "type": "string", "description": "The test script." },
-        "dev": { "type": "string", "description": "The dev-server script jk dev runs." },
-        "start": { "type": "string", "description": "The argv that runs a server output." },
-        "out": { "type": "string", "description": "The build output directory, per framework by default." },
-        "classpath-root": { "type": "string", "description": "The root the output is packaged under in a jar." },
-        "webapp-root": { "type": "string", "description": "The path the output is packaged under in a war." },
-        "env-prefixes": { "type": "array", "items": { "type": "string" }, "description": "Environment variable prefixes hashed into the build key; the framework's by default." },
-        "dev-port": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "The dev server's port." },
+        "test": { "type": "string", "description": "The package.json script node-test runs; by default the test script, when there is one." },
+        "dev": { "type": "string", "description": "The package.json script jk dev runs as the dev server; by default dev." },
+        "start": { "type": "string", "description": "The command that runs a server output, which makes the module runnable by jk run and imageable by jk image. Inferred for Next standalone, Nuxt, SvelteKit with adapter-node and similar." },
+        "out": { "type": "string", "description": "The directory the build writes, relative to the node directory; the framework's by default (dist for Vite)." },
+        "classpath-root": { "type": "string", "description": "The directory inside the jar the output is packaged under; static by default when a JVM module depends on this one, so Spring Boot serves it." },
+        "webapp-root": { "type": "string", "description": "The path inside the war the output is placed at, for a [war] module that consumes it; the war's root by default." },
+        "env-prefixes": { "type": "array", "items": { "type": "string" }, "description": "Prefixes of the environment variables the framework inlines into the bundle, whose values are part of the build's cache key; the framework's by default (VITE_, NEXT_PUBLIC_, …)." },
+        "dev-port": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "The port the dev server listens on, which jk dev waits for before printing the ready line." },
         "dir": { "type": "string", "description": "The directory holding package.json: the module itself, or src/main/node in a JVM module." },
-        "skip": { "type": "boolean", "description": "true: no node step of the module runs." },
+        "skip": { "type": "boolean", "description": "When true, no node step of the module runs and packaging uses the output already built; --skip-node and JK_SKIP_NODE do the same for one run." },
         "steps": {
           "type": "array",
-          "description": "[[node.steps]]: extra cached steps.",
+          "description": "[[node.steps]]: extra cached steps that run a package.json script (run), a package binary from node_modules (npx) or a program (exec), placed before the build, the tests or packaging.",
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string" },
-              "run": { "type": "string" },
-              "npx": { "type": "string" },
-              "exec": { "type": "string" },
-              "before": { "type": "string", "enum": ["build", "test", "package"] },
-              "tier": { "type": "string", "enum": ["build", "test"] },
+              "name": { "type": "string", "description": "The step's name; its task is node-step-<name>." },
+              "run": { "type": "string", "description": "A package.json script to run with the module's package manager." },
+              "npx": { "type": "string", "description": "A package binary and its arguments, resolved from node_modules only unless allow-unlocked is set." },
+              "exec": { "type": "string", "description": "A program and its arguments, run with the locked Node.js first on PATH." },
+              "before": { "type": "string", "enum": ["build", "test", "package"], "description": "The step this one runs ahead of; build by default." },
+              "tier": { "type": "string", "enum": ["build", "test"], "description": "test runs the step with the test tier, so --skip-tests leaves it out and [test] failures applies." },
               "inputs": { "type": "array", "items": { "type": "string" }, "description": "Module-relative files, directories or globs the step reads (../ allowed). With inputs the step is keyed on them alone; without, on the whole node tree." },
               "outputs": { "type": "array", "items": { "type": "string" }, "description": "Paths relative to the node directory the step writes, cached and restored. A step with none is a check, cached as passed." },
               "allow-unlocked": { "type": "boolean", "description": "An npx of a package the install does not hold is fetched (at its @version, else the registry's latest, which enters the key) instead of refused." }
@@ -840,7 +840,7 @@
             "additionalProperties": false
           }
         },
-        "exports": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Named outputs a sibling module may consume: name = path." }
+        "exports": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Named outputs a sibling module may consume, as name = path; each path must be the output directory or a step's output." }
       },
       "additionalProperties": false
     }

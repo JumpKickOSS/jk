@@ -12,7 +12,7 @@ an engine that does not overbook worker leases — see [Engine](engine.md#worker
       ~/.jk/store
       ~/.m2/repository
       **/target/.jk
-    key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml') }}
+    key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml', '**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}
     restore-keys: |
       jk-${{ runner.os }}-
 - run: jk test
@@ -24,6 +24,8 @@ an engine that does not overbook worker leases — see [Engine](engine.md#worker
 | Platform **store** | `repos/` + `.jk` memos | **Yes** |
 | Maven **local repo** | Third-party jars when `[m2] integration` is on; a digest-matching file is copied into the store instead of downloaded | **Yes** — a warm-fetch win |
 | Shared **JDKs** | Managed JDKs | Yes if jobs share the same pin / OS |
+| `store/tools/node`, `store/tools/<pnpm\|yarn\|bun>` | Provisioned Node.js and package managers ([Node.js](node.md)) | **Yes** — inside the store above |
+| `cache/npm`, `store/pnpm-store` | The package managers' download caches | **Yes** — a warm `node-install` |
 | `target/.jk/` | Project-local engine state, including **preflight memos** | **Yes** with the workspace |
 | Platform **state** runs | Run history + `jk-results.md` + `details.jsonl` | Optional |
 | `jk-lock.toml` | Resolved coords | **Commit** (not a cache) |
@@ -34,6 +36,10 @@ Preflight dirty memos use **source content hashes** by default (CI-safe). Opt in
 path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if you accept that tradeoff.
 
 After restoring cache, a normal `jk build` should hit action cache for unchanged modules.
+
+A workspace with a front end needs no `setup-node`: the one `jk build` provisions the Node.js
+`jk-lock.toml` pins, installs from the committed lockfile and bundles both halves. The second run
+with the cache above restores the install (`node-install` cached) and downloads nothing.
 
 ## Sharing a cache across checkouts and agents
 

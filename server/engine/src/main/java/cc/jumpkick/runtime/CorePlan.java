@@ -62,6 +62,8 @@ final class CorePlan {
     private ActivePlugins.@Nullable Declared plugins;
     private @Nullable PluginDeclarations pluginDecls;
     private NodeShape.Kind nodeKind = NodeShape.Kind.NONE;
+    // A JVM module that declares node without building any: its tests get the locked Node.js.
+    private boolean testNode;
 
     CorePlan(BuildPlanner.Inputs in, boolean forceRebuild) {
         this.in = in;
@@ -81,7 +83,7 @@ final class CorePlan {
                 .addTask(s.parseBuild())
                 .addTask(s.syncDeps())
                 .addTask(s.ensureJdk());
-        if (nodeKind != NodeShape.Kind.NONE) b.addTask(PlannerNodeSetup.ensureNodeStep());
+        if (nodeKind != NodeShape.Kind.NONE || testNode) b.addTask(PlannerNodeSetup.ensureNodeStep());
         if (nodeKind == NodeShape.Kind.MODULE) return nodeModulePlan(b, cx);
         if (workspaceNoSources) return workspaceRootPlan(b, cx);
         addCompile(b, cx, s);
@@ -127,6 +129,8 @@ final class CorePlan {
             }
             compactLayout = CompileSupport.isSimpleLayout(project, in.dir());
             nodeKind = NodeShape.kind(jkBuild, in.dir());
+            testNode = nodeKind == NodeShape.Kind.NONE
+                    && !jkBuild.project().nodeSpec().isEmpty();
             // Workspace root with no source tree: nothing to compile or package.
             if (CompileSupport.coordinatorOnly(jkBuild, in.dir())) {
                 useJava = false;
@@ -327,6 +331,7 @@ final class CorePlan {
         if (buildInfo != null) testStampRequires.add(TaskNames.BUILD_INFO);
         // The suite reads the versioned classes ahead of the main ones.
         if (PlannerVersions.declared(parsedBuild)) testStampRequires.add(TaskNames.COMPILE_VERSIONS);
+        if (testNode) testStampRequires.add(TaskNames.ENSURE_NODE);
         if (in.testOnly()) {
             if (useJava) testStampRequires.add(TaskNames.WRITE_STAMP);
             if (useKotlin) testStampRequires.add(TaskNames.WRITE_STAMP_KOTLIN);

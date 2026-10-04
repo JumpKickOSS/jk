@@ -6,7 +6,6 @@ import static cc.jumpkick.runtime.PlannerLang.compileGroovySources;
 import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
 import static cc.jumpkick.runtime.PlannerSupport.effectiveSelection;
 import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
-import static cc.jumpkick.runtime.PlannerSupport.testStampExtras;
 import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
@@ -592,10 +591,10 @@ public final class PlannerTest {
                     }
                     List<String> testJvmArgs = TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls);
                     List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
-                            testStampExtras(
+                            NodeTestStamp.testStampExtras(
                                     workerJars,
                                     effectiveSel,
-                                    projectUnderTest.build(),
+                                    projectUnderTest,
                                     testJvmArgs,
                                     in.dir(),
                                     ClasspathFingerprint.ON_DISK),

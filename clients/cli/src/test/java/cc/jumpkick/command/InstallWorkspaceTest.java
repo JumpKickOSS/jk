@@ -71,8 +71,7 @@ class InstallWorkspaceTest {
 
     @Test
     void a_member_s_declared_test_env_name_reaches_its_test_jvm(@TempDir Path tmp) throws Exception {
-        // `JK_WEB_JS_SKIP=1 jk install` must skip the JS tier as `jk build` does. A declared
-        // [test] env name reaches the test JVM only on the request's client env — the engine is a
+        // A declared [test] env name reaches the test JVM only on the request's client env — the engine is a
         // daemon — and install's request used to carry none. The jk.env seam stands in for the
         // shell: JK_REPO_* names ride ClientEnvForward, and the member declares the same name.
         Path cache = Path.of(TestCaches.dir("shared-cache").toString());
