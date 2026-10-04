@@ -22,6 +22,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.TestFailureMode;
+import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
@@ -171,6 +172,15 @@ final class TestLaunch {
             testEnv = testEnv.with(nestedEngineTestEnv(in.dir()));
         }
         PlannerSupport.stageSiblingRulePacks(in.dir(), projectUnderTest, testEnv.extras());
+        NodeHome node = ctx.get(BuildPlanner.NODE_HOME).orElse(null);
+        if (node != null) {
+            // A module that declares node runs its tests with the locked Node.js first on PATH.
+            testEnv = testEnv.with(Map.of(
+                    "NODE_HOME",
+                    node.home().toString(),
+                    "PATH",
+                    node.path(testEnv.environment().get("PATH"))));
+        }
         return testEnv;
     }
 

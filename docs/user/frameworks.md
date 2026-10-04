@@ -5,7 +5,9 @@ First-party plugins teach JumpKick extra `jk.toml` tables and shape `jk build` /
 Authoring plugins: [contributor plugin guide](../contributors/plugins.md) — against the published
 `cc.jumpkick:jk-plugin-sdk` coordinate, pinned by content in the consumer.
 
-User-facing plugin install: [Plugins](plugins.md). Templates: [Templates](templates.md).
+User-facing plugin install: [Plugins](plugins.md). Templates: [Templates](templates.md). A
+JavaScript front end beside any of them (Vite, Next, Angular, …) is a node module, not a plugin:
+[Node.js](node.md).
 
 Each framework template ships a **rule pack** (`cc.jumpkick.guards:spring`, `:quarkus`,
 `:android`; libraries `:library`, workspaces `:monorepo`) through `[guards] extends` in

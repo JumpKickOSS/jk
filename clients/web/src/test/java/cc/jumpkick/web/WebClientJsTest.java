@@ -29,8 +29,9 @@ import org.junit.jupiter.params.provider.MethodSource;
  * it replaced each carried their own {@code nodeAvailable()} guard that turned a missing Node into
  * a silent green.
  *
- * <p><b>Node is mandatory.</b> Absent Node the class fails loudly. The single escape hatch is
- * {@code JK_WEB_JS_SKIP=1}, which CI never sets — a skip has to be asked for by name.
+ * <p><b>Node is mandatory.</b> The module declares {@code node = 24}, so jk runs this class with
+ * the locked Node.js first on {@code PATH} and {@code NODE_HOME} naming it; absent Node the class
+ * fails loudly.
  *
  * <p>Staging: the SPA's shipped assets are copied once into a {@code type:module} temp dir (a bare
  * {@code .js} import is CommonJS, and every suite's top-level {@code import} would throw).
@@ -41,9 +42,6 @@ import org.junit.jupiter.params.provider.MethodSource;
  * tests with CWD at the engine state dir. See {@link RepoRoot}.
  */
 class WebClientJsTest {
-
-    /** Opt out of the JS tier by name. Never set in CI; the tier fails without it. */
-    private static final String SKIP_ENV = "JK_WEB_JS_SKIP";
 
     private static final Path WEB_ASSETS = Path.of("src/main/resources/web");
 
@@ -66,15 +64,10 @@ class WebClientJsTest {
 
     @BeforeAll
     static void requireNodeAndStageTheSpa() throws IOException {
-        if ("1".equals(System.getenv(SKIP_ENV))) {
-            Assumptions.abort(SKIP_ENV + "=1 — the JS suites were skipped on request");
-        }
         Optional<Integer> installed = installedNodeMajor();
         if (installed.isEmpty()) {
-            throw new AssertionError("`node` is not on PATH, and the dashboard's JS suites are part of "
-                    + "the gate. Install Node " + requiredNodeVersion()
-                    + " (see .nvmrc / CONTRIBUTING.md), or skip this tier deliberately with "
-                    + SKIP_ENV + "=1.");
+            throw new AssertionError("no `node` to run the dashboard's JS suites: jk provisions the one "
+                    + "clients/web/jk.toml declares, so run them through `jk test -m jk-web`.");
         }
         // The gate reads .nvmrc for real: a contributor on another major would otherwise run the
         // suites under a runtime CI never sees, with a pin-named test staying green throughout.
@@ -82,8 +75,7 @@ class WebClientJsTest {
         if (installed.get() != required) {
             throw new AssertionError("the dashboard's JS suites run on Node " + installed.get()
                     + " here, but the gate pins Node " + requiredNodeVersion()
-                    + " (.nvmrc). Install that major (nvm/fnm/mise read the file), or skip this tier "
-                    + "deliberately with " + SKIP_ENV + "=1.");
+                    + " (.nvmrc). Keep clients/web/jk.toml's node and .nvmrc on one major.");
         }
 
         Path assets = moduleRoot().resolve(WEB_ASSETS);
@@ -178,7 +170,7 @@ class WebClientJsTest {
     /** Runs one suite with the TAP reporter (deterministic to parse, unlike the TTY-sensitive default). */
     private static String runNode(Path suite) throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder(
-                        "node",
+                        node(),
                         "--test",
                         "--test-reporter=tap",
                         suite.toAbsolutePath().toString())
@@ -194,6 +186,28 @@ class WebClientJsTest {
                 .as("node --test %s exit status%n%s", suite.getFileName(), output)
                 .isZero();
         return output;
+    }
+
+    /**
+     * The {@code node} to run: {@code NODE_HOME}'s when jk provides one (the locked install), else
+     * whatever {@code PATH} resolves.
+     */
+    static String node() {
+        String home = System.getenv("NODE_HOME");
+        if (home == null || home.isBlank()) return "node";
+        Path root = Path.of(home);
+        Path bin = root.resolve("bin").resolve("node");
+        return Files.isRegularFile(bin)
+                ? bin.toString()
+                : root.resolve("node.exe").toString();
+    }
+
+    @Test
+    void the_suites_run_on_the_node_jk_provisions() {
+        String home = System.getenv("NODE_HOME");
+        Assumptions.assumeTrue(home != null && !home.isBlank(), "run outside jk: no NODE_HOME");
+        assertThat(Path.of(node())).as("the locked Node.js, not the host's").startsWith(Path.of(home));
+        assertThat(System.getenv("PATH")).as("NODE_HOME's bin leads PATH").startsWith(home);
     }
 
     /** {@code test(...)} cases the suite source declares — the floor node's run has to clear. */
@@ -223,7 +237,7 @@ class WebClientJsTest {
     /** The major of the {@code node} on PATH ({@code v24.15.0} → 24), or empty when there is none. */
     private static Optional<Integer> installedNodeMajor() {
         try {
-            Process p = new ProcessBuilder("node", "--version")
+            Process p = new ProcessBuilder(node(), "--version")
                     .redirectErrorStream(true)
                     .start();
             String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();

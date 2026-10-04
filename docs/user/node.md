@@ -31,7 +31,44 @@ version = 24
 ```
 
 A `package.json` at a JVM module's root is a project's tooling (linters, formatters) and is left
-alone, unless the module writes a `[node]` table without `dir`, which jk refuses.
+alone, unless the module writes a `[node]` table without `dir`, which jk refuses. A module with a
+`package.json` and no JVM sources must declare `node` (jk proposes the version `.nvmrc`,
+`.node-version` or `package.json` names); a `[node]` table on a module with no `package.json` is
+refused.
+
+A JVM module that declares `node` and has no `package.json` builds no front end: its tests run with
+the locked Node.js first on `PATH` and `NODE_HOME` naming it, for suites that shell out to `node`
+([Test](test.md#external-tools-the-suite-shells-out-to-test-tools)).
+
+## The `[node]` table
+
+Every key is inferred from `package.json`, its lockfile and the framework's config file; write one
+only to override.
+
+| Key | Default |
+|---|---|
+| `version` | the version, when the manifest also has a `[node]` table (`node = 24` otherwise) |
+| `package-manager` | from the lockfile and `packageManager`: npm, pnpm, Yarn (Berry) or bun |
+| `framework` | from the scripts and config files (table below), else `plain` |
+| `install` / `build` / `test` / `dev` / `start` | the frozen install, then the `build`, `test`, `dev` and server-start commands the framework implies |
+| `out` | the framework's output directory |
+| `classpath-root` | `static` when a JVM module depends on this one |
+| `webapp-root` | the war's root, for a `[war]` dependant |
+| `env-prefixes` | the variables the framework inlines into the bundle (and so key the build) |
+| `dev-port` | the dev server's port, which `jk dev` waits for |
+| `dir` | the module directory; `src/main/node` for a build inside a JVM module |
+| `skip` | `false` |
+
+| Framework | `out` | `dev-port` | `env-prefixes` | Server `start` |
+|---|---|---|---|---|
+| Vite | `dist` | 5173 | `VITE_` | — |
+| Next | `.next` (`out` with `output: 'export'`) | 3000 | `NEXT_PUBLIC_` | `node .next/standalone/server.js` when standalone |
+| Angular | `dist/<app>/browser` | 4200 | — | — |
+| Nuxt | `.output` | 3000 | `NUXT_PUBLIC_` | `node .output/server/index.mjs` |
+| SvelteKit | `build` | 5173 | `PUBLIC_` | `node build/index.js` with adapter-node |
+| Astro | `dist` | 4321 | `PUBLIC_` | — |
+| SolidStart, TanStack Start | `.output` | 3000 | `VITE_` | `node .output/server/index.mjs` |
+| React Router | `build` | 5173 | `VITE_` | `react-router-serve build/server/index.js` |
 
 ## Node.js and the lock
 
@@ -44,7 +81,10 @@ are npm, pnpm, Yarn (Berry only) and bun.
 
 ## Commands
 
-`jk node` manages Node.js the way `jk jdk` manages JDKs; `jk nvm` is the same command.
+`jk node` manages Node.js the way `jk jdk` manages JDKs; `jk nvm` is the same command. Installs live
+under `~/.jk/store/tools/node/<version>`, package managers under `~/.jk/store/tools/<manager>`.
+Offline, a build uses what the store (or another manager) already holds and refuses a missing
+release by name.
 
 | Command | Does |
 |---|---|
@@ -78,6 +118,14 @@ output already built. `[test] failures = "report"` applies to node tests too ([T
 An `npx` resolves from `node_modules` only: a package the lockfile does not hold is refused unless
 the step sets `allow-unlocked = true`.
 
+## Supply chain
+
+Installs are frozen: the lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) is
+required and never rewritten, and a missing one is an error with the command to create it. npm's
+cache is jk's (`~/.jk/cache/npm`, pnpm's store `~/.jk/store/pnpm-store`), so `jk cache` and
+`jk storage` see them. Lifecycle scripts run as the project's `.npmrc` says; set `ignore-scripts`
+there to turn them off.
+
 ## Packaging
 
 See [Packaging § Node modules](packaging.md#node-modules): a node module's output becomes a
@@ -99,6 +147,11 @@ the locked major; a static module gets an nginx image with `[image] kind = "stat
 without it. Layers, defaults and inheritance: [Images § Node modules](images.md#node-modules).
 
 ## New projects and adoption
+
+**From a hand-run build.** A README that says "run `npm install && npm run build` first" becomes
+`node = 24` in the front end's `jk.toml`: `jk build` installs and bundles it as cached steps, and the
+`vite.config` hack that pointed `build.outDir` into a resource directory goes, since jk places the
+output.
 
 `jk new --lang node -t <framework> <name>` runs the framework's own generator under the newest LTS
 Node.js and writes the `jk.toml` that pins it ([Templates](templates.md#node-front-ends---lang-node)).

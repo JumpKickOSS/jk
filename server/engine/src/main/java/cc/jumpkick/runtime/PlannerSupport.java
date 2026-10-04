@@ -764,10 +764,10 @@ public final class PlannerSupport {
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
         // (`jk build --all`) forecasts "tests cached" off the unit-tier marker and the whole
         // workspace short-circuits to "up to date" without running the widened tier.
-        return testStampExtras(
+        return NodeTestStamp.testStampExtras(
                 testStampWorkerJars(dir, project),
                 effectiveSelection(SessionContext.current().testSelection(), dir),
-                project.build(),
+                project,
                 testJvmArgs(project, profileName),
                 dir,
                 identity);

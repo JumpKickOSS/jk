@@ -80,5 +80,18 @@ See [Run](run.md).
 | `target/` | Classes, jars, reports |
 | `target/jk-results.md` | High-level report of the last run (`jk results` prints it) |
 
+## A JVM backend with a front end
+
+```bash
+jk new -t java/spring-boot/webapp shop && cd shop   # app/ (Spring Boot) + web/ (Vite + React)
+jk build      # provisions Node.js, installs and bundles web/, packages it into app's jar
+jk dev        # the JVM with reload and Vite's dev server, behind one ready line
+```
+
+`web/jk.toml` is `node = 24`: jk pins the exact release in `jk-lock.toml`, runs the frozen install
+and the build script as cached steps, and `app` serves the bundle from `classpath:static`. No Node.js
+of your own is needed. `--frontend angular` (or any Vite template) swaps the front end;
+[Node.js](node.md) has the rest.
+
 When a build fails: [Troubleshooting](troubleshooting.md). Next: **`jk skill`** (or
 [Skill](skill.md) on the web) for the rest of the product.
