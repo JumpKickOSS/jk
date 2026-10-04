@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -44,7 +46,8 @@ class PluginManifestOrphanTest {
         Files.write(keepClass, new byte[] {0});
 
         assertThat(TaskForecaster.flattenedPluginCatalogPresent(classes)).isTrue();
-        assertThat(TaskForecaster.mainResourcesOutOfSync(module, false, classes))
+        assertThat(TaskForecaster.mainResourcesOutOfSync(
+                        module, JkBuild.of(new Project("g", "m", "1.0", 25)), false, classes))
                 .isTrue();
 
         assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))

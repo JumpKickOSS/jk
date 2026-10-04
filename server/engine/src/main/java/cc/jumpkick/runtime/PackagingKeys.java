@@ -21,6 +21,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionCache;
@@ -519,7 +520,7 @@ public final class PackagingKeys {
             // could disagree with it and project the token from a different tree state.
             boolean drifted = knownResourceDrift != null
                     ? knownResourceDrift
-                    : TaskForecaster.mainResourcesOutOfSync(dir, compact, classesDir);
+                    : TaskForecaster.mainResourcesOutOfSync(dir, project, compact, classesDir);
             if (drifted) {
                 return classesTokenProjectedAfterResourceCopy(dir, compact, layout, project);
             }
@@ -558,8 +559,9 @@ public final class PackagingKeys {
      */
     static String classesTokenProjectedAfterResourceCopy(Path dir, boolean compact, BuildLayout layout, JkBuild project)
             throws IOException {
-        return ClasspathFingerprint.entryProjectedAfterResourceCopy(
-                layout.classesDir(), packageResourceRoots(dir, compact));
+        List<Path> roots = packageResourceRoots(dir, compact);
+        roots.addAll(FilteredResources.extraMainDirs(dir, project));
+        return ClasspathFingerprint.entryProjectedAfterResourceCopy(layout.classesDir(), roots);
     }
 
     /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin). */

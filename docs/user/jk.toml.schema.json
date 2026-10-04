@@ -558,6 +558,18 @@
       },
       "additionalProperties": false
     },
+    "resources": {
+      "type": "object",
+      "description": "[resources]: resource roots beyond the layout's, and roots whose files are expanded while copied (Maven's resource filtering) (docs/user/layout.md).",
+      "properties": {
+        "dirs": { "type": "array", "items": { "type": "string" }, "description": "Extra main resource roots, module-relative, copied as written." },
+        "filtered": { "type": "array", "items": { "type": "string" }, "description": "Main resource roots whose files are expanded: ${name} and @name@ become the value of name; \\${name} stays literal; an unresolved ${name} is left as written and warned. Images and non-UTF-8 files are copied as they are. A layout root may be listed." },
+        "test-dirs": { "type": "array", "items": { "type": "string" }, "description": "Extra test resource roots." },
+        "test-filtered": { "type": "array", "items": { "type": "string" }, "description": "Test resource roots whose files are expanded." },
+        "properties": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Values the expansion uses, over project.groupId, project.artifactId and project.version, which jk sets itself. Quote dotted names: \"remoting.version\" = \"…\"." }
+      },
+      "additionalProperties": false
+    },
     "war": {
       "type": "object",
       "description": "[war]: package a web archive beside the jar, exploded to target/<name>/ and archived to target/<name>.war (docs/user/packaging.md). The table alone is the whole declaration.",

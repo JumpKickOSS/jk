@@ -427,7 +427,7 @@ relates to the Maven one.
 | git-commit-id-maven-plugin / git-commit-id-plugin | 4 | `[build-info]` — `git.properties` with the commit, branch, times and dirty flag in the jar; a `<generateGitPropertiesFilename>` under the output directory → `file`; `<format>json`, another `<dateFormat>` or a file written outside the output directory → row | exact |
 | maven-javadoc-plugin | 22 | a library ships the javadoc jar by default; `<failOnError>true` or a `<doclint>` other than `none` → `javadoc = "strict"`; `<doclint>none` or `<failOnError>false` stays lenient | exact |
 | maven-source-plugin | 19 | `sources = "always"` — the sources jar on every `jk build` | exact |
-| maven-resources-plugin | 19 | nothing to map for the fixed layout; a filtered or non-standard `<resource>` directory is a row | approximate |
+| maven-resources-plugin | 19 | `<resources>` / `<testResources>` → `[resources]`: a directory outside the layout → `dirs`, a filtering one → `filtered`, and every name its files reference → `[resources.properties]` with the effective POM's value; names only Maven's runtime knows (environment, settings), `<includes>`/`<excludes>` and `<targetPath>` → row | approximate |
 | jacoco-maven-plugin | 17 | `jk test --coverage` is a run flag, not a manifest key → row | manual |
 | maven-gpg-plugin | 17 | `jk publish --sign` | exact |
 | maven-assembly-plugin | 17 | `jar-with-dependencies` → `[application] assembly = true` (needs a `<mainClass>`, else a row); other descriptors → row | approximate |

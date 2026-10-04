@@ -435,6 +435,8 @@ public final class JkBuildParser {
         // [dokka] shapes the javadoc jar of a Kotlin module; it folds in beside [build-info].
         Optional<NodeTable> node = ManifestNode.parse(result);
         if (node.isPresent()) build = build.withNode(node.get());
+        BuildBlock.Resources resources = ManifestResources.parse(result);
+        if (!resources.isEmpty()) build = build.withResources(resources);
         Optional<BuildBlock.War> war = ManifestTables.parseWar(result);
         if (war.isPresent()) build = build.withWar(war.get());
         Optional<BuildBlock.Dokka> dokka = ManifestTables.parseDokka(result);

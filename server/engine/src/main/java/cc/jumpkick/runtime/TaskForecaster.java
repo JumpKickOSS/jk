@@ -24,6 +24,7 @@ import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -608,11 +609,16 @@ public final class TaskForecaster {
     }
 
     /** Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code classesDir}. */
-    static boolean mainResourcesOutOfSync(Path dir, boolean compact, Path classesDir) {
+    static boolean mainResourcesOutOfSync(Path dir, JkBuild project, boolean compact, Path classesDir) {
         if (flattenedPluginCatalogPresent(classesDir)) return true;
-        if (resourcesOutOfSync(ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
+        if (!FilteredResources.layoutRootFiltered(dir, project, compact)
+                && resourcesOutOfSync(ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
             return true;
         }
+        for (Path extra : FilteredResources.extraMainDirs(dir, project)) {
+            if (resourcesOutOfSync(extra, classesDir)) return true;
+        }
+        if (FilteredResources.mainOutOfSync(dir, project, classesDir)) return true;
         return pluginManifestOutOfSync(dir, classesDir);
     }
 
