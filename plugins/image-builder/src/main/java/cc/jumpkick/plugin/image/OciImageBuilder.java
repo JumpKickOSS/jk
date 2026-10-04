@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code jk-image-builder} plugin: the terminal {@link ImageExtension} goal for OCI images. Its
@@ -116,6 +117,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                     + (registry == null ? "" : " (and the push to " + registry + ")")));
         }
 
+        if (c.stringOpt("kind").isPresent()) return layered(ctx, c, artifact, version, base, registry, tag);
+
         Path mainJar = ctx.mainArtifact().orElseThrow(() -> new IOException("image goal needs a built main artifact"));
         List<Path> depJars = new ArrayList<>();
         List<Path> snapshotJars = new ArrayList<>();
@@ -186,6 +189,72 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         }
         ctx.label("pushing " + ref);
         ImageBuilder.pushToRegistry(plan, cacheRoot, auth);
+        return ImageResult.pushed(ref);
+    }
+
+    /**
+     * A node build's image ({@code kind} {@code node} or {@code static}): the engine names every
+     * layer as {@code name<TAB>source<TAB>image path}, plus the entrypoint and working directory.
+     */
+    private static ImageResult layered(
+            ImageContext ctx,
+            PluginConfig c,
+            String artifact,
+            String version,
+            @Nullable String base,
+            @Nullable String registry,
+            @Nullable String tag)
+            throws IOException, InterruptedException {
+        List<LayeredImage.Layer> layers = new ArrayList<>();
+        for (String line : c.stringList("layers")) {
+            String[] f = line.split("\t", 3);
+            if (f.length != 3) throw new IOException("image spec: malformed layer `" + line + "`");
+            layers.add(new LayeredImage.Layer(f[0], Path.of(f[1]), f[2]));
+        }
+        List<Integer> ports = new ArrayList<>();
+        for (String p : c.stringList("ports")) ports.add(Integer.parseInt(p));
+        String dockerExecutable = c.stringOpt("dockerExecutable").orElse(null);
+        ImageConfig config = new ImageConfig(
+                base,
+                c.stringOpt("name").orElse(null),
+                c.stringOpt("user").orElse(null),
+                ports,
+                splitPairs(c.stringList("env")),
+                splitPairs(c.stringList("labels")),
+                registry,
+                tag,
+                c.stringList("platforms"),
+                null,
+                dockerExecutable,
+                null,
+                false);
+        LayeredImage.Plan plan = new LayeredImage.Plan(
+                config,
+                artifact,
+                version,
+                layers,
+                c.stringList("entrypoint"),
+                c.stringOpt("workdir").orElse(null));
+        String ref = config.targetReference(artifact, version);
+        Optional<String> tarball = c.stringOpt("tarball");
+        boolean pushing =
+                tarball.isEmpty() && !"daemon".equals(c.stringOpt("mode").orElse(null));
+        RegistryAuth auth = RegistryAuth.of(
+                credential(ctx, "base"), credential(ctx, "push"), ImageBuilder.baseOf(config), pushing ? ref : null);
+        if (tarball.isPresent()) {
+            Path tarballPath = Path.of(tarball.get());
+            ctx.label("building OCI tarball");
+            if (tarballPath.getParent() != null) Files.createDirectories(tarballPath.getParent());
+            LayeredImage.writeToTarball(plan, tarballPath, auth);
+            return ImageResult.tarball(tarballPath);
+        }
+        if (!pushing) {
+            ctx.label("loading " + ref + " into " + (dockerExecutable != null ? dockerExecutable : "docker"));
+            LayeredImage.loadToLocalDaemon(plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, auth);
+            return ImageResult.loaded(ref);
+        }
+        ctx.label("pushing " + ref);
+        LayeredImage.pushToRegistry(plan, auth);
         return ImageResult.pushed(ref);
     }
 

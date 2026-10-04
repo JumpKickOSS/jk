@@ -124,7 +124,7 @@ public final class WorkspaceLoader {
                         + workspaceRoot
                         + "`.");
             }
-            JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root);
+            JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root, moduleDir);
             NodeShape.check(member, moduleDir);
             modules.put(moduleDir, member);
         }
@@ -167,10 +167,11 @@ public final class WorkspaceLoader {
      * table — {@link ManifestImage#inheritFromRoot}. One registry, one base image, one set of
      * labels is a workspace fact; the image's name, entry point, ports and Dockerfile are not.
      */
-    public static JkBuild inheritImage(JkBuild module, JkBuild root) {
+    public static JkBuild inheritImage(JkBuild module, JkBuild root, Path moduleDir) {
         Objects.requireNonNull(module, "module");
         Objects.requireNonNull(root, "root");
-        return module.withImage(ManifestImage.inheritFromRoot(module.image(), root.image()));
+        boolean node = NodeShape.kind(module, moduleDir) == NodeShape.Kind.MODULE;
+        return module.withImage(ManifestImage.inheritFromRoot(module.image(), root.image(), node));
     }
 
     /**

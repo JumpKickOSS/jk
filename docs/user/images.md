@@ -83,6 +83,40 @@ labels   = { team = "core" }
 ports = [8080]          # image ghcr.io/acme/api:<version>, on the root's base, labelled team=core
 ```
 
+## Node modules
+
+A node module with a server output (a `[node] start`, or one its framework implies: Next
+standalone, Nuxt, SvelteKit with adapter-node, React Router, a plain `start` script) gets a
+Node.js image:
+
+| Layer | Holds | Path |
+|---|---|---|
+| `dependencies` | the production dependencies, installed with the locked package manager (`npm ci --omit=dev`, `pnpm install --prod`, `yarn workspaces focus --production`, `bun install --production`); left out when the output carries its own (Next standalone, Nitro's `.output`) or `package.json` has none | `/app/node_modules` |
+| `app` | the server output and `package.json` (a plain server: the module's files, without `node_modules` and `target/`) | `/app` |
+
+The base is `gcr.io/distroless/nodejs<major>-debian13` for the locked Node.js major, the
+entrypoint `node` with the start command's arguments (`/nodejs/bin/node` on distroless), run from
+`/app` as user `65532` with `PORT=3000`, `HOSTNAME=0.0.0.0` and `NODE_ENV=production`, port 3000.
+Every one of those is a default `[image]` overrides. A start command that runs a package's bin
+(`react-router-serve …`) runs that bin's script under `node`.
+
+A node module whose output is static files has no image of its own: its bundle rides in the image
+of the JVM module that serves it. `[image] kind = "static"` gives it an nginx image instead —
+`nginx:stable-alpine`, the output at `/usr/share/nginx/html`, port 80, and a generated
+`default.conf` that answers unknown paths with `index.html` and caches the hashed `assets/` for a
+year.
+
+A node module takes the workspace root's `[image]` registry, tag, labels, env and platforms, but
+not its `base` (a JRE) or `aot-cache`, which trains a JVM and is refused on a node module.
+
+```toml
+# web/jk.toml
+node = 24
+
+[image]
+kind = "static"   # omit for a server; a static module without it has no image
+```
+
 ## AOT cache in the image
 
 ```toml
