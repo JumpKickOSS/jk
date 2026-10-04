@@ -2,6 +2,7 @@
 package cc.jumpkick.command.interop;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -52,7 +53,7 @@ public final class GradleCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         Path directory = in.value("dir").map(Path::of).orElse(null);
-        Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
+        Path toolsDir = in.value("tools-dir").map(CliPaths::abs).orElse(null);
         Path jdksDir = CommonOpts.jdksDirValue(in);
         boolean noDiscover = in.isSet("no-discover");
         boolean acceptUnverified = CommonOpts.acceptUnverifiedTool(in);

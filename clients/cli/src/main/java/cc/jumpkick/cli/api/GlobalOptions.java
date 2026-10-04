@@ -220,7 +220,7 @@ public final class GlobalOptions {
         // Engine-owned chrome profile; CLI only forwards the preference on the wire.
         TimelineOpts.setNoTimeline(g.noTimeline);
         g.output = in.value("output").orElse(null);
-        g.configFile = in.value("config-file").map(Path::of).orElse(null);
+        g.configFile = in.value("config-file").map(CliPaths::abs).orElse(null);
         g.noConfig = in.isSet("no-config");
         g.dir = in.value("dir").map(Path::of).orElse(null);
         g.maxRamPercent = in.value("ram-percent")

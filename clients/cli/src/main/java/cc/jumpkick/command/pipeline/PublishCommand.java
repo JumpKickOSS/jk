@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -126,11 +127,11 @@ public final class PublishCommand implements CliCommand {
         this.password = in.value("password").orElse(null);
         this.region = in.value("region").orElse(null);
         this.endpoint = in.value("endpoint").orElse(null);
-        this.jarPath = in.value("jar").map(Path::of).orElse(null);
+        this.jarPath = in.value("jar").map(CliPaths::abs).orElse(null);
         this.allowSnapshot = in.isSet("allow-snapshot");
         this.dryRun = in.isSet("dry-run");
         this.sign = in.isSet("sign");
-        this.keyFile = in.value("key-file").map(Path::of).orElse(null);
+        this.keyFile = in.value("key-file").map(CliPaths::abs).orElse(null);
         this.keyPassphrase = in.value("key-passphrase").orElse(null);
         this.sigstore = in.isSet("sigstore");
         this.slsa = in.isSet("slsa");

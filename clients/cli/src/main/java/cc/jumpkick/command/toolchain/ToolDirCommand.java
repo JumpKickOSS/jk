@@ -2,6 +2,7 @@
 package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -37,7 +38,7 @@ public final class ToolDirCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) {
-        Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
+        Path toolsDir = in.value("tools-dir").map(CliPaths::abs).orElse(null);
         CliOutput.out(String.valueOf(toolsDir != null ? toolsDir : JkDirs.tools()));
         return 0;
     }

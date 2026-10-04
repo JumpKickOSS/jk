@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineSpawn;
@@ -107,7 +108,7 @@ public final class SelfCommand extends GroupCommand {
         @Override
         public int run(Invocation in) throws Exception {
             Optional<Path> jar =
-                    in.value("jar").map(Path::of).or(JvmClient::jar).or(WriteLauncherSub::ownJar);
+                    in.value("jar").map(CliPaths::abs).or(JvmClient::jar).or(WriteLauncherSub::ownJar);
             if (jar.isEmpty() || !Files.isRegularFile(jar.get())) {
                 CommandWedge.printFail(
                         "Self",

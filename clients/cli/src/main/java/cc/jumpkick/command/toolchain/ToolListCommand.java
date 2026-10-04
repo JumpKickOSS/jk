@@ -2,6 +2,7 @@
 package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.compat.BuildTool;
@@ -44,8 +45,8 @@ public final class ToolListCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException {
-        Path stateDir = in.value("state-dir").map(Path::of).orElse(null);
-        Path binDirOverride = in.value("bin-dir").map(Path::of).orElse(null);
+        Path stateDir = in.value("state-dir").map(CliPaths::abs).orElse(null);
+        Path binDirOverride = in.value("bin-dir").map(CliPaths::abs).orElse(null);
         Path state = stateDir != null ? stateDir : JkDirs.state();
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
         Path envsRoot = JkDirs.toolEnvsDir(state);
