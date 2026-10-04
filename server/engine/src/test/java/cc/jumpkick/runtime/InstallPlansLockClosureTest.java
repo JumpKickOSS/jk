@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -87,6 +88,72 @@ class InstallPlansLockClosureTest {
         assertThat(closure)
                 .containsExactly(Coordinate.of("com.acme", "lib", "1.0"), Coordinate.of("com.acme", "leaf", "3.0"));
         assertThat(InstallPlans.lockClosure(declaringLib(), null)).isEmpty();
+    }
+
+    @Test
+    void a_workspace_member_s_closure_follows_its_own_rows(@TempDir Path ws) throws Exception {
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "ws"
+                version = "1.0"
+
+                [workspace]
+                modules = ["mod"]
+                """);
+        Files.createDirectories(ws.resolve("mod"));
+        Files.writeString(ws.resolve("mod/jk.toml"), """
+                group = "cc.jumpkick"
+                name = "jk-foo"
+                version = "1.0"
+                """);
+        // The workspace's row for lib reaches leaf alone; mod's own graph also reaches logging, as
+        // the image builder's httpclient reaches commons-logging where another member's does not.
+        Lockfile.Artifact shared = new Lockfile.Artifact(
+                "com.acme:lib:jar:",
+                "1.0",
+                CENTRAL,
+                null,
+                null,
+                List.of(Scope.MAIN),
+                List.of("com.acme:leaf:jar:@3.0"));
+        Lockfile.Artifact own = new Lockfile.Artifact(
+                        "com.acme:lib:jar:",
+                        "1.0",
+                        CENTRAL,
+                        null,
+                        null,
+                        List.of(Scope.MAIN),
+                        List.of("com.acme:leaf:jar:@3.0", "com.acme:logging:jar:@1.2"))
+                .withMembers(List.of("mod"));
+        LockfileWriter.write(
+                new Lockfile(
+                        1,
+                        "jk test",
+                        "pubgrub-v1",
+                        List.of(
+                                own,
+                                shared,
+                                shared.withMembers(List.of("other")),
+                                new Lockfile.Artifact(
+                                        "com.acme:leaf:jar:",
+                                        "3.0",
+                                        CENTRAL,
+                                        null,
+                                        null,
+                                        List.of(Scope.MAIN),
+                                        List.of()),
+                                new Lockfile.Artifact(
+                                        "com.acme:logging:jar:",
+                                        "1.2",
+                                        CENTRAL,
+                                        null,
+                                        null,
+                                        List.of(Scope.MAIN),
+                                        List.of()))),
+                ws.resolve("jk-lock.toml"));
+
+        assertThat(InstallPlans.lockClosure(declaringLib(), InstallPlans.lockOf(ws.resolve("mod"))))
+                .contains(Coordinate.of("com.acme", "logging", "1.2"));
     }
 
     @Test
