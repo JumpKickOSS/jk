@@ -293,9 +293,9 @@ server-side so unchanged free RAM does not repaint noise.
 headlessly with `node --test`. Fold-layer suites share `fold-harness.mjs` for the staged SPA
 bindings so the export list has one owner. One JUnit wrapper, `WebClientJsTest`, runs every
 `src/test/js/*.test.mjs`: it stages the SPA's modules in a `type:module` temp dir and hands each
-one to Node as `JK_<NAME>_MJS` (plus `JK_APP_DIR`). Node is required at the version in
-[`.nvmrc`](../../.nvmrc) — a missing `node` fails the build rather than skipping; opt out
-deliberately with `JK_WEB_JS_SKIP=1`. See [CONTRIBUTING.md](../../CONTRIBUTING.md).
+one to Node as `JK_<NAME>_MJS` (plus `JK_APP_DIR`). The Node.js is the one `clients/web/jk.toml`
+pins: jk provisions it and puts it first on the test JVM's `PATH`, so the suites need no Node on
+the host and never skip. See [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ```bash
 jk test -m clients/web

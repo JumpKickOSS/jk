@@ -1,0 +1,9 @@
+# No workflow installs Node: jk provisions the version clients/web/jk.toml pins.
+name: ci
+on: [push]
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: jk test
