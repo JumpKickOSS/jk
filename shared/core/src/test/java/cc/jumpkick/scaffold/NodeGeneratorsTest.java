@@ -49,6 +49,9 @@ class NodeGeneratorsTest {
         assertThat(argv("angular"))
                 .contains("@angular/cli@latest", "new", "web", "--defaults", "--package-manager=npm");
         assertThat(argv("sveltekit")).contains("sv@latest", "create", "web", "--types=ts", "--install=npm");
+        assertThat(argv("nuxt"))
+                .as("create-nuxt asks for a template when it has no terminal")
+                .contains("create-nuxt@latest", "web", "--template=minimal", "--packageManager=npm");
         assertThat(NodeGenerators.find("NEXT")).isPresent();
         assertThat(NodeGenerators.find("gatsby")).isEmpty();
     }

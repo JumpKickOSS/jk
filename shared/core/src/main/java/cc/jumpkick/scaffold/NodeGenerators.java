@@ -63,7 +63,14 @@ public final class NodeGenerators {
             new Framework(
                     "nuxt",
                     Shape.SERVER,
-                    List.of("npx", "--yes", "create-nuxt@latest", DIR, "--packageManager=npm", "--gitInit=false")),
+                    List.of(
+                            "npx",
+                            "--yes",
+                            "create-nuxt@latest",
+                            DIR,
+                            "--template=minimal",
+                            "--packageManager=npm",
+                            "--gitInit=false")),
             new Framework(
                     "sveltekit",
                     Shape.SERVER,
