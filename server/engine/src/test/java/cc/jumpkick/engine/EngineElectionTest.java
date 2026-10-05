@@ -143,10 +143,15 @@ class EngineElectionTest {
             this.thread.start();
         }
 
+        /** Drop the generation lock but keep serving, as an engine whose lock file was unlinked does. */
+        void releaseLock() throws IOException {
+            if (lock != null && lock.isValid()) lock.release();
+        }
+
         @Override
         public void close() throws IOException {
             listener.close();
-            if (lock != null) lock.release();
+            if (lock != null && lock.isValid()) lock.release();
             lockChannel.close();
         }
     }
@@ -382,6 +387,32 @@ class EngineElectionTest {
 
         assertThat(socket).as("the successor's socket").exists();
         assertThat(Files.readString(won.active().pid()).trim()).isEqualTo("4343");
+        assertThat(EnginePaths.endpoint(p))
+                .as("the endpoint names the successor's socket by the same name; only the pid file can tell")
+                .exists();
+    }
+
+    /**
+     * An engine still serves on generation 1 though its lock is free: an older jk unlinked the lock
+     * file under it. The next election must not reclaim that live socket as stale.
+     */
+    @Test
+    void a_generation_whose_socket_answers_is_skipped_even_when_its_lock_is_free() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        FakeIncumbent live = closeLater(new FakeIncumbent(p, 1, VERSION, "zzzz"));
+        live.releaseLock();
+        Path gen1 = EnginePaths.generation(p, 1).socket();
+
+        List<String> log = new ArrayList<>();
+        EngineElection.Won won =
+                requireNonNull(election(p, "aaaa", 4242, log::add).win());
+        closeLater(won.listener());
+
+        assertThat(won.active().socket()).isEqualTo(EnginePaths.generation(p, 2).socket());
+        assertThat(EngineElection.helloProbe(gen1, VERSION))
+                .as("the live engine on generation 1 still answers")
+                .isNotNull();
+        assertThat(log).anyMatch(l -> l.contains("skipped generation 1"));
     }
 
     /** A lame duck must not un-point an endpoint its successor now owns. */

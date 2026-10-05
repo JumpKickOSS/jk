@@ -156,7 +156,10 @@ final class EngineElection {
         }
 
         // Claim the first free generation. The winner's gen lock is held for the engine's whole
-        // life; a crashed engine's stale gen files are reclaimed here by winning its lock.
+        // life; a crashed engine's stale gen files are reclaimed here by winning its lock. A won
+        // lock is not proof the generation is free: an engine whose lock file was unlinked under it
+        // (by an older jk's retire) still serves on the name, so a generation whose socket answers
+        // is skipped, never reclaimed.
         for (int n = 1; n < MAX_GENERATIONS && active == null; n++) {
             EnginePaths.Paths cand = EnginePaths.generation(paths, n);
             FileChannel gc = OwnerOnlyFiles.channel(cand.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
@@ -166,11 +169,19 @@ final class EngineElection {
             } catch (OverlappingFileLockException e) {
                 gl = null;
             }
-            if (gl != null) {
+            Incumbent squatter = gl != null ? helloProbe(cand.socket(), version) : null;
+            if (gl != null && squatter == null) {
                 active = cand;
                 genLock = gl;
                 genLockChannel = gc;
+                log.accept("jk engine: claimed generation " + n + " (pid " + pid + ", lock inode "
+                        + fileKey(cand.lock()) + ")");
             } else {
+                if (squatter != null) {
+                    log.accept("jk engine: skipped generation " + n + ": its lock was free but pid " + squatter.pid()
+                            + " answers on " + cand.socket().getFileName());
+                }
+                if (gl != null) gl.release();
                 gc.close();
             }
         }
@@ -288,7 +299,8 @@ final class EngineElection {
 
     /**
      * Undo {@link #win}: drop the socket, token and pid file this engine still owns, un-point the
-     * endpoint only if it still names US, then release the generation and startup locks.
+     * endpoint only if it still names US and the pid file says so, then release the generation and
+     * startup locks.
      *
      * <p>The lock files themselves stay. Deleting one after its release lets a successor's lock land
      * on the unlinked file while a third engine locks a fresh one at the same path, and both then
@@ -307,7 +319,9 @@ final class EngineElection {
                 deleteQuietly(active.token());
             }
             if (pidIsMine) deleteQuietly(active.pid());
-            if (endpointNamesThisEngine()) deleteQuietly(EnginePaths.endpoint(paths));
+            // The endpoint names a socket, and a successor may have bound the same name; only an
+            // engine the pid file still names may un-point it.
+            if (pidIsMine && endpointNamesThisEngine()) deleteQuietly(EnginePaths.endpoint(paths));
             try {
                 if (genLock != null) genLock.release();
                 if (genLockChannel != null) genLockChannel.close();

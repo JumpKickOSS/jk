@@ -33,6 +33,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -88,17 +89,35 @@ public final class EngineSpawn {
             reach = waitOutSilentPeer(paths, socket, clientVersion, patience, grace);
         if (reach instanceof Reachability.Live live) {
             EngineProbe.Handshake hs = live.handshake();
-            if (serves(hs, clientVersion, pointerSha(clientVersion))) {
+            Optional<String> pointer = pointerSha(clientVersion);
+            if (serves(hs, clientVersion, pointer)) {
                 return hs;
             }
+            logReason(
+                    paths,
+                    "client pid " + ProcessHandle.current().pid() + " takes over pid " + hs.pid() + " at " + socket
+                            + " (" + skew(hs, clientVersion, pointer) + ")");
             // Draining, or version skew (incl. same -SNAPSHOT with different content identity) →
             // TAKEOVER, not a kill: spawn this client's engine; its startup atomically repoints the
             // endpoint and drains the displaced engine — in-flight jobs finish untouched. A
             // draining engine refuses new jobs, so its successor is the one that serves this
             // client; the startup mutex and the election keep two clients from starting two.
         }
+        if (!(reach instanceof Reachability.Live)) {
+            logReason(
+                    paths,
+                    "client pid " + ProcessHandle.current().pid() + " starts an engine: "
+                            + reach.getClass().getSimpleName().toLowerCase(Locale.ROOT) + " at " + socket);
+        }
         // Absent / unusable / draining / version skew → spawn (takeover or cold start).
         return startWithSelfHeal(paths, clientVersion);
+    }
+
+    /** Why a live engine does not serve this client, for the engine log. */
+    private static String skew(EngineProbe.Handshake hs, String clientVersion, Optional<String> pointer) {
+        if (hs.draining()) return "draining";
+        if (!clientVersion.equals(hs.version())) return "version " + hs.version() + ", client " + clientVersion;
+        return "build " + hs.buildId() + ", the home names " + pointer.orElse("none");
     }
 
     /**
