@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.node;
 
+import cc.jumpkick.compat.DownloadOrigin;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
@@ -48,7 +49,7 @@ public final class NodeCatalog {
 
     public NodeCatalog(Http http, URI distBase, Path storeDir, Duration ttl) {
         this.http = Objects.requireNonNull(http, "http");
-        this.distBase = NodeSources.directory(distBase.toString());
+        this.distBase = DownloadOrigin.directory(distBase.toString());
         this.storeDir = Objects.requireNonNull(storeDir, "storeDir");
         this.ttl = Objects.requireNonNull(ttl, "ttl");
     }

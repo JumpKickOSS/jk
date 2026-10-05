@@ -73,7 +73,9 @@ verifies against the record ([Migration](migration.md)).
 
 Node is verified against the `SHASUMS256.txt` nodejs.org publishes for each release; pnpm, Yarn
 and bun against the npm registry's `dist.integrity`. Neither ever needs `--accept-unverified-tool`.
-Where they come from is set in `~/.jk/config.toml` ([Config § Node network](config.md#node-network)).
+Where each distribution comes from is set in `~/.jk/config.toml` `[mirrors]` ([Config § Tool
+mirrors](config.md#tool-mirrors)); the npm registry and scopes in `[node]` ([Config § Node
+network](config.md#node-network)). Downloads draw the same progress bar a JDK download does.
 
 ## Lint is a build step, not a tool
 
