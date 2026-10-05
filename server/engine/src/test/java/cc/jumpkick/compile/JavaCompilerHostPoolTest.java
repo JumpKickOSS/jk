@@ -16,9 +16,9 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -160,7 +160,7 @@ class JavaCompilerHostPoolTest {
         pool.enqueue(bad);
         pool.enqueue(good);
 
-        List<String> sent = new ArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
         lane.get().onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent));
 
         assertThat(bad.compile).isCompletedExceptionally();
@@ -203,7 +203,7 @@ class JavaCompilerHostPoolTest {
         pool.enqueue(bad);
         pool.enqueue(good);
 
-        List<String> sent = new ArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
         lane.get().onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent));
 
         assertThat(bad.forecast)
@@ -271,7 +271,7 @@ class JavaCompilerHostPoolTest {
         pool.enqueue(CompileWork.compile(request(dir, "a")));
         awaitTrue(() -> pool.queued() == 0, "the first lane's body took the item");
 
-        List<String> sent = new ArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
         Thread pump = Thread.ofVirtual().start(() -> requireNonNull(first.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
         awaitTrue(
@@ -365,7 +365,7 @@ class JavaCompilerHostPoolTest {
         CompileWork a = CompileWork.compile(request(dir, "a"));
         pool.enqueue(a);
 
-        List<String> sent = new ArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
         Thread pump = Thread.ofVirtual().start(() -> requireNonNull(first.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
         awaitTrue(
@@ -418,7 +418,7 @@ class JavaCompilerHostPoolTest {
         long heap = 512L << 20;
         CompileWork w = CompileWork.compile(request(dir, "a").withLabel("g:app compile-test"), heap);
         pool.enqueue(w);
-        List<String> sent = new ArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
         Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
         awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
@@ -456,7 +456,7 @@ class JavaCompilerHostPoolTest {
         CompileWork retry = CompileWork.compile(request(dir, "a").withLabel("g:app compile-test"), 2048L << 20);
         retry.ranOut.addAll(List.of(256L << 20, 512L << 20, 1024L << 20));
         pool.enqueue(retry);
-        List<String> sent = new ArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
         Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
         awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
@@ -497,7 +497,7 @@ class JavaCompilerHostPoolTest {
             long heap = 512L << 20;
             CompileWork w = CompileWork.compile(request(dir, "a").withLabel("g:app compile-java"), heap);
             pool.enqueue(w);
-            List<String> sent = new ArrayList<>();
+            List<String> sent = new CopyOnWriteArrayList<>();
             Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
                     .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
             awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
@@ -534,7 +534,7 @@ class JavaCompilerHostPoolTest {
                 });
         CompileWork w = CompileWork.compile(request(dir, "a").withLabel("g:app compile-java"), null);
         pool.enqueue(w);
-        List<String> sent = new ArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
         Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
         awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
@@ -574,7 +574,7 @@ class JavaCompilerHostPoolTest {
                 });
         CompileWork w = CompileWork.compile(request(dir, "a"), 512L << 20);
         pool.enqueue(w);
-        List<String> sent = new ArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
         Thread pump = Thread.ofVirtual().start(() -> requireNonNull(first.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
         awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
@@ -584,7 +584,7 @@ class JavaCompilerHostPoolTest {
         awaitTrue(() -> second.get() != null, "the death starts another lane");
         assertThat(w.compile).isNotDone();
 
-        List<String> retried = new ArrayList<>();
+        List<String> retried = new CopyOnWriteArrayList<>();
         Thread again = Thread.ofVirtual().start(() -> requireNonNull(second.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(retried)));
         awaitTrue(() -> retried.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the retry is on the wire");
