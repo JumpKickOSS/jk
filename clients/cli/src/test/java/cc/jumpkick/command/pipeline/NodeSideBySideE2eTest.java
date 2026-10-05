@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.parallel.Isolated;
 
 /**
  * A JVM module's own node build, beside its Java sources in {@code src/main/node}: its output lands
@@ -37,7 +36,6 @@ import org.junit.jupiter.api.parallel.Isolated;
  */
 @Tag("integration")
 @DisabledOnOs(OS.WINDOWS)
-@Isolated("--skip-node rides the process-wide SessionContext the in-process CLI installs")
 class NodeSideBySideE2eTest {
 
     private String major = "";

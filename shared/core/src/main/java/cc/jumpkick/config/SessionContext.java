@@ -4,24 +4,30 @@ package cc.jumpkick.config;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.task.IoLedger;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Ambient holder for the current {@link Session}. {@link #current()} prefers a per-thread
  * {@link ScopedValue} binding ({@link #where}/{@link #runWhere}) so concurrent in-JVM builds each
- * see their own session; otherwise falls back to a process-wide static ({@link #install}).
+ * see their own session; then the session of the enclosing CLI invocation ({@link #invocation});
+ * otherwise a process-wide static.
  *
- * <p>{@link #install}/{@link #installConfig}/{@link #reset} mutate only the static fallback;
- * a {@code ScopedValue} binding is immutable for the life of its scope — nest {@code where} to
- * change it. Engine code should take an explicit {@code Session} parameter rather than ambient
- * lookup.
+ * <p>{@link #install}/{@link #installConfig} write the invocation's session when one is open, so
+ * two invocations in one JVM never see each other's flags, and the static fallback otherwise;
+ * {@link #reset} touches only the static. A {@code where} binding is immutable for the life of its
+ * scope — nest {@code where} to change it. Engine code should take an explicit {@code Session}
+ * parameter rather than ambient lookup.
  */
 public final class SessionContext {
 
     /** Per-thread binding set by {@link #where}/{@link #runWhere}; enables concurrent in-JVM builds. */
     private static final ScopedValue<Session> SCOPED = ScopedValue.newInstance();
 
-    /** Process-wide fallback for the single-build CLI path. */
+    /** The session one CLI invocation installs into, bound for that invocation's extent. */
+    private static final ScopedValue<AtomicReference<Session>> INVOCATION = ScopedValue.newInstance();
+
+    /** Process-wide fallback for code outside any invocation or binding. */
     private static volatile Session current = Session.defaults();
 
     static {
@@ -94,9 +100,20 @@ public final class SessionContext {
 
     private SessionContext() {}
 
-    /** Install the resolved session onto the process-static fallback for this invocation. */
+    /** Install {@code session} for the open invocation, or onto the process-static fallback. */
     public static void install(Session session) {
-        current = (session == null) ? Session.defaults() : session;
+        Session s = (session == null) ? Session.defaults() : session;
+        if (INVOCATION.isBound()) INVOCATION.get().set(s);
+        else current = s;
+    }
+
+    /**
+     * Run {@code body} as one CLI invocation: it starts from {@link Session#defaults()}, and what it
+     * installs is its own, invisible to any other invocation running in the same JVM.
+     */
+    public static <T> T invocation(Callable<T> body) throws Exception {
+        return ScopedValue.where(INVOCATION, new AtomicReference<>(Session.defaults()))
+                .<T, Exception>call(body::call);
     }
 
     /** Convenience: install the config slice onto the current session (keeps the other fields). */
@@ -106,10 +123,12 @@ public final class SessionContext {
 
     /**
      * The current session (never null; {@link Session#defaults()} before install). Prefers the
-     * {@link ScopedValue} binding of the calling thread when one is bound, else the process static.
+     * {@link ScopedValue} binding of the calling thread when one is bound, then the open invocation's
+     * session, else the process static.
      */
     public static Session current() {
-        return SCOPED.isBound() ? SCOPED.get() : current;
+        if (SCOPED.isBound()) return SCOPED.get();
+        return INVOCATION.isBound() ? INVOCATION.get().get() : current;
     }
 
     /**
