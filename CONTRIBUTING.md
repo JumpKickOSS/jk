@@ -31,7 +31,9 @@ compile at **JDK 25**; the two JDK-17 libraries (`shared/host`, `shared/plugin-s
 
 Dashboard JS suites (`clients/web`, part of the fast tier) run under `node --test` on the Node.js
 `clients/web/jk.toml` declares: jk provisions it and pins it in `jk-lock.toml`, so a contributor
-needs no Node of their own. [`.nvmrc`](.nvmrc) names the same major for editors and CI's setup step.
+needs no Node of their own, and neither does CI: every job runs its JS on the Node.js jk provisions.
+[`.nvmrc`](.nvmrc) names the same major for editors, and for the release job's deploy step, which
+installs no jk.
 
 ## Build-family commands
 

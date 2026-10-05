@@ -42,10 +42,6 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: '.nvmrc'
-
       - name: Bootstrap jk from the hosted release
         run: |
           set -euo pipefail
@@ -239,10 +235,6 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: '.nvmrc'
-
       - name: Bootstrap jk from the hosted release
         run: |
           set -euo pipefail
@@ -370,10 +362,6 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: '.nvmrc'
-
       - name: Bootstrap jk from the hosted release
         run: |
           set -euo pipefail
@@ -403,12 +391,16 @@ jobs:
           exit "$failed"
 
       # The one sample with a `[dev.sidecars]` table is also run the way its README says to run
-      # it: `jk dev`, Vite beside the JVM, the API fetched through Vite's proxy, Ctrl-C. The
-      # runner's Node is the one the sample's package-lock.json was cut for.
+      # it: `jk dev`, Vite beside the JVM, the API fetched through Vite's proxy, Ctrl-C. Its
+      # sidecar runs npm from PATH, so the step runs under `jk node exec` with the Node.js .nvmrc
+      # names, the one the sample's package-lock.json was cut for.
       - name: Run the vite-sidecar sample under jk dev
         run: |
-          (cd docs/user/examples/vite-sidecar/web && npm ci --no-audit --no-fund)
-          scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar '/api/hello=hello from the JVM'
+          set -euo pipefail
+          node="$(tr -d '[:space:]' < .nvmrc)"
+          (cd docs/user/examples/vite-sidecar/web && jk node exec --node "$node" -- npm ci --no-audit --no-fund)
+          jk node exec --node "$node" -- \
+            scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar '/api/hello=hello from the JVM'
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:

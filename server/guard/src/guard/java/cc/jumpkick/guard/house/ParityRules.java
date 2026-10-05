@@ -291,9 +291,9 @@ final class ParityRules {
     @Guard(
             id = "node-pin-parity",
             why =
-                    "the dashboard's Node version is pinned once, in .nvmrc; a workflow that pins its own runs the JS gate on a Node nobody chose",
+                    "jk pins the dashboard's Node.js in clients/web/jk.toml; .nvmrc names it for editors and the one workflow that installs Node itself, and the two disagreeing runs the JS on a Node nobody chose",
             instead =
-                    "keep .nvmrc a bare version token and give every actions/setup-node step `node-version-file: '.nvmrc'` and no `node-version`")
+                    "keep .nvmrc a bare version token whose major is clients/web/jk.toml's `node`, and give any actions/setup-node step `node-version-file: '.nvmrc'` and no `node-version`")
     @Fixture("server/guard/fixtures/node-pin-parity")
     void nodePinParity(Text text, Violations v) {
         String pin = textOrNull(text, ".nvmrc");
@@ -302,12 +302,18 @@ final class ParityRules {
             v.add(
                     new TextSite(".nvmrc", 1, "pin"),
                     ".nvmrc must be a Node version token (got " + (pin.isEmpty() ? "missing" : pin) + ")");
+        String web = textOrNull(text, WEB_MANIFEST);
+        String webMajor = web == null ? null : nodeMajor(web);
+        String pinMajor = pin.contains(".") ? pin.substring(0, pin.indexOf('.')) : pin;
+        if (web != null && (webMajor == null || !webMajor.equals(pinMajor)))
+            v.add(
+                    new TextSite(WEB_MANIFEST, 0, "node"),
+                    WEB_MANIFEST + " pins Node " + (webMajor == null ? "nowhere" : webMajor) + " but .nvmrc says "
+                            + pin);
         List<String> workflows = text.files(".github/workflows/*.yml");
-        long setupNode = 0;
         for (String wf : workflows) {
             String body = text(text, wf);
             if (!body.contains("actions/setup-node")) continue;
-            setupNode++;
             if (!Pattern.compile("node-version-file:\\s*['\"]\\.nvmrc['\"]")
                     .matcher(body)
                     .find())
@@ -319,11 +325,20 @@ final class ParityRules {
                         new TextSite(wf, 0, "node-version"),
                         wf + ": setup-node must not also set node-version (the pin is .nvmrc)");
         }
-        if (setupNode == 0)
-            v.add(
-                    new TextSite(".github/workflows", 0, "no setup-node"),
-                    "no workflow uses actions/setup-node — the dashboard JS gate would skip Node");
-        v.population(workflows.size() + 1);
+        v.population(workflows.size() + 2);
+    }
+
+    private static final String WEB_MANIFEST = "clients/web/jk.toml";
+
+    /** The major of a manifest's `node = <spec>` or `[node] version`, or null when it names none. */
+    static @Nullable String nodeMajor(String manifest) {
+        Matcher m = Pattern.compile("(?m)^node\\s*=\\s*\"?=?(\\d+)").matcher(manifest);
+        if (m.find()) return m.group(1);
+        Matcher table =
+                Pattern.compile("(?ms)^\\[node\\]\\s*$(.*?)(?=^\\[|\\z)").matcher(manifest);
+        if (!table.find()) return null;
+        Matcher version = Pattern.compile("(?m)^version\\s*=\\s*\"?=?(\\d+)").matcher(table.group(1));
+        return version.find() ? version.group(1) : null;
     }
 
     // ---- G57 ---------------------------------------------------------------------------------

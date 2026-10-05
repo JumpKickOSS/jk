@@ -84,10 +84,6 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: '.nvmrc'
-
       - name: Resolve version
         shell: bash
         run: |
@@ -242,6 +238,8 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      # firebase-tools below runs on Node, and this job installs no jk to provision it. Once the
+      # bootstrap pin names a release that provisions Node, this becomes `jk node exec`.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.nvmrc'

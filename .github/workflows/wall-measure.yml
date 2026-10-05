@@ -54,10 +54,6 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: '.nvmrc'
-
       # The measured jk is this commit's own: the hosted release .jk/ci-bootstrap-version pins
       # builds the checkout, then `jk install` hands the home to the checkout's client, engine and
       # workers — the same two steps as ci.yml's self-host job.
