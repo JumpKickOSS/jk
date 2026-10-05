@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Written next to {@code details.jsonl} in the journal run dir, and as the latest copy at
  * {@code target/jk-results.md}. Not a replacement for JUnit XML under {@code
- * target/reports/test-results/}.
+ * target/surefire-reports/}.
  */
 public final class JkResultsMarkdown {
 
@@ -360,7 +360,7 @@ public final class JkResultsMarkdown {
         boolean ranTests = JkResultsTestsSection.hasTestEntries(tests)
                 || (r.tests() != null && r.tests().total() > 0);
         if (ranTests) {
-            sb.append("- JUnit XML: `target/reports/test-results/`\n");
+            sb.append("- JUnit XML: `target/surefire-reports/`\n");
         }
         JkResultsCoverageSection.appendFiles(sb, r);
         sb.append('\n');

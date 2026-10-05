@@ -126,7 +126,7 @@ import org.junit.jupiter.api.Tag;
                 }
             });
             try {
-                Path reports = project.resolve("target/reports/test-results");
+                Path reports = project.resolve("target/surefire-reports");
                 if (Files.isDirectory(reports)) {
                     try (var stream = Files.walk(reports, 2)) {
                         for (Path p : stream.filter(x -> x.toString().endsWith(".xml"))
