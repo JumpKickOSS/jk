@@ -218,6 +218,7 @@ final class Json {
             // genuinely-worked steps as dashed cache-skips — 0 means a true no-op.
             if (p.millis() >= 0) pm.put("millis", p.millis());
             if (p.waitMillis() > 0) pm.put("waitMillis", p.waitMillis());
+            if (!p.detail().isEmpty()) pm.put("detail", p.detail());
             out.add(pm);
         }
         return out;
@@ -403,7 +404,8 @@ final class Json {
                     text(pm, "stage"),
                     text(pm, "status"),
                     pm.get("millis") instanceof Number n ? n.longValue() : -1L,
-                    pm.get("waitMillis") instanceof Number w ? w.longValue() : 0L));
+                    pm.get("waitMillis") instanceof Number w ? w.longValue() : 0L,
+                    text(pm, "detail")));
         }
         return steps;
     }

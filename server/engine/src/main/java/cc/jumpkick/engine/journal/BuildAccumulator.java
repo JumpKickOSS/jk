@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,6 +42,7 @@ import org.jspecify.annotations.Nullable;
  * the rows the run left behind — no failed module or plan, not cancelled, and at least one row.
  */
 public final class BuildAccumulator {
+    private final Map<String, String> lastLabels = new ConcurrentHashMap<>();
     private final String kind;
     private final String dir;
     private final @Nullable String coord;
@@ -608,13 +610,20 @@ public final class BuildAccumulator {
         }
     }
 
+    /** A step's latest label; the last one it set before finishing is its {@code detail}. */
+    public void noteLabel(String dir, String step, String label) {
+        if (step == null || step.isBlank() || label == null) return;
+        lastLabels.put(stepKey(dirKey(dir), step), label);
+    }
+
     /** One finished step, stored under its module dir ("" for a single-plan build). */
     public void addTask(String dir, String step, String phase, String status, long millis, long waitMillis) {
         anyFact = true;
         String d = dirKey(dir);
+        String detail = Objects.requireNonNullElse(lastLabels.remove(stepKey(d, step)), "");
         stepsByDir
                 .computeIfAbsent(d, k -> Collections.synchronizedMap(new LinkedHashMap<>()))
-                .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis));
+                .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis, detail));
         stepStartedAt.remove(stepKey(d, step));
         forkTails.remove(stepKey(d, step));
         if (timeline != null) {

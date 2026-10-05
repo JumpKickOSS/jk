@@ -584,7 +584,8 @@ public final class TaskForecaster {
             @Nullable Path workerJar,
             @Nullable String profile,
             @Nullable Path m2Dir) {
-        TaskForecast.Module node = PlannerNode.forecastModule(u, LockPaths.lockFile(u.dir()), actionCache, skipTests);
+        TaskForecast.Module node =
+                PlannerNode.forecastModule(u, LockPaths.lockFile(u.dir()), actionCache, cache, skipTests);
         if (node != null) {
             TaskForecast.Task image = writeImageStep(target, terminalDirs, u.dir());
             if (image == null) return node;

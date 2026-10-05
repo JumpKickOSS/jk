@@ -540,11 +540,19 @@ public record BuildRecord(
      * @param millis the step's wall clock, queue wait included
      * @param waitMillis the part of that wall spent blocked on a shared resource (a compiler
      *     worker's queue); {@code millis - waitMillis} is the step's own work
+     * @param detail the step's last label ({@code package web-0.1.0.jar · dist/ under static/}),
+     *     {@code ""} when it set none
      */
-    public record Task(String name, String stage, String status, long millis, long waitMillis) {
+    public record Task(String name, String stage, String status, long millis, long waitMillis, String detail) {
         public Task {
             stage = stage == null ? "" : stage;
             waitMillis = Math.max(0, waitMillis);
+            detail = detail == null ? "" : detail;
+        }
+
+        /** A task with no label. */
+        public Task(String name, String stage, String status, long millis, long waitMillis) {
+            this(name, stage, status, millis, waitMillis, "");
         }
     }
 
