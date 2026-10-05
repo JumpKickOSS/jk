@@ -6,8 +6,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Dispatch owns the envelope: one blank each side of a human command, none around machine stdout. */
 class CommandDispatchEnvelopeTest {
@@ -54,6 +58,42 @@ class CommandDispatchEnvelopeTest {
                         .isEqualTo(1));
         assertThat(streams.err()).isEqualTo("\nerror: engine went away\n\n");
         assertThat(streams.out()).isEmpty();
+    }
+
+    @Test
+    void an_escaping_exception_leaves_its_stack_in_the_client_log(@TempDir Path state) throws IOException {
+        CliCommand missing = new CliCommand() {
+            @Override
+            public String name() {
+                return "missing";
+            }
+
+            @Override
+            public String description() {
+                return "fails on a file system error that names no file";
+            }
+
+            @Override
+            public int run(Invocation in) throws IOException {
+                throw new IOException("No such file or directory");
+            }
+        };
+        String previous = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        try {
+            String err = Capture.stderr(() -> CommandDispatch.dispatch(missing, "jk missing", List.of(), false));
+            assertThat(err).isEqualTo("\nerror: No such file or directory\n\n");
+            assertThat(Files.readString(state.resolve(CliFailure.LOG_NAME)))
+                    .contains("java.io.IOException: No such file or directory")
+                    .contains("at cc.jumpkick.cli.CommandDispatchEnvelopeTest");
+
+            String verbose =
+                    Capture.stderr(() -> CommandDispatch.dispatch(missing, "jk missing", List.of("-v"), false));
+            assertThat(verbose).contains("at cc.jumpkick.cli.CommandDispatchEnvelopeTest");
+        } finally {
+            if (previous == null) System.clearProperty("jk.env.JK_STATE_DIR");
+            else System.setProperty("jk.env.JK_STATE_DIR", previous);
+        }
     }
 
     @Test

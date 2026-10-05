@@ -175,19 +175,7 @@ jobs:
       # $JK_HOME/lib/jk-engine, its workers on the shelf. The two comparisons are the proof that
       # from here on the commit is judged by its own jk, byte for byte.
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk install --skip-tests --no-ansi
-          cmp target/dist/jk "$JK_HOME/bin/jk"
-          engine_sha="$(sha256sum target/dist/lib/jk-engine-*.jar | cut -c1-64)"
-          grep -q "engine-sha256 = \"$engine_sha\"" "$JK_HOME/lib/jk-engine/jk-engine.toml"
-          # The pass above ran on the release's engine, which packaged the shelf. The checkout's
-          # engine now packages and shelves its own workers — a client with the second install
-          # pass does this by itself; the release's client stops after the first — and the shelf
-          # is proven: every first-party worker jar describes itself.
-          jk install --skip-tests --no-ansi
-          bash scripts/check-shelf-descriptors.sh "$JK_HOME"
-          jk engine status
+        run: bash scripts/ci-takeover.sh
 
       # Every lane, the tree lane included: text, metric, parity and generated rules run on
       # `jk guard` and `--guard`, not on an inner `jk build`, so this step is the house-rule gate.
