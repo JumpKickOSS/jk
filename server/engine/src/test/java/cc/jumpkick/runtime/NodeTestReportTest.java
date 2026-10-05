@@ -30,23 +30,17 @@ class NodeTestReportTest {
     @Test
     void each_runner_is_asked_for_its_report_its_own_way(@TempDir Path tmp) {
         Path xml = tmp.resolve("TEST-node.xml");
-        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.VITEST, xml, false, "")
-                        .extraArgs())
+        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.VITEST, xml, "").extraArgs())
                 .contains("--reporter=junit", "--outputFile.junit=" + xml);
-        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.JEST, xml, false, "")
-                        .extraArgs())
-                .as("jest needs jest-junit installed")
-                .isEmpty();
-        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.JEST, xml, true, "")
-                        .env())
-                .containsEntry("JEST_JUNIT_OUTPUT_FILE", xml.toString());
-        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.NODE_TEST, xml, false, "--max-old-space-size=512")
+        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.JEST, xml, "").extraArgs())
+                .as("jest writes its own JSON; no reporter package needed")
+                .containsExactly("--json", "--outputFile=" + tmp.resolve("TEST-node.jest.json"));
+        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.NODE_TEST, xml, "--max-old-space-size=512")
                         .env()
                         .get("NODE_OPTIONS"))
                 .startsWith("--max-old-space-size=512 ")
                 .contains("--test-reporter=junit --test-reporter-destination=" + xml);
-        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.OTHER, xml, false, "")
-                        .extraArgs())
+        assertThat(NodeTestReport.wiring(NodeTestReport.Runner.OTHER, xml, "").extraArgs())
                 .isEmpty();
     }
 
@@ -76,5 +70,29 @@ class NodeTestReportTest {
                 .isEqualTo(new NodeProcess.Diagnostic("src/app.tsx", 3, 14, "ERROR: Expected \";\""));
         assertThat(NodeProcess.diagnostic("vite v6.0.0 building for production..."))
                 .isNull();
+    }
+
+    @Test
+    void jest_json_is_counted_assertion_by_assertion(@TempDir Path tmp) throws IOException {
+        Path xml = tmp.resolve("TEST-node.xml");
+        Files.writeString(NodeTestReport.jestJson(xml), """
+                {"numTotalTests":4,"testResults":[
+                  {"name":"/w/web/src/sum.test.js","assertionResults":[
+                    {"fullName":"sum adds","status":"passed","failureMessages":[]},
+                    {"fullName":"sum carries","status":"failed","failureMessages":["Error: expect(3).toBe(4)\\n    at sum.test.js:9"]},
+                    {"fullName":"sum later","status":"pending","failureMessages":[]}]},
+                  {"name":"/w/web/src/mul.test.js","assertionResults":[
+                    {"fullName":"mul twice","status":"passed","failureMessages":[]}]}]}
+                """);
+
+        TestSummary s = Objects.requireNonNull(NodeTestReport.read(xml, "web"));
+
+        assertThat(s.total()).isEqualTo(4);
+        assertThat(s.succeeded()).isEqualTo(2);
+        assertThat(s.failed()).isEqualTo(1);
+        assertThat(s.skipped()).isEqualTo(1);
+        assertThat(s.failures().get(0).className()).isEqualTo("src/sum.test.js");
+        assertThat(s.failures().get(0).method()).isEqualTo("sum carries");
+        assertThat(s.failures().get(0).message()).isEqualTo("Error: expect(3).toBe(4)");
     }
 }

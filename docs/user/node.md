@@ -110,7 +110,7 @@ them off. `jk shell` does the same for a subshell.
 |---|---|---|
 | `node-install` | the frozen install (`npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable`, `bun install --frozen-lockfile`) | `package.json`, the lockfile, rc files, the pinned Node |
 | `node-build` | the build script the framework implies, or `[node] build` | the node tree less `node_modules` and the output, the env prefixes, the install |
-| `node-test` | the test script, with JUnit counts for vitest, jest and `node --test` | as the build |
+| `node-test` | the test script, with per-test counts from vitest, jest and `node --test` | as the build |
 | `[[node.steps]]` | a script (`run`), a package binary (`npx`) or a program (`exec`), before the build, the tests or packaging | the step's `inputs`, else the tree |
 
 `--skip-node` (or `JK_SKIP_NODE`, or `[node] skip = true`) runs none of them and packages the

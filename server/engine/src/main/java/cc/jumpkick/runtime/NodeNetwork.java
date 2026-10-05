@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.node.NodeSources;
 import cc.jumpkick.node.PackageManager;
@@ -11,6 +12,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,14 +20,18 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
  * How a node step's package manager reaches the network: the proxy as each manager reads it, and
  * the registry, scopes and credentials {@link NodeSources} resolves, in a jk-owned npm user config
  * written for the one run and deleted after it. bun reads no npm user config, so it gets the same
- * settings as a global {@code .bunfig.toml} in a jk-owned global config directory. The project's own
- * {@code .npmrc}, {@code bunfig.toml} and {@code .yarnrc.yml} are never touched and still apply.
+ * settings as a global {@code .bunfig.toml} in a jk-owned global config directory. Yarn Berry takes a
+ * scope map only from a {@code .yarnrc.yml}, and merges the project's with the one in its home
+ * folder alone, so a run with scopes gives Berry a jk-owned home holding a {@code .yarnrc.yml} with
+ * them, its other entries linked to the real home's. The project's own {@code .npmrc},
+ * {@code bunfig.toml} and {@code .yarnrc.yml} are never touched and still apply.
  */
 final class NodeNetwork {
 
@@ -40,6 +46,11 @@ final class NodeNetwork {
     /** The variable that moves bun's global config directory. */
     static final String BUN_CONFIG_HOME = "XDG_CONFIG_HOME";
 
+    /** Directory-name prefix of the per-run Yarn Berry home, which {@link #discard} deletes. */
+    static final String YARN_HOME_PREFIX = "jk-yarn-";
+
+    private static final String YARNRC = ".yarnrc.yml";
+
     private NodeNetwork() {}
 
     /** What the network settings resolve to; {@link #current} is the machine's. */
@@ -49,7 +60,7 @@ final class NodeNetwork {
             Function<NodeSources.Origin, RepoCredential> credentials,
             Function<URI, Optional<String>> proxyUrl,
             List<String> noProxy,
-            @Nullable Path userNpmrc) {
+            @Nullable Path userHome) {
 
         static Sources current() {
             String home = System.getProperty("user.home");
@@ -60,7 +71,13 @@ final class NodeNetwork {
                     NodeSources::credential,
                     proxies::proxyUrl,
                     proxies.noProxyHosts(),
-                    home == null ? null : Path.of(home, ".npmrc"));
+                    home == null ? null : Path.of(home));
+        }
+
+        /** The user's own {@code .npmrc}, which jk's user config starts from. */
+        @Nullable
+        Path userNpmrc() {
+            return userHome == null ? null : userHome.resolve(".npmrc");
         }
     }
 
@@ -81,11 +98,18 @@ final class NodeNetwork {
         if (!defaultRegistry) {
             vars.put("YARN_NPM_REGISTRY_SERVER", trimSlash(registry));
             vars.put("NPM_CONFIG_REGISTRY", registry.toString());
-            // Berry refuses a plain-http registry whose host it was not told to trust.
-            if ("http".equals(registry.getScheme()) && registry.getHost() != null) {
-                vars.put("YARN_UNSAFE_HTTP_WHITELIST", registry.getHost());
-            }
         }
+        // Berry refuses a plain-http registry whose host it was not told to trust.
+        List<String> plainHttp = new ArrayList<>();
+        if (!defaultRegistry) plainHttp.add(registry.toString());
+        sources.scopes().values().forEach(origin -> plainHttp.add(origin.url().toString()));
+        String trusted = plainHttp.stream()
+                .map(URI::create)
+                .filter(u -> "http".equals(u.getScheme()) && u.getHost() != null)
+                .map(URI::getHost)
+                .distinct()
+                .collect(Collectors.joining(","));
+        if (!trusted.isEmpty()) vars.put("YARN_UNSAFE_HTTP_WHITELIST", trusted);
         auth.ifPresent(header -> {
             if (header.startsWith("Bearer ")) vars.put("YARN_NPM_AUTH_TOKEN", header.substring("Bearer ".length()));
             else vars.put("YARN_NPM_AUTH_IDENT", basicIdent(header));
@@ -101,6 +125,13 @@ final class NodeNetwork {
                     .ifPresent(header -> npmrc.append(authLine(origin.url(), header)));
         });
         if (npmrc.isEmpty()) return vars;
+        if (manager == PackageManager.YARN) {
+            if (!sources.scopes().isEmpty()) {
+                Path home = yarnHome(sources, workDir);
+                vars.put("HOME", home.toString());
+                vars.put("USERPROFILE", home.toString());
+            }
+        }
         if (manager == PackageManager.BUN) {
             vars.put(
                     BUN_CONFIG_HOME,
@@ -144,6 +175,87 @@ final class NodeNetwork {
         Files.createDirectories(home);
         OwnerOnlyFiles.writeString(home.resolve(".bunfig.toml"), toml.toString());
         return home;
+    }
+
+    /**
+     * A home for Berry whose {@code .yarnrc.yml} is the user's own (if any) with jk's scopes added
+     * under {@code npmScopes}, and whose every other entry links to the real home's, so git, ssh and
+     * lifecycle scripts find what they would. A scope the user's file already names is left to it.
+     */
+    private static Path yarnHome(Sources sources, Path workDir) throws IOException {
+        Path home = workDir.resolve(YARN_HOME_PREFIX + UUID.randomUUID());
+        Files.createDirectories(home);
+        String own = "";
+        Path real = sources.userHome();
+        if (real != null && Files.isDirectory(real)) {
+            PathUtil.forEachChild(real, (entry, attrs) -> {
+                String name = String.valueOf(entry.getFileName());
+                if (name.equals(YARNRC)) return true;
+                try {
+                    Files.createSymbolicLink(home.resolve(name), entry);
+                } catch (IOException | UnsupportedOperationException noLinks) {
+                    // a host without symlinks (Windows without the privilege) gets the rc alone
+                }
+                return true;
+            });
+            Path rc = real.resolve(YARNRC);
+            if (Files.isRegularFile(rc)) own = Files.readString(rc);
+        }
+        OwnerOnlyFiles.writeString(home.resolve(YARNRC), withScopes(own, berryScopes(sources)));
+        return home;
+    }
+
+    /** jk's scopes as Berry {@code npmScopes} entries, keyed by scope name without its {@code @}. */
+    private static Map<String, String> berryScopes(Sources sources) {
+        Map<String, String> entries = new LinkedHashMap<>();
+        sources.scopes().forEach((scope, origin) -> {
+            StringBuilder e = new StringBuilder();
+            e.append("    npmRegistryServer: ")
+                    .append(quoted(trimSlash(origin.url())))
+                    .append('\n');
+            NodeSources.header(sources.credentials().apply(origin)).ifPresent(header -> {
+                if (header.startsWith("Bearer ")) {
+                    e.append("    npmAuthToken: ").append(quoted(header.substring("Bearer ".length())));
+                } else {
+                    e.append("    npmAuthIdent: ").append(quoted(basicIdent(header)));
+                }
+                e.append("\n    npmAlwaysAuth: true\n");
+            });
+            entries.put(scope.startsWith("@") ? scope.substring(1) : scope, e.toString());
+        });
+        return entries;
+    }
+
+    /**
+     * {@code rc} with {@code scopes} under its top-level {@code npmScopes}, adding the key when it is
+     * absent. Entries are two-space indented, as Berry writes its own; a name already there stays.
+     */
+    static String withScopes(String rc, Map<String, String> scopes) {
+        String text = rc.isEmpty() || rc.endsWith("\n") ? rc : rc + "\n";
+        List<String> lines = new ArrayList<>(List.of(text.split("\n", -1)));
+        if (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) lines.remove(lines.size() - 1);
+        int at = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).startsWith("npmScopes:")) at = i;
+        }
+        StringBuilder add = new StringBuilder();
+        for (Map.Entry<String, String> e : scopes.entrySet()) {
+            String head = "  " + e.getKey() + ":";
+            String quotedHead = "  \"" + e.getKey() + "\":";
+            if (at >= 0 && lines.stream().anyMatch(l -> l.equals(head) || l.equals(quotedHead))) continue;
+            add.append(head).append('\n').append(e.getValue());
+        }
+        StringBuilder out = new StringBuilder();
+        if (at < 0) {
+            for (String l : lines) out.append(l).append('\n');
+            if (!add.isEmpty()) out.append("npmScopes:\n").append(add);
+            return out.toString();
+        }
+        for (int i = 0; i < lines.size(); i++) {
+            out.append(lines.get(i)).append('\n');
+            if (i == at) out.append(add);
+        }
+        return out.toString();
     }
 
     /** bun's inline registry: its url and a token, or a username and password. */
@@ -231,8 +343,10 @@ final class NodeNetwork {
         return vars;
     }
 
-    /** Delete the run's user config and bun config home {@code env} names, if jk wrote them. */
+    /** Delete the run's user config, bun config home and Berry home {@code env} names, if jk wrote them. */
     static void discard(Map<String, String> env) {
+        String yarn = env.get("HOME");
+        if (yarn != null && owned(Path.of(yarn), YARN_HOME_PREFIX)) PathUtil.deleteRecursively(Path.of(yarn));
         String path = env.get(USERCONFIG);
         if (path != null && owned(Path.of(path), USERCONFIG_PREFIX)) delete(Path.of(path));
         String bun = env.get(BUN_CONFIG_HOME);
