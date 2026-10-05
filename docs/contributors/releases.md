@@ -8,10 +8,10 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.14.0`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.14.0`** | Next public release cut from that line |
-| Prior | **`0.13.9`** — previous release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.14.0`, `0.15.0`, … |
+| **`0.15.0`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.15.0`** | Next public release cut from that line |
+| Prior | **`0.14.0`** — previous release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.15.0`, `0.16.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -25,6 +25,31 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.15.0
+
+- **Each module builds into its own `target/`, in Maven's layout.** `target/classes`, `target/test-classes`,
+  jars at the `target/` root (fat and minified jars keep `-all` / `-min`), `surefire-reports` and
+  `failsafe-reports`, `site/jacoco`, `site/apidocs`. Scripts that read `target/<module>/lib/` or
+  `classes/main` need the new paths.
+- **Node.js is a toolchain.** `node = 24` pins it like `jdk`: provisioned and verified on first use,
+  locked per platform, `jk node` (alias `jk nvm`) to manage it. A node module, or a front end in
+  `src/main/node`, installs, builds, tests and packages as cached steps (`[[node.steps]]` for scripts
+  and lockfile-only `npx`); `jk dev` starts its dev servers beside the JVM, a workspace root runs every
+  member, `jk image` writes a Node server image, and `jk new --lang node -t <framework>` scaffolds with
+  the framework's own generator. Mirrors, registries and credentials come from `~/.jk/config.toml`
+  `[node]`, with Maven's `settings.xml` as the fallback.
+- **Resolution is highest-wins everywhere.** `[resolve] pins` is gone. `jk import` raises a POM pin
+  that sits below what its dependencies need, and a `pom.xml` built in place does the same.
+- **Maven builds import and build further.** `[war]` packages web archives; `[resources]` carries
+  filtered resource directories; `[test] failures = "report"` matches `maven.test.failure.ignore`;
+  frontend-maven-plugin builds become node builds; `[jenkins-test]` installs a Jenkins plugin test
+  closure. Jenkins' `JenkinsTest` passes from its POMs alone.
+- **One proxy rule.** `[network]`, then `settings.xml` `<proxy>`, then the shell's variables, for
+  every download — JDKs and tools included.
+- **Smaller:** `jk run -- args` passes the args to the application; `[config] dir` replaces
+  `directory` and `--directory` is gone; a relock that resolves what the lock says leaves the file
+  untouched; relative path options are resolved where `jk` ran.
 
 ### 0.14.0
 

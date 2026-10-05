@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.14.0"
-generated-by-build = "6d2260154724"
-generated-by-build-time = "2026-10-04T21:18:26Z"
+generated-by-build = "660f5cc0a6d1"
+generated-by-build-time = "2026-10-05T15:31:47Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "5f3565ca728631b436f73295ac00cc84282b452f7d8f0f5c46fd90fe65d64806"
+manifests-sha256 = "f20f5e3fc58a2419ddb1c976c707bee51fcfacffabef82256c493ea1ee4a147b"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -3684,14 +3684,14 @@ scopes   = ["test"]
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-guards-junit"
-version    = "0.14.0"
+version    = "0.15.0"
 path       = "shared/guard-api"
 
 [[module]]
 path    = "."
 group   = "cc.jumpkick"
 name    = "jk"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick: The best damn build system for the JVM"
 
@@ -3699,7 +3699,7 @@ description = "JumpKick: The best damn build system for the JVM"
 path    = "clients/cli"
 group   = "cc.jumpkick"
 name    = "jk-cli"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "The CLI (and primary) client for interacting with the JumpKick build system"
 
@@ -3707,7 +3707,7 @@ description = "The CLI (and primary) client for interacting with the JumpKick bu
 path    = "clients/cli-terminal"
 group   = "cc.jumpkick"
 name    = "jk-cli-terminal"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Controlling TTY, VT style, and keys for the native CLI"
 
@@ -3715,7 +3715,7 @@ description = "Controlling TTY, VT style, and keys for the native CLI"
 path    = "clients/maven-spy"
 group   = "cc.jumpkick"
 name    = "jk-maven-spy"
-version = "0.14.0"
+version = "0.15.0"
 java    = 17
 description = "Maven core extension that records reactor events for jk mvn"
 
@@ -3723,7 +3723,7 @@ description = "Maven core extension that records reactor events for jk mvn"
 path    = "clients/web"
 group   = "cc.jumpkick"
 name    = "jk-web"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Web dashboard static assets for the engine UI"
 
@@ -3731,7 +3731,7 @@ description = "Web dashboard static assets for the engine UI"
 path    = "plugins/android"
 group   = "cc.jumpkick"
 name    = "jk-android"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Android packaging plugin"
 
@@ -3739,7 +3739,7 @@ description = "JumpKick's Android packaging plugin"
 path    = "plugins/antlr"
 group   = "cc.jumpkick"
 name    = "jk-antlr"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's ANTLR preset: [antlr] as one generator entry running the ANTLR tool over a module's grammars, a package per grammar directory"
 
@@ -3747,7 +3747,7 @@ description = "JumpKick's ANTLR preset: [antlr] as one generator entry running t
 path    = "plugins/auditor"
 group   = "cc.jumpkick"
 name    = "jk-auditor"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's OSV audit plugin"
 
@@ -3755,7 +3755,7 @@ description = "JumpKick's OSV audit plugin"
 path    = "plugins/avro"
 group   = "cc.jumpkick"
 name    = "jk-avro"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Avro preset: [avro] as one generator entry running Avro's SpecificCompiler over a module's schemas, protocols and IDL files"
 
@@ -3763,7 +3763,7 @@ description = "JumpKick's Avro preset: [avro] as one generator entry running Avr
 path    = "plugins/formatter"
 group   = "cc.jumpkick"
 name    = "jk-formatter"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's source code formatter plugin"
 
@@ -3771,7 +3771,7 @@ description = "JumpKick's source code formatter plugin"
 path    = "plugins/generator"
 group   = "cc.jumpkick"
 name    = "jk-generator"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's code-generator plugin: one worker behind [generate], the preset tables ride on it"
 
@@ -3779,7 +3779,7 @@ description = "JumpKick's code-generator plugin: one worker behind [generate], t
 path    = "plugins/grails"
 group   = "cc.jumpkick"
 name    = "jk-grails"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Grails packaging plugin"
 
@@ -3787,7 +3787,7 @@ description = "JumpKick's Grails packaging plugin"
 path    = "plugins/groovy-compiler"
 group   = "cc.jumpkick"
 name    = "jk-groovy-compiler"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Groovy compiler plugin"
 
@@ -3795,7 +3795,7 @@ description = "JumpKick's Groovy compiler plugin"
 path    = "plugins/image-builder"
 group   = "cc.jumpkick"
 name    = "jk-image-builder"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's OCI image builder plugin"
 
@@ -3803,7 +3803,7 @@ description = "JumpKick's OCI image builder plugin"
 path    = "plugins/java-compiler"
 group   = "cc.jumpkick"
 name    = "jk-java-compiler"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Java compiler plugin"
 
@@ -3811,7 +3811,7 @@ description = "JumpKick's Java compiler plugin"
 path    = "plugins/jaxb"
 group   = "cc.jumpkick"
 name    = "jk-jaxb"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's JAXB preset: [jaxb] as one generator entry running the xjc schema compiler over a module's XML schemas"
 
@@ -3819,7 +3819,7 @@ description = "JumpKick's JAXB preset: [jaxb] as one generator entry running the
 path    = "plugins/jenkins-test"
 group   = "cc.jumpkick"
 name    = "jk-jenkins-test"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Jenkins test-plugins step: [jenkins-test] installs the test closure's Jenkins plugins where JenkinsRule loads them"
 
@@ -3827,7 +3827,7 @@ description = "JumpKick's Jenkins test-plugins step: [jenkins-test] installs the
 path    = "plugins/jooq"
 group   = "cc.jumpkick"
 name    = "jk-jooq"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's jOOQ preset: [jooq] as one generator entry running jOOQ codegen over a module's DDL scripts or a live schema"
 
@@ -3835,7 +3835,7 @@ description = "JumpKick's jOOQ preset: [jooq] as one generator entry running jOO
 path    = "plugins/kotlin-compiler"
 group   = "cc.jumpkick"
 name    = "jk-kotlin-compiler"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Kotlin compiler plugin"
 
@@ -3843,7 +3843,7 @@ description = "JumpKick's Kotlin compiler plugin"
 path    = "plugins/lint"
 group   = "cc.jumpkick"
 name    = "jk-lint"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's lint plugin: [lint] runs Checkstyle, PMD, SpotBugs and detekt as cached steps whose findings are the step's diagnostics"
 
@@ -3851,7 +3851,7 @@ description = "JumpKick's lint plugin: [lint] runs Checkstyle, PMD, SpotBugs and
 path    = "plugins/localizer"
 group   = "cc.jumpkick"
 name    = "jk-localizer"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's localizer preset: [localizer] as one generator entry running the localizer generator over Messages.properties bundles"
 
@@ -3859,7 +3859,7 @@ description = "JumpKick's localizer preset: [localizer] as one generator entry r
 path    = "plugins/micronaut"
 group   = "cc.jumpkick"
 name    = "jk-micronaut"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Micronaut AOT plugin"
 
@@ -3867,7 +3867,7 @@ description = "JumpKick's Micronaut AOT plugin"
 path    = "plugins/minified"
 group   = "cc.jumpkick"
 name    = "jk-minified"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's R8 minify plugin"
 
@@ -3875,7 +3875,7 @@ description = "JumpKick's R8 minify plugin"
 path    = "plugins/openapi"
 group   = "cc.jumpkick"
 name    = "jk-openapi"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's OpenAPI preset: [openapi] as one generator entry over the generator worker"
 
@@ -3883,7 +3883,7 @@ description = "JumpKick's OpenAPI preset: [openapi] as one generator entry over 
 path    = "plugins/protobuf"
 group   = "cc.jumpkick"
 name    = "jk-protobuf"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Protobuf plugin"
 
@@ -3891,7 +3891,7 @@ description = "JumpKick's Protobuf plugin"
 path    = "plugins/publisher"
 group   = "cc.jumpkick"
 name    = "jk-publisher"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Maven publish plugin"
 
@@ -3899,7 +3899,7 @@ description = "JumpKick's Maven publish plugin"
 path    = "plugins/quarkus"
 group   = "cc.jumpkick"
 name    = "jk-quarkus"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Quarkus packaging plugin"
 
@@ -3907,7 +3907,7 @@ description = "JumpKick's Quarkus packaging plugin"
 path    = "plugins/spring-boot"
 group   = "cc.jumpkick"
 name    = "jk-spring-boot"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's Spring Boot packaging plugin"
 
@@ -3915,7 +3915,7 @@ description = "JumpKick's Spring Boot packaging plugin"
 path    = "plugins/taglib"
 group   = "cc.jumpkick"
 name    = "jk-taglib"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "JumpKick's taglib preset: [taglib] as one generator entry writing the typed Jelly tag-library interfaces a Jenkins module's Groovy views call"
 
@@ -3923,7 +3923,7 @@ description = "JumpKick's taglib preset: [taglib] as one generator entry writing
 path    = "plugins/test-runner"
 group   = "cc.jumpkick"
 name    = "jk-test-runner"
-version = "0.14.0"
+version = "0.15.0"
 java    = 17
 description = "JumpKick's JUnit Platform test-runner plugin"
 
@@ -3931,7 +3931,7 @@ description = "JumpKick's JUnit Platform test-runner plugin"
 path    = "server/engine"
 group   = "cc.jumpkick"
 name    = "jk-engine"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Resident build engine: plan, cache, compile, and test"
 
@@ -3939,7 +3939,7 @@ description = "Resident build engine: plan, cache, compile, and test"
 path    = "server/guard"
 group   = "cc.jumpkick"
 name    = "jk-guard"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "House-rule guards: rule schema, facts index, evaluators, baseline; engine-only"
 
@@ -3947,7 +3947,7 @@ description = "House-rule guards: rule schema, facts index, evaluators, baseline
 path    = "server/guard/packs/android"
 group   = "cc.jumpkick.guards"
 name    = "android"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Android house rules: one logging owner, no blocking sleeps, java.time, test libraries in the test scope, a file-size ratchet."
 
@@ -3955,7 +3955,7 @@ description = "Android house rules: one logging owner, no blocking sleeps, java.
 path    = "server/guard/packs/library"
 group   = "cc.jumpkick.guards"
 name    = "library"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Library house rules: locale- and charset-explicit JDK calls, @NullMarked packages, no snapshots, converged versions, a file-size ratchet."
 
@@ -3963,7 +3963,7 @@ description = "Library house rules: locale- and charset-explicit JDK calls, @Nul
 path    = "server/guard/packs/monorepo"
 group   = "cc.jumpkick.guards"
 name    = "monorepo"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Monorepo house rules: one module per package, converged versions, no snapshots, a Java floor, a file-size ratchet."
 
@@ -3971,7 +3971,7 @@ description = "Monorepo house rules: one module per package, converged versions,
 path    = "server/guard/packs/quarkus"
 group   = "cc.jumpkick.guards"
 name    = "quarkus"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Quarkus house rules: one logger, Jakarta EE, test types and libraries in the test scope, java.time, a file-size ratchet."
 
@@ -3979,7 +3979,7 @@ description = "Quarkus house rules: one logger, Jakarta EE, test types and libra
 path    = "server/guard/packs/spring"
 group   = "cc.jumpkick.guards"
 name    = "spring"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Spring Boot house rules: one logger, Jakarta EE, Lombok as a processor, test libraries in the test scope, java.time, a file-size ratchet."
 
@@ -3987,7 +3987,7 @@ description = "Spring Boot house rules: one logger, Jakarta EE, Lombok as a proc
 path    = "server/io"
 group   = "cc.jumpkick"
 name    = "jk-io"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Engine I/O: HTTP client, CAS, and Maven repository access"
 
@@ -3995,7 +3995,7 @@ description = "Engine I/O: HTTP client, CAS, and Maven repository access"
 path    = "server/resolver"
 group   = "cc.jumpkick"
 name    = "jk-resolver"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "PubGrub dependency resolver"
 
@@ -4003,7 +4003,7 @@ description = "PubGrub dependency resolver"
 path    = "server/toolchain"
 group   = "cc.jumpkick"
 name    = "jk-toolchain"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Engine toolchain: tool installs and Maven/Gradle import"
 
@@ -4011,7 +4011,7 @@ description = "Engine toolchain: tool installs and Maven/Gradle import"
 path    = "shared/client-io"
 group   = "cc.jumpkick"
 name    = "jk-client-io"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Client-side HTTP, repository transports, forge auth, credentials, and CAS"
 
@@ -4019,7 +4019,7 @@ description = "Client-side HTTP, repository transports, forge auth, credentials,
 path    = "shared/core"
 group   = "cc.jumpkick"
 name    = "jk-core"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Core library: config, lockfile, layout, and policy"
 
@@ -4027,7 +4027,7 @@ description = "Core library: config, lockfile, layout, and policy"
 path    = "shared/dynamic-surface"
 group   = "cc.jumpkick"
 name    = "jk-dynamic-surface"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
 
@@ -4035,7 +4035,7 @@ description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
 path    = "shared/guard-api"
 group   = "cc.jumpkick"
 name    = "jk-guards-junit"
-version = "0.14.0"
+version = "0.15.0"
 java    = 17
 description = "Guard-test library: @Guard/@GuardSuite and the injected Facts, Model, Text, Output and Violations views"
 
@@ -4043,7 +4043,7 @@ description = "Guard-test library: @Guard/@GuardSuite and the injected Facts, Mo
 path    = "shared/host"
 group   = "cc.jumpkick"
 name    = "jk-host"
-version = "0.14.0"
+version = "0.15.0"
 java    = 17
 description = "Host leaf: JSONL/MiniJson codec, Hashing, PathUtil, Errors, Os, Exit — the JDK-only floor the CLI, the engine and every plugin worker share"
 
@@ -4051,7 +4051,7 @@ description = "Host leaf: JSONL/MiniJson codec, Hashing, PathUtil, Errors, Os, E
 path    = "shared/ide"
 group   = "cc.jumpkick"
 name    = "jk-ide"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "IDE project-file generators: IntelliJ IDEA, VS Code, and the BSP connection file"
 
@@ -4059,7 +4059,7 @@ description = "IDE project-file generators: IntelliJ IDEA, VS Code, and the BSP 
 path    = "shared/jk-api"
 group   = "cc.jumpkick"
 name    = "jk-model"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Domain model: dependencies, build plans, and coordinates"
 
@@ -4067,7 +4067,7 @@ description = "Domain model: dependencies, build plans, and coordinates"
 path    = "shared/plugin-sdk"
 group   = "cc.jumpkick"
 name    = "jk-plugin-sdk"
-version = "0.14.0"
+version = "0.15.0"
 java    = 17
 description = "Plugin SPI; codec and host primitives are jk-host"
 
@@ -4075,7 +4075,7 @@ description = "Plugin SPI; codec and host primitives are jk-host"
 path    = "shared/toolchain-jdk"
 group   = "cc.jumpkick"
 name    = "jk-toolchain-jdk"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Client JDK tooling: discovery, install flow, and launchers"
 
@@ -4083,6 +4083,6 @@ description = "Client JDK tooling: discovery, install flow, and launchers"
 path    = "shared/wire"
 group   = "cc.jumpkick"
 name    = "jk-engine-api"
-version = "0.14.0"
+version = "0.15.0"
 java    = 25
 description = "Client–engine wire protocol and build DTOs"
