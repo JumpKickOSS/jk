@@ -80,6 +80,14 @@ jk-managed JDK — never as a native image.
 
 `jk test --profile network` talks to Maven Central; keep it off rate-limited environments.
 
+### Template catalog (sibling repo)
+
+`jk new` renders from the published catalog, **[JumpKickOSS/jk-templates](https://github.com/JumpKickOSS/jk-templates)**,
+before this tree's `templates/`, so a template change here reaches users only once it is mirrored.
+`templates/` is upstream. After changing it, run `scripts/templates-sync.sh` (catalog checkout as
+`../jk-templates`, or pass its path), write a README row for any new template, then commit and push
+jk-templates. `scripts/templates-sync.sh --check` names every drifted file; the nightly runs it.
+
 ### Formatting
 
 jk formats itself. Run `jk format` before you commit. There is no pre-commit hook or CI
