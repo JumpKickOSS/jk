@@ -23,7 +23,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.LongConsumer;
 
 /**
  * Puts a Node home on disk: a managed install under {@code $JK_STORE_DIR/tools/node/<exact>/}, else
@@ -74,7 +73,7 @@ public final class NodeProvisioning {
      * Node at exactly {@code resolution}'s version — what a lock pins. A discovered install counts
      * only at that exact version; a download is verified against the resolution's digest.
      */
-    public NodeHome ensure(NodeResolution resolution, Policy policy, LongConsumer onBytesRead)
+    public NodeHome ensure(NodeResolution resolution, Policy policy, ToolProgress progress)
             throws IOException, InterruptedException {
         String version = resolution.version();
         Optional<NodeHome> managed = managed(version);
@@ -87,7 +86,7 @@ public final class NodeProvisioning {
                 return new NodeHome(found.get().home(), version, found.get().source(), null);
         }
         InstalledTool installed = new ToolInstaller(http, registry)
-                .install(resolution.distribution(host, distBase), false, onBytesRead)
+                .install(resolution.distribution(host, distBase), false, progress)
                 .tool();
         return new NodeHome(installed.home(), version, "jk", null);
     }
@@ -96,7 +95,7 @@ public final class NodeProvisioning {
      * Node for {@code spec} with no lock to pin it: a managed or discovered install that satisfies
      * it, else the release {@code resolver} selects.
      */
-    public NodeHome ensure(NodeSpec spec, NodeResolver resolver, Policy policy, LongConsumer onBytesRead)
+    public NodeHome ensure(NodeSpec spec, NodeResolver resolver, Policy policy, ToolProgress progress)
             throws IOException, InterruptedException {
         List<NodeRelease> releases = spec.kind() == NodeSpec.Kind.MAJOR
                         || spec.kind() == NodeSpec.Kind.LINE
@@ -116,7 +115,7 @@ public final class NodeProvisioning {
                         found.get().home(), found.get().version(), found.get().source(), null);
             }
         }
-        return ensure(resolver.resolve(spec, host), new Policy(true), onBytesRead);
+        return ensure(resolver.resolve(spec, host), new Policy(true), progress);
     }
 
     /**
@@ -124,7 +123,7 @@ public final class NodeProvisioning {
      * from the store, else the registry. {@code latest} asks the registry and falls back to the
      * newest installed when the registry cannot be reached.
      */
-    public NodeHome withManager(NodeHome node, PackageManagerSpec spec, LongConsumer onBytesRead)
+    public NodeHome withManager(NodeHome node, PackageManagerSpec spec, ToolProgress progress)
             throws IOException, InterruptedException {
         Optional<BuildTool> tool = spec.manager().tool();
         if (tool.isEmpty()) return node.withManager(null);
@@ -136,7 +135,7 @@ public final class NodeProvisioning {
         }
         try {
             InstalledTool installed = new ToolInstaller(http, registry)
-                    .install(managers.resolve(spec, host), false, onBytesRead)
+                    .install(managers.resolve(spec, host), false, progress)
                     .tool();
             return node.withManager(managerHome(spec.manager(), installed));
         } catch (IOException offline) {

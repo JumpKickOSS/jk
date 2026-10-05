@@ -13,6 +13,7 @@ import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.MvnResultsResultEvent;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.protocol.ProvisionProgressEvent;
 import cc.jumpkick.wire.protocol.ProvisionResultEvent;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import java.io.BufferedReader;
@@ -163,17 +164,32 @@ final class EnginePluginAdapter {
      * download), which is fine on this blocking read.
      */
     static HostedEvents.Provision provision(EnginePaths.Paths paths, String requestLine) throws IOException {
-        return oneShot(paths, requestLine, EngineProtocol.PROVISION_RESULT, line -> {
-            ProvisionResultEvent e = ProvisionResultEvent.decode(line);
-            // An absent exit code is a failure here, where the record reads 0.
-            return new HostedEvents.Provision(
-                    e.bin(),
-                    e.version(),
-                    e.source(),
-                    e.verification(),
-                    e.error(),
-                    Jsonl.has(line, "exit") ? e.exit() : 1);
-        });
+        try (ProvisionProgressView view = new ProvisionProgressView()) {
+            return provision(paths, requestLine, view);
+        }
+    }
+
+    private static HostedEvents.Provision provision(
+            EnginePaths.Paths paths, String requestLine, ProvisionProgressView view) throws IOException {
+        return oneShot(
+                paths,
+                requestLine,
+                EngineProtocol.PROVISION_RESULT,
+                (type, line) -> {
+                    if (EngineProtocol.PROVISION_PROGRESS.equals(type))
+                        view.accept(ProvisionProgressEvent.decode(line));
+                },
+                line -> {
+                    ProvisionResultEvent e = ProvisionResultEvent.decode(line);
+                    // An absent exit code is a failure here, where the record reads 0.
+                    return new HostedEvents.Provision(
+                            e.bin(),
+                            e.version(),
+                            e.source(),
+                            e.verification(),
+                            e.error(),
+                            Jsonl.has(line, "exit") ? e.exit() : 1);
+                });
     }
 
     /** Journal a finished {@code jk mvn} run; the terminal names the report the engine wrote. */
@@ -190,6 +206,17 @@ final class EnginePluginAdapter {
      */
     private static <T> T oneShot(
             EnginePaths.Paths paths, String requestLine, String terminalType, Function<String, T> decode)
+            throws IOException {
+        return oneShot(paths, requestLine, terminalType, (type, line) -> {}, decode);
+    }
+
+    /** As above, handing every non-terminal line to {@code onLine} as it arrives. */
+    private static <T> T oneShot(
+            EnginePaths.Paths paths,
+            String requestLine,
+            String terminalType,
+            BiConsumer<String, String> onLine,
+            Function<String, T> decode)
             throws IOException {
         EngineClient.ensureRunning(paths, JkVersion.VERSION);
 
@@ -217,7 +244,7 @@ final class EnginePluginAdapter {
                 if (EngineProtocol.ERROR.equals(type)) {
                     throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                 }
-                // Anything else is a forward-compatible no-op: ask for the next line.
+                onLine.accept(type, line);
                 return null;
             });
         }

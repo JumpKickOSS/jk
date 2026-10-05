@@ -16,13 +16,16 @@ import cc.jumpkick.node.PackageManagerSpec;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.zip.GZIPOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -72,7 +75,8 @@ class NodeProvisioningTest {
         http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
 
-        NodeHome home = p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, b -> {});
+        NodeHome home =
+                p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, ToolProgress.NONE);
 
         assertThat(home.home()).isEqualTo(tmp.resolve("tools/node/24.21.0"));
         assertThat(home.source()).isEqualTo("jk");
@@ -85,7 +89,7 @@ class NodeProvisioningTest {
                                 .resolve("lib/node_modules/npm/bin/npm-cli.js")
                                 .toString());
 
-        p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, b -> {});
+        p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, ToolProgress.NONE);
         assertThat(http.requestsFor("/v24.21.0/node-v24.21.0-linux-x64.tar.gz")).isEqualTo(1);
     }
 
@@ -94,7 +98,8 @@ class NodeProvisioningTest {
         http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
 
-        assertThatThrownBy(() -> p.ensure(resolution("0".repeat(64)), NodeProvisioning.Policy.DEFAULT, b -> {}))
+        assertThatThrownBy(
+                        () -> p.ensure(resolution("0".repeat(64)), NodeProvisioning.Policy.DEFAULT, ToolProgress.NONE))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("sha256 mismatch");
         assertThat(tmp.resolve("tools/node/24.21.0")).doesNotExist();
@@ -109,12 +114,14 @@ class NodeProvisioningTest {
         http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
 
-        NodeHome found = p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, b -> {});
+        NodeHome found =
+                p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, ToolProgress.NONE);
         assertThat(found.home()).isEqualTo(nvm);
         assertThat(found.source()).isEqualTo("nvm");
         assertThat(http.requested()).isEmpty();
 
-        NodeHome managed = p.ensure(resolution(Hashing.sha256Hex(NODE)), new NodeProvisioning.Policy(true), b -> {});
+        NodeHome managed =
+                p.ensure(resolution(Hashing.sha256Hex(NODE)), new NodeProvisioning.Policy(true), ToolProgress.NONE);
         assertThat(managed.source()).isEqualTo("jk");
     }
 
@@ -123,9 +130,10 @@ class NodeProvisioningTest {
         servePnpm(PNPM);
         http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
-        NodeHome node = p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, b -> {});
+        NodeHome node =
+                p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, ToolProgress.NONE);
 
-        NodeHome withPnpm = p.withManager(node, PackageManagerSpec.parse("pnpm@10.18.1"), b -> {});
+        NodeHome withPnpm = p.withManager(node, PackageManagerSpec.parse("pnpm@10.18.1"), ToolProgress.NONE);
 
         Path pnpmHome = tmp.resolve("tools/pnpm/10.18.1");
         assertThat(withPnpm.packageManager()).isEqualTo(PackageManager.PNPM);
@@ -144,9 +152,62 @@ class NodeProvisioningTest {
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
         NodeHome node = new NodeHome(tmp.resolve("node"), "24.21.0", "jk", null);
 
-        assertThatThrownBy(() -> p.withManager(node, PackageManagerSpec.parse("pnpm@10.18.1"), b -> {}))
+        assertThatThrownBy(() -> p.withManager(node, PackageManagerSpec.parse("pnpm@10.18.1"), ToolProgress.NONE))
                 .hasMessageContaining("sha512 mismatch");
         assertThat(tmp.resolve("tools/pnpm/10.18.1")).doesNotExist();
+    }
+
+    @Test
+    void a_download_reports_its_total_and_progress_then_the_unpack(@TempDir Path tmp) throws Exception {
+        http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
+        List<String> events = new ArrayList<>();
+        ToolProgress recording = new ToolProgress() {
+            @Override
+            public void downloading(String name, long readBytes, long totalBytes) {
+                events.add("download " + name + " " + readBytes + "/" + totalBytes);
+            }
+
+            @Override
+            public void installing(String name) {
+                events.add("install " + name);
+            }
+        };
+
+        provisioning(tmp.resolve("tools"), tmp.resolve("home"))
+                .ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, recording);
+
+        assertThat(events)
+                .as("the total is known from the first event, so a percentage can be drawn at once")
+                .startsWith("download Node.js 24.21.0 0/" + NODE.length)
+                .contains("download Node.js 24.21.0 " + NODE.length + "/" + NODE.length)
+                .endsWith("install Node.js 24.21.0");
+    }
+
+    @Test
+    void a_cancelled_download_leaves_no_tree_and_no_scratch_in_the_store(@TempDir Path tmp) {
+        http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
+        Path tools = tmp.resolve("tools");
+        ToolProgress cancelling = new ToolProgress() {
+            @Override
+            public void downloading(String name, long readBytes, long totalBytes) {
+                if (readBytes > 0) throw new CancellationException(name + " download cancelled");
+            }
+        };
+
+        assertThatThrownBy(() -> provisioning(tools, tmp.resolve("home"))
+                        .ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, cancelling))
+                .isInstanceOf(CancellationException.class);
+
+        assertThat(tools.resolve("node/24.21.0")).doesNotExist();
+        assertThat(ToolInstaller.reapInFlight()).as("nothing left in flight").isZero();
+        try (var left = Files.walk(tools)) {
+            assertThat(left.filter(p -> p.getFileName().toString().startsWith("jk-tool-"))
+                            .toList())
+                    .as("no staging tree")
+                    .isEmpty();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private void servePnpm(byte[] tarball) {

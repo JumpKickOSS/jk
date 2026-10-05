@@ -79,6 +79,10 @@ under `[node]` in `jk-lock.toml` ([Lockfile](lockfile.md#nodejs)). A build provi
 or reuses one nvm, fnm, volta, mise, asdf, Homebrew or the `PATH` already has. Package managers
 are npm, pnpm, Yarn (Berry only) and bun.
 
+A download draws the same progress as a JDK's: a bar with its percentage under the tool's chip
+(`Node.js`, `pnpm`, …), in a build's plan and under `jk node install`, then an installing row.
+Ctrl-C stops it at the next chunk and leaves nothing half-written in the store.
+
 ## Commands
 
 `jk node` manages Node.js the way `jk jdk` manages JDKs; `jk nvm` is the same command. Installs live
@@ -132,6 +136,8 @@ See [Packaging § Node modules](packaging.md#node-modules): a node module's outp
 resource jar under `classpath-root` for a JVM dependant, or web content under `webapp-root` for a
 `[war]` dependant; a node build inside a JVM module goes into that module's jar or war. A node
 module whose framework produces a server runs with `jk run` ([Run](run.md#node-modules)).
+`jk-results.md` lists `node-package` under Deliverables with the jar it wrote, or a server's start
+command, and `jk explain` forecasts it from the same key the step stores under.
 
 ## `jk dev`
 

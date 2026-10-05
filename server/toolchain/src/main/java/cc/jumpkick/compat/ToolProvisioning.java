@@ -53,13 +53,19 @@ public final class ToolProvisioning {
      * download. Returns the resolved {@link InstalledTool} and a tag describing how it was obtained
      * (for log output).
      */
-    public static Result provision(ToolDistribution distribution, ToolRegistry registry, Http http, Policy policy)
+    public static Result provision(
+            ToolDistribution distribution, ToolRegistry registry, Http http, Policy policy, ToolProgress progress)
             throws IOException, InterruptedException {
-        return provision(distribution, registry, http, policy, new ToolProvisioner());
+        return provision(distribution, registry, http, policy, progress, new ToolProvisioner());
     }
 
     static Result provision(
-            ToolDistribution distribution, ToolRegistry registry, Http http, Policy policy, ToolProvisioner provisioner)
+            ToolDistribution distribution,
+            ToolRegistry registry,
+            Http http,
+            Policy policy,
+            ToolProgress progress,
+            ToolProvisioner provisioner)
             throws IOException, InterruptedException {
 
         ToolSpec spec = specFor(distribution);
@@ -94,7 +100,7 @@ public final class ToolProvisioning {
 
         // 4. Download fallback.
         ToolInstaller.Installed installed =
-                new ToolInstaller(http, registry).install(distribution, policy.acceptUnverified());
+                new ToolInstaller(http, registry).install(distribution, policy.acceptUnverified(), progress);
         return new Result(
                 installed.tool(),
                 Result.Source.DOWNLOADED,

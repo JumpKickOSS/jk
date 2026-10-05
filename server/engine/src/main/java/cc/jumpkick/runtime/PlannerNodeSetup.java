@@ -5,6 +5,7 @@ import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
 import static cc.jumpkick.runtime.BuildPlanner.NODE_HOME;
 
 import cc.jumpkick.compat.NodeProvisioning;
+import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.NodePin;
@@ -13,17 +14,13 @@ import cc.jumpkick.node.NodeResolution;
 import cc.jumpkick.node.PackageManagerSpec;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
-import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
-import java.util.function.LongConsumer;
 import java.util.function.Supplier;
 
 /** {@code ensure-node}: the locked Node.js and package manager, on disk and on the task context. */
 public final class PlannerNodeSetup {
-
-    private static final long MIB = 1L << 20;
 
     /** Test seam: where {@code ensure-node} provisions from; production reads the store and nodejs.org. */
     static volatile Supplier<NodeProvisioning> provisioning = NodeProvisioning::new;
@@ -46,7 +43,7 @@ public final class PlannerNodeSetup {
                     }
                     NodeProvisioning from = provisioning.get();
                     boolean onDisk = from.managed(pin.version()).isPresent();
-                    NodeHome home = ensure(from, pin, progress(ctx, "Node.js " + pin.version()));
+                    NodeHome home = ensure(from, pin, new ToolPlanProgress(ctx));
                     ctx.put(NODE_HOME, home);
                     if (onDisk) ctx.cached();
                     ctx.progress(1);
@@ -55,21 +52,21 @@ public final class PlannerNodeSetup {
     }
 
     /** The home {@code pin} names, with its package manager. */
-    public static NodeHome ensure(NodeProvisioning provisioning, NodePin pin, LongConsumer onBytes)
+    public static NodeHome ensure(NodeProvisioning provisioning, NodePin pin, ToolProgress progress)
             throws IOException, InterruptedException {
         NodeHome home;
         try {
             home = provisioning.ensure(
                     new NodeResolution(pin.version(), pin.npm(), null, pin.sha256()),
                     NodeProvisioning.Policy.DEFAULT,
-                    onBytes);
+                    progress);
         } catch (IOException e) {
             throw notInstalled("Node.js " + pin.version(), "node:" + pin.version(), e);
         }
         if (pin.packageManager() == null) return home;
         PackageManagerSpec manager = PackageManagerSpec.parse(pin.packageManager());
         try {
-            return provisioning.withManager(home, manager, onBytes);
+            return provisioning.withManager(home, manager, progress);
         } catch (IOException e) {
             throw notInstalled(manager.toString(), manager.manager().id() + ":" + manager.version(), e);
         }
@@ -82,17 +79,6 @@ public final class PlannerNodeSetup {
                 what + " is not installed — run `jk tool install " + toolSpec + "`"
                         + (offline ? " without --offline" : "") + " (" + cause.getMessage() + ")",
                 cause);
-    }
-
-    /** A download label once per MiB read. */
-    public static LongConsumer progress(TaskContext ctx, String name) {
-        long[] shown = {-1};
-        return read -> {
-            long mib = read / MIB;
-            if (mib == shown[0]) return;
-            shown[0] = mib;
-            ctx.label("download " + name + " · " + mib + " MiB");
-        };
     }
 
     /** The action-key token of the lock's Node.js: {@code node:<exact>[+<pm>@<exact>]}, or {@code none}. */

@@ -5,6 +5,7 @@ import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.BuildToolDistributions;
 import cc.jumpkick.compat.ProjectImport;
 import cc.jumpkick.compat.ToolDistribution;
+import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.gradle.GradleBuildImport;
@@ -114,7 +115,12 @@ public final class CompatPlans {
      * and {@code acceptUnverified} is the one consent it carries.
      */
     public static Provision provision(
-            Path projectDir, Path toolsRoot, boolean noDiscover, boolean acceptUnverified, boolean isGradle) {
+            Path projectDir,
+            Path toolsRoot,
+            boolean noDiscover,
+            boolean acceptUnverified,
+            boolean isGradle,
+            ToolProgress progress) {
         ToolDistribution dist = null;
         try {
             dist = isGradle
@@ -124,7 +130,8 @@ public final class CompatPlans {
                     dist,
                     new ToolRegistry(toolsRoot.toAbsolutePath()),
                     new Http(),
-                    new ToolProvisioning.Policy(noDiscover, false, acceptUnverified));
+                    new ToolProvisioning.Policy(noDiscover, false, acceptUnverified),
+                    progress);
             return new Provision(
                     result.tool().binary().toString(),
                     dist.version(),
@@ -149,7 +156,12 @@ public final class CompatPlans {
      * vouches for installs and its digest is recorded.
      */
     public static Provision provisionTool(
-            String toolSlug, @Nullable String version, Path toolsRoot, boolean noDiscover, boolean acceptUnverified) {
+            String toolSlug,
+            @Nullable String version,
+            Path toolsRoot,
+            boolean noDiscover,
+            boolean acceptUnverified,
+            ToolProgress progress) {
         ToolDistribution dist = null;
         try {
             BuildTool tool = BuildTool.bySlug(toolSlug)
@@ -160,7 +172,8 @@ public final class CompatPlans {
                     dist,
                     new ToolRegistry(toolsRoot.toAbsolutePath()),
                     new Http(),
-                    new ToolProvisioning.Policy(noDiscover, false, acceptUnverified));
+                    new ToolProvisioning.Policy(noDiscover, false, acceptUnverified),
+                    progress);
             return new Provision(
                     result.tool().home().toString(),
                     dist.version(),

@@ -3,6 +3,7 @@ package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.compat.ToolDistribution;
+import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.SessionContext;
@@ -88,8 +89,8 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
     private static Launcher provisioningLauncher(Path toolsRoot, Http http, ToolProvisioning.Policy policy) {
         return (buildRoot, progress) -> {
             ToolDistribution dist = new GradleResolver().resolve(buildRoot);
-            ToolProvisioning.Result result =
-                    ToolProvisioning.provision(dist, new ToolRegistry(toolsRoot.toAbsolutePath()), http, policy);
+            ToolProvisioning.Result result = ToolProvisioning.provision(
+                    dist, new ToolRegistry(toolsRoot.toAbsolutePath()), http, policy, ToolProgress.NONE);
             if (result.source() != ToolProvisioning.Result.Source.CACHED) {
                 progress.accept("Gradle " + dist.version() + " "
                         + result.source().name().toLowerCase(Locale.ROOT)

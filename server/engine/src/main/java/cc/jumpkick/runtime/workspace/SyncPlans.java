@@ -34,6 +34,7 @@ import cc.jumpkick.runtime.AutoLock;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.runtime.RepoGroupBuilder;
+import cc.jumpkick.runtime.ToolPlanProgress;
 import cc.jumpkick.runtime.base.JkPluginSync;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
@@ -206,10 +207,7 @@ public final class SyncPlans {
                     NodePin pin = ctx.require(LOCKFILE).node();
                     if (pin != null) {
                         ctx.label("resolve Node.js");
-                        PlannerNodeSetup.ensure(
-                                new NodeProvisioning(),
-                                pin,
-                                PlannerNodeSetup.progress(ctx, "Node.js " + pin.version()));
+                        PlannerNodeSetup.ensure(new NodeProvisioning(), pin, new ToolPlanProgress(ctx));
                     }
                     ctx.progress(1);
                 })
