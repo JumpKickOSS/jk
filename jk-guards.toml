@@ -373,6 +373,10 @@ in     = "shared/toolchain-jdk/src/test/java/cc/jumpkick/discovery/MiseProbeTest
 reason = "fixtures for mise's own layout"
 
 [[guards.single-home-root.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/NodeNetwork.java"
+reason = "bun reads its global config from XDG_CONFIG_HOME and no npm user config; jk points it at a per-run directory holding the registry, scopes and credentials"
+
+[[guards.single-home-root.allow]]
 in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/IntellijJdkTable.java"
 reason = "reads IntelliJ's own config location (APPDATA, XDG_CONFIG_HOME)"
 

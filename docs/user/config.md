@@ -171,11 +171,16 @@ the `<server>` beside it authenticates it, as under Maven.
 
 **The package managers** get all of it for each step jk runs. jk writes a user config for the
 one run (`target/node/jk-npmrc-*`, owner-only, deleted after the step) holding your own
-`~/.npmrc`, then the registry, the scopes and each origin's token; Yarn Berry gets
-`YARN_NPM_REGISTRY_SERVER` and `YARN_NPM_AUTH_TOKEN` / `YARN_NPM_AUTH_IDENT`. The proxy jk itself
+`~/.npmrc`, then the registry, the scopes and each origin's token. bun reads no npm user config, so
+it gets the same registry, scopes and credentials as a global `.bunfig.toml` in a jk-owned global
+config directory for the step (`target/node/jk-bun-*`, owner-only, deleted after); your own global
+bunfig is not read during that step, and the project's `bunfig.toml` still is. Yarn Berry gets
+`YARN_NPM_REGISTRY_SERVER`, `YARN_NPM_AUTH_TOKEN` / `YARN_NPM_AUTH_IDENT` with
+`YARN_NPM_ALWAYS_AUTH` (Berry sends no credential on reads otherwise), and a plain-http registry's
+host in `YARN_UNSAFE_HTTP_WHITELIST`. The proxy jk itself
 uses ([Network](#network)) is handed over as `npm_config_proxy` / `npm_config_https_proxy` /
 `npm_config_noproxy`, `YARN_HTTP_PROXY` / `YARN_HTTPS_PROXY`, and `HTTP_PROXY` / `HTTPS_PROXY` /
-`NO_PROXY`. The project's own `.npmrc` and `.yarnrc.yml` are never edited and still apply. The
+`NO_PROXY`. The project's own `.npmrc`, `bunfig.toml` and `.yarnrc.yml` are never edited and still apply. The
 registry and scope map are part of the install's cache key; a credential never is, and never
 appears in output or `jk-results.md`.
 
