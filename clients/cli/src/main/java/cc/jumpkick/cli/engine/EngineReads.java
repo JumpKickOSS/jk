@@ -44,6 +44,7 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProjectInfoRequest;
 import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.protocol.ProvisionProgressEvent;
 import cc.jumpkick.wire.protocol.TreeRequest;
 import cc.jumpkick.wire.protocol.WhyReport;
 import cc.jumpkick.wire.protocol.WhyRequest;
@@ -54,6 +55,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -95,6 +97,19 @@ final class EngineReads {
             AckDecoder<T> decoder,
             EngineWire.Ensure ensure)
             throws IOException {
+        return request(paths, requestLine, ackType, what, decoder, ensure, (type, line) -> {});
+    }
+
+    /** As above, handing every line before the ack to {@code onLine} as it arrives. */
+    static <T extends @Nullable Object> T request(
+            EnginePaths.Paths paths,
+            String requestLine,
+            String ackType,
+            String what,
+            AckDecoder<T> decoder,
+            EngineWire.Ensure ensure,
+            BiConsumer<String, String> onLine)
+            throws IOException {
         return EngineWire.stream(
                 paths,
                 requestLine,
@@ -108,7 +123,10 @@ final class EngineReads {
                             // generic disconnect.
                             throw EngineWireException.fromJsonLine(line);
                         }
-                        if (!ackType.equals(type)) continue;
+                        if (!ackType.equals(type)) {
+                            onLine.accept(type, line);
+                            continue;
+                        }
                         return decoder.decode(line);
                     }
                     throw new IOException("jk engine: disconnected before answering the " + what);
@@ -505,29 +523,37 @@ final class EngineReads {
             @Nullable Path libDir,
             @Nullable DebugJvm debugJvm)
             throws IOException {
-        return request(
-                paths,
-                ProtoSession.withToolchain(
-                        ProtoSession.withSession(
-                                new ExecPlanRequest(
-                                                dir.toString(),
-                                                cache.toString(),
-                                                kind,
-                                                mainOverride,
-                                                binName,
-                                                binDir == null ? null : binDir.toString(),
-                                                libDir == null ? null : libDir.toString(),
-                                                ProtoJobs.debugJvmSpelling(debugJvm))
-                                        .encode(),
-                                SessionContext.current().variant(),
-                                SessionContext.current().clientEnv(),
-                                SessionContext.current().jvm(),
-                                SessionContext.current().config().rebuildOr(false),
-                                TimelineOpts.noTimeline()),
-                        SessionContext.current()),
-                EngineProtocol.EXEC_PLAN_ACK,
-                "exec-plan request",
-                ExecPlan::decode);
+        try (ProvisionProgressView view = new ProvisionProgressView()) {
+            return request(
+                    paths,
+                    ProtoSession.withToolchain(
+                            ProtoSession.withSession(
+                                    new ExecPlanRequest(
+                                                    dir.toString(),
+                                                    cache.toString(),
+                                                    kind,
+                                                    mainOverride,
+                                                    binName,
+                                                    binDir == null ? null : binDir.toString(),
+                                                    libDir == null ? null : libDir.toString(),
+                                                    ProtoJobs.debugJvmSpelling(debugJvm))
+                                            .encode(),
+                                    SessionContext.current().variant(),
+                                    SessionContext.current().clientEnv(),
+                                    SessionContext.current().jvm(),
+                                    SessionContext.current().config().rebuildOr(false),
+                                    TimelineOpts.noTimeline()),
+                            SessionContext.current()),
+                    EngineProtocol.EXEC_PLAN_ACK,
+                    "exec-plan request",
+                    ExecPlan::decode,
+                    EngineSpawn::ensure,
+                    // A run of a node module may install its Node.js first: the JDK-style bar while it does.
+                    (type, line) -> {
+                        if (EngineProtocol.PROVISION_PROGRESS.equals(type))
+                            view.accept(ProvisionProgressEvent.decode(line));
+                    });
+        }
     }
 
     /**

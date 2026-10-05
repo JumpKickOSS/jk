@@ -17,9 +17,11 @@ import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -48,13 +50,13 @@ public final class CompatPlans {
     /**
      * Build the import plan. All paths arrive absolute (the command pre-flighted source detection
      * and overwrite checks); {@code report} may be {@code null}; {@code poms} resolves the parents a
-     * POM inherits and {@code gradle} reads a Gradle build, its stages streamed as {@code note}
+     * POM inherits and {@code gradle} reads a Gradle build, drawing its distribution's download on the step it is given,, its stages streamed as {@code note}
      * lines; {@code raise} lifts the written pins a dependency needs higher. Conversion runs in-process so {@code [[import.gradle-plugin]]} rules come from the
      * engine registry, not a worker catalog; only Gradle's own evaluation runs in a fork.
      */
     public static BuildPlan importBuildPlan(
             PomImporter poms,
-            GradleBuildImport gradle,
+            Function<TaskContext, GradleBuildImport> gradle,
             Path source,
             Path out,
             Path baseDir,
@@ -71,7 +73,7 @@ public final class CompatPlans {
                     ctx.label("convert " + source.getFileName());
                     ProjectImport.Outcome outcome = ProjectImport.run(
                             poms,
-                            gradle,
+                            gradle.apply(ctx),
                             source.toAbsolutePath(),
                             out.toAbsolutePath(),
                             baseDir == null ? null : baseDir.toAbsolutePath(),

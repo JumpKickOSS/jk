@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.runtime.NodeRun;
 import cc.jumpkick.runtime.workspace.ExecPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -55,9 +57,9 @@ public final class ExecPlanVerb implements HostedVerb {
                 // Under the request's session, not the daemon's: the toolchain selection the
                 // app runs on is the caller's, and only an installed session carries it.
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
-                plan = SessionContext.where(
-                        session,
-                        () -> ExecPlans.execPlan(
+                ToolProgress progress = new StreamedToolProgress(host, writer, cancelToken);
+                plan = SessionContext.where(session, () -> ScopedValue.where(NodeRun.PROGRESS, progress)
+                        .call(() -> ExecPlans.execPlan(
                                 Path.of(req.dir()),
                                 Path.of(req.cache()),
                                 req.kind(),
@@ -67,7 +69,7 @@ public final class ExecPlanVerb implements HostedVerb {
                                 libDir == null ? null : Path.of(libDir),
                                 ProtoSession.variantOf(requestLine),
                                 ProtoSession.clientEnvOf(requestLine),
-                                DebugJvm.parseOrNull(req.debugJvm())));
+                                DebugJvm.parseOrNull(req.debugJvm()))));
             } catch (Exception e) {
                 plan = ExecPlan.error("unknown", Errors.text(e));
             }

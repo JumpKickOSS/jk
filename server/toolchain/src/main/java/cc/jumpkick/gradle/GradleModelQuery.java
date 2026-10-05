@@ -82,15 +82,25 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
      */
     public static GradleModelQuery provisioning(
             Path toolsRoot, Http http, ToolProvisioning.Policy policy, Path tmpDir) {
-        return new GradleModelQuery(
-                provisioningLauncher(toolsRoot, http, policy), tmpDir, Clock.SYSTEM, StallWatch.envWindowMs());
+        return provisioning(toolsRoot, http, policy, tmpDir, ToolProgress.NONE);
     }
 
-    private static Launcher provisioningLauncher(Path toolsRoot, Http http, ToolProvisioning.Policy policy) {
+    /** As above, drawing the Gradle distribution's download on {@code downloads}. */
+    public static GradleModelQuery provisioning(
+            Path toolsRoot, Http http, ToolProvisioning.Policy policy, Path tmpDir, ToolProgress downloads) {
+        return new GradleModelQuery(
+                provisioningLauncher(toolsRoot, http, policy, downloads),
+                tmpDir,
+                Clock.SYSTEM,
+                StallWatch.envWindowMs());
+    }
+
+    private static Launcher provisioningLauncher(
+            Path toolsRoot, Http http, ToolProvisioning.Policy policy, ToolProgress downloads) {
         return (buildRoot, progress) -> {
             ToolDistribution dist = new GradleResolver().resolve(buildRoot);
             ToolProvisioning.Result result = ToolProvisioning.provision(
-                    dist, new ToolRegistry(toolsRoot.toAbsolutePath()), http, policy, ToolProgress.NONE);
+                    dist, new ToolRegistry(toolsRoot.toAbsolutePath()), http, policy, downloads);
             if (result.source() != ToolProvisioning.Result.Source.CACHED) {
                 progress.accept("Gradle " + dist.version() + " "
                         + result.source().name().toLowerCase(Locale.ROOT)
