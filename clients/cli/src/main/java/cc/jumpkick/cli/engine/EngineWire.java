@@ -105,7 +105,13 @@ public final class EngineWire {
             opened = connect(socket);
         } catch (IOException stale) {
             ENSURED = null;
-            opened = connect(ensuredSocket(paths, ensure));
+            Path again = ensuredSocket(paths, ensure);
+            try {
+                opened = connect(again);
+            } catch (IOException e) {
+                throw new IOException(
+                        "cannot reach the engine at " + again + " (first tried " + socket + "): " + e.getMessage(), e);
+            }
         }
         try (SocketChannel ch = opened) {
             BufferedWriter writer =
