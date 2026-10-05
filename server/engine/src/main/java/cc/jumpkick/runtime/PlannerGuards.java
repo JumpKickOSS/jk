@@ -258,7 +258,7 @@ final class PlannerGuards {
                 .build();
     }
 
-    private static boolean compact(Path moduleDir) {
+    static boolean compact(Path moduleDir) {
         return ModuleLayout.isCompact(moduleDir);
     }
 
@@ -320,14 +320,10 @@ final class PlannerGuards {
                         FactsIndexing.Ensured suite =
                                 FactsIndexing.ensure(guardClasses, FactsIndexing.indexPath(buildDir, "guard"));
                         List<GuardSuites.Declared> declared = GuardSuites.declared(FactsIndexing.load(suite));
-                        tokens.add("guard-suite:" + suite.bodyDigest());
                         List<Path> workspaceModules =
                                 workspaceModuleDirs(g.root(), ctx.get(PROJECT).orElse(null));
                         boolean workspace = GuardSuites.anyWorkspace(declared);
-                        if (workspace) tokens.addAll(GuardKeys.workspaceTokens(g.root(), workspaceModules));
-                        // A guard that reads Text is a guard whose verdict moves with the tree's text: key on it.
-                        if (GuardSuites.anyReadsText(declared))
-                            tokens.addAll(BuildLogicSupport.workspaceInputTokens(g.root()));
+                        tokens.addAll(GuardKeys.suiteTokens(suite.bodyDigest(), declared, g.root(), workspaceModules));
                         List<String> loadErrors = GuardSuites.loadErrors(declared, rules(g).rules());
                         if (!loadErrors.isEmpty()) {
                             for (String e : loadErrors)
@@ -974,7 +970,7 @@ final class PlannerGuards {
      * member's own manifest and knows nothing of its siblings: a WORKSPACE suite declared in a member
      * still sees the whole workspace.
      */
-    private static List<Path> workspaceModuleDirs(Path root, @Nullable JkBuild project) {
+    static List<Path> workspaceModuleDirs(Path root, @Nullable JkBuild project) {
         if (project != null && project.workspace() != null) return moduleDirs(root, project);
         Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return List.of();

@@ -9,6 +9,7 @@ import cc.jumpkick.guard.eval.WorkspaceModel;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.explain.RuleSummaries;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
@@ -75,23 +76,10 @@ final class GuardKeys {
         if (upstreamDirty) return Optional.of(run("guards · module recompiles"));
         try {
             LoadResult load = PlannerGuards.rules(g);
-            if (load.hasErrors()) return Optional.of(run("guards · jk-guards.toml does not load"));
-            Optional<String> main =
-                    FactsIndexing.freshDigest(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
-            if (main.isEmpty()) return Optional.of(run("guards · facts index stale"));
-            List<String> tokens = new ArrayList<>();
-            tokens.add("module:" + WorkspaceModel.rel(root, dir));
-            tokens.add("facts:" + main.get());
-            Path testClasses = layout.testClassesDir();
-            if (Files.isDirectory(testClasses)) {
-                Optional<String> test =
-                        FactsIndexing.freshDigest(testClasses, FactsIndexing.indexPath(layout.buildDir(), "test"));
-                if (test.isEmpty()) return Optional.of(run("guards · test facts index stale"));
-                tokens.add("test-facts:" + test.get());
-            }
-            addRuleTokens(tokens, load);
+            LaneProbe probe = probeModuleLane(root, dir, layout, load);
+            String key = probe.key();
+            if (key == null) return Optional.of(run(probe.runReason()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
-            String key = laneKey(taskId, tokens, baselineSha(root));
             Optional<ActionCache.ActionRecord> verdict = actionCache.lookup(key);
             if (verdict.isPresent()) {
                 // A verdict that carries the lane's evidence is cached only where that evidence is
@@ -107,6 +95,55 @@ final class GuardKeys {
         } catch (IOException e) {
             return Optional.of(run("guards · " + e.getMessage()));
         }
+    }
+
+    /** A module lane's forecast key, or why the lane runs with none (an index to extract first). */
+    record LaneProbe(@Nullable String key, String runReason) {}
+
+    /**
+     * The key the module lane at {@code dir} would run under, read-only: the run builds the same
+     * tokens in the same order, the suite's through {@link #suiteTokens}.
+     */
+    static LaneProbe probeModuleLane(Path root, Path dir, BuildLayout layout, LoadResult load) throws IOException {
+        if (load.hasErrors()) return new LaneProbe(null, "guards · jk-guards.toml does not load");
+        Optional<String> main =
+                FactsIndexing.freshDigest(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
+        if (main.isEmpty()) return new LaneProbe(null, "guards · facts index stale");
+        List<String> tokens = new ArrayList<>();
+        tokens.add("module:" + WorkspaceModel.rel(root, dir));
+        tokens.add("facts:" + main.get());
+        Path testClasses = layout.testClassesDir();
+        if (Files.isDirectory(testClasses)) {
+            Optional<String> test =
+                    FactsIndexing.freshDigest(testClasses, FactsIndexing.indexPath(layout.buildDir(), "test"));
+            if (test.isEmpty()) return new LaneProbe(null, "guards · test facts index stale");
+            tokens.add("test-facts:" + test.get());
+        }
+        Path guardClasses = layout.guardClassesDir();
+        if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(dir, PlannerGuards.compact(dir))) {
+            Path suiteIndex = FactsIndexing.indexPath(layout.buildDir(), "guard");
+            Optional<String> suite = FactsIndexing.freshDigest(guardClasses, suiteIndex);
+            if (suite.isEmpty()) return new LaneProbe(null, "guards · guard suite index stale");
+            List<GuardSuites.Declared> declared = GuardSuites.declared(FactsFormat.read(suiteIndex));
+            tokens.addAll(suiteTokens(suite.get(), declared, root, PlannerGuards.workspaceModuleDirs(root, null)));
+        }
+        addRuleTokens(tokens, load);
+        return new LaneProbe(laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD, dir), tokens, baselineSha(root)), "");
+    }
+
+    /**
+     * What a module's {@code src/guard} suite adds to its lane's key, for the run and the forecast
+     * alike: the suite's index digest, every module's facts when a guard reads the workspace, and the
+     * tree's text when a guard reads {@code Text}, so an edit to root text re-runs that suite.
+     */
+    static List<String> suiteTokens(
+            String suiteDigest, List<GuardSuites.Declared> declared, Path root, List<Path> workspaceModules)
+            throws IOException {
+        List<String> tokens = new ArrayList<>();
+        tokens.add("guard-suite:" + suiteDigest);
+        if (GuardSuites.anyWorkspace(declared)) tokens.addAll(workspaceTokens(root, workspaceModules));
+        if (GuardSuites.anyReadsText(declared)) tokens.addAll(BuildLogicSupport.workspaceInputTokens(root));
+        return tokens;
     }
 
     /**
