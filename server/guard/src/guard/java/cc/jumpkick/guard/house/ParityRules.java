@@ -348,6 +348,12 @@ final class ParityRules {
     private static final String WALL = ".github/workflows/wall-measure.yml";
     /** The one place the release CI bootstraps jk from is written; every workflow step reads it. */
     private static final String BOOTSTRAP_PIN = ".jk/ci-bootstrap-version";
+    /** The bridge commit the pinned release builds while it cannot build the tree itself. */
+    private static final String BOOTSTRAP_READER = ".jk/ci-bootstrap-reader";
+    /** The one script every workflow bootstraps through: the pin, then the bridge when one is named. */
+    private static final String BOOTSTRAP_SCRIPT = "scripts/ci-bootstrap.sh";
+
+    private static final Pattern COMMIT_SHA = Pattern.compile("[0-9a-f]{40}");
     /** The tiers a nightly run owns: each is one `jk test` invocation the workflow must spell. */
     private static final List<String> NIGHTLY_TIERS = List.of(
             "jk test --profile integration",
@@ -414,17 +420,24 @@ final class ParityRules {
                 problems.add(CI + "'s self-host job must not invoke gradlew: it bootstraps from the hosted release "
                         + BOOTSTRAP_PIN
                         + " pins, and a second build system in the merge gate is a second oracle");
-            if (!selfHost.contains("install.sh") || !selfHost.contains(BOOTSTRAP_PIN))
-                problems.add(CI + "'s self-host job must bootstrap with install.sh at the version " + BOOTSTRAP_PIN
-                        + " names, never a version spelled in the workflow");
+            if (!selfHost.contains(BOOTSTRAP_SCRIPT))
+                problems.add(CI + "'s self-host job must bootstrap through " + BOOTSTRAP_SCRIPT
+                        + ", which installs the release " + BOOTSTRAP_PIN + " names");
         }
         for (Map.Entry<String, String> job : jobs.entrySet())
             if (job.getValue().contains("continue-on-error"))
                 problems.add(CI + "'s `" + job.getKey()
                         + "` job must not carry continue-on-error — the flag makes a merge requirement advisory without"
                         + " deleting the job");
+        String script = textOrNull(text, BOOTSTRAP_SCRIPT);
+        if (script == null || !script.contains("install.sh") || !script.contains(BOOTSTRAP_PIN))
+            problems.add(BOOTSTRAP_SCRIPT + " must install the hosted release with install.sh at the version "
+                    + BOOTSTRAP_PIN + " names");
         String pin = textOrNull(text, BOOTSTRAP_PIN);
         Matcher treeVersion = TREE_VERSION.matcher(text(text, "jk.toml"));
+        String reader = textOrNull(text, BOOTSTRAP_READER);
+        if (reader != null && !COMMIT_SHA.matcher(reader.strip()).matches())
+            problems.add(BOOTSTRAP_READER + " must hold one full commit sha, not '" + reader.strip() + "'");
         if (pin == null)
             problems.add(
                     BOOTSTRAP_PIN
@@ -523,6 +536,80 @@ final class ParityRules {
                     new TextSite(LOCK, lineOf(lock, floor.start()), floor.group()),
                     LOCK + " requires jk " + floor.group(1) + " (jk-min) and the bootstrap pin " + release
                             + " is older, so the one release meant to build this tree refuses it");
+        v.population(2);
+    }
+
+    // ---- G112 --------------------------------------------------------------------------------
+
+    /** What the jk CI builds this tree with reads at the top of the lock, from scripts/bootstrap-reads.sh. */
+    private static final String BOOTSTRAP_READS = ".jk/bootstrap-reads.txt";
+
+    private static final Pattern READS_SOURCE = Pattern.compile("(?m)^source\\s*=\\s*([0-9a-f]{40})\\s*$");
+    private static final Pattern LOCK_TABLE = Pattern.compile("^\\[\\[?([A-Za-z0-9_-]+)");
+    private static final Pattern LOCK_KEY = Pattern.compile("^([A-Za-z0-9_-]+)\\s*=");
+
+    @Guard(
+            id = "bootstrap-reads-lock",
+            why = "CI builds this tree with the release " + BOOTSTRAP_PIN + " pins, or with the bridge "
+                    + BOOTSTRAP_READER + " names while one is set, and that jk refuses a lock whose top-level"
+                    + " keys it does not read; " + BOOTSTRAP_READS + " records the keys it reads. A changed reading"
+                    + " of a key it knows is invisible here and needs a jk-min floor (G105)",
+            instead =
+                    "reader first, writer second (docs/contributors/self-host.md, \"The bootstrap chain\"): host a release"
+                            + " that reads the key and move the pin to it, or name a bridge commit that does in "
+                            + BOOTSTRAP_READER + "; then run scripts/bootstrap-reads.sh <commit> and only then let the"
+                            + " tree write the key")
+    @Fixture("server/guard/fixtures/bootstrap-reads-lock")
+    void bootstrapReadsLock(Text text, Violations v) {
+        String pin = textOrNull(text, BOOTSTRAP_PIN);
+        String lock = textOrNull(text, LOCK);
+        // A missing pin is G57's finding; a tree with no lock carries no keys.
+        if (pin == null || lock == null) {
+            v.population(0);
+            return;
+        }
+        String reads = textOrNull(text, BOOTSTRAP_READS);
+        if (reads == null) {
+            v.add(
+                    new TextSite(BOOTSTRAP_READS, 0, BOOTSTRAP_READS),
+                    BOOTSTRAP_READS
+                            + " is missing: run scripts/bootstrap-reads.sh <commit> for the jk CI bootstraps with");
+            v.population(1);
+            return;
+        }
+        String reader = textOrNull(text, BOOTSTRAP_READER);
+        Matcher source = READS_SOURCE.matcher(reads);
+        if (reader != null && (!source.find() || !source.group(1).equals(reader.strip())))
+            v.add(
+                    new TextSite(BOOTSTRAP_READS, 0, BOOTSTRAP_READS),
+                    BOOTSTRAP_READS + " does not record the bridge " + reader.strip() + " that " + BOOTSTRAP_READER
+                            + " names: run scripts/bootstrap-reads.sh " + reader.strip());
+        Set<String> known = new HashSet<>();
+        for (String line : reads.lines().toList()) {
+            String key = line.strip();
+            if (!key.isEmpty() && !key.startsWith("#") && !key.startsWith("source")) known.add(key);
+        }
+        String reading = reader != null ? "the bridge " + reader.strip() : "jk " + pin.strip();
+        Set<String> reported = new HashSet<>();
+        boolean inTable = false;
+        List<String> lines = lock.lines().toList();
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            Matcher table = LOCK_TABLE.matcher(line);
+            String key = null;
+            if (table.find()) {
+                key = table.group(1);
+                inTable = true;
+            } else if (!inTable) {
+                Matcher scalar = LOCK_KEY.matcher(line);
+                if (scalar.find()) key = scalar.group(1);
+            }
+            if (key != null && !known.contains(key) && reported.add(key))
+                v.add(
+                        new TextSite(LOCK, i + 1, line),
+                        LOCK + " carries `" + key + "`, which " + reading
+                                + " does not read: the jk CI bootstraps with refuses this lock");
+        }
         v.population(2);
     }
 

@@ -43,11 +43,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
@@ -85,11 +82,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
@@ -118,11 +112,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
@@ -152,11 +143,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
@@ -186,11 +174,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
@@ -236,11 +221,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
@@ -302,11 +284,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
@@ -363,11 +342,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
@@ -458,27 +434,10 @@ jobs:
 
       # The pin serves no macOS native client, so that row asks the installer for the JVM client.
       - name: Bootstrap jk from the hosted release
-        if: runner.os != 'Windows'
         shell: bash
         env:
           JK_CLIENT: ${{ runner.os == 'macOS' && 'jvm' || 'native' }}
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
-
-      # No developer-prompt step: native-image sets up Visual Studio 2022 itself when cl.exe is not
-      # already on PATH, and a prompt that puts it there hands the engine a PATH without the INCLUDE
-      # the hosted bootstrap's engine does not pass through.
-      - name: Bootstrap jk from the hosted release (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $env:JK_VERSION = (Get-Content .jk/ci-bootstrap-version -Raw).Trim()
-          Invoke-RestMethod https://jumpkick.build/install.ps1 | Invoke-Expression
-          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:JK_HOME 'bin')
+        run: bash scripts/ci-bootstrap.sh
 
       # On Windows, setup-graalvm exports the Visual Studio environment and puts cl.exe on PATH;
       # the hosted bootstrap's engine keeps PATH and drops INCLUDE and LIB, a state native-image
@@ -524,11 +483,8 @@ jobs:
           java-version: '25'
 
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
