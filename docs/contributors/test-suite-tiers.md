@@ -170,7 +170,16 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   commit-authorship scan. No coverage, no benches.
 - **Nightly (`ci-nightly.yml`):** `jk test --profile integration`, `--profile slow`,
   `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
-  the heap guard, the doc examples and the audit at `LOW` on Linux; the product smoke on macOS.
+  the heap guard, the doc examples, the [jk-examples](https://github.com/JumpKickOSS/jk-examples)
+  `web/` scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
+- **Examples job:** every `docs/user/examples/*` sample and every jk-examples `web/*` scenario is
+  locked, built (the scenarios from a clean checkout, each on the Node.js its lock pins) and run
+  under `jk dev` until its front doors answer (`scripts/example-dev-smoke.sh`, `--examples` for the
+  scenarios). Afterwards no committed `jk-lock.toml` may change beyond first-party plugin checksums
+  and no `package-lock.json` may change at all (`scripts/examples-lock-drift.sh . jk-examples`). The
+  same two scripts run locally against a sibling checkout:
+  `scripts/example-dev-smoke.sh --examples ../jk-examples` and
+  `scripts/examples-lock-drift.sh . ../jk-examples`.
 - Local gate: `jk format`, `jk guard`, `jk build`, `jk test --profile integration`;
   `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
 - Never the `network` or `bench` profile as a merge gate.
