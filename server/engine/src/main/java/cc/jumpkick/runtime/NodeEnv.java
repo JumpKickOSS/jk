@@ -7,7 +7,6 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.node.NodeHome;
-import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -40,13 +39,23 @@ final class NodeEnv {
             throws IOException {
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("npm_config_cache", in.cache().resolve("npm").toString());
-        // pnpm's own key; npm warns about every config it does not know.
-        if (home.packageManager() == PackageManager.PNPM) {
-            vars.put(
-                    "npm_config_store_dir", JkDirs.store().resolve("pnpm-store").toString());
+        // Each manager's own cache sits under jk's, as npm's does; npm warns about every config it
+        // does not know, so each key goes only to its manager.
+        switch (home.packageManager()) {
+            case PNPM -> {
+                // pnpm 11 and later read only their own pnpm_config_* keys; older ones the npm_config_* one.
+                String store = JkDirs.store().resolve("pnpm-store").toString();
+                vars.put("pnpm_config_store_dir", store);
+                vars.put("npm_config_store_dir", store);
+            }
+            case BUN ->
+                vars.put("BUN_INSTALL_CACHE_DIR", in.cache().resolve("bun").toString());
+            case YARN ->
+                vars.put("YARN_GLOBAL_FOLDER", in.cache().resolve("yarn").toString());
+            case NPM -> {}
         }
         vars.put("npm_config_update_notifier", "false");
-        vars.putAll(NodeNetwork.env(BuildLayout.moduleTargetDir(moduleDir).resolve("node")));
+        vars.putAll(NodeNetwork.env(BuildLayout.moduleTargetDir(moduleDir).resolve("node"), home.packageManager()));
         vars.putAll(keyed(project, node, moduleDir, false));
         Map<String, String> env = new LinkedHashMap<>(
                 WorkerEnv.forModule(project.build().env(), moduleDir, BuildLayout.moduleTargetDir(moduleDir))

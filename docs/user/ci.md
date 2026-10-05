@@ -25,7 +25,7 @@ an engine that does not overbook worker leases — see [Engine](engine.md#worker
 | Maven **local repo** | Third-party jars when `[m2] integration` is on; a digest-matching file is copied into the store instead of downloaded | **Yes** — a warm-fetch win |
 | Shared **JDKs** | Managed JDKs | Yes if jobs share the same pin / OS |
 | `store/tools/node`, `store/tools/<pnpm\|yarn\|bun>` | Provisioned Node.js and package managers ([Node.js](node.md)) | **Yes** — inside the store above |
-| `cache/npm`, `store/pnpm-store` | The package managers' download caches | **Yes** — a warm `node-install` |
+| `cache/npm`, `cache/bun`, `cache/yarn`, `store/pnpm-store` | The package managers' download caches | **Yes** — a warm `node-install` |
 | `target/.jk/` | Project-local engine state, including **preflight memos** | **Yes** with the workspace |
 | Platform **state** runs | Run history + `jk-results.md` + `details.jsonl` | Optional |
 | `jk-lock.toml` | Resolved coords | **Commit** (not a cache) |

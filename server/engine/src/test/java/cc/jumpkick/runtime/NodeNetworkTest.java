@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.node.NodeSources;
+import cc.jumpkick.node.PackageManager;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,7 +43,7 @@ class NodeNetworkTest {
                 List.of(),
                 own);
 
-        Map<String, String> env = NodeNetwork.env(sources, dir.resolve("work"));
+        Map<String, String> env = NodeNetwork.env(sources, dir.resolve("work"), PackageManager.NPM);
 
         Path file = Path.of(env.get(NodeNetwork.USERCONFIG));
         assertThat(file.getFileName().toString()).startsWith(NodeNetwork.USERCONFIG_PREFIX);
@@ -57,10 +58,60 @@ class NodeNetworkTest {
                 .isEqualTo("rw-------");
         assertThat(env)
                 .containsEntry("YARN_NPM_REGISTRY_SERVER", "https://nexus.corp/npm")
-                .containsEntry("YARN_NPM_AUTH_TOKEN", "reg-token");
+                .containsEntry("YARN_NPM_AUTH_TOKEN", "reg-token")
+                .containsEntry("YARN_NPM_ALWAYS_AUTH", "true");
 
         NodeNetwork.discard(env);
         assertThat(file).doesNotExist();
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void bun_gets_the_registry_scopes_and_credentials_as_an_owner_only_global_bunfig() throws Exception {
+        NodeNetwork.Sources sources = new NodeNetwork.Sources(
+                REGISTRY,
+                Map.of("@acme", ACME),
+                origin -> origin.equals(REGISTRY)
+                        ? new RepoCredential.Bearer("reg-token")
+                        : new RepoCredential.Basic("u", "p"),
+                uri -> Optional.empty(),
+                List.of(),
+                null);
+
+        Map<String, String> env = NodeNetwork.env(sources, dir.resolve("work"), PackageManager.BUN);
+
+        assertThat(env).doesNotContainKey(NodeNetwork.USERCONFIG);
+        Path home = Path.of(env.get(NodeNetwork.BUN_CONFIG_HOME));
+        assertThat(home.getFileName().toString()).startsWith(NodeNetwork.BUN_CONFIG_PREFIX);
+        Path bunfig = home.resolve(".bunfig.toml");
+        assertThat(Files.readString(bunfig)).isEqualTo("""
+                        [install]
+                        registry = { url = "https://nexus.corp/npm/", token = "reg-token" }
+
+                        [install.scopes]
+                        "@acme" = { url = "https://acme.corp/npm-acme/", username = "u", password = "p" }
+                        """);
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(bunfig)))
+                .isEqualTo("rw-------");
+
+        NodeNetwork.discard(env);
+        assertThat(home).doesNotExist();
+    }
+
+    @Test
+    void yarn_berry_is_told_to_trust_a_plain_http_registry_jk_hands_it() throws Exception {
+        NodeNetwork.Sources sources = new NodeNetwork.Sources(
+                new NodeSources.Origin(URI.create("http://nexus.lan:8081/npm/"), "nexus.lan:8081"),
+                Map.of(),
+                origin -> RepoCredential.ANONYMOUS,
+                uri -> Optional.empty(),
+                List.of(),
+                null);
+
+        Map<String, String> env = NodeNetwork.env(sources, dir.resolve("work"), PackageManager.YARN);
+
+        assertThat(env).containsEntry("YARN_UNSAFE_HTTP_WHITELIST", "nexus.lan");
+        NodeNetwork.discard(env);
     }
 
     @Test
@@ -73,7 +124,8 @@ class NodeNetworkTest {
                 List.of(),
                 null);
 
-        assertThat(NodeNetwork.env(sources, dir.resolve("work"))).isEmpty();
+        assertThat(NodeNetwork.env(sources, dir.resolve("work"), PackageManager.NPM))
+                .isEmpty();
         assertThat(dir.resolve("work")).doesNotExist();
     }
 

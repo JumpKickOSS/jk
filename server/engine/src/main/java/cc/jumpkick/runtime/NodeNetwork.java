@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.node.NodeSources;
+import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.net.URI;
@@ -22,8 +23,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * How a node step's package manager reaches the network: the proxy as each manager reads it, and
  * the registry, scopes and credentials {@link NodeSources} resolves, in a jk-owned npm user config
- * written for the one run and deleted after it. The project's own {@code .npmrc} and {@code
- * .yarnrc.yml} are never touched and still apply.
+ * written for the one run and deleted after it. bun reads no npm user config, so it gets the same
+ * settings as a global {@code .bunfig.toml} in a jk-owned global config directory. The project's own
+ * {@code .npmrc}, {@code bunfig.toml} and {@code .yarnrc.yml} are never touched and still apply.
  */
 final class NodeNetwork {
 
@@ -31,6 +33,12 @@ final class NodeNetwork {
     static final String USERCONFIG_PREFIX = "jk-npmrc-";
 
     static final String USERCONFIG = "npm_config_userconfig";
+
+    /** Directory-name prefix of the per-run bun config home, which {@link #discard} deletes. */
+    static final String BUN_CONFIG_PREFIX = "jk-bun-";
+
+    /** The variable that moves bun's global config directory. */
+    static final String BUN_CONFIG_HOME = "XDG_CONFIG_HOME";
 
     private NodeNetwork() {}
 
@@ -56,12 +64,15 @@ final class NodeNetwork {
         }
     }
 
-    /** The variables a step's environment gets, writing the run's user config under {@code workDir} when one is needed. */
-    static Map<String, String> env(Path workDir) throws IOException {
-        return env(Sources.current(), workDir);
+    /**
+     * The variables a step of {@code manager} gets, writing the run's user config under {@code
+     * workDir} when one is needed.
+     */
+    static Map<String, String> env(Path workDir, PackageManager manager) throws IOException {
+        return env(Sources.current(), workDir, manager);
     }
 
-    static Map<String, String> env(Sources sources, Path workDir) throws IOException {
+    static Map<String, String> env(Sources sources, Path workDir, PackageManager manager) throws IOException {
         Map<String, String> vars = new LinkedHashMap<>(
                 proxy(sources.proxyUrl(), sources.noProxy(), sources.registry().url()));
         URI registry = sources.registry().url();
@@ -70,10 +81,16 @@ final class NodeNetwork {
         if (!defaultRegistry) {
             vars.put("YARN_NPM_REGISTRY_SERVER", trimSlash(registry));
             vars.put("NPM_CONFIG_REGISTRY", registry.toString());
+            // Berry refuses a plain-http registry whose host it was not told to trust.
+            if ("http".equals(registry.getScheme()) && registry.getHost() != null) {
+                vars.put("YARN_UNSAFE_HTTP_WHITELIST", registry.getHost());
+            }
         }
         auth.ifPresent(header -> {
             if (header.startsWith("Bearer ")) vars.put("YARN_NPM_AUTH_TOKEN", header.substring("Bearer ".length()));
             else vars.put("YARN_NPM_AUTH_IDENT", basicIdent(header));
+            // Berry sends a credential on reads only when told to; npm sends a configured one always.
+            vars.put("YARN_NPM_ALWAYS_AUTH", "true");
         });
         StringBuilder npmrc = new StringBuilder();
         if (!defaultRegistry) npmrc.append("registry=").append(registry).append('\n');
@@ -84,6 +101,12 @@ final class NodeNetwork {
                     .ifPresent(header -> npmrc.append(authLine(origin.url(), header)));
         });
         if (npmrc.isEmpty()) return vars;
+        if (manager == PackageManager.BUN) {
+            vars.put(
+                    BUN_CONFIG_HOME,
+                    bunConfigHome(sources, workDir, defaultRegistry, auth).toString());
+            return vars;
+        }
         Files.createDirectories(workDir);
         Path file = workDir.resolve(USERCONFIG_PREFIX + UUID.randomUUID());
         String own = "";
@@ -94,6 +117,53 @@ final class NodeNetwork {
         OwnerOnlyFiles.writeString(file, own + npmrc);
         vars.put(USERCONFIG, file.toString());
         return vars;
+    }
+
+    /**
+     * A config home holding a {@code .bunfig.toml} with the registry, its credential and the scopes,
+     * which bun reads as its global config; the project's own {@code bunfig.toml} still wins over it.
+     */
+    private static Path bunConfigHome(Sources sources, Path workDir, boolean defaultRegistry, Optional<String> auth)
+            throws IOException {
+        StringBuilder toml = new StringBuilder("[install]\n");
+        if (!defaultRegistry || auth.isPresent()) {
+            toml.append("registry = ")
+                    .append(bunRegistry(sources.registry().url(), auth))
+                    .append('\n');
+        }
+        if (!sources.scopes().isEmpty()) {
+            toml.append("\n[install.scopes]\n");
+            sources.scopes().forEach((scope, origin) -> toml.append(quoted(scope.startsWith("@") ? scope : "@" + scope))
+                    .append(" = ")
+                    .append(bunRegistry(
+                            origin.url(),
+                            NodeSources.header(sources.credentials().apply(origin))))
+                    .append('\n'));
+        }
+        Path home = workDir.resolve(BUN_CONFIG_PREFIX + UUID.randomUUID());
+        Files.createDirectories(home);
+        OwnerOnlyFiles.writeString(home.resolve(".bunfig.toml"), toml.toString());
+        return home;
+    }
+
+    /** bun's inline registry: its url and a token, or a username and password. */
+    private static String bunRegistry(URI url, Optional<String> auth) {
+        StringBuilder entry = new StringBuilder("{ url = ").append(quoted(url.toString()));
+        auth.ifPresent(header -> {
+            if (header.startsWith("Bearer ")) {
+                entry.append(", token = ").append(quoted(header.substring("Bearer ".length())));
+            } else {
+                String ident = basicIdent(header);
+                int colon = ident.indexOf(':');
+                entry.append(", username = ").append(quoted(colon < 0 ? ident : ident.substring(0, colon)));
+                if (colon >= 0) entry.append(", password = ").append(quoted(ident.substring(colon + 1)));
+            }
+        });
+        return entry.append(" }").toString();
+    }
+
+    private static String quoted(String s) {
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     /**
@@ -161,12 +231,22 @@ final class NodeNetwork {
         return vars;
     }
 
-    /** Delete the run's user config {@code env} names, if jk wrote it. */
+    /** Delete the run's user config and bun config home {@code env} names, if jk wrote them. */
     static void discard(Map<String, String> env) {
         String path = env.get(USERCONFIG);
-        if (path == null) return;
-        Path file = Path.of(path);
-        if (file.getFileName() == null || !file.getFileName().toString().startsWith(USERCONFIG_PREFIX)) return;
+        if (path != null && owned(Path.of(path), USERCONFIG_PREFIX)) delete(Path.of(path));
+        String bun = env.get(BUN_CONFIG_HOME);
+        if (bun != null && owned(Path.of(bun), BUN_CONFIG_PREFIX)) {
+            delete(Path.of(bun).resolve(".bunfig.toml"));
+            delete(Path.of(bun));
+        }
+    }
+
+    private static boolean owned(Path file, String prefix) {
+        return file.getFileName() != null && file.getFileName().toString().startsWith(prefix);
+    }
+
+    private static void delete(Path file) {
         try {
             Files.deleteIfExists(file);
         } catch (IOException ignored) {

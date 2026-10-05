@@ -121,9 +121,9 @@ the step sets `allow-unlocked = true`.
 ## Supply chain
 
 Installs are frozen: the lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) is
-required and never rewritten, and a missing one is an error with the command to create it. npm's
-cache is jk's (`~/.jk/cache/npm`, pnpm's store `~/.jk/store/pnpm-store`), so `jk cache` and
-`jk storage` see them. Lifecycle scripts run as the project's `.npmrc` says; set `ignore-scripts`
+required and never rewritten, and a missing one is an error with the command to create it. Each
+manager's cache is jk's (`~/.jk/cache/npm`, `~/.jk/cache/bun`, Yarn's global folder
+`~/.jk/cache/yarn`, pnpm's store `~/.jk/store/pnpm-store`), so `jk cache` and `jk storage` see them. Lifecycle scripts run as the project's `.npmrc` says; set `ignore-scripts`
 there to turn them off.
 
 ## Packaging
