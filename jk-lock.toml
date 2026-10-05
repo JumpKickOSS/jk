@@ -1,10 +1,10 @@
 version = 1
-generated-by = "jk 0.14.0"
-generated-by-build = "660f5cc0a6d1"
-generated-by-build-time = "2026-10-05T15:31:47Z"
+generated-by = "jk 0.15.0"
+generated-by-build = "4c53fa5ee65b"
+generated-by-build-time = "2026-10-05T17:16:51Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "f20f5e3fc58a2419ddb1c976c707bee51fcfacffabef82256c493ea1ee4a147b"
+manifests-sha256 = "a04e82443cbb84c050a22ae94458f842abebc128bedfd29dee54f5dcaa40deb9"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -113,64 +113,42 @@ deps = [
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
-version  = "2.21"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b"
-scopes   = ["main"]
-
-[[artifact]]
-name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
 version  = "2.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
-scopes   = ["test"]
+scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-core:jar:"
-version  = "2.21.1"
+version  = "2.22.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1edd5f2e49dca5f8e4519957c24b7b3050bd1c7ee883920da33cff031ff1f7c0"
-scopes   = ["main"]
-
-[[artifact]]
-name     = "com.fasterxml.jackson.core:jackson-core:jar:"
-version  = "2.22.1"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:941ff029bcdb93e83d209ce516c1a7fb8bbac07d0a2fa122f5bf194b2cd7b4f4"
-scopes   = ["test"]
+checksum = "sha256:8a501126a385b25841915d839508f8a66e2a0dbc8a6709d055ef3b3e852b094c"
+pinned-by = "jk.toml:jackson-core"
+scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
-version  = "2.21.1"
+version  = "2.22.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b011eb5202d9ec889e27f1dcbdf6c63f06a76e7a16c0a1b30c6048d556c9a28e"
-scopes   = ["main"]
-deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.21",
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.21.1",
-]
-
-[[artifact]]
-name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
-version  = "2.22.1"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:7dcd7e53bec1f56c7ad278bd1ca0840bebcc595d61ce44d6a8439abb75b965b2"
-scopes   = ["test"]
+checksum = "sha256:556db5439e206114346043f68d200497dc96a0bca62a360a81784092ebd0e0a9"
+pinned-by = "jk.toml:jackson-databind"
+scopes   = ["main", "test"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.3",
 ]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:"
-version  = "2.21.1"
+version  = "2.22.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4d63378b0a6b53733f086ebd301023ba211b9387e417bd584a5400320cd08b8d"
+checksum = "sha256:ec7052ee48c9d873bb8148338a643f02cf89c01d035dd219411473030d6d2b22"
+pinned-by = "jk.toml:jackson-datatype-jsr310"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.21",
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.21.1",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.21.1",
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.3",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.3",
 ]
 
 [[artifact]]
@@ -320,8 +298,8 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:575adde5886ea9b5e741b855c2f029485a4f0ca29b9ce12fa4850208622ebc87"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.21.1",
-  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.21.1",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.3",
+  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.3",
   "com.google.auth:google-auth-library-oauth2-http:jar:@1.10.0",
   "com.google.cloud.tools:jib-build-plan:jar:@0.4.0",
   "com.google.guava:guava:jar:@33.7.1-jre",
@@ -553,8 +531,8 @@ scopes   = ["main"]
 deps = [
   "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.http-client:google-http-client:jar:@2.2.0",
-  "org.apache.httpcomponents.client5:httpclient5:jar:@5.3.1",
-  "org.apache.httpcomponents.core5:httpcore5:jar:@5.2.5",
+  "org.apache.httpcomponents.client5:httpclient5:jar:@5.6.4",
+  "org.apache.httpcomponents.core5:httpcore5:jar:@5.4.4",
 ]
 
 [[artifact]]
@@ -1282,7 +1260,7 @@ deps = [
   "org.codehaus.plexus:plexus-cipher:jar:@2.1.0",
   "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
   "org.codehaus.plexus:plexus-sec-dispatcher:jar:@2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
   "org.codehaus.plexus:plexus-xml:jar:@4.2.0",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
@@ -1333,7 +1311,7 @@ deps = [
   "org.codehaus.plexus:plexus-cipher:jar:@2.0",
   "org.codehaus.plexus:plexus-interpolation:jar:@1.26",
   "org.codehaus.plexus:plexus-sec-dispatcher:jar:@2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@3.6.1",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
   "org.codehaus.plexus:plexus-xml:jar:@4.0.2",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.0.1",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
@@ -1734,7 +1712,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2fc749a84cb3b8c9124a29c8b1eb135d021521b12f6a29dd9b7b1e95be398325"
 scopes   = ["test"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.3",
   "org.apache.avro:avro:jar:@1.12.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.apache.velocity:velocity-engine-core:jar:@2.4.1",
@@ -1748,7 +1726,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b4b44005c8d7a5ff0f7a4602d9fca2517efb3c282b28c5ba03b44e8eebfff7ec"
 scopes   = ["test"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.3",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.avro:avro:jar:@1.12.2",
   "org.apache.commons:commons-lang3:jar:@3.20.0",
@@ -1763,8 +1741,8 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6522e2a146b859ad158bb024dcc3b0bc826680794a2523b0881dafcbd59ce2df"
 scopes   = ["test"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.3",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.3",
   "org.apache.commons:commons-compress:jar:@1.28.0",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
@@ -1827,31 +1805,34 @@ scopes   = ["provided", "test"]
 
 [[artifact]]
 name     = "org.apache.httpcomponents.client5:httpclient5:jar:"
-version  = "5.3.1"
+version  = "5.6.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:08346a757c617f6ecc66af9f099260adde1f3a1351fa81cb22fc17482b31f823"
+checksum = "sha256:bdef5f8841145cd76c4c605ff301bc840eea0d5292332b7b892a93316c0d8ee1"
+pinned-by = "jk.toml:httpclient5"
 scopes   = ["main"]
 deps = [
-  "org.apache.httpcomponents.core5:httpcore5-h2:jar:@5.2.4",
-  "org.apache.httpcomponents.core5:httpcore5:jar:@5.2.5",
+  "org.apache.httpcomponents.core5:httpcore5-h2:jar:@5.4.4",
+  "org.apache.httpcomponents.core5:httpcore5:jar:@5.4.4",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
 
 [[artifact]]
 name     = "org.apache.httpcomponents.core5:httpcore5-h2:jar:"
-version  = "5.2.4"
+version  = "5.4.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:dc1a95e73eb04db93451533d390ce02c53b301a10dc343d08c862f2934b3d30e"
+checksum = "sha256:9a61441889f9b222ce99581977cc549b4dfca7ac9d2841582c1e57a31fa65b48"
+pinned-by = "jk.toml:httpcore5-h2"
 scopes   = ["main"]
 deps = [
-  "org.apache.httpcomponents.core5:httpcore5:jar:@5.2.5",
+  "org.apache.httpcomponents.core5:httpcore5:jar:@5.4.4",
 ]
 
 [[artifact]]
 name     = "org.apache.httpcomponents.core5:httpcore5:jar:"
-version  = "5.2.5"
+version  = "5.4.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:9552b9e06cef3170e37046092de115c33a7cb48ee7ef0d87f1d5650dee7e1b0d"
+checksum = "sha256:b08e3c3a440fec2029e89980134c7c787dd6796454641ad1eafb81478d7e8b0b"
+pinned-by = "jk.toml:httpcore5"
 scopes   = ["main"]
 
 [[artifact]]
@@ -2139,7 +2120,7 @@ checksum = "sha256:54cc1c1ef932e3d4a903352111b42b4d3c3ed8e7a1d0de73b625309d9c3ad
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["main", "provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
 
 [[artifact]]
@@ -2179,7 +2160,7 @@ deps = [
   "org.codehaus.plexus:plexus-classworlds:jar:@2.12.0",
   "org.codehaus.plexus:plexus-component-annotations:jar:@2.2.0",
   "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
   "org.ow2.asm:asm:jar:@9.10.1",
@@ -2214,7 +2195,7 @@ deps = [
   "org.codehaus.plexus:plexus-classworlds:jar:@2.12.0",
   "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
   "org.codehaus.plexus:plexus-sec-dispatcher:jar:@2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
@@ -2248,7 +2229,7 @@ checksum = "sha256:f59d86a507c241bf17bbf050050d1b8b9c0d34d5010a7e2386c3cab7c83b9
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["main", "provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
 
 [[artifact]]
@@ -2262,7 +2243,7 @@ deps = [
   "org.apache.maven:maven-artifact:jar:@3.9.16",
   "org.apache.maven:maven-model:jar:@3.9.16",
   "org.codehaus.plexus:plexus-classworlds:jar:@2.12.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.0.1",
 ]
 
@@ -2274,7 +2255,7 @@ checksum = "sha256:bc3dd413b89a16b695f35a5d0496b58ea2787c30b7b6062c130d24d6d7647
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
 
 [[artifact]]
@@ -2293,7 +2274,7 @@ deps = [
   "org.apache.maven:maven-model-builder:jar:@3.9.16",
   "org.apache.maven:maven-model:jar:@3.9.16",
   "org.apache.maven:maven-repository-metadata:jar:@3.9.16",
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
 
 [[artifact]]
@@ -2309,7 +2290,7 @@ deps = [
   "org.apache.maven:maven-settings:jar:@3.9.16",
   "org.codehaus.plexus:plexus-interpolation:jar:@1.29",
   "org.codehaus.plexus:plexus-sec-dispatcher:jar:@2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
 
 [[artifact]]
@@ -2320,7 +2301,7 @@ checksum = "sha256:322ae5b23f4b7b6ce7896bd33a793143dbbbbcc16c4475e2d7eebbd8f755d
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
 scopes   = ["provided", "test"]
 deps = [
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
 
 [[artifact]]
@@ -2537,31 +2518,15 @@ scopes   = ["provided", "test"]
 deps = [
   "javax.inject:javax.inject:jar:@1",
   "org.codehaus.plexus:plexus-cipher:jar:@2.1.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-utils:jar:"
-version  = "3.6.1"
+version  = "4.0.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:05a63effd67e2d6b9d610cc82e2bd7473289d34802e57a529b28110f28af5679"
-scopes   = ["main", "provided", "test"]
-members  = ["clients/cli", "clients/maven-spy", "server/engine", "server/toolchain"]
-
-[[artifact]]
-name     = "org.codehaus.plexus:plexus-utils:jar:"
-version  = "3.6.1"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:05a63effd67e2d6b9d610cc82e2bd7473289d34802e57a529b28110f28af5679"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
-members  = ["plugins/quarkus"]
-
-[[artifact]]
-name     = "org.codehaus.plexus:plexus-utils:jar:"
-version  = "4.0.2"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:8957274e75fe2c278b1428dd16a0daeee1dd38152cb6eff816177ac28fccb697"
+checksum = "sha256:421ff6ed146c53a9d4eaade8f629b52b12af7187101f1bd06c2c64e904019f3c"
+pinned-by = "jk.toml:plexus-utils"
 scopes   = ["main", "provided", "test"]
 
 [[artifact]]
@@ -2686,7 +2651,7 @@ members  = ["clients/maven-spy"]
 deps = [
   "org.codehaus.plexus:plexus-classworlds:jar:@2.11.0",
   "org.codehaus.plexus:plexus-component-annotations:jar:@2.2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@3.6.1",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.0.0",
 ]
 excluded-by = [
@@ -2703,7 +2668,7 @@ scopes   = ["provided", "test"]
 deps = [
   "org.codehaus.plexus:plexus-classworlds:jar:@2.12.0",
   "org.codehaus.plexus:plexus-component-annotations:jar:@2.2.0",
-  "org.codehaus.plexus:plexus-utils:jar:@4.0.2",
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0",
 ]
 
