@@ -10,6 +10,7 @@ import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.ImageContext;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.testing.RegistryStub;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -43,16 +44,16 @@ class RegistryAuthTest {
     /** Fresh names per test: Jib's base-image cache is keyed by reference, and it is user-global. */
     private static final AtomicInteger NAMES = new AtomicInteger();
 
-    private FakeRegistry registry;
-    private FakeRegistry openRegistry;
+    private RegistryStub registry;
+    private RegistryStub openRegistry;
     private String baseRef;
     private String openBaseRef;
     private String repo;
 
     @BeforeEach
     void start() throws Exception {
-        registry = FakeRegistry.requiring(USER, PASSWORD);
-        openRegistry = FakeRegistry.open();
+        registry = RegistryStub.requiring(USER, PASSWORD);
+        openRegistry = RegistryStub.open();
         repo = "base-" + NAMES.incrementAndGet() + "-" + System.nanoTime();
         baseRef = registry.publishImage(repo, "1");
         openBaseRef = openRegistry.publishImage(repo, "1");

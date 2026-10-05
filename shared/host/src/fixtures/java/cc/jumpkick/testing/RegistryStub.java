@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.image;
+package cc.jumpkick.testing;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -25,9 +25,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A registry that answers {@code 401} to anyone who does not authenticate.
+ * A local OCI registry over loopback HTTP, open to anyone or answering {@code 401} to anyone who
+ * does not authenticate.
  *
- * <p>The point of the fixture is that it does <em>not</em> answer every request the same way: an
+ * <p>The point of the authenticated mode is that it does <em>not</em> answer every request the same way: an
  * unauthenticated caller gets a challenge and nothing else, an authenticated one gets the real
  * distribution API. A stub that served the manifest to anybody would pass whether or not jk
  * attaches a credential, which is exactly how {@code RegistryImage.named(...)} shipped with no
@@ -44,7 +45,7 @@ import org.jspecify.annotations.Nullable;
  * line that never arrives, and Jib's failover does not cover a connect timeout. So a connection
  * that opens with a TLS record is closed at once and everything else is relayed.
  */
-final class FakeRegistry implements AutoCloseable {
+public final class RegistryStub implements AutoCloseable {
 
     private static final String MANIFEST_TYPE = "application/vnd.docker.distribution.manifest.v2+json";
     private static final String CONFIG_TYPE = "application/vnd.docker.container.image.v1+json";
@@ -59,14 +60,14 @@ final class FakeRegistry implements AutoCloseable {
     private final List<String> served = new CopyOnWriteArrayList<>();
     private final AtomicInteger uploadIds = new AtomicInteger();
 
-    private FakeRegistry(HttpServer server, ServerSocket door, @Nullable String expectedAuthorization) {
+    private RegistryStub(HttpServer server, ServerSocket door, @Nullable String expectedAuthorization) {
         this.server = server;
         this.door = door;
         this.expectedAuthorization = expectedAuthorization;
     }
 
     /** Start a registry that serves {@code username}/{@code password} and refuses everyone else. */
-    static FakeRegistry requiring(String username, String password) throws IOException {
+    public static RegistryStub requiring(String username, String password) throws IOException {
         return start("Basic "
                 + Base64.getEncoder().encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8)));
     }
@@ -75,22 +76,22 @@ final class FakeRegistry implements AutoCloseable {
      * A registry that serves anyone — the public base image a push test builds on, so the failure
      * it asserts can only be the push.
      */
-    static FakeRegistry open() throws IOException {
+    public static RegistryStub open() throws IOException {
         return start(null);
     }
 
-    private static FakeRegistry start(@Nullable String expectedAuthorization) throws IOException {
+    private static RegistryStub start(@Nullable String expectedAuthorization) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         ServerSocket door = new ServerSocket(0, 0, InetAddress.getLoopbackAddress());
-        FakeRegistry registry = new FakeRegistry(server, door, expectedAuthorization);
+        RegistryStub registry = new RegistryStub(server, door, expectedAuthorization);
         server.createContext("/", registry::dispatch);
         server.start();
         int backend = server.getAddress().getPort();
-        Thread.ofVirtual().start(() -> {
+        daemon(() -> {
             while (!door.isClosed()) {
                 try {
                     Socket client = door.accept();
-                    Thread.ofVirtual().start(() -> relay(client, backend));
+                    daemon(() -> relay(client, backend));
                 } catch (IOException closed) {
                     return;
                 }
@@ -99,8 +100,16 @@ final class FakeRegistry implements AutoCloseable {
         return registry;
     }
 
+    /** Run {@code body} on a daemon thread; this module targets release 17, before virtual threads. */
+    private static Thread daemon(Runnable body) {
+        Thread thread = new Thread(body, "registry-stub");
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
+    }
+
     /** {@code 127.0.0.1:<port>} — the registry half of an image reference. */
-    String hostPort() {
+    public String hostPort() {
         return "127.0.0.1:" + door.getLocalPort();
     }
 
@@ -125,7 +134,7 @@ final class FakeRegistry implements AutoCloseable {
             }
             fromClient.unread(first);
             try (Socket upstream = new Socket(InetAddress.getLoopbackAddress(), backend)) {
-                Thread request = Thread.ofVirtual().start(() -> pump(fromClient, upstream));
+                Thread request = daemon(() -> pump(fromClient, upstream));
                 copy(upstream.getInputStream(), client.getOutputStream());
                 request.join();
             }
@@ -153,7 +162,7 @@ final class FakeRegistry implements AutoCloseable {
      * reference. Zero layers keeps the fixture to manifest + config while still being an image Jib
      * will build on.
      */
-    String publishImage(String repo, String tag) {
+    public String publishImage(String repo, String tag) {
         byte[] config = ("{\"created\":\"1970-01-01T00:00:00Z\",\"architecture\":\"amd64\",\"os\":\"linux\","
                         + "\"config\":{},\"rootfs\":{\"type\":\"layers\",\"diff_ids\":[]},\"history\":[]}")
                 .getBytes(StandardCharsets.UTF_8);
@@ -168,18 +177,30 @@ final class FakeRegistry implements AutoCloseable {
         return hostPort() + "/" + repo + ":" + tag;
     }
 
+    /** The manifest held for {@code <repo>:<reference>} (a tag or a digest), or null. */
+    public @Nullable String manifest(String repo, String reference) {
+        String digest = manifests.get(repo + ":" + reference);
+        byte[] manifest = digest == null ? null : blobs.get(digest);
+        return manifest == null ? null : new String(manifest, StandardCharsets.UTF_8);
+    }
+
+    /** The blob stored under {@code digest}, or null. */
+    public byte @Nullable [] blob(String digest) {
+        return blobs.get(digest);
+    }
+
     /** True when something pushed a manifest for {@code <repo>:<tag>}. */
-    boolean holdsManifest(String repo, String tag) {
+    public boolean holdsManifest(String repo, String tag) {
         return manifests.containsKey(repo + ":" + tag);
     }
 
     /** Every request that arrived without the credential, as {@code METHOD /path}. */
-    List<String> refused() {
+    public List<String> refused() {
         return List.copyOf(refused);
     }
 
     /** Every request that was answered — all of them, for an {@link #open} registry. */
-    List<String> served() {
+    public List<String> served() {
         return List.copyOf(served);
     }
 
