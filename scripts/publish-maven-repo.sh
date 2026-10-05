@@ -110,7 +110,7 @@ while IFS= read -r -d '' jar; do
   fi
   count=$((count + 1))
   echo "staged $art:$ver"
-done < <(find "$LOCAL" -type f -name "*.jar" -print0)
+done < <(find "$LOCAL" -type f -name "*.jar" -print0 | sort -z)
 
 if [[ "$count" -eq 0 ]]; then
   echo "publish-maven-repo: no jars under $LOCAL" >&2
@@ -166,7 +166,7 @@ while IFS= read -r -d '' pom; do
     fi
   done <<<"$declared"
   echo "checked $art:$ver (declares $(wc -l <<<"$declared" | tr -d ' ') dependencies)"
-done < <(find "$STAGE/cc/jumpkick" -type f -name "*.pom" -print0)
+done < <(find "$STAGE/cc/jumpkick" -type f -name "*.pom" -print0 | sort -z)
 
 # The repository's current maven-metadata.xml for an artifact directory (relative to the repo
 # root), written to $2; "absent" on stdout when the repository has none (HTTP 404). Any other
