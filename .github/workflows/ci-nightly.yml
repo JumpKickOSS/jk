@@ -328,11 +328,18 @@ jobs:
   # means either a pin drifted or the lock writer put something non-deterministic in the file.
   # That is lockfile-as-law, enforced on the samples that are supposed to demonstrate it. A
   # first-party plugin at jk's own pre-release version (cc.jumpkick:jk-minified) is pinned by
-  # version alone, so re-locking each sample against the jk this job just built rewrites nothing;
-  # the check tolerates checksum lines only — a third-party plugin republish is reported as such —
-  # and every other changed jk-lock.toml line fails the lane. A sample's web/package-lock.json is
+  # version alone, so re-locking each sample against the jk this job just built rewrites nothing it
+  # resolves; the check tolerates checksum lines and the writer lines `jk lock` restamps with the
+  # build that ran it — a third-party plugin republish is reported as such — and every other
+  # changed jk-lock.toml line fails the lane. A sample's web/package-lock.json is
   # held to the stricter rule — no change at all — since `npm ci` refuses a lock out of step with
   # its package.json. Both rules live in scripts/examples-lock-drift.sh, which has a fixture test.
+  #
+  # The same job builds the web/ scenarios of JumpKickOSS/jk-examples (a Vite SPA in a Boot app,
+  # Next standalone, Angular, SvelteKit on node, two front ends beside one API) from a clean
+  # checkout with the jk this job built: each provisions its own pinned Node.js, so the runner's
+  # Node plays no part. Each then runs under `jk dev` until its front doors answer, and the same
+  # two lock rules hold over web/**.
   examples:
     name: Doc examples build and test
     runs-on: ubuntu-latest
@@ -385,10 +392,33 @@ jobs:
       - name: Run the vite-sidecar sample under jk dev
         run: |
           (cd docs/user/examples/vite-sidecar/web && npm ci --no-audit --no-fund)
-          scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar http://localhost:5173 /api/hello
+          scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar '/api/hello=hello from the JVM'
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: JumpKickOSS/jk-examples
+          path: jk-examples
+
+      - name: Build every jk-examples web/ scenario from a clean checkout
+        run: |
+          set -euo pipefail
+          failed=0
+          for manifest in jk-examples/web/*/jk.toml; do
+            scenario="$(dirname "$manifest")"
+            echo "::group::$scenario"
+            if ! ( cd "$scenario" && jk lock --no-ansi && jk build --no-ansi ); then
+              echo "::error file=$manifest::scenario failed: $scenario"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+      - name: Run every jk-examples web/ scenario under jk dev
+        run: scripts/example-dev-smoke.sh --examples jk-examples
 
       - name: A sample relock may move first-party plugin checksums and nothing else; an npm lock may not move
-        run: scripts/examples-lock-drift.sh
+        run: scripts/examples-lock-drift.sh . jk-examples
 
   # Product smoke on the OSes the PR gate does not run. Bootstraps the hosted client the way a user
   # installs it (the JVM client on macOS, jk.exe on Windows), hands the home to the checkout's own
