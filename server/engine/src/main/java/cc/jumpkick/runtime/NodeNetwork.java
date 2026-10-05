@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.compat.DownloadOrigin;
+import cc.jumpkick.compat.DownloadOrigins;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.ProxyEnvironment;
@@ -55,9 +57,9 @@ final class NodeNetwork {
 
     /** What the network settings resolve to; {@link #current} is the machine's. */
     record Sources(
-            NodeSources.Origin registry,
-            Map<String, NodeSources.Origin> scopes,
-            Function<NodeSources.Origin, RepoCredential> credentials,
+            DownloadOrigin registry,
+            Map<String, DownloadOrigin> scopes,
+            Function<DownloadOrigin, RepoCredential> credentials,
             Function<URI, Optional<String>> proxyUrl,
             List<String> noProxy,
             @Nullable Path userHome) {
@@ -68,7 +70,7 @@ final class NodeNetwork {
             return new Sources(
                     NodeSources.npmRegistry(),
                     NodeSources.scopes(),
-                    NodeSources::credential,
+                    DownloadOrigins::credential,
                     proxies::proxyUrl,
                     proxies.noProxyHosts(),
                     home == null ? null : Path.of(home));
@@ -94,7 +96,7 @@ final class NodeNetwork {
                 proxy(sources.proxyUrl(), sources.noProxy(), sources.registry().url()));
         URI registry = sources.registry().url();
         boolean defaultRegistry = registry.toString().equals(NodeSources.NPM_REGISTRY);
-        Optional<String> auth = NodeSources.header(sources.credentials().apply(sources.registry()));
+        Optional<String> auth = DownloadOrigins.header(sources.credentials().apply(sources.registry()));
         if (!defaultRegistry) {
             vars.put("YARN_NPM_REGISTRY_SERVER", trimSlash(registry));
             vars.put("NPM_CONFIG_REGISTRY", registry.toString());
@@ -121,7 +123,7 @@ final class NodeNetwork {
         auth.ifPresent(header -> npmrc.append(authLine(registry, header)));
         sources.scopes().forEach((scope, origin) -> {
             npmrc.append(scope).append(":registry=").append(origin.url()).append('\n');
-            NodeSources.header(sources.credentials().apply(origin))
+            DownloadOrigins.header(sources.credentials().apply(origin))
                     .ifPresent(header -> npmrc.append(authLine(origin.url(), header)));
         });
         if (npmrc.isEmpty()) return vars;
@@ -168,7 +170,7 @@ final class NodeNetwork {
                     .append(" = ")
                     .append(bunRegistry(
                             origin.url(),
-                            NodeSources.header(sources.credentials().apply(origin))))
+                            DownloadOrigins.header(sources.credentials().apply(origin))))
                     .append('\n'));
         }
         Path home = workDir.resolve(BUN_CONFIG_PREFIX + UUID.randomUUID());
@@ -213,7 +215,7 @@ final class NodeNetwork {
             e.append("    npmRegistryServer: ")
                     .append(quoted(trimSlash(origin.url())))
                     .append('\n');
-            NodeSources.header(sources.credentials().apply(origin)).ifPresent(header -> {
+            DownloadOrigins.header(sources.credentials().apply(origin)).ifPresent(header -> {
                 if (header.startsWith("Bearer ")) {
                     e.append("    npmAuthToken: ").append(quoted(header.substring("Bearer ".length())));
                 } else {
@@ -330,7 +332,7 @@ final class NodeNetwork {
         return keyed(NodeSources.npmRegistry(), NodeSources.scopes());
     }
 
-    static Map<String, String> keyed(NodeSources.Origin registryOrigin, Map<String, NodeSources.Origin> scopes) {
+    static Map<String, String> keyed(DownloadOrigin registryOrigin, Map<String, DownloadOrigin> scopes) {
         Map<String, String> vars = new LinkedHashMap<>();
         URI registry = registryOrigin.url();
         if (!registry.toString().equals(NodeSources.NPM_REGISTRY)) vars.put("JK_NODE_REGISTRY", registry.toString());

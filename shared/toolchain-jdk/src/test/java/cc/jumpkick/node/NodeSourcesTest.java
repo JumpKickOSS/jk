@@ -4,6 +4,8 @@ package cc.jumpkick.node;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.compat.DownloadOrigin;
+import cc.jumpkick.compat.DownloadOrigins;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
@@ -49,21 +51,21 @@ class NodeSourcesTest {
                 </mirrors></settings>
                 """);
         GlobalConfig.NodeSources none = GlobalConfig.NodeSources.EMPTY;
-        GlobalConfig.NodeSources file =
-                new GlobalConfig.NodeSources("https://file.corp/dist", "https://file.corp/npm/", Map.of());
+        GlobalConfig.NodeSources file = new GlobalConfig.NodeSources("https://file.corp/npm/", Map.of());
+        Map<String, String> mirrors = Map.of("node", "https://file.corp/dist");
         Map<String, String> env = Map.of(NodeSources.REGISTRY_ENV, "https://env.corp/npm");
 
-        NodeSources.Inputs fromEnv = new NodeSources.Inputs(env::get, file, maven);
+        NodeSources.Inputs fromEnv = new NodeSources.Inputs(env::get, file, mirrors, maven);
         assertThat(NodeSources.npmRegistry(fromEnv).url()).hasToString("https://env.corp/npm/");
         assertThat(NodeSources.dist(fromEnv).url()).hasToString("https://file.corp/dist/");
 
-        NodeSources.Inputs fromSettings = new NodeSources.Inputs(name -> null, none, maven);
+        NodeSources.Inputs fromSettings = new NodeSources.Inputs(name -> null, none, Map.of(), maven);
         assertThat(NodeSources.npmRegistry(fromSettings))
-                .isEqualTo(new NodeSources.Origin(URI.create("https://nexus.corp/npm/"), "corp-npm"));
+                .isEqualTo(new DownloadOrigin(URI.create("https://nexus.corp/npm/"), "corp-npm"));
         assertThat(NodeSources.dist(fromSettings))
-                .isEqualTo(new NodeSources.Origin(URI.create("https://nexus.corp/node/"), "corp-node"));
+                .isEqualTo(new DownloadOrigin(URI.create("https://nexus.corp/node/"), "corp-node"));
 
-        NodeSources.Inputs nothing = new NodeSources.Inputs(name -> null, none, MavenSettings.empty());
+        NodeSources.Inputs nothing = new NodeSources.Inputs(name -> null, none, Map.of(), MavenSettings.empty());
         assertThat(NodeSources.npmRegistry(nothing).url()).hasToString(NodeSources.NPM_REGISTRY);
         assertThat(NodeSources.npmRegistry(nothing).credentialId()).isEqualTo("registry.npmjs.org");
         assertThat(NodeSources.dist(nothing).url()).hasToString(NodeSources.NODEJS_DIST);
@@ -73,15 +75,15 @@ class NodeSourcesTest {
     void config_values_expand_variables_and_an_unset_one_is_named() {
         Map<String, String> env = Map.of("NEXUS", "https://nexus.corp");
         GlobalConfig.NodeSources file =
-                new GlobalConfig.NodeSources(null, "${NEXUS}/npm/", Map.of("@acme", "${NEXUS}/npm-acme"));
-        NodeSources.Inputs in = new NodeSources.Inputs(env::get, file, MavenSettings.empty());
+                new GlobalConfig.NodeSources("${NEXUS}/npm/", Map.of("@acme", "${NEXUS}/npm-acme"));
+        NodeSources.Inputs in = new NodeSources.Inputs(env::get, file, Map.of(), MavenSettings.empty());
 
         assertThat(NodeSources.npmRegistry(in).url()).hasToString("https://nexus.corp/npm/");
         assertThat(NodeSources.scopes(in))
                 .containsExactly(Map.entry(
-                        "@acme", new NodeSources.Origin(URI.create("https://nexus.corp/npm-acme/"), "nexus.corp")));
+                        "@acme", new DownloadOrigin(URI.create("https://nexus.corp/npm-acme/"), "nexus.corp")));
 
-        NodeSources.Inputs unset = new NodeSources.Inputs(name -> null, file, MavenSettings.empty());
+        NodeSources.Inputs unset = new NodeSources.Inputs(name -> null, file, Map.of(), MavenSettings.empty());
         assertThatThrownBy(() -> NodeSources.npmRegistry(unset))
                 .hasMessageContaining("[node] registry")
                 .hasMessageContaining("${NEXUS}");
@@ -89,10 +91,9 @@ class NodeSourcesTest {
 
     @Test
     void an_origin_s_credential_is_sent_to_that_origin_alone() {
-        NodeSources.Origin registry =
-                new NodeSources.Origin(URI.create("https://nexus.corp:8443/npm/"), "nexus.corp:8443");
+        DownloadOrigin registry = new DownloadOrigin(URI.create("https://nexus.corp:8443/npm/"), "nexus.corp:8443");
         Map<String, String> env = Map.of("JK_REPO_NEXUS_CORP_8443_TOKEN", "t0ken");
-        Function<URI, Optional<String>> auth = NodeSources.authorization(List.of(registry), resolver(env::get));
+        Function<URI, Optional<String>> auth = DownloadOrigins.authorization(List.of(registry), resolver(env::get));
 
         assertThat(auth.apply(URI.create("https://nexus.corp:8443/npm/left-pad/-/left-pad-1.0.0.tgz")))
                 .contains("Bearer t0ken");
@@ -101,9 +102,9 @@ class NodeSourcesTest {
                 .isEmpty();
         assertThat(auth.apply(URI.create("https://registry.npmjs.org/left-pad")))
                 .isEmpty();
-        assertThat(NodeSources.header(new RepoCredential.Basic("u", "p")))
+        assertThat(DownloadOrigins.header(new RepoCredential.Basic("u", "p")))
                 .contains("Basic " + Base64.getEncoder().encodeToString("u:p".getBytes(StandardCharsets.UTF_8)));
-        assertThat(NodeSources.header(RepoCredential.ANONYMOUS)).isEmpty();
+        assertThat(DownloadOrigins.header(RepoCredential.ANONYMOUS)).isEmpty();
     }
 
     @Test
@@ -118,10 +119,10 @@ class NodeSourcesTest {
                   <mirrors><mirror><id>corp-node</id><mirrorOf>nodejs</mirrorOf><url>%s</url></mirror></mirrors>
                 </settings>
                 """.formatted(base));
-        NodeSources.Origin origin =
-                NodeSources.dist(new NodeSources.Inputs(name -> null, GlobalConfig.NodeSources.EMPTY, maven));
-        Http client =
-                new Http().withAuthorization(NodeSources.authorization(List.of(origin), resolver(name -> null, maven)));
+        DownloadOrigin origin =
+                NodeSources.dist(new NodeSources.Inputs(name -> null, GlobalConfig.NodeSources.EMPTY, Map.of(), maven));
+        Http client = new Http()
+                .withAuthorization(DownloadOrigins.authorization(List.of(origin), resolver(name -> null, maven)));
 
         List<NodeRelease> releases =
                 new NodeCatalog(client, origin.url(), dir.resolve("store"), Duration.ofHours(1)).releases();

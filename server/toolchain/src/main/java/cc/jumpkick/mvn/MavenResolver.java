@@ -2,10 +2,10 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.compat.DistMirrors;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.compat.WrapperDistribution;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
@@ -31,7 +31,6 @@ public final class MavenResolver {
     public static final String DEFAULT_VERSION = "3.9.16";
 
     /** Apache Maven's own distribution zips, published to Central like any other artifact. */
-    private static final String DEFAULT_BASE = RepositorySpec.MAVEN_CENTRAL.url() + "org/apache/maven/apache-maven/";
 
     // apache-maven-<version>-bin.<zip|tar.gz>
     private static final Pattern FILENAME_VERSION = Pattern.compile("apache-maven-(?<v>[^/]+)-bin\\.(?:zip|tar\\.gz)$");
@@ -62,7 +61,8 @@ public final class MavenResolver {
     /** The distribution for an explicit Maven version; blank means {@link #DEFAULT_VERSION}. */
     public static ToolDistribution distributionFor(@Nullable String version) {
         String v = version == null || version.isBlank() ? DEFAULT_VERSION : ToolRegistry.requireVersion(version);
-        URI uri = URI.create(DEFAULT_BASE + v + "/apache-maven-" + v + "-bin.zip");
+        URI uri = DistMirrors.base(DistMirrors.Dist.MAVEN)
+                .resolve("org/apache/maven/apache-maven/" + v + "/apache-maven-" + v + "-bin.zip");
         return new ToolDistribution(BuildTool.MAVEN, v, uri, "zip");
     }
 

@@ -63,14 +63,14 @@ final class FrontendPlugin {
     private static final List<String> MANAGER_VERSIONS =
             List.of("npmVersion", "yarnVersion", "pnpmVersion", "bunVersion", "corepackVersion");
     private static final Map<String, String> MIRRORS = Map.of(
-            "nodeDownloadRoot", "dist-mirror",
-            "downloadRoot", "dist-mirror",
-            "npmDownloadRoot", "registry",
-            "yarnDownloadRoot", "registry",
-            "pnpmDownloadRoot", "registry",
-            "bunDownloadRoot", "registry",
-            "corepackDownloadRoot", "registry",
-            "npmRegistryURL", "registry");
+            "nodeDownloadRoot", "[mirrors] node",
+            "downloadRoot", "[mirrors] node",
+            "npmDownloadRoot", "[node] registry",
+            "yarnDownloadRoot", "[node] registry",
+            "pnpmDownloadRoot", "[node] registry",
+            "bunDownloadRoot", "[node] registry",
+            "corepackDownloadRoot", "[node] registry",
+            "npmRegistryURL", "[node] registry");
     private static final List<String> SKIP_PROPERTIES = List.of(
             "skip.npm",
             "skip.yarn",
@@ -378,7 +378,7 @@ final class FrontendPlugin {
             String url = setting(shared, config, mirror.getKey());
             if (url == null || !reported.add(mirror.getKey())) continue;
             report.warning(where + " `<" + mirror.getKey() + ">` is machine configuration jk does not take from a"
-                    + " project: add `[node] " + mirror.getValue() + " = \"" + url + "\"` to ~/.jk/config.toml");
+                    + " project: add `" + mirror.getValue() + " = \"" + url + "\"` to ~/.jk/config.toml");
         }
         String server = setting(shared, config, "serverId");
         if (server != null && reported.add("serverId")) {

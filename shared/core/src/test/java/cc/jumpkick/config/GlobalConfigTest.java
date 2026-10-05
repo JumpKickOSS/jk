@@ -38,6 +38,27 @@ class GlobalConfigTest {
     }
 
     @Test
+    void mirrors_maps_each_tool_to_its_base_and_node_keeps_its_registry(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("config.toml");
+        Files.writeString(file, """
+                [mirrors]
+                kotlin = "https://nexus.corp/kotlin/"
+                gradle = "${NEXUS}/gradle"
+                node = ""
+
+                [node]
+                registry = "https://nexus.corp/npm/"
+                """);
+
+        assertThat(GlobalConfig.mirrors(file))
+                .as("as written, a blank value dropped")
+                .containsOnly(
+                        Map.entry("kotlin", "https://nexus.corp/kotlin/"), Map.entry("gradle", "${NEXUS}/gradle"));
+        assertThat(GlobalConfig.nodeSources(file).registry()).isEqualTo("https://nexus.corp/npm/");
+        assertThat(GlobalConfig.mirrors(dir.resolve("absent.toml"))).isEmpty();
+    }
+
+    @Test
     void defaults_to_auto_when_unset_or_unparseable(@TempDir Path dir) throws IOException {
         assertThat(mode(dir.resolve("nope.toml"))).isEqualTo(NerdFontMode.AUTO); // no file
         assertThat(mode(write(dir, "# empty-ish\n"))).isEqualTo(NerdFontMode.AUTO);

@@ -2,6 +2,7 @@
 package cc.jumpkick.kotlin;
 
 import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.compat.DistMirrors;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.version.Versions;
 import java.net.URI;
@@ -41,8 +42,6 @@ public final class KotlinResolver {
     /** jk's bundled default Kotlin version. Never below {@link #FLOOR_VERSION}. */
     public static final String DEFAULT_VERSION = FLOOR_VERSION;
 
-    private static final String DEFAULT_BASE = "https://github.com/JetBrains/kotlin/releases/download/";
-
     private KotlinResolver() {}
 
     public static ToolDistribution defaultDistribution() {
@@ -71,16 +70,12 @@ public final class KotlinResolver {
     }
 
     /**
-     * The distribution for an explicit Kotlin version.
-     *
-     * <p>One place builds this URL. It was two — {@code CompileToolchain.resolveKotlinHome} assembled
-     * the same release path inline for its version-override branch — and a download URL spelled
-     * twice is a rename that half-lands: one caller keeps fetching from a path the other has moved
-     * off, and the only symptom is a 404 in whichever branch was not updated.
+     * The distribution for an explicit Kotlin version, from the configured mirror ({@link DistMirrors}).
+     * The one place this URL is built.
      */
     public static ToolDistribution distributionFor(@Nullable String version) {
         String v = version == null || version.isBlank() ? DEFAULT_VERSION : version.trim();
-        URI uri = URI.create(DEFAULT_BASE + "v" + v + "/kotlin-compiler-" + v + ".zip");
+        URI uri = DistMirrors.base(DistMirrors.Dist.KOTLIN).resolve("v" + v + "/kotlin-compiler-" + v + ".zip");
         return new ToolDistribution(BuildTool.KOTLIN, v, uri, "zip");
     }
 }
