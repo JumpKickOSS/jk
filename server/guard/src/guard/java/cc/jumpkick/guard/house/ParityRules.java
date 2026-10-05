@@ -352,6 +352,8 @@ final class ParityRules {
     private static final String BOOTSTRAP_READER = ".jk/ci-bootstrap-reader";
     /** The one script every workflow bootstraps through: the pin, then the bridge when one is named. */
     private static final String BOOTSTRAP_SCRIPT = "scripts/ci-bootstrap.sh";
+    /** The script the self-host job's takeover runs: both install passes and the proof of the home. */
+    private static final String TAKEOVER_SCRIPT = "scripts/ci-takeover.sh";
 
     private static final Pattern COMMIT_SHA = Pattern.compile("[0-9a-f]{40}");
     /** The tiers a nightly run owns: each is one `jk test` invocation the workflow must spell. */
@@ -414,8 +416,13 @@ final class ParityRules {
             if (!selfHost.contains("JK_HOME:"))
                 problems.add(
                         "the self-host job must run against an isolated JK_HOME, or it can pass on state the pull request did not produce");
+            // A verb the job runs through the takeover script counts, read with its comments blanked.
+            String takeover = selfHost.contains(TAKEOVER_SCRIPT) && exists(text, TAKEOVER_SCRIPT)
+                    ? HouseRules.owner(text, TAKEOVER_SCRIPT)
+                    : "";
             for (String verb : List.of("jk build", "jk install", "jk guard", "jk test"))
-                if (!selfHost.contains(verb)) problems.add(CI + "'s self-host job must run `" + verb + "`");
+                if (!selfHost.contains(verb) && !takeover.contains(verb))
+                    problems.add(CI + "'s self-host job must run `" + verb + "`");
             if (selfHost.contains("gradlew"))
                 problems.add(CI + "'s self-host job must not invoke gradlew: it bootstraps from the hosted release "
                         + BOOTSTRAP_PIN

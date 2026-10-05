@@ -47,10 +47,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       # A red class is a verdict about its module; --continue reports every module's.
       - name: Integration profile
@@ -86,10 +83,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Slow profile
         run: jk test --profile slow --continue --no-ansi
@@ -116,10 +110,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Network profile
         run: jk test --profile network --continue --no-ansi
@@ -147,10 +138,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Bench profile
         run: jk test --profile bench --continue --no-ansi
@@ -178,10 +166,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Audit the locked graph at LOW
         continue-on-error: true
@@ -225,10 +210,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Unit tier under the JaCoCo agent
         run: jk test --coverage --no-ansi
@@ -288,10 +270,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Run the house-rule lanes; every guard fixture must bite
         run: jk guard --no-ansi
@@ -346,10 +325,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Build and test every sample
         run: |
@@ -455,8 +431,7 @@ jobs:
             export PATH
             jk engine stop --now --no-ansi
           fi
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+          bash scripts/ci-takeover.sh --build --install-only
 
       - name: Product smoke
         shell: bash
@@ -487,10 +462,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --yes --no-ansi
-          jk install --skip-tests --yes --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only --yes
 
       - name: The JVM client answers and builds a sample through the installed engine
         run: |

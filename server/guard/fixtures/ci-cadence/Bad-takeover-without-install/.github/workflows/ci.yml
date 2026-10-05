@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # JumpKick building JumpKick: the merge authority.
+  self-host:
+    name: Self-host (jk builds jk)
+    runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+    steps:
+      - uses: actions/checkout@v4
+
+      # No step here runs a second build system: the ci-cadence guard fails the build on a `gradlew`
+      # in this job. The version is read from the pin, never spelled here, so a release bumps one file.
+      - name: Bootstrap jk from the hosted release
+        run: bash scripts/ci-bootstrap.sh
+
+      - name: Self-host build
+        run: jk build --skip-tests --no-ansi
+
+      - name: The checkout's own jk takes over
+        run: bash scripts/ci-takeover.sh
+
+      - name: House-rule gate (every lane)
+        run: jk guard --no-ansi
+
+      - name: Self-host fast test tier
+        run: jk test --no-ansi
+
+      - name: Curated integration lane
+        timeout-minutes: 8
+        run: scripts/curated-integration.sh

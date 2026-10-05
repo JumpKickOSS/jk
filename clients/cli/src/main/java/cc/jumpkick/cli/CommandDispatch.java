@@ -456,6 +456,11 @@ public final class CommandDispatch {
             closeActiveLiveRegion();
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
             CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + msg);
+            // The message alone often names no path ("No such file or directory"); the stack goes to
+            // the state log every time, and to the terminal under -v.
+            String[] argv = args.joined().toArray(String[]::new);
+            CliFailure.appendLog(argv, e);
+            if (CliFailure.wantsVerbose(argv)) e.printStackTrace(System.err);
             code = 1;
         } finally {
             if (capture) {
