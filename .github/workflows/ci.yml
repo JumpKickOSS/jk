@@ -28,8 +28,27 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      # The commits this push or pull request brings, not the whole history: history is fixed once
+      # pushed, and a trailer that landed before this check existed would fail every run forever.
       - name: Scan commit messages
-        run: bash scripts/check-no-agent-attribution.sh
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          zero=0000000000000000000000000000000000000000
+          if [[ -n "$BASE" ]]; then
+            range="$BASE..$HEAD_SHA"
+          elif [[ -n "$BEFORE" && "$BEFORE" != "$zero" ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..$HEAD_SHA"
+          elif git rev-parse -q --verify origin/main >/dev/null && ! git merge-base --is-ancestor "$HEAD_SHA" origin/main; then
+            range="origin/main..$HEAD_SHA"   # a new branch: what it adds to main
+          else
+            range="$HEAD_SHA^!"              # a forced push whose old head is gone: the pushed commit
+          fi
+          echo "scanning $range"
+          bash scripts/check-no-agent-attribution.sh "$range"
 
   # The shell fixtures behind the installers, the wrapper, the Maven-repository publisher, the
   # release scripts and the curated lane's runner: network-free, and they need bash, openssl and xz
