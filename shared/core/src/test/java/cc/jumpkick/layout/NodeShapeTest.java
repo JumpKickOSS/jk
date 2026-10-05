@@ -221,4 +221,31 @@ class NodeShapeTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("lands outside both");
     }
+
+    @Test
+    void a_pom_built_module_has_the_node_build_its_shadow_declares_and_no_other() throws IOException {
+        write(tmp.resolve("pom.xml"), "<project/>");
+        write(tmp.resolve("package.json"), "{\"scripts\": {\"build\": \"webpack\"}}");
+        Path war = Files.createDirectories(tmp.resolve("war"));
+        write(war.resolve("pom.xml"), "<project/>");
+        write(war.resolve("package.json"), "{\"devDependencies\": {\"prettier\": \"3\"}}");
+        JkBuild placed = JkBuildParser.parse("""
+                name = "war"
+                group = "g"
+                version = "1.0"
+
+                [war]
+
+                [node]
+                version = 24
+                dir = ".."
+                out = "war/src/main/webapp/jsbundles"
+                """);
+        JkBuild plain = JkBuildParser.parse("name = \"war\"\ngroup = \"g\"\nversion = \"1.0\"\nnode = 24\n");
+
+        assertThat(NodeShape.kind(placed, war)).isEqualTo(NodeShape.Kind.SIDE_BY_SIDE);
+        assertThat(NodeShape.kind(plain, war))
+                .as("a tooling package.json beside a Maven module is not a node build")
+                .isEqualTo(NodeShape.Kind.NONE);
+    }
 }
