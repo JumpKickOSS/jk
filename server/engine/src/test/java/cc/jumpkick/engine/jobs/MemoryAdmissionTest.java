@@ -25,6 +25,12 @@ import org.junit.jupiter.api.io.TempDir;
 /** The admission arithmetic on a synthetic heap and a fixed per-job cost. */
 class MemoryAdmissionTest {
 
+    /**
+     * How long a step may take before the test calls it a hang. Not the property under test: every
+     * step here is driven by a fake heap, host and clock, and a loaded host only makes it slower.
+     */
+    private static final Duration HANG = Duration.ofSeconds(60);
+
     private static final long MIB = 1L << 20;
 
     /** A heap whose committed size is whatever the test says it is. */
@@ -77,14 +83,14 @@ class MemoryAdmissionTest {
         AtomicInteger aheadRef = new AtomicInteger(-1);
         CompletableFuture<Verdict> third =
                 async(() -> gate.admit(3, "build", "/c", (ahead, waited) -> aheadRef.set(ahead), () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         assertThat(aheadRef).hasValue(0);
         assertThat(third).isNotDone();
         assertThat(gate.admittedCount()).isEqualTo(2);
 
         gate.release(1);
 
-        assertThat(third.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        assertThat(third.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         assertThat(heap.collections)
                 .as("waiters are re-judged after a collection")
                 .hasValue(1);
@@ -101,11 +107,11 @@ class MemoryAdmissionTest {
         heap.committed = 900 * MIB;
         CompletableFuture<Verdict> second =
                 async(() -> gate.admit(2, "build", "/b", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         assertThat(second).isNotDone();
         // A collection (or the job's own release of memory) brings committed back; the poll notices.
         heap.committed = 300 * MIB;
-        assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        assertThat(second.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
     }
 
     /** A job the whole heap could not hold is refused before it starts; one that fits alone is admitted at once. */
@@ -154,12 +160,12 @@ class MemoryAdmissionTest {
                 async(() -> gate.admit(2, "build", "/b", (ahead, waited) -> {}, () -> false));
         CompletableFuture<Verdict> byDir =
                 async(() -> gate.admit(3, "build", "/c", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
+        Await.until(HANG, () -> gate.queued() == 2);
         assertThat(gate.cancel(99)).as("an unknown jid is not waiting").isFalse();
         assertThat(gate.cancel(2)).isTrue();
-        assertThat(byJid.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
+        assertThat(byJid.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
         assertThat(gate.cancelForDir("/c")).isEqualTo(1);
-        assertThat(byDir.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
+        assertThat(byDir.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
         assertThat(gate.queued()).isZero();
         assertThat(gate.admittedCount()).as("the running job is untouched").isEqualTo(1);
     }
@@ -172,9 +178,9 @@ class MemoryAdmissionTest {
         AtomicBoolean draining = new AtomicBoolean();
         CompletableFuture<Verdict> second =
                 async(() -> gate.admit(2, "build", "/b", (ahead, waited) -> {}, draining::get));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         draining.set(true);
-        assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.DRAINING);
+        assertThat(second.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.DRAINING);
     }
 
     @Test
@@ -191,21 +197,21 @@ class MemoryAdmissionTest {
             admittedOrder.add(3L);
             return v;
         });
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         AtomicInteger smallAhead = new AtomicInteger(-1);
         CompletableFuture<Verdict> small = async(() -> {
             Verdict v = gate.admit(4, "build", "/small", (ahead, waited) -> smallAhead.set(ahead), () -> false);
             admittedOrder.add(4L);
             return v;
         });
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
+        Await.until(HANG, () -> gate.queued() == 2);
         assertThat(smallAhead).hasValue(1);
         assertThat(small).isNotDone();
 
         gate.release(1);
 
-        assertThat(third.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
-        assertThat(small.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        assertThat(third.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        assertThat(small.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         assertThat(admittedOrder).containsExactly(3L, 4L);
     }
 
@@ -238,7 +244,7 @@ class MemoryAdmissionTest {
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
                 async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         assertThat(build).isNotDone();
 
         // format and guard are judged by the ledger (60 + 100 + 30 + 30 of 224) and the host, and do
@@ -253,12 +259,12 @@ class MemoryAdmissionTest {
         AtomicInteger treeAhead = new AtomicInteger(-1);
         CompletableFuture<Verdict> tree =
                 async(() -> gate.admit(5, "tree", "/tool", (ahead, waited) -> treeAhead.set(ahead), () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
+        Await.until(HANG, () -> gate.queued() == 2);
         assertThat(treeAhead).hasValue(1);
         assertThat(tree).isNotDone();
 
         gate.release(3);
-        assertThat(tree.get(5, TimeUnit.SECONDS))
+        assertThat(tree.get(HANG.toSeconds(), TimeUnit.SECONDS))
                 .as("brief jobs do not wait behind the queued build")
                 .isEqualTo(Verdict.ADMITTED);
         assertThat(build).isNotDone();
@@ -266,7 +272,7 @@ class MemoryAdmissionTest {
         gate.release(4);
         gate.release(5);
         heap.committed = 60 * MIB;
-        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
     }
 
     @Test
@@ -280,14 +286,14 @@ class MemoryAdmissionTest {
         AtomicInteger aheadRef = new AtomicInteger(-1);
         CompletableFuture<Verdict> format =
                 async(() -> gate.admit(2, "format", "/tool", (ahead, waited) -> aheadRef.set(ahead), () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         assertThat(aheadRef).hasValue(0);
         assertThat(format)
                 .as("the host has 100 MiB free; a 50 MiB job needs 256 MiB of headroom beyond it")
                 .isNotDone();
 
         hostFree.set(8L << 30);
-        assertThat(format.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        assertThat(format.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
     }
 
     @Test
@@ -300,24 +306,24 @@ class MemoryAdmissionTest {
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
                 async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         clock.now += 5_000L;
         CompletableFuture<Verdict> second =
                 async(() -> gate.admit(3, "build", "/app", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
+        Await.until(HANG, () -> gate.queued() == 2);
         clock.now += 4_999L;
         Thread.sleep(2 * MemoryAdmission.POLL_MS);
         assertThat(build).as("one millisecond short of the fair wait").isNotDone();
 
         clock.now += 1L;
-        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         Thread.sleep(2 * MemoryAdmission.POLL_MS);
         assertThat(second)
                 .as("the next head waits its own fair wait, measured from its own arrival")
                 .isNotDone();
         assertThat(gate.queued()).isEqualTo(1);
         clock.now += 5_000L;
-        assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        assertThat(second.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
     }
 
     @Test
@@ -330,12 +336,12 @@ class MemoryAdmissionTest {
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
                 async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         clock.now += 60_000L;
         Thread.sleep(2 * MemoryAdmission.POLL_MS);
         assertThat(build).isNotDone();
         assertThat(gate.cancel(2)).isTrue();
-        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
+        assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
     }
 
     @Test
@@ -348,9 +354,9 @@ class MemoryAdmissionTest {
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
                 async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         clock.now += 5_000L;
-        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.TIMED_OUT);
+        assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.TIMED_OUT);
         assertThat(gate.queued()).isZero();
         assertThat(gate.admittedCount()).as("the live job is untouched").isEqualTo(1);
     }
@@ -366,16 +372,16 @@ class MemoryAdmissionTest {
         List<long[]> reports = new CopyOnWriteArrayList<>();
         CompletableFuture<Verdict> build = async(() -> gate.admit(
                 2, "build", "/lib", (ahead, waited) -> reports.add(new long[] {ahead, waited}), () -> false));
-        Await.until(Duration.ofSeconds(5), () -> reports.size() == 1);
+        Await.until(HANG, () -> reports.size() == 1);
         assertThat(reports.get(0)).containsExactly(0L, 0L);
         clock.now += 1_000L;
-        Await.until(Duration.ofSeconds(5), () -> reports.size() == 2);
+        Await.until(HANG, () -> reports.size() == 2);
         assertThat(reports.get(1)).containsExactly(0L, 1_000L);
         clock.now += 1_000L;
-        Await.until(Duration.ofSeconds(5), () -> reports.size() == 3);
+        Await.until(HANG, () -> reports.size() == 3);
         assertThat(reports.get(2)).containsExactly(0L, 2_000L);
         assertThat(gate.cancel(2)).isTrue();
-        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
+        assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
     }
 
     @Test
@@ -388,11 +394,11 @@ class MemoryAdmissionTest {
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> first =
                 async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        Await.until(HANG, () -> gate.queued() == 1);
         clock.now = 4_000L;
         CompletableFuture<Verdict> second =
                 async(() -> gate.admit(3, "compile", "/app", (ahead, waited) -> {}, () -> false));
-        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
+        Await.until(HANG, () -> gate.queued() == 2);
 
         List<JobRow> rows = gate.queuedRows();
         assertThat(rows)
@@ -405,8 +411,8 @@ class MemoryAdmissionTest {
                 .containsEntry("workers", -1);
         gate.cancel(2);
         gate.cancel(3);
-        first.get(5, TimeUnit.SECONDS);
-        second.get(5, TimeUnit.SECONDS);
+        first.get(HANG.toSeconds(), TimeUnit.SECONDS);
+        second.get(HANG.toSeconds(), TimeUnit.SECONDS);
     }
 
     @Test

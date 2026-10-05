@@ -8,10 +8,10 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SocketChannel;
 import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,10 +51,13 @@ class ConnectFaultsTest {
     @Test
     void an_address_that_answered_nothing_through_a_whole_ladder_is_refused_before_the_next_request_dials()
             throws Exception {
-        int port;
-        try (ServerSocket free = new ServerSocket(0)) {
-            port = free.getLocalPort();
+        try (SocketChannel held = refusingPort()) {
+            int port = ((InetSocketAddress) held.getLocalAddress()).getPort();
+            ladderThenRefused(port);
         }
+    }
+
+    private void ladderThenRefused(int port) throws Exception {
         URI closed = URI.create("http://127.0.0.1:" + port + "/maven2/a.pom");
         Http http = http();
 
@@ -83,10 +86,12 @@ class ConnectFaultsTest {
     /** Through a proxy the proxy is what answers nothing; the target host is not blamed for it. */
     @Test
     void a_request_routed_through_a_proxy_that_answers_nothing_remembers_the_proxy_not_the_target() throws Exception {
-        int port;
-        try (ServerSocket free = new ServerSocket(0)) {
-            port = free.getLocalPort();
+        try (SocketChannel held = refusingPort()) {
+            proxyAnswersNothing(((InetSocketAddress) held.getLocalAddress()).getPort());
         }
+    }
+
+    private void proxyAnswersNothing(int port) throws Exception {
         URI behind = URI.create("http://repo.example.test/maven2/a.pom");
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
@@ -115,6 +120,16 @@ class ConnectFaultsTest {
                 .isEqualTo("repo.example:80");
         assertThat(ConnectFaults.authority(URI.create("http://repo.example:8081/x")))
                 .isEqualTo("repo.example:8081");
+    }
+
+    /**
+     * A loopback port that refuses connections for as long as the channel is open: bound, never
+     * listening. Closing a probe socket instead frees the port for any process on the host to take.
+     */
+    private static SocketChannel refusingPort() throws IOException {
+        SocketChannel channel = SocketChannel.open();
+        channel.bind(new InetSocketAddress("127.0.0.1", 0));
+        return channel;
     }
 
     private static Http http() {
