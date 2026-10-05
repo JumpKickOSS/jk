@@ -46,7 +46,11 @@ public final class NodeShape {
 
     /** The node build {@code build} (inheritance applied) has in {@code moduleDir}. */
     public static Kind kind(JkBuild build, Path moduleDir) {
-        if (exempt(build, moduleDir)) return Kind.NONE;
+        // A pom.xml-built module has a node build only when its shadow placed one: a tooling
+        // package.json beside a Maven module is not one.
+        if (build.isWorkspaceRoot() || (ManifestPaths.isShadowed(moduleDir) && !build.declaresNodeTable())) {
+            return Kind.NONE;
+        }
         if (build.project().nodeSpec().isEmpty() && !build.declaresNodeTable()) return Kind.NONE;
         NodeTable table = build.node();
         // A war packages its node output, whatever its sources: it is never a node module of its own.
