@@ -16,8 +16,9 @@ fail() {
 
 # ---- the registry becomes one command per module, classes named exactly -------------------------
 cat >"$WORK/registry.txt" <<'EOF'
-# a comment line and a blank line are skipped
+# a comment line, a blank line and a directive (the guard reads it) are skipped
 
+integration-floor = 90
 clients/cli    | cc.jumpkick.cli.engine.EngineClientTest  | wire      | success,failure | The client half of the JSONL socket, handshake to stop.
 server/engine  | cc.jumpkick.engine.EngineServerTest      | wire      | success,failure | The server half of the same socket, stale socket included.
 clients/cli    | cc.jumpkick.command.pipeline.BuildCommandTest | workspace | success,failure | The build verb over a real workspace, compile error included.
