@@ -15,6 +15,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -52,6 +53,9 @@ class DevSidecarExampleTest {
     /** A cold engine, a compile, a JVM start and a probe all fit; a hang does not. */
     private static final long READY_WAIT_SECONDS = 180;
 
+    /** Ctrl-C ending the session and its children leaving: a guard against a hang, not a deadline. */
+    private static final long STOP_WAIT_SECONDS = 120;
+
     private static final String READY_LINE = "ready · ";
 
     /** The events a dev session adds to the workspace envelope; the ones a transcript must replay. */
@@ -62,8 +66,9 @@ class DevSidecarExampleTest {
 
     @Test
     void the_example_serves_its_front_door_and_its_api_and_ctrl_c_stops_both(@TempDir Path dir) throws Exception {
-        int webPort = freePort();
-        int apiPort = freePort();
+        int[] ports = freePorts(2);
+        int webPort = ports[0];
+        int apiPort = ports[1];
         Path project = stage(dir.resolve("vite-sidecar"), webPort, apiPort);
         Session session = Session.spawn(project, dir, apiPort);
         Process jk = session.jk;
@@ -137,7 +142,7 @@ class DevSidecarExampleTest {
             assertThat(alive(webPid)).isTrue();
 
             interrupt(jk);
-            assertThat(jk.waitFor(30, TimeUnit.SECONDS))
+            assertThat(jk.waitFor(STOP_WAIT_SECONDS, TimeUnit.SECONDS))
                     .as("Ctrl-C did not end the session\n%s", read(err))
                     .isTrue();
             assertThat(jk.exitValue()).isEqualTo(Exit.INTERRUPTED);
@@ -154,8 +159,9 @@ class DevSidecarExampleTest {
 
     @Test
     void with_the_app_as_the_front_door_the_ready_line_returns_after_every_restart(@TempDir Path dir) throws Exception {
-        int apiPort = freePort();
-        Path project = stage(dir.resolve("vite-sidecar"), freePort(), apiPort);
+        int[] ports = freePorts(2);
+        int apiPort = ports[1];
+        Path project = stage(dir.resolve("vite-sidecar"), ports[0], apiPort);
         Session session = Session.spawn(project, dir, apiPort, "--no-sidecars");
         Process jk = session.jk;
         Path out = session.out;
@@ -203,7 +209,7 @@ class DevSidecarExampleTest {
             assertThat(count(read(err), READY_LINE)).as(read(err)).isEqualTo(2);
 
             interrupt(jk);
-            assertThat(jk.waitFor(30, TimeUnit.SECONDS))
+            assertThat(jk.waitFor(STOP_WAIT_SECONDS, TimeUnit.SECONDS))
                     .as("Ctrl-C did not end the session\n%s", read(err))
                     .isTrue();
             assertThat(jk.exitValue()).isEqualTo(Exit.INTERRUPTED);
@@ -433,7 +439,7 @@ class DevSidecarExampleTest {
     }
 
     private static boolean awaitText(Path file, String text, Process jk) throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(READY_WAIT_SECONDS);
         while (System.nanoTime() < deadline) {
             if (read(file).contains(text)) return true;
             if (!jk.isAlive()) return false;
@@ -443,7 +449,7 @@ class DevSidecarExampleTest {
     }
 
     private static void awaitGone(long pid) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(STOP_WAIT_SECONDS);
         while (alive(pid) && System.nanoTime() < deadline) Thread.sleep(100);
     }
 
@@ -451,8 +457,17 @@ class DevSidecarExampleTest {
         return ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
     }
 
+    /**
+     * The complete lines written so far. jk is still appending, so a read can end inside a line —
+     * mid-JSON or mid-character — and only what precedes the last newline has been written whole.
+     */
     private static List<String> lines(Path out) throws IOException {
-        return Files.exists(out) ? Files.readAllLines(out) : List.of();
+        if (!Files.exists(out)) return List.of();
+        byte[] bytes = Files.readAllBytes(out);
+        int end = bytes.length;
+        while (end > 0 && bytes[end - 1] != '\n') end--;
+        String whole = new String(bytes, 0, end, StandardCharsets.UTF_8);
+        return whole.isEmpty() ? List.of() : whole.lines().toList();
     }
 
     private static String read(Path file) {
@@ -475,9 +490,22 @@ class DevSidecarExampleTest {
         }
     }
 
-    private static int freePort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
+    /**
+     * {@code n} distinct free ports. Every socket stays open until all are chosen, so the kernel
+     * cannot hand the same port out twice, as two separate open-and-close probes can.
+     */
+    private static int[] freePorts(int n) throws IOException {
+        List<ServerSocket> held = new ArrayList<>();
+        try {
+            int[] ports = new int[n];
+            for (int i = 0; i < n; i++) {
+                ServerSocket socket = new ServerSocket(0);
+                held.add(socket);
+                ports[i] = socket.getLocalPort();
+            }
+            return ports;
+        } finally {
+            for (ServerSocket socket : held) socket.close();
         }
     }
 

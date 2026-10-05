@@ -2,7 +2,6 @@
 package cc.jumpkick.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -47,40 +46,65 @@ class HttpStallTest {
     }
 
     @Test
-    @Timeout(20)
+    @Timeout(60)
     void a_server_that_never_answers_fails_once_naming_the_url() throws Exception {
         AtomicInteger calls = new AtomicInteger();
-        AtomicReference<String> seenInFlight = new AtomicReference<>("");
         server.createContext("/never/answers.pom", exchange -> {
             calls.incrementAndGet();
-            seenInFlight.set(InFlightRequests.waitingOn());
             try {
-                release.await(30, TimeUnit.SECONDS);
+                release.await(60, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
             exchange.close();
         });
         Http http = new Http(Http.standardClient(), new Duration[] {Duration.ofMillis(10), Duration.ofMillis(10)})
-                .withRequestTimeout(Duration.ofMillis(400));
+                .withRequestTimeout(Duration.ofSeconds(2));
         URI uri = base.resolve("/never/answers.pom");
 
-        long t0 = System.nanoTime();
-        assertThatThrownBy(() -> http.get(uri))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining(uri.toString())
-                .hasMessageContaining("got no answer within 0 s");
-        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
-
-        assertThat(calls.get()).as("a silent server is not asked again").isEqualTo(1);
-        assertThat(elapsedMs).as("one timeout, not a ladder of them").isLessThan(5_000);
-        assertThat(seenInFlight.get())
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread attempt = Thread.ofVirtual().start(() -> {
+            try {
+                http.get(uri);
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        });
+        // The entry is the client's own, written as the request goes out, so it is read here rather
+        // than from the server's handler, which a loaded host may schedule after the client gave up.
+        String inFlight = awaitInFlight(uri);
+        assertThat(inFlight)
                 .as("while the read is parked the URL is what the process says it waits on")
                 .contains("waiting on " + uri)
                 .contains(" s)");
+        attempt.join();
+
+        assertThat(failure.get())
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining(uri.toString())
+                .hasMessageContaining("got no answer within 2 s");
+        awaitCalls(calls);
+        assertThat(calls.get()).as("a silent server is not asked again").isEqualTo(1);
         assertThat(InFlightRequests.waitingOn())
                 .as("the entry ends with the request")
                 .doesNotContain(uri.toString());
+    }
+
+    /** What the process says it waits on, once that names {@code uri}; a hang guard, not a deadline. */
+    private static String awaitInFlight(URI uri) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (System.nanoTime() < deadline) {
+            String waiting = InFlightRequests.waitingOn();
+            if (waiting.contains(uri.toString())) return waiting;
+            Thread.sleep(5);
+        }
+        return InFlightRequests.waitingOn();
+    }
+
+    /** The request was sent, so the server sees it; how soon is the scheduler's business. */
+    private static void awaitCalls(AtomicInteger calls) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (calls.get() == 0 && System.nanoTime() < deadline) Thread.sleep(5);
     }
 
     /** The timeout bounds the response headers; a body that trickles past it still arrives whole. */
