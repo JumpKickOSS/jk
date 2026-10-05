@@ -115,6 +115,8 @@ metadata cc/jumpkick/jk-beta 0.13.1
 
 STAGE="$WORK/stage"
 publish "$STAGE" || fail "the stage-only run failed"
+grep -q "checked jk-test-runner:$VERSION (self-contained" "$WORK/out.log" \
+  || fail "a self-contained worker's provided/test-only POM was not accepted"
 
 alpha="$STAGE/cc/jumpkick/jk-alpha/maven-metadata.xml"
 [[ -f "$alpha" ]] || fail "jk-alpha has no staged metadata"
@@ -166,10 +168,6 @@ rm -r "$LOCAL/jk-formatter"
 artifact . jk-formatter "$VERSION" '<project><dependencies></dependencies></project>'
 if publish "$WORK/stage-stub"; then fail "a worker POM with no declared dependencies was accepted"; fi
 grep -q "jk-formatter:$VERSION declares no dependencies" "$WORK/out.log" || fail "the stub worker POM was not refused by name"
-grep -q "checked jk-test-runner:$VERSION (self-contained" "$WORK/out.log" 2>/dev/null || {
-  publish "$STAGE" || fail "the stage-only run failed"
-  grep -q "checked jk-test-runner:$VERSION (self-contained" "$WORK/out.log" || fail "a self-contained worker's provided/test-only POM was not accepted"
-}
 rm -r "$LOCAL/jk-formatter"
 
 # A first-party library is not a worker: its POM shape is its own business.
