@@ -1,0 +1,4 @@
+group = "cc.jumpkick"
+name = "jk"
+version = "1.4.0"
+java = 25

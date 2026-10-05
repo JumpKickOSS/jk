@@ -58,11 +58,8 @@ jobs:
       # builds the checkout, then `jk install` hands the home to the checkout's client, engine and
       # workers — the same two steps as ci.yml's self-host job.
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
         run: |
