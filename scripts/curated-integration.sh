@@ -42,6 +42,8 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   lineno=$((lineno + 1))
   line="$(trim "${raw%%#*}")"
   [[ -z "$line" ]] && continue
+  # A `key = value` directive (integration-floor) is the guard's to read and validate.
+  [[ "$line" =~ ^[a-z][a-z-]*[[:space:]]*=[[:space:]]*[^[:space:]]+$ ]] && continue
   fields="$(awk -F'|' '{ print NF }' <<<"$line")"
   if [[ "$fields" -ne 5 ]]; then
     echo "curated-integration: $REGISTRY:$lineno: $fields fields, expected 5 (module | class | surface | outcomes | why)" >&2
