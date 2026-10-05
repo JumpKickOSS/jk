@@ -49,7 +49,10 @@ public final class NodeShape {
         if (exempt(build, moduleDir)) return Kind.NONE;
         if (build.project().nodeSpec().isEmpty() && !build.declaresNodeTable()) return Kind.NONE;
         NodeTable table = build.node();
-        if (!jvmSources(moduleDir) && hasPackageJson(moduleDir.resolve(table.dir() == null ? "." : table.dir()))) {
+        // A war packages its node output, whatever its sources: it is never a node module of its own.
+        if (build.build().war() == null
+                && !jvmSources(moduleDir)
+                && hasPackageJson(moduleDir.resolve(table.dir() == null ? "." : table.dir()))) {
             return Kind.MODULE;
         }
         Path side = moduleDir.resolve(sideBySideDir(table));
@@ -100,7 +103,7 @@ public final class NodeShape {
                     ? NodeTable.EMPTY
                     : new NodeTable(
                             null, framework, null, null, null, null, null, null, null, null, null, null, null, false,
-                            List.of(), Map.of());
+                            List.of(), Map.of(), List.of());
             out = NodeProject.infer(nodeDir, table).out();
         }
         return nodeDir.resolve(out).normalize();
@@ -166,6 +169,18 @@ public final class NodeShape {
         }
         Path nodeDir = nodeDir(build, moduleDir);
         if (nodeDir == null) return;
+        Path module = moduleDir.toAbsolutePath().normalize();
+        if (!nodeDir.startsWith(module) && !(module.startsWith(nodeDir) && ManifestPaths.describesProject(nodeDir))) {
+            throw new JkBuildParseException(where + ": [node] dir " + table.dir() + " leaves the module; it may"
+                    + " only name a directory inside it, or a project directory above it (a workspace root)");
+        }
+        if (table.out() != null) {
+            Path out = nodeDir.resolve(table.out()).normalize();
+            if (!out.startsWith(nodeDir) && !out.startsWith(module)) {
+                throw new JkBuildParseException(
+                        where + ": [node] out " + table.out() + " lands outside both the node build and the module");
+            }
+        }
         if (build.project().nodeSpec().isEmpty()) {
             Proposal p = propose(nodeDir);
             throw new JkBuildParseException(

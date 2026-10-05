@@ -1218,10 +1218,6 @@ in     = "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.j
 reason = "a source dependency is jk-built only when it carries a written jk.toml"
 
 [[guards.manifest-reader-owner.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/runtime/workspace/ManifestUpdates.java"
-reason = "rewrites written manifests; a shadow is rendered, never written to"
-
-[[guards.manifest-reader-owner.allow]]
 in     = "server/toolchain/src/main/java/cc/jumpkick/compat/ProjectImport.java"
 reason = "names the module jk.toml files the import writes"
 

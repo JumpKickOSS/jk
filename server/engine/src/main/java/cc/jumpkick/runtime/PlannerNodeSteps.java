@@ -132,7 +132,8 @@ final class PlannerNodeSteps {
                 NodeEnv.keyed(unit.project(), unit.node(), unit.moduleDir(), false),
                 ctx.require(NODE_INSTALLED),
                 PlannerNodeSetup.token(ctx.require(LOCKFILE)),
-                fetched);
+                fetched,
+                unit.project().node().inputs());
         ActionCache cache = unit.actionCache();
         Optional<ActionCache.ActionRecord> hit = unit.rebuild() ? Optional.empty() : cache.lookup(keyed.key());
         if (hit.isPresent() && (step.outputs().isEmpty() || cache.restoreFiles(hit.get(), unit.nodeDir()))) {

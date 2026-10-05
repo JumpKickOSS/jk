@@ -36,6 +36,7 @@ final class ManifestNode {
             "env-prefixes",
             "dev-port",
             "dir",
+            "inputs",
             "skip",
             "steps",
             "exports");
@@ -96,17 +97,18 @@ final class ManifestNode {
                 string(t, "test"),
                 string(t, "dev"),
                 string(t, "start"),
-                relativePath(t, "out", "[node] out"),
+                climbingPath(t, "out", "[node] out"),
                 string(t, "classpath-root"),
                 string(t, "webapp-root"),
                 t.contains("env-prefixes")
                         ? JkBuildParser.optionalStringList(t, "env-prefixes", "node.env-prefixes")
                         : null,
                 devPort,
-                relativePath(t, "dir", "[node] dir"),
+                nodeDir(t),
                 skip,
                 steps(t),
-                exports(t)));
+                exports(t),
+                inputs(t)));
     }
 
     private static boolean onlyToolchain(TomlTable t) {
@@ -206,6 +208,35 @@ final class ManifestNode {
             throw new JkBuildParseException(where + " must be a path inside the module, got \"" + path + "\"");
         }
         return path;
+    }
+
+    /**
+     * {@code [node] dir}: relative, and it may climb out of the module (a front end at a workspace
+     * root that one module builds); {@link cc.jumpkick.layout.NodeShape#check} keeps it inside the
+     * workspace.
+     */
+    private static @Nullable String nodeDir(TomlTable t) {
+        return climbingPath(t, "dir", "[node] dir");
+    }
+
+    /** A relative path that may climb with {@code ..}; {@link cc.jumpkick.layout.NodeShape#check} bounds where it lands. */
+    private static @Nullable String climbingPath(TomlTable t, String key, String where) {
+        String path = string(t, key, where);
+        if (path != null && (path.isBlank() || path.startsWith("/"))) {
+            throw new JkBuildParseException(where + " must be a relative path, got \"" + path + "\"");
+        }
+        return path;
+    }
+
+    /** {@code [node] inputs}: what the build and tests read, relative to the node build's directory. */
+    private static List<String> inputs(TomlTable t) {
+        List<String> inputs = JkBuildParser.optionalStringList(t, "inputs", "node.inputs");
+        for (String in : inputs) {
+            if (in.isBlank() || in.startsWith("/")) {
+                throw new JkBuildParseException("[node] inputs must be relative paths or globs, got \"" + in + "\"");
+            }
+        }
+        return inputs;
     }
 
     private static @Nullable String string(TomlTable t, String key) {

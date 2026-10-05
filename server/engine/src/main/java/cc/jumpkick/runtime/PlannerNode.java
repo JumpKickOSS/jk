@@ -366,7 +366,8 @@ final class PlannerNode {
                             NodeEnv.keyed(unit.project(), unit.node(), unit.moduleDir(), true),
                             ctx.require(NODE_INSTALLED),
                             PlannerNodeSetup.token(ctx.require(LOCKFILE)),
-                            PlannerNodeSteps.afterBuild(unit.project()));
+                            PlannerNodeSteps.afterBuild(unit.project()),
+                            unit.project().node().inputs());
                     Path out = unit.out();
                     ActionCache cache = unit.actionCache();
                     Optional<ActionCache.ActionRecord> hit =
@@ -429,7 +430,8 @@ final class PlannerNode {
                             NodeEnv.keyed(unit.project(), unit.node(), unit.moduleDir(), false),
                             ctx.require(NODE_INSTALLED),
                             PlannerNodeSetup.token(ctx.require(LOCKFILE)),
-                            PlannerNodeSteps.afterTest(unit.project()));
+                            PlannerNodeSteps.afterTest(unit.project()),
+                            unit.project().node().inputs());
                     ActionCache cache = unit.actionCache();
                     boolean coverage = unit.in().session().coverage();
                     if (!unit.rebuild() && !coverage && replayGreen(ctx, cache, keyed.key())) {
@@ -525,7 +527,8 @@ final class PlannerNode {
                     NodeEnv.keyed(project, node, moduleDir, false),
                     install.key(),
                     token,
-                    null);
+                    null,
+                    project.node().inputs());
             steps.add(forecastStep(cache, keyed, NodeKeys.stepTask(step), describe(step.command()), null));
         }
         NodeTable.Command command = node.build();
@@ -537,7 +540,8 @@ final class PlannerNode {
                     NodeEnv.keyed(project, node, moduleDir, true),
                     install.key(),
                     token,
-                    PlannerNodeSteps.afterBuild(project));
+                    PlannerNodeSteps.afterBuild(project),
+                    project.node().inputs());
             steps.add(forecastStep(cache, build, TaskNames.NODE_BUILD, describe(command), nodeDir.resolve(node.out())));
         }
         if (!skipTests && node.test() != null && NodeProject.script(nodeDir, node.test()) != null) {
@@ -548,7 +552,8 @@ final class PlannerNode {
                     NodeEnv.keyed(project, node, moduleDir, false),
                     install.key(),
                     token,
-                    PlannerNodeSteps.afterTest(project));
+                    PlannerNodeSteps.afterTest(project),
+                    project.node().inputs());
             steps.add(forecastStep(cache, test, TaskNames.NODE_TEST, "run " + node.test(), null));
         }
         return steps;

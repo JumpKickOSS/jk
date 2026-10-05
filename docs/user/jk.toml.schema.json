@@ -818,7 +818,8 @@
         "webapp-root": { "type": "string", "description": "The path inside the war the output is placed at, for a [war] module that consumes it; the war's root by default." },
         "env-prefixes": { "type": "array", "items": { "type": "string" }, "description": "Prefixes of the environment variables the framework inlines into the bundle, whose values are part of the build's cache key; the framework's by default (VITE_, NEXT_PUBLIC_, …)." },
         "dev-port": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "The port the dev server listens on, which jk dev waits for before printing the ready line." },
-        "dir": { "type": "string", "description": "The directory holding package.json: the module itself, or src/main/node in a JVM module." },
+        "dir": { "type": "string", "description": "The directory holding package.json: the module itself, src/main/node in a JVM module, or a project directory above the module (a front end at the workspace root that this module builds)." },
+        "inputs": { "type": "array", "items": { "type": "string" }, "description": "What the build and tests read, relative to the node build's directory (files, directories, globs). Unset, they read the whole directory; set it when that directory is a workspace root." },
         "skip": { "type": "boolean", "description": "When true, no node step of the module runs and packaging uses the output already built; --skip-node and JK_SKIP_NODE do the same for one run." },
         "steps": {
           "type": "array",

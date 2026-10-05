@@ -59,7 +59,10 @@ final class NodeTomlRenderer {
                     .append(JkBuildRenderer.list(t.envPrefixes()))
                     .append('\n');
         if (t.devPort() != null) sb.append("dev-port = ").append(t.devPort()).append('\n');
+        if (!t.inputs().isEmpty())
+            sb.append("inputs = ").append(JkBuildRenderer.list(t.inputs())).append('\n');
         if (t.skip()) sb.append("skip = true\n");
+
         if (!t.exports().isEmpty()) {
             List<String> parts = new ArrayList<>();
             t.exports().forEach((k, v) -> parts.add(JkBuildRenderer.safeKey(k) + " = " + quote(v)));
