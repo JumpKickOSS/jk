@@ -62,10 +62,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi
-          jk install --skip-tests --no-ansi
+        run: bash scripts/ci-takeover.sh --build --install-only
 
       # continue-on-error, deliberately: the measurement is a record, and a slow or flaky runner
       # must not read as a product regression until a baseline says what normal is.
