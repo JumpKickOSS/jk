@@ -109,6 +109,12 @@ class NodePackagingE2eTest {
                 .as("nothing depends on site and it names no classpath root")
                 .doesNotExist();
         assertThat(ws.resolve("site/dist/index.html")).exists();
+        Files.writeString(ws.resolve("web/build.js"), Files.readString(ws.resolve("web/build.js")) + "\n// edited\n");
+        String explain = Capture.stdout(() -> run("explain", "-v", "-C", ws.toString(), "--cache-dir", cache(ws)));
+        assertThat(explain)
+                .as("explain forecasts node-package behind the build it waits on:\n%s", explain)
+                .contains("node-package")
+                .contains("package web-1.0.0.jar after node-build");
     }
 
     @Test
