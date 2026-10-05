@@ -282,6 +282,73 @@ class PomFrontendImportTest {
         return root;
     }
 
+    @Test
+    void in_place_a_war_module_s_frontend_builds_where_it_stands_and_rewrites_nothing(@TempDir Path tmp)
+            throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("project"));
+        Path front = Files.createDirectories(project.resolve("src/main/frontend"));
+        write(front.resolve("package.json"), "{ \"name\": \"ui\", \"packageManager\": \"npm@11.6.0\" }");
+        write(front.resolve("package-lock.json"), "{}");
+        write(front.resolve("vite.config.js"), "export default { build: { outDir: \"../webapp/app\" } };\n");
+        write(project.resolve("pom.xml"), pom("shop", "war", "", PLUGIN_HEAD + """
+                    <configuration><workingDirectory>src/main/frontend</workingDirectory></configuration>
+                    <executions>
+                      <execution><id>install node</id><goals><goal>install-node-and-npm</goal></goals>
+                        <configuration><nodeVersion>v24.21.0</nodeVersion></configuration></execution>
+                      <execution><id>npm build</id><goals><goal>npm</goal></goals><phase>generate-resources</phase>
+                        <configuration><arguments>run build</arguments></configuration></execution>
+                    </executions>
+                  </plugin>
+                """));
+        FrontendCollector inPlace = FrontendCollector.inPlace();
+
+        JkBuild build = TestImporters.offline(tmp)
+                .frontends(inPlace)
+                .importWorkspace(project.resolve("pom.xml"))
+                .root();
+
+        NodeTable node = build.node();
+        assertThat(node.dir()).isEqualTo("src/main/frontend");
+        assertThat(node.out())
+                .as("the bundler's own output, read where it writes")
+                .isEqualTo("../webapp/app");
+        assertThat(node.webappRoot()).isEqualTo("app");
+        assertThat(inPlace.files()).isEqualTo(FrontendFiles.NONE);
+        assertThat(JkBuildParser.parse(JkBuildRenderer.render(build)).node()).isEqualTo(node);
+    }
+
+    @Test
+    void in_place_a_frontend_at_the_aggregator_is_built_by_the_war_from_the_root(@TempDir Path tmp) throws Exception {
+        Path root = jenkinsShaped(tmp);
+        FrontendCollector inPlace = FrontendCollector.inPlace();
+
+        PomImporter.WorkspaceImportResult result =
+                TestImporters.offline(tmp).frontends(inPlace).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(result.modules()).doesNotContainKey("web");
+        assertThat(result.root().workspaceOpt().orElseThrow().modules()).doesNotContain("web");
+        JkBuild war = Objects.requireNonNull(result.modules().get("war"), "war module");
+        NodeTable node = war.node();
+        assertThat(war.project().nodeSpec().requiredVersion()).isEqualTo("24.21.0");
+        assertThat(node.dir()).isEqualTo("..");
+        assertThat(node.out()).isEqualTo("war/src/main/webapp/jsbundles");
+        assertThat(node.webappRoot()).isEqualTo("jsbundles");
+        assertThat(node.inputs())
+                .contains(
+                        "package.json",
+                        "yarn.lock",
+                        ".yarnrc.yml",
+                        "webpack.config.js",
+                        "src/main/js",
+                        "src/main/scss",
+                        "src/test/js")
+                .noneMatch(in -> in.startsWith("war") || in.startsWith("target") || in.startsWith("core"));
+        assertThat(inPlace.files()).as("nothing moves, nothing is rewritten").isEqualTo(FrontendFiles.NONE);
+        assertThat(messages(result.report()))
+                .anyMatch(m -> m.contains("`war` builds the front end in") && m.contains("where it stands"));
+        assertThat(JkBuildParser.parse(JkBuildRenderer.render(war)).node()).isEqualTo(node);
+    }
+
     private PomImporter importing(Path tmp) throws IOException {
         return TestImporters.offline(tmp).frontends(frontends);
     }

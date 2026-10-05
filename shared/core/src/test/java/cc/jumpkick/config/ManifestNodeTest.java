@@ -187,7 +187,6 @@ class ManifestNodeTest {
         assertThatThrownBy(() -> parse("[node]\nframework = \"gatsby\"\n"))
                 .hasMessageContaining("[node] framework must be one of");
         assertThatThrownBy(() -> parse("[node]\ndev-port = 70000\n")).hasMessageContaining("dev-port");
-        assertThatThrownBy(() -> parse("[node]\ndir = \"../web\"\n")).hasMessageContaining("inside the module");
         assertThatThrownBy(() -> parse("[node]\nbuild = { npx = \"a\", run = \"b\" }\n"))
                 .hasMessageContaining("more than one of run, npx, exec");
         assertThatThrownBy(() -> parse("[[node.steps]]\nname = \"x\"\n"))
@@ -197,5 +196,19 @@ class ManifestNodeTest {
                 .hasMessageContaining("used twice");
         assertThatThrownBy(() -> parse("[[node.steps]]\nname = \"x\"\nrun = \"a\"\nbefore = \"deploy\"\n"))
                 .hasMessageContaining("before must be one of build, test, package");
+    }
+
+    @Test
+    void inputs_scope_the_build_and_dir_and_out_may_climb_out_of_the_module() {
+        NodeTable t = parse("[node]\nversion = 24\ndir = \"..\"\nout = \"war/src/main/webapp/js\"\n"
+                        + "inputs = [\"package.json\", \"src/main/js\"]\n")
+                .node();
+        assertThat(t.dir()).isEqualTo("..");
+        assertThat(t.out()).isEqualTo("war/src/main/webapp/js");
+        assertThat(t.inputs()).containsExactly("package.json", "src/main/js");
+        assertThatThrownBy(() -> parse("[node]\nversion = 24\ndir = \"/abs\"\n"))
+                .hasMessageContaining("[node] dir must be a relative path");
+        assertThatThrownBy(() -> parse("[node]\nversion = 24\ninputs = [\"/abs\"]\n"))
+                .hasMessageContaining("[node] inputs must be relative");
     }
 }

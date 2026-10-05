@@ -97,9 +97,10 @@ final class NodeKeys {
             Map<String, String> env,
             String installed,
             String nodeToken,
-            List<String> later)
+            List<String> later,
+            List<String> scope)
             throws IOException {
-        Map<String, String> inputs = tree(nodeDir, withOut(project, later));
+        Map<String, String> inputs = scoped(nodeDir, scope, withOut(project, later));
         inputs.put("command:", command.kind().key() + " " + command.value());
         inputs.put("out:", project.out());
         envInputs(inputs, env, project.envPrefixes());
@@ -123,10 +124,12 @@ final class NodeKeys {
             Map<String, String> env,
             String installed,
             String nodeToken,
-            @Nullable String fetched)
+            @Nullable String fetched,
+            List<String> scope)
             throws IOException {
-        // A step that names what it reads is keyed on that alone; one that names nothing reads the tree.
-        Map<String, String> inputs = step.inputs().isEmpty() ? tree(nodeDir, outputs) : new TreeMap<>();
+        // A step that names what it reads is keyed on that alone; one that names nothing reads what
+        // the build reads.
+        Map<String, String> inputs = step.inputs().isEmpty() ? scoped(nodeDir, scope, outputs) : new TreeMap<>();
         inputs.putAll(inputFiles(moduleDir, step.inputs()));
         inputs.put(
                 "command:", step.command().kind().key() + " " + step.command().value());
@@ -220,9 +223,10 @@ final class NodeKeys {
             Map<String, String> env,
             String installed,
             String nodeToken,
-            List<String> later)
+            List<String> later,
+            List<String> scope)
             throws IOException {
-        Map<String, String> inputs = tree(nodeDir, withOut(project, later));
+        Map<String, String> inputs = scoped(nodeDir, scope, withOut(project, later));
         inputs.put("test:", script);
         envInputs(inputs, env, project.envPrefixes());
         inputs.put("installed:", installed);
@@ -243,6 +247,15 @@ final class NodeKeys {
      * included ({@code .env}, a framework's config), {@link #NEVER_INPUT} and {@code outputs}
      * (files or directories relative to {@code nodeDir}) left out.
      */
+    /**
+     * What a node step reads when it names nothing itself: {@code [node] inputs} ({@code scope})
+     * when set — a build whose directory is a workspace root reads its front end, not the
+     * workspace — else the whole node tree less {@code outputs}.
+     */
+    static Map<String, String> scoped(Path nodeDir, List<String> scope, List<String> outputs) throws IOException {
+        return scope.isEmpty() ? tree(nodeDir, outputs) : inputFiles(nodeDir, scope);
+    }
+
     static Map<String, String> tree(Path nodeDir, List<String> outputs) throws IOException {
         Map<String, String> files = new TreeMap<>();
         Set<Path> skipped = new HashSet<>();

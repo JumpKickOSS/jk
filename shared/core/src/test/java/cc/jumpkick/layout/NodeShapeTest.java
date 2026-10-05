@@ -184,4 +184,41 @@ class NodeShapeTest {
         JkBuild root = parse(tmp);
         assertThat(NodeShape.kind(root, tmp)).isEqualTo(NodeShape.Kind.NONE);
     }
+
+    @Test
+    void a_war_builds_a_front_end_at_the_workspace_root_above_it() throws IOException {
+        write(
+                tmp.resolve("jk.toml"),
+                "name = \"ws\"\ngroup = \"g\"\nversion = \"1.0\"\n[workspace]\nmodules = [\"war\"]\n");
+        write(tmp.resolve("package.json"), "{\"scripts\": {\"build\": \"webpack\"}}");
+        Path war = module("war", """
+                [war]
+
+                [node]
+                version = 24
+                dir = ".."
+                out = "war/src/main/webapp/jsbundles"
+                webapp-root = "jsbundles"
+                """);
+        JkBuild build = parse(war);
+        assertThat(NodeShape.kind(build, war))
+                .as("a war with no JVM sources still packages its node output")
+                .isEqualTo(NodeShape.Kind.SIDE_BY_SIDE);
+        assertThat(NodeShape.nodeDir(build, war)).isEqualTo(tmp.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void a_dir_or_out_that_leaves_the_module_for_anything_but_a_project_above_it_is_refused() throws IOException {
+        Path elsewhere = Files.createDirectories(tmp.resolve("elsewhere"));
+        write(elsewhere.resolve("package.json"), "{}");
+        Path app = module("app", "[node]\nversion = 24\ndir = \"../elsewhere\"\n");
+        assertThatThrownBy(() -> parse(app))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("leaves the module");
+        Path web = module("web", "[node]\nversion = 24\nout = \"../../dist\"\n");
+        write(web.resolve("package.json"), "{\"scripts\": {\"build\": \"vite build\"}}");
+        assertThatThrownBy(() -> parse(web))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("lands outside both");
+    }
 }

@@ -288,7 +288,7 @@ final class FrontendPlugin {
         // The test script is jk's default test; any other test-phase command is a test-tier step.
         return new NodeTable(
                 null, null, install, buildRun, null, null, null, null, null, null, null, null, null, skip, steps,
-                Map.of());
+                Map.of(), List.of());
     }
 
     /** The build: the script named {@code script}, else the last script or npx command of the build phases. */

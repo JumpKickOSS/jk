@@ -194,6 +194,23 @@ built into `src/`. `jk import --dry-run` prints every move and rewrite and chang
 the task-runner goals (grunt, gulp, karma, webpack, ember, jspm) are not imported: run them from an
 npm script or an `npx` step. Yarn 1 is not supported.
 
+## Building a pom.xml in place
+
+`jk build` on a `pom.xml` with no `jk.toml` places the plugin's build without touching the tree.
+The bundler writes where its config says, and the module that takes the output builds it:
+
+- a front end inside its own module is a side-by-side build there, `out` the bundler's output path;
+- a front end at the reactor root writing into a module (Jenkins: webpack into
+  `war/src/main/webapp/jsbundles`) is built by that module with `[node] dir = ".."`, `out` the path
+  it writes and `webapp-root` (or `classpath-root`) the old subpath. `[node] inputs` lists the front
+  end's own files, so an edit elsewhere in the workspace does not rebuild it.
+
+A front end whose output path cannot be read, or lands in no module, is reported; `jk import`
+gives it a node module of its own.
+
+`[node] dir` may name a project directory above the module this way; any other directory outside
+the module is refused, and `out` must land in the node build or the module.
+
 ## Registries and mirrors
 
 `~/.jk/config.toml` `[node]` sets `dist-mirror`, `registry` and per-scope registries; credentials

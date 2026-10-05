@@ -46,11 +46,13 @@ public record NodeTable(
         @Nullable String dir,
         boolean skip,
         List<Step> steps,
-        Map<String, String> exports) {
+        Map<String, String> exports,
+        List<String> inputs) {
 
     /** The table with no key set. */
     public static final NodeTable EMPTY = new NodeTable(
-            null, null, null, null, null, null, null, null, null, null, null, null, null, false, List.of(), Map.of());
+            null, null, null, null, null, null, null, null, null, null, null, null, null, false, List.of(), Map.of(),
+            List.of());
 
     /** The node build directory of a JVM module that holds one beside its sources. */
     public static final String SIDE_BY_SIDE_DIR = "src/main/node";
@@ -59,6 +61,7 @@ public record NodeTable(
         envPrefixes = envPrefixes == null ? null : List.copyOf(envPrefixes);
         steps = steps == null ? List.of() : List.copyOf(steps);
         exports = exports == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(exports));
+        inputs = inputs == null ? List.of() : List.copyOf(inputs);
     }
 
     /** What a command runs: a {@code package.json} script, a package binary through npx, or a binary on the path. */

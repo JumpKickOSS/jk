@@ -46,8 +46,15 @@ public final class JkBuildEditor {
      * A dep entry line: {@code key = { ... }} or {@code key.workspace = true}. Captures key in group
      * 2.
      */
+    /** A dependency entry: its bare or quoted key (an import writes {@code "jakarta.inject-api"}), then {@code =}. */
     private static final Pattern DEP_ENTRY =
-            Pattern.compile("^(\\s*)([A-Za-z][A-Za-z0-9_-]*)(?:\\.[a-zA-Z][a-zA-Z0-9_-]*)?\\s*=.*$");
+            Pattern.compile("^(\\s*)(\"[^\"]+\"|[A-Za-z][A-Za-z0-9_-]*)(?:\\.[a-zA-Z][a-zA-Z0-9_-]*)?\\s*=.*$");
+
+    /** The entry key {@link #DEP_ENTRY} matched, unquoted. */
+    private static String depKey(Matcher m) {
+        String key = m.group(2);
+        return key.startsWith("\"") ? key.substring(1, key.length() - 1) : key;
+    }
 
     private JkBuildEditor() {}
 
@@ -183,7 +190,7 @@ public final class JkBuildEditor {
         }
         int end = endOfTable(lines, header);
         Matcher fresh = DEP_ENTRY.matcher(entryLine);
-        int sorted = fresh.matches() ? sortedInsertAt(lines, header, end, fresh.group(2), scope) : -1;
+        int sorted = fresh.matches() ? sortedInsertAt(lines, header, end, depKey(fresh), scope) : -1;
         int insertAt = sorted;
         if (insertAt < 0) {
             insertAt = end;
@@ -207,7 +214,7 @@ public final class JkBuildEditor {
             if (line.isBlank() || line.stripLeading().startsWith("#")) continue;
             Matcher m = DEP_ENTRY.matcher(line);
             if (!m.matches()) return -1;
-            String key = m.group(2);
+            String key = depKey(m);
             if (prevKey != null && prevKey.compareTo(key) >= 0) return -1;
             if (slot < 0 && key.compareTo(newKey) > 0) slot = (prev < 0 ? header : prev) + 1;
             prev = i;
@@ -523,7 +530,7 @@ public final class JkBuildEditor {
         for (int i = header + 1; i < end; i++) {
             String line = lines.get(i);
             Matcher m = DEP_ENTRY.matcher(line);
-            if (m.matches() && m.group(2).equals(name)) return i;
+            if (m.matches() && depKey(m).equals(name)) return i;
         }
         return -1;
     }
@@ -559,7 +566,7 @@ public final class JkBuildEditor {
      *     (path, git, workspace, or versionless coordinate)
      */
     public static String setDependencyVersion(String content, Scope scope, String name, String versionLiteral) {
-        validateName(name);
+        requireName(name);
         requireVersionLiteral(versionLiteral);
         List<String> lines = splitPreservingTerminator(content);
         int hit = findDepKey(lines, scope, name);
@@ -572,7 +579,7 @@ public final class JkBuildEditor {
 
     /** {@link #setDependencyVersion} for a {@code [workspace.dependencies]} entry. */
     public static String setWorkspaceDependencyVersion(String content, String name, String versionLiteral) {
-        validateName(name);
+        requireName(name);
         requireVersionLiteral(versionLiteral);
         List<String> lines = splitPreservingTerminator(content);
         Pattern header = Pattern.compile("^\\s*\\[workspace\\.dependencies]\\s*$");
@@ -589,7 +596,7 @@ public final class JkBuildEditor {
         int end = endOfTable(lines, headerLine);
         for (int i = headerLine + 1; i < end; i++) {
             Matcher m = DEP_ENTRY.matcher(lines.get(i));
-            if (m.matches() && m.group(2).equals(name)) {
+            if (m.matches() && depKey(m).equals(name)) {
                 lines.set(i, rewriteVersion(lines.get(i), "workspace.dependencies." + name, versionLiteral));
                 return validated(join(lines));
             }
@@ -650,6 +657,11 @@ public final class JkBuildEditor {
             replacement = versionLiteral;
         }
         return before + after.substring(0, m.start()) + MinimalToml.quote(replacement) + after.substring(m.end());
+    }
+
+    /** A name an existing entry may carry: any non-blank key, quoted in the file when it must be. */
+    private static void requireName(String name) {
+        if (name == null || name.isBlank()) throw new IllegalArgumentException("dependency name must not be blank");
     }
 
     private static void validateName(String name) {
