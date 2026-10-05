@@ -48,7 +48,10 @@ class NodeGeneratorsTest {
         assertThat(argv("next")).contains("create-next-app@latest", "--ts", "--use-npm", "--yes");
         assertThat(argv("angular"))
                 .contains("@angular/cli@latest", "new", "web", "--defaults", "--package-manager=npm");
-        assertThat(argv("sveltekit")).contains("sv@latest", "create", "web", "--types=ts", "--install=npm");
+        assertThat(argv("sveltekit"))
+                .contains("sv@latest", "create", "web", "--types=ts", "--install=npm")
+                .as("adapter-node, so the build writes a server jk runs")
+                .containsSubsequence("--add", "sveltekit-adapter=adapter:node");
         assertThat(argv("nuxt"))
                 .as("create-nuxt asks for a template when it has no terminal")
                 .contains("create-nuxt@latest", "web", "--template=minimal", "--packageManager=npm");

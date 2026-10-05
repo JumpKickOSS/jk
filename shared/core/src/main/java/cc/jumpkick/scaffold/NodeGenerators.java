@@ -82,7 +82,9 @@ public final class NodeGenerators {
                             DIR,
                             "--template=minimal",
                             "--types=ts",
-                            "--no-add-ons",
+                            // adapter-node: the default adapter-auto writes no server jk can run.
+                            "--add",
+                            "sveltekit-adapter=adapter:node",
                             "--install=npm")),
             new Framework(
                     "astro",
