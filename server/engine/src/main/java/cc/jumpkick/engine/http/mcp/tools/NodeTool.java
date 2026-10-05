@@ -113,9 +113,15 @@ public final class NodeTool implements McpTool {
     }
 
     static Map<String, Object> uninstall(@Nullable String version, boolean confirm) throws IOException {
+        return uninstall(new NodeInstalls(), version, confirm);
+    }
+
+    /** As {@link #uninstall(String, boolean)}, against {@code installs}. */
+    static Map<String, Object> uninstall(NodeInstalls installs, @Nullable String version, boolean confirm)
+            throws IOException {
         if (version == null || version.isBlank()) return Map.of("error", "uninstall needs spec = the exact version");
         String v = version.startsWith("v") ? version.substring(1) : version;
-        Optional<InstalledTool> installed = new NodeInstalls().managedTool(BuildTool.NODE, v);
+        Optional<InstalledTool> installed = installs.managedTool(BuildTool.NODE, v);
         if (installed.isEmpty()) return Map.of("error", "Node.js " + v + " is not a jk install");
         if (!confirm)
             return Map.of(
