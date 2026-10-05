@@ -97,8 +97,22 @@ public final class Jk {
         System.exit(GlobalCancel.exitCodeFor(code));
     }
 
-    /** Run jk with the given argv. The first positional is rewritten if it's a known alias. */
+    /**
+     * Run jk with the given argv. The first positional is rewritten if it's a known alias. Each call
+     * is one invocation: the session it installs is its own, so two calls in one JVM (the JVM client,
+     * in-process tests) never read each other's flags.
+     */
     public static int execute(String... args) {
+        try {
+            return SessionContext.invocation(() -> executeInvocation(args));
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static int executeInvocation(String... args) {
         // `--list` is an undocumented synonym for `--help`. Rewrite it before any
         // arg scan so both the config loader and the dispatcher only ever see `--help`.
         args = rewriteListToHelp(args);
