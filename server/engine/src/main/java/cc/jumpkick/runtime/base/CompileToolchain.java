@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolInstaller;
+import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.SessionContext;
@@ -128,7 +129,7 @@ public final class CompileToolchain {
         try {
             boolean refresh = SessionContext.current().config().forceOr(false);
             ToolProvisioning.Result result = ToolProvisioning.provision(
-                    dist, registry, new Http(), new ToolProvisioning.Policy(false, refresh, false));
+                    dist, registry, new Http(), new ToolProvisioning.Policy(false, refresh, false), ToolProgress.NONE);
             switch (result.source()) {
                 case LINKED -> notice.accept("Linked Kotlin " + dist.version() + " from " + result.detail());
                 case DOWNLOADED -> notice.accept("Installed Kotlin " + dist.version() + " from " + result.detail());

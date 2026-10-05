@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.compat.NodeProvisioning;
+import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -114,7 +115,7 @@ class NodeManagerInstallsTest {
         NodePin pin = new NodePin(host.version(), null, spec, Map.of());
         LockfileWriter.write(Lockfile.empty(JkVersion.VERSION).withNode(pin), web.resolve("jk-lock.toml"));
 
-        lock(web, PlannerNodeSetup.ensure(PlannerNodeSetup.provisioning.get(), pin, b -> {}), manager);
+        lock(web, PlannerNodeSetup.ensure(PlannerNodeSetup.provisioning.get(), pin, ToolProgress.NONE), manager);
         main.clearRequests();
         scope.clearRequests();
 

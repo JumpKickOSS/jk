@@ -44,10 +44,10 @@ class NodeRealInstallTest {
                 new PackageManagerResolver(new Http(), URI.create(NodeSources.NPM_REGISTRY)),
                 host);
 
-        NodeHome node = p.ensure(resolution, new NodeProvisioning.Policy(true), b -> {});
+        NodeHome node = p.ensure(resolution, new NodeProvisioning.Policy(true), ToolProgress.NONE);
         assertThat(run(List.of(node.node().toString(), "--version"))).isEqualTo("v" + resolution.version());
 
-        NodeHome pnpm = p.withManager(node, new PackageManagerSpec(PackageManager.PNPM, "latest"), b -> {});
+        NodeHome pnpm = p.withManager(node, new PackageManagerSpec(PackageManager.PNPM, "latest"), ToolProgress.NONE);
         assertThat(run(concat(pnpm.managerCommand(), "--version"))).matches("\\d+\\.\\d+\\.\\d+");
     }
 

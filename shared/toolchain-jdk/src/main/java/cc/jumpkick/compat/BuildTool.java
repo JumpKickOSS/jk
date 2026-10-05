@@ -49,6 +49,19 @@ public enum BuildTool {
         return publishedChecksums;
     }
 
+    /** The tool's name as a user reads it in progress and messages. */
+    public String displayName() {
+        return switch (this) {
+            case MAVEN -> "Maven";
+            case GRADLE -> "Gradle";
+            case KOTLIN -> "Kotlin";
+            case NODE -> "Node.js";
+            case PNPM -> "pnpm";
+            case YARN -> "Yarn";
+            case BUN -> "bun";
+        };
+    }
+
     /** Directory name under the provisioned-tools root, {@code $JK_STORE_DIR/tools/}. */
     public String slug() {
         return slug;

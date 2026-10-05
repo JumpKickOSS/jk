@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.SearchPath;
@@ -165,7 +166,7 @@ public final class NodeRun {
         NodePin pin =
                 Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile).node() : null;
         if (pin == null) throw new IOException("Node.js is not locked yet — run `jk build` first");
-        return PlannerNodeSetup.ensure(PlannerNodeSetup.provisioning.get(), pin, bytes -> {});
+        return PlannerNodeSetup.ensure(PlannerNodeSetup.provisioning.get(), pin, ToolProgress.NONE);
     }
 
     private static String path(NodeHome home, Path nodeDir, @Nullable String callerPath) {
