@@ -1,13 +1,25 @@
 version = 1
-generated-by = "jk 0.13.6"
+generated-by = "jk 0.15.0"
+generated-by-build = "18cfbcc84836"
+generated-by-build-time = "2026-10-05T19:59:26Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "be6e13d993245be8f1767097b990681e14edd79a84fafdd259abd04d534b63de"
+manifests-sha256 = "33e1f11998d2d3c6d00269f833ce8851ea1b69921c260f3a7dca9fff47126d32"
 project-id = "547c5de896c4470b7325ffda660a17f0"
 
 [jdk]
 suggested-vendor = "temurin"
 suggested-version = "25.0.4.1"
+
+[node]
+version = "24.21.0"
+npm = "11.19.0"
+sha256.darwin-arm64 = "bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057"
+sha256.darwin-x64 = "1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097"
+sha256.linux-arm64 = "724282c3b43aec998aa9527380465b45d229e021b58035f5f4f63095eabfe5d5"
+sha256.linux-x64 = "6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff"
+sha256.win-arm64 = "8779b1bde1d39f8d420e3b57aa657b39891af434d3de44a919044cec06785921"
+sha256.win-x64 = "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541"
 
 [[artifact]]
 name     = "org.apiguardian:apiguardian-api:jar:"

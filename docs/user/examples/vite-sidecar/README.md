@@ -1,22 +1,19 @@
-# Vite beside the JVM (`[dev.sidecars]`)
+# Vite beside the JVM (`[node] dir`)
 
 A JVM API and a single-page frontend have two live loops in development: the JVM restarting on a
 source change, and Vite serving the page with hot module reload and `/api` proxied to the JVM. This
-sample runs both from one command — `jk dev` — with no wrapper script and no second terminal.
-
-This sample writes the sidecar by hand, which is how any dev server jk does not build runs beside
-the app. When the front end is a [node module](../../node.md) the app depends on, jk builds it and
-`jk dev` infers this entry — see [Run § Sidecars](../../run.md#sidecars-devsidecars) and
-[jk-examples `spring-boot/webapp`](https://github.com/JumpKickOSS/jk-examples/tree/main/spring-boot/webapp).
+sample runs both from one command — `jk dev` — with no wrapper script, no second terminal and no
+`npm` step of your own: the front end is a node build beside the JVM sources, so jk provisions
+Node.js, installs it, builds it and runs its dev server.
 
 ```text
 vite-sidecar/
-  jk.toml                         # [application] main + one [dev.sidecars] entry
-  jk-lock.toml                    # committed; jk build never re-resolves
+  jk.toml                         # [application] main + [node] dir = "web"
+  jk-lock.toml                    # committed; pins the dependencies and the Node.js release
   src/main/java/demo/Api.java     # JSON on /api/hello, port 8080
   src/test/java/demo/ApiTest.java # the API answers
   web/
-    package.json                  # vite; `npm run dev` is the sidecar's command
+    package.json                  # vite; `build` and `dev` scripts
     package-lock.json             # committed, like jk-lock.toml
     vite.config.js                # port 5173, /api → http://localhost:8080
     index.html, main.js           # fetches /api/hello on the same origin
@@ -33,54 +30,44 @@ java    = 25
 [application]
 main = "demo.Api"
 
-# Under `jk dev` — and only there — the JVM counts as ready once /api/hello answers, and the
-# frontend's own dev server runs beside it. `jk run`, `jk build`, and `jk test` never read this
-# table; nothing about it enters the action cache.
+[node]
+version = 24
+dir     = "web"
+
 [dev]
 ready = "http://localhost:8080/api/hello"
-
-[dev.sidecars]
-web = { command = "npm run dev", cwd = "web", ready = "http://localhost:5173", front-door = true }
 
 [test-dependencies]
 junit-jupiter = "6.1.3"
 ```
 
-`command` is split like a shell would and run without one; `cwd` is relative to this manifest;
-the sidecar's `ready` is polled until Vite answers; `front-door = true` makes 5173 the URL jk prints
-when the whole stack is up. `[dev] ready` is the JVM's own probe: the `ready ·` line (and
-`dev-ready` under `--output json`) waits until `/api/hello` answers, after the first start and
-after every restart, so a fetch on `dev-ready` never races the JVM. Every key and its default:
-[Run — Sidecars](../../run.md#sidecars-devsidecars).
+`[node] dir = "web"` makes `web/` a node build of this module ([Node.js](../../node.md#the-two-shapes)):
+`jk build` runs `npm ci` from the committed lock and `vite build`, and the bundle rides in the jar
+under `static/`. Under `jk dev`, jk runs `web/`'s `dev` script beside the JVM as the dev server
+`vite-sidecar-node`, probes Vite's port and makes it the front door — the sidecar a hand-written
+`[dev.sidecars]` entry would have spelled out. `[dev] ready` is the JVM's own probe: the `ready ·`
+line (and `dev-ready` under `--output json`) waits until `/api/hello` answers, after the first start
+and after every restart, so a fetch on `dev-ready` never races the JVM.
 
 ## Run it
 
-Once per checkout, install the frontend's dependencies; then one command owns the stack.
-
 ```console
-$ (cd web && npm ci)
-
 $ jk dev --no-ansi
-+ Watch Successful: Built - took 470ms
++ Watch Successful: Built - took 46.0s
 
 jk watch run: watching src -- process restart on change. Ctrl-C stops.
-web |
-web | > dev
-web | > vite
-web |
+vite-sidecar-node │ > dev
+vite-sidecar-node │ > vite
+vite-sidecar-node │   VITE v8.3.0  ready in 144 ms
+vite-sidecar-node │   ➜  Local:   http://localhost:5173/
 listening on http://localhost:8080
-web |
-web |   VITE v8.3.0  ready in 488 ms
-web |
-web |   ➜  Local:   http://localhost:5173/
-web |   ➜  Network: use --host to expose
 jk watch run: ready - http://localhost:5173 (java -cp target/classes demo.Api)
 ```
 
-The JVM's line (`listening on …`) is unprefixed — it is the module being developed. Every line
-from Vite carries `web │ `, the name in a colour of its own on a terminal (`--no-ansi` above turns
-the colour off and the bar into `|`). Open the front door and the page fetches `/api/hello`
-through Vite's proxy, so the browser sees one origin:
+The first run downloads Node.js 24 if no install on the machine matches the lock, and installs
+`web/`; later runs reuse both. The JVM's line (`listening on …`) is unprefixed — it is the module
+being developed. Every line from Vite carries its name. Open the front door and the page fetches
+`/api/hello` through Vite's proxy, so the browser sees one origin:
 
 ```console
 $ curl -s http://localhost:5173/api/hello
@@ -91,26 +78,25 @@ Edit `Api.java`: jk recompiles and restarts the JVM; Vite is untouched and keeps
 Edit `web/main.js`: Vite hot-reloads the page; the JVM is untouched. Ctrl-C stops the JVM and Vite
 together — nothing is left on 8080 or 5173.
 
-`jk dev --no-sidecars` runs the JVM alone; the `ready ·` line then carries `[dev] ready`'s address,
-`http://localhost:8080/api/hello`. `jk dev --output json` turns every line into an event
-with its source (`sidecar-output`, `app-output`) and the lifecycle into `sidecar-started`,
-`sidecar-ready`, `sidecar-exited` — [Machine output](../../machine-output.md#jk-dev).
+`jk dev --no-sidecars` runs the JVM alone; the `ready ·` line then carries `[dev] ready`'s address.
+`jk dev --output json` turns every line into an event with its source (`sidecar-output`,
+`app-output`) — [Machine output](../../machine-output.md#jk-dev). A dev server jk does not build is
+declared by hand under `[dev.sidecars]` ([Run § Sidecars](../../run.md#sidecars-devsidecars)).
 
-## What the sidecar does not touch
+## Build and test
 
 ```console
 $ jk build --no-ansi
-jk: + Build > Build successful. Built target/vite-sidecar-0.0.1.jar - took 6.9s
+jk: + Build > Build successful. Built target/vite-sidecar-0.0.1.jar - took 12.0s
 
 $ jk test --no-ansi
 + Test Successful: Passed 1 test - took 29ms
 ```
 
-Neither command reads `[dev.sidecars]`; the jar and the lockfile are the same with the table and
-without it. The nightly runs this sample the way this page does — `npm ci`, `jk dev`, a fetch of
-`/api/hello` through Vite, Ctrl-C — and fails if anything outlives the session.
+The nightly runs this sample the way this page does — `jk dev`, a fetch of `/api/hello` through
+Vite, Ctrl-C — and fails if anything outlives the session or a committed lock moved.
 
 ## Related
 
-[Run](../../run.md#sidecars-devsidecars) · [Machine output](../../machine-output.md#jk-dev) ·
-[Projects](../../projects.md)
+[Node.js](../../node.md) · [Run](../../run.md#sidecars-devsidecars) ·
+[Machine output](../../machine-output.md#jk-dev) · [Projects](../../projects.md)

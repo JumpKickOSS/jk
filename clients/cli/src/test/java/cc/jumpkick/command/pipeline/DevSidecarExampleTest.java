@@ -2,11 +2,18 @@
 package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.lock.NodePin;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.node.DiscoveredNode;
+import cc.jumpkick.node.NodeDiscovery;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.File;
 import java.io.IOException;
@@ -22,6 +29,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -32,16 +40,16 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The manual's {@code examples/vite-sidecar} under {@code jk dev}: the JVM API and the sidecar come
- * up, {@code dev-ready} waits for the JVM's own {@code [dev] ready} probe so the API answers the
- * moment it is announced, the front door answers, every sidecar line is an event with its source,
- * a source change restarts the JVM and leaves the sidecar alone, and Ctrl-C takes both processes
- * down. Vite itself
- * needs {@code npm install}, which this tier does not have, so the sidecar's command is swapped for
- * a single-file Java HTTP server that plays the dev server's part: it listens on the example's
- * port, prints a line and a carriage-return progress bar, and answers {@code /}. Everything else —
- * the manifest, the sources, the probe, the front door — is the example as documented, and {@code
- * jk dev} is spawned as a real process so the SIGINT is a real one.
+ * The manual's {@code examples/vite-sidecar} under {@code jk dev}: the JVM API and the dev server jk
+ * infers from its {@code [node]} build come up, {@code dev-ready} waits for the JVM's own {@code
+ * [dev] ready} probe so the API answers the moment it is announced, the front door answers, every
+ * dev-server line is an event with its source, a source change restarts the JVM and leaves the dev
+ * server alone, and Ctrl-C takes both processes down. Vite needs {@code npm ci}, which this tier
+ * does not have, so {@code web/} is a dependency-free package whose {@code dev} script plays the
+ * dev server's part on a free port (a line, a carriage-return progress bar, an answer on {@code /})
+ * and whose lock pins this host's Node.js. Everything else — the manifest, the sources, the probe,
+ * the inferred dev server — is the example as documented, and {@code jk dev} is spawned as a real
+ * process so the SIGINT is a real one.
  */
 @Tag("integration")
 @DisabledOnOs(OS.WINDOWS)
@@ -57,6 +65,9 @@ class DevSidecarExampleTest {
     private static final long STOP_WAIT_SECONDS = 120;
 
     private static final String READY_LINE = "ready · ";
+
+    /** The dev server jk infers for the example's {@code [node] dir}: the module's name plus {@code -node}. */
+    private static final String DEV_SERVER = "vite-sidecar-node";
 
     /** The events a dev session adds to the workspace envelope; the ones a transcript must replay. */
     private static final Predicate<String> DEV_EVENT = l -> {
@@ -79,7 +90,7 @@ class DevSidecarExampleTest {
             assertThat(ready)
                     .as("no sidecar-ready within the wait\nstdout:\n%s\nstderr:\n%s", read(out), read(err))
                     .isPresent();
-            assertThat(Jsonl.str(ready.get(), "name")).isEqualTo("web");
+            assertThat(Jsonl.str(ready.get(), "name")).isEqualTo(DEV_SERVER);
             assertThat(Jsonl.str(ready.get(), "url")).isEqualTo("http://localhost:" + webPort);
             assertThat(Jsonl.bool(ready.get(), "frontDoor", false)).isTrue();
 
@@ -92,7 +103,7 @@ class DevSidecarExampleTest {
                     .as("every sidecar line is an event with its source")
                     .anySatisfy(l -> {
                         assertThat(Jsonl.str(l, "type")).isEqualTo("sidecar-output");
-                        assertThat(Jsonl.str(l, "name")).isEqualTo("web");
+                        assertThat(Jsonl.str(l, "name")).isEqualTo(DEV_SERVER);
                         assertThat(Jsonl.str(l, "stream")).isEqualTo("stdout");
                         assertThat(Jsonl.str(l, "line")).isEqualTo("stub dev server on http://localhost:" + webPort);
                     });
@@ -278,51 +289,57 @@ class DevSidecarExampleTest {
     }
 
     /**
-     * The example as committed, with two edits a reader can verify: the sidecar runs the stub on a
-     * free port instead of {@code npm run dev} on 5173, and the test-dependency table is dropped so
-     * the copy builds with no lockfile and no repository.
+     * The example as committed, with the edits an offline run needs, each visible here: {@code web/}
+     * is a dependency-free package whose dev server listens on {@code webPort}, {@code [node]} pins
+     * this host's Node.js major and names that port, the lock pins this host's Node.js, the JVM's
+     * probe moves to {@code apiPort}, and the test-dependency table is dropped so the copy builds
+     * with no repository.
      */
     private static Path stage(Path project, int webPort, int apiPort) throws IOException {
-        Files.createDirectories(project.resolve("web"));
+        List<DiscoveredNode> nodes = new NodeDiscovery().discover();
+        assumeTrue(!nodes.isEmpty(), "a Node.js on this host");
+        String node = nodes.get(0).version();
         copyTree(EXAMPLE.resolve("src/main"), project.resolve("src/main"));
         String manifest = Files.readString(EXAMPLE.resolve("jk.toml"));
-        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String sidecar = "web = { command = [\"" + java + "\", \"StubDevServer.java\", \"" + webPort
-                + "\"], cwd = \"web\", ready = \"http://localhost:" + webPort + "\", front-door = true }";
         String appReady = "ready = \"http://localhost:" + apiPort + "/api/hello\"";
         String edited = manifest.lines()
-                .map(l -> l.startsWith("web = {") ? sidecar : l)
+                .map(l -> l.startsWith("version = 24") ? "version = " + node.substring(0, node.indexOf('.')) : l)
+                .map(l -> l.startsWith("dir     = \"web\"") ? l + "\ndev-port = " + webPort : l)
                 .map(l -> l.startsWith("ready = \"http://localhost:8080") ? appReady : l)
                 .filter(l -> !l.startsWith("[test-dependencies]") && !l.startsWith("junit-jupiter"))
                 .reduce((a, b) -> a + "\n" + b)
                 .orElseThrow();
         assertThat(edited)
+                .contains("[node]")
+                .contains("dir     = \"web\"\ndev-port = " + webPort)
                 .contains("[dev]\n" + appReady)
-                .contains("[dev.sidecars]")
+                .doesNotContain("[dev.sidecars]")
                 .contains("main = \"demo.Api\"");
         Files.writeString(project.resolve("jk.toml"), edited + "\n");
-        Files.writeString(project.resolve("web/StubDevServer.java"), """
-                import com.sun.net.httpserver.HttpServer;
-                import java.io.OutputStream;
-                import java.net.InetSocketAddress;
-
-                public class StubDevServer {
-                    public static void main(String[] args) throws Exception {
-                        int port = Integer.parseInt(args[0]);
-                        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
-                        server.createContext("/", exchange -> {
-                            byte[] body = "stub dev server".getBytes();
-                            exchange.sendResponseHeaders(200, body.length);
-                            try (OutputStream out = exchange.getResponseBody()) {
-                                out.write(body);
-                            }
-                        });
-                        System.out.print("bundling 10%\\rbundling 55%\\rbundling 100%\\n");
-                        System.out.println("stub dev server on http://localhost:" + port);
-                        server.start();
-                        Thread.sleep(Long.MAX_VALUE);
-                    }
-                }
+        LockfileWriter.write(
+                Lockfile.empty(JkVersion.VERSION).withNode(new NodePin(node, null, null, Map.of())),
+                project.resolve("jk-lock.toml"));
+        Path web = Files.createDirectories(project.resolve("web"));
+        Files.writeString(web.resolve("package.json"), """
+                {"name":"vite-sidecar-web","version":"1.0.0","private":true,
+                 "scripts":{"build":"node build.js","dev":"node dev.js %d"}}
+                """.formatted(webPort));
+        Files.writeString(web.resolve("package-lock.json"), """
+                {"name":"vite-sidecar-web","version":"1.0.0","lockfileVersion":3,"requires":true,
+                 "packages":{"":{"name":"vite-sidecar-web","version":"1.0.0"}}}
+                """);
+        Files.writeString(web.resolve("build.js"), """
+                const fs = require('fs');
+                fs.mkdirSync('dist', {recursive: true});
+                fs.writeFileSync('dist/index.html', '<h1>stub</h1>');
+                """);
+        Files.writeString(web.resolve("dev.js"), """
+                const http = require('http');
+                const port = Number(process.argv[2]);
+                http.createServer((req, res) => res.end('stub dev server')).listen(port, () => {
+                  process.stdout.write('bundling 10%\\rbundling 55%\\rbundling 100%\\n');
+                  console.log('stub dev server on http://localhost:' + port);
+                });
                 """);
         return project;
     }
