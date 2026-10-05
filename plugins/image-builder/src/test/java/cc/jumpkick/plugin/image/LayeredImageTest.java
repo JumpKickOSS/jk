@@ -9,6 +9,7 @@ import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.ImageContext;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.testing.RegistryStub;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,12 +32,12 @@ import org.junit.jupiter.api.io.TempDir;
 /** A node build's image: its layers in order, at their image paths, and how the container starts. */
 class LayeredImageTest {
 
-    private FakeRegistry registry;
+    private RegistryStub registry;
     private String baseRef;
 
     @BeforeEach
     void start() throws IOException {
-        registry = FakeRegistry.open();
+        registry = RegistryStub.open();
         baseRef = registry.publishImage("nodejs-" + System.nanoTime(), "1");
     }
 
