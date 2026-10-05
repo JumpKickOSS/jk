@@ -7,8 +7,8 @@
 #                      (`generated-by`, `generated-by-build`, `generated-by-build-time`), nothing
 #                      else. A first-party plugin pinned at the product's own, still-moving version is
 #                      republished with every side-load, so its sha256 can never match a committed
-#                      lock (pre-1.0); and `jk lock` records the jk build that ran it, which in the
-#                      job is the checkout's own build. Neither changes what the lock resolves.
+#                      lock (pre-1.0), and a lock rewritten for that names the build that wrote it.
+#                      A relock that resolves what the file says leaves it untouched.
 #   package-lock.json  may not differ at all. A frozen install refuses a lock out of step with
 #                      package.json, so a lock the job rewrote (an `npm install`, a Node upgrade)
 #                      would otherwise be noticed only when the install fails on a contributor's machine.

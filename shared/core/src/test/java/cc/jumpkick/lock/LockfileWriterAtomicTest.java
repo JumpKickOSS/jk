@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Scope;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -24,7 +25,9 @@ class LockfileWriterAtomicTest {
     @Test
     void concurrent_reader_never_sees_a_torn_lockfile(@TempDir Path tmp) throws Exception {
         Path lockFile = tmp.resolve("jk-lock.toml");
-        Lockfile lock = bigLockfile();
+        Lockfile lock = bigLockfile("1.0.");
+        // Two resolutions of the same size, so every write replaces the file rather than finding it current.
+        Lockfile other = bigLockfile("2.0.");
         LockfileWriter.write(lock, lockFile);
         int artifacts = LockfileReader.read(lockFile).artifacts().size();
 
@@ -58,7 +61,7 @@ class LockfileWriterAtomicTest {
         // of interleavings, not a duration, so the loop also stops after two seconds of them.
         long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
         for (int i = 0; i < 200 && readerFailure.get() == null && System.nanoTime() < deadline; i++) {
-            LockfileWriter.write(lock, lockFile);
+            LockfileWriter.write(i % 2 == 0 ? other : lock, lockFile);
         }
         stop.set(true);
         reader.join(10_000);
@@ -66,12 +69,31 @@ class LockfileWriterAtomicTest {
         assertThat(readerFailure.get()).isNull();
     }
 
-    private static Lockfile bigLockfile() {
+    @Test
+    void a_relock_that_resolves_what_the_file_says_leaves_it_untouched(@TempDir Path tmp) throws Exception {
+        Path lockFile = tmp.resolve("jk-lock.toml");
+        LockfileWriter.write(bigLockfile("1.0."), lockFile);
+        String first = Files.readString(lockFile);
+        // Another writer's stamp, as a lock committed by a different build reads.
+        Files.writeString(lockFile, first.replaceFirst("(?m)^generated-by = .*$", "generated-by = \"jk 0.0.1\""));
+        String committed = Files.readString(lockFile);
+
+        LockfileWriter.write(bigLockfile("1.0."), lockFile);
+        assertThat(Files.readString(lockFile)).isEqualTo(committed);
+
+        LockfileWriter.write(bigLockfile("2.0."), lockFile);
+        assertThat(Files.readString(lockFile))
+                .as("a changed resolution is written with this writer's stamp")
+                .contains("generated-by = \"jk test\"")
+                .contains("2.0.0");
+    }
+
+    private static Lockfile bigLockfile(String versionPrefix) {
         List<Lockfile.Artifact> artifacts = new ArrayList<>();
         for (int i = 0; i < 400; i++) {
             artifacts.add(new Lockfile.Artifact(
                     "com.example:artifact-" + i,
-                    "1.0." + i,
+                    versionPrefix + i,
                     "https://repo.example/artifact-" + i,
                     "sha256:" + "ab".repeat(32),
                     null,
