@@ -527,6 +527,9 @@ public final class EngineProtocol {
     /** Client → server: provision Maven/Gradle ({@code jk mvn}/{@code jk gradle}). */
     public static final String PROVISION_REQUEST = "provision-request";
 
+    /** Server → client during {@link #PROVISION_REQUEST}: a download's bytes, then the unpack. */
+    public static final String PROVISION_PROGRESS = "provision-progress";
+
     /** Server → client, terminal for {@link #PROVISION_REQUEST}: the provisioned tool's bin path. */
     public static final String PROVISION_RESULT = "provision-result";
 

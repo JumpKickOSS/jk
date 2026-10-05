@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.compat.ToolInstaller;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
@@ -822,6 +823,8 @@ public final class EngineServer implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        // A tool install cut short by the shutdown leaves its archive and staging tree; reap them.
+        ToolInstaller.reapInFlight();
         // A trainer is this engine's child and must not outlive it or keep store jars open.
         List<Long> trainers = WorkerAotCache.stopTrainers();
         if (!trainers.isEmpty()) {

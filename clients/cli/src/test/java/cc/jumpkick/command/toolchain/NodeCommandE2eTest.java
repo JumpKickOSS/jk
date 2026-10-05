@@ -107,6 +107,15 @@ class NodeCommandE2eTest {
     }
 
     @Test
+    void an_install_shows_the_download_as_a_jdk_install_does(@TempDir Path dir) {
+        var shown = Capture.both(() -> run("node", "install", OLDER, "-C", dir.toString(), "--no-ansi"));
+        assertThat(shown.out() + shown.err())
+                .as("the engine streams the download and the client draws the JDK's row")
+                .contains("Downloading Node.js " + OLDER);
+        assertThat(run("node", "uninstall", OLDER)).isZero();
+    }
+
+    @Test
     void list_remote_filters_by_lts_and_major(@TempDir Path dir) {
         String all = Capture.stdout(() -> run("node", "list-remote", "-O", "json"));
         assertThat(all).contains(VERSION).contains(OLDER);

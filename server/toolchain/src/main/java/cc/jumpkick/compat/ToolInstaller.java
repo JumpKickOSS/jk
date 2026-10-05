@@ -28,7 +28,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
@@ -91,11 +90,11 @@ public final class ToolInstaller {
      * digest and no published checksum through, recording its SHA-256 for the next time.
      */
     public Installed install(ToolDistribution dist, boolean acceptUnverified) throws IOException, InterruptedException {
-        return install(dist, acceptUnverified, bytes -> {});
+        return install(dist, acceptUnverified, ToolProgress.NONE);
     }
 
-    /** As {@link #install(ToolDistribution, boolean)}, reporting the archive's bytes as they arrive. */
-    public Installed install(ToolDistribution dist, boolean acceptUnverified, LongConsumer onBytesRead)
+    /** As {@link #install(ToolDistribution, boolean)}, reporting the download and the unpack to {@code progress}. */
+    public Installed install(ToolDistribution dist, boolean acceptUnverified, ToolProgress progress)
             throws IOException, InterruptedException {
         Path target = registry.installDir(dist.tool(), dist.version());
         if (Files.isDirectory(target)) {
@@ -107,7 +106,8 @@ public final class ToolInstaller {
         Path archive = Files.createTempFile("jk-tool-", "-" + dist.archiveType());
         IN_FLIGHT.add(archive);
         try {
-            fetch(dist, archive, onBytesRead);
+            String name = dist.tool().displayName() + " " + dist.version();
+            fetch(dist, archive, name, progress);
             String actual = Hashing.fileHex(expected.algorithm(), archive);
             if (expected.hex() == null) {
                 // Accepted by name: the archive's own digest becomes the record later downloads
@@ -131,6 +131,7 @@ public final class ToolInstaller {
             // rename, so a crash or a racing provision never leaves a partial tree at target
             // — and a cross-filesystem /tmp (tmpfs) can't fail the per-directory moves
             // (Files.move of a non-empty dir across filesystems always throws).
+            progress.installing(name);
             Path stagingDir = Files.createTempDirectory(target.getParent(), "jk-tool-stage-");
             IN_FLIGHT.add(stagingDir);
             try {
@@ -167,7 +168,7 @@ public final class ToolInstaller {
     }
 
     /** Copy the distribution's archive to {@code archive}: from disk for a {@code file:} URI, else by download. */
-    private void fetch(ToolDistribution dist, Path archive, LongConsumer onBytesRead)
+    private void fetch(ToolDistribution dist, Path archive, String name, ToolProgress progress)
             throws IOException, InterruptedException {
         URI uri = dist.downloadUri();
         if (isFile(uri)) {
@@ -176,7 +177,10 @@ public final class ToolInstaller {
                 throw new IOException(
                         dist.tool().slug() + " distribution " + uri + " is not a file on this machine: " + source);
             }
+            long size = Files.size(source);
+            progress.downloading(name, 0, size);
             Files.copy(source, archive, StandardCopyOption.REPLACE_EXISTING);
+            progress.downloading(name, size, size);
             return;
         }
         // Streamed to disk, never held whole. The engine runs under a memory cap (248 MiB by
@@ -188,13 +192,19 @@ public final class ToolInstaller {
             if (response.statusCode() != 200) {
                 throw new IOException(dist.tool().slug() + " download " + uri + " returned " + response.statusCode());
             }
+            long length = response.headers().firstValueAsLong("content-length").orElse(0L);
+            progress.downloading(name, 0, length);
             try (OutputStream out = Files.newOutputStream(archive)) {
                 byte[] buf = new byte[64 * 1024];
-                long total = 0;
+                long read = 0;
                 for (int n; (n = body.read(buf)) > 0; ) {
+                    // A cancelled job interrupts this thread; the caller's finally reaps the archive.
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new InterruptedException(name + " download cancelled");
+                    }
                     out.write(buf, 0, n);
-                    total += n;
-                    onBytesRead.accept(total);
+                    read += n;
+                    progress.downloading(name, read, length);
                 }
             }
         }

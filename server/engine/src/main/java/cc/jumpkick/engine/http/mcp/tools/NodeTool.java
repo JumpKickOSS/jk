@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
+import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.NodePinEdit;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
@@ -103,7 +104,12 @@ public final class NodeTool implements McpTool {
 
     static Map<String, Object> install(@Nullable String spec) {
         var p = CompatPlans.provisionTool(
-                BuildTool.NODE.slug(), spec == null || spec.isBlank() ? "lts" : spec, JkDirs.tools(), false, false);
+                BuildTool.NODE.slug(),
+                spec == null || spec.isBlank() ? "lts" : spec,
+                JkDirs.tools(),
+                false,
+                false,
+                ToolProgress.NONE);
         if (p.error() != null) return Map.of("error", p.error());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("version", String.valueOf(p.version()));
