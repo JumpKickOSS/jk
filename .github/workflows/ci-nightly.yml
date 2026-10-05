@@ -279,6 +279,22 @@ jobs:
       - name: Lombok stays compile-time only
         run: ./scripts/check-lombok-diet.sh
 
+  # `jk new` renders from the published catalog first, so a template changed here and not mirrored
+  # there ships the old one. The check names each drifted file.
+  templates-drift:
+    name: Published templates match templates/
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: JumpKickOSS/jk-templates
+          path: jk-templates
+
+      - name: jk-templates mirrors templates/
+        run: ./scripts/templates-sync.sh --check jk-templates
+
   engine-heap-guard:
     name: Engine heap guard (committed-after-idle)
     runs-on: ubuntu-latest
