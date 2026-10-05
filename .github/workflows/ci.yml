@@ -107,9 +107,9 @@ jobs:
   # jk, not by the release that bootstrapped it. No step here runs a second build system: the `ci-cadence` guard fails the
   # build on a `gradlew` in this job.
   #
-  # The bootstrap release is the one line in .jk/ci-bootstrap-version, read here and by
-  # release.yml, and bumped after a release ships (docs/contributors/self-host.md, "The bootstrap
-  # pin").
+  # scripts/ci-bootstrap.sh installs the bootstrap: the release .jk/ci-bootstrap-version names, or
+  # the bridge commit .jk/ci-bootstrap-reader names built by it, for every workflow alike
+  # (docs/contributors/self-host.md, "The bootstrap pin" and "The bootstrap chain").
   #
   # Everything the job installs lands in a scratch JK_HOME inside the workspace, never the
   # runner's default ~/.jk. A self-host lane that can read a home some other job populated is a
@@ -137,12 +137,8 @@ jobs:
       # The installer's own knobs: JK_VERSION names the release, JK_HOME the home it lands in. The
       # version is read from the pin, never spelled here, so a release bumps one file.
       - name: Bootstrap jk from the hosted release
-        run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
-          echo "bootstrapping jk $version from https://jumpkick.build"
-          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
 
       - name: Engine smoke
         run: |

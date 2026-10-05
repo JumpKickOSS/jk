@@ -1,0 +1,8 @@
+# The top-level jk-lock.toml keys the jk CI builds this tree with reads.
+source = 6cace0ccf6cace0ccf6cace0ccf6cace0ccf6cac
+artifact
+generated-by
+jdk
+resolution-algorithm
+version
+node

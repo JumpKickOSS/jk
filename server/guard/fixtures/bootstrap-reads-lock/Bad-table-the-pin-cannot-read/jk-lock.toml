@@ -1,0 +1,15 @@
+version = 1
+generated-by = "jk 1.4.0"
+resolution-algorithm = "pubgrub-v1"
+
+[node]
+version = "24.21.0"
+npm = "11.19.0"
+sha256.linux-x64 = "6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff"
+
+[[artifact]]
+name     = "aopalliance:aopalliance:jar:"
+version  = "1.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:0addec670fedcd3f113c5c8091d783280d23f75e3acb841b61a9cdb079376a08"
+scopes   = ["main"]
