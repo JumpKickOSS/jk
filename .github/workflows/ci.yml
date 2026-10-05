@@ -134,11 +134,6 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # The dashboard's JS suites run under `node --test` inside `jk test`. The version is `.nvmrc`.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: '.nvmrc'
-
       # The installer's own knobs: JK_VERSION names the release, JK_HOME the home it lands in. The
       # version is read from the pin, never spelled here, so a release bumps one file.
       - name: Bootstrap jk from the hosted release

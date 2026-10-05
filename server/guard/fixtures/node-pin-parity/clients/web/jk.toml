@@ -1,0 +1,4 @@
+name = "jk-web"
+
+# The dashboard's JS suites run on the Node.js jk provisions.
+node = 24

@@ -1,0 +1,4 @@
+name = "jk-web"
+
+# Pins a Node major .nvmrc does not name.
+node = 22
