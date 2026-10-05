@@ -2,6 +2,7 @@
 package cc.jumpkick.node;
 
 import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.compat.DownloadOrigin;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
@@ -34,7 +35,7 @@ public final class PackageManagerResolver {
 
     public PackageManagerResolver(Http http, URI registry) {
         this.http = Objects.requireNonNull(http, "http");
-        this.registry = NodeSources.directory(registry.toString());
+        this.registry = DownloadOrigin.directory(registry.toString());
     }
 
     /** The distribution of {@code spec} for {@code platform}; npm has none (it comes with Node). */

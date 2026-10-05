@@ -217,8 +217,8 @@ Sources, in order — the first that yields a credential wins:
    [Maven `settings.xml`](#maven-settingsxml-mirrors-proxies-profiles))
 5. a `jk auth login` forge token, for forge package registries (matched by host)
 
-Node distribution mirrors and npm registries use the same chain, keyed by host — see
-[Config § Node network](config.md#node-network).
+Tool distribution mirrors and npm registries use the same chain, keyed by host — see
+[Config § Tool mirrors](config.md#tool-mirrors) and [Config § Node network](config.md#node-network).
 
 `jk publish --central` reads the id `central`, bound to `https://central.sonatype.com` — see
 [Publish: Maven Central](publish.md#maven-central).

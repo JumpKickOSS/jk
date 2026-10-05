@@ -274,18 +274,12 @@ public final class GlobalConfig {
     // Node sources
 
     /**
-     * {@code [node] dist-mirror} and {@code registry} of {@code ~/.jk/config.toml}: where Node
-     * distributions and package-manager tarballs come from. Null for an absent key; lenient, as the
-     * rest of the file is.
+     * {@code [node]} of {@code ~/.jk/config.toml}: the npm registry and {@code [node.scopes]} (an
+     * {@code @scope} to its registry), as written, {@code ${VAR}} references unexpanded. The Node
+     * distribution's mirror is {@code [mirrors] node} ({@link #mirrors}).
      */
-    /**
-     * {@code [node]} of {@code ~/.jk/config.toml}: the distribution mirror, the npm registry and
-     * {@code [node.scopes]} (an {@code @scope} to its registry), as written, {@code ${VAR}}
-     * references unexpanded.
-     */
-    public record NodeSources(
-            @Nullable String distMirror, @Nullable String registry, Map<String, String> scopes) {
-        public static final NodeSources EMPTY = new NodeSources(null, null, Map.of());
+    public record NodeSources(@Nullable String registry, Map<String, String> scopes) {
+        public static final NodeSources EMPTY = new NodeSources(null, Map.of());
 
         public NodeSources {
             scopes = Map.copyOf(scopes);
@@ -301,13 +295,38 @@ public final class GlobalConfig {
         try {
             return parseConfig(configFile)
                     .map(toml -> toml.getTable("node"))
-                    .map(t -> new NodeSources(
-                            blankToNull(t.getString("dist-mirror")),
-                            blankToNull(t.getString("registry")),
-                            nodeScopes(t.getTable("scopes"))))
+                    .map(t -> new NodeSources(blankToNull(t.getString("registry")), nodeScopes(t.getTable("scopes"))))
                     .orElse(NodeSources.EMPTY);
         } catch (RuntimeException e) {
             return NodeSources.EMPTY;
+        }
+    }
+
+    /**
+     * {@code [mirrors]} of {@code ~/.jk/config.toml}: a tool distribution's key ({@code node},
+     * {@code kotlin}, {@code gradle}, {@code maven}) to the base URL it is downloaded from instead of
+     * the public one, as written, {@code ${VAR}} references unexpanded. Empty when the table is absent.
+     */
+    public static Map<String, String> mirrors() {
+        return mirrors(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #mirrors()} but against an explicit config file — for tests. */
+    static Map<String, String> mirrors(Path configFile) {
+        try {
+            return parseConfig(configFile)
+                    .map(toml -> toml.getTable("mirrors"))
+                    .map(t -> {
+                        Map<String, String> out = new LinkedHashMap<>();
+                        for (String key : t.keySet()) {
+                            String url = blankToNull(t.getString(List.of(key)));
+                            if (url != null) out.put(key, url);
+                        }
+                        return Map.copyOf(out);
+                    })
+                    .orElse(Map.of());
+        } catch (RuntimeException e) {
+            return Map.of();
         }
     }
 

@@ -219,6 +219,7 @@ the module is refused, and `out` must land in the node build or the module.
 
 ## Registries and mirrors
 
-`~/.jk/config.toml` `[node]` sets `dist-mirror`, `registry` and per-scope registries; credentials
-come from the repository credential chain, and a Maven `settings.xml` mirror is the fallback
-([Config § Node network](config.md#node-network)).
+`~/.jk/config.toml` `[mirrors] node` sets where Node itself comes from, and `[node]` sets the
+`registry` and per-scope registries; credentials come from the repository credential chain, and a
+Maven `settings.xml` mirror is the fallback ([Config § Tool mirrors](config.md#tool-mirrors),
+[Config § Node network](config.md#node-network)).

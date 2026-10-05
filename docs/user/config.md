@@ -144,24 +144,43 @@ wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.
 in its own processes unless you set that property yourself. `--offline` still refuses every
 request before any proxy is consulted.
 
+## Tool mirrors
+
+The distributions jk provisions for itself come from their public origins unless `[mirrors]` points
+a tool elsewhere. Each mirror is laid out as the origin it replaces:
+
+```toml
+# ~/.jk/config.toml
+[mirrors]
+node   = "https://nexus.corp/repository/nodejs-dist/"        # as https://nodejs.org/dist/
+kotlin = "https://nexus.corp/repository/kotlin-releases/"    # as https://github.com/JetBrains/kotlin/releases/download/
+gradle = "${NEXUS}/repository/gradle-distributions/"         # as https://services.gradle.org/distributions/; ${VAR} reads your shell
+maven  = "https://nexus.corp/repository/maven-central/"      # a Maven repository root holding org/apache/maven/apache-maven/
+```
+
+Each is, first to answer: `JK_<TOOL>_DIST_MIRROR` (`JK_NODE_DIST_MIRROR`, `JK_KOTLIN_DIST_MIRROR`,
+…), this table, a Maven `settings.xml` `<mirror>` whose `mirrorOf` names the tool (`nodejs`,
+`kotlin`, `gradle`; for the Maven distribution `central` or `*`, as Maven itself reads them), then
+the public origin. A Gradle wrapper's own `distributionUrl` is used as written. JDKs come from their
+catalog feed, not a mirror. Credentials come from the chain below, under the mirror's `host[:port]`.
+
 ## Node network
 
-Node distributions come from `https://nodejs.org/dist/`, and packages and the pnpm, Yarn and bun
-tarballs from `https://registry.npmjs.org/`, unless you point them elsewhere:
+Packages and the pnpm, Yarn and bun tarballs come from `https://registry.npmjs.org/` unless you
+point them elsewhere; the Node distribution itself is `[mirrors] node` ([Tool mirrors](#tool-mirrors)):
 
 ```toml
 # ~/.jk/config.toml
 [node]
-dist-mirror = "https://nexus.corp/repository/nodejs-dist/"   # laid out as nodejs.org/dist
-registry    = "${NEXUS}/repository/npm-all/"                 # ${VAR} reads your shell
+registry = "${NEXUS}/repository/npm-all/"                    # ${VAR} reads your shell
 
 [node.scopes]
 "@acme" = "https://nexus.corp/repository/npm-acme/"          # one scope's own registry
 ```
 
-Each origin is, first to answer: `JK_NODE_DIST_MIRROR` / `JK_NODE_REGISTRY`, this file, a Maven
-`settings.xml` `<mirror>` whose `mirrorOf` names `nodejs` / `npm`, then the public default. A
-wildcard `mirrorOf` is a Maven mirror and never stands in for npm.
+The registry is, first to answer: `JK_NODE_REGISTRY`, this file, a Maven `settings.xml` `<mirror>`
+whose `mirrorOf` names `npm`, then the public default. A wildcard `mirrorOf` is a Maven mirror and
+never stands in for npm.
 
 **Credentials** never go in this file. Each origin's comes from the
 [repository credential chain](repositories.md#credentials) under the origin's `host[:port]`:

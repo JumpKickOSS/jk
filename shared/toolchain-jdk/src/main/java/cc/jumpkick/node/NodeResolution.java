@@ -2,6 +2,7 @@
 package cc.jumpkick.node;
 
 import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.compat.DownloadOrigin;
 import cc.jumpkick.compat.ToolDistribution;
 import java.net.URI;
 import java.util.Map;
@@ -27,7 +28,7 @@ public record NodeResolution(
             throw new IllegalArgumentException(
                     "Node " + version + " publishes no " + platform.archiveType() + " archive for " + platform.key());
         }
-        URI base = NodeSources.directory(distBase.toString());
+        URI base = DownloadOrigin.directory(distBase.toString());
         return new ToolDistribution(
                 BuildTool.NODE,
                 version,

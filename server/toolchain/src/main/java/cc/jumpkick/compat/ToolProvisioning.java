@@ -99,8 +99,9 @@ public final class ToolProvisioning {
         }
 
         // 4. Download fallback.
-        ToolInstaller.Installed installed =
-                new ToolInstaller(http, registry).install(distribution, policy.acceptUnverified(), progress);
+        ToolInstaller.Installed installed = new ToolInstaller(
+                        DistMirrors.authorized(http, distribution.tool()), registry)
+                .install(distribution, policy.acceptUnverified(), progress);
         return new Result(
                 installed.tool(),
                 Result.Source.DOWNLOADED,

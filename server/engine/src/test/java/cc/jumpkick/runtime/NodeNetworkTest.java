@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compat.DownloadOrigin;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.node.NodeSources;
 import cc.jumpkick.node.PackageManager;
@@ -22,10 +23,10 @@ import org.junit.jupiter.api.io.TempDir;
 /** What a node step's package manager is handed: a per-run user config and the proxy variables. */
 class NodeNetworkTest {
 
-    private static final NodeSources.Origin REGISTRY =
-            new NodeSources.Origin(URI.create("https://nexus.corp/npm/"), "nexus.corp");
-    private static final NodeSources.Origin ACME =
-            new NodeSources.Origin(URI.create("https://acme.corp/npm-acme/"), "acme.corp");
+    private static final DownloadOrigin REGISTRY =
+            new DownloadOrigin(URI.create("https://nexus.corp/npm/"), "nexus.corp");
+    private static final DownloadOrigin ACME =
+            new DownloadOrigin(URI.create("https://acme.corp/npm-acme/"), "acme.corp");
 
     @TempDir
     Path dir;
@@ -103,7 +104,7 @@ class NodeNetworkTest {
     @Test
     void yarn_berry_is_told_to_trust_a_plain_http_registry_jk_hands_it() throws Exception {
         NodeNetwork.Sources sources = new NodeNetwork.Sources(
-                new NodeSources.Origin(URI.create("http://nexus.lan:8081/npm/"), "nexus.lan:8081"),
+                new DownloadOrigin(URI.create("http://nexus.lan:8081/npm/"), "nexus.lan:8081"),
                 Map.of(),
                 origin -> RepoCredential.ANONYMOUS,
                 uri -> Optional.empty(),
@@ -119,7 +120,7 @@ class NodeNetworkTest {
     @Test
     void the_public_registry_with_no_credential_writes_nothing() throws Exception {
         NodeNetwork.Sources sources = new NodeNetwork.Sources(
-                new NodeSources.Origin(URI.create(NodeSources.NPM_REGISTRY), "registry.npmjs.org"),
+                new DownloadOrigin(URI.create(NodeSources.NPM_REGISTRY), "registry.npmjs.org"),
                 Map.of(),
                 origin -> RepoCredential.ANONYMOUS,
                 uri -> Optional.empty(),
