@@ -12,6 +12,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -63,7 +64,10 @@ public final class LockfileWriter {
         // Atomic (temp + rename): concurrent readers never observe a truncated lock.
         // Durable: the lockfile is the source of truth, not a cache. A torn target after power loss is
         // not recoverable by re-running — the resolve that produced it is gone.
-        AtomicWrites.replaceDurably(file, render(stamped));
+        // A relock that resolved what the file already says leaves it alone: restamping only the
+        // writer lines would turn every `jk lock` into a diff in a committed lock.
+        String text = render(stamped);
+        if (!sameButWriter(file, text)) AtomicWrites.replaceDurably(file, text);
         // Record this checkout in identity.toml so project=<id> knows it without a prior build.
         // The identity comes from the lock in memory: reading a megabyte lock back through the TOML
         // parser to learn the id this method just wrote is what pushed the engine past its heap.
@@ -121,6 +125,21 @@ public final class LockfileWriter {
         writePlugins(out, lockfile);
         writeSdk(out, lockfile);
         writeModules(out, lockfile);
+        return out.toString();
+    }
+
+    /** True when {@code file} holds {@code text} up to the writer lines {@link #writeHeader} stamps. */
+    private static boolean sameButWriter(Path file, String text) throws IOException {
+        if (!Files.isRegularFile(file)) return false;
+        return withoutWriter(Files.readString(file)).equals(withoutWriter(text));
+    }
+
+    private static String withoutWriter(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        for (String line : text.split("\n", -1)) {
+            if (line.startsWith("generated-by")) continue;
+            out.append(line).append('\n');
+        }
         return out.toString();
     }
 
