@@ -167,7 +167,6 @@ class EngineServerTest extends EngineServerHarness {
         serverThread.join(5_000);
         assertThat(serverThread.isAlive()).isFalse();
         assertThat(Files.exists(EnginePaths.endpoint(p))).isFalse(); // endpoint retired at exit
-        assertThat(Files.exists(p.lock())).isFalse();
     }
 
     /**

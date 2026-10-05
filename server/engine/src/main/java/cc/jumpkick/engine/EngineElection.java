@@ -25,8 +25,10 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
@@ -88,6 +90,12 @@ final class EngineElection {
 
     /** The generation this engine bound (socket/lock/pid/token) — see EnginePaths.generation. */
     private EnginePaths.@Nullable Paths active;
+
+    /** The file key of the socket (or TCP port file) this engine bound, to tell it from a successor's. */
+    private @Nullable Object boundSocketKey;
+
+    /** Test seam: runs in {@link #retire} after the generation lock is released. */
+    static @Nullable Runnable afterGenerationReleased;
 
     EngineElection(EnginePaths.Paths paths, String version, String buildId, long pid, Consumer<String> log) {
         this.paths = paths;
@@ -197,6 +205,7 @@ final class EngineElection {
             // Defence in depth under the 0700 directory; bind itself follows the umask.
             OwnerOnlyFiles.setOwnerOnly(active.socket(), "rw-------");
         }
+        boundSocketKey = fileKey(active.socket());
         // The pid file is the pid and nothing else: a script reads it whole as a process id.
         OwnerOnlyFiles.writeString(active.pid(), pid + "\n");
 
@@ -278,15 +287,26 @@ final class EngineElection {
     }
 
     /**
-     * Undo {@link #win}: drop this generation's files, release the generation and startup locks,
-     * and un-point the endpoint only if it still names US — a takeover successor owns it now and
-     * must not be un-pointed by the lame duck's exit.
+     * Undo {@link #win}: drop the socket, token and pid file this engine still owns, un-point the
+     * endpoint only if it still names US, then release the generation and startup locks.
+     *
+     * <p>The lock files themselves stay. Deleting one after its release lets a successor's lock land
+     * on the unlinked file while a third engine locks a fresh one at the same path, and both then
+     * own the generation — the second deletes the first's live socket as stale. A socket is removed
+     * only while the pid file still names this engine: a successor that rebound the name keeps it.
      */
     void retire() {
         if (active != null) {
-            deleteQuietly(active.socket());
-            deleteQuietly(active.token());
-            deleteQuietly(active.pid());
+            boolean pidIsMine = readPidFile(active.pid()) == pid;
+            // A freed inode is reused at once, so the file key alone cannot tell a successor's
+            // socket from ours; the pid file it rewrote can. The key adds a check where it exists.
+            boolean socketIsMine =
+                    pidIsMine && (boundSocketKey == null || boundSocketKey.equals(fileKey(active.socket())));
+            if (socketIsMine) {
+                deleteQuietly(active.socket());
+                deleteQuietly(active.token());
+            }
+            if (pidIsMine) deleteQuietly(active.pid());
             if (endpointNamesThisEngine()) deleteQuietly(EnginePaths.endpoint(paths));
             try {
                 if (genLock != null) genLock.release();
@@ -294,10 +314,20 @@ final class EngineElection {
             } catch (IOException ignored) {
                 // process exit releases it regardless
             }
-            deleteQuietly(active.lock());
+            Runnable seam = afterGenerationReleased;
+            if (seam != null) seam.run();
         }
         releaseStartupLock();
-        deleteQuietly(paths.lock()); // the transient startup mutex file
+    }
+
+    /** The file's identity (inode on Unix), or {@code null} when it is missing or unreadable. */
+    private static @Nullable Object fileKey(Path file) {
+        try {
+            return Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS)
+                    .fileKey();
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /**
