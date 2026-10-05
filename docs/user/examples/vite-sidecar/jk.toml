@@ -6,14 +6,16 @@ java    = 25
 [application]
 main = "demo.Api"
 
-# Under `jk dev` — and only there — the JVM counts as ready once /api/hello answers, and the
-# frontend's own dev server runs beside it. `jk run`, `jk build`, and `jk test` never read this
-# table; nothing about it enters the action cache.
+# The front end is a node build beside the JVM sources. jk provisions the Node.js below, installs
+# web/ from its package-lock.json and runs its build, so the bundle rides in the jar under static/.
+# Under `jk dev` it also runs web/'s `dev` script beside the JVM — no sidecar to write.
+[node]
+version = 24
+dir     = "web"
+
+# Under `jk dev` — and only there — the JVM counts as ready once /api/hello answers.
 [dev]
 ready = "http://localhost:8080/api/hello"
-
-[dev.sidecars]
-web = { command = "npm run dev", cwd = "web", ready = "http://localhost:5173", front-door = true }
 
 [test-dependencies]
 junit-jupiter = "6.1.3"

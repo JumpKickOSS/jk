@@ -14,8 +14,8 @@
 # --examples: every web/<scenario> of a jk-examples checkout that has a jk.toml, each built
 # beforehand (its node_modules installed by `jk build`), with the checks listed below.
 #
-# `jk` is taken from JK_BIN (default: jk on PATH). An example with a hand-written sidecar needs its
-# node_modules already (`npm ci`).
+# `jk` is taken from JK_BIN (default: jk on PATH). A node build's dependencies are installed by
+# `jk dev` itself; an example with a hand-written sidecar needs its own node_modules already.
 set -euo pipefail
 
 jk="${JK_BIN:-jk}"

@@ -342,17 +342,11 @@ jobs:
           done
           exit "$failed"
 
-      # The one sample with a `[dev.sidecars]` table is also run the way its README says to run
-      # it: `jk dev`, Vite beside the JVM, the API fetched through Vite's proxy, Ctrl-C. Its
-      # sidecar runs npm from PATH, so the step runs under `jk node exec` with the Node.js .nvmrc
-      # names, the one the sample's package-lock.json was cut for.
+      # The vite-sidecar sample is also run the way its README says to run it: `jk dev`, Vite beside
+      # the JVM as the dev server jk infers from its [node] build, the API fetched through Vite's
+      # proxy, Ctrl-C. jk provisions the Node.js its lock pins and installs web/ itself.
       - name: Run the vite-sidecar sample under jk dev
-        run: |
-          set -euo pipefail
-          node="$(tr -d '[:space:]' < .nvmrc)"
-          (cd docs/user/examples/vite-sidecar/web && jk node exec --node "$node" -- npm ci --no-audit --no-fund)
-          jk node exec --node "$node" -- \
-            scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar '/api/hello=hello from the JVM'
+        run: scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar '/api/hello=hello from the JVM'
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
