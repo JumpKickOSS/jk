@@ -33,6 +33,12 @@ import org.jspecify.annotations.Nullable;
  */
 public final class NodeRun {
 
+    /**
+     * Where the request that plans a run reports a Node.js it has to install first: the client's
+     * download bar under {@code jk run} and {@code jk dev}, nothing when unbound.
+     */
+    public static final ScopedValue<ToolProgress> PROGRESS = ScopedValue.newInstance();
+
     private NodeRun() {}
 
     /**
@@ -166,7 +172,7 @@ public final class NodeRun {
         NodePin pin =
                 Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile).node() : null;
         if (pin == null) throw new IOException("Node.js is not locked yet — run `jk build` first");
-        return PlannerNodeSetup.ensure(PlannerNodeSetup.provisioning.get(), pin, ToolProgress.NONE);
+        return PlannerNodeSetup.ensure(PlannerNodeSetup.provisioning.get(), pin, PROGRESS.orElse(ToolProgress.NONE));
     }
 
     private static String path(NodeHome home, Path nodeDir, @Nullable String callerPath) {

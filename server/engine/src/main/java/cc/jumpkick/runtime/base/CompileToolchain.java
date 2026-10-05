@@ -118,6 +118,12 @@ public final class CompileToolchain {
      * or a step's {@code TaskContext::output}) decides how to surface it.
      */
     public static Path resolveKotlinHome(Path cacheDir, @Nullable String versionOverride, Consumer<String> notice) {
+        return resolveKotlinHome(cacheDir, versionOverride, notice, ToolProgress.NONE);
+    }
+
+    /** As above, drawing a download's progress on {@code progress}, as a JDK download draws its own. */
+    public static Path resolveKotlinHome(
+            Path cacheDir, @Nullable String versionOverride, Consumer<String> notice, ToolProgress progress) {
         // ToolProvisioning already runs the EnvVarProbe (which reads
         // KOTLIN_HOME), so we don't need a separate fast-path. Going
         // through the full plan guarantees we leave a symlink under
@@ -129,7 +135,7 @@ public final class CompileToolchain {
         try {
             boolean refresh = SessionContext.current().config().forceOr(false);
             ToolProvisioning.Result result = ToolProvisioning.provision(
-                    dist, registry, new Http(), new ToolProvisioning.Policy(false, refresh, false), ToolProgress.NONE);
+                    dist, registry, new Http(), new ToolProvisioning.Policy(false, refresh, false), progress);
             switch (result.source()) {
                 case LINKED -> notice.accept("Linked Kotlin " + dist.version() + " from " + result.detail());
                 case DOWNLOADED -> notice.accept("Installed Kotlin " + dist.version() + " from " + result.detail());

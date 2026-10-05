@@ -16,7 +16,9 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.RepoGroupBuilder;
+import cc.jumpkick.runtime.ToolPlanProgress;
 import cc.jumpkick.runtime.base.CompatPlans;
 import cc.jumpkick.runtime.workspace.ImportPinRaises;
 import cc.jumpkick.util.JkDirs;
@@ -27,6 +29,7 @@ import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 public final class ImportVerb implements HostedVerb {
@@ -124,8 +127,14 @@ public final class ImportVerb implements HostedVerb {
                         new PomImporter(RepoGroupBuilder.buildForImport(cas), cas).activeProfiles(body.profiles());
                 // Gradle's own evaluation runs in a fork on a provisioned distribution: the engine's
                 // heap never hosts Gradle, and the wrapper's checksum vouches for the download.
-                GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
-                        JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, Path.of(body.tmpDir())));
+                Path tmpDir = Path.of(body.tmpDir());
+                Function<TaskContext, GradleBuildImport> gradle =
+                        step -> GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                                JkDirs.tools(),
+                                new Http(),
+                                ToolProvisioning.Policy.DEFAULT,
+                                tmpDir,
+                                new ToolPlanProgress(step)));
                 BuildPlan plan = CompatPlans.importBuildPlan(
                         poms,
                         gradle,

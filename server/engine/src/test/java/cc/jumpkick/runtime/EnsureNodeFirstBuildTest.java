@@ -124,7 +124,7 @@ class EnsureNodeFirstBuildTest {
     }
 
     /** A Node archive holding only {@code <top>/bin/node}. */
-    private static byte[] tarGz(String top, String node) throws IOException {
+    static byte[] tarGz(String top, String node) throws IOException {
         ByteArrayOutputStream tar = new ByteArrayOutputStream();
         entry(tar, top + "/", new byte[0], true);
         entry(tar, top + "/bin/", new byte[0], true);

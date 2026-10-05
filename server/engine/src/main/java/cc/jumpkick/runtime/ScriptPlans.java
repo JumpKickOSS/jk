@@ -426,7 +426,8 @@ public final class ScriptPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("provision kotlinc");
-                    Path kotlinHome = CompileToolchain.resolveKotlinHome(cacheDir, null, ctx::output);
+                    Path kotlinHome =
+                            CompileToolchain.resolveKotlinHome(cacheDir, null, ctx::output, new ToolPlanProgress(ctx));
                     Path kotlinc = kotlinHome.resolve("bin").resolve(Os.isWindows() ? "kotlinc.bat" : "kotlinc");
                     if (!Files.exists(kotlinc)) {
                         ctx.error("kotlinc-missing", "kotlinc not found at " + kotlinc);
