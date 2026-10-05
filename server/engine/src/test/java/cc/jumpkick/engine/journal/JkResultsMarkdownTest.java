@@ -304,7 +304,7 @@ class JkResultsMarkdownTest {
         assertThat(md).contains("`g:core :: com.acme.FooTest.bar` (integration suite) — ");
         assertThat(md).contains("AssertionFailedError");
         assertThat(md).contains("expected: <1> but was: <2>");
-        assertThat(md).contains("JUnit XML: `target/reports/test-results/`");
+        assertThat(md).contains("JUnit XML: `target/surefire-reports/`");
     }
 
     @Test
