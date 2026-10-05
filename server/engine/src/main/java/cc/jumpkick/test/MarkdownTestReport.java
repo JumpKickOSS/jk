@@ -12,7 +12,7 @@ import org.jspecify.annotations.Nullable;
  * #publish} folds the entries into the {@link RunResults} sink of the request that ran the launch,
  * keyed by module path; the journal drains that sink into {@code jk-results.md} when the request's
  * record is written. Companion to {@link XmlTestReport} (JUnit XML under {@code
- * target/reports/test-results/}).
+ * target/surefire-reports/}).
  *
  * <p>A failure's message and stack are clipped by {@link FailureClip}, and a repeated failure
  * shares one copy ({@link FailureTexts}), so a suite whose every failure carries the same
