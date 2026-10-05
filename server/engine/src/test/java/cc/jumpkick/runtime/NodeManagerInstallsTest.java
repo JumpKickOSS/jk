@@ -90,8 +90,7 @@ class NodeManagerInstallsTest {
         scope = NpmRegistryStub.start(SCOPE_TOKEN, null);
         main.publish("tiny", "1.0.0", Map.of("index.js", "module.exports = 'tiny';\n"), Map.of());
         scope.publish("@acme/thing", "1.0.0", Map.of("index.js", "module.exports = 'thing';\n"), Map.of());
-        // Berry takes the registry and its token from jk; its scopes are a separate concern.
-        boolean scoped = !manager.equals("yarn");
+        boolean scoped = true;
 
         Path home = Files.createDirectories(tmp.resolve("jk-home"));
         Files.writeString(
@@ -150,8 +149,9 @@ class NodeManagerInstallsTest {
         try (Stream<Path> files = Files.walk(web.resolve("target"))) {
             assertThat(files.map(p -> p.getFileName().toString()))
                     .as("the run's registry config is gone")
-                    .noneMatch(n ->
-                            n.startsWith(NodeNetwork.USERCONFIG_PREFIX) || n.startsWith(NodeNetwork.BUN_CONFIG_PREFIX));
+                    .noneMatch(n -> n.startsWith(NodeNetwork.USERCONFIG_PREFIX)
+                            || n.startsWith(NodeNetwork.BUN_CONFIG_PREFIX)
+                            || n.startsWith(NodeNetwork.YARN_HOME_PREFIX));
         }
     }
 

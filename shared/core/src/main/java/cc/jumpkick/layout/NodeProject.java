@@ -83,11 +83,6 @@ public record NodeProject(
         return MiniJson.str(MiniJson.get(packageJson(dir), "scripts"), name);
     }
 
-    /** Whether {@code package.json} in {@code dir} depends on {@code pkg}, at runtime or in development. */
-    public static boolean dependsOn(Path dir, String pkg) {
-        return depends(packageJson(dir), pkg);
-    }
-
     /** {@code package.json} parsed; an empty object when it is unreadable as JSON. */
     static @Nullable Object packageJson(Path dir) {
         Path file = dir.resolve(PACKAGE_JSON);

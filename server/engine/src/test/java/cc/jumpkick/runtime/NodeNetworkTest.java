@@ -10,6 +10,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,7 +33,8 @@ class NodeNetworkTest {
     @Test
     @DisabledOnOs(OS.WINDOWS)
     void the_registry_scopes_and_tokens_go_into_an_owner_only_user_config_after_the_user_s_own() throws Exception {
-        Path own = Files.writeString(dir.resolve("user.npmrc"), "fund=false");
+        Path userHome = Files.createDirectories(dir.resolve("home"));
+        Files.writeString(userHome.resolve(".npmrc"), "fund=false");
         NodeNetwork.Sources sources = new NodeNetwork.Sources(
                 REGISTRY,
                 Map.of("@acme", ACME),
@@ -41,7 +43,7 @@ class NodeNetworkTest {
                         : new RepoCredential.Basic("u", "p"),
                 uri -> Optional.empty(),
                 List.of(),
-                own);
+                userHome);
 
         Map<String, String> env = NodeNetwork.env(sources, dir.resolve("work"), PackageManager.NPM);
 
@@ -153,5 +155,53 @@ class NodeNetworkTest {
                 .containsEntry("JK_NODE_REGISTRY", "https://nexus.corp/npm/")
                 .containsEntry("JK_NODE_SCOPES", "@acme=https://acme.corp/npm-acme/;");
         assertThat(String.join(" ", keyed.values())).doesNotContain("token").doesNotContain("_auth");
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void berry_gets_its_scopes_from_a_run_home_that_links_the_real_one() throws Exception {
+        Path userHome = Files.createDirectories(dir.resolve("real-home"));
+        Files.createDirectories(userHome.resolve(".ssh"));
+        Files.writeString(userHome.resolve(".yarnrc.yml"), "enableTelemetry: false\n");
+        NodeNetwork.Sources sources = new NodeNetwork.Sources(
+                REGISTRY,
+                Map.of("@acme", ACME),
+                origin -> origin.equals(REGISTRY)
+                        ? new RepoCredential.Bearer("reg-token")
+                        : new RepoCredential.Bearer("acme-token"),
+                uri -> Optional.empty(),
+                List.of(),
+                userHome);
+
+        Map<String, String> env = NodeNetwork.env(sources, dir.resolve("work"), PackageManager.YARN);
+
+        Path home = Path.of(env.get("HOME"));
+        assertThat(home.getFileName().toString()).startsWith(NodeNetwork.YARN_HOME_PREFIX);
+        assertThat(Files.isSymbolicLink(home.resolve(".ssh"))).isTrue();
+        assertThat(Files.readString(home.resolve(".yarnrc.yml")))
+                .startsWith("enableTelemetry: false\n")
+                .contains("npmScopes:\n  acme:\n    npmRegistryServer: \""
+                        + ACME.url().toString().replaceAll("/$", "") + "\"")
+                .contains("npmAuthToken: \"acme-token\"");
+        assertThat(Files.getPosixFilePermissions(home.resolve(".yarnrc.yml")).toString())
+                .isEqualTo("[OWNER_READ, OWNER_WRITE]");
+        NodeNetwork.discard(env);
+        assertThat(home).doesNotExist();
+        assertThat(userHome.resolve(".ssh")).isDirectory();
+    }
+
+    @Test
+    void a_scope_the_user_s_rc_already_names_is_left_to_it() {
+        String rc = "npmScopes:\n  acme:\n    npmRegistryServer: \"https://mine\"\nnodeLinker: pnp\n";
+        String merged = NodeNetwork.withScopes(
+                rc,
+                new LinkedHashMap<>(Map.of(
+                        "acme", "    npmRegistryServer: \"https://jk\"\n",
+                        "other", "    npmRegistryServer: \"https://other\"\n")));
+        assertThat(merged)
+                .contains("  acme:\n    npmRegistryServer: \"https://mine\"")
+                .doesNotContain("https://jk")
+                .contains("npmScopes:\n  other:\n    npmRegistryServer: \"https://other\"\n")
+                .contains("nodeLinker: pnp");
     }
 }
