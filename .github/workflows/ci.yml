@@ -62,6 +62,9 @@ jobs:
       - name: Example lock-drift fixtures
         run: bash scripts/test-examples-lock-drift.sh
 
+      - name: Template catalog sync fixtures
+        run: bash scripts/test-templates-sync.sh
+
       - name: Curated integration lane fixtures
         run: bash scripts/test-curated-integration.sh
 
