@@ -15,6 +15,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
@@ -31,6 +32,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -315,9 +317,71 @@ class EngineElectionTest {
 
         assertThat(won.active().socket()).doesNotExist();
         assertThat(won.active().pid()).doesNotExist();
-        assertThat(won.active().lock()).doesNotExist();
         assertThat(EnginePaths.endpoint(p)).doesNotExist();
-        assertThat(p.lock()).as("the transient startup mutex file").doesNotExist();
+        assertThat(won.active().lock())
+                .as("lock files stay: deleting one after release lets two engines own a generation")
+                .exists();
+    }
+
+    /**
+     * A predecessor retiring while its successor claims the generation it just released: the
+     * successor's lock is on the very file, so that file must survive the predecessor's exit, or
+     * a third engine locks a fresh file at the same path and both own the generation.
+     */
+    @Test
+    void a_generation_claimed_as_its_predecessor_retires_stays_owned() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        EngineElection predecessor = election(p, "zzzz", 1);
+        EngineElection.Won old = requireNonNull(predecessor.win());
+        old.listener().close();
+
+        EngineElection successor = election(p, "aaaa", 2);
+        AtomicReference<EngineElection.Won> claimed = new AtomicReference<>();
+        EngineElection.afterGenerationReleased = () -> {
+            try {
+                claimed.set(requireNonNull(successor.win(), "the successor wins the released generation"));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        };
+        try {
+            predecessor.retire();
+        } finally {
+            EngineElection.afterGenerationReleased = null;
+        }
+        EngineElection.Won mine = requireNonNull(claimed.get());
+        closeLater(mine.listener());
+        assertThat(mine.active().socket())
+                .isEqualTo(EnginePaths.generation(p, 1).socket());
+
+        EngineElection.Won third = requireNonNull(election(p, "bbbb", 3).win());
+        closeLater(third.listener());
+        assertThat(third.active().socket())
+                .as("generation 1 is still held by the successor")
+                .isEqualTo(EnginePaths.generation(p, 2).socket());
+        assertThat(mine.active().socket())
+                .as("the successor's socket is not reclaimed as stale")
+                .exists();
+    }
+
+    /** A lame duck leaves a socket a successor rebound under its name. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void retiring_leaves_a_socket_a_successor_rebound_alone() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        EngineElection e = election(p, "aaaa", 4242);
+        EngineElection.Won won = requireNonNull(e.win());
+        won.listener().close();
+        Path socket = won.active().socket();
+        Files.delete(socket);
+        ServerSocketChannel successor = closeLater(ServerSocketChannel.open(StandardProtocolFamily.UNIX));
+        successor.bind(UnixDomainSocketAddress.of(socket));
+        Files.writeString(won.active().pid(), "4343\n");
+
+        e.retire();
+
+        assertThat(socket).as("the successor's socket").exists();
+        assertThat(Files.readString(won.active().pid()).trim()).isEqualTo("4343");
     }
 
     /** A lame duck must not un-point an endpoint its successor now owns. */
