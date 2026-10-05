@@ -235,8 +235,10 @@ jk explain                # the same steps a jk.toml module gets
 
 Resolution reads the POM as jk reads every manifest: a bare version is an exact pin, a BOM import is
 an enforced platform, and highest wins. A POM's direct version below what one of its dependencies
-needs is a conflict the in-place build refuses with PubGrub's explanation; `jk import` raises such a
-pin for you, and `jk mvn` runs Maven itself. The results file's header says which mode ran — `manifest: pom.xml,
+needs is raised to the version the graph resolves, as `jk import` raises it, and the build after the
+POM changed says so once; `jk mvn` runs Maven itself. A frontend-maven-plugin build is built in
+place too, without moving or rewriting a file
+([Node § Building a pom.xml in place](node.md#building-a-pomxml-in-place)). The results file's header says which mode ran — `manifest: pom.xml,
 no jk.toml (effective POM, built in place)` — so an agent reading `target/jk-results.md` knows the
 manifest it should edit is the POM.
 

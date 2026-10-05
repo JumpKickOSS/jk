@@ -24,6 +24,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.apache.maven.model.Model;
 import org.jspecify.annotations.Nullable;
 
@@ -92,7 +93,8 @@ final class FrontendImport {
     record Applied(JkBuild build, @Nullable Relocation relocation, FrontendFiles files) {}
 
     /** A member module's frontend, placed. {@code standalone}: the POM is imported without a workspace. */
-    static Applied member(Model model, JkBuild build, ImportReport.Builder report, boolean standalone) {
+    static Applied member(
+            Model model, JkBuild build, ImportReport.Builder report, boolean standalone, boolean inPlace) {
         Path moduleDir = moduleDir(model);
         if (moduleDir == null) return new Applied(build, null, FrontendFiles.NONE);
         FrontendPlugin.Frontend frontend = FrontendPlugin.map(model, moduleDir, report);
@@ -118,6 +120,13 @@ final class FrontendImport {
         String dir =
                 frontend.workingDirectory().equals(NodeTable.SIDE_BY_SIDE_DIR) ? null : frontend.workingDirectory();
         Roots roots = roots(moduleDir, out, report);
+        if (inPlace) {
+            // The bundler writes where its config says; the output is read from there.
+            String outRel = out == null ? null : rel(frontend.dir(), out);
+            if (output == null) reportUnreadOutput(frontend, report);
+            NodeTable table = placed(frontend.table(), dir, roots, outRel, List.of());
+            return new Applied(withFrontend(build, build.project(), frontend, table), null, FrontendFiles.NONE);
+        }
         NodeTable table = placed(frontend.table(), dir, roots);
         FrontendFiles files = output == null ? FrontendFiles.NONE : rewrite(output, output.file(), report);
         if (output == null) reportUnreadOutput(frontend, report);
@@ -187,6 +196,48 @@ final class FrontendImport {
         return new Relocated(newRoot, out, files);
     }
 
+    /**
+     * The workspace with every relocated frontend built by the module its output lands in, where it
+     * stands: that module's {@code [node] dir} names the frontend's directory (above the module when
+     * the frontend sits at the workspace root), {@code out} the path its bundler writes, and {@code
+     * inputs} the frontend's own files, so the rest of the workspace never keys its build. A frontend
+     * whose output is unread, or lands in no module, is a row: only {@code jk import} can give it a
+     * module of its own.
+     */
+    static Relocated consumeInPlace(
+            Path rootDir,
+            JkBuild root,
+            Map<String, JkBuild> members,
+            List<Relocation> relocations,
+            ImportReport.Builder report) {
+        Map<String, JkBuild> out = new LinkedHashMap<>(members);
+        for (Relocation r : relocations) {
+            FrontendPlugin.Frontend frontend = r.frontend();
+            Path target = r.output() == null ? null : r.output().target(frontend.dir());
+            String consumer = target == null ? null : consumer(rootDir, out.keySet(), target);
+            if (target == null || consumer == null) {
+                report.error("`" + FrontendPlugin.ARTIFACT + "` in `" + rel(rootDir, frontend.dir()) + "` writes "
+                        + (target == null ? "where its bundler config does not say" : "outside every module")
+                        + "; the in-place build cannot place it");
+                continue;
+            }
+            Path consumerDir = rootDir.resolve(consumer).normalize();
+            Roots roots = roots(consumerDir, target, report);
+            List<String> inputs = new ArrayList<>();
+            Path scratch = freeDir(rootDir.resolve("web"), out.keySet(), rootDir);
+            for (FrontendFiles.Move m : moves(frontend.dir(), scratch, r.output(), target, rootDir, out.keySet())) {
+                inputs.add(rel(frontend.dir(), m.from()));
+            }
+            NodeTable table = placed(
+                    frontend.table(), rel(consumerDir, frontend.dir()), roots, rel(frontend.dir(), target), inputs);
+            JkBuild built = Objects.requireNonNull(out.get(consumer), "consumer module");
+            out.put(consumer, withFrontend(built, built.project(), frontend, table));
+            report.warning("`" + consumer + "` builds the front end in `" + rel(rootDir, frontend.dir())
+                    + "` where it stands, and packages what it writes to `" + rel(rootDir, target) + "`");
+        }
+        return new Relocated(root, out, FrontendFiles.NONE);
+    }
+
     /** Where output that a module wrote into itself goes: under the classpath or into the war. */
     private record Roots(
             @Nullable String classpath, @Nullable String webapp) {
@@ -211,6 +262,11 @@ final class FrontendImport {
     }
 
     private static NodeTable placed(NodeTable t, @Nullable String dir, Roots roots) {
+        return placed(t, dir, roots, OUT, t.inputs());
+    }
+
+    private static NodeTable placed(
+            NodeTable t, @Nullable String dir, Roots roots, @Nullable String out, List<String> inputs) {
         return new NodeTable(
                 t.packageManager(),
                 t.framework(),
@@ -219,7 +275,7 @@ final class FrontendImport {
                 t.test(),
                 t.dev(),
                 t.start(),
-                OUT,
+                out,
                 roots.classpath(),
                 roots.webapp(),
                 t.envPrefixes(),
@@ -227,7 +283,8 @@ final class FrontendImport {
                 dir,
                 t.skip(),
                 t.steps(),
-                t.exports());
+                t.exports(),
+                inputs);
     }
 
     private static JkBuild withFrontend(JkBuild build, Project project, FrontendPlugin.Frontend f, NodeTable table) {

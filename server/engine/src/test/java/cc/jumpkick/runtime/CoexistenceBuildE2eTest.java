@@ -90,7 +90,7 @@ class CoexistenceBuildE2eTest {
 
     @BeforeAll
     static void engineShadowSource() {
-        ShadowManifests.install();
+        ShadowManifests.install(dir -> List.of());
     }
 
     @Test

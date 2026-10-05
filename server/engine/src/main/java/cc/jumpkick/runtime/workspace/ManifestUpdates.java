@@ -89,7 +89,7 @@ public final class ManifestUpdates {
             Path dir, String moduleLabel, String table, String handle, String module, String from, String to) {
 
         public Path manifest() {
-            return dir.resolve(ManifestPaths.MANIFEST);
+            return ManifestPaths.manifestIn(dir);
         }
     }
 
@@ -172,7 +172,7 @@ public final class ManifestUpdates {
 
     private static Plan plan(Path lockDir, @Nullable URI repoUrl, Selection selection, Move move, boolean toolPins)
             throws IOException {
-        JkBuild root = JkBuildParser.parse(lockDir.resolve(ManifestPaths.MANIFEST));
+        JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(lockDir));
         JkBuild effectiveRoot = LockPlans.applyWorkspaceContextIfModule(lockDir, root);
 
         LinkedHashMap<Path, JkBuild> declared = new LinkedHashMap<>();
@@ -196,7 +196,7 @@ public final class ManifestUpdates {
                 () -> nodeReleases.updateAndGet(r -> r != null ? r : NodeUpdates.releases(new NodeCatalog()));
         for (Map.Entry<Path, JkBuild> scope : declared.entrySet()) {
             Path dir = scope.getKey();
-            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(dir);
             JkBuild build = scope.getValue();
             String moduleLabel = workspace ? LockPlans.coordLabel(build, dir) : "";
             RepoGroup repos =

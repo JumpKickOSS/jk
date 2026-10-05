@@ -13,6 +13,7 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ class CoexistenceInactiveProfileE2eTest {
 
     @BeforeAll
     static void engineShadowSource() {
-        ShadowManifests.install();
+        ShadowManifests.install(dir -> List.of());
     }
 
     @Test

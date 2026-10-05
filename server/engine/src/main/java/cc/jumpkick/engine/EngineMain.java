@@ -12,6 +12,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.ShadowManifests;
+import cc.jumpkick.runtime.workspace.ImportPinRaises;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
@@ -89,7 +90,7 @@ public final class EngineMain {
             installLogging(config); // re-bind: System.err is now the capped sink
             BuiltInPluginJars.registerMissingBuiltInFetcher();
             BuiltInPluginJars.install();
-            ShadowManifests.install();
+            ShadowManifests.install(dir -> ImportPinRaises.apply(dir, JkDirs.cache()));
             try {
                 BuiltInPluginJars.installUserConfig();
             } catch (RuntimeException badConfig) {

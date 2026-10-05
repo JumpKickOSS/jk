@@ -73,7 +73,8 @@ public final class NodeImportMapping {
                 dir,
                 false,
                 List.of(),
-                Map.of());
+                Map.of(),
+                List.of());
     }
 
     /**

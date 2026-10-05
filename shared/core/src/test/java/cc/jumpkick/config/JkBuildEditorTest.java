@@ -880,4 +880,12 @@ class JkBuildEditorTest {
         assertThat(Objects.requireNonNull(deps.get("jupiter")).version()).isEqualTo(VersionSelector.parse("6.1.0"));
         assertThat(Objects.requireNonNull(deps.get("assertj")).version()).isEqualTo(VersionSelector.parse("3.27.7"));
     }
+
+    @Test
+    void a_quoted_dependency_key_has_its_version_set() {
+        String toml =
+                "name = \"m\"\n\n[dependencies]\n\"jakarta.inject-api\" = \"jakarta.inject:jakarta.inject-api:2.0.1\"\n";
+        assertThat(JkBuildEditor.setDependencyVersion(toml, Scope.MAIN, "jakarta.inject-api", "2.0.1.MR"))
+                .contains("\"jakarta.inject-api\" = \"jakarta.inject:jakarta.inject-api:2.0.1.MR\"");
+    }
 }

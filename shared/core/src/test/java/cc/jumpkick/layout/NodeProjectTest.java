@@ -214,7 +214,8 @@ class NodeProjectTest {
                 null,
                 false,
                 List.of(),
-                Map.of());
+                Map.of(),
+                List.of());
         NodeProject p = NodeProject.infer(dir, table);
         assertThat(p.packageManager()).isEqualTo("pnpm");
         assertThat(p.framework()).isEqualTo("plain");

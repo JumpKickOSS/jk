@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.PomReactorScan;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.mvn.FrontendCollector;
 import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.mvn.PomShadow;
 import cc.jumpkick.util.AtomicWrites;
@@ -45,6 +46,9 @@ public final class ShadowManifests {
 
     private static final Map<Path, List<String>> PENDING_TIER3 = new ConcurrentHashMap<>();
 
+    /** What a rendering changed from the POM's own words (raised pins), reported once like the rows. */
+    private static final Map<Path, List<String>> PENDING_NOTES = new ConcurrentHashMap<>();
+
     /** Leaf module → the reactor root whose rendering wrote its shadow. */
     private static final Map<Path, Path> ROOT_OF = new ConcurrentHashMap<>();
 
@@ -53,8 +57,17 @@ public final class ShadowManifests {
 
     private static final ShadowRenderFailures FAILURES = ShadowRenderFailures.forStallWindow();
 
-    /** Make this class the process's shadow source. Idempotent. */
-    public static void install() {
+    /** How a rendering raises its pins: the lock scope at a directory in, one report line per raise out. */
+    @FunctionalInterface
+    public interface PinRaises {
+        List<String> apply(Path lockDir) throws Exception;
+    }
+
+    private static volatile PinRaises pinRaises = dir -> List.of();
+
+    /** Make this class the process's shadow source, raising each rendering's pins with {@code raises}. */
+    public static void install(PinRaises raises) {
+        pinRaises = raises;
         ManifestPaths.installShadowSource(ShadowManifests::materialize);
     }
 
@@ -68,23 +81,25 @@ public final class ShadowManifests {
     public static Path materialize(Path dir) {
         Path module = dir.toAbsolutePath().normalize();
         Path shadow = ManifestPaths.shadowManifestPath(module);
-        synchronized (GATES.computeIfAbsent(module, k -> new Object())) {
-            if (PomShadow.isCurrent(shadow, module)) return shadow;
-            Optional<Path> root = PomReactorScan.reactorRootOf(module);
-            if (root.isEmpty()) {
-                render(module);
-                return shadow;
+        if (PomShadow.isCurrent(shadow, module)) return shadow;
+        Optional<Path> root = PomReactorScan.reactorRootOf(module);
+        if (root.isEmpty()) {
+            synchronized (GATES.computeIfAbsent(module, k -> new Object())) {
+                if (!PomShadow.isCurrent(shadow, module)) render(module);
             }
-            // The root renders every leaf; a stale or missing leaf shadow under a current root
-            // means the root has to render again, which is what a forced pass does.
-            materialize(root.get());
-            if (PomShadow.isCurrent(shadow, module)) return shadow;
-            synchronized (GATES.computeIfAbsent(root.get(), k -> new Object())) {
-                render(root.get());
-            }
-            if (PomShadow.isCurrent(shadow, module)) return shadow;
-            throw notBuiltHere(module, root.get());
+            return shadow;
         }
+        // A leaf is rendered by its root, and only the root's gate is ever held: the root's render
+        // resolves the workspace, which reads every leaf, so a leaf gate held while waiting for the
+        // root would deadlock against it. A stale or missing leaf shadow under a current root means
+        // the root has to render again.
+        materialize(root.get());
+        if (PomShadow.isCurrent(shadow, module)) return shadow;
+        synchronized (GATES.computeIfAbsent(root.get(), k -> new Object())) {
+            if (!PomShadow.isCurrent(shadow, module)) render(root.get());
+        }
+        if (PomShadow.isCurrent(shadow, module)) return shadow;
+        throw notBuiltHere(module, root.get());
     }
 
     /**
@@ -124,7 +139,8 @@ public final class ShadowManifests {
         Path pom = module.resolve(ManifestPaths.POM);
         try {
             Cas cas = JkStores.storeCas();
-            PomImporter importer = new PomImporter(RepoGroupBuilder.buildForImport(cas), cas);
+            PomImporter importer =
+                    new PomImporter(RepoGroupBuilder.buildForImport(cas), cas).frontends(FrontendCollector.inPlace());
             List<PomShadow.Shadow> shadows = PomReactorScan.declaresModules(pom)
                     ? PomShadow.renderReactor(importer, pom)
                     : List.of(PomShadow.render(importer, pom));
@@ -136,9 +152,27 @@ public final class ShadowManifests {
                 if (!rendered.moduleDir().equals(module)) ROOT_OF.put(rendered.moduleDir(), module);
                 Log.debug("shadow manifest rendered", target);
             }
+            PENDING_NOTES.put(module, raisePins(module));
         } catch (IOException e) {
             FAILURES.remember(module, e);
             throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * Raise the shadow's pins as {@code jk import} raises a manifest's: a pin below what its
+     * dependencies need is read as a floor and written as the version highest-wins resolves, so
+     * the in-place build locks what Maven's POM asks for under jk's rule. A probe that cannot
+     * resolve (offline, a repository down) leaves the pins as written and says so; the lock then
+     * reports any pin it cannot hold.
+     */
+    private static List<String> raisePins(Path module) {
+        try {
+            return pinRaises.apply(module);
+        } catch (Exception e) {
+            Log.debug("shadow pin raises skipped", e);
+            return List.of("the POM's pins were not checked against their dependencies' floors ("
+                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()) + ")");
         }
     }
 
@@ -153,10 +187,13 @@ public final class ShadowManifests {
         Path root = ROOT_OF.get(module);
         if (root != null) rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(root), List.of()));
         rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(module), List.of()));
-        if (rows.isEmpty()) return List.of();
-        return rows.stream()
-                .map(row -> row + " — not carried by the in-place build of " + ManifestPaths.POM + "; `jk import "
-                        + ManifestPaths.POM + "` writes a jk.toml to edit")
-                .toList();
+        List<String> out = new ArrayList<>();
+        for (String row : rows) {
+            out.add(row + " — not carried by the in-place build of " + ManifestPaths.POM + "; `jk import "
+                    + ManifestPaths.POM + "` writes a jk.toml to edit");
+        }
+        if (root != null) out.addAll(Objects.requireNonNullElse(PENDING_NOTES.remove(root), List.of()));
+        out.addAll(Objects.requireNonNullElse(PENDING_NOTES.remove(module), List.of()));
+        return List.copyOf(out);
     }
 }
