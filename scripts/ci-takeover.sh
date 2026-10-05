@@ -32,6 +32,29 @@ for arg in "$@"; do
   esac
 done
 
+# The engine state as the next command finds it: every file with its inode, what the endpoint and
+# pid files name, the POSIX locks held on those inodes, and the engine JVMs alive.
+snapshot() {
+  local dir="$JK_HOME/state/engine" f inode
+  echo "--- engine state ($1)"
+  if [[ ! -d "$dir" ]]; then
+    echo "(no $dir)"
+    return 0
+  fi
+  ls -li "$dir" || true
+  for f in "$dir"/*.endpoint "$dir"/*.pid; do
+    if [[ -f "$f" ]]; then echo "$(basename "$f"): $(tr '\n' ' ' < "$f")"; fi
+  done
+  if [[ -r /proc/locks ]]; then
+    for f in "$dir"/*.lock; do
+      if [[ ! -f "$f" ]]; then continue; fi
+      inode="$(stat -c %i "$f")"
+      echo "$(basename "$f") inode $inode: $(grep -E ":$inode " /proc/locks | tr '\n' ' ' || true)"
+    done
+  fi
+  pgrep -af -- "$JK_HOME/lib/jk-engine" | cut -c1-160 || true
+}
+
 dump_logs() {
   local cli="$JK_HOME/state/cli.log" engine
   if [[ -f "$cli" ]]; then
@@ -50,7 +73,11 @@ dump_logs() {
 }
 on_exit() {
   local status=$?
-  if [[ $status -ne 0 ]]; then dump_logs; fi
+  if [[ $status -ne 0 ]]; then
+    if [[ -n "${state_log:-}" && -f "$state_log" ]]; then cat "$state_log"; fi
+    snapshot "after the failure" || true
+    dump_logs
+  fi
   exit "$status"
 }
 trap on_exit EXIT
@@ -60,10 +87,17 @@ run() {
   "$@"
 }
 
+# An install, with the engine state before it kept for the failure dump.
+install_pass() {
+  snapshot "before: $*" >> "$state_log" 2>&1 || true
+  run "$@"
+}
+
 cd "$ROOT"
+state_log="$(mktemp)"
 if ((build)); then run jk build --skip-tests "${yes[@]}" --no-ansi; fi
-run jk install --skip-tests "${yes[@]}" --no-ansi
-run "$JK_HOME/bin/jk" install --skip-tests "${yes[@]}" --no-ansi
+install_pass jk install --skip-tests "${yes[@]}" --no-ansi
+install_pass "$JK_HOME/bin/jk" install --skip-tests "${yes[@]}" --no-ansi
 ((checks)) || exit 0
 run cmp target/dist/jk "$JK_HOME/bin/jk"
 engine_sha="$(sha256sum target/dist/lib/jk-engine-*.jar | cut -c1-64)"
