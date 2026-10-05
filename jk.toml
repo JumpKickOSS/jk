@@ -11,6 +11,17 @@ licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENS
 developers = [{ id = "bsant", name = "Bryan Sant" }]
 scm = { url = "https://github.com/JumpKickOSS/jk", connection = "scm:git:https://github.com/JumpKickOSS/jk.git", developer-connection = "scm:git:ssh://git@github.com/JumpKickOSS/jk.git" }
 
+# Versions a dependency's own graph pins below an advisory fix. Nothing here declares these
+# directly; every edge onto them takes the version below. `jk audit --severity HIGH` is clean.
+[managed-dependencies]
+jackson-core = { group = "com.fasterxml.jackson.core", version = "2.22.3" }
+jackson-databind = { group = "com.fasterxml.jackson.core", version = "2.22.3" }
+jackson-datatype-jsr310 = { group = "com.fasterxml.jackson.datatype", version = "2.22.3" }
+httpcore5 = { group = "org.apache.httpcomponents.core5", version = "5.4.4" }
+httpcore5-h2 = { group = "org.apache.httpcomponents.core5", version = "5.4.4" }
+httpclient5 = { group = "org.apache.httpcomponents.client5", version = "5.6.4" }
+plexus-utils = { group = "org.codehaus.plexus", version = "4.0.3" }
+
 [workspace]
 modules = [
   # Shared Libraries
