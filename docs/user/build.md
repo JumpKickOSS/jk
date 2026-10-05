@@ -266,7 +266,7 @@ on the Node.js and package manager the lock pins:
 |---|---|---|
 | `node-install` | the frozen install: `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable`, `bun install --frozen-lockfile`, or `[node] install` | `package.json`, the lockfile, `.npmrc` / `.yarnrc.yml` / `pnpm-workspace.yaml`, Node.js, the platform |
 | `node-build` | the `build` script, or `[node] build` (`"script"`, `{ npx = "ng build" }`, `{ exec = "…" }`) | the module's tree less `node_modules`, the output and tool caches; `NODE_ENV`; the framework's public variables; the install |
-| `node-test` | the `test` script, with a JUnit reporter added for vitest, jest (with `jest-junit`) and `node --test` | as the build, with the test script |
+| `node-test` | the `test` script, with per-test counts from vitest and `node --test` (JUnit) and jest (its `--json`, no reporter package needed) | as the build, with the test script |
 
 `node_modules` is not cached: the install writes `target/node-install.stamp`, and a build whose
 key matches the stamp with `node_modules` present installs nothing. A missing lockfile fails with

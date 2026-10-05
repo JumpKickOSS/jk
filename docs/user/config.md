@@ -176,8 +176,13 @@ it gets the same registry, scopes and credentials as a global `.bunfig.toml` in 
 config directory for the step (`target/node/jk-bun-*`, owner-only, deleted after); your own global
 bunfig is not read during that step, and the project's `bunfig.toml` still is. Yarn Berry gets
 `YARN_NPM_REGISTRY_SERVER`, `YARN_NPM_AUTH_TOKEN` / `YARN_NPM_AUTH_IDENT` with
-`YARN_NPM_ALWAYS_AUTH` (Berry sends no credential on reads otherwise), and a plain-http registry's
-host in `YARN_UNSAFE_HTTP_WHITELIST`. The proxy jk itself
+`YARN_NPM_ALWAYS_AUTH` (Berry sends no credential on reads otherwise), and every plain-http
+registry's host in `YARN_UNSAFE_HTTP_WHITELIST`. Berry reads a scope map only from a `.yarnrc.yml`,
+merging the project's with the one in its home folder, so with scopes set the step runs Berry with a
+jk-owned home (`target/node/jk-yarn-*`, deleted after): its `.yarnrc.yml` is your own
+`~/.yarnrc.yml` with jk's `npmScopes` added (a scope yours already names is left to it), and every
+other entry links to your real home, so git, ssh and lifecycle scripts find what they would. The
+proxy jk itself
 uses ([Network](#network)) is handed over as `npm_config_proxy` / `npm_config_https_proxy` /
 `npm_config_noproxy`, `YARN_HTTP_PROXY` / `YARN_HTTPS_PROXY`, and `HTTP_PROXY` / `HTTPS_PROXY` /
 `NO_PROXY`. The project's own `.npmrc`, `bunfig.toml` and `.yarnrc.yml` are never edited and still apply. The

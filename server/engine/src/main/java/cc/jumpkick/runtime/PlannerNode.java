@@ -442,13 +442,11 @@ final class PlannerNode {
                             .testResultsDir()
                             .resolve(TEST_REPORT);
                     Files.deleteIfExists(xml);
+                    Files.deleteIfExists(NodeTestReport.jestJson(xml));
                     Files.createDirectories(xml.getParent());
                     NodeTestReport.Runner runner = NodeTestReport.runner(body);
-                    NodeTestReport.Wiring wiring = NodeTestReport.wiring(
-                            runner,
-                            xml,
-                            NodeProject.dependsOn(unit.nodeDir(), "jest-junit"),
-                            env.getOrDefault("NODE_OPTIONS", ""));
+                    NodeTestReport.Wiring wiring =
+                            NodeTestReport.wiring(runner, xml, env.getOrDefault("NODE_OPTIONS", ""));
                     Map<String, String> runEnv = new LinkedHashMap<>(env);
                     runEnv.putAll(wiring.env());
                     ctx.label("run " + script);
