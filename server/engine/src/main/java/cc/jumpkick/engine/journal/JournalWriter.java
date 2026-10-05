@@ -157,6 +157,12 @@ public final class JournalWriter {
         if (a != null) a.noteTaskStart(dir, step, phase, clock.getAsLong());
     }
 
+    /** A step's label; the accumulator keeps the last as the step's detail. */
+    public void accStepLabel(long requestId, String dir, String step, String label) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.noteLabel(dir, step, label);
+    }
+
     /** A line a step's fork printed; the accumulator keeps the last of them while the step runs. */
     public void accForkOutput(long requestId, String dir, String step, String line) {
         BuildAccumulator a = sessions.accumulator(requestId);

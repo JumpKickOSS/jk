@@ -203,8 +203,13 @@ final class PlannerNode {
                 .execute(ctx -> {
                     JkBuild project = unit.project();
                     String root = NodePackaging.classpathRoot(project, unit.moduleDir());
+                    String start = unit.node().start();
+                    String serves = start == null ? "" : " · start: " + start;
                     if (root == null) {
-                        ctx.label("not packaged · nothing depends on this module and [node] classpath-root is unset");
+                        ctx.label(
+                                start != null
+                                        ? "server · start: " + start
+                                        : "not packaged · nothing depends on this module and [node] classpath-root is unset");
                         ctx.progress(1);
                         return;
                     }
@@ -219,13 +224,13 @@ final class PlannerNode {
                     Path cacheRoot = unit.in().cache();
                     String where = root.isEmpty() ? "the jar root" : root + "/";
                     if (PlannerSupport.restorePackaged(cacheRoot, keyed.key(), jar.getParent())) {
-                        ctx.label(jar.getFileName() + " up-to-date · " + where);
+                        ctx.label(jar.getFileName() + " up-to-date · " + where + serves);
                         ctx.cached();
                         ctx.progress(1);
                         return;
                     }
                     ctx.label(
-                            "package " + jar.getFileName() + " · " + unit.node().out() + "/ under " + where);
+                            "package " + jar.getFileName() + " · " + unit.node().out() + "/ under " + where + serves);
                     NodePackaging.packageJar(
                             out, root, layout.targetDir().resolve("node-jar"), jar, project.manifest());
                     PlannerSupport.storePackaged(
@@ -559,7 +564,7 @@ final class PlannerNode {
 
     /** {@code jk explain}'s module row for {@code unit} when it is a dedicated node module, else {@code null}. */
     static TaskForecast.@Nullable Module forecastModule(
-            BuildGraph.BuildUnit unit, Path lockFile, ActionCache cache, boolean skipTests) {
+            BuildGraph.BuildUnit unit, Path lockFile, ActionCache cache, Path cacheRoot, boolean skipTests) {
         JkBuild project = unit.manifest();
         Path dir = unit.dir();
         if (NodeShape.kind(project, dir) != NodeShape.Kind.MODULE) return null;
@@ -573,6 +578,9 @@ final class PlannerNode {
             Path nodeDir = Objects.requireNonNull(NodeShape.nodeDir(project, dir), "node directory");
             boolean skipNode = SessionContext.current().skipNode();
             steps.addAll(forecast(project, dir, nodeDir, LockfileReader.read(lockFile), cache, skipTests, skipNode));
+            boolean buildRuns = steps.stream()
+                    .anyMatch(t -> TaskNames.NODE_BUILD.equals(t.name()) && t.status() == TaskForecast.Status.RUN);
+            steps.add(forecastPackage(project, dir, nodeDir, cacheRoot, buildRuns));
         } catch (Exception e) {
             steps.add(new TaskForecast.Task(
                     TaskNames.NODE_BUILD,
@@ -581,6 +589,49 @@ final class PlannerNode {
                     null));
         }
         return new TaskForecast.Module(dir, unit.coord(), steps, 0, 0, false, false);
+    }
+
+    /**
+     * {@code node-package} as the step will run it: nothing to package (a server, or no root and no
+     * dependant), RUN after a build that runs, else by the step's own key in the packaging cache.
+     */
+    static TaskForecast.Task forecastPackage(
+            JkBuild project, Path moduleDir, Path nodeDir, Path cacheRoot, boolean buildRuns) throws IOException {
+        NodeProject node = NodeProject.infer(nodeDir, project.node());
+        String start = node.start();
+        String serves = start == null ? "" : " · start: " + start;
+        String root = NodePackaging.classpathRoot(project, moduleDir);
+        if (root == null) {
+            return new TaskForecast.Task(
+                    TaskNames.NODE_PACKAGE,
+                    TaskForecast.Status.CACHED,
+                    start != null ? "server · start: " + start : "not packaged · nothing depends on this module",
+                    null);
+        }
+        Path jar = BuildLayout.of(moduleDir, project).mainJar();
+        Path out = nodeDir.resolve(node.out());
+        if (buildRuns || !Files.isDirectory(out)) {
+            return new TaskForecast.Task(
+                    TaskNames.NODE_PACKAGE,
+                    TaskForecast.Status.RUN,
+                    "package " + jar.getFileName() + " after node-build" + serves,
+                    null);
+        }
+        NodeKeys.Keyed keyed = NodeKeys.pkg(nodeDir, out, root, project.manifest());
+        // The step restores from its record; a record that is there is no work, whatever the jar on disk.
+        return PlannerSupport.packagingActionCache(cacheRoot)
+                        .lookup(keyed.key())
+                        .isPresent()
+                ? new TaskForecast.Task(
+                        TaskNames.NODE_PACKAGE,
+                        TaskForecast.Status.CACHED,
+                        jar.getFileName() + " up-to-date" + serves,
+                        short8(keyed.key()))
+                : new TaskForecast.Task(
+                        TaskNames.NODE_PACKAGE,
+                        TaskForecast.Status.RUN,
+                        "package " + jar.getFileName() + " · " + node.out() + "/ changed" + serves,
+                        null);
     }
 
     /**

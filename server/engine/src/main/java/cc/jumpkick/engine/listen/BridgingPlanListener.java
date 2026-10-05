@@ -33,6 +33,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
         default void planDiagnostics(String dir, BuildPlanResult result) {}
 
+        /** A step's label, redacted, as it goes to the wire. */
+        default void stepLabel(String dir, String step, String label) {}
+
         /** A line a step's fork printed outside its protocol; journal-only, never a wire event. */
         default void forkOutput(String dir, String step, String line) {}
     }
@@ -133,6 +136,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
     public void label(String step, String label) {
         String safe = redact(label);
         sink.emit(new EngineEvent.Label(dir, step, safe));
+        hooks.stepLabel(dir, step, safe);
     }
 
     @Override

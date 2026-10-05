@@ -128,7 +128,7 @@ public final class JkResultsMarkdown {
         JkResultsTestsSection.append(sb, record, tests);
         appendPublish(sb, record);
         JkResultsCoverageSection.append(sb, record, previous);
-        appendDeliverables(sb, record);
+        JkResultsDeliverablesSection.append(sb, record);
         appendFailedSteps(sb, record);
         JkResultsLockNotesSection.append(sb, record);
         JkResultsWarnings.append(sb, record);
@@ -604,33 +604,6 @@ public final class JkResultsMarkdown {
         sb.append('\n');
     }
 
-    private static void appendDeliverables(StringBuilder sb, BuildRecord r) {
-        List<Row> rows = new ArrayList<>();
-        for (BuildRecord.Task t : r.steps()) {
-            if (isDeliverable(t.name())) rows.add(new Row("", t));
-        }
-        for (BuildRecord.Module m : r.modules()) {
-            for (BuildRecord.Task t : m.steps()) {
-                if (isDeliverable(t.name())) rows.add(new Row(moduleLabel(m), t));
-            }
-        }
-        if (rows.isEmpty()) return;
-        sb.append("## Deliverables\n\n");
-        sb.append("| Module | Task | Status | Time |\n|---|---|---|---|\n");
-        for (Row row : rows) {
-            sb.append("| ")
-                    .append(escCell(row.module))
-                    .append(" | `")
-                    .append(escCell(row.task.name()))
-                    .append("` | ")
-                    .append(status(row.task.status()))
-                    .append(" | ")
-                    .append(fmtDuration(row.task.millis()))
-                    .append(" |\n");
-        }
-        sb.append('\n');
-    }
-
     private static void appendFailedSteps(StringBuilder sb, BuildRecord r) {
         List<Row> rows = failedSteps(r);
         int skipped = countSkipped(r);
@@ -674,13 +647,17 @@ public final class JkResultsMarkdown {
         List<Row> rows = new ArrayList<>();
         if (r == null) return rows;
         for (BuildRecord.Task t : r.steps()) {
-            if (isFailedStatus(t.status()) && !isDeliverable(t.name()) && !JkResultsStopped.stoppedStep(r, t)) {
+            if (isFailedStatus(t.status())
+                    && !JkResultsDeliverablesSection.isDeliverable(t.name())
+                    && !JkResultsStopped.stoppedStep(r, t)) {
                 rows.add(new Row("", t));
             }
         }
         for (BuildRecord.Module m : r.modules()) {
             for (BuildRecord.Task t : m.steps()) {
-                if (isFailedStatus(t.status()) && !isDeliverable(t.name()) && !JkResultsStopped.stoppedStep(r, t)) {
+                if (isFailedStatus(t.status())
+                        && !JkResultsDeliverablesSection.isDeliverable(t.name())
+                        && !JkResultsStopped.stoppedStep(r, t)) {
                     rows.add(new Row(moduleLabel(m), t));
                 }
             }
@@ -691,11 +668,11 @@ public final class JkResultsMarkdown {
     private static int countSkipped(BuildRecord r) {
         int n = 0;
         for (BuildRecord.Task t : r.steps()) {
-            if (isSkipped(t.status()) && !isDeliverable(t.name())) n++;
+            if (isSkipped(t.status()) && !JkResultsDeliverablesSection.isDeliverable(t.name())) n++;
         }
         for (BuildRecord.Module m : r.modules()) {
             for (BuildRecord.Task t : m.steps()) {
-                if (isSkipped(t.status()) && !isDeliverable(t.name())) n++;
+                if (isSkipped(t.status()) && !JkResultsDeliverablesSection.isDeliverable(t.name())) n++;
             }
         }
         return n;
@@ -729,21 +706,6 @@ public final class JkResultsMarkdown {
             shown++;
         }
         sb.append('\n');
-    }
-
-    static boolean isDeliverable(String name) {
-        if (name == null || name.isBlank()) return false;
-        String n = name.toLowerCase(Locale.ROOT);
-        return "install".equals(n)
-                || "publish".equals(n)
-                || TaskNames.NATIVE_IMAGE.equals(n)
-                || TaskNames.WRITE_IMAGE.equals(n)
-                || TaskNames.PACKAGE_JAR.equals(n)
-                || TaskNames.PACKAGE_ASSEMBLY.equals(n)
-                || TaskNames.PACKAGE_MINIFIED.equals(n)
-                || TaskNames.CACHE_INSTALL.equals(n)
-                || n.contains(TaskNames.NATIVE_IMAGE)
-                || (n.endsWith("-image") && n.contains("write"));
     }
 
     static boolean isFailedStatus(String status) {
@@ -856,7 +818,7 @@ public final class JkResultsMarkdown {
         return leaf(d.dir());
     }
 
-    private static String moduleLabel(BuildRecord.Module m) {
+    static String moduleLabel(BuildRecord.Module m) {
         String coord = some(m.coord());
         if (coord != null) return coord;
         return leaf(m.dir());
@@ -885,7 +847,7 @@ public final class JkResultsMarkdown {
         return file;
     }
 
-    private static String status(String s) {
+    static String status(String s) {
         if (s == null || s.isBlank()) return "";
         return s.trim().toUpperCase(Locale.ROOT);
     }

@@ -360,26 +360,6 @@ class JkResultsMarkdownTest {
     }
 
     @Test
-    void deliverables_table_covers_native_image_install_publish() {
-        var tasks = List.of(
-                task("package-jar", "package", "SUCCESS", 50),
-                task("native-image", "native", "SUCCESS", 8_000),
-                task("write-image", "image", "FAIL", 120),
-                task("install", "other", "SUCCESS", 30),
-                task("publish", "other", "SKIPPED", 0));
-        BuildRecord r = record(false, List.of(), List.of(), tasks);
-        String md = JkResultsMarkdown.render(r);
-        assertThat(md).contains("## Deliverables");
-        assertThat(md).contains("`native-image`");
-        assertThat(md).contains("`write-image`");
-        assertThat(md).contains("`install`");
-        assertThat(md).contains("`publish`");
-        assertThat(md).contains("| FAIL |");
-        assertThat(md).contains("| SKIPPED |");
-        assertThat(md).doesNotContain("## Failed steps");
-    }
-
-    @Test
     void a_pom_only_build_names_its_mode_in_the_header(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("pom.xml"), "<project/>");
         BuildRecord r = new BuildRecord(

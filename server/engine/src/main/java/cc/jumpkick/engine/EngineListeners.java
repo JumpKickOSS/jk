@@ -178,6 +178,11 @@ public final class EngineListeners {
             public void forkOutput(String d, String step, String line) {
                 journal.accForkOutput(rid, d, step, line);
             }
+
+            @Override
+            public void stepLabel(String d, String step, String label) {
+                journal.accStepLabel(rid, d, step, label);
+            }
         };
     }
 
