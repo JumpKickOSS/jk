@@ -96,8 +96,8 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 | `restart` | `never` (the exit is reported once, the session continues) or `on-exit` (restart with backoff, up to five failures in a row; a run that passed its probe or stayed up 30 s starts the count over) | `"never"` |
 
 The table is also in [`jk.toml.schema.json`](jk.toml.schema.json), and
-[examples/vite-sidecar](examples/vite-sidecar/) is the whole thing running: a JVM API on 8080, Vite
-on 5173 proxying `/api`, one `jk dev`.
+[examples/vite-sidecar](examples/vite-sidecar/) shows the inferred form running: a JVM API on 8080,
+Vite on 5173 proxying `/api` as the dev server jk infers from `[node] dir`, one `jk dev`.
 
 Sidecars start once per session and survive the app's restarts — Vite watches its own tree. Ctrl-C
 stops the app and every sidecar together, along with everything they spawned. Editing
