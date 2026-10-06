@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -262,7 +263,12 @@ public final class XmlTestReport {
         return s == null ? "" : MinimalXml.escapeAttr(s);
     }
 
+    /** Terminal control sequences a test's output may carry: CSI ({@code ESC [}) and OSC ({@code ESC ]}). */
+    private static final Pattern TERMINAL_CONTROL =
+            Pattern.compile("\u001B\\[[0-?]*[ -/]*[@-~]|\u001B\\][^\u0007\u001B]*(?:\u0007|\u001B\\\\)?");
+
     private static String cdata(String s) {
-        return "<![CDATA[" + s.replace("]]>", "]]]]><![CDATA[>") + "]]>";
+        String plain = MinimalXml.legalChars(TERMINAL_CONTROL.matcher(s).replaceAll(""));
+        return "<![CDATA[" + plain.replace("]]>", "]]]]><![CDATA[>") + "]]>";
     }
 }

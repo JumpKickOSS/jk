@@ -372,7 +372,29 @@ public final class MinimalXml {
 
     /** XML-escape element text: {@code & < >}. The one XML text-escaper (shared by IDE/report writers). */
     public static String escapeText(String v) {
-        return v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        return legalChars(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /**
+     * {@code v} without the characters XML 1.0 forbids everywhere, escaped or not: C0 controls but
+     * tab, newline and carriage return, lone surrogates, U+FFFE and U+FFFF.
+     */
+    public static String legalChars(String v) {
+        StringBuilder out = null;
+        for (int i = 0; i < v.length(); ) {
+            int cp = v.codePointAt(i);
+            int n = Character.charCount(cp);
+            boolean legal = cp == 0x9
+                    || cp == 0xA
+                    || cp == 0xD
+                    || (cp >= 0x20 && cp <= 0xD7FF)
+                    || (cp >= 0xE000 && cp <= 0xFFFD)
+                    || cp >= 0x10000;
+            if (!legal && out == null) out = new StringBuilder(v.length()).append(v, 0, i);
+            if (legal && out != null) out.appendCodePoint(cp);
+            i += n;
+        }
+        return out == null ? v : out.toString();
     }
 
     /** XML-escape an attribute value: {@link #escapeText} plus {@code "}. */
