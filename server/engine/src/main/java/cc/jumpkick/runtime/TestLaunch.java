@@ -10,11 +10,14 @@ import static cc.jumpkick.runtime.PlannerSupport.needsNestedEngineIsolation;
 import static cc.jumpkick.runtime.PlannerSupport.nestedEngineTestEnv;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ManifestNames;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
@@ -23,6 +26,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.node.NodeHome;
+import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
@@ -32,6 +36,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.runtime.base.TestFailureSource;
+import cc.jumpkick.runtime.base.TestStoreSeed;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
@@ -42,6 +47,7 @@ import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestLauncherFailure;
 import cc.jumpkick.test.TestProgressListener;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -167,6 +173,7 @@ final class TestLaunch {
      */
     static WorkerEnv testEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild projectUnderTest)
             throws Exception {
+        warmTestRoots();
         WorkerEnv testEnv = TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT));
         if (needsNestedEngineIsolation(projectUnderTest)) {
             testEnv = testEnv.with(nestedEngineTestEnv(in.dir()));
@@ -182,6 +189,56 @@ final class TestLaunch {
                     node.path(testEnv.environment().get("PATH"))));
         }
         return testEnv;
+    }
+
+    private static final Object TEST_ROOTS_WARMED = new Object();
+
+    private static volatile boolean testRootsWarm;
+
+    /**
+     * Puts the injected test roots' POMs and version lists into this engine's store, once, by locking
+     * a throwaway project the way a fixture does. The sandbox seed ({@link TestStoreSeed}) can only
+     * hand a walled-off suite what this store holds, and a store filled from a lock holds jars alone.
+     * Warmth only: a lock that fails (offline, no network) leaves the fixtures to fetch.
+     */
+    static void warmTestRoots() {
+        if (testRootsWarm) return;
+        synchronized (TEST_ROOTS_WARMED) {
+            if (testRootsWarm) return;
+            testRootsWarm = true;
+            if (TestStoreSeed.holdsTestRoots(JkDirs.store())) return;
+            Path dir = null;
+            try {
+                dir = Files.createTempDirectory(Files.createDirectories(JkDirs.cache()), "test-roots-");
+                Path project = Files.createDirectories(dir.resolve("project"));
+                Files.writeString(project.resolve(ManifestNames.MANIFEST), """
+                        name    = "test-roots"
+                        group   = "jk.internal"
+                        version = "0.0.0"
+                        java    = 25
+                        """);
+                JkBuild build = JkBuildParser.parse(project.resolve(ManifestNames.MANIFEST));
+                var lock = LockPlans.lockBuildPlan(
+                                project,
+                                build,
+                                Files.createDirectories(dir.resolve("cache")),
+                                null,
+                                List.of(),
+                                true,
+                                false,
+                                ResolveObserver.NOOP,
+                                null)
+                        .run();
+                if (!lock.errors().isEmpty()) {
+                    Log.debug("TestLaunch: the test roots stay cold: "
+                            + lock.errors().getFirst().message());
+                }
+            } catch (Exception e) {
+                Log.debug("TestLaunch: the test roots stay cold; fixtures fetch them", e);
+            } finally {
+                PathUtil.deleteRecursively(dir);
+            }
+        }
     }
 
     /**
