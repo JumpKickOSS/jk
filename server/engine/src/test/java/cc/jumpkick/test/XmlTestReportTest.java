@@ -151,4 +151,22 @@ class XmlTestReportTest {
                 .doesNotContain("Frame3999");
         assertThat(written.length()).isLessThan(FailureClip.MAX_STACK_CHARS + 4_096);
     }
+
+    @Test
+    void a_forgotten_class_reports_only_what_was_recorded_after() throws Exception {
+        var xml = new XmlTestReport();
+        String a = "[engine:junit-jupiter]/[class:com.example.A]/[method:runs()]";
+        xml.recordFinished(a, "runs()", 1, null);
+        xml.recordOutput("com.example.A", "first attempt");
+        xml.recordFinished("[engine:junit-jupiter]/[class:com.example.B]/[method:runs()]", "runs()", 1, null);
+
+        xml.forget(List.of("com.example.A"));
+        xml.recordFinished(a, "runs()", 2, null);
+        xml.recordOutput("com.example.A", "second attempt");
+        xml.writeAll(dir);
+
+        String written = Files.readString(dir.resolve("TEST-com.example.A.xml"));
+        assertThat(written).contains("tests=\"1\"").contains("second attempt").doesNotContain("first attempt");
+        assertThat(dir.resolve("TEST-com.example.B.xml")).exists();
+    }
 }
