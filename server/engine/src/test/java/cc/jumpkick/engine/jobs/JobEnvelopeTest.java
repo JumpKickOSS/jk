@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.plugin.JobWorkers;
@@ -856,7 +857,7 @@ class JobEnvelopeTest {
     @Test
     void a_plan_in_another_workspace_reports_the_switch_and_one_in_the_same_does_not() {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        for (String dir : List.of("/tmp/job-env-a", "/tmp/job-env-a", "/tmp/job-env-b")) {
+        for (String dir : List.of("/tmp/job-env-switch-a", "/tmp/job-env-switch-a", "/tmp/job-env-switch-b")) {
             host.accumulator = new BuildAccumulator("build", dir, null, "cli");
             new JobEnvelope(host, JobLimits.DEFAULTS)
                     .submit(
@@ -867,8 +868,10 @@ class JobEnvelopeTest {
             host.sequence.clear();
         }
 
-        assertThat(host.switches).endsWith("/tmp/job-env-a -> /tmp/job-env-b");
-        assertThat(host.switches).doesNotContain("/tmp/job-env-a -> /tmp/job-env-a");
+        String a = BuildJobFingerprint.canonicalDir("/tmp/job-env-switch-a");
+        String b = BuildJobFingerprint.canonicalDir("/tmp/job-env-switch-b");
+        assertThat(host.switches).endsWith(a + " -> " + b);
+        assertThat(host.switches).doesNotContain(a + " -> " + a);
     }
 
     /** A cancelled job adds exactly one key, cancelReason, and still ends on the same tail. */
