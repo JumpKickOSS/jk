@@ -6,17 +6,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.PackageManager;
+import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /** The argv of each node command, by package manager. */
-@DisabledOnOs(OS.WINDOWS)
 class NodeCommandsTest {
 
     @TempDir
@@ -69,8 +67,7 @@ class NodeCommandsTest {
                         home, new NodeTable.Command(NodeTable.Command.Kind.EXEC, "node tools/gen.js"), List.of(), ""))
                 .containsExactly(home.node().toString(), "tools/gen.js");
         Path bin = Files.createDirectories(tmp.resolve("bin"));
-        Path tool = Files.writeString(bin.resolve("protoc"), "#!/bin/sh\n");
-        tool.toFile().setExecutable(true);
+        Path tool = FakePrograms.script(bin, "protoc", new FakePrograms.Script("", ""));
         assertThat(NodeCommands.command(
                         home,
                         new NodeTable.Command(NodeTable.Command.Kind.EXEC, "protoc --version"),

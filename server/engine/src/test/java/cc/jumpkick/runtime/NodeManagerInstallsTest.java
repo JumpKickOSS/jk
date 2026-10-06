@@ -42,8 +42,6 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -57,7 +55,6 @@ import org.junit.jupiter.params.provider.ValueSource;
  */
 @Tag("integration")
 @Isolated
-@DisabledOnOs(OS.WINDOWS)
 class NodeManagerInstallsTest {
 
     private static final String TOKEN = "main-registry-token";

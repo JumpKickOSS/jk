@@ -7,27 +7,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.NodePin;
 import cc.jumpkick.node.NodePlatform;
+import cc.jumpkick.testing.FakeNodeDist;
+import cc.jumpkick.testing.FakePrograms;
 import cc.jumpkick.testing.LoopbackHttp;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.zip.GZIPOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -38,7 +37,6 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("integration")
 @IsolatedStore
-@DisabledOnOs(OS.WINDOWS)
 class NodeCommandE2eTest {
 
     private static final String MIRROR = "jk.env.JK_NODE_DIST_MIRROR";
@@ -56,7 +54,7 @@ class NodeCommandE2eTest {
         StringBuilder sums = new StringBuilder();
         for (String v : List.of(VERSION, OLDER)) {
             NodePlatform host = NodePlatform.host();
-            byte[] archive = archive("node-v" + v + "-" + host.key(), v);
+            byte[] archive = archive(host.key(), v);
             http.served().put("/v" + v + "/" + host.archiveName(v), archive);
             StringBuilder perVersion = new StringBuilder();
             for (NodePlatform p : NodePlatform.LOCKED) {
@@ -139,17 +137,22 @@ class NodeCommandE2eTest {
 
         String which = Capture.stdout(() -> run("node", "which", "-C", project.toString()))
                 .trim();
-        assertThat(which).endsWith("/node/" + VERSION + "/bin/node");
+        assertThat(Path.of(which))
+                .endsWithRaw(Path.of("node", VERSION).resolve(Os.isWindows() ? "node.exe" : "bin/node"));
 
         // The locked node is first on PATH even when the shell has another.
         Path out = project.resolve("which-node.txt");
-        assertThat(run("node", "exec", "-C", project.toString(), "--", "sh", "-c", "command -v node > which-node.txt"))
-                .isZero();
-        assertThat(Files.readString(out).trim()).isEqualTo(which);
+        List<String> lookup = Os.isWindows()
+                ? List.of("cmd", "/c", "where node > which-node.txt")
+                : List.of("sh", "-c", "command -v node > which-node.txt");
+        List<String> exec = new ArrayList<>(List.of("node", "exec", "-C", project.toString(), "--"));
+        exec.addAll(lookup);
+        assertThat(run(exec.toArray(String[]::new))).isZero();
+        assertThat(Files.readAllLines(out).getFirst().trim()).isEqualTo(which);
 
         // `run` hands the script to the package manager under the locked node.
         assertThat(run("node", "run", "-C", project.toString(), "build")).isZero();
-        assertThat(Files.readString(project.resolve("node-args.txt")))
+        assertThat(Files.readString(project.resolve("node-args.txt")).replace("\r\n", "\n"))
                 .contains("npm-cli.js")
                 .contains("run\nbuild");
     }
@@ -206,49 +209,15 @@ class NodeCommandE2eTest {
     }
 
     /**
-     * A Node archive whose {@code bin/node} answers {@code --version} with {@code version} and
-     * otherwise writes its arguments, one per line, to {@code node-args.txt} in its working directory.
+     * A Node archive whose {@code node} answers {@code --version} with {@code version} and otherwise
+     * writes its arguments, one per line, to {@code node-args.txt} in its working directory.
      */
-    private static byte[] archive(String top, String version) throws IOException {
-        String node = "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo v" + version + "; exit 0; fi\n"
-                + "printf '%s\\n' \"$@\" > node-args.txt\n";
-        ByteArrayOutputStream tar = new ByteArrayOutputStream();
-        entry(tar, top + "/", new byte[0], true);
-        entry(tar, top + "/bin/", new byte[0], true);
-        entry(tar, top + "/bin/node", node.getBytes(StandardCharsets.UTF_8), false);
-        tar.write(new byte[1024]);
-        ByteArrayOutputStream gz = new ByteArrayOutputStream();
-        try (GZIPOutputStream out = new GZIPOutputStream(gz)) {
-            out.write(tar.toByteArray());
-        }
-        return gz.toByteArray();
-    }
-
-    private static void entry(ByteArrayOutputStream tar, String name, byte[] data, boolean dir) throws IOException {
-        byte[] h = new byte[512];
-        byte[] n = name.getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(n, 0, h, 0, n.length);
-        octal(h, 100, 8, 0755);
-        octal(h, 108, 8, 0);
-        octal(h, 116, 8, 0);
-        octal(h, 124, 12, data.length);
-        octal(h, 136, 12, 0);
-        h[156] = (byte) (dir ? '5' : '0');
-        System.arraycopy("ustar ".getBytes(StandardCharsets.US_ASCII), 0, h, 257, 6);
-        for (int i = 148; i < 156; i++) h[i] = ' ';
-        int sum = 0;
-        for (byte b : h) sum += b & 0xff;
-        octal(h, 148, 7, sum);
-        tar.write(h);
-        tar.write(data);
-        tar.write(new byte[(512 - data.length % 512) % 512]);
-    }
-
-    private static void octal(byte[] h, int at, int len, long value) {
-        String s = Long.toOctalString(value);
-        String padded = "0".repeat(Math.max(0, len - 1 - s.length())) + s;
-        byte[] b = padded.getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(b, 0, h, at, Math.min(b.length, len - 1));
-        h[at + len - 1] = 0;
+    private static byte[] archive(String platformKey, String version) {
+        String sh = "if [ \"$1\" = \"--version\" ]; then echo v" + version + "; exit 0; fi\n"
+                + "printf '%s\\n' \"$@\" > node-args.txt";
+        String cmd = "if \"%~1\"==\"--version\" (echo v" + version + "& exit /b 0)\n"
+                + "(for %%a in (%*) do @echo %%~a) > node-args.txt";
+        return FakeNodeDist.archive(
+                version, platformKey, new FakePrograms.Script(sh, cmd), FakePrograms.Script.printing(FakeNodeDist.NPM));
     }
 }

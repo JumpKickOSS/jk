@@ -4,7 +4,6 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -21,8 +20,6 @@ import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -32,7 +29,6 @@ import org.junit.jupiter.api.io.TempDir;
  * Node.js from nodejs.org.
  */
 @Tag("network")
-@DisabledOnOs(OS.WINDOWS)
 class BootNodeSideBySideNetworkTest {
 
     @Test
@@ -128,8 +124,8 @@ class BootNodeSideBySideNetworkTest {
                         "--server.port=" + port)
                 .redirectOutput(logs.resolve("stdout.log").toFile())
                 .redirectError(logs.resolve("stderr.log").toFile())
-                .redirectInput(new File("/dev/null"))
                 .start();
+        java.getOutputStream().close();
         // HTTP/1.1: some servers drop an h2c upgrade on plain http (next start answers nothing).
         HttpClient http = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)

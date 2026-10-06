@@ -20,8 +20,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -29,7 +27,6 @@ import org.junit.jupiter.api.io.TempDir;
  * host's Node.js the lock pins; {@code --skip-node} leaves the node build alone.
  */
 @Tag("integration")
-@DisabledOnOs(OS.WINDOWS)
 class NodeModuleBuildE2eTest {
 
     @Test

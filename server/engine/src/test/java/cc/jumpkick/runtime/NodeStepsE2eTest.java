@@ -41,8 +41,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -52,7 +50,6 @@ import org.junit.jupiter.api.io.TempDir;
  * npx binary the lockfile holds through a {@code file:} dependency, and one it does not.
  */
 @Tag("integration")
-@DisabledOnOs(OS.WINDOWS)
 class NodeStepsE2eTest {
 
     @TempDir

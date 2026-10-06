@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.command.system.HookEnvCommand;
 import cc.jumpkick.command.system.JkDiff;
 import cc.jumpkick.command.toolchain.BashShell;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.NodePin;
@@ -21,12 +22,9 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /** The shell hook puts the lock's Node.js and its package manager first on PATH, and takes them off. */
-@DisabledOnOs(OS.WINDOWS)
 class JkEnvNodeTest {
 
     private static final String STORE = "jk.env.JK_STORE_DIR";
@@ -67,7 +65,7 @@ class JkEnvNodeTest {
         assertThat(JkEnv.nodeDirs(vars.get(JkEnv.NODE_HOME), vars.get(JkEnv.NODE_SHIMS)))
                 .containsExactly(
                         pnpmHome.resolve(PackageManagerShims.DIR).toString(),
-                        nodeHome.resolve("bin").toString());
+                        bin(nodeHome).toString());
     }
 
     @Test
@@ -79,7 +77,7 @@ class JkEnvNodeTest {
     @Test
     void the_hook_prepends_the_node_bin_and_strips_it_on_leaving() {
         String home = tmp.resolve("node").toString();
-        String bin = Path.of(home).resolve("bin").toString();
+        String bin = bin(Path.of(home)).toString();
         String live = "/usr/local/bin" + File.pathSeparator + "/usr/bin";
         Map<String, String> env = new HashMap<>(Map.of("PATH", live));
 
@@ -101,6 +99,11 @@ class JkEnvNodeTest {
                 new BashShell(), JkEnv.Target.empty(), JkDiff.parse(exported(enter, "__JK_DIFF")), env::get, leave);
         assertThat(leave.toString()).contains("unset JK_NODE_HOME");
         assertThat(exported(leave, "PATH")).isEqualTo(live);
+    }
+
+    /** Where a Node.js home keeps {@code node}: its root on Windows, {@code bin/} elsewhere. */
+    private static Path bin(Path home) {
+        return Os.isWindows() ? home : home.resolve("bin");
     }
 
     /** The value {@code out} exports {@code key} as, its POSIX quoting undone. */
