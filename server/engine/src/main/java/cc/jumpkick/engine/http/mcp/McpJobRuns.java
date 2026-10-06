@@ -130,6 +130,19 @@ public final class McpJobRuns {
     }
 
     /**
+     * {@code notifications/cancelled}: the job bound to the cancelled call's progress token
+     * ({@code params._meta.progressToken}, which {@code jk mcp} adds) is cancelled, so the parked
+     * call answers with its verdict. A call that started no job, or an unknown token, is left alone.
+     */
+    public static void cancelled(McpContext ctx, Map<String, Object> params) {
+        if (!(params.get("_meta") instanceof Map<?, ?> meta)) return;
+        Object token = meta.get("progressToken");
+        if (token == null) return;
+        Long jid = ctx.progressTokens().resolve(String.valueOf(token));
+        if (jid != null) ctx.jobs().cancel(jid);
+    }
+
+    /**
      * {@code deadline_s} as the job's wall deadline in ms: absent leaves the engine's detached
      * default, {@code 0} lifts the cap, a negative is the caller's error.
      */
