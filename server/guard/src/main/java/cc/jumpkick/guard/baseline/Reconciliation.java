@@ -32,7 +32,8 @@ public record Reconciliation(
         RuleBaseline tightened,
         boolean tighteningNeeded,
         @Nullable String scopeShrunk,
-        Map<String, Long> observedPopulation) {
+        Map<String, Long> observedPopulation,
+        RuleBaseline before) {
 
     static final double SCOPE_FLOOR = 0.8;
 
@@ -98,7 +99,7 @@ public record Reconciliation(
         boolean unrecorded = before.population(lane).isEmpty() && !population.isEmpty();
         boolean tightening = shrunk == null && (entriesChanged || unrecorded);
         RuleBaseline after = before.withLane(lane, tightening ? population : before.population(lane), kept);
-        return new Reconciliation(ruleId, lane, fresh, baselined, stale, after, tightening, shrunk, population);
+        return new Reconciliation(ruleId, lane, fresh, baselined, stale, after, tightening, shrunk, population, before);
     }
 
     private static @Nullable String scopeShrunk(Map<String, Long> recorded, Map<String, Long> now) {
@@ -111,18 +112,25 @@ public record Reconciliation(
     }
 
     /**
-     * The baseline grown by every fresh observation in this lane, each with {@code reason}, and the
-     * lane's population set to what was observed: what {@code freeze} writes.
+     * What {@code freeze} writes: the baseline as it was recorded, grown by every fresh observation
+     * in this lane with {@code reason} — a metric unit past its entry replaces it. Nothing else moves:
+     * stale entries, followed metrics and populations are the engine's tightening, not the freeze's.
+     * The lane's population becomes what was observed when none was recorded, or with {@code
+     * acceptScope}, as the new floor.
      */
-    public RuleBaseline frozen(String reason) {
-        List<Entry> entries = new ArrayList<>(tightened.entries(lane));
+    public RuleBaseline frozen(String reason, boolean acceptScope) {
+        Map<String, Entry> byKey = new LinkedHashMap<>();
+        for (Entry e : before.entries(lane)) byKey.put(e.key(), e);
         for (Observation o : fresh) {
-            entries.add(
+            byKey.put(
+                    o.key(),
                     o.isMetric()
                             ? new Entry.Metric(o.key(), o.value() == null ? 0 : o.value(), reason, lane)
                             : new Entry.Site(o.key(), reason, lane));
         }
-        return tightened.withLane(lane, new TreeMap<>(observedPopulation), entries);
+        Map<String, Long> recorded = before.population(lane);
+        Map<String, Long> population = acceptScope || recorded.isEmpty() ? new TreeMap<>(observedPopulation) : recorded;
+        return before.withLane(lane, population, new ArrayList<>(byKey.values()));
     }
 
     public boolean red() {

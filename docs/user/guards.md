@@ -242,7 +242,9 @@ new ones. Landing is an explicit act: the first run reports today's sites red, w
 `Accept:` line naming `jk guard freeze <id> --reason "…"`, and that freeze records them. The
 accepted sites live in **`jk-guards-baseline.toml`**, which only the engine writes: it tightens
 on its own as sites disappear, and grows only through a freeze, which records the reason beside
-the sites. A
+the sites. A freeze writes the named rule's new entries and nothing else: stale entries, other
+rules and other modules' slices wait for the engine's own tightening, so the diff is the sites you
+accepted. A
 `--retire` freeze drops the entries of a rule that no longer exists. A rule that examines under
 80 % of the population its baseline recorded is `scope-shrunk`: red, and the baseline is left
 alone, because a shrink is a question, not a fact. When the answer is that the corpus legitimately

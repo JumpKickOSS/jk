@@ -87,10 +87,17 @@ class BaselineTest {
                         List.of(Observation.site("h.H#k()V -> x", null, 0, "")),
                         Map.of("classes", 55L),
                         "shared/host")
-                .frozen("agreed");
-        assertThat(frozen.entries("shared/host")).extracting(Entry::key).containsExactly("h.H#k()V -> x");
-        assertThat(frozen.population("shared/host")).containsEntry("classes", 55L);
+                .frozen("agreed", false);
+        assertThat(frozen.entries("shared/host"))
+                .as("a freeze grows the slice and leaves its stale entry to the engine")
+                .extracting(Entry::key)
+                .containsExactly("h.H#f()V -> x", "h.H#k()V -> x");
+        assertThat(frozen.population("shared/host")).containsEntry("classes", 50L);
         assertThat(frozen.entries("clients/cli")).hasSize(1);
+        RuleBaseline rebased = Reconciliation.of("walks", rb, List.of(), Map.of("classes", 30L), "shared/host")
+                .frozen("the host shrank", true);
+        assertThat(rebased.population("shared/host")).containsEntry("classes", 30L);
+        assertThat(rebased.population("clients/cli")).containsEntry("classes", 200L);
     }
 
     @Test
@@ -124,9 +131,10 @@ class BaselineTest {
         assertThat(r.tightened().entries()).extracting(Entry::key).containsExactly("a");
         assertThat(r.tighteningNeeded()).isTrue();
         assertThat(r.red()).isTrue();
-        RuleBaseline frozen = r.frozen("because");
-        assertThat(frozen.entries()).extracting(Entry::key).containsExactly("a", "b");
+        RuleBaseline frozen = r.frozen("because", false);
+        assertThat(frozen.entries()).extracting(Entry::key).containsExactly("a", "b", "gone");
         assertThat(frozen.entries().get(1).reason()).isEqualTo("because");
+        assertThat(frozen.population()).isEqualTo(before.population());
     }
 
     @Test
@@ -144,7 +152,7 @@ class BaselineTest {
         assertThat(r.tighteningNeeded())
                 .as("the same entry seen twice is not a change")
                 .isFalse();
-        assertThat(r.frozen("because").entries()).extracting(Entry::key).containsExactly("a", "b");
+        assertThat(r.frozen("because", false).entries()).extracting(Entry::key).containsExactly("a", "b");
     }
 
     @Test
