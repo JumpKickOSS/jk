@@ -43,35 +43,31 @@ class FactsIndexingTest {
     }
 
     @Test
-    void cold_then_fresh_then_incremental(@TempDir Path dir) throws IOException {
+    void built_then_fresh_then_rebuilt(@TempDir Path dir) throws IOException {
         Path classes = classes(dir);
         Path idx = FactsIndexing.indexPath(dir.resolve("target"), "main");
 
         Ensured cold = FactsIndexing.ensure(classes, idx);
-        assertThat(cold.tier()).isEqualTo(Ensured.Tier.COLD);
+        assertThat(cold.tier()).isEqualTo(Ensured.Tier.BUILT);
         assertThat(cold.classes()).isEqualTo(2);
-        assertThat(cold.reextracted()).isEqualTo(2);
         assertThat(Files.isRegularFile(idx)).isTrue();
 
         Ensured fresh = FactsIndexing.ensure(classes, idx);
         assertThat(fresh.tier()).isEqualTo(Ensured.Tier.FRESH);
         assertThat(fresh.bodyDigest()).isEqualTo(cold.bodyDigest());
-        assertThat(fresh.reextracted()).isZero();
 
-        // Touch one class: only it is re-read; the digest is unchanged because the bytes are.
+        // Touch one class: the index is rebuilt; the digest is unchanged because the bytes are.
         Path inner = classes.resolve("cc/jumpkick/guard/extract/fixture/Sample$Inner.class");
         Files.setLastModifiedTime(
                 inner, FileTime.fromMillis(Files.getLastModifiedTime(inner).toMillis() + 5_000));
         Ensured touched = FactsIndexing.ensure(classes, idx);
-        assertThat(touched.tier()).isEqualTo(Ensured.Tier.INCREMENTAL);
-        assertThat(touched.reextracted()).isEqualTo(1);
+        assertThat(touched.tier()).isEqualTo(Ensured.Tier.BUILT);
         assertThat(touched.bodyDigest()).isEqualTo(cold.bodyDigest());
 
         // Remove one class: the table shrinks and the digest moves.
         Files.delete(inner);
         Ensured removed = FactsIndexing.ensure(classes, idx);
         assertThat(removed.classes()).isEqualTo(1);
-        assertThat(removed.reextracted()).isZero();
         assertThat(removed.bodyDigest()).isNotEqualTo(cold.bodyDigest());
 
         FactsIndex loaded = FactsIndexing.load(removed);
@@ -116,8 +112,8 @@ class FactsIndexingTest {
                 List<Ensured.Tier> tiers = results.stream().map(Ensured::tier).toList();
                 assertThat(tiers)
                         .as("round " + round + ": one writer, the rest read its index")
-                        .containsOnlyOnce(Ensured.Tier.COLD)
-                        .containsOnly(Ensured.Tier.COLD, Ensured.Tier.FRESH);
+                        .containsOnlyOnce(Ensured.Tier.BUILT)
+                        .containsOnly(Ensured.Tier.BUILT, Ensured.Tier.FRESH);
                 Set<String> left = new TreeSet<>();
                 PathUtil.forEachChild(Objects.requireNonNull(idx.getParent()), (p, attrs) -> {
                     left.add(p.getFileName().toString());
