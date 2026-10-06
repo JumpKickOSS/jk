@@ -42,6 +42,23 @@ class FileTransportTest {
         assertThat(Files.readAllBytes(target)).containsExactly(1, 2, 3);
     }
 
+    /** A put over a hard-linked file replaces this name only; the other name keeps its bytes. */
+    @Test
+    void put_over_a_hard_linked_file_leaves_the_other_name_unchanged(@TempDir Path dir) throws Exception {
+        Path m2 = dir.resolve("m2/g/a/1/a-1.pom");
+        Files.createDirectories(m2.getParent());
+        Files.writeString(m2, "<project/>");
+        Path target = dir.resolve("repo/g/a/1/a-1.pom");
+        Files.createDirectories(target.getParent());
+        Files.createLink(target, m2);
+
+        transport.put(
+                target.toUri(), "replaced".getBytes(StandardCharsets.UTF_8), "text/xml", RepoCredential.ANONYMOUS);
+
+        assertThat(Files.readString(target)).isEqualTo("replaced");
+        assertThat(Files.readString(m2)).isEqualTo("<project/>");
+    }
+
     @Test
     void dispatches_for_file_scheme(@TempDir Path dir) {
         assertThat(RepoTransports.forUrl(dir.toUri(), new Http())).isInstanceOf(FileTransport.class);

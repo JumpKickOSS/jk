@@ -8,14 +8,17 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.EmptyArchive;
 import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -37,6 +40,10 @@ import org.jspecify.annotations.Nullable;
  * completed from {@link M2Dirs#localRepository()} (the gate's shared test-m2 under
  * {@code JK_M2_LOCAL}) and from {@code ~/.m2} when the file is there, and the rest of those trees
  * there (POMs and jars the host never stored) is copied for exact fetches a solve still makes.
+ * A local repository's file is always copied, never linked: a write through any name of a shared
+ * inode lands in every other name, and a sandbox runs arbitrary test code against its store. A
+ * host file that is already one inode with a local repository's file gets its own copy before it
+ * is linked onward, so no sandbox name reaches a file jk does not own.
  * Only a file whose {@code _remote.repositories} says Central served it: a local repository holds
  * whatever any repository answered under a coordinate — a test's stub server, an {@code mvn
  * install} — and under {@code repos/central} those bytes would be pinned as Central's. A body the
@@ -147,7 +154,7 @@ public final class TestStoreSeed {
         for (String tree : TREES) {
             PathUtil.forEachRegularFile(hostCentral.resolve(tree), (file, attrs) -> {
                 if (EmptyArchive.is(file)) return;
-                if (!same) hostFiles.add(file);
+                hostFiles.add(file);
                 Path version = file.getParent();
                 Path artifact = version == null ? null : version.getParent();
                 if (version == null || artifact == null) return;
@@ -162,7 +169,10 @@ public final class TestStoreSeed {
                 }
             });
         }
-        if (!same) linkHostFiles(hostCentral, sandboxCentral, hostFiles, materialised);
+        List<Path> m2s = localRepos(m2);
+        for (Path file : hostFiles)
+            detachFromLocalRepos(file, hostCentral.relativize(file).toString(), m2s);
+        if (!same) linkHostFiles(hostCentral, sandboxCentral, hostFiles, m2s, materialised);
         Path m2Root = m2 == null ? null : m2.toAbsolutePath().normalize();
         if (m2Root != null && Files.isDirectory(m2Root) && !m2Root.equals(sandbox)) {
             fillMissingPoms(hostCentral, sandboxCentral, m2Root, hostVersions, pomVersions, materialised);
@@ -200,7 +210,7 @@ public final class TestStoreSeed {
                 if (!Files.isRegularFile(source) || !centralServed(source)) continue;
                 Path target =
                         sandboxCentral.resolve(artifactRel).resolve(version).resolve(pomName);
-                Linking.linkOrCopy(source, target);
+                copyInto(source, target);
                 materialised[0]++;
                 pomVersions
                         .computeIfAbsent(artifact, a -> new TreeSet<>(Versions::compare))
@@ -224,7 +234,7 @@ public final class TestStoreSeed {
                 if (!centralServed(file) || EmptyArchive.is(file)) return;
                 Path target = sandboxCentral.resolve(m2.relativize(file).toString());
                 if (!seedable(target)) return;
-                Linking.linkOrCopy(file, target);
+                copyInto(file, target);
                 materialised[0]++;
             });
         }
@@ -234,19 +244,68 @@ public final class TestStoreSeed {
      * Link {@code files} from the host tree into the sandbox. Hollow stand-ins are cleared first,
      * memos included, and the host's files are linked only after that: a POM memo is
      * {@code <file>.pom.jk} and a jar memo is {@code <file>.jk}, both ordinary files of the same
-     * tree, and directory order is not a safe sequence for deleting a sibling during the link.
+     * tree, and directory order is not a safe sequence for deleting a sibling during the link. A
+     * sandbox file an earlier seed left as one inode with its twin in {@code m2s} is detached.
      */
-    private static void linkHostFiles(Path hostCentral, Path sandboxCentral, List<Path> files, int[] materialised)
+    private static void linkHostFiles(
+            Path hostCentral, Path sandboxCentral, List<Path> files, List<Path> m2s, int[] materialised)
             throws IOException {
         for (Path file : files) {
             Path target = sandboxCentral.resolve(hostCentral.relativize(file).toString());
             if (EmptyArchive.is(target)) clearStandIn(target);
         }
         for (Path file : files) {
-            Path target = sandboxCentral.resolve(hostCentral.relativize(file).toString());
-            if (Files.exists(target)) continue;
+            String relative = hostCentral.relativize(file).toString();
+            Path target = sandboxCentral.resolve(relative);
+            if (Files.exists(target)) {
+                detachFromLocalRepos(target, relative, m2s);
+                continue;
+            }
             Linking.linkOrCopy(file, target);
             materialised[0]++;
+        }
+    }
+
+    /** The local repositories a host file may share an inode with: {@link #localRepos()} and {@code m2}. */
+    private static List<Path> localRepos(@Nullable Path m2) {
+        List<Path> repos = new ArrayList<>(localRepos());
+        if (m2 != null) {
+            Path root = m2.toAbsolutePath().normalize();
+            if (!repos.contains(root)) repos.add(root);
+        }
+        return repos;
+    }
+
+    /**
+     * Give {@code file} its own inode when it is one with {@code relative}'s file in any of
+     * {@code m2s}, so the link the seed makes next reaches only a file the store owns.
+     */
+    static void detachFromLocalRepos(Path file, String relative, List<Path> m2s) throws IOException {
+        for (Path m2 : m2s) {
+            Path twin = m2.resolve(relative);
+            if (Files.isRegularFile(twin) && Files.isSameFile(file, twin)) {
+                copyInto(twin, file);
+                return;
+            }
+        }
+    }
+
+    /**
+     * Replace {@code target} with a copy of {@code source} through a temp sibling and an atomic
+     * move, so no other name of the file {@code target} named sees the write. Timestamps are kept:
+     * a memo beside the file records them.
+     */
+    static void copyInto(Path source, Path target) throws IOException {
+        Path dir = Objects.requireNonNull(target.getParent(), "a file has a directory");
+        Files.createDirectories(dir);
+        Path tmp = Files.createTempFile(dir, "." + target.getFileName() + ".", ".part");
+        boolean moved = false;
+        try {
+            Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+            AtomicWrites.moveInto(tmp, target);
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(tmp);
         }
     }
 
