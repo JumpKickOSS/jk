@@ -355,7 +355,9 @@ final class PackagingPlugins {
      * platform plugin shares the BOM's version), else the managed {@code quarkus-bom}, else the
      * {@code quarkus.platform.version} / {@code quarkus.version} property. Without one the table is
      * a row, since the key is required. The table is what activates the Quarkus plugin: the
-     * augment, the fast-jar and the test model {@code @QuarkusTest} boots from.
+     * augment, the fast-jar and the test model {@code @QuarkusTest} boots from. A 1.x version is a
+     * row too: its BOM is {@code io.quarkus:quarkus-bom}, and the plugin drives the bootstrap API
+     * Quarkus 2.0 introduced.
      */
     private static @Nullable PluginConfig mapQuarkus(Plugin plugin, Model model, ImportReport.Builder report) {
         String version = PluginFacts.usable(plugin.getVersion());
@@ -370,7 +372,23 @@ final class PackagingPlugins {
                     + " `[quarkus] version = \"...\"` to jk.toml yourself.");
             return null;
         }
+        if (majorOf(version) < 2) {
+            report.warning("`quarkus-maven-plugin` is at Quarkus " + version
+                    + "; jk's Quarkus plugin builds 2.0 and later, so no `[quarkus]` table was written."
+                    + " Upgrade the project to a 2.x or 3.x platform and add `[quarkus] version` to jk.toml.");
+            return null;
+        }
         return new PluginConfig("quarkus", Map.of("version", version));
+    }
+
+    /** The leading number of a version or selector ({@code 1.0.0.Final}, {@code ^3}); {@code MAX_VALUE} when none. */
+    static int majorOf(String version) {
+        int i = 0;
+        while (i < version.length() && !Character.isDigit(version.charAt(i))) i++;
+        int start = i;
+        while (i < version.length() && Character.isDigit(version.charAt(i))) i++;
+        if (i == start || i - start > 6) return Integer.MAX_VALUE;
+        return Integer.parseInt(version.substring(start, i));
     }
 
     /** {@code <mainClass>}, {@code <imageName>} and {@code <buildArgs>} → {@code [native]} main, name and args. */
