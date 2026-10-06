@@ -13,6 +13,7 @@ import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.host.CodeText;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.ParallelMap;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -117,19 +118,15 @@ final class VocabularyEvaluator implements BatchEvaluator {
                 ownerSources.put(p, ownerSourceRel(p.ownerFacts, m));
             }
             if (here.isEmpty()) continue;
-            // One pass over the module's sources for every rule of the lane.
-            for (TextFiles.Entry f : TextFiles.corpus(m)) {
-                if (!f.language().code || !f.language().lexable) continue;
-                String text = null;
-                List<CodeText.Literal> literals = List.of();
+            // One pass over the module's sources for every rule of the lane: files are read and
+            // lexed in parallel, then scanned in corpus order.
+            List<@Nullable Lexed> lexed = ParallelMap.<TextFiles.Entry, @Nullable Lexed>map(
+                    TextFiles.corpus(m), f -> lex(f, here, ownerSources));
+            for (Lexed l : lexed) {
+                if (l == null) continue;
                 for (Prepared p : here) {
-                    if (!inSourceSet(f.rel(), p.all) || f.rel().equals(ownerSources.get(p))) continue;
-                    if (text == null) {
-                        text = TextFiles.read(f.file());
-                        if (text == null) break;
-                        literals = CodeText.literals(text);
-                    }
-                    scan(p, f, text, literals, module, moduleDir == null);
+                    if (!wants(p, l.file(), ownerSources)) continue;
+                    scan(p, l.file(), l.text(), l.literals(), module, moduleDir == null);
                 }
             }
         }
@@ -169,6 +166,23 @@ final class VocabularyEvaluator implements BatchEvaluator {
         }
         return Evaluation.ownerMissing("owner " + owner + " yields no constant of shape `" + shape
                 + "`; the rule has lost the owner it reads");
+    }
+
+    /** One source file read and lexed; {@code null} when no rule here reads it or it is not text. */
+    private record Lexed(TextFiles.Entry file, String text, List<CodeText.Literal> literals) {}
+
+    private static @Nullable Lexed lex(
+            TextFiles.Entry f, List<Prepared> here, Map<Prepared, @Nullable String> ownerSources) throws IOException {
+        if (!f.language().code || !f.language().lexable) return null;
+        boolean wanted = false;
+        for (Prepared p : here) wanted |= wants(p, f, ownerSources);
+        if (!wanted) return null;
+        String text = TextFiles.read(f.file());
+        return text == null ? null : new Lexed(f, text, CodeText.literals(text));
+    }
+
+    private static boolean wants(Prepared p, TextFiles.Entry f, Map<Prepared, @Nullable String> ownerSources) {
+        return inSourceSet(f.rel(), p.all) && !f.rel().equals(ownerSources.get(p));
     }
 
     private static void scan(

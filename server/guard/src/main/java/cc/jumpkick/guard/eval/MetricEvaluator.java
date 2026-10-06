@@ -11,6 +11,7 @@ import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.CodeText;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.ParallelMap;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,28 +77,41 @@ final class MetricEvaluator implements BatchEvaluator {
         if (!runs.isEmpty()) {
             Path moduleDir = ctx.moduleDir();
             Path root = ctx.lane() == Lane.MODULE && moduleDir != null ? moduleDir : ctx.root();
-            List<TextRun> here = new ArrayList<>();
-            for (TextFiles.Entry f : TextFiles.corpus(root)) {
-                here.clear();
-                for (TextRun run : runs) if (run.failure == null && run.wants(f)) here.add(run);
-                if (here.isEmpty()) continue;
-                String text = TextFiles.read(f.file());
-                if (text == null) continue;
-                for (TextRun run : here) {
-                    try {
-                        run.see(f, text);
-                    } catch (DeadlineCharSequence.Expired e) {
-                        run.failure = e.getMessage() + " on " + f.rel();
-                    } catch (StackOverflowError e) {
-                        run.failure = "regex overflowed the stack on " + f.rel();
-                    }
-                }
-            }
+            // Files are measured in parallel; each measure is applied in corpus order, and a run
+            // that failed takes nothing after the file it failed on.
+            List<List<Runnable>> perFile = ParallelMap.map(TextFiles.corpus(root), f -> measureFile(f, runs));
+            for (List<Runnable> steps : perFile) for (Runnable step : steps) step.run();
             for (TextRun run : runs) {
                 out.put(run.rule.id(), run.failure != null ? Evaluation.failed(run.failure) : run.finish());
             }
         }
         return out;
+    }
+
+    /** Every wanting run's measure of one file, as steps that apply it; touches no run state. */
+    private static List<Runnable> measureFile(TextFiles.Entry f, List<TextRun> runs) throws IOException {
+        List<TextRun> here = new ArrayList<>();
+        for (TextRun run : runs) if (run.wants(f)) here.add(run);
+        if (here.isEmpty()) return List.of();
+        String text = TextFiles.read(f.file());
+        if (text == null) return List.of();
+        List<Runnable> steps = new ArrayList<>(here.size());
+        for (TextRun run : here) {
+            Runnable step;
+            try {
+                step = run.see(f, text);
+            } catch (DeadlineCharSequence.Expired e) {
+                String why = e.getMessage() + " on " + f.rel();
+                step = () -> run.failure = why;
+            } catch (StackOverflowError e) {
+                step = () -> run.failure = "regex overflowed the stack on " + f.rel();
+            }
+            Runnable apply = step;
+            steps.add(() -> {
+                if (run.failure == null) apply.run();
+            });
+        }
+        return steps;
     }
 
     /** One rule's own measure: a throw is that rule's scanner-failed, and the lane's other rules still run. */
@@ -181,7 +195,15 @@ final class MetricEvaluator implements BatchEvaluator {
 
         abstract boolean wants(TextFiles.Entry f);
 
-        abstract void see(TextFiles.Entry f, String text);
+        /**
+         * Measure one file without touching this run's state; the returned step folds the measure
+         * in, and the caller runs the steps in corpus order on one thread.
+         */
+        abstract Runnable see(TextFiles.Entry f, String text);
+
+        void used(@Nullable Allow allow) {
+            if (allow != null) allowUsed.put(allow, true);
+        }
 
         abstract Evaluation finish();
     }
@@ -209,31 +231,41 @@ final class MetricEvaluator implements BatchEvaluator {
         }
 
         @Override
-        void see(TextFiles.Entry f, String text) {
+        Runnable see(TextFiles.Entry f, String text) {
             String ext = extension(f.rel());
             double limit = Objects.requireNonNull(bound.limitFor(ext), "limit");
             Allow allow = allowing(rule.allow(), f.rel());
-            if (allow != null) allowUsed.put(allow, true);
-            if (measure.equals("comment-lines")) {
-                units += commentBlocks(f, text, limit, bound, allow, out);
-                return;
-            }
-            if (measure.equals("lines") && per.equals("method")) {
-                units += methodBodies(f, text, ext, limit, bound, allow, out);
-                return;
+            if (measure.equals("comment-lines") || (measure.equals("lines") && per.equals("method"))) {
+                List<Observation> found = new ArrayList<>();
+                long n = measure.equals("comment-lines")
+                        ? commentBlocks(f, text, limit, bound, allow, found)
+                        : methodBodies(f, text, ext, limit, bound, allow, found);
+                return () -> {
+                    used(allow);
+                    units += n;
+                    out.addAll(found);
+                };
             }
             double value = measure.equals("lines") ? CodeText.codeLines(text, ext) : fqcns(text, ext);
             if (per.equals("module")) {
                 String module = moduleOf(f.rel());
-                perModule.merge(module, value, Double::sum);
-                moduleLanguage.putIfAbsent(module, ext);
-                return;
+                return () -> {
+                    used(allow);
+                    perModule.merge(module, value, Double::sum);
+                    moduleLanguage.putIfAbsent(module, ext);
+                };
             }
-            units++;
-            if (allow == null && bound.breached(value, limit)) {
-                out.add(Observation.metric(
-                        f.rel(), value, f.rel(), measure + " = " + number(value) + " (" + bound.describe(limit) + ")"));
-            }
+            return () -> {
+                used(allow);
+                units++;
+                if (allow == null && bound.breached(value, limit)) {
+                    out.add(Observation.metric(
+                            f.rel(),
+                            value,
+                            f.rel(),
+                            measure + " = " + number(value) + " (" + bound.describe(limit) + ")"));
+                }
+            };
         }
 
         @Override
@@ -379,14 +411,14 @@ final class MetricEvaluator implements BatchEvaluator {
         }
 
         @Override
-        void see(TextFiles.Entry f, String text) {
+        Runnable see(TextFiles.Entry f, String text) {
             String view =
                     f.language().lexable ? CodeText.blank(text, blank, f.language() == TextFiles.Language.JS) : text;
-            double n = 0;
-            for (Pattern p : patterns) n += countMatches(p, view);
+            double counted = 0;
+            for (Pattern p : patterns) counted += countMatches(p, view);
+            double n = counted;
             String unit = per.equals("module") ? moduleOf(f.rel()) : per.equals("tree") ? "tree" : f.rel();
-            perUnit.merge(unit, n, Double::sum);
-            if (!per.equals("file")) perUnit.putIfAbsent(unit, 0.0);
+            return () -> perUnit.merge(unit, n, Double::sum);
         }
 
         @Override
