@@ -7,6 +7,7 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.CodeText;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.ParallelMap;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -110,30 +111,21 @@ final class TextEvaluator implements BatchEvaluator {
 
         Path moduleDir = ctx.moduleDir();
         Path root = ctx.lane() == Lane.MODULE && moduleDir != null ? moduleDir : ctx.root();
-        for (TextFiles.Entry f : TextFiles.corpus(root)) {
-            List<Prepared> applicable = new ArrayList<>();
-            for (Prepared p : live) if (applies(p, f)) applicable.add(p);
-            if (applicable.isEmpty()) continue;
-            String text = TextFiles.read(f.file());
-            if (text == null) continue;
-            Map<CodeText.Blank, Object> views = new EnumMap<>(CodeText.Blank.class);
-            for (Prepared p : applicable) {
+        // Files are scanned in parallel and merged in corpus order, so a rule sees its files in the
+        // same order whatever the scheduling: a failure stops a rule at the same file every run.
+        List<List<Seen>> perFile = ParallelMap.map(TextFiles.corpus(root), f -> scanFile(f, live));
+        for (List<Seen> seen : perFile) {
+            for (Seen s : seen) {
+                Prepared p = s.rule();
                 if (p.failure != null) continue;
                 p.filesExamined++;
-                boolean inOwner = matchesAny(p.owners, f.rel());
-                if (inOwner) p.ownerSeen = true;
-                if (!f.language().lexable && f.language().code && p.blank != CodeText.Blank.NONE) {
-                    p.unsupported.add(f.rel());
+                if (s.inOwner()) p.ownerSeen = true;
+                if (s.unsupported()) {
+                    p.unsupported.add(s.rel());
                     continue;
                 }
-                Object view = views.computeIfAbsent(p.blank, mode -> project(text, mode, f.language()));
-                try {
-                    scan(p, f, text, view, inOwner);
-                } catch (DeadlineCharSequence.Expired e) {
-                    p.failure = e.getMessage() + " on " + f.rel();
-                } catch (StackOverflowError e) {
-                    p.failure = "regex overflowed the stack on " + f.rel();
-                }
+                p.hits.addAll(s.hits());
+                p.failure = s.failure();
             }
         }
         for (Prepared p : live) out.put(p.rule.id(), finish(p, ctx));
@@ -226,7 +218,47 @@ final class TextEvaluator implements BatchEvaluator {
         return false;
     }
 
-    private void scan(Prepared p, TextFiles.Entry f, String original, Object view, boolean inOwner) {
+    /** What one file contributed to one rule; folded into the rule's totals in corpus order. */
+    private record Seen(
+            Prepared rule,
+            String rel,
+            boolean inOwner,
+            boolean unsupported,
+            List<Hit> hits,
+            @Nullable String failure) {}
+
+    /** Every applicable rule's view of one file; touches no rule state, so files scan in parallel. */
+    private static List<Seen> scanFile(TextFiles.Entry f, List<Prepared> live) throws IOException {
+        List<Prepared> applicable = new ArrayList<>();
+        for (Prepared p : live) if (applies(p, f)) applicable.add(p);
+        if (applicable.isEmpty()) return List.of();
+        String text = TextFiles.read(f.file());
+        if (text == null) return List.of();
+        Map<CodeText.Blank, Object> views = new EnumMap<>(CodeText.Blank.class);
+        List<Seen> out = new ArrayList<>(applicable.size());
+        for (Prepared p : applicable) {
+            boolean inOwner = matchesAny(p.owners, f.rel());
+            if (!f.language().lexable && f.language().code && p.blank != CodeText.Blank.NONE) {
+                out.add(new Seen(p, f.rel(), inOwner, true, List.of(), null));
+                continue;
+            }
+            Object view = views.computeIfAbsent(p.blank, mode -> project(text, mode, f.language()));
+            List<Hit> hits = new ArrayList<>();
+            String failure = null;
+            try {
+                scan(p, f, text, view, inOwner, hits);
+            } catch (DeadlineCharSequence.Expired e) {
+                failure = e.getMessage() + " on " + f.rel();
+            } catch (StackOverflowError e) {
+                failure = "regex overflowed the stack on " + f.rel();
+            }
+            out.add(new Seen(p, f.rel(), inOwner, false, hits, failure));
+        }
+        return out;
+    }
+
+    private static void scan(
+            Prepared p, TextFiles.Entry f, String original, Object view, boolean inOwner, List<Hit> hits) {
         CharSequence text = new DeadlineCharSequence(viewText(view), DEADLINE_MILLIS);
         for (Pattern pattern : p.patterns) {
             Matcher m = pattern.matcher(text);
@@ -237,7 +269,7 @@ final class TextEvaluator implements BatchEvaluator {
                 }
                 int offset = view instanceof Squashed s ? s.originalOffset(m.start()) : m.start();
                 String snippet = text.subSequence(m.start(), m.end()).toString();
-                p.hits.add(new Hit(f.rel(), CodeText.lineAt(original, offset), snippet, inOwner));
+                hits.add(new Hit(f.rel(), CodeText.lineAt(original, offset), snippet, inOwner));
             }
         }
     }
