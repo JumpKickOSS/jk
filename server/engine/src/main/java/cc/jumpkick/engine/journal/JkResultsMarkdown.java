@@ -837,12 +837,19 @@ public final class JkResultsMarkdown {
         return b.toString();
     }
 
+    /**
+     * {@code file} relative to {@code projectDir} when it lies under it, else {@code file}. Either
+     * separator matches the other: a module directory joined on Windows spells the project's own
+     * prefix with backslashes.
+     */
     static String displayFile(String file, String projectDir) {
         if (file == null || file.isBlank()) return "";
-        if (projectDir != null && !projectDir.isBlank() && file.startsWith(projectDir)) {
-            String rel = file.substring(projectDir.length());
-            if (rel.startsWith("/") || rel.startsWith("\\")) rel = rel.substring(1);
-            return rel.isEmpty() ? file : rel;
+        if (projectDir == null || projectDir.isBlank()) return file;
+        String f = file.replace('\\', '/');
+        String dir = projectDir.replace('\\', '/');
+        if (dir.endsWith("/")) dir = dir.substring(0, dir.length() - 1);
+        if (f.length() > dir.length() + 1 && f.startsWith(dir) && f.charAt(dir.length()) == '/') {
+            return f.substring(dir.length() + 1);
         }
         return file;
     }

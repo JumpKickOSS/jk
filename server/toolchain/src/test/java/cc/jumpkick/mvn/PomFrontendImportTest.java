@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -126,18 +127,17 @@ class PomFrontendImportTest {
                 .extracting(Dependency::module)
                 .anyMatch(m -> Dependency.isWorkspaceRef(m) && m.endsWith("web"));
         assertThat(frontends.files().moves())
-                .extracting(m -> root.relativize(m.from()).toString(), m -> root.relativize(m.to())
-                        .toString())
+                .extracting(m -> tuple(root.relativize(m.from()), root.relativize(m.to())))
                 .contains(
-                        tuple("package.json", "web/package.json"),
-                        tuple("yarn.lock", "web/yarn.lock"),
-                        tuple(".yarnrc.yml", "web/.yarnrc.yml"),
-                        tuple("webpack.config.js", "web/webpack.config.js"),
-                        tuple("eslint.config.cjs", "web/eslint.config.cjs"),
-                        tuple("src/main/js", "web/src/main/js"),
-                        tuple("src/main/scss", "web/src/main/scss"),
-                        tuple("src/test/js", "web/src/test/js"),
-                        tuple("vitest.config.mjs", "web/vitest.config.mjs"))
+                        moved("package.json", "web/package.json"),
+                        moved("yarn.lock", "web/yarn.lock"),
+                        moved(".yarnrc.yml", "web/.yarnrc.yml"),
+                        moved("webpack.config.js", "web/webpack.config.js"),
+                        moved("eslint.config.cjs", "web/eslint.config.cjs"),
+                        moved("src/main/js", "web/src/main/js"),
+                        moved("src/main/scss", "web/src/main/scss"),
+                        moved("src/test/js", "web/src/test/js"),
+                        moved("vitest.config.mjs", "web/vitest.config.mjs"))
                 .noneMatch(t -> t.toList().get(0).toString().startsWith("target"))
                 .noneMatch(t -> t.toList().get(0).toString().startsWith("war"));
         String config = frontends.files().rewrites().get(root.resolve("web/webpack.config.js"));
@@ -391,5 +391,10 @@ class PomFrontendImportTest {
     private static void write(Path file, String text) throws IOException {
         Files.createDirectories(file.getParent());
         Files.writeString(file, text, StandardCharsets.UTF_8);
+    }
+
+    /** A move as the importer reports it, relative to the root, in this platform's separators. */
+    private static Tuple moved(String from, String to) {
+        return tuple(Path.of(from), Path.of(to));
     }
 }

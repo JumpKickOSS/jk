@@ -98,9 +98,10 @@ class InstallationListsTest {
         assertThat(JdkUninstallPolicy.removable("jdk-paths")).isFalse();
     }
 
+    /** A {@code gradle.properties}, where a backslash is an escape, so a Windows path is written doubled. */
     private static Path writeProperties(Path dir, String content) throws IOException {
         Files.createDirectories(dir);
-        Files.writeString(dir.resolve("gradle.properties"), content);
+        Files.writeString(dir.resolve("gradle.properties"), content.replace("\\", "\\\\"));
         return dir;
     }
 }
