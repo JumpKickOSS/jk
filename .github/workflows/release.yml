@@ -219,11 +219,13 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # firebase-tools below runs on Node, and this job installs no jk to provision it. Once the
-      # bootstrap pin names a release that provisions Node, this becomes `jk node exec`.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: '.nvmrc'
+      # firebase-tools below runs on the Node.js the pinned jk provisions (`jk node exec`).
+      - name: Bootstrap jk from the hosted release
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
+          JK_HOME="$RUNNER_TEMP/jk-home" bash scripts/ci-bootstrap.sh
 
       - name: Resolve version
         shell: bash
@@ -362,7 +364,7 @@ jobs:
       - name: Deploy the installers to jumpkick.build
         if: github.event_name == 'release'
         shell: bash
-        run: npx --yes firebase-tools@15.30.2 deploy --only hosting --non-interactive
+        run: jk node exec --node "$(tr -d '[:space:]' < .nvmrc)" -- npx --yes firebase-tools@15.30.2 deploy --only hosting --non-interactive
 
       # One build-provenance attestation per artifact — the clients, the engine jar and the SBOM —
       # signed with this run's OIDC identity and stored with the repository, verifiable with
