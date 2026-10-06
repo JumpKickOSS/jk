@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The Node.js toolchain suites on this host: provisioning, `jk node`, and the node build e2e.
+# The Node.js toolchain suites on this host: provisioning, `jk node`, and the node build e2e, with
+# the junctions a run home and the JDK pointers fall back to where symlinks need a privilege.
 # Two invocations, since a tag filter refuses a --class it excludes: the untagged classes, then the
 # integration-tagged ones. --network adds the classes that fetch real generators from npm.
 # Usage: scripts/ci-node-windows.sh [--network]
@@ -16,6 +17,8 @@ untagged=(
   jk-engine:cc.jumpkick.runtime.NodeNetworkTest
   jk-engine:cc.jumpkick.runtime.NodeRunProgressTest
   jk-cli:cc.jumpkick.command.JkEnvNodeTest
+  jk-toolchain-jdk:cc.jumpkick.jdk.JunctionsTest
+  jk-toolchain-jdk:cc.jumpkick.jdk.StableJdkPointerTest
 )
 integration=(
   jk-engine:cc.jumpkick.runtime.NodeBuildStepsTest

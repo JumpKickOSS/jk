@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.DownloadOrigin;
 import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.host.Os;
 import cc.jumpkick.node.NodeSources;
 import cc.jumpkick.node.PackageManager;
 import java.io.IOException;
@@ -158,7 +157,8 @@ class NodeNetworkTest {
     @Test
     void berry_gets_its_scopes_from_a_run_home_that_links_the_real_one() throws Exception {
         Path userHome = Files.createDirectories(dir.resolve("real-home"));
-        Files.createDirectories(userHome.resolve(".ssh"));
+        Files.writeString(Files.createDirectories(userHome.resolve(".ssh")).resolve("id_ed25519"), "key");
+        Files.writeString(userHome.resolve(".gitconfig"), "[user]\n\tname = Real\n");
         Files.writeString(userHome.resolve(".yarnrc.yml"), "enableTelemetry: false\n");
         NodeNetwork.Sources sources = new NodeNetwork.Sources(
                 REGISTRY,
@@ -174,8 +174,8 @@ class NodeNetworkTest {
 
         Path home = Path.of(env.get("HOME"));
         assertThat(home.getFileName().toString()).startsWith(NodeNetwork.YARN_HOME_PREFIX);
-        if (!Os.isWindows())
-            assertThat(Files.isSymbolicLink(home.resolve(".ssh"))).isTrue();
+        assertThat(home.resolve(".ssh").resolve("id_ed25519")).hasContent("key");
+        assertThat(home.resolve(".gitconfig")).hasContent("[user]\n\tname = Real\n");
         assertThat(Files.readString(home.resolve(".yarnrc.yml")))
                 .startsWith("enableTelemetry: false\n")
                 .contains("npmScopes:\n  acme:\n    npmRegistryServer: \""
@@ -184,7 +184,8 @@ class NodeNetworkTest {
         assertOwnerOnly(home.resolve(".yarnrc.yml"));
         NodeNetwork.discard(env);
         assertThat(home).doesNotExist();
-        assertThat(userHome.resolve(".ssh")).isDirectory();
+        assertThat(userHome.resolve(".ssh").resolve("id_ed25519")).hasContent("key");
+        assertThat(userHome.resolve(".gitconfig")).hasContent("[user]\n\tname = Real\n");
     }
 
     @Test
