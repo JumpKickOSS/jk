@@ -206,6 +206,37 @@ class PomPackagingImportTest {
                         m -> m.startsWith("`quarkus-maven-plugin` is declared without a resolvable platform version"));
     }
 
+    /** Quarkus 1.x published its BOM under {@code io.quarkus} and predates the bootstrap API the plugin drives. */
+    @Test
+    void a_quarkus_1_project_writes_no_table_and_says_why(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <properties><quarkus.version>1.0.0.Final</quarkus.version></properties>
+                  <build><plugins><plugin>
+                    <groupId>io.quarkus</groupId>
+                    <artifactId>quarkus-maven-plugin</artifactId>
+                    <version>${quarkus.version}</version>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        assertThat(result.jkBuild().pluginConfig("quarkus")).isEmpty();
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith("`quarkus-maven-plugin` is at Quarkus 1.0.0.Final")
+                        && m.contains("builds 2.0 and later"));
+    }
+
+    @Test
+    void quarkus_major_reads_the_leading_number_of_a_version_or_selector() {
+        assertThat(PackagingPlugins.majorOf("1.0.0.Final")).isEqualTo(1);
+        assertThat(PackagingPlugins.majorOf("2.0.0.Final")).isEqualTo(2);
+        assertThat(PackagingPlugins.majorOf("^3")).isEqualTo(3);
+        assertThat(PackagingPlugins.majorOf("latest")).isEqualTo(Integer.MAX_VALUE);
+    }
+
     /**
      * A library that lists the Boot plugin bare — no {@code repackage} execution, no {@code
      * <mainClass>} — runs nothing under Maven (the starter parent is what binds the goal), so no

@@ -55,7 +55,8 @@ jk new -t quarkus/hello my-api
 
 - `[quarkus] version = "3.38.0"` pins that BOM release (`jk new` writes the current stable).
   `"^3"` is the opt-in floor for the newest 3.x; `"latest"` takes the newest stable at each
-  resolve.
+  resolve. Quarkus 2.0 and later only: `jk import` writes no `[quarkus]` table for a 1.x project
+  and says so.
 - Starters / extensions are **versionless** under `[dependencies]` (`quarkus-rest`,
   `quarkus-rest-jackson`).
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
