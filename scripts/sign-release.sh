@@ -40,6 +40,10 @@ else
   exit 2
 fi
 
+# A release run refuses any key but the one the installers trust (release.yml sets this).
+if [[ "${JK_RELEASE_REQUIRE_TRUSTED_KEY:-}" == 1 ]]; then
+  "$(dirname "${BASH_SOURCE[0]}")/release-key-matches.sh" "$KEY_FILE" "$KEY_FORM"
+fi
 openssl dgst -sha256 -keyform "$KEY_FORM" -sign "$KEY_FILE" -out "$WORKDIR/signature.bin" "$SUMS"
 openssl base64 -A -in "$WORKDIR/signature.bin" >"$OUT"
 printf '\n' >>"$OUT"
