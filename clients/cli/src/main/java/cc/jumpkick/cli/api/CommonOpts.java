@@ -138,7 +138,7 @@ public final class CommonOpts {
 
     /** Skip compiling and running tests — shared by build / native / install-style verbs. */
     public static Opt skipTests() {
-        return Opt.flag("Skip compiling and running tests.", "--skip-tests");
+        return Opt.flag("Skip tests; guards too unless --guard.", "--skip-tests");
     }
 
     /** {@code --test-failures <mode>}: over every module's {@code [test] failures}. */

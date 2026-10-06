@@ -62,12 +62,13 @@ final class GuardKeys {
     }
 
     /**
-     * The forecast's {@code guard} step for one module, or empty when the workspace has no guards.
-     * CACHED only when the facts index is current and the lane's verdict is in the cache; RUN
+     * The forecast's {@code guard} step for one module, or empty when the workspace has no guards
+     * or {@code --skip-tests} skips the lanes. CACHED only when the facts index is current and the lane's verdict is in the cache; RUN
      * otherwise, which is what makes the module dirty.
      */
     static Optional<TaskForecast.Task> forecastModuleLane(
-            Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty) {
+            Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty, boolean skipTests) {
+        if (PlannerGuards.lanesSkipped(skipTests, PlannerGuards.guardRequested())) return Optional.empty();
         Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
         if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.guardRequested())) return Optional.empty();
@@ -234,7 +235,9 @@ final class GuardKeys {
     }
 
     /** The root lanes' forecast, in plan order: model, workspace, tree (gate), fixtures (gate). */
-    static List<TaskForecast.Task> forecastRootLanes(Path root, JkBuild project, ActionCache actionCache) {
+    static List<TaskForecast.Task> forecastRootLanes(
+            Path root, JkBuild project, ActionCache actionCache, boolean skipTests) {
+        if (PlannerGuards.lanesSkipped(skipTests, PlannerGuards.guardRequested())) return List.of();
         List<TaskForecast.Task> out = new ArrayList<>();
         forecastModelLane(root, project, actionCache).ifPresent(out::add);
         forecastWorkspaceLane(root, actionCache).ifPresent(out::add);

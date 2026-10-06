@@ -107,7 +107,7 @@ class GuardOutputLaneE2eTest {
                 0,
                 null,
                 null,
-                true,
+                false,
                 false,
                 false,
                 false,
