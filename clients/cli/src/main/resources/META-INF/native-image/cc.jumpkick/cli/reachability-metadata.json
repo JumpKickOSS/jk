@@ -204,6 +204,36 @@
         "parameterTypes": [
           "void*"
         ]
+      },
+      {
+        "returnType": "jint",
+        "parameterTypes": [
+          "void*",
+          "jint",
+          "void*"
+        ]
+      },
+      {
+        "returnType": "jint",
+        "parameterTypes": [
+          "jint",
+          "jint",
+          "void*",
+          "jint",
+          "void*",
+          "jint",
+          "void*"
+        ]
+      },
+      {
+        "returnType": "jint",
+        "parameterTypes": [
+          "jint",
+          "void*",
+          "void*",
+          "void*",
+          "void*"
+        ]
       }
     ]
   }
