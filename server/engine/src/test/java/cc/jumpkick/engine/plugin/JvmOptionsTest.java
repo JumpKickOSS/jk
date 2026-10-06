@@ -379,64 +379,15 @@ class JvmOptionsTest {
     }
 
     /**
-     * A command whose fork is its only worker must not be sized like one of {@code jobs} parallel
-     * builds. The process-wide plan divides both heap and cores by the job cap, which on a 20-core
-     * host handed {@code jk format}'s single worker {@code -Xmx462m} and
-     * {@code ActiveProcessorCount=1} — a serial formatter on nineteen idle cores.
+     * A command whose fork is its only worker must not get one of {@code jobs} parallel builds'
+     * cores: the process-wide plan divides them by the job cap, which leaves a lone formatter on
+     * one core of twenty. Its heap is learned, not part of these flags.
      */
     @Test
-    void sole_worker_flags_claim_every_core() {
-        try {
-            installTuning(PluginTuning.NONE);
-            List<String> flags = JvmOptions.soleWorkerFlags();
-            assertThat(flags)
-                    .as("must override the plan's per-worker share, so these come last on the argv")
-                    .contains("-XX:ActiveProcessorCount="
-                            + Math.max(1, Runtime.getRuntime().availableProcessors()));
-            assertThat(flags).anyMatch(f -> f.startsWith("-Xmx"));
-            assertThat(flags).anyMatch(f -> f.startsWith("-Xms"));
-        } finally {
-            SessionContext.reset();
-        }
-    }
-
-    /**
-     * A sole worker leases a quarter of the budget, never the whole of it: a whole-budget lease
-     * waits for every other fork on the engine to end and holds back every fork behind it.
-     */
-    @Test
-    void a_sole_worker_leases_a_quarter_of_the_budget_with_a_floor() {
-        long gib = 1L << 30;
-        WorkerLeases.Ledger big = new WorkerLeases.Ledger(() -> 27 * gib / 2, () -> 8, id -> false);
-        HeapPlan.Plan plan = JvmOptions.soleWorkerPlan(15 * gib, big);
-        assertThat(WorkerLeases.jvmLease(plan.xmxBytes())).isLessThanOrEqualTo(27 * gib / 8);
-        assertThat(plan.xmxBytes()).isGreaterThan(2 * gib);
-        assertThat(plan.softMaxBytes()).isLessThanOrEqualTo(plan.xmxBytes());
-        assertThat(plan.xmsBytes()).isLessThanOrEqualTo(plan.xmxBytes());
-
-        WorkerLeases.Ledger small = new WorkerLeases.Ledger(() -> 3 * gib / 2, () -> 8, id -> false);
-        assertThat(WorkerLeases.jvmLease(
-                        JvmOptions.soleWorkerPlan(2 * gib, small).xmxBytes()))
-                .isLessThanOrEqualTo(gib)
-                .isGreaterThan(3 * gib / 8);
-
-        WorkerLeases.Ledger tiny = new WorkerLeases.Ledger(() -> 512L << 20, () -> 8, id -> false);
-        assertThat(WorkerLeases.jvmLease(JvmOptions.soleWorkerPlan(gib, tiny).xmxBytes()))
-                .isLessThanOrEqualTo(512L << 20)
-                .isGreaterThan(256L << 20);
-    }
-
-    /** The user's own memory pin is the answer; a sole fork does not get to double it. */
-    @Test
-    void sole_worker_flags_defer_to_an_explicit_heap_pin() {
-        try {
-            installTuning(new PluginTuning(null, null, null, List.of("-Xmx2g")));
-            assertThat(JvmOptions.soleWorkerFlags()).isEmpty();
-            installTuning(new PluginTuning(50.0, null, null, List.of()));
-            assertThat(JvmOptions.soleWorkerFlags()).isEmpty();
-        } finally {
-            SessionContext.reset();
-        }
+    void sole_worker_cpu_flags_claim_every_core() {
+        assertThat(JvmOptions.soleWorkerCpuFlags())
+                .containsExactly("-XX:ActiveProcessorCount="
+                        + Math.max(1, Runtime.getRuntime().availableProcessors()));
     }
 
     @Test

@@ -2,7 +2,9 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
@@ -388,12 +390,17 @@ public final class FormatPlans {
                             o.importOrder(),
                             o.removeUnusedImports())));
             if (!javaFiles.isEmpty()) extra.addAll(JAVAC_EXPORTS);
-            // The run's only fork, so it gets every core and a sole worker's heap rather than the
-            // build-shaped 1/jobs share the process-wide plan hands every worker.
-            extra.addAll(JvmOptions.soleWorkerFlags());
+            // The run's only fork, so it gets every core rather than the build-shaped 1/jobs share
+            // the process-wide plan hands every worker; its heap is learned per project.
+            extra.addAll(JvmOptions.soleWorkerCpuFlags());
+            LearnedHeaps heaps = LearnedHeaps.engine();
+            HeapScope.Key key = FormatWorker.heapKey(o.projectDir());
             FormatWorker.runWorker(
                     ctx,
-                    PluginLaunch.javaCommand(workerJar, extra, spec),
+                    heap -> FormatWorker.atHeap(PluginLaunch.javaCommand(workerJar, extra, spec), heap),
+                    FormatWorker.startHeap(heaps, key),
+                    key,
+                    heaps,
                     preClean,
                     total,
                     o.check(),

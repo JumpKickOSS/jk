@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -60,7 +61,10 @@ class FormatWorkerCompletenessTest {
                 .ticks(total)
                 .execute(ctx -> FormatWorker.runWorker(
                         ctx,
-                        command,
+                        heap -> command,
+                        null,
+                        FormatWorker.heapKey(Path.of("").toAbsolutePath()),
+                        LearnedHeaps.engine(),
                         preClean,
                         total,
                         check,
