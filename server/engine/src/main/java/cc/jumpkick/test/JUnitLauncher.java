@@ -221,6 +221,9 @@ public final class JUnitLauncher {
     /** JDK the suite JVM is launched with; set for the duration of {@link #run}. */
     private @Nullable Path launchJavaHome;
 
+    /** The XML report of the run in progress, which a heap retry's suite JVM records into too. */
+    private @Nullable XmlTestReport runXml;
+
     /** Non-null only while a heap retry is re-running an item at this {@code -Xmx}. */
     private @Nullable Long heapOverride;
 
@@ -658,6 +661,7 @@ public final class JUnitLauncher {
             @Nullable Path testResultsDir)
             throws IOException, InterruptedException {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
+        runXml = xml;
         MarkdownTestReport md = new MarkdownTestReport();
         var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md, moduleLabel);
         // Capture the worker's non-protocol output so a hard crash (uncaught
@@ -875,11 +879,13 @@ public final class JUnitLauncher {
         heapOverride = heap;
         if (classes != null && !classes.isEmpty()) onlyClasses = classes;
         try {
-            XmlTestReport xml = null;
+            List<String> names = onlyClasses != null ? onlyClasses : classNames;
+            // The rung's results replace what the run that ran out of heap recorded for its classes.
+            XmlTestReport xml = runXml;
+            if (xml != null) xml.forget(names);
             MarkdownTestReport md = new MarkdownTestReport();
             var aggregator = new ResultAggregator(listener, 0, xml, md, moduleLabel);
             List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
-            List<String> names = onlyClasses != null ? onlyClasses : classNames;
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
             List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names);
             return forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
@@ -934,6 +940,7 @@ public final class JUnitLauncher {
 
         // One shared report per format — all worker threads write into them (both are thread-safe).
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
+        runXml = xml;
         MarkdownTestReport md = new MarkdownTestReport();
 
         PullWorkerPool pool = new PullWorkerPool(this, javaHome, classpath, testClassesDir, listener);

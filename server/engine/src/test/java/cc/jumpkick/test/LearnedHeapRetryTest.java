@@ -20,6 +20,8 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * A suite whose planned heap is too small climbs the heap ladder until it passes, and the next run
@@ -114,6 +116,25 @@ class LearnedHeapRetryTest {
         assertThat(first.succeeded()).isEqualTo(1);
         assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
         assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
+        awaitPeaks(dir.resolve("state"), 2);
+    }
+
+    /** The retry's results are the run's JUnit XML: one test, not none and not the dead attempt's too. */
+    @ParameterizedTest
+    @ValueSource(strings = {"die", "after"})
+    void the_xml_report_carries_the_retry_s_results(String mode, @TempDir Path dir) throws Exception {
+        Path home = fakeJdk(dir, mode);
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        Path reports = dir.resolve("reports");
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        JUnitLauncher launcher = new JUnitLauncher()
+                .withModuleLabel("g:app")
+                .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
+        TestSummary summary =
+                launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop(), reports);
+        assertThat(summary.succeeded()).isEqualTo(1);
+        assertThat(Files.readString(reports.resolve("TEST-demo.Big.xml"))).contains("tests=\"1\"");
         awaitPeaks(dir.resolve("state"), 2);
     }
 
