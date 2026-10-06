@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
+import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -60,6 +61,26 @@ class XmlTestReportTest {
         assertThat(files)
                 .allSatisfy(f -> assertThat(f.getFileName().toString()).matches("TEST-[A-Za-z0-9._$-]+\\.xml"));
         assertThat(dir.resolve("TEST-com.example.Other.xml")).exists();
+    }
+
+    @Test
+    void terminal_control_in_output_and_failures_leaves_well_formed_xml() throws Exception {
+        var xml = new XmlTestReport();
+        xml.recordOutput("com.example.Painted", "\u001B[?25l\u001B]9;4;3\u0007node downloaded\u001B[?25h");
+        xml.recordFinished(
+                "[engine:junit-jupiter]/[class:com.example.Painted]/[method:m()]",
+                "m()",
+                1,
+                "{\"class\":\"java.lang.AssertionError\",\"message\":\"\\u001b[31mred\\u001b[0m\","
+                        + "\"stack\":\"at x\\u0007\"}");
+
+        xml.writeAll(dir);
+
+        Path report = dir.resolve("TEST-com.example.Painted.xml");
+        var doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(report.toFile());
+        assertThat(doc.getElementsByTagName("system-out").item(0).getTextContent())
+                .isEqualTo("node downloaded\n");
+        assertThat(Files.readString(report)).doesNotContain("\u001B", "\u0007");
     }
 
     @Test

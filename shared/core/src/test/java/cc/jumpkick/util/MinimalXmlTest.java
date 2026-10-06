@@ -10,6 +10,14 @@ import org.junit.jupiter.api.Test;
 class MinimalXmlTest {
 
     @Test
+    void escaping_drops_the_characters_xml_forbids() {
+        assertThat(MinimalXml.legalChars("a\u001Bb\u0007c\td\ne\uFFFEf\uD83D\uDE00"))
+                .isEqualTo("abc\td\nef\uD83D\uDE00");
+        assertThat(MinimalXml.legalChars("a\uD800b")).isEqualTo("ab");
+        assertThat(MinimalXml.escapeAttr("\u001B[1m\"x\" & <y>")).isEqualTo("[1m&quot;x&quot; &amp; &lt;y&gt;");
+    }
+
+    @Test
     void parses_elements_attributes_and_text() {
         Element root = MinimalXml.parse("""
                 <?xml version="1.0" encoding="UTF-8"?>
