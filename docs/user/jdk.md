@@ -22,8 +22,9 @@ jk jdk verify                  # fingerprint managed trees (`jk jdks verify`)
 jk shell                       # subshell with the project JDK
 ```
 
-Discovery looks at existing installs before downloading from the JetBrains JDK feed. Each JDK
-`jk jdk list` shows carries the source that found it:
+Discovery looks at existing installs before downloading from the JetBrains JDK feed (or a mirror of
+it and its vendor hosts: [Config § Tool mirrors](config.md#tool-mirrors)). Each JDK `jk jdk list`
+shows carries the source that found it:
 
 | Source | Where it looks | `jk jdk uninstall` |
 |---|---|---|

@@ -120,9 +120,11 @@ public final class JdkInstaller {
 
     private final Http http;
     private final JdkRegistry registry;
+    private final JdkMirror mirror;
 
     public JdkInstaller(Http http, JdkRegistry registry) {
-        this.http = Objects.requireNonNull(http, "http");
+        this.mirror = JdkMirror.current();
+        this.http = mirror.authorized(Objects.requireNonNull(http, "http"));
         this.registry = Objects.requireNonNull(registry, "registry");
     }
 
@@ -323,6 +325,7 @@ public final class JdkInstaller {
             URI uri, @Nullable String sha256, String displayName, String archiveType, Path target)
             throws IOException, InterruptedException {
         String expected = requireDigest(sha256, displayName, uri);
+        uri = mirror.map(uri);
         Path downloads = prepareDownloadDir();
         Path archive = Files.createTempFile(downloads, DOWNLOAD_PREFIX, "-" + extensionFor(archiveType));
         try {
@@ -513,6 +516,7 @@ public final class JdkInstaller {
             URI uri, @Nullable String expectedSha256, String displayName, Path archive, LongConsumer onBytesRead)
             throws IOException, InterruptedException {
         String expected = requireDigest(expectedSha256, displayName, uri);
+        uri = mirror.map(uri);
         HttpResponse<InputStream> response = http.getStream(uri);
         if (response.statusCode() != 200) {
             try (var body = response.body()) {

@@ -37,6 +37,18 @@ public final class DownloadOrigins {
             String key,
             List<String> mirrorOf,
             String fallback) {
+        DownloadOrigin mirror = configured(env, settings, envName, configured, key, mirrorOf);
+        return mirror != null ? mirror : DownloadOrigin.ofHost(DownloadOrigin.directory(fallback));
+    }
+
+    /** As {@link #resolve} without the public default: null when nothing points the source elsewhere. */
+    public static @Nullable DownloadOrigin configured(
+            Function<String, @Nullable String> env,
+            MavenSettings settings,
+            String envName,
+            @Nullable String configured,
+            String key,
+            List<String> mirrorOf) {
         String fromEnv = env.apply(envName);
         if (fromEnv != null && !fromEnv.isBlank())
             return DownloadOrigin.ofHost(DownloadOrigin.directory(fromEnv.trim()));
@@ -49,7 +61,7 @@ public final class DownloadOrigins {
                 }
             }
         }
-        return DownloadOrigin.ofHost(DownloadOrigin.directory(fallback));
+        return null;
     }
 
     /** Whether a {@code mirrorOf} lists {@code token} by name. */

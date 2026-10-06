@@ -16,6 +16,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Tag;
@@ -63,6 +64,53 @@ class JdkCommandTest {
         assertThat(exit).isEqualTo(0);
         assertThat(jdksDir.resolve("temurin-21.0.5").resolve("bin").resolve("java"))
                 .exists();
+    }
+
+    @Test
+    void install_with_a_jdk_mirror_fetches_feed_and_archive_through_it_with_its_token(@TempDir Path tempDir)
+            throws Exception {
+        Path jdksDir = tempDir.resolve("jdks");
+        byte[] archive = buildTarGz(
+                tempDir,
+                "jdk-21.0.5+11",
+                Map.of(
+                        "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
+                        "release", "JAVA_VERSION=21.0.5\n"));
+        String vendorPath = "/adoptium/releases/OpenJDK21U-jdk.tar.gz";
+        maven.served().put("/jdk-mirror/vendor.example" + vendorPath, archive);
+        maven.served()
+                .put(
+                        "/jdk-mirror/download.jetbrains.com/jdk/feed/v1/jdks.json",
+                        feedJson(archive.length, Hashing.sha256Hex(archive), "https://vendor.example" + vendorPath)
+                                .getBytes(StandardCharsets.UTF_8));
+        Map<String, String> env = Map.of(
+                "JK_JDK_DIST_MIRROR",
+                maven.base().resolve("/jdk-mirror/").toString(),
+                "JK_REPO_127_0_0_1_" + maven.base().getPort() + "_TOKEN",
+                "t0ken",
+                "JK_STORE_DIR",
+                tempDir.resolve("store").toString());
+        env.forEach((k, v) -> System.setProperty("jk.env." + k, v));
+        int exit;
+        try {
+            exit = run("jdk", "install", "temurin-21", "--jdks-dir", jdksDir.toString());
+        } finally {
+            env.keySet().forEach(k -> System.clearProperty("jk.env." + k));
+        }
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(jdksDir.resolve("temurin-21.0.5").resolve("bin").resolve("java"))
+                .exists();
+        for (String path : List.of(
+                "/jdk-mirror/download.jetbrains.com/jdk/feed/v1/jdks.json",
+                "/jdk-mirror/vendor.example" + vendorPath)) {
+            assertThat(maven.headersFor(path))
+                    .as(path)
+                    .get()
+                    .extracting(h -> h.get("Authorization"))
+                    .isEqualTo(List.of("Bearer t0ken"));
+        }
     }
 
     @Test
