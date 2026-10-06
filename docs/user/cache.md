@@ -87,6 +87,13 @@ worker — jar, POM and memo, all versions, from every store repo — and forget
 classpaths; the next build fetches the published plugin again and rebuilds from its POM. The
 closure jars stay: they are shared with project resolution and are re-walked, not re-downloaded.
 
+`jk doctor`'s `m2:` line hashes the Maven local repository's copy of every POM and jar the
+current project's `jk-lock.toml` names and compares it with the `.sha1` Maven wrote beside it. A
+mismatch is a warning naming the file: something rewrote it after Maven verified it, and every
+build that reads it fails until it is deleted and fetched again. jk never writes into a file it
+took from `~/.m2`: it copies such a file into its store, and a store write replaces a file by
+temp and rename instead of writing through it.
+
 ## Budgets
 
 | Report | Cap | Default |

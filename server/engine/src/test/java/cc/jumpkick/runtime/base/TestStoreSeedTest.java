@@ -204,6 +204,60 @@ class TestStoreSeedTest {
         assertThat(Files.readString(metadata(sandbox, LAUNCHER))).contains("<latest>6.1.3</latest>");
     }
 
+    /**
+     * A sandbox runs test code against its store, and an in-place write through a hard link lands in
+     * every other name of the file. Whatever the seed took from a local repository, and a host file
+     * an earlier seed left as one inode with {@code ~/.m2}'s, must not share {@code ~/.m2}'s inode.
+     */
+    @Test
+    void a_write_through_a_seeded_file_leaves_the_local_repository_unchanged(@TempDir Path tmp) throws Exception {
+        Path m2 = tmp.resolve("m2");
+        Path m2Pom = m2File(m2, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
+        Path m2Bom = m2File(m2, "org/junit/junit-bom", "6.1.3", ".pom", RepositorySpec.CENTRAL);
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
+        Path hostCentral = host.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        Path engineDir = Files.createDirectories(hostCentral.resolve("org/junit/jupiter/junit-jupiter-engine/6.1.3"));
+        Path m2Engine = m2File(m2, "org/junit/jupiter/junit-jupiter-engine", "6.1.3", ".pom", RepositorySpec.CENTRAL);
+        Path hostEngine = Files.createLink(engineDir.resolve("junit-jupiter-engine-6.1.3.pom"), m2Engine);
+        Path sandbox = tmp.resolve("sandbox");
+
+        TestStoreSeed.seed(host, sandbox, m2);
+
+        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        for (String rel : new String[] {
+            LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom",
+            "org/junit/junit-bom/6.1.3/junit-bom-6.1.3.pom",
+            "org/junit/jupiter/junit-jupiter-engine/6.1.3/junit-jupiter-engine-6.1.3.pom"
+        }) {
+            Files.writeString(central.resolve(rel), "org.checkerframework:checker-qual:4.2.3\n");
+        }
+        assertThat(Files.readString(m2Pom)).isEqualTo(".pom");
+        assertThat(Files.readString(m2Bom)).isEqualTo(".pom");
+        assertThat(Files.readString(m2Engine)).isEqualTo(".pom");
+        assertThat(Files.isSameFile(hostEngine, m2Engine))
+                .as("the host store's file is its own")
+                .isFalse();
+    }
+
+    /** A sandbox an earlier seed linked to {@code ~/.m2} is given its own file by the next seed. */
+    @Test
+    void a_sandbox_file_already_linked_to_the_local_repository_is_detached(@TempDir Path tmp) throws Exception {
+        Path m2 = tmp.resolve("m2");
+        Path m2Pom = m2File(m2, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
+        Path sandbox = tmp.resolve("sandbox");
+        Path slot = sandbox.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom");
+        Files.createDirectories(slot.getParent());
+        Files.createLink(slot, m2Pom);
+
+        TestStoreSeed.seed(host, sandbox, m2);
+        Files.writeString(slot, "rewritten");
+
+        assertThat(Files.readString(m2Pom)).isEqualTo(".pom");
+    }
+
     @Test
     void a_same_store_seed_completes_missing_poms_from_m2(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");

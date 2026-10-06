@@ -655,7 +655,7 @@ public final class RepoArtifactStore {
      * Write a file directly into {@code repos/jk-local/} as a full-store entry (actual JAR on disk) —
      * the local-install write path shared by the engine's install plan and the client's
      * {@code jk install <file.jar>} mode (a local, content-addressed write, like {@code
-     * Cas.putByLink} — no network).
+     * Cas.putFile} — no network).
      *
      * @return the sha256 of the published bytes, lower-case hex
      */
