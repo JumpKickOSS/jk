@@ -6,6 +6,7 @@ import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.http.mcp.McpContext;
 import cc.jumpkick.engine.http.mcp.McpError;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
+import cc.jumpkick.engine.http.mcp.McpJobRuns;
 import cc.jumpkick.engine.http.mcp.McpPrompts;
 import cc.jumpkick.engine.http.mcp.McpResources;
 import cc.jumpkick.engine.http.mcp.McpRpc;
@@ -195,6 +196,10 @@ public final class McpHandler {
     private @Nullable Object route(String method, Map<String, Object> params, @Nullable McpConnection connection) {
         return switch (method) {
             case "notifications/initialized", "initialized" -> null; // notification
+            case "notifications/cancelled" -> {
+                McpJobRuns.cancelled(ctx, params);
+                yield null;
+            }
             case "ping" -> Map.of();
             case "tools/list" -> tools.listing(surface, params, connection != null && connection.pinned());
             case "tools/call" -> tools.call(ctx, params, connection);
