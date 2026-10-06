@@ -36,6 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
 class GuardLaneBenchTest {
 
     private static final int RUNS = 5;
+    private static final int WARMUP = 10;
     private static final String MODULE = "server/engine";
 
     @Test
@@ -65,11 +66,11 @@ class GuardLaneBenchTest {
         Path idx = tmp.resolve("scratch0").resolve("main-guard.idx");
         List<Long> oneChanged = new ArrayList<>();
         FactsIndexing.Ensured index = FactsIndexing.ensure(copy, idx);
-        for (int i = 0; i < RUNS; i++) {
+        for (int i = 0; i < WARMUP + RUNS; i++) {
             Files.setLastModifiedTime(classFiles.get(i * 7 % classFiles.size()), FileTime.fromMillis(1_000_000L + i));
             long t0 = System.nanoTime();
             index = FactsIndexing.ensure(copy, idx);
-            oneChanged.add(System.nanoTime() - t0);
+            if (i >= WARMUP) oneChanged.add(System.nanoTime() - t0);
         }
         FactsIndex facts = FactsIndexing.load(index);
         int classCount = facts.classes().size();
@@ -77,11 +78,12 @@ class GuardLaneBenchTest {
         // ---- the module lane, then each of its rules alone
         List<Rule> moduleRules = LaneRun.rulesFor(Lane.MODULE, load.rules(), MODULE);
         List<Long> module = new ArrayList<>();
-        for (int i = 0; i < RUNS; i++) {
+        // The engine is long-lived: the lane is measured once its code is compiled, not on first use.
+        for (int i = 0; i < WARMUP + RUNS; i++) {
             EvalContext ctx = moduleContext(root, facts).withRules(load.rules());
             long t0 = System.nanoTime();
             LaneRun.run(Lane.MODULE, moduleRules, ctx, baseline);
-            module.add(System.nanoTime() - t0);
+            if (i >= WARMUP) module.add(System.nanoTime() - t0);
         }
         List<String> perRule = new ArrayList<>();
         for (Rule rule : moduleRules) {
