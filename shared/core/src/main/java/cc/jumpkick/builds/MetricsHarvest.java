@@ -277,12 +277,13 @@ public final class MetricsHarvest {
     public static final int MAX_OTHER_ROWS = 4_000;
 
     /**
-     * Write the ledger: {@code [mean]}, {@code [last]} and {@code [count]} for every kept scalar
-     * row, then the {@code [test-class."<dir>"."<pkg>"]} tables holding each class's trimmed mean
+     * Write the ledger: {@code [mean]} and {@code [count]} for every kept scalar row and {@code
+     * [last]} for every one but a module's task walls, then the {@code [test-class."<dir>"."<pkg>"]} tables holding each class's trimmed mean
      * wall by its simple name — one value per class, the module and the package each named once
      * as a header, no {@code [last]} or {@code [count]} copy: a class wall is a scheduling weight,
      * and a repeated package prefix or two more copies of two thousand class names were most of a
-     * large ledger's bytes.
+     * large ledger's bytes. A module task's wall is read from its mean once it has two samples
+     * and its one sample is its mean before that, so its {@code [last]} copy is never read.
      */
     static void writeProjectMetrics(
             Path file,
@@ -302,6 +303,7 @@ public final class MetricsHarvest {
         }
         sb.append("\n[last]\n");
         for (String key : kept) {
+            if (moduleTaskRow(key)) continue;
             Double v = last.get(key);
             if (v != null) sb.append(key).append(" = ").append(fmt(v)).append('\n');
         }
@@ -312,6 +314,11 @@ public final class MetricsHarvest {
         }
         appendClassWallTables(sb, classWalls);
         AtomicWrites.replace(file, sb.toString());
+    }
+
+    /** {@code module.<dir>.task.<step>.<measure>}: a row the step scheduler reads by its mean. */
+    static boolean moduleTaskRow(String key) {
+        return key.startsWith("module.") && key.contains(".task.");
     }
 
     /** The class tables close the file: every row after a package's header is one of its classes. */
