@@ -15,6 +15,7 @@ import cc.jumpkick.lock.NodePin;
 import cc.jumpkick.node.NodeDiscovery;
 import cc.jumpkick.node.NodePlatform;
 import cc.jumpkick.node.PackageManagerResolver;
+import cc.jumpkick.testing.FakeNodeDist;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.nio.file.Files;
@@ -24,13 +25,10 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** A run plan that has to install its locked Node.js first reports the download as a JDK download does. */
-@DisabledOnOs(OS.WINDOWS)
 class NodeRunProgressTest {
 
     @RegisterExtension
@@ -41,8 +39,7 @@ class NodeRunProgressTest {
     @Test
     void planning_a_run_reports_the_node_install_on_the_bound_progress(@TempDir Path tmp) throws Exception {
         NodePlatform host = NodePlatform.host();
-        byte[] archive = EnsureNodeFirstBuildTest.tarGz(
-                "node-v" + VERSION + "-" + host.key(), "#!/bin/sh\necho v" + VERSION + "\n");
+        byte[] archive = FakeNodeDist.archive(VERSION, host.key());
         http.served().put("/v" + VERSION + "/" + host.archiveName(VERSION), archive);
 
         Path web = Files.createDirectories(tmp.resolve("web"));

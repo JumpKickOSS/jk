@@ -27,8 +27,6 @@ import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -37,7 +35,6 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code jk run}. On the host's Node.js, with packages that need no install.
  */
 @Tag("integration")
-@DisabledOnOs(OS.WINDOWS)
 class NodePackagingE2eTest {
 
     private String version = "";

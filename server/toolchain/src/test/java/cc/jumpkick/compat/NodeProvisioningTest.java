@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.node.NodeDiscovery;
 import cc.jumpkick.node.NodeHome;
@@ -13,6 +14,7 @@ import cc.jumpkick.node.NodeResolution;
 import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.node.PackageManagerResolver;
 import cc.jumpkick.node.PackageManagerSpec;
+import cc.jumpkick.testing.FakeNodeDist;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -28,26 +30,20 @@ import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.zip.GZIPOutputStream;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Node and its package managers installed into the tools store, verified before they unpack. */
-@DisabledOnOs(OS.WINDOWS)
 class NodeProvisioningTest {
 
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp().withoutChecksums();
 
-    private static final NodePlatform LINUX = new NodePlatform("linux", "x64", false);
+    private static final NodePlatform HOST = NodePlatform.host();
 
-    private static final byte[] NODE = tarGz(new String[][] {
-        {"node-v24.21.0-linux-x64/", null},
-        {"node-v24.21.0-linux-x64/bin/node", "#!/bin/sh\necho v24.21.0\n"},
-        {"node-v24.21.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js", "// npm\n"},
-        {"node-v24.21.0-linux-x64/bin/npm", null, "../lib/node_modules/npm/bin/npm-cli.js"},
-    });
+    private static final byte[] NODE = FakeNodeDist.archive("24.21.0", HOST.key());
+
+    private static final String DIST = "/v24.21.0/" + HOST.archiveName("24.21.0");
 
     private static final byte[] PNPM = tarGz(new String[][] {
         {"package/", null},
@@ -63,16 +59,16 @@ class NodeProvisioningTest {
                 new NodeDiscovery(name -> null, userHome, List.of()),
                 http.base(),
                 new PackageManagerResolver(new Http(), http.base()),
-                LINUX);
+                HOST);
     }
 
     private static NodeResolution resolution(String sha) {
-        return new NodeResolution("24.21.0", "11.6.0", "Krypton", Map.of("linux-x64", sha));
+        return new NodeResolution("24.21.0", "11.6.0", "Krypton", Map.of(HOST.key(), sha));
     }
 
     @Test
     void a_locked_release_downloads_once_verified_against_its_sha(@TempDir Path tmp) throws Exception {
-        http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
+        http.served().put(DIST, NODE);
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
 
         NodeHome home =
@@ -86,16 +82,17 @@ class NodeProvisioningTest {
                 .containsExactly(
                         home.node().toString(),
                         home.home()
-                                .resolve("lib/node_modules/npm/bin/npm-cli.js")
+                                .resolve(Os.isWindows() ? "" : "lib")
+                                .resolve("node_modules/npm/bin/npm-cli.js")
                                 .toString());
 
         p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, ToolProgress.NONE);
-        assertThat(http.requestsFor("/v24.21.0/node-v24.21.0-linux-x64.tar.gz")).isEqualTo(1);
+        assertThat(http.requestsFor(DIST)).isEqualTo(1);
     }
 
     @Test
     void an_archive_that_does_not_match_the_lock_is_refused_before_it_unpacks(@TempDir Path tmp) {
-        http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
+        http.served().put(DIST, NODE);
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
 
         assertThatThrownBy(
@@ -109,9 +106,10 @@ class NodeProvisioningTest {
     void an_install_of_the_exact_version_another_manager_made_is_used_unless_discovery_is_off(@TempDir Path tmp)
             throws Exception {
         Path nvm = tmp.resolve("home/.nvm/versions/node/v24.21.0");
-        Files.createDirectories(nvm.resolve("bin"));
-        Files.writeString(nvm.resolve("bin/node"), "");
-        http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
+        Path launcher = BuildTool.NODE.launcher(nvm);
+        Files.createDirectories(launcher.getParent());
+        Files.writeString(launcher, "");
+        http.served().put(DIST, NODE);
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
 
         NodeHome found =
@@ -128,7 +126,7 @@ class NodeProvisioningTest {
     @Test
     void a_package_manager_installs_from_the_registry_with_its_shims(@TempDir Path tmp) throws Exception {
         servePnpm(PNPM);
-        http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
+        http.served().put(DIST, NODE);
         NodeProvisioning p = provisioning(tmp.resolve("tools"), tmp.resolve("home"));
         NodeHome node =
                 p.ensure(resolution(Hashing.sha256Hex(NODE)), NodeProvisioning.Policy.DEFAULT, ToolProgress.NONE);
@@ -159,7 +157,7 @@ class NodeProvisioningTest {
 
     @Test
     void a_download_reports_its_total_and_progress_then_the_unpack(@TempDir Path tmp) throws Exception {
-        http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
+        http.served().put(DIST, NODE);
         List<String> events = new ArrayList<>();
         ToolProgress recording = new ToolProgress() {
             @Override
@@ -185,7 +183,7 @@ class NodeProvisioningTest {
 
     @Test
     void a_cancelled_download_leaves_no_tree_and_no_scratch_in_the_store(@TempDir Path tmp) {
-        http.served().put("/v24.21.0/node-v24.21.0-linux-x64.tar.gz", NODE);
+        http.served().put(DIST, NODE);
         Path tools = tmp.resolve("tools");
         ToolProgress cancelling = new ToolProgress() {
             @Override
@@ -220,14 +218,13 @@ class NodeProvisioningTest {
         http.served().put("/pnpm/-/pnpm-10.18.1.tgz", tarball);
     }
 
-    /** {@code {name, body}} files, {@code {name, null}} directories, {@code {name, null, target}} links. */
+    /** {@code {name, body}} files and {@code {name, null}} directories. */
     private static byte[] tarGz(String[][] entries) {
         try {
             ByteArrayOutputStream tar = new ByteArrayOutputStream();
             for (String[] e : entries) {
-                String link = e.length > 2 ? e[2] : null;
                 byte[] data = e[1] == null ? new byte[0] : e[1].getBytes(StandardCharsets.UTF_8);
-                boolean dir = e[1] == null && link == null;
+                boolean dir = e[1] == null;
                 byte[] h = new byte[512];
                 byte[] name = e[0].getBytes(StandardCharsets.US_ASCII);
                 System.arraycopy(name, 0, h, 0, Math.min(name.length, 99));
@@ -236,11 +233,7 @@ class NodeProvisioningTest {
                 octal(h, 116, 8, 0);
                 octal(h, 124, 12, data.length);
                 octal(h, 136, 12, 0);
-                h[156] = (byte) (link != null ? '2' : dir ? '5' : '0');
-                if (link != null) {
-                    byte[] l = link.getBytes(StandardCharsets.US_ASCII);
-                    System.arraycopy(l, 0, h, 157, l.length);
-                }
+                h[156] = (byte) (dir ? '5' : '0');
                 System.arraycopy("ustar ".getBytes(StandardCharsets.US_ASCII), 0, h, 257, 6);
                 h[263] = ' ';
                 Arrays.fill(h, 148, 156, (byte) ' ');

@@ -6,16 +6,15 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.discovery.MiseProbe;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class NodeDiscoveryTest {
@@ -94,12 +93,9 @@ class NodeDiscoveryTest {
     }
 
     @Test
-    @DisabledOnOs(OS.WINDOWS)
     void the_node_on_path_answers_its_own_version(@TempDir Path home) throws IOException {
         Path bin = Files.createDirectories(home.resolve("usr/bin"));
-        Path fake = bin.resolve("node");
-        Files.writeString(fake, "#!/bin/sh\necho v22.1.0\n");
-        Files.setPosixFilePermissions(fake, PosixFilePermissions.fromString("rwxr-xr-x"));
+        FakePrograms.executable(bin.resolve(BuildTool.NODE.binaryName()), FakePrograms.Script.printing("v22.1.0"));
 
         List<DiscoveredNode> found =
                 discovery(Map.of("PATH", bin.toString()), home, List.of()).discover();
@@ -107,7 +103,7 @@ class NodeDiscoveryTest {
         assertThat(found).singleElement().satisfies(d -> {
             assertThat(d.source()).isEqualTo("system");
             assertThat(d.version()).isEqualTo("22.1.0");
-            assertThat(d.home()).isEqualTo(home.resolve("usr"));
+            assertThat(d.home()).isEqualTo(Os.isWindows() ? bin : home.resolve("usr"));
         });
     }
 }

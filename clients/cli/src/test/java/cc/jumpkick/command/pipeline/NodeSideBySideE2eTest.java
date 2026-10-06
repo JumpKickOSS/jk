@@ -25,8 +25,6 @@ import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -35,7 +33,6 @@ import org.junit.jupiter.api.io.TempDir;
  * frontend-maven-plugin's would. On the host's Node.js, with a build that needs no install.
  */
 @Tag("integration")
-@DisabledOnOs(OS.WINDOWS)
 class NodeSideBySideE2eTest {
 
     private String major = "";

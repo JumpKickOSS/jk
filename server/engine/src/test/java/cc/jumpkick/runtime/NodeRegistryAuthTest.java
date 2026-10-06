@@ -42,8 +42,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -51,7 +49,6 @@ import org.junit.jupiter.api.io.TempDir;
  * credential chain, reaches npm through a user config jk writes for the run, and is gone after it.
  */
 @Tag("integration")
-@DisabledOnOs(OS.WINDOWS)
 class NodeRegistryAuthTest {
 
     private static final String TOKEN = "s3cret-npm-token";

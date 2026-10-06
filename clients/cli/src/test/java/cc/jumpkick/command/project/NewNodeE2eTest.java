@@ -10,21 +10,18 @@ import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.node.NodePlatform;
+import cc.jumpkick.testing.FakeNodeDist;
+import cc.jumpkick.testing.FakePrograms;
 import cc.jumpkick.testing.LoopbackHttp;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.zip.GZIPOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -36,7 +33,6 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("integration")
 @IsolatedStore
-@DisabledOnOs(OS.WINDOWS)
 class NewNodeE2eTest {
 
     private static final String MIRROR = "jk.env.JK_NODE_DIST_MIRROR";
@@ -51,7 +47,7 @@ class NewNodeE2eTest {
     void dist() throws IOException {
         priorMirror = System.getProperty(MIRROR);
         NodePlatform host = NodePlatform.host();
-        byte[] archive = archive("node-v" + VERSION + "-" + host.key());
+        byte[] archive = archive(host.key());
         http.served().put("/v" + VERSION + "/" + host.archiveName(VERSION), archive);
         StringBuilder sums = new StringBuilder();
         for (NodePlatform p : NodePlatform.LOCKED) {
@@ -92,7 +88,7 @@ class NewNodeE2eTest {
 
         assertThat(exit).isZero();
         Path web = dir.resolve("web");
-        assertThat(Files.readString(dir.resolve("npx-args.txt")))
+        assertThat(lines(dir.resolve("npx-args.txt")))
                 .isEqualTo("--yes\ncreate-vite@latest\nweb\n--template\nreact-ts\n--no-interactive\n");
         assertThat(Files.readString(web.resolve("jk.toml")))
                 .isEqualTo("name = \"web\"\ngroup = \"com.acme\"\nversion = \"0.1.0\"\n\nnode = 99\n");
@@ -162,7 +158,7 @@ class NewNodeE2eTest {
 
         assertThat(Files.readString(web.resolve("jk.toml"))).isEqualTo("name = \"web\"\nnode = 24\n");
         assertThat(web.resolve("src/main.tsx")).doesNotExist();
-        assertThat(Files.readString(app.resolve("npx-args.txt"))).contains("@angular/cli@latest\nnew\nweb\n");
+        assertThat(lines(app.resolve("npx-args.txt"))).contains("@angular/cli@latest\nnew\nweb\n");
     }
 
     @Test
@@ -199,11 +195,11 @@ class NewNodeE2eTest {
         assertThat(Files.readString(root.resolve("storefront/jk.toml"))).contains("node = 20");
     }
 
-    /** A Node.js tarball whose {@code npx} records its argv and writes what a generator would. */
-    private static byte[] archive(String top) throws IOException {
-        String node = "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo v" + VERSION + "; exit 0; fi\n";
+    /** A Node.js archive whose {@code npx} records its argv and writes what a generator would. */
+    private static byte[] archive(String platformKey) {
+        String node = "if [ \"$1\" = \"--version\" ]; then echo v" + VERSION + "; exit 0; fi";
+        String nodeCmd = "if \"%~1\"==\"--version\" (echo v" + VERSION + "& exit /b 0)";
         String npx = """
-                #!/bin/sh
                 printf '%s\\n' "$@" > npx-args.txt
                 for a in "$@"; do
                   case "$a" in -*|*@latest|new|create) ;; *) dir="$a"; break ;; esac
@@ -212,45 +208,35 @@ class NewNodeE2eTest {
                 printf '{"name":"%s"}' "$dir" > "$dir/package.json"
                 printf '{}' > "$dir/package-lock.json"
                 """;
-        ByteArrayOutputStream tar = new ByteArrayOutputStream();
-        entry(tar, top + "/", new byte[0], true);
-        entry(tar, top + "/bin/", new byte[0], true);
-        entry(tar, top + "/bin/node", node.getBytes(StandardCharsets.UTF_8), false);
-        entry(tar, top + "/bin/npx", npx.getBytes(StandardCharsets.UTF_8), false);
-        tar.write(new byte[1024]);
-        ByteArrayOutputStream gz = new ByteArrayOutputStream();
-        try (GZIPOutputStream out = new GZIPOutputStream(gz)) {
-            out.write(tar.toByteArray());
-        }
-        return gz.toByteArray();
+        String npxCmd = """
+                setlocal enabledelayedexpansion
+                type nul > npx-args.txt
+                set "d="
+                :next
+                if "%~1"=="" goto done
+                >> npx-args.txt echo(%~1
+                set "a=%~1"
+                if not defined d (
+                  set "skip="
+                  if "!a:~0,1!"=="-" set skip=1
+                  if "!a:~-7!"=="@latest" set skip=1
+                  if "!a!"=="new" set skip=1
+                  if "!a!"=="create" set skip=1
+                  if not defined skip set "d=!a!"
+                )
+                shift
+                goto next
+                :done
+                mkdir "%d%" 2>nul
+                > "%d%\\package.json" echo {"name":"%d%"}
+                > "%d%\\package-lock.json" echo {}
+                """;
+        return FakeNodeDist.archive(
+                VERSION, platformKey, new FakePrograms.Script(node, nodeCmd), new FakePrograms.Script(npx, npxCmd));
     }
 
-    private static void entry(ByteArrayOutputStream tar, String name, byte[] data, boolean dir) throws IOException {
-        byte[] h = new byte[512];
-        byte[] n = name.getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(n, 0, h, 0, n.length);
-        octal(h, 100, 8, 0755);
-        octal(h, 108, 8, 0);
-        octal(h, 116, 8, 0);
-        octal(h, 124, 12, data.length);
-        octal(h, 136, 12, 0);
-        h[156] = (byte) (dir ? '5' : '0');
-        System.arraycopy("ustar ".getBytes(StandardCharsets.US_ASCII), 0, h, 257, 6);
-        for (int i = 148; i < 156; i++) h[i] = ' ';
-        int sum = 0;
-        for (byte b : h) sum += b & 0xff;
-        octal(h, 148, 7, sum);
-        tar.write(h);
-        tar.write(data);
-        int pad = (512 - data.length % 512) % 512;
-        tar.write(new byte[pad]);
-    }
-
-    private static void octal(byte[] h, int at, int len, long value) {
-        String s = Long.toOctalString(value);
-        String padded = "0".repeat(Math.max(0, len - 1 - s.length())) + s;
-        byte[] b = padded.getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(b, 0, h, at, Math.min(b.length, len - 1));
-        h[at + len - 1] = 0;
+    /** {@code file}'s lines, as a POSIX script and a batch file both write them. */
+    private static String lines(Path file) throws IOException {
+        return Files.readString(file).replace("\r\n", "\n");
     }
 }
