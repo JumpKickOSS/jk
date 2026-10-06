@@ -431,6 +431,36 @@ jobs:
         shell: bash
         run: JK_BIN=jk ./scripts/ci-product-smoke.sh
 
+  # The Node.js toolchain on Windows with the suites that fetch real generators from npm, which the
+  # push gate's row of the same name leaves out.
+  node-windows-network:
+    name: Node.js toolchain with network (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # The home sits outside the checkout: on Windows a read of the engine's byte-range-locked
+      # files under the home fails.
+      - name: Home outside the checkout
+        shell: bash
+        run: echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
+
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bootstrap jk from the hosted release
+        shell: bash
+        env:
+          JK_CLIENT: native
+        run: bash scripts/ci-bootstrap.sh
+
+      - name: Node.js toolchain suites
+        shell: bash
+        run: bash scripts/ci-node-windows.sh --network
+
   # The JVM client on a runner that brings a plain JDK and no GraalVM — the shape of every platform
   # with no hosted native client, and the one place nothing else exercises bin/jk-jvm. The
   # checkout's build still links jk's native client, so it provisions the GraalVM that step needs
