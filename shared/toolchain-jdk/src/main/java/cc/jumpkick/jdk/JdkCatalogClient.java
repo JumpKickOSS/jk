@@ -62,8 +62,10 @@ public final class JdkCatalogClient {
     }
 
     public JdkCatalogClient(Http http, URI feedUri, Path cacheFile, Duration ttl) {
-        this.http = Objects.requireNonNull(http, "http");
-        this.feedUri = Objects.requireNonNull(feedUri, "feedUri");
+        // A configured JDK mirror serves the feed, under its host prefix, with its credential.
+        JdkMirror mirror = JdkMirror.current();
+        this.http = mirror.authorized(Objects.requireNonNull(http, "http"));
+        this.feedUri = mirror.map(Objects.requireNonNull(feedUri, "feedUri"));
         this.cacheFile = Objects.requireNonNull(cacheFile, "cacheFile");
         this.ttl = Objects.requireNonNull(ttl, "ttl");
     }
