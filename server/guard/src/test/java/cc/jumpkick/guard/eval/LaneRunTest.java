@@ -210,13 +210,22 @@ class LaneRunTest {
                 .doesNotContain("Instead:");
         assertThat(GuardMessages.summary(res, 1)).isEqualTo("1 rule broken (1 new) · 1 baseline entries tightened");
 
-        Baseline frozen = res.baseline()
-                .with("one-owner", Objects.requireNonNull(rep.reconciliation()).frozen("agreed"));
+        // A freeze grows the baseline it was given and nothing else: the stale entry is the engine's
+        // to drop, on the next run.
+        Baseline frozen = before.with(
+                "one-owner", Objects.requireNonNull(rep.reconciliation()).frozen("agreed", false));
+        assertThat(frozen.of("one-owner").entries()).extracting(Entry::key).containsExactly("a.b", "c.d", "gone");
         LaneRun.Result again = LaneRun.run(
                 Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""), ctx(dir, Lane.WORKSPACE, ""), frozen);
         assertThat(again.red()).isFalse();
-        assertThat(again.tightened()).isZero();
-        assertThat(GuardMessages.summary(again, 1)).isEqualTo("1 rule · clean");
+        assertThat(again.tightened()).isEqualTo(1);
+        LaneRun.Result settled = LaneRun.run(
+                Lane.WORKSPACE,
+                LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""),
+                ctx(dir, Lane.WORKSPACE, ""),
+                again.baseline());
+        assertThat(settled.tightened()).isZero();
+        assertThat(GuardMessages.summary(settled, 1)).isEqualTo("1 rule · clean");
     }
 
     @Test

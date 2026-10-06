@@ -41,8 +41,8 @@ class GuardThrashTest {
                 new RuleSource(Path.of("jk-guards.toml"), 1, RuleSource.Layer.ROOT));
         List<Observation> fresh = new ArrayList<>();
         for (String f : fingerprints) fresh.add(Observation.site(f, "F.java", 1, "d"));
-        Reconciliation rec =
-                new Reconciliation("r", "", fresh, List.of(), List.of(), RuleBaseline.EMPTY, false, null, Map.of());
+        Reconciliation rec = new Reconciliation(
+                "r", "", fresh, List.of(), List.of(), RuleBaseline.EMPTY, false, null, Map.of(), RuleBaseline.EMPTY);
         Evaluation ev = Evaluation.of(Map.of("files", 1L), fresh);
         return new RuleReport(rule, Outcome.VIOLATIONS, ev, rec, "");
     }

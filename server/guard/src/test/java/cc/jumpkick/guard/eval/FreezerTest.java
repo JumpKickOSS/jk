@@ -16,6 +16,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,39 @@ class FreezerTest {
         // A second freeze has nothing new.
         assertThat(Freezer.freeze(p, "one-digest", "again", false, false).accepted())
                 .isZero();
+    }
+
+    /**
+     * A freeze writes the named rule's new entries and nothing else: a stale entry in the same slice,
+     * the slice's population, the rule's other slices and every other rule stay byte for byte.
+     */
+    @Test
+    void a_freeze_adds_only_the_new_entries(@TempDir Path dir) throws Exception {
+        Path p = project(dir);
+        Path file = GuardsPresence.baselineFile(p);
+        RuleBaseline sha = new RuleBaseline(
+                Map.of("", Map.of("classes", 1L), "other", Map.of("classes", 40L)),
+                List.of(
+                        new Entry.Site("gone.Gone#m()V -> x", "an old site", ""),
+                        new Entry.Site("o.O#m()V -> y", "elsewhere", "other")));
+        Baseline before = Baseline.EMPTY
+                .with("one-digest", sha)
+                .with(
+                        "clock",
+                        RuleBaseline.of(Map.of("classes", 7L), List.of(new Entry.Site("c.C#t()V -> z", "stale"))));
+        BaselineFile.write(file, before);
+        List<String> was = Files.readAllLines(file);
+
+        Freezer.Result r = Freezer.freeze(p, "one-digest", "PGP needs SHA-1 by spec", false, false);
+
+        assertThat(r.error()).isNull();
+        assertThat(r.accepted()).isEqualTo(1);
+        List<String> now = Files.readAllLines(file);
+        assertThat(now).containsSubsequence(was);
+        List<String> added = new ArrayList<>(now);
+        for (String line : was) added.remove(line);
+        assertThat(added).hasSize(3).anySatisfy(l -> assertThat(l).contains("Sample#digest()"));
+        assertThat(String.join("\n", added)).contains("PGP needs SHA-1 by spec");
     }
 
     @Test
