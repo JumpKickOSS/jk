@@ -155,8 +155,9 @@ public final class GuardCommand implements CliCommand {
         } else {
             // The build's wedge says the build passed; this line is the guards' own verdict.
             Path results = target.resolve(ProjectBuilds.RESULTS);
-            if (Files.isRegularFile(results))
-                verdict(Files.readAllLines(results, StandardCharsets.UTF_8)).ifPresent(CliOutput::out);
+            List<String> lines =
+                    Files.isRegularFile(results) ? Files.readAllLines(results, StandardCharsets.UTF_8) : List.of();
+            terminalLine(lines, exit).ifPresent(CliOutput::out);
         }
         return exit;
     }
@@ -180,6 +181,17 @@ public final class GuardCommand implements CliCommand {
                     "Guards: " + line.replace("**", ""), Theme.active().error()));
         }
         return Optional.empty();
+    }
+
+    /**
+     * The line {@code jk guard} ends on: the {@link #verdict}, or {@code Guards: no rules} when a
+     * green run wrote no guard section because the project has no lane to run. A red run without
+     * one stopped before its lanes, and the build's own wedge already says why.
+     */
+    static Optional<String> terminalLine(List<String> results, int exit) {
+        Optional<String> verdict = verdict(results);
+        if (verdict.isPresent() || exit != Exit.SUCCESS) return verdict;
+        return Optional.of("Guards: no rules");
     }
 
     /** The files the engine writes under {@code target/}; named here so the CLI never links the guard engine. */
