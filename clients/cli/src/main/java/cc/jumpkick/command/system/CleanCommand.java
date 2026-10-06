@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
@@ -24,15 +25,18 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.util.FileHolders;
 import cc.jumpkick.util.TestHomes;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -111,7 +115,11 @@ public final class CleanCommand implements CliCommand {
                 "%,d file%s, %s total", files, files == 1 ? "" : "s", CacheCommand.fmtBytes(tally.bytes()));
 
         if (stuck != null) {
-            CommandWedge.printFail("Clean", stuckMessage(stuck, workspaceRoot, files, stats));
+            long enginePid = EngineProbe.status(EnginePaths.activeSocket(EnginePaths.current()))
+                    .map(EngineProbe.Status::pid)
+                    .orElse(0L);
+            CommandWedge.printFail(
+                    "Clean", stuckMessage(stuck, workspaceRoot, files, stats, FileHolders::of, enginePid));
             return 1;
         }
         if (files == 0) {
@@ -133,13 +141,26 @@ public final class CleanCommand implements CliCommand {
 
     /**
      * The failure settle: what did go, then the first file that would not and how many more. A
-     * file that cannot be unlinked on Windows is one some process still has open — a build, the
-     * resident engine's worker, an IDE — so the line says where to look.
+     * file that cannot be unlinked on Windows is one some process still has open, so the line names
+     * that process when {@code holders} can say, and says where to look when it cannot.
+     *
+     * @param enginePid this checkout's engine, so a holder that is the engine or one of its
+     *     workers is named as such; 0 when none is running
      */
-    static String stuckMessage(IOException stuck, Path workspaceRoot, long files, String stats) {
-        String path = stuck.getMessage() == null ? "a file" : stuck.getMessage();
+    static String stuckMessage(
+            IOException stuck,
+            Path workspaceRoot,
+            long files,
+            String stats,
+            Function<Path, List<FileHolders.Holder>> holders,
+            long enginePid) {
+        String path = stuck instanceof FileSystemException fse && fse.getFile() != null
+                ? fse.getFile()
+                : stuck.getMessage() == null ? "a file" : stuck.getMessage();
+        List<FileHolders.Holder> held = List.of();
         try {
             Path p = Path.of(path);
+            if (p.isAbsolute()) held = holders.apply(p);
             if (p.isAbsolute() && p.startsWith(workspaceRoot)) {
                 path = workspaceRoot.relativize(p).toString().replace('\\', '/');
             }
@@ -149,8 +170,29 @@ public final class CleanCommand implements CliCommand {
         int more = stuck.getSuppressed().length;
         String others = more == 0 ? "" : " and " + more + " more";
         String removed = files == 0 ? "Nothing removed" : "Removed " + stats + ", but";
-        return removed + " " + path + others + " could not be removed: another process has it open"
-                + " (a build, the engine, or an IDE)";
+        String why = held.isEmpty()
+                ? "another process has it open (a build, the engine, or an IDE)"
+                : "held open by "
+                        + String.join(
+                                ", ",
+                                held.stream().map(h -> describe(h, enginePid)).toList());
+        return removed + " " + path + others + " could not be removed: " + why;
+    }
+
+    /** A holder as the user can act on it: jk's own engine and its workers by role, anything else by name. */
+    private static String describe(FileHolders.Holder holder, long enginePid) {
+        if (enginePid > 0 && holder.pid() == enginePid) {
+            return "the jk engine (pid " + holder.pid() + "; `jk engine stop` releases it)";
+        }
+        long parent = ProcessHandle.of(holder.pid())
+                .flatMap(ProcessHandle::parent)
+                .map(ProcessHandle::pid)
+                .orElse(0L);
+        if (enginePid > 0 && parent == enginePid) {
+            return "a jk engine worker (pid " + holder.pid() + "; `jk engine stop` releases it)";
+        }
+        String name = holder.appName().isBlank() ? "a process" : holder.appName();
+        return name + " (pid " + holder.pid() + ")";
     }
 
     /**
