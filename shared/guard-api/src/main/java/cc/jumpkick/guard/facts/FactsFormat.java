@@ -42,7 +42,7 @@ public final class FactsFormat {
     /** Header only: digest and stamps. Empty when the file is absent or not this format. */
     public static Optional<Header> readHeader(Path file) throws IOException {
         if (!Files.isRegularFile(file)) return Optional.empty();
-        try (DataInputStream in = new DataInputStream(Files.newInputStream(file))) {
+        try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(file)))) {
             Header h = readHeader(in);
             return Optional.ofNullable(h);
         }

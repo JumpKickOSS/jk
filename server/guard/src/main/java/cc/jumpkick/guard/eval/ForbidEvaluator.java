@@ -15,13 +15,13 @@ import cc.jumpkick.guard.rules.Rule;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
@@ -65,8 +65,7 @@ final class ForbidEvaluator implements Evaluator {
 
         Scan scan = new Scan(
                 rule, ctx, sigs.live(), strings(t, "owner"), strings(t, "args"), strings(t, "except-annotated"));
-        if (memberOnly(sigs.live())) scan.indexed(facts, ctx.memo(SiteIndex.class, c -> SiteIndex.of(facts)));
-        else for (ClassFacts c : facts.classList()) scan.clazz(c);
+        scan.indexed(facts, ctx.memo(SiteIndex.class, c -> SiteIndex.of(facts)));
         return scan.finish(facts);
     }
 
@@ -141,9 +140,9 @@ final class ForbidEvaluator implements Evaluator {
         }
 
         /**
-         * The same verdict as {@link #clazz} over every class, visiting only the sites filed under a
-         * member name the rule names. Only for member signatures: a type or package ban reads every
-         * reference.
+         * Every site any signature could match, in the order a class-by-class walk meets them: a
+         * member signature's name, a type or package signature's matching owners and referenced
+         * types. Each candidate is then judged in full, so the index only narrows what is read.
          */
         void indexed(FactsIndex facts, SiteIndex index) {
             examined = index.callCount() + index.fieldCount() + (args.isEmpty() ? index.typeRefCount() : 0);
@@ -155,43 +154,57 @@ final class ForbidEvaluator implements Evaluator {
                     }
                 }
             }
-            List<SiteIndex.At> candidates = new ArrayList<>();
+            boolean byOwner = false;
             Set<String> names = new LinkedHashSet<>();
-            for (Signature sig : live) if (sig.member() != null) names.add(sig.member());
-            for (String name : names) {
-                candidates.addAll(index.callsNamed(name));
-                candidates.addAll(index.fieldsNamed(name));
+            for (Signature sig : live) {
+                boolean memberKind = sig.kind() == Signature.Kind.METHOD
+                        || sig.kind() == Signature.Kind.MEMBER
+                        || sig.kind() == Signature.Kind.FIELD;
+                String member = sig.member();
+                if (memberKind && member != null) names.add(member);
+                else byOwner = true;
             }
-            candidates.sort(Comparator.comparingInt(SiteIndex.At::order));
-            for (SiteIndex.At at : candidates) {
+            Map<Integer, SiteIndex.At> candidates = new TreeMap<>();
+            for (String name : names) {
+                for (SiteIndex.At at : index.callsNamed(name)) candidates.put(at.order(), at);
+                for (SiteIndex.At at : index.fieldsNamed(name)) candidates.put(at.order(), at);
+            }
+            if (byOwner) {
+                for (var e : index.callsByOwner().entrySet())
+                    if (ownerCandidate(e.getKey())) for (SiteIndex.At at : e.getValue()) candidates.put(at.order(), at);
+                for (var e : index.fieldsByOwner().entrySet())
+                    if (ownerCandidate(e.getKey())) for (SiteIndex.At at : e.getValue()) candidates.put(at.order(), at);
+                if (args.isEmpty()) {
+                    for (var e : index.typeRefsByType().entrySet())
+                        if (matchType(live, e.getKey(), types) != null)
+                            for (SiteIndex.At at : e.getValue()) candidates.put(at.order(), at);
+                }
+            }
+            for (SiteIndex.At at : candidates.values()) {
                 ClassFacts c = at.clazz();
                 boolean inOwner = inOwner(c, owners);
-                boolean exempt = annotated(c.annotations(), exceptAnnotated)
-                        || annotated(at.method().annotations(), exceptAnnotated);
+                boolean classExempt = annotated(c.annotations(), exceptAnnotated);
                 String self = Descriptors.outermost(c.name());
-                if (at.call() != null) call(c, at.method(), at.call(), inOwner, exempt, self);
-                if (at.field() != null) field(c, at.method(), at.field(), inOwner, exempt, self);
+                MethodFacts m = at.method();
+                boolean exempt = classExempt || (m != null && annotated(m.annotations(), exceptAnnotated));
+                if (at.call() != null && m != null) call(c, m, at.call(), inOwner, exempt, self);
+                else if (at.field() != null && m != null) field(c, m, at.field(), inOwner, exempt, self);
+                else if (at.typeRef() != null) typeRef(c, at.typeRef(), inOwner, classExempt, self);
             }
         }
 
-        void clazz(ClassFacts c) {
-            boolean inOwner = inOwner(c, owners);
-            if (inOwner) ownerSeen = true;
-            boolean classExempt = annotated(c.annotations(), exceptAnnotated);
-            String self = Descriptors.outermost(c.name());
-            for (MethodFacts m : c.methods()) {
-                boolean exempt = classExempt || annotated(m.annotations(), exceptAnnotated);
-                calls(c, m, inOwner, exempt, self);
-                fieldRefs(c, m, inOwner, exempt, self);
+        /** Whether a type or package signature could match a site on {@code owner}. */
+        private boolean ownerCandidate(String owner) {
+            for (Signature sig : live) {
+                switch (sig.kind()) {
+                    case TYPE, PACKAGE, PACKAGE_TREE -> {
+                        Iterable<String> ancestors = sig.ownerToResolve() == null ? List.of() : types.ancestors(owner);
+                        if (sig.ownerMatches(owner, ancestors)) return true;
+                    }
+                    default -> {}
+                }
             }
-            if (args.isEmpty()) typeRefs(c, inOwner, classExempt, self);
-        }
-
-        private void calls(ClassFacts c, MethodFacts m, boolean inOwner, boolean exempt, String self) {
-            for (CallSite s : m.calls()) {
-                examined++;
-                call(c, m, s, inOwner, exempt, self);
-            }
+            return false;
         }
 
         private void call(ClassFacts c, MethodFacts m, CallSite s, boolean inOwner, boolean exempt, String self) {
@@ -213,13 +226,6 @@ final class ForbidEvaluator implements Evaluator {
                             + " (from " + c.binaryName() + "#" + m.name() + ")"));
         }
 
-        private void fieldRefs(ClassFacts c, MethodFacts m, boolean inOwner, boolean exempt, String self) {
-            for (FieldRef r : m.fieldRefs()) {
-                examined++;
-                field(c, m, r, inOwner, exempt, self);
-            }
-        }
-
         private void field(ClassFacts c, MethodFacts m, FieldRef r, boolean inOwner, boolean exempt, String self) {
             if (matchField(live, r, types) == null) return;
             matched++;
@@ -238,24 +244,19 @@ final class ForbidEvaluator implements Evaluator {
                             + c.binaryName() + "#" + m.name() + ")"));
         }
 
-        private void typeRefs(ClassFacts c, boolean inOwner, boolean classExempt, String self) {
-            for (String ref : c.typeRefs()) {
-                examined++;
-                if (matchType(live, ref, types) == null) continue;
-                matched++;
-                if (inOwner) {
-                    ownerHasSite = true;
-                    continue;
-                }
-                if (Descriptors.outermost(ref).equals(self)) continue;
-                if (classExempt) continue;
-                if (allowed(c)) continue;
-                sites.add(Observation.site(
-                        c.binaryName() + " -> " + Descriptors.binaryName(ref),
-                        source(ctx, c),
-                        0,
-                        Descriptors.binaryName(ref) + " referenced from " + c.binaryName()));
+        private void typeRef(ClassFacts c, String ref, boolean inOwner, boolean classExempt, String self) {
+            if (matchType(live, ref, types) == null) return;
+            matched++;
+            if (inOwner) {
+                ownerHasSite = true;
+                return;
             }
+            if (Descriptors.outermost(ref).equals(self) || classExempt || allowed(c)) return;
+            sites.add(Observation.site(
+                    c.binaryName() + " -> " + Descriptors.binaryName(ref),
+                    source(ctx, c),
+                    0,
+                    Descriptors.binaryName(ref) + " referenced from " + c.binaryName()));
         }
 
         /** An allow entry covering {@code c} is marked used and the site is not recorded. */
@@ -295,61 +296,73 @@ final class ForbidEvaluator implements Evaluator {
         }
     }
 
-    /** Whether every signature names a member, so the sites under other names cannot match. */
-    static boolean memberOnly(List<Signature> live) {
-        for (Signature s : live) {
-            switch (s.kind()) {
-                case METHOD, MEMBER, FIELD -> {
-                    if (s.member() == null) return false;
-                }
-                default -> {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
     /**
-     * One facts index's calls and field references filed by member name, each with its position in
-     * the class, method, calls-then-fields walk {@link Scan#clazz} makes, so a lookup visits sites in
-     * the same order. Built once per lane run and shared by its forbid rules.
+     * One facts index's sites filed for lookup: calls and field references by member name and by
+     * owner, type references by type. Each carries its position in a class-by-class walk (a class's
+     * methods' calls then field references, then its type references), so a lookup visits sites in
+     * that order. Built once per lane run and shared by its forbid rules.
      */
     record SiteIndex(
             Map<String, List<At>> callsByName,
             Map<String, List<At>> fieldsByName,
+            Map<String, List<At>> callsByOwner,
+            Map<String, List<At>> fieldsByOwner,
+            Map<String, List<At>> typeRefsByType,
             long callCount,
             long fieldCount,
             long typeRefCount) {
 
+        /** One site: exactly one of {@code call}, {@code field}, {@code typeRef}; {@code method} is null for a type reference. */
         record At(
                 int order,
                 ClassFacts clazz,
-                MethodFacts method,
+                @Nullable MethodFacts method,
                 @Nullable CallSite call,
-                @Nullable FieldRef field) {}
+                @Nullable FieldRef field,
+                @Nullable String typeRef) {}
 
         static SiteIndex of(FactsIndex facts) {
-            Map<String, List<At>> calls = new HashMap<>();
-            Map<String, List<At>> fields = new HashMap<>();
-            long callCount = 0;
-            long fieldCount = 0;
-            long typeRefCount = 0;
+            Map<String, List<At>> callsByName = new HashMap<>();
+            Map<String, List<At>> fieldsByName = new HashMap<>();
+            Map<String, List<At>> callsByOwner = new HashMap<>();
+            Map<String, List<At>> fieldsByOwner = new HashMap<>();
+            Map<String, List<At>> typeRefsByType = new HashMap<>();
+            long calls = 0;
+            long fields = 0;
+            long typeRefs = 0;
             int order = 0;
             for (ClassFacts c : facts.classList()) {
                 for (MethodFacts m : c.methods()) {
                     for (CallSite s : m.calls()) {
-                        calls.computeIfAbsent(s.name(), k -> new ArrayList<>()).add(new At(order++, c, m, s, null));
-                        callCount++;
+                        At at = new At(order++, c, m, s, null, null);
+                        callsByName
+                                .computeIfAbsent(s.name(), k -> new ArrayList<>())
+                                .add(at);
+                        callsByOwner
+                                .computeIfAbsent(s.owner(), k -> new ArrayList<>())
+                                .add(at);
+                        calls++;
                     }
                     for (FieldRef r : m.fieldRefs()) {
-                        fields.computeIfAbsent(r.name(), k -> new ArrayList<>()).add(new At(order++, c, m, null, r));
-                        fieldCount++;
+                        At at = new At(order++, c, m, null, r, null);
+                        fieldsByName
+                                .computeIfAbsent(r.name(), k -> new ArrayList<>())
+                                .add(at);
+                        fieldsByOwner
+                                .computeIfAbsent(r.owner(), k -> new ArrayList<>())
+                                .add(at);
+                        fields++;
                     }
                 }
-                typeRefCount += c.typeRefs().size();
+                for (String ref : c.typeRefs()) {
+                    typeRefsByType
+                            .computeIfAbsent(ref, k -> new ArrayList<>())
+                            .add(new At(order++, c, null, null, null, ref));
+                    typeRefs++;
+                }
             }
-            return new SiteIndex(calls, fields, callCount, fieldCount, typeRefCount);
+            return new SiteIndex(
+                    callsByName, fieldsByName, callsByOwner, fieldsByOwner, typeRefsByType, calls, fields, typeRefs);
         }
 
         List<At> callsNamed(String name) {

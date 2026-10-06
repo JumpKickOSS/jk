@@ -14,7 +14,6 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
@@ -54,7 +53,8 @@ final class GuardKeys {
 
     static String baselineSha(Path root) throws IOException {
         Path f = GuardsPresence.baselineFile(root);
-        return Files.isRegularFile(f) ? Hashing.sha256Hex(f) : "none";
+        // Every lane key carries it; the memo reads the file once per change, not once per module.
+        return Files.isRegularFile(f) ? FileHashMemo.contentHash(f) : "none";
     }
 
     static void addRuleTokens(List<String> tokens, LoadResult load) {
