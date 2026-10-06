@@ -218,18 +218,10 @@ public final class WorkspaceMerge {
                 mergedByScope.put(scope, new ArrayList<>(dedup.values()));
             }
         }
-        return JkBuild.builder(root.project())
-                .dependencies(new JkBuild.Dependencies(mergedByScope))
-                .repositories(joinRepositories(root, modules))
-                .profiles(root.profiles())
-                .features(root.features())
-                .workspace(root.workspace())
-                .manifest(root.manifest())
-                .plugins(root.plugins())
-                .application(root.applicationOpt().orElse(null))
-                .nativeConfig(root.nativeConfigOpt().orElse(null))
-                .build(root.build())
-                .build();
+        // The root as written, with the folded dependencies and joined repositories: every other
+        // table rides along unchanged.
+        return root.withDependencies(new JkBuild.Dependencies(mergedByScope))
+                .withRepositories(joinRepositories(root, modules));
     }
 
     /**
