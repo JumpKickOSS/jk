@@ -8,12 +8,15 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -91,6 +94,13 @@ public final class FactsFormat {
 
     /** Serialize; the body digest in the header is recomputed from the class table. */
     public static byte[] toBytes(FactsIndex index) throws IOException {
+        return encode(index).bytes();
+    }
+
+    /** The serialized index and the body digest its header carries, from one pass over the class table. */
+    public record Encoded(byte[] bytes, String bodyDigest) {}
+
+    public static Encoded encode(FactsIndex index) throws IOException {
         Body body = Body.of(index);
         ByteArrayOutputStream out = new ByteArrayOutputStream(body.bytes.length + 1024);
         DataOutputStream d = new DataOutputStream(out);
@@ -106,7 +116,7 @@ public final class FactsFormat {
         for (String s : body.table) d.writeUTF(s);
         d.write(body.bytes);
         d.flush();
-        return out.toByteArray();
+        return new Encoded(out.toByteArray(), body.digest);
     }
 
     /** The content digest a freshly built index would carry: what the lane keys on. */
@@ -152,24 +162,46 @@ public final class FactsFormat {
             for (ClassFacts c : new TreeMap<>(index.classes()).values()) w.classFacts(c);
             w.out.flush();
             byte[] body = w.buf.toByteArray();
-            // Digest the body plus the string table in index order: the two together are the content.
+            // Digest the string table in index order, then the body: the two together are the content.
             StringBuilder tableText = new StringBuilder();
             for (String s : w.table.keySet()) tableText.append(s).append('\n');
-            String digest = Hashing.sha256Hex(concat(tableText.toString().getBytes(StandardCharsets.UTF_8), body));
-            return new Body(new ArrayList<>(w.table.keySet()), body, digest);
+            MessageDigest md = Hashing.newSha256();
+            md.update(tableText.toString().getBytes(StandardCharsets.UTF_8));
+            md.update(body);
+            return new Body(new ArrayList<>(w.table.keySet()), body, Hashing.hex(md.digest()));
+        }
+    }
+
+    /** A growable byte sink without {@link ByteArrayOutputStream}'s per-write lock: the body is millions of small writes. */
+    private static final class Buffer extends OutputStream {
+        private byte[] bytes = new byte[1 << 16];
+        private int size;
+
+        @Override
+        public void write(int b) {
+            ensure(1);
+            bytes[size++] = (byte) b;
         }
 
-        private static byte[] concat(byte[] a, byte[] b) {
-            byte[] out = new byte[a.length + b.length];
-            System.arraycopy(a, 0, out, 0, a.length);
-            System.arraycopy(b, 0, out, a.length, b.length);
-            return out;
+        @Override
+        public void write(byte[] b, int off, int len) {
+            ensure(len);
+            System.arraycopy(b, off, bytes, size, len);
+            size += len;
+        }
+
+        private void ensure(int more) {
+            if (size + more > bytes.length) bytes = Arrays.copyOf(bytes, Math.max(bytes.length * 2, size + more));
+        }
+
+        byte[] toByteArray() {
+            return Arrays.copyOf(bytes, size);
         }
     }
 
     private static final class Writer {
         final Map<String, Integer> table = new LinkedHashMap<>();
-        final ByteArrayOutputStream buf = new ByteArrayOutputStream(1 << 16);
+        final Buffer buf = new Buffer();
         final DataOutputStream out = new DataOutputStream(buf);
 
         void str(@Nullable String s) throws IOException {
