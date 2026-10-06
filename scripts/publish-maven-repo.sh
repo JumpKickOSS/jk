@@ -17,7 +17,8 @@
 # JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=target/release/repo scripts/publish-maven-repo.sh
 #
 # Env:
-# JK_VERSION default: from JkVersion.java
+# JK_VERSION default: from JkVersion.java — the version staged; the store's other versions stay out
+# JK_MAVEN_STAGE_ALL=1 — stage every version the store holds instead (a bucket rebuilt from a shelf)
 # JK_STORE_DIR / JK_HOME — artifact store (see JkDirs)
 # JK_MAVEN_BUCKET default: jumpkick
 # JK_MAVEN_PREFIX default: repo
@@ -34,8 +35,10 @@
 # version in its store publishes that version without deleting the rest. Each maven-metadata.xml
 # is additive too: the bucket's current version list is fetched and merged with the staged one, so
 # a fresh checkout that holds one version does not shorten the list consumers use for ranges, and
-# <latest>/<release> name the merged maximum. An artifact the store does not hold at JK_VERSION
-# is staged (its jars are additive) but its metadata is left as the bucket has it.
+# <latest>/<release> name the merged maximum. Only JK_VERSION is staged, so an older version a
+# developer's store still holds (a stub POM an earlier jk wrote) never reaches the bucket or the
+# worker-POM check. Under JK_MAVEN_STAGE_ALL an artifact the store does not hold at JK_VERSION is
+# staged (its jars are additive) but its metadata is left as the bucket has it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -78,7 +81,8 @@ sha256_of() {
   fi
 }
 
-# Stage every installed first-party artifact (all versions present): jar + pom + checksums.
+# Stage every installed first-party artifact at $VERSION (every version under JK_MAVEN_STAGE_ALL):
+# jar + pom + checksums.
 # The path under cc/jumpkick is kept as it is, so a nested group (cc.jumpkick.guards → guards/<pack>)
 # lands where Maven resolution looks for it, not flattened to cc/jumpkick/<pack>.
 count=0
@@ -89,6 +93,7 @@ while IFS= read -r -d '' jar; do
   art_dir="$(dirname "$ver_dir")"
   art="$(basename "$art_dir")"
   rel="${ver_dir#"$LOCAL"/}"
+  [[ -n "${JK_MAVEN_STAGE_ALL:-}" || "$ver" == "$VERSION" ]] || continue
   pom="$ver_dir/$art-$ver.pom"
   if [[ ! -f "$pom" ]]; then
     echo "publish-maven-repo: missing POM for $art:$ver ($pom) — install writes jar+pom; will not invent one" >&2
@@ -113,7 +118,7 @@ while IFS= read -r -d '' jar; do
 done < <(find "$LOCAL" -type f -name "*.jar" -print0 | sort -z)
 
 if [[ "$count" -eq 0 ]]; then
-  echo "publish-maven-repo: no jars under $LOCAL" >&2
+  echo "publish-maven-repo: no jars at $VERSION under $LOCAL — run jk install at that version, or set JK_MAVEN_STAGE_ALL=1 to stage every version the store holds" >&2
   exit 2
 fi
 
