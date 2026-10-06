@@ -409,6 +409,21 @@ class TestStoreSeedTest {
         return file;
     }
 
+    @Test
+    void a_store_filled_from_a_lock_holds_jars_but_not_the_test_roots(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        String central = RepositorySpec.CENTRAL;
+        artifact(store, central, "org/junit/platform/junit-platform-launcher", "6.1.3", ".jar");
+        artifact(store, central, "org/junit/jupiter/junit-jupiter", "6.1.3", ".jar");
+        assertThat(TestStoreSeed.holdsTestRoots(store)).isFalse();
+
+        artifact(store, central, "org/junit/platform/junit-platform-launcher", "6.1.3", ".pom");
+        assertThat(TestStoreSeed.holdsTestRoots(store)).isFalse();
+
+        artifact(store, central, "org/junit/jupiter/junit-jupiter", "6.1.3", ".pom");
+        assertThat(TestStoreSeed.holdsTestRoots(store)).isTrue();
+    }
+
     private static void artifact(Path store, String origin, String artifactDir, String version, String... extensions)
             throws Exception {
         Path dir = Files.createDirectories(

@@ -57,6 +57,33 @@ public final class TestStoreSeed {
 
     private TestStoreSeed() {}
 
+    /** The injected test roots a fixture lock floats to {@code latest}, as Maven-layout paths. */
+    static final List<String> TEST_ROOTS =
+            List.of("org/junit/platform/junit-platform-launcher", "org/junit/jupiter/junit-jupiter");
+
+    /**
+     * Whether {@code store} holds a POM for some version of every injected test root: what the seed
+     * needs to write their version lists. A store filled from a lock alone holds the jars only.
+     */
+    public static boolean holdsTestRoots(Path store) {
+        Path central = store.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        for (String root : TEST_ROOTS) {
+            Path artifact = central.resolve(root);
+            String name = artifact.getFileName().toString();
+            boolean[] found = {false};
+            try {
+                PathUtil.forEachChild(artifact, (v, attrs) -> {
+                    found[0] = Files.isRegularFile(v.resolve(name + "-" + v.getFileName() + ".pom"));
+                    return !found[0];
+                });
+            } catch (IOException e) {
+                return false;
+            }
+            if (!found[0]) return false;
+        }
+        return true;
+    }
+
     /**
      * Seed {@code sandboxStore} from {@code hostStore}; a no-op when they are one store or the host
      * holds no Central tree. Returns how many files were materialised.
