@@ -25,7 +25,7 @@ jobs:
     name: Commit authorship
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # The commits this push or pull request brings, not the whole history: history is fixed once
@@ -58,7 +58,7 @@ jobs:
     name: Shell fixtures (installer, wrapper, publish, release, curated lane)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Shell installer verification fixtures
         run: bash scripts/test-installer-verification.sh
@@ -103,7 +103,7 @@ jobs:
       ACTIONLINT_VERSION: '1.7.12'
       ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install actionlint, pinned by version and checksum
         run: |
@@ -142,12 +142,12 @@ jobs:
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # jk's native step links the client against the GraalVM the request's GRAALVM_HOME names
       # before it looks for an installed one; the action provides it so the lane does not download
       # a Graal of its own.
-      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
+      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -186,7 +186,7 @@ jobs:
       # human view is the step's log. Uploaded whether or not the gate went red.
       - name: Upload the house-rule SARIF
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: jk-guards-sarif
           path: target/jk-guards.sarif
@@ -251,7 +251,7 @@ jobs:
 
       - name: Upload the audit report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: jk-audit
           path: target/jk-audit.jsonl
@@ -265,7 +265,7 @@ jobs:
     name: PowerShell 5.1 installer verification
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run network-free verification fixtures
         shell: powershell
