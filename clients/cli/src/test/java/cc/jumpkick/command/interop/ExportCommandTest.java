@@ -4,7 +4,10 @@ package cc.jumpkick.command.interop;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -74,15 +77,24 @@ class ExportCommandTest {
     }
 
     @Test
-    void overwrite_guard_blocks_then_force_allows(@TempDir Path tmp) throws IOException {
+    void overwrite_guard_blocks_then_overwrite_allows(@TempDir Path tmp) throws IOException {
         writeApp(tmp);
 
         assertThat(Jk.execute(new String[] {"export", "maven", "-C", tmp.toString()}))
                 .isEqualTo(0);
-        // Second run without --force must refuse.
-        assertThat(Jk.execute(new String[] {"export", "maven", "-C", tmp.toString()}))
-                .isNotEqualTo(0);
-        // With --force it overwrites.
+        var prevErr = System.err;
+        var captured = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        int refused;
+        try {
+            refused = Jk.execute(new String[] {"export", "maven", "-C", tmp.toString()});
+        } finally {
+            System.setErr(prevErr);
+        }
+        assertThat(refused).isNotEqualTo(0);
+        assertThat(captured.toString(StandardCharsets.UTF_8))
+                .contains("pass --overwrite")
+                .doesNotContain("--force");
         assertThat(Jk.execute(new String[] {"export", "maven", "--overwrite", "-C", tmp.toString()}))
                 .isEqualTo(0);
     }

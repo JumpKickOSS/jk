@@ -592,7 +592,7 @@ class EngineProtocolTest {
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.IMPORT_REQUEST);
         assertThat(Jsonl.str(req, "source")).isEqualTo("/p/pom.xml");
         assertThat(Jsonl.str(req, "out")).isEqualTo("/p/jk.toml");
-        assertThat(Jsonl.bool(req, "force", false)).isTrue();
+        assertThat(Jsonl.bool(req, "overwrite", false)).isTrue();
         assertThat(ImportRequest.decode(req).dryRun()).isTrue();
         assertThat(Jsonl.str(req, "report")).isNull();
         assertThat(ImportRequest.decode(req).profiles()).containsExactly("default", "heavy");

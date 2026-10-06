@@ -55,9 +55,9 @@ final class ExportSupport {
     }
 
     /** Guard every path first (all-or-nothing), then write + report. */
-    static int writeAll(GeneratedFiles files, boolean force, String cmd) throws IOException {
+    static int writeAll(GeneratedFiles files, boolean overwrite, String cmd) throws IOException {
         for (String path : files.paths()) {
-            if (!canWrite(Path.of(path), force, cmd)) return Exit.CANT_CREATE;
+            if (!canWrite(Path.of(path), overwrite, cmd)) return Exit.CANT_CREATE;
         }
         CommandWedge.envelopeStart();
         for (int i = 0; i < files.paths().size(); i++) {
@@ -74,12 +74,12 @@ final class ExportSupport {
     }
 
     /**
-     * True if it's safe to write {@code target} (doesn't exist, or {@code force}); else prints +
+     * True if it's safe to write {@code target} (doesn't exist, or {@code overwrite}); else prints +
      * false.
      */
-    static boolean canWrite(Path target, boolean force, String cmd) {
-        if (Files.exists(target) && !force) {
-            CliOutput.err(cmd + ": refusing to overwrite " + PathDisplay.styled(target) + " (use --force).");
+    static boolean canWrite(Path target, boolean overwrite, String cmd) {
+        if (Files.exists(target) && !overwrite) {
+            CliOutput.err(cmd + ": refusing to overwrite " + PathDisplay.styled(target) + " (pass --overwrite).");
             return false;
         }
         return true;
