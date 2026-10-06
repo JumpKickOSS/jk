@@ -8,6 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -35,10 +37,43 @@ final class SourcePaths {
         return (pkgPath.isEmpty() ? "" : pkgPath + "/") + file;
     }
 
+    /** Per lane run: the module's source roots listed once and each source tail resolved once. */
+    private static final class Resolver {
+        private final String module;
+        private final @Nullable Path moduleDir;
+        private final Map<String, String> resolved = new ConcurrentHashMap<>();
+        private volatile @Nullable List<Path> roots;
+
+        Resolver(String module, @Nullable Path moduleDir) {
+            this.module = module;
+            this.moduleDir = moduleDir;
+        }
+
+        String resolve(String tail) {
+            return resolved.computeIfAbsent(tail, t -> {
+                Path dir = moduleDir;
+                String root = null;
+                if (dir != null) {
+                    List<Path> listed = roots;
+                    if (listed == null) roots = listed = roots(dir, ModuleLayout.isCompact(dir));
+                    for (Path r : listed) {
+                        if (Files.isRegularFile(r.resolve(t))) {
+                            root = rel(dir, r);
+                            break;
+                        }
+                    }
+                }
+                return prefix(module) + (root == null ? FALLBACK : root) + "/" + t;
+            });
+        }
+    }
+
     /** The workspace-relative source path of {@code c} in the context's module, or {@code null}. */
     static @Nullable String of(EvalContext ctx, ClassFacts c) {
         String tail = tail(c);
-        return tail == null ? null : resolve(ctx.module(), ctx.moduleDir(), tail);
+        if (tail == null) return null;
+        return ctx.memo(Resolver.class, k -> new Resolver(k.module(), k.moduleDir()))
+                .resolve(tail);
     }
 
     /**

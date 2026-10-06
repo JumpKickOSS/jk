@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -51,7 +53,30 @@ public record EvalContext(
                 lane, root, module, moduleDir, modules, factsSupplier, testFactsSupplier, classpath, set);
     }
 
+    /** A context is one lane run: two runs over equal inputs still keep their own memos. */
+    @Override
+    public boolean equals(@Nullable Object o) {
+        return this == o;
+    }
+
+    @Override
+    public int hashCode() {
+        return System.identityHashCode(this);
+    }
+
     private static final Map<EvalContext, TypeHierarchy> HIERARCHIES = new WeakHashMap<>();
+
+    private static final Map<EvalContext, Map<Object, Object>> MEMOS = new WeakHashMap<>();
+
+    /** A value derived once per lane run under {@code key}; released with the hierarchy. */
+    @SuppressWarnings("unchecked")
+    public <T> T memo(Object key, Function<EvalContext, T> compute) {
+        Map<Object, Object> mine;
+        synchronized (MEMOS) {
+            mine = MEMOS.computeIfAbsent(this, c -> new ConcurrentHashMap<>());
+        }
+        return (T) mine.computeIfAbsent(key, k -> compute.apply(this));
+    }
 
     /** The module's type hierarchy (facts, then classpath, then JDK), built once per lane run. */
     public TypeHierarchy hierarchy() {
@@ -70,6 +95,9 @@ public record EvalContext(
             built = HIERARCHIES.remove(this);
         }
         if (built != null) built.close();
+        synchronized (MEMOS) {
+            MEMOS.remove(this);
+        }
     }
 
     /** This module's main-source-set facts; loaded on first use. */
