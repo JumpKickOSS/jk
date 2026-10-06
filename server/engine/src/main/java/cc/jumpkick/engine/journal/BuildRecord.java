@@ -318,11 +318,8 @@ public record BuildRecord(
      *
      * <p>Not a cancellation. A Ctrl-C reaches a live engine, which completes the row itself; the
      * only rows that reach here are the ones whose engine was killed, crashed, or lost its machine.
-     * A user cannot act on that, so the code is {@link Exit#SOFTWARE}. Until it was 130 —
-     * {@code 128 + SIGINT} — with {@code cancelled} set, reporting a machine's death as something
-     * the user did. Vacating it left the journal with no 130 at all for a whole release; since
-     * a genuinely cancelled row carries {@link Exit#INTERRUPTED} and this one still does
-     * not, which is the distinction the two codes exist to draw.
+     * A user cannot act on that, so the code is {@link Exit#SOFTWARE} with {@code cancelled}
+     * clear; {@link Exit#INTERRUPTED} stays reserved for a run the user actually cancelled.
      *
      * <p>The in-flight step, module and diagnostic lists are dropped: a half-written plan is not a
      * result, and the row is kept only so the history does not show a run that never ends.

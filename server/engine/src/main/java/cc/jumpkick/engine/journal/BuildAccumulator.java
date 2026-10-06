@@ -935,10 +935,8 @@ public final class BuildAccumulator {
         // stamp was set (not merely cancelled=true from cooperative fail-fast / EOF race).
         boolean cancelledEffective = resolveCancelledFlag(success, userCancelled, cancelled);
         if (cancelledEffective) closeRunningSteps(finishedAt);
-        // One derivation, cancelled arm first: a row labelled cancelled carries the code every
-        // shell already means by an interrupt, so `$?` and `jk history` agree about the same run.
-        // Until every cancel wrote FAILURE and read back as an ordinary failed build; the
-        // exit of work that stopped before it could rule is not evidence of anything else.
+        // Cancelled arm first: a cancelled row carries the shell's interrupt code, so `$?` and
+        // `jk history` agree about the same run.
         int exit = cancelledEffective
                 ? Exit.INTERRUPTED
                 : success != null ? exitCode : (ok ? Exit.SUCCESS : (noVerdict ? Exit.SOFTWARE : Exit.FAILURE));
