@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.PackageIndex;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -110,8 +111,9 @@ final class StorePackages {
 
     private static void write(Path file, List<String> coordinates) {
         try {
-            Files.createDirectories(file.getParent());
-            Files.write(file, coordinates, StandardCharsets.UTF_8);
+            StringBuilder body = new StringBuilder();
+            for (String coordinate : coordinates) body.append(coordinate).append('\n');
+            AtomicWrites.replace(file, body.toString());
         } catch (IOException e) {
             // The list is a cache; the next lookup walks the jars again.
         }

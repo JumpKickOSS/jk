@@ -18,8 +18,12 @@ class SystemProbeTest {
     @Test
     void linux_covers_the_roots_gradle_scans() {
         assertThat(SystemProbe.LINUX_ROOTS)
-                .extracting(Path::toString)
-                .containsExactly("/usr/lib/jvm", "/usr/java", "/usr/lib64/jvm", "/usr/local/java", "/opt/java");
+                .containsExactly(
+                        Path.of("/usr/lib/jvm"),
+                        Path.of("/usr/java"),
+                        Path.of("/usr/lib64/jvm"),
+                        Path.of("/usr/local/java"),
+                        Path.of("/opt/java"));
     }
 
     @Test
@@ -46,17 +50,28 @@ class SystemProbeTest {
         Path bundled =
                 FakeJdk.create(tmp.resolve("Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home"), "21.0.5");
         Path elsewhere = FakeJdk.create(tmp.resolve("Users/me/Library/Java/corretto-17/Contents/Home"), "17.0.9");
-        String output = "Matching Java Virtual Machines (2):\n"
-                + "    21.0.5 (arm64) \"Eclipse Adoptium\" - \"OpenJDK 21.0.5\" " + bundled + "\n"
-                + "    17.0.9 (x86_64) \"Amazon.com Inc.\" - \"Amazon Corretto 17\" " + elsewhere + "\n"
-                + bundled + "\n";
 
         List<JdkHit> hits = new SystemProbe(
-                        List.of(tmp.resolve("Library/Java/JavaVirtualMachines")), () -> MacJavaHomes.parse(output))
+                        List.of(tmp.resolve("Library/Java/JavaVirtualMachines")), () -> List.of(bundled, elsewhere))
                 .discoverAllJdks();
 
         assertThat(hits).extracting(JdkHit::home).containsExactly(bundled.toRealPath(), elsewhere.toRealPath());
         assertThat(hits).allSatisfy(h -> assertThat(h.source()).isEqualTo("system"));
+    }
+
+    @Test
+    void java_home_output_yields_each_home_once() {
+        String output = """
+                Matching Java Virtual Machines (2):
+                    21.0.5 (arm64) "Eclipse Adoptium" - "OpenJDK 21.0.5" /Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home
+                    17.0.9 (x86_64) "Amazon.com Inc." - "Amazon Corretto 17" /Users/me/Library/Java/corretto-17/Contents/Home
+                /Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home
+                """;
+
+        assertThat(MacJavaHomes.parse(output))
+                .containsExactly(
+                        Path.of("/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home"),
+                        Path.of("/Users/me/Library/Java/corretto-17/Contents/Home"));
     }
 
     @Test

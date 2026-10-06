@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
@@ -256,6 +257,7 @@ class LearnedHeapRetryTest {
      * except {@code always} and {@code big}.
      */
     private static Path fakeJdk(Path dir, String mode) throws Exception {
+        assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "POSIX shell required");
         Path home = dir.resolve("jdk");
         Path bin = Files.createDirectories(home.resolve("bin"));
         Path java = bin.resolve("java");
