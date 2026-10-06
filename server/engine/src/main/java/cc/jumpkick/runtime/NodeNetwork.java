@@ -4,8 +4,10 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.compat.DownloadOrigin;
 import cc.jumpkick.compat.DownloadOrigins;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.ProxyEnvironment;
+import cc.jumpkick.jdk.Junctions;
 import cc.jumpkick.node.NodeSources;
 import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.util.OwnerOnlyFiles;
@@ -14,6 +16,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -193,11 +196,7 @@ final class NodeNetwork {
             PathUtil.forEachChild(real, (entry, attrs) -> {
                 String name = String.valueOf(entry.getFileName());
                 if (name.equals(YARNRC)) return true;
-                try {
-                    Files.createSymbolicLink(home.resolve(name), entry);
-                } catch (IOException | UnsupportedOperationException noLinks) {
-                    // a host without symlinks (Windows without the privilege) gets the rc alone
-                }
+                linkEntry(home.resolve(name), entry, attrs);
                 return true;
             });
             Path rc = real.resolve(YARNRC);
@@ -205,6 +204,26 @@ final class NodeNetwork {
         }
         OwnerOnlyFiles.writeString(home.resolve(YARNRC), withScopes(own, berryScopes(sources)));
         return home;
+    }
+
+    /**
+     * {@code link} pointing at the real home's {@code entry}: a symbolic link where the host allows
+     * one, else (Windows without the privilege) a junction for a directory and a hard link for a
+     * file. An entry none of those can reach (a file on another volume) is left out.
+     */
+    private static void linkEntry(Path link, Path entry, BasicFileAttributes attrs) {
+        try {
+            Files.createSymbolicLink(link, entry);
+            return;
+        } catch (IOException | UnsupportedOperationException noSymlinks) {
+            // fall through to the links Windows grants without a privilege
+        }
+        try {
+            if (Os.isWindows() && attrs.isDirectory()) Junctions.create(link, entry);
+            else if (attrs.isRegularFile()) Files.createLink(link, entry);
+        } catch (IOException | UnsupportedOperationException unreachable) {
+            // left out: Berry still runs, without that entry of the real home
+        }
     }
 
     /** jk's scopes as Berry {@code npmScopes} entries, keyed by scope name without its {@code @}. */
