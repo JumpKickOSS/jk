@@ -582,9 +582,10 @@ final class ModuleForecast {
     private void guard(Prepared prepared) throws Exception {
         BuildLayout layout = prepared.layout();
         // ---- guard (module lane): stale verdict → RUN, which is what makes the module dirty ----
-        GuardKeys.forecastModuleLane(dir, layout, actionCache, force || compileDirty)
+        GuardKeys.forecastModuleLane(dir, layout, actionCache, force || compileDirty, skipTests)
                 .ifPresent(steps::add);
-        if (PlannerResources.invocationRoot(dir)) steps.addAll(GuardKeys.forecastRootLanes(dir, project, actionCache));
+        if (PlannerResources.invocationRoot(dir))
+            steps.addAll(GuardKeys.forecastRootLanes(dir, project, actionCache, skipTests));
 
         if (haveTests && !skipTests) {
             compileTestStep(prepared);

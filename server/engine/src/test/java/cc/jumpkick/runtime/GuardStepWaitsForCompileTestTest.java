@@ -4,12 +4,14 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,9 +33,22 @@ class GuardStepWaitsForCompileTestTest {
     @Test
     void guard_step_does_not_name_a_compile_test_the_plan_lacks(@TempDir Path dir) throws Exception {
         scaffold(dir);
-        BuildPlan skipTests = plan(dir, true, false);
-        assertThat(skipTests.steps().stream().map(Task::name)).doesNotContain(TaskNames.COMPILE_TEST);
-        assertThat(step(skipTests, TaskNames.GUARD).requires()).doesNotContain(TaskNames.COMPILE_TEST);
+        // `jk guard`: tests skipped, the guard asked for.
+        BuildPlan guard = BuildPlanner.fullPlan(inputs(dir, true, false, false, GUARD));
+        assertThat(guard.steps().stream().map(Task::name)).doesNotContain(TaskNames.COMPILE_TEST);
+        assertThat(step(guard, TaskNames.GUARD).requires()).doesNotContain(TaskNames.COMPILE_TEST);
+    }
+
+    /** {@code --skip-tests} skips the guard lanes with the tests; {@code --guard} brings them back. */
+    @Test
+    void a_skip_tests_plan_has_no_guard_lane(@TempDir Path dir) throws Exception {
+        scaffold(dir);
+        assertThat(plan(dir, true, false).steps().stream().map(Task::name))
+                .contains(TaskNames.COMPILE_JAVA)
+                .noneMatch(n -> n.startsWith(TaskNames.GUARD));
+        assertThat(BuildPlanner.fullPlan(inputs(dir, true, false, false, GUARD)).steps().stream()
+                        .map(Task::name))
+                .contains(TaskNames.GUARD, TaskNames.GUARD_MODEL);
     }
 
     /** {@code jk compile} runs no lane, so its plan has no guard step to hang an edge on. */
@@ -66,7 +81,14 @@ class GuardStepWaitsForCompileTestTest {
                 .isTrue();
     }
 
+    private static final TestSelection GUARD = TestSelection.of(List.of(), false, List.of(), List.of(), false, true);
+
     private static BuildPlanner.Inputs inputs(Path dir, boolean skipTests, boolean testOnly, boolean compileOnly) {
+        return inputs(dir, skipTests, testOnly, compileOnly, TestSelection.DEFAULT);
+    }
+
+    private static BuildPlanner.Inputs inputs(
+            Path dir, boolean skipTests, boolean testOnly, boolean compileOnly, TestSelection selection) {
         return new BuildPlanner.Inputs(
                 dir,
                 dir.resolve("cache"),
@@ -82,7 +104,7 @@ class GuardStepWaitsForCompileTestTest {
                 testOnly,
                 compileOnly,
                 Set.of(),
-                SessionContext.current());
+                SessionContext.current().withTestSelection(selection));
     }
 
     private static void scaffold(Path dir) throws Exception {

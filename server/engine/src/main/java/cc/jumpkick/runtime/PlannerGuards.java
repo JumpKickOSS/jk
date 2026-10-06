@@ -100,9 +100,12 @@ final class PlannerGuards {
 
     /**
      * One stat: does the root {@code jk-guards.toml} exist? Then the already-parsed manifest's
-     * {@code [guards]} table. Nothing else.
+     * {@code [guards]} table. Nothing else. {@code --skip-tests} without {@code --guard} runs no
+     * lane at all.
      */
     static GuardsPlan detect(BuildPlanner.Inputs in) {
+        if (lanesSkipped(in.skipTests() && !in.testOnly(), PlannerResources.runGuardScripts(in)))
+            return GuardsPlan.DISABLED;
         // The workspace root, not lockDir: member plans carry their own directory there.
         return detectAt(WorkspaceScan.findRoot(in.dir())
                 .orElse(in.dir())
@@ -169,6 +172,11 @@ final class PlannerGuards {
      */
     static boolean moduleLanesOnThisBuild(GuardsPlan g, boolean guard) {
         return g.enabled() && (g.config().onBuild() || guard);
+    }
+
+    /** {@code --skip-tests} skips the guard lanes too, unless the run asked for the guard. */
+    static boolean lanesSkipped(boolean skipTests, boolean guard) {
+        return skipTests && !guard;
     }
 
     static boolean guardRequested() {
