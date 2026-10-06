@@ -192,6 +192,21 @@ cache` over an unchanged tree; a run that replayed nothing reads `Tests passed f
 plain project's tail says the same of its one suite: `Passed 12 tests (served from cache)` is a
 replayed green marker, `Passed 12 tests` a run, and `No tests` a project with no test sources.
 
+## What a test printed
+
+Everything a test class prints while it runs, on stdout or stderr, passing or failing, lands in
+the `<system-out>` of that class's `target/surefire-reports/TEST-<class>.xml`
+(`target/failsafe-reports/` for the `integration` suite), for a `--class` or `--profile` run as
+for a full one. The test JVM merges stderr into stdout, so `<system-err>` stays empty. Each class
+keeps its first 262,144 characters of output, and a closing line counts the lines cut. The files are written
+when the module's run ends; a class re-run after its JVM ran out of heap reports the re-run. To
+read one benchmark's table:
+
+```bash
+jk test --profile bench --class com.example.FormatBenchTest
+cat target/surefire-reports/TEST-com.example.FormatBenchTest.xml
+```
+
 ## Debug a test JVM
 
 ```bash

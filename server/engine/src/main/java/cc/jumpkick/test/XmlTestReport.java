@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -118,6 +119,22 @@ public final class XmlTestReport {
             return;
         }
         sb.append(line).append('\n');
+    }
+
+    /**
+     * Drop what was recorded for {@code classNames}, every class when it is empty, so a run that
+     * repeats them reports only the repeat.
+     */
+    public synchronized void forget(Collection<String> classNames) {
+        if (classNames.isEmpty()) {
+            entries.clear();
+            output.clear();
+            truncatedLines.clear();
+            return;
+        }
+        entries.removeIf(e -> classNames.contains(e.className()));
+        output.keySet().removeAll(classNames);
+        truncatedLines.keySet().removeAll(classNames);
     }
 
     /** Lines {@link #recordOutput} could not keep, by class. */

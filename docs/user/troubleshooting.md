@@ -29,7 +29,8 @@ know the state-dir path.
 **Agents:** run `jk skill` once. Then MCP `run` (the reply is the verdict) or
 `jk --agent`. Do not scrape the TTY. Do not turn on `--verbose` as your primary API.
 
-JUnit XML for CI stays at `target/surefire-reports/` (`target/failsafe-reports/` for the integration suite). Failed-test stacks are in
+JUnit XML for CI stays at `target/surefire-reports/` (`target/failsafe-reports/` for the integration suite); each class's
+`<system-out>` there holds what it printed, passing or not ([Test](test.md#what-a-test-printed)). Failed-test stacks are in
 `jk-results.md` — there is no separate `test-results.md`.
 
 More on the report and the JSONL transcript: [Machine output](machine-output.md).
