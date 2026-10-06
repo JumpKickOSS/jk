@@ -78,7 +78,7 @@ class GuardSuiteForecastTextTest {
     }
 
     private static TaskForecast.Task lane(Path root, BuildLayout layout, ActionCache cache) {
-        return GuardKeys.forecastModuleLane(root, layout, cache, false).orElseThrow();
+        return GuardKeys.forecastModuleLane(root, layout, cache, false, false).orElseThrow();
     }
 
     private static void compile(Path src, Path out, String pkg, String simpleName, String source) throws Exception {
