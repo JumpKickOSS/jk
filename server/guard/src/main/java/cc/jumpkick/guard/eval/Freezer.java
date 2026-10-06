@@ -132,7 +132,7 @@ public final class Freezer {
             if (rec.fresh().isEmpty() && shrunk == null) continue;
             accepted += rec.fresh().size();
             String why = reason == null ? "" : reason;
-            current = rec.frozen(why);
+            current = rec.frozen(why, shrunk != null);
             if (shrunk != null) {
                 rebased++;
                 current = current.withScopeReason(slice, why);
