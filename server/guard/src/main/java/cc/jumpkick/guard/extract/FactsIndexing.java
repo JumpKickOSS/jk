@@ -21,6 +21,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Keeps one source set's facts index current against its classes directory.
@@ -54,8 +55,16 @@ public final class FactsIndexing {
         return buildDir.resolve("incremental").resolve(sourceSet + "-guard.idx");
     }
 
-    /** What {@link #ensure} decided. */
-    public record Ensured(Path index, String bodyDigest, int classes, Tier tier) {
+    /**
+     * What {@link #ensure} decided. {@code built} is the index this call just wrote, so the lane that
+     * runs next reads it from memory rather than decoding the file; {@code null} when nothing was built.
+     */
+    public record Ensured(
+            Path index,
+            String bodyDigest,
+            int classes,
+            Tier tier,
+            @Nullable FactsIndex built) {
         public enum Tier {
             /** Every stamp matched; nothing read. */
             FRESH,
@@ -72,7 +81,7 @@ public final class FactsIndexing {
      */
     public static Ensured ensure(Path classesDir, Path indexFile) throws IOException {
         if (!Files.isDirectory(classesDir)) {
-            return new Ensured(indexFile, "", 0, Ensured.Tier.ABSENT);
+            return new Ensured(indexFile, "", 0, Ensured.Tier.ABSENT, null);
         }
         ReentrantLock writer =
                 WRITERS.computeIfAbsent(indexFile.toAbsolutePath().normalize(), k -> new ReentrantLock());
@@ -88,16 +97,22 @@ public final class FactsIndexing {
         Map<String, String> current = stamps(classesDir);
         Optional<FactsFormat.Header> header = FactsFormat.readHeader(indexFile);
         if (header.isPresent() && header.get().stamps().equals(current)) {
-            return new Ensured(indexFile, header.get().bodyDigest(), current.size(), Ensured.Tier.FRESH);
+            return new Ensured(indexFile, header.get().bodyDigest(), current.size(), Ensured.Tier.FRESH, null);
         }
         // Every class is extracted again: in parallel that costs less than decoding the old index
         // to keep the unchanged ones.
         Map<String, ClassFacts> classes = new LinkedHashMap<>();
         for (ClassFacts facts : ParallelMap.map(List.copyOf(current.keySet()), rel -> extractOne(classesDir, rel)))
             classes.put(facts.name(), facts);
-        FactsFormat.Encoded encoded = FactsFormat.encode(new FactsIndex(classes, current, ""));
+        FactsIndex built = new FactsIndex(classes, current, "");
+        FactsFormat.Encoded encoded = FactsFormat.encode(built);
         AtomicWrites.replace(indexFile, encoded.bytes());
-        return new Ensured(indexFile, encoded.bodyDigest(), classes.size(), Ensured.Tier.BUILT);
+        return new Ensured(
+                indexFile,
+                encoded.bodyDigest(),
+                classes.size(),
+                Ensured.Tier.BUILT,
+                built.withStamps(current, encoded.bodyDigest()));
     }
 
     private static ClassFacts extractOne(Path classesDir, String rel) throws IOException {
@@ -134,6 +149,7 @@ public final class FactsIndexing {
     /** Load the class table; callers hold the {@link Ensured} so the file is known current. */
     public static FactsIndex load(Ensured ensured) throws IOException {
         if (ensured.tier() == Ensured.Tier.ABSENT) return FactsIndex.EMPTY;
+        if (ensured.built() != null) return ensured.built();
         return FactsFormat.read(ensured.index());
     }
 
