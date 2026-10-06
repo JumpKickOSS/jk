@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Network-free fixture test for publish-maven-repo.sh: the maven-metadata.xml merge and the
-# worker-POM check.
+# Network-free fixture test for publish-maven-repo.sh: the version filter, the maven-metadata.xml
+# merge and the worker-POM check.
 #
 # A store holding three artifacts is staged against a fixture repository served by a curl on PATH
 # that answers from a directory. The staged metadata must carry the union of the repository's
-# versions and the staged ones, name the merged maximum, leave alone an artifact the store does not
-# hold at JK_VERSION, treat a 404 as a new artifact, and refuse any other failure to read. A plugin
-# worker's POM must declare dependencies, and every first-party one it names must be staged.
+# versions and the staged ones, name the merged maximum, treat a 404 as a new artifact, and refuse
+# any other failure to read. Only JK_VERSION is staged: an older version in the store (a stub POM
+# an earlier jk wrote) stays out unless JK_MAVEN_STAGE_ALL asks for every version, and then an
+# artifact the store does not hold at JK_VERSION keeps the repository's metadata. A plugin worker's
+# POM must declare dependencies, and every first-party one it names must be staged.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -75,11 +77,13 @@ metadata() {
     echo '</versions></versioning></metadata>'
   } >"$dir/maven-metadata.xml"
 }
-# publish <stage dir>: a stage-only run against the fixture repository; its output is $WORK/out.log
+# publish <stage dir> [VAR=value...]: a stage-only run against the fixture repository; its output is $WORK/out.log
 publish() {
+  local stage="$1"
+  shift
   env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" \
     JK_VERSION="$VERSION" JK_STORE_DIR="$WORK/store" JK_MAVEN_BUCKET=fixture-bucket JK_MAVEN_PREFIX=repo \
-    JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR="$1" "$ROOT/scripts/publish-maven-repo.sh" >"$WORK/out.log" 2>&1
+    JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR="$stage" "$@" "$ROOT/scripts/publish-maven-repo.sh" >"$WORK/out.log" 2>&1
 }
 fail() {
   echo "test-publish-maven-repo: $1" >&2
@@ -91,7 +95,10 @@ element() {
 }
 
 artifact . jk-alpha "$VERSION"          # published at this version; the repository lists two others
-artifact . jk-beta 0.13.2               # held at an older version only: metadata untouched
+artifact . jk-beta 0.13.2               # held at an older version only: staged under STAGE_ALL alone
+# A worker stub an earlier jk wrote at an older version: it declares nothing, and a release of
+# $VERSION neither stages nor judges it.
+artifact . jk-kotlin-compiler 0.13.1 '<project/>'
 artifact guards spring "$VERSION"       # nested group, new to the repository (its read is a 404)
 # A rule pack whose name is a worker module's (plugins/android exists): a pack, in the guards
 # group, declares nothing, and the worker-POM check must not read it as the jk-android worker.
@@ -101,9 +108,9 @@ artifact guards android "$VERSION"
 # that a launch never fetches and the check therefore ignores.
 artifact . jk-image-builder "$VERSION" "$(worker_pom \
   '<dependency><groupId>com.google.cloud.tools</groupId><artifactId>jib-core</artifactId><version>0.28.2</version></dependency>' \
-  '<dependency><groupId>cc.jumpkick</groupId><artifactId>jk-plugin-sdk</artifactId><version>0.1.0</version></dependency>' \
+  "<dependency><groupId>cc.jumpkick</groupId><artifactId>jk-plugin-sdk</artifactId><version>$VERSION</version></dependency>" \
   '<dependency><groupId>cc.jumpkick</groupId><artifactId>jk-host</artifactId><version>9.9.9</version><scope>test</scope></dependency>')"
-artifact . jk-plugin-sdk 0.1.0          # the first-party rung the worker declares, staged
+artifact . jk-plugin-sdk "$VERSION"     # the first-party rung the worker declares, staged
 # A self-contained worker (plugins/test-runner): its closure is packed into the jar, so the POM
 # the build writes declares only provided- and test-scope dependencies — nothing a launch fetches,
 # and not a stub.
@@ -126,8 +133,8 @@ alpha="$STAGE/cc/jumpkick/jk-alpha/maven-metadata.xml"
 [[ "$(element latest "$alpha")" == "0.13.10" ]] || fail "jk-alpha latest is not the merged maximum: $(element latest "$alpha")"
 [[ "$(element release "$alpha")" == "0.13.10" ]] || fail "jk-alpha release is not the merged maximum: $(element release "$alpha")"
 
-[[ ! -e "$STAGE/cc/jumpkick/jk-beta/maven-metadata.xml" ]] || fail "jk-beta metadata was rewritten though the store lacks $VERSION"
-[[ -f "$STAGE/cc/jumpkick/jk-beta/0.13.2/jk-beta-0.13.2.jar" ]] || fail "jk-beta's jar was not staged"
+[[ ! -e "$STAGE/cc/jumpkick/jk-beta" ]] || fail "jk-beta was staged though the store holds it only at 0.13.2"
+[[ ! -e "$STAGE/cc/jumpkick/jk-kotlin-compiler" ]] || fail "a stale worker stub at 0.13.1 was staged"
 
 spring="$STAGE/cc/jumpkick/guards/spring/maven-metadata.xml"
 [[ -f "$spring" ]] || fail "guards/spring has no staged metadata"
@@ -138,6 +145,15 @@ spring="$STAGE/cc/jumpkick/guards/spring/maven-metadata.xml"
 grep -q "checked jk-image-builder:$VERSION (declares 2 dependencies)" "$WORK/out.log" || fail "the worker POM was not checked, or its test-scope dependency was counted"
 [[ -f "$STAGE/cc/jumpkick/jk-image-builder/$VERSION/jk-image-builder-$VERSION.pom" ]] || fail "the worker POM was not staged"
 grep -q "jk-alpha -> latest 0.13.10 (3 versions, merged)" "$WORK/out.log" || fail "log does not report the merge"
+
+# Every version, on request: the older jar is staged with the repository's metadata left alone, and
+# the stale stub is judged — and refused — like any staged worker POM.
+if publish "$WORK/stage-all" JK_MAVEN_STAGE_ALL=1; then fail "a stale worker stub was accepted under STAGE_ALL"; fi
+grep -q "jk-kotlin-compiler:0.13.1 declares no dependencies" "$WORK/out.log" || fail "the stale stub was not refused under STAGE_ALL"
+rm -r "$LOCAL/jk-kotlin-compiler"
+publish "$WORK/stage-all-ok" JK_MAVEN_STAGE_ALL=1 || fail "the STAGE_ALL run failed"
+[[ -f "$WORK/stage-all-ok/cc/jumpkick/jk-beta/0.13.2/jk-beta-0.13.2.jar" ]] || fail "jk-beta's jar was not staged under STAGE_ALL"
+[[ ! -e "$WORK/stage-all-ok/cc/jumpkick/jk-beta/maven-metadata.xml" ]] || fail "jk-beta metadata was rewritten though the store lacks $VERSION"
 grep -q "jk-beta unchanged" "$WORK/out.log" || fail "log does not report jk-beta as unchanged"
 grep -q "spring -> latest $VERSION (1 versions, new)" "$WORK/out.log" || fail "log does not report guards/spring as new"
 
@@ -154,6 +170,10 @@ echo 6 >"$REPO/cc/jumpkick/jk-alpha/maven-metadata.xml.curl-exit"
 if publish "$WORK/stage-curl"; then fail "a curl failure on the repository's metadata was accepted"; fi
 grep -q "cannot read $alpha_url (curl exit 6)" "$WORK/out.log" || fail "the curl failure was not reported with its URL"
 rm "$REPO/cc/jumpkick/jk-alpha/maven-metadata.xml.curl-exit"
+
+# A store with nothing at the release's version stages nothing and says how to stage the rest.
+if publish "$WORK/stage-none" JK_VERSION=9.9.9; then fail "a release with nothing at its version was accepted"; fi
+grep -q "no jars at 9.9.9" "$WORK/out.log" || fail "the empty release was not named"
 
 # A worker POM naming a first-party artifact the stage does not hold is refused: the published
 # worker would fetch that coordinate at launch and fail to start.

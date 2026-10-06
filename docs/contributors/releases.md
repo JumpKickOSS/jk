@@ -454,7 +454,9 @@ cut from the `jk install` pass, whose shelf the new engine packaged.) Assemble
 `target/release/<version>/` from the `target/dist` that pass leaves, so the released bytes are the
 installed ones; stage the first-party repository from the shelf afterwards (`JK_MAVEN_STAGE_ONLY=1
 JK_MAVEN_STAGE_DIR=target/release/repo scripts/publish-maven-repo.sh`) and upload it beside the
-version tree.
+version tree. The stage holds the version being released (`JK_VERSION`, by default the tree's)
+and nothing else, so the older versions a developer's shelf still holds never reach the bucket or
+its worker-POM check; `JK_MAVEN_STAGE_ALL=1` stages every version the shelf holds instead.
 
 ```bash
 # 1. After assemble-release-dir.sh / flatten-release.sh (or the merged workflow artifact):
