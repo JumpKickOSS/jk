@@ -45,6 +45,28 @@ class MetricsHarvestTest {
         assertThat(hm).doesNotContain("workspace.wall-ms");
     }
 
+    /** A module task's wall keeps its mean and count but writes no last copy; other rows keep all three. */
+    @Test
+    void a_module_task_row_has_no_last_copy(@TempDir Path root) throws Exception {
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        Files.writeString(run.metricsFile(), """
+                workspace.wall-ms = 1000
+                module.a.task.compile-java.wall-ms = 40
+                module.a.phase.compile.wall-ms = 50
+                """);
+        MetricsHarvest.get().configure(50, 90);
+        MetricsHarvest.get().runOnce(root);
+
+        String pm = Files.readString(run.projectHome().resolve(ProjectBuilds.PROJECT_METRICS));
+        String last = pm.substring(pm.indexOf("[last]"), pm.indexOf("[count]"));
+        assertThat(pm.substring(0, pm.indexOf("[last]"))).contains("module.a.task.compile-java.wall-ms = 40");
+        assertThat(last)
+                .contains("workspace.wall-ms = 1000")
+                .contains("module.a.phase.compile.wall-ms = 50")
+                .doesNotContain("module.a.task.");
+        assertThat(pm.substring(pm.indexOf("[count]"))).contains("module.a.task.compile-java.wall-ms = 1");
+    }
+
     /**
      * A wall measured while another run shared the machine is a contended sample. The row's mean,
      * last and count come from the runs that ran alone while there are any; a row only ever seen

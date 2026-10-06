@@ -874,8 +874,8 @@ class BuildJournalTest {
         Path home = ProjectBuilds.projectHome(dir, null, dir.resolve("wt").resolve("a"));
         String ledger = Files.readString(home.resolve(ProjectBuilds.PROJECT_METRICS));
         assertThat(ledger.lines().filter(l -> l.startsWith("module.server/io.task.compile-java.wall-ms")))
-                .as("one mean, one last, one count")
-                .hasSize(3);
+                .as("one mean, one count: a module task row keeps no last copy")
+                .hasSize(2);
         assertThat(ledger).contains("module.server/io.task.compile-java.wall-ms = 3");
     }
 
