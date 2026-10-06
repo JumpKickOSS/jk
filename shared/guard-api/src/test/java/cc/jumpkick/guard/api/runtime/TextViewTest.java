@@ -117,6 +117,21 @@ class TextViewTest {
         assertThat(t.literals("src/main/java/a/B.java")).containsExactly("lit");
     }
 
+    /** A file a shell has just created empty — a heredoc's target before its body lands — reads as no text. */
+    @Test
+    void an_empty_file_is_listed_and_reads_as_nothing() throws Exception {
+        write("src/main/java/a/Empty.java", "");
+        write("docs/empty.md", "");
+        TextView t = new TextView(root, List.of(Path.of("src"), Path.of("docs")));
+        assertThat(t.files("**")).contains("src/main/java/a/Empty.java", "docs/empty.md");
+        assertThat(t.files("docs/**/*.md")).contains("docs/empty.md");
+        for (String rel : List.of("src/main/java/a/Empty.java", "docs/empty.md")) {
+            assertThat(t.lines(rel)).isEmpty();
+            assertThat(t.literals(rel)).isEmpty();
+            for (Blank mode : Blank.values()) assertThat(t.blanked(rel, mode)).isEmpty();
+        }
+    }
+
     @Test
     void a_view_is_computed_once_per_mode_and_file() {
         TextView t = new TextView(root, List.of(Path.of("src")));
