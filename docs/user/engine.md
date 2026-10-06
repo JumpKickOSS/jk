@@ -391,10 +391,10 @@ with a planned heap of 256 MiB — learned after that, the same way as other pla
 so its lease is that heap plus the usual overhead instead of the unsized 512 MiB default.
 The lease is held while the process is alive and drops when it exits.
 
-`jk format` forks one worker, so it runs on every core, with a heap whose lease is at most a
-quarter of the worker budget (never cut below 1 GiB while the budget holds that). A lease
-the size of the whole budget would wait for every other fork on the engine to end, and
-every fork behind it would wait too.
+`jk format` forks one worker, so it runs on every core. Its heap is learned per project like
+the compilers' (below): the first run starts at the generous first heap, later runs at the
+peak it reached, and a worker that runs out of heap climbs the retry ladder. A re-run
+formats every file again but counts each file once.
 
 ### Compiler worker heap
 
@@ -422,12 +422,13 @@ re-runs. When the process
 exits, jk remembers the larger of the log's biggest heap occupancy and the process high-water
 RSS minus a non-heap allowance (a spike between collections is still counted). The key is the
 module coordinate, the task (`java-compile`, `java-test-compile`, `kotlin-compile`,
-`groovy-compile`, `test`, or `plugin`), and the JDK major the worker ran on. The record is
+`groovy-compile`, `test`, `format`, or `plugin`), and the JDK major the worker ran on; `jk
+format` keeps one row per project, not per module. The record is
 one file per project, `<state>/worker-heaps/<project-id>` (the same project id as the build
 history under `~/.jk/state`). It is not in the source tree. Delete that file to forget every
 peak and go back to the first heap.
 
-A compile or test worker jk has not seen before starts at a quarter of the worker budget, at
+A compile, test or format worker jk has not seen before starts at a quarter of the worker budget, at
 most 2 GiB, and never below the compiler estimate or the memory plan's share. `-Xmx` is what
 the ledger admits against, not what the worker occupies: planned JVMs give unused heap back,
 so a generous first heap costs parallelism on the first run, not RAM. The build-script host
@@ -446,8 +447,8 @@ the new lease waits in line like any other, and a rung the budget cannot grow en
 ladder. An item the kernel killed for memory — host or cgroup pressure, not its own heap — is
 run once more at the same heap once its lease can be taken again. An item killed at its own
 worker cap is not run again: its memory outside the heap outgrew three quarters of the
-budget, and neither the same heap nor a larger one changes that. The item is a compile, or
-a test class (pull mode) or the whole suite (one JVM). Only the last failure reaches you, and
+budget, and neither the same heap nor a larger one changes that. The item is a compile, a
+format run, or a test class (pull mode) or the whole suite (one JVM). Only the last failure reaches you, and
 it names every heap that ran out and how to raise it: `[jvm] args = ["-Xmx…"]` or `[test]
 jvm-args = ["-Xmx…"]`. A heap you pinned is never learned and never resized; that failure is
 reported immediately and names your setting.

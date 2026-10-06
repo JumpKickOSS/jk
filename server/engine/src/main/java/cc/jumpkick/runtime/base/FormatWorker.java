@@ -1,14 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.engine.plugin.HeapLadder;
+import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.HeapPlan;
+import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerFate;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
@@ -66,17 +77,60 @@ public final class FormatWorker {
     /** Files already clean by the mtime/size index — not sent to the worker. */
     static final BuildPlanKey<Integer> PRE_CLEAN = BuildPlanKey.scalar("format-preclean", Integer.class);
 
+    /** The learned-heap module name of a format run: one row per project, whatever it formats. */
+    static final String HEAP_MODULE = "format";
+
+    /** The learned-heap key a format run of {@code projectDir} records into. */
+    static HeapScope.Key heapKey(Path projectDir) {
+        return new HeapScope.Key(
+                projectDir.toAbsolutePath().normalize(),
+                HEAP_MODULE,
+                HeapScope.FORMAT,
+                Runtime.version().feature());
+    }
+
+    /**
+     * The heap a format fork starts at: this project's learned heap, else the first heap of a worker
+     * jk has not seen, never below the memory plan's share. {@code null} when the user pinned worker
+     * memory: their number is the heap, and it is neither learned nor retried.
+     */
+    static @Nullable Long startHeap(LearnedHeaps heaps, HeapScope.Key key) {
+        if (!JvmOptions.autoHeapEnabled()) return null;
+        HeapPlan.Plan plan = JvmOptions.processHeapPlan();
+        long planned = plan != null ? plan.xmxBytes() : LearnedHeaps.FLOOR_BYTES;
+        return heaps.choose(key.project(), key.module(), key.kind(), key.jdk(), planned);
+    }
+
+    /** The worker command line at a heap, or as planned when the heap is {@code null}. */
+    @FunctionalInterface
+    interface Launch {
+        List<String> command(@Nullable Long heapBytes) throws IOException;
+    }
+
+    /**
+     * {@code command} with its {@code -Xmx} set to {@code heapBytes}, recorded as jk's choice so the
+     * budget may lower it and its peak is learned; unchanged when {@code heapBytes} is {@code null}.
+     */
+    static List<String> atHeap(List<String> command, @Nullable Long heapBytes) {
+        if (heapBytes == null) return command;
+        List<String> sized = WorkerLeases.rewriteHeap(command, heapBytes);
+        JvmOptions.notePlannedCommand(sized);
+        return sized;
+    }
+
     /**
      * Fork the formatter worker, tally its per-file stream, publish the run's counts — and refuse to
      * let the step succeed unless the tally {@linkplain #reconcile reconciles} with {@code total}.
      *
      * <p>Every surface that says whether a format run worked reads {@code BuildPlanResult.success()}
      * — journal and dashboard via {@code FormatVerb}, terminal wedge via {@code FormatCommand}.
-     * Before this check the step could not fail at all, so a worker that died at file 500 of 2,063
-     * journaled as a successful, complete format with nothing changed and no errors, while the exit
-     * code the CLI returned one line later said 139. Two readers of one fact, disagreeing.
      *
-     * @param command the worker command line ({@code PluginLaunch.javaCommand})
+     * <p>A worker that runs out of its own heap is forked again up the {@link HeapLadder}; one the
+     * kernel killed for memory is forked once more at the same heap. A re-run reports every file
+     * again, and only the files no earlier attempt reported are counted. The peak each attempt
+     * reached is learned under {@code key}, so the next run starts at a heap that fits.
+     *
+     * @param heap the first heap, or {@code null} when the user pinned worker memory
      * @param preClean files the freshness index settled before the fork: part of {@code total}, so
      *     part of the sum
      * @param freshness index to record settled files in, or {@code null} when disabled; saved with
@@ -84,54 +138,154 @@ public final class FormatWorker {
      */
     static void runWorker(
             TaskContext ctx,
-            List<String> command,
+            Launch launch,
+            @Nullable Long heap,
+            HeapScope.Key key,
+            LearnedHeaps heaps,
             int preClean,
             int total,
             boolean check,
             @Nullable FormatFreshnessIndex freshness,
             FileObserver observer)
             throws IOException, InterruptedException {
-        AtomicInteger changed = new AtomicInteger();
-        AtomicInteger clean = new AtomicInteger();
-        AtomicInteger errors = new AtomicInteger();
-        AtomicInteger index = new AtomicInteger();
-        int exit = new PluginClient("##JKFMT:")
-                .on("file", json -> {
-                    String status = Jsonl.requiredStr(json, "status");
-                    String path = Jsonl.requiredStr(json, "path");
-                    if (SLOW.equals(status)) {
-                        // Live chatter about a file the run has not settled: it keeps its place in the
-                        // stream (the CLI names it) but touches no tally, no freshness record, and no
-                        // progress — its verdict is still to come.
-                        observer.onFile(path, status, Jsonl.str(json, "msg"), index.get(), total);
-                        return;
+        Tally tally = new Tally(ctx, total, check, freshness, observer);
+        Attempt last;
+        String exhausted = null;
+        if (heap == null) {
+            last = tally.attempt(launch.command(null));
+        } else {
+            last = scoped(key, () -> tally.attempt(launch.command(heap)));
+            WorkerFate.Cause cause = last.exit() == 0 || last.exit() == 1
+                    ? WorkerFate.Cause.OTHER
+                    : WorkerFate.classify(last.exit(), last.output());
+            if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
+                HeapNotes.note(HeapNotes.line(heap, heap, true));
+                last = scoped(key, () -> tally.attempt(launch.command(heap)));
+            } else if (cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
+                List<Long> ranOut = new ArrayList<>(List.of(heap));
+                while (true) {
+                    long failed = ranOut.getLast();
+                    heaps.note(key, failed);
+                    Long bigger = HeapLadder.next(ranOut);
+                    if (bigger == null) {
+                        exhausted = "format worker " + HeapLadder.ranOut(ranOut)
+                                + "; raise it with [jvm] args = [\"-Xmx...\"]";
+                        break;
                     }
-                    if ("changed".equals(status)) {
-                        changed.incrementAndGet();
-                    } else if ("error".equals(status)) {
-                        errors.incrementAndGet();
-                    } else {
-                        clean.incrementAndGet();
+                    HeapNotes.note(HeapNotes.line(bigger, failed, false));
+                    last = scoped(key, () -> tally.attempt(launch.command(bigger)));
+                    if (!WorkerFate.heapExhausted(last.exit(), last.output())) {
+                        heaps.good(key, bigger);
+                        break;
                     }
-                    if (freshness != null && recordsFreshness(status, check)) {
-                        freshness.record(Path.of(path));
-                    }
-                    observer.onFile(path, status, Jsonl.str(json, "msg"), index.incrementAndGet(), total);
-                    ctx.progress(1);
-                })
-                .passthrough(ctx::output)
-                .run(command);
+                    ranOut.add(bigger);
+                }
+            }
+        }
         if (freshness != null) freshness.save();
-        ctx.put(CHANGED, changed.get());
-        ctx.put(CLEAN, preClean + clean.get());
-        ctx.put(ERRORS, errors.get());
-        ctx.put(WORKER_EXIT, exit);
-        int reported = preClean + changed.get() + clean.get() + errors.get();
-        String incomplete = reconcile(reported, total, exit);
+        ctx.put(CHANGED, tally.changed.get());
+        ctx.put(CLEAN, preClean + tally.clean.get());
+        ctx.put(ERRORS, tally.errors.get());
+        ctx.put(WORKER_EXIT, last.exit());
+        int reported = preClean + tally.changed.get() + tally.clean.get() + tally.errors.get();
+        String incomplete = exhausted != null ? exhausted : reconcile(reported, total, last.exit());
         if (incomplete != null) {
             ctx.error("format", incomplete);
             throw new IllegalStateException(incomplete);
         }
+    }
+
+    /** One fork's exit and the tail of what it printed besides the protocol. */
+    private record Attempt(int exit, String output) {}
+
+    /** The output kept per attempt: enough for the JVM's last words, not a whole run's chatter. */
+    static final int OUTPUT_TAIL_CHARS = 16 * 1024;
+
+    /**
+     * The run's tallies across attempts. A path is counted the first time any attempt reports it,
+     * so a re-run after a heap exhaustion does not count a file twice.
+     */
+    private static final class Tally {
+        final TaskContext ctx;
+        final int total;
+        final boolean check;
+        final @Nullable FormatFreshnessIndex freshness;
+        final FileObserver observer;
+        final AtomicInteger changed = new AtomicInteger();
+        final AtomicInteger clean = new AtomicInteger();
+        final AtomicInteger errors = new AtomicInteger();
+        final AtomicInteger index = new AtomicInteger();
+        final Set<String> reported = ConcurrentHashMap.newKeySet();
+
+        Tally(
+                TaskContext ctx,
+                int total,
+                boolean check,
+                @Nullable FormatFreshnessIndex freshness,
+                FileObserver observer) {
+            this.ctx = ctx;
+            this.total = total;
+            this.check = check;
+            this.freshness = freshness;
+            this.observer = observer;
+        }
+
+        Attempt attempt(List<String> command) throws IOException, InterruptedException {
+            StringBuilder tail = new StringBuilder();
+            int exit = new PluginClient("##JKFMT:")
+                    .on("file", this::file)
+                    .passthrough(line -> {
+                        ctx.output(line);
+                        synchronized (tail) {
+                            tail.append(line).append('\n');
+                            if (tail.length() > OUTPUT_TAIL_CHARS) tail.delete(0, tail.length() - OUTPUT_TAIL_CHARS);
+                        }
+                    })
+                    .run(command);
+            synchronized (tail) {
+                return new Attempt(exit, tail.toString());
+            }
+        }
+
+        private void file(String json) {
+            String status = Jsonl.requiredStr(json, "status");
+            String path = Jsonl.requiredStr(json, "path");
+            if (SLOW.equals(status)) {
+                // Live chatter about a file the run has not settled: it keeps its place in the
+                // stream (the CLI names it) but touches no tally, no freshness record, and no
+                // progress — its verdict is still to come.
+                observer.onFile(path, status, Jsonl.str(json, "msg"), index.get(), total);
+                return;
+            }
+            if (!reported.add(path)) return;
+            if ("changed".equals(status)) {
+                changed.incrementAndGet();
+            } else if ("error".equals(status)) {
+                errors.incrementAndGet();
+            } else {
+                clean.incrementAndGet();
+            }
+            if (freshness != null && recordsFreshness(status, check)) {
+                freshness.record(Path.of(path));
+            }
+            observer.onFile(path, status, Jsonl.str(json, "msg"), index.incrementAndGet(), total);
+            ctx.progress(1);
+        }
+    }
+
+    private static Attempt scoped(HeapScope.Key key, AttemptBody body) throws IOException, InterruptedException {
+        try {
+            return HeapScope.call(key, body::run);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
+    }
+
+    @FunctionalInterface
+    private interface AttemptBody {
+        Attempt run() throws Exception;
     }
 
     /**

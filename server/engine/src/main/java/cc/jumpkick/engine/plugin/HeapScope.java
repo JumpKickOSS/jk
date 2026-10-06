@@ -30,6 +30,9 @@ public final class HeapScope {
     /** A GraalVM native-image build; its heap is the builder's. */
     public static final String NATIVE_IMAGE = TaskNames.NATIVE_IMAGE;
 
+    /** The {@code jk format} worker. One key per project, not per module. */
+    public static final String FORMAT = "format";
+
     /** Any other plugin worker. */
     public static final String PLUGIN = "plugin";
 
