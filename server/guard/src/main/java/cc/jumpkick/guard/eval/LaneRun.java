@@ -160,18 +160,24 @@ public final class LaneRun {
     private static Map<String, Evaluation> evaluateAll(List<Rule> rules, EvalContext ctx) {
         Map<String, Evaluation> out = new LinkedHashMap<>();
         Map<Kind, List<Rule>> batches = new EnumMap<>(Kind.class);
+        List<Rule> forbids = new ArrayList<>();
         for (Rule rule : rules) {
             Evaluator e = Evaluators.forKind(rule.kind());
             if (e instanceof BatchEvaluator) {
                 batches.computeIfAbsent(rule.kind(), k -> new ArrayList<>()).add(rule);
                 continue;
             }
-            try {
-                out.put(rule.id(), e.evaluate(rule, ctx));
-            } catch (Throwable t) {
-                out.put(rule.id(), failed(t));
+            if (rule.kind() == Kind.FORBID) {
+                forbids.add(rule);
+                continue;
             }
+            out.put(rule.id(), evaluateOne(e, rule, ctx));
         }
+        // Forbid rules only read the facts and the shared hierarchy, so they run side by side.
+        Evaluator forbid = Evaluators.forKind(Kind.FORBID);
+        List<Evaluation> judged =
+                forbids.parallelStream().map(r -> evaluateOne(forbid, r, ctx)).toList();
+        for (int i = 0; i < forbids.size(); i++) out.put(forbids.get(i).id(), judged.get(i));
         for (var e : batches.entrySet()) {
             try {
                 out.putAll(((BatchEvaluator) Evaluators.forKind(e.getKey())).evaluateAll(e.getValue(), ctx));
@@ -180,6 +186,14 @@ public final class LaneRun {
             }
         }
         return out;
+    }
+
+    private static Evaluation evaluateOne(Evaluator e, Rule rule, EvalContext ctx) {
+        try {
+            return e.evaluate(rule, ctx);
+        } catch (Throwable t) {
+            return failed(t);
+        }
     }
 
     private static Evaluation failed(Throwable t) {
