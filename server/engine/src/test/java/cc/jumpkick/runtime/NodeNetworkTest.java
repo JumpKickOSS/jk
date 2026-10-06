@@ -5,19 +5,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.DownloadOrigin;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.node.NodeSources;
 import cc.jumpkick.node.PackageManager;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /** What a node step's package manager is handed: a per-run user config and the proxy variables. */
@@ -32,7 +33,6 @@ class NodeNetworkTest {
     Path dir;
 
     @Test
-    @DisabledOnOs(OS.WINDOWS)
     void the_registry_scopes_and_tokens_go_into_an_owner_only_user_config_after_the_user_s_own() throws Exception {
         Path userHome = Files.createDirectories(dir.resolve("home"));
         Files.writeString(userHome.resolve(".npmrc"), "fund=false");
@@ -57,8 +57,7 @@ class NodeNetworkTest {
                         @acme:registry=https://acme.corp/npm-acme/
                         //acme.corp/npm-acme/:_auth=dTpw
                         """);
-        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(file)))
-                .isEqualTo("rw-------");
+        assertOwnerOnly(file);
         assertThat(env)
                 .containsEntry("YARN_NPM_REGISTRY_SERVER", "https://nexus.corp/npm")
                 .containsEntry("YARN_NPM_AUTH_TOKEN", "reg-token")
@@ -69,7 +68,6 @@ class NodeNetworkTest {
     }
 
     @Test
-    @DisabledOnOs(OS.WINDOWS)
     void bun_gets_the_registry_scopes_and_credentials_as_an_owner_only_global_bunfig() throws Exception {
         NodeNetwork.Sources sources = new NodeNetwork.Sources(
                 REGISTRY,
@@ -94,8 +92,7 @@ class NodeNetworkTest {
                         [install.scopes]
                         "@acme" = { url = "https://acme.corp/npm-acme/", username = "u", password = "p" }
                         """);
-        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(bunfig)))
-                .isEqualTo("rw-------");
+        assertOwnerOnly(bunfig);
 
         NodeNetwork.discard(env);
         assertThat(home).doesNotExist();
@@ -159,7 +156,6 @@ class NodeNetworkTest {
     }
 
     @Test
-    @DisabledOnOs(OS.WINDOWS)
     void berry_gets_its_scopes_from_a_run_home_that_links_the_real_one() throws Exception {
         Path userHome = Files.createDirectories(dir.resolve("real-home"));
         Files.createDirectories(userHome.resolve(".ssh"));
@@ -178,14 +174,14 @@ class NodeNetworkTest {
 
         Path home = Path.of(env.get("HOME"));
         assertThat(home.getFileName().toString()).startsWith(NodeNetwork.YARN_HOME_PREFIX);
-        assertThat(Files.isSymbolicLink(home.resolve(".ssh"))).isTrue();
+        if (!Os.isWindows())
+            assertThat(Files.isSymbolicLink(home.resolve(".ssh"))).isTrue();
         assertThat(Files.readString(home.resolve(".yarnrc.yml")))
                 .startsWith("enableTelemetry: false\n")
                 .contains("npmScopes:\n  acme:\n    npmRegistryServer: \""
                         + ACME.url().toString().replaceAll("/$", "") + "\"")
                 .contains("npmAuthToken: \"acme-token\"");
-        assertThat(Files.getPosixFilePermissions(home.resolve(".yarnrc.yml")).toString())
-                .isEqualTo("[OWNER_READ, OWNER_WRITE]");
+        assertOwnerOnly(home.resolve(".yarnrc.yml"));
         NodeNetwork.discard(env);
         assertThat(home).doesNotExist();
         assertThat(userHome.resolve(".ssh")).isDirectory();
@@ -204,5 +200,12 @@ class NodeNetworkTest {
                 .doesNotContain("https://jk")
                 .contains("npmScopes:\n  other:\n    npmRegistryServer: \"https://other\"\n")
                 .contains("nodeLinker: pnp");
+    }
+
+    /** {@code 0600} where the filesystem has POSIX modes; Windows has none to check. */
+    private static void assertOwnerOnly(Path file) throws IOException {
+        if (Files.getFileAttributeView(file, PosixFileAttributeView.class) == null) return;
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(file)))
+                .isEqualTo("rw-------");
     }
 }

@@ -32,8 +32,6 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.parallel.Isolated;
 
@@ -44,7 +42,6 @@ import org.junit.jupiter.api.parallel.Isolated;
  */
 @Tag("integration")
 @Isolated
-@DisabledOnOs(OS.WINDOWS)
 class NodeUnlockedNpxTest {
 
     private static final String TOKEN = "npx-registry-token";

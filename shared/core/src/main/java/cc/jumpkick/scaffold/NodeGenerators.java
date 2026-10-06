@@ -99,10 +99,18 @@ public final class NodeGenerators {
                             "--install",
                             "--no-git",
                             "--yes")),
+            // Its own install spawns `npm` without a shell, which Windows cannot run; jk installs after it.
             new Framework(
                     "react-router",
                     Shape.SERVER,
-                    List.of("npx", "--yes", "create-react-router@latest", DIR, "--yes", "--no-git-init", "--install")),
+                    List.of(
+                            "npx",
+                            "--yes",
+                            "create-react-router@latest",
+                            DIR,
+                            "--yes",
+                            "--no-git-init",
+                            "--no-install")),
             new Framework(
                     "tanstack-start",
                     Shape.SERVER,
