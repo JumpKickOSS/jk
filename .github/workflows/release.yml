@@ -124,6 +124,11 @@ jobs:
           # builds the dist. The engine jar embeds an SBOM naming its packager, and the three
           # lanes' jars must be byte-identical for the flatten.
           bash scripts/ci-takeover.sh --install-only
+          packager="$(jk --version --no-ansi | head -1)"
+          if [[ "$packager" != *" $JK_VERSION"* ]]; then
+            echo "::error::the dist must be built by jk $JK_VERSION, the tree's own; jk on PATH is: $packager"
+            exit 1
+          fi
           jk build --skip-tests --no-ansi
           ls -la target/dist target/dist/lib
 
