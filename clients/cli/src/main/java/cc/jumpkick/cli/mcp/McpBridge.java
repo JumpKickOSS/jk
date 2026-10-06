@@ -15,8 +15,17 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -24,9 +33,17 @@ import org.jspecify.annotations.Nullable;
  * MCP over stdio for one project: each newline-delimited JSON-RPC message from the client is
  * POSTed to the engine's {@code /mcp} with the {@code Jk-Project} header, and each reply is
  * written back as one line. The header pins the connection, so the tools take no {@code dir}.
- * While a {@code tools/call} that carries {@code _meta.progressToken} is outstanding, {@link
- * McpProgress} writes {@code notifications/progress} lines for it; every stdout line goes through
- * one lock, so a notification never interleaves with a reply.
+ *
+ * <p>Requests run concurrently: a parked {@code run} does not hold up a {@code ping} or a second
+ * call, and each reply is written when it arrives. {@code initialize} alone is answered before the
+ * next line is read, so every later request carries the session it opened. Every stdout line goes
+ * through one lock, so lines never interleave.
+ *
+ * <p>Every outstanding {@code tools/call} carries a progress token, the client's or one the bridge
+ * adds, and the engine binds the job a call starts to it. A {@code notifications/cancelled} naming
+ * an outstanding call is forwarded with that token, so the engine cancels the call's job and the
+ * parked call answers with its verdict. While a call that carries the client's own token is
+ * outstanding, {@link McpProgress} writes {@code notifications/progress} lines for it.
  */
 public final class McpBridge {
 
@@ -49,13 +66,24 @@ public final class McpBridge {
     /** The shortest gap between two notifications, and how long a call runs before it is followed. */
     private static final Duration GAP = Duration.ofSeconds(1);
 
+    /** Requests in flight at once; a line past this waits for one to answer. */
+    static final int MAX_IN_FLIGHT = 32;
+
+    /** Prefix of a token the bridge adds; unique per bridge, since the engine's token table is shared. */
+    private final String tokenPrefix = "jk-mcp-" + UUID.randomUUID() + "-";
+
+    private final AtomicLong tokens = new AtomicLong();
+
+    /** Outstanding {@code tools/call}s by request id ({@link #idKey}), each with its progress token. */
+    private final Map<String, String> outstanding = new ConcurrentHashMap<>();
+
     private final Endpoints endpoints;
     private final @Nullable String project;
     private final HttpClient http;
     private final Duration heartbeat;
     private final Duration gap;
     private volatile @Nullable Endpoint endpoint;
-    private @Nullable String session;
+    private volatile @Nullable String session;
 
     public McpBridge(Endpoints endpoints, @Nullable String project) {
         this(endpoints, project, HEARTBEAT, GAP);
@@ -73,7 +101,7 @@ public final class McpBridge {
                 .build();
     }
 
-    /** Serve until the client closes stdin. */
+    /** Serve until the client closes stdin; returns once every request in flight has answered. */
     public void serve(InputStream in, PrintStream out) throws IOException {
         Consumer<String> lines = line -> {
             synchronized (out) {
@@ -82,21 +110,136 @@ public final class McpBridge {
                 out.flush();
             }
         };
+        Semaphore room = new Semaphore(MAX_IN_FLIGHT);
         BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
-        String line;
-        while ((line = reader.readLine()) != null) {
-            if (line.isBlank()) continue;
-            String reply = call(line, lines);
-            if (!reply.isEmpty()) lines.accept(reply);
+        try (ExecutorService calls = Executors.newVirtualThreadPerTaskExecutor()) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank()) continue;
+                Message m = Message.of(line);
+                if (m.method().equals("initialize")) {
+                    write(lines, forward(line));
+                    continue;
+                }
+                if (m.method().equals("notifications/cancelled")) {
+                    write(lines, forward(cancellation(m, line)));
+                    continue;
+                }
+                room.acquireUninterruptibly();
+                // Recorded here, on the reading thread, so a cancel on the next line finds the call.
+                Call call = Call.of(this, m, line);
+                calls.execute(() -> {
+                    try {
+                        write(lines, call.send(this, lines));
+                    } finally {
+                        room.release();
+                    }
+                });
+            }
         }
     }
 
-    /** {@link #forward}, followed for progress when the message is a {@code tools/call} with a token. */
-    private String call(String message, Consumer<String> lines) {
-        Object token = McpProgress.tokenOf(message);
-        if (token == null) return forward(message);
-        try (McpProgress ignored = McpProgress.start(token, this::events, lines, heartbeat, gap)) {
-            return forward(message);
+    private static void write(Consumer<String> lines, String reply) {
+        if (!reply.isEmpty()) lines.accept(reply);
+    }
+
+    /**
+     * One request on its way: the message as sent and, for a {@code tools/call}, the key it is
+     * outstanding under and the client's own progress token, when it sent one.
+     */
+    private record Call(
+            String sent, @Nullable String key, @Nullable Object clientToken) {
+
+        /** {@code line} ready to send; a {@code tools/call} gets a progress token and is recorded as outstanding. */
+        static Call of(McpBridge bridge, Message m, String line) {
+            Object id = m.id();
+            if (!m.method().equals("tools/call") || id == null) return new Call(line, null, null);
+            Object clientToken = McpProgress.tokenOf(line);
+            String token = clientToken != null
+                    ? String.valueOf(clientToken)
+                    : bridge.tokenPrefix + bridge.tokens.incrementAndGet();
+            String key = idKey(id);
+            bridge.outstanding.put(key, token);
+            return new Call(clientToken != null ? line : withProgressToken(m.json(), token), key, clientToken);
+        }
+
+        /** {@link #forward}, followed for progress when the client sent the token; no longer outstanding after. */
+        String send(McpBridge bridge, Consumer<String> lines) {
+            try {
+                if (clientToken == null) return bridge.forward(sent);
+                try (McpProgress ignored =
+                        McpProgress.start(clientToken, bridge::events, lines, bridge.heartbeat, bridge.gap)) {
+                    return bridge.forward(sent);
+                }
+            } finally {
+                if (key != null) bridge.outstanding.remove(key);
+            }
+        }
+    }
+
+    /**
+     * A {@code notifications/cancelled} as the engine needs it: when it names an outstanding call,
+     * with that call's progress token in {@code params._meta}; otherwise as the client sent it.
+     */
+    String cancellation(Message m, String message) {
+        if (!(m.json().get("params") instanceof Map<?, ?> params)) return message;
+        Object requestId = params.get("requestId");
+        String token = requestId == null ? null : outstanding.get(idKey(requestId));
+        return token == null ? message : withProgressToken(m.json(), token);
+    }
+
+    /** {@code json} with {@code params._meta.progressToken} set; integral numbers written whole. */
+    @SuppressWarnings("unchecked")
+    static String withProgressToken(Map<String, Object> json, String token) {
+        Map<String, Object> copy = (Map<String, Object>) Objects.requireNonNull(whole(json));
+        Map<String, Object> params =
+                copy.get("params") instanceof Map<?, ?> p ? (Map<String, Object>) p : new LinkedHashMap<>();
+        Map<String, Object> meta =
+                params.get("_meta") instanceof Map<?, ?> mm ? (Map<String, Object>) mm : new LinkedHashMap<>();
+        meta.put("progressToken", token);
+        params.put("_meta", meta);
+        copy.put("params", params);
+        return MiniJson.write(copy);
+    }
+
+    /**
+     * A mutable deep copy with every integral number as a {@code long}: the parser reads numbers as
+     * doubles, and an id or a count goes back as the client wrote it.
+     */
+    private static @Nullable Object whole(@Nullable Object value) {
+        if (value instanceof Map<?, ?> m) {
+            Map<String, @Nullable Object> out = new LinkedHashMap<>();
+            for (var e : m.entrySet()) out.put(String.valueOf(e.getKey()), whole(e.getValue()));
+            return out;
+        }
+        if (value instanceof List<?> l) {
+            List<@Nullable Object> out = new ArrayList<>();
+            for (Object o : l) out.add(whole(o));
+            return out;
+        }
+        return wholeId(value);
+    }
+
+    /** A request id as a map key: {@code 5} and {@code 5.0} are one id, and a string is never a number. */
+    static String idKey(Object id) {
+        Object whole = wholeId(id);
+        return (whole instanceof String ? "s:" : "n:") + whole;
+    }
+
+    /** One line from the client: its method ({@code ""} for a reply or garbage), its id, and its parsed form. */
+    record Message(String method, @Nullable Object id, Map<String, Object> json) {
+        @SuppressWarnings("unchecked")
+        static Message of(String line) {
+            try {
+                if (MiniJson.parse(line) instanceof Map<?, ?> m) {
+                    Object method = m.get("method");
+                    return new Message(
+                            method == null ? "" : String.valueOf(method), m.get("id"), (Map<String, Object>) m);
+                }
+            } catch (RuntimeException e) {
+                // Not JSON: the engine answers the parse error.
+            }
+            return new Message("", null, Map.of());
         }
     }
 
