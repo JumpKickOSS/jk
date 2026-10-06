@@ -520,4 +520,13 @@ seq 1 "$((installer_size - 2))" |
   xargs -P "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" -n 64 \
     bash -c 'for n; do check_truncated_prefix "$n"; done' _
 
+# A release run signs only with the key the installers trust: the test key is not it.
+if JK_RELEASE_REQUIRE_TRUSTED_KEY=1 "$ROOT/scripts/sign-release.sh" "$WORK/secret-form-sums" "$WORK/test-key.pem" \
+  >/dev/null 2>"$WORK/untrusted.err"; then
+  echo "a release run signed with a key the installers do not trust" >&2
+  exit 1
+fi
+grep -q "not the release key the installers trust" "$WORK/untrusted.err" \
+  || { echo "the untrusted-key refusal does not say why" >&2; exit 1; }
+
 echo "Shell installer verification fixtures passed."
