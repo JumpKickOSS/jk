@@ -392,10 +392,7 @@ public final class LangCompile {
 
     /** Any {@code .class} anywhere under {@code dir}? */
     private static boolean hasClasses(Path dir) throws IOException {
-        if (!Files.isDirectory(dir)) return false;
-        try (var walk = Files.walk(dir)) {
-            return walk.anyMatch(f -> f.toString().endsWith(".class"));
-        }
+        return PathUtil.anyRegularFile(dir, d -> false, f -> f.toString().endsWith(".class"));
     }
 
     /**
