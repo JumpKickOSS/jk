@@ -142,7 +142,7 @@ public final class ImportVerb implements HostedVerb {
                         Path.of(body.out()),
                         baseDir,
                         Path.of(body.tmpDir()),
-                        body.force(),
+                        body.overwrite(),
                         body.dryRun(),
                         body.report() != null ? Path.of(body.report()) : null,
                         lockDir -> SessionContext.where(session, () -> ImportPinRaises.apply(lockDir, cache)),

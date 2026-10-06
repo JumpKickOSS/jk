@@ -39,13 +39,13 @@ public final class ExportBomCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
-        boolean force = in.isSet("overwrite");
+        boolean overwrite = in.isSet("overwrite");
         Map<String, String> params = new LinkedHashMap<>();
         in.value("scope").ifPresent(s -> params.put("scope", s));
         in.value("out").ifPresent(o -> params.put("out", o));
         GeneratedFiles files =
                 ExportSupport.generate(global.workingDir(), "export-bom", params, "jk export bom", global);
         if (files == null) return Exit.NO_INPUT;
-        return ExportSupport.writeAll(files, force, "jk export bom");
+        return ExportSupport.writeAll(files, overwrite, "jk export bom");
     }
 }

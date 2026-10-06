@@ -11,7 +11,7 @@ public record ImportRequest(
         @Nullable String out,
         @Nullable String baseDir,
         @Nullable String tmpDir,
-        boolean force,
+        boolean overwrite,
         boolean dryRun,
         @Nullable String report,
         @Nullable String cache,
@@ -23,7 +23,7 @@ public record ImportRequest(
                 .string("out", out)
                 .string("baseDir", baseDir)
                 .string("tmpDir", tmpDir)
-                .bool("force", force)
+                .bool("overwrite", overwrite)
                 .bool("dryRun", dryRun)
                 .string("report", report)
                 .string("cache", cache)
@@ -37,7 +37,7 @@ public record ImportRequest(
                 Jsonl.str(json, "out"),
                 Jsonl.str(json, "baseDir"),
                 Jsonl.str(json, "tmpDir"),
-                Jsonl.bool(json, "force", false),
+                Jsonl.bool(json, "overwrite", false),
                 Jsonl.bool(json, "dryRun", false),
                 Jsonl.str(json, "report"),
                 Jsonl.str(json, "cache"),

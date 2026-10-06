@@ -72,7 +72,7 @@ public final class ImportCommand implements CliCommand {
     public int run(Invocation in) throws IOException, InterruptedException {
         Path source =
                 in.positionals().isEmpty() ? null : Path.of(in.positionals().get(0));
-        boolean force = in.isSet("overwrite");
+        boolean overwrite = in.isSet("overwrite");
         boolean dryRun = in.isSet("dry-run");
         GlobalOptions global = GlobalOptions.from(in);
         Path baseDir = global.workingDir();
@@ -110,7 +110,7 @@ public final class ImportCommand implements CliCommand {
 
         Path projectDir = Objects.requireNonNull(source.toAbsolutePath().getParent(), "project dir");
         Path target = out != null ? out : projectDir.resolve(ManifestPaths.MANIFEST);
-        if (Files.exists(target) && !force && !dryRun) {
+        if (Files.exists(target) && !overwrite && !dryRun) {
             CommandWedge.printFail(
                     "Import", "refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (pass --overwrite).");
             return Exit.CANT_CREATE;
@@ -140,7 +140,7 @@ public final class ImportCommand implements CliCommand {
                             target.toAbsolutePath(),
                             projectDir,
                             JkDirs.tmp(),
-                            force,
+                            overwrite,
                             dryRun,
                             reportPath,
                             cache,

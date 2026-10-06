@@ -240,7 +240,7 @@ final class EngineHosted {
                                 req.out().toString(),
                                 Objects.toString(req.baseDir(), null),
                                 req.tmpDir().toString(),
-                                req.force(),
+                                req.overwrite(),
                                 req.dryRun(),
                                 req.report() != null ? req.report().toString() : null,
                                 req.cache().toString(),

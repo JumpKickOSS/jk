@@ -49,7 +49,7 @@ public final class ProjectImport {
      * {@code jk.toml} files. {@code poms} resolves the parents and BOMs a POM inherits; {@code
      * gradle} reads a Gradle build; {@code progress} hears each stage of a Gradle read. {@code exit}
      * 0 success, {@link Exit#USAGE} a missing argument or an unrecognised source, {@link
-     * Exit#CANT_CREATE} when any manifest the import would write is already there and {@code force}
+     * Exit#CANT_CREATE} when any manifest the import would write is already there and {@code overwrite}
      * is off — nothing is written then, the root included, so the tree is never half converted — 1
      * IO error.
      */
@@ -60,7 +60,7 @@ public final class ProjectImport {
             Path out,
             @Nullable Path baseDir,
             @Nullable Path tmpDir,
-            boolean force,
+            boolean overwrite,
             boolean dryRun,
             @Nullable Path report,
             Consumer<String> progress,
@@ -102,7 +102,7 @@ public final class ProjectImport {
             for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
                 manifests.put(effectiveBaseDir.resolve(e.getKey()).resolve(ManifestPaths.MANIFEST), e.getValue());
             }
-            if (!force && !dryRun) {
+            if (!overwrite && !dryRun) {
                 String refusal = overwriteRefusal(manifests.keySet(), effectiveBaseDir);
                 if (refusal != null) return new Outcome(Exit.CANT_CREATE, 0, refusal, List.of());
             }
