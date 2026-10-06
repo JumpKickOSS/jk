@@ -300,7 +300,7 @@ jobs:
       - name: Upload merged release tree (artifact)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-${{ env.JK_VERSION }}-merged
+          name: merged-release-${{ env.JK_VERSION }}
           path: out/
 
       # Everything below publishes. A dispatch is the dry run and ends here, with the signed tree
