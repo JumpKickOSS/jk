@@ -260,7 +260,10 @@ sandbox's store from its own (`TestStoreSeed`): the JUnit Platform trees hard-li
 `repos/central`, and for each artifact a version list naming exactly the versions whose POM came
 along, under the key the metadata cache reads for the Central URL. A cold sandbox therefore locks
 its test roots without Central, and a Central that throttles this host cannot turn the tier red; a
-real index the sandbox fetched itself is left in place. Only those trees: everything else a
+real index the sandbox fetched itself is left in place. A store filled from a lock holds the jars
+but not their POMs (a fresh CI runner's, a new machine's), so before its first test launch the
+engine locks a throwaway project once when its store has no launcher or Jupiter POM, which puts the
+test roots' closure into its own store with the network it has. Only those trees: everything else a
 fixture needs is exact-pinned and fetched once into the warm sandbox, and a whole-store link would
 make every sandbox weigh the whole store to the slot reaper's byte cap.
 
