@@ -45,4 +45,15 @@ class GuardCommandVerdictTest {
                 .isEmpty();
         assertThat(GuardCommand.verdict(List.of("## Guards", "", "## Steps"))).isEmpty();
     }
+
+    @Test
+    void a_green_run_with_no_guard_section_says_there_are_no_rules() {
+        List<String> plain = List.of("# app", "", "## Steps", "| step |");
+        assertThat(GuardCommand.terminalLine(plain, 0)).hasValue("Guards: no rules");
+        assertThat(GuardCommand.terminalLine(List.of(), 0)).hasValue("Guards: no rules");
+        assertThat(GuardCommand.terminalLine(plain, 1)).isEmpty();
+        assertThat(GuardCommand.terminalLine(List.of("## Guards", "", "Guards: clean · 1 lane"), 0)
+                        .map(TestAnsi::strip))
+                .hasValue("Guards: clean · 1 lane");
+    }
 }
