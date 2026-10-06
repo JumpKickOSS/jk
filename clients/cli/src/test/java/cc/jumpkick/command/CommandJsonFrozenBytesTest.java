@@ -142,7 +142,7 @@ class CommandJsonFrozenBytesTest {
         var noSettings = new MavenSettingsRows.Rows(List.of(), List.of(), List.of(), List.of(), null);
         String emptySettings = "\"settings\":{\"files\":[],\"mirrors\":[],\"proxies\":[],\"repositories\":[]}";
         assertThat(DoctorCommand.reportJson(
-                        ok, warn, ok, fail, ok, ok, warn, 3, 1, 0, 0, 2, 0, null, noWorkers, noRepos, noSettings))
+                        ok, warn, ok, fail, ok, ok, warn, fail, 3, 1, 0, 0, 2, 0, null, noWorkers, noRepos, noSettings))
                 .isEqualTo("{\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
@@ -150,10 +150,28 @@ class CommandJsonFrozenBytesTest {
                         + "\"lock\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"shell\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"mvn\":{\"status\":\"warn\",\"detail\":\"large\"},"
+                        + "\"m2\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
                         + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null},"
                         + "\"workers\":[],\"repos\":[]," + emptySettings + "}");
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed", noWorkers, noRepos, noSettings))
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        "scan failed",
+                        noWorkers,
+                        noRepos,
+                        noSettings))
                 .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]," + emptySettings + "}");
         var one = new DoctorCommand.Workers(
                 List.of(new DoctorCommand.Worker(
@@ -183,7 +201,8 @@ class CommandJsonFrozenBytesTest {
                 List.of(new MavenSettingsRows.Proxy("corp", "https", "proxy.acme:3128", List.of("*.acme"))),
                 List.of(new MavenSettingsRows.Repository("acme-releases", "https://nexus.acme/releases/")),
                 null);
-        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings))
+        assertThat(DoctorCommand.reportJson(
+                        ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
                                 + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null,\"refused\":null,\"packagedBy\":\"ab12cd34ef56"

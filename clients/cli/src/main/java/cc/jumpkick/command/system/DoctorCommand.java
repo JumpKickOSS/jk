@@ -22,10 +22,13 @@ import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.repo.M2Integrity;
 import cc.jumpkick.terminal.posix.PosixPasswd;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -93,6 +96,7 @@ public final class DoctorCommand implements CliCommand {
         Check lock = checkLock();
         Check shell = checkShell();
         Check mvn = checkMavenSpy(MavenSpyJar.current());
+        Check m2 = checkM2();
         List<ToolRow> toolRows;
         String toolsError = null;
         try {
@@ -133,6 +137,7 @@ public final class DoctorCommand implements CliCommand {
                     lock,
                     shell,
                     mvn,
+                    m2,
                     healthy,
                     pruned,
                     verified,
@@ -157,6 +162,7 @@ public final class DoctorCommand implements CliCommand {
         printCheck(lock, t);
         printCheck(shell, t);
         printCheck(mvn, t);
+        printCheck(m2, t);
 
         printTools(toolRows, toolsError, t);
 
@@ -688,6 +694,35 @@ public final class DoctorCommand implements CliCommand {
         }
     }
 
+    /** The Maven local repository's copies of this project's locked POMs and jars, checked against their {@code .sha1}. */
+    private static Check checkM2() {
+        try {
+            Path lock = LockPaths.lockFile(Path.of(System.getProperty("user.dir", ".")));
+            if (!Files.isRegularFile(lock)) return new Check(Status.OK, "m2", "no jk-lock.toml to check against");
+            return checkM2(M2Dirs.localRepository(), M2Integrity.lockPaths(LockfileReader.read(lock)));
+        } catch (IOException | RuntimeException e) {
+            return new Check(Status.WARN, "m2", "check failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * {@code WARN} naming the files under {@code m2} whose bytes do not match their {@code .sha1}:
+     * something rewrote them after Maven verified them, and every build that reads one fails.
+     */
+    static Check checkM2(Path m2, List<String> relativePaths) {
+        List<Path> bad = M2Integrity.mismatched(m2, relativePaths);
+        if (bad.isEmpty())
+            return new Check(Status.OK, "m2", relativePaths.size() + " locked files match their .sha1 under " + m2);
+        List<String> shown = new ArrayList<>();
+        for (Path p : bad.subList(0, Math.min(3, bad.size()))) shown.add(p.toString());
+        return new Check(
+                Status.WARN,
+                "m2",
+                bad.size() + (bad.size() == 1 ? " file does" : " files do") + " not match its .sha1: "
+                        + String.join(", ", shown) + (bad.size() > 3 ? ", …" : "")
+                        + " (delete it so Maven or jk fetches it again)");
+    }
+
     /**
      * Scan every installed/linked tool, applying repair as it goes (unlink a broken symlink,
      * fingerprint a verified one) — the single pass both JSON and human output render from, so
@@ -809,7 +844,7 @@ public final class DoctorCommand implements CliCommand {
     }
 
     /**
-     * The `--output json` report: the six checks, the tool tallies and the scan error, then the
+     * The `--output json` report: the checks, the tool tallies and the scan error, then the
      * installed workers with their launch classpaths, the repository stores and Maven's settings.
      */
     public static String reportJson(
@@ -820,6 +855,7 @@ public final class DoctorCommand implements CliCommand {
             Check lock,
             Check shell,
             Check mvn,
+            Check m2,
             int healthy,
             int pruned,
             int verified,
@@ -838,6 +874,7 @@ public final class DoctorCommand implements CliCommand {
                 .token("lock", checkJson(lock))
                 .token("shell", checkJson(shell))
                 .token("mvn", checkJson(mvn))
+                .token("m2", checkJson(m2))
                 .token(
                         "tools",
                         JsonFields.object()
