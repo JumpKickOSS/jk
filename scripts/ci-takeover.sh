@@ -95,9 +95,9 @@ install_pass() {
 
 cd "$ROOT"
 state_log="$(mktemp)"
-if ((build)); then run jk build --skip-tests "${yes[@]}" --no-ansi; fi
-install_pass jk install --skip-tests "${yes[@]}" --no-ansi
-install_pass "$JK_HOME/bin/jk" install --skip-tests "${yes[@]}" --no-ansi
+if ((build)); then run jk build --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi; fi
+install_pass jk install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
+install_pass "$JK_HOME/bin/jk" install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
 ((checks)) || exit 0
 run cmp target/dist/jk "$JK_HOME/bin/jk"
 engine_sha="$(sha256sum target/dist/lib/jk-engine-*.jar | cut -c1-64)"
