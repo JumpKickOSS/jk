@@ -9,12 +9,14 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -38,6 +40,7 @@ public final class TypeHierarchy {
     private final FactsIndex facts;
     private final Supplier<List<Path>> classpath;
     private final Map<String, Optional<Supers>> memo = new HashMap<>();
+    private final Map<String, Set<String>> ancestorMemo = new HashMap<>();
     private @Nullable List<ZipFile> jars;
     private List<Path> dirs = List.of();
 
@@ -51,8 +54,16 @@ public final class TypeHierarchy {
         return supers(internalName).isPresent();
     }
 
-    /** {@code internalName} and every supertype, nearest first; the class itself is first. */
-    public Set<String> ancestors(String internalName) {
+    /** {@code internalName} and every supertype, nearest first; the class itself is first. Unmodifiable. */
+    public synchronized Set<String> ancestors(String internalName) {
+        Set<String> hit = ancestorMemo.get(internalName);
+        if (hit != null) return hit;
+        Set<String> out = walkAncestors(internalName);
+        ancestorMemo.put(internalName, out);
+        return out;
+    }
+
+    private Set<String> walkAncestors(String internalName) {
         Set<String> out = new LinkedHashSet<>();
         List<String> frontier = new ArrayList<>(List.of(internalName));
         while (!frontier.isEmpty()) {
@@ -64,7 +75,7 @@ public final class TypeHierarchy {
             if (sup != null) frontier.add(sup);
             frontier.addAll(s.get().interfaces());
         }
-        return out;
+        return Collections.unmodifiableSet(out);
     }
 
     /** Whether {@code internalName} is {@code ancestor} or a subtype of it. */
@@ -131,10 +142,18 @@ public final class TypeHierarchy {
         ClassFacts own = facts.classes().get(internalName);
         if (own != null) return Optional.of(new Supers(internalName, own.superName(), own.interfaces()));
         byte[] bytes = classpathBytes(internalName);
-        if (bytes == null) bytes = jdkBytes(internalName);
-        if (bytes == null) return Optional.empty();
-        return Optional.of(read(bytes));
+        if (bytes != null) return Optional.of(read(bytes));
+        return JDK_SUPERS.computeIfAbsent(internalName, n -> {
+            byte[] jdk = jdkBytes(n);
+            return jdk == null ? Optional.empty() : Optional.of(read(jdk));
+        });
     }
+
+    /**
+     * The JDK's answers, kept for the process: the platform class loader serves the same classes
+     * for the engine's lifetime, and every lane run asks about the same few thousand of them.
+     */
+    private static final Map<String, Optional<Supers>> JDK_SUPERS = new ConcurrentHashMap<>();
 
     private static Supers read(byte[] bytes) {
         Header h = new Header();

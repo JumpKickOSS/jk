@@ -15,6 +15,8 @@ import cc.jumpkick.guard.rules.Rule;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -63,7 +65,8 @@ final class ForbidEvaluator implements Evaluator {
 
         Scan scan = new Scan(
                 rule, ctx, sigs.live(), strings(t, "owner"), strings(t, "args"), strings(t, "except-annotated"));
-        for (ClassFacts c : facts.classList()) scan.clazz(c);
+        if (memberOnly(sigs.live())) scan.indexed(facts, ctx.memo(SiteIndex.class, c -> SiteIndex.of(facts)));
+        else for (ClassFacts c : facts.classList()) scan.clazz(c);
         return scan.finish(facts);
     }
 
@@ -137,6 +140,40 @@ final class ForbidEvaluator implements Evaluator {
             for (Allow a : rule.allow()) allowUsed.put(a, false);
         }
 
+        /**
+         * The same verdict as {@link #clazz} over every class, visiting only the sites filed under a
+         * member name the rule names. Only for member signatures: a type or package ban reads every
+         * reference.
+         */
+        void indexed(FactsIndex facts, SiteIndex index) {
+            examined = index.callCount() + index.fieldCount() + (args.isEmpty() ? index.typeRefCount() : 0);
+            if (!owners.isEmpty()) {
+                for (ClassFacts c : facts.classList()) {
+                    if (inOwner(c, owners)) {
+                        ownerSeen = true;
+                        break;
+                    }
+                }
+            }
+            List<SiteIndex.At> candidates = new ArrayList<>();
+            Set<String> names = new LinkedHashSet<>();
+            for (Signature sig : live) if (sig.member() != null) names.add(sig.member());
+            for (String name : names) {
+                candidates.addAll(index.callsNamed(name));
+                candidates.addAll(index.fieldsNamed(name));
+            }
+            candidates.sort(Comparator.comparingInt(SiteIndex.At::order));
+            for (SiteIndex.At at : candidates) {
+                ClassFacts c = at.clazz();
+                boolean inOwner = inOwner(c, owners);
+                boolean exempt = annotated(c.annotations(), exceptAnnotated)
+                        || annotated(at.method().annotations(), exceptAnnotated);
+                String self = Descriptors.outermost(c.name());
+                if (at.call() != null) call(c, at.method(), at.call(), inOwner, exempt, self);
+                if (at.field() != null) field(c, at.method(), at.field(), inOwner, exempt, self);
+            }
+        }
+
         void clazz(ClassFacts c) {
             boolean inOwner = inOwner(c, owners);
             if (inOwner) ownerSeen = true;
@@ -153,46 +190,52 @@ final class ForbidEvaluator implements Evaluator {
         private void calls(ClassFacts c, MethodFacts m, boolean inOwner, boolean exempt, String self) {
             for (CallSite s : m.calls()) {
                 examined++;
-                if (matchCall(live, s, types) == null) continue;
-                if (!args.isEmpty() && !argMatches(args, s)) continue;
-                matched++;
-                if (inOwner) {
-                    ownerHasSite = true;
-                    continue;
-                }
-                if (Descriptors.outermost(s.owner()).equals(self)) continue; // a class is never outside itself
-                if (exempt) continue;
-                if (allowed(c)) continue;
-                String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + s.target();
-                sites.add(Observation.site(
-                        fp,
-                        source(ctx, c),
-                        s.line(),
-                        display(s) + " called outside " + (owners.isEmpty() ? "any owner" : String.join(", ", owners))
-                                + " (from " + c.binaryName() + "#" + m.name() + ")"));
+                call(c, m, s, inOwner, exempt, self);
             }
+        }
+
+        private void call(ClassFacts c, MethodFacts m, CallSite s, boolean inOwner, boolean exempt, String self) {
+            if (matchCall(live, s, types) == null) return;
+            if (!args.isEmpty() && !argMatches(args, s)) return;
+            matched++;
+            if (inOwner) {
+                ownerHasSite = true;
+                return;
+            }
+            if (Descriptors.outermost(s.owner()).equals(self)) return; // a class is never outside itself
+            if (exempt || allowed(c)) return;
+            String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + s.target();
+            sites.add(Observation.site(
+                    fp,
+                    source(ctx, c),
+                    s.line(),
+                    display(s) + " called outside " + (owners.isEmpty() ? "any owner" : String.join(", ", owners))
+                            + " (from " + c.binaryName() + "#" + m.name() + ")"));
         }
 
         private void fieldRefs(ClassFacts c, MethodFacts m, boolean inOwner, boolean exempt, String self) {
             for (FieldRef r : m.fieldRefs()) {
                 examined++;
-                if (matchField(live, r, types) == null) continue;
-                matched++;
-                if (inOwner) {
-                    ownerHasSite = true;
-                    continue;
-                }
-                if (Descriptors.outermost(r.owner()).equals(self)) continue;
-                if (exempt) continue;
-                if (allowed(c)) continue;
-                String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + r.target();
-                sites.add(Observation.site(
-                        fp,
-                        source(ctx, c),
-                        r.line(),
-                        Descriptors.binaryName(r.owner()) + "." + r.name() + " referenced outside the owner (from "
-                                + c.binaryName() + "#" + m.name() + ")"));
+                field(c, m, r, inOwner, exempt, self);
             }
+        }
+
+        private void field(ClassFacts c, MethodFacts m, FieldRef r, boolean inOwner, boolean exempt, String self) {
+            if (matchField(live, r, types) == null) return;
+            matched++;
+            if (inOwner) {
+                ownerHasSite = true;
+                return;
+            }
+            if (Descriptors.outermost(r.owner()).equals(self)) return;
+            if (exempt || allowed(c)) return;
+            String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + r.target();
+            sites.add(Observation.site(
+                    fp,
+                    source(ctx, c),
+                    r.line(),
+                    Descriptors.binaryName(r.owner()) + "." + r.name() + " referenced outside the owner (from "
+                            + c.binaryName() + "#" + m.name() + ")"));
         }
 
         private void typeRefs(ClassFacts c, boolean inOwner, boolean classExempt, String self) {
@@ -252,39 +295,107 @@ final class ForbidEvaluator implements Evaluator {
         }
     }
 
+    /** Whether every signature names a member, so the sites under other names cannot match. */
+    static boolean memberOnly(List<Signature> live) {
+        for (Signature s : live) {
+            switch (s.kind()) {
+                case METHOD, MEMBER, FIELD -> {
+                    if (s.member() == null) return false;
+                }
+                default -> {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * One facts index's calls and field references filed by member name, each with its position in
+     * the class, method, calls-then-fields walk {@link Scan#clazz} makes, so a lookup visits sites in
+     * the same order. Built once per lane run and shared by its forbid rules.
+     */
+    record SiteIndex(
+            Map<String, List<At>> callsByName,
+            Map<String, List<At>> fieldsByName,
+            long callCount,
+            long fieldCount,
+            long typeRefCount) {
+
+        record At(
+                int order,
+                ClassFacts clazz,
+                MethodFacts method,
+                @Nullable CallSite call,
+                @Nullable FieldRef field) {}
+
+        static SiteIndex of(FactsIndex facts) {
+            Map<String, List<At>> calls = new HashMap<>();
+            Map<String, List<At>> fields = new HashMap<>();
+            long callCount = 0;
+            long fieldCount = 0;
+            long typeRefCount = 0;
+            int order = 0;
+            for (ClassFacts c : facts.classList()) {
+                for (MethodFacts m : c.methods()) {
+                    for (CallSite s : m.calls()) {
+                        calls.computeIfAbsent(s.name(), k -> new ArrayList<>()).add(new At(order++, c, m, s, null));
+                        callCount++;
+                    }
+                    for (FieldRef r : m.fieldRefs()) {
+                        fields.computeIfAbsent(r.name(), k -> new ArrayList<>()).add(new At(order++, c, m, null, r));
+                        fieldCount++;
+                    }
+                }
+                typeRefCount += c.typeRefs().size();
+            }
+            return new SiteIndex(calls, fields, callCount, fieldCount, typeRefCount);
+        }
+
+        List<At> callsNamed(String name) {
+            return callsByName.getOrDefault(name, List.of());
+        }
+
+        List<At> fieldsNamed(String name) {
+            return fieldsByName.getOrDefault(name, List.of());
+        }
+    }
+
     // ---- matching -----------------------------------------------------------------------------
 
+    // The member is matched before the owner: a name comparison is cheap and rejects nearly every
+    // site, while the owner side walks the hierarchy.
     private static @Nullable Signature matchCall(List<Signature> sigs, CallSite s, TypeHierarchy types) {
-        Set<String> ancestors = null;
+        Set<String> ancestors = Set.of();
         for (Signature sig : sigs) {
             if (sig.kind() == Signature.Kind.FIELD) continue;
-            if (ancestors == null) ancestors = types.ancestors(s.owner());
-            if (!sig.ownerMatches(s.owner(), ancestors)) continue;
             boolean memberKind = sig.kind() == Signature.Kind.METHOD || sig.kind() == Signature.Kind.MEMBER;
-            if (!memberKind || sig.methodMatches(s.name(), s.desc())) return sig;
+            if (memberKind && !sig.methodMatches(s.name(), s.desc())) continue;
+            if (sig.ownerToResolve() != null && ancestors.isEmpty()) ancestors = types.ancestors(s.owner());
+            if (sig.ownerMatches(s.owner(), ancestors)) return sig;
         }
         return null;
     }
 
     private static @Nullable Signature matchField(List<Signature> sigs, FieldRef r, TypeHierarchy types) {
-        Set<String> ancestors = null;
+        Set<String> ancestors = Set.of();
         for (Signature sig : sigs) {
             if (sig.kind() == Signature.Kind.METHOD) continue;
-            if (ancestors == null) ancestors = types.ancestors(r.owner());
-            if (!sig.ownerMatches(r.owner(), ancestors)) continue;
             boolean memberKind = sig.kind() == Signature.Kind.FIELD || sig.kind() == Signature.Kind.MEMBER;
-            if (!memberKind || sig.fieldMatches(r.name())) return sig;
+            if (memberKind && !sig.fieldMatches(r.name())) continue;
+            if (sig.ownerToResolve() != null && ancestors.isEmpty()) ancestors = types.ancestors(r.owner());
+            if (sig.ownerMatches(r.owner(), ancestors)) return sig;
         }
         return null;
     }
 
     private static @Nullable Signature matchType(List<Signature> sigs, String ref, TypeHierarchy types) {
-        Set<String> ancestors = null;
+        Set<String> ancestors = Set.of();
         for (Signature sig : sigs) {
             switch (sig.kind()) {
                 case TYPE -> {
                     // A type ban matches the type and its subtypes, never a supertype.
-                    if (ancestors == null) ancestors = types.ancestors(ref);
+                    if (ancestors.isEmpty()) ancestors = types.ancestors(ref);
                     if (sig.ownerMatches(ref, ancestors)) return sig;
                 }
                 case PACKAGE, PACKAGE_TREE -> {
