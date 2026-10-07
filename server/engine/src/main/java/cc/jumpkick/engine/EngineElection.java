@@ -212,6 +212,8 @@ final class EngineElection {
             OwnerOnlyFiles.writeString(active.socket(), Integer.toString(port));
         } else {
             listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+            // A state dir too deep for the OS's socket path binds through a short link to it.
+            EnginePaths.reachableSocketDir(paths.dir());
             listener.bind(UnixDomainSocketAddress.of(active.socket()));
             // Defence in depth under the 0700 directory; bind itself follows the umask.
             OwnerOnlyFiles.setOwnerOnly(active.socket(), "rw-------");
