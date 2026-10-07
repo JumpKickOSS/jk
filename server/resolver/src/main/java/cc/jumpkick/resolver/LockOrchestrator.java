@@ -77,6 +77,9 @@ public final class LockOrchestrator {
     /** The {@code group:artifact} coordinates the workspace builds, each at its member's version. */
     private Map<String, String> workspaceModules = Map.of();
 
+    /** How a lock's member solves overlap; {@code null} sizes them from this JVM when the pass starts. */
+    private @Nullable MemberSolves memberSolves;
+
     /** URL → the repository a dependency POM declared during {@link #lock}, with the policy the POM wrote. */
     private final Map<String, Pom.Repository> declaredRepositories = new ConcurrentHashMap<>();
 
@@ -121,6 +124,12 @@ public final class LockOrchestrator {
     }
 
     /** The features the consumer activated on each path library, keyed by the module its row carries. */
+    /** Member solves overlap as {@code solves} allows instead of as this JVM's heap does. */
+    LockOrchestrator withMemberSolves(MemberSolves solves) {
+        this.memberSolves = solves;
+        return this;
+    }
+
     public LockOrchestrator withActivatedFeatures(Map<String, List<String>> activatedFeatures) {
         this.activatedFeatures = activatedFeatures == null ? Map.of() : Map.copyOf(activatedFeatures);
         return this;
@@ -387,7 +396,14 @@ public final class LockOrchestrator {
                 }
             };
             MemberPartitions partitions = new MemberPartitions(
-                    union, repos, pomBuilder, bomTables, featuresRequested, withDefaults, workspaceVersions);
+                    union,
+                    repos,
+                    pomBuilder,
+                    bomTables,
+                    featuresRequested,
+                    withDefaults,
+                    workspaceVersions,
+                    memberSolves != null ? memberSolves : MemberSolves.forRuntime());
             ResolveProfile.Phases pass = ResolveProfile.phases();
             pass.begin(ResolveProfile::phasePartition);
             try {
