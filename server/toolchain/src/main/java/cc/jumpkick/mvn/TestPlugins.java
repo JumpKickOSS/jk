@@ -3,9 +3,14 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.TestJvm;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -66,7 +71,7 @@ final class TestPlugins {
                 .orElse(TestSettings.NONE);
         ClassSuite integration = PluginFacts.plugin(model, FAILSAFE)
                 .map(failsafe -> mapFailsafe(failsafe, model, report, jvm))
-                .orElse(null);
+                .orElseGet(() -> unboundIntegration(model, report));
         if (PluginFacts.plugin(model, "jacoco-maven-plugin").isPresent()) {
             report.warning("`jacoco-maven-plugin` — coverage is a run flag in jk, not a build setting:"
                     + " `jk test --coverage` runs every suite JVM under the JaCoCo agent and writes"
@@ -393,6 +398,53 @@ final class TestPlugins {
         List<String> excluded = classPatterns(excludes, "<excludes>", "exclude-classes", report);
         jvm.take(failsafe, FAILSAFE, model, report);
         return patterns.isEmpty() ? null : new ClassSuite(patterns, excluded);
+    }
+
+    /**
+     * Without a Failsafe in the build, a test class named the way Failsafe's defaults match
+     * ({@code IT*}, {@code *IT}, {@code *ITCase}) never runs under {@code mvn test} or {@code mvn
+     * verify}: Surefire's defaults leave it out, and only a profile's Failsafe would run it. Those
+     * names are the {@code integration} suite, so plain {@code jk test} leaves them out too; null
+     * when the test sources hold no such class.
+     */
+    private static @Nullable ClassSuite unboundIntegration(Model model, ImportReport.Builder report) {
+        Path tests = testSourceDirectory(model);
+        if (tests == null) return null;
+        boolean found;
+        try {
+            found = PathUtil.anyRegularFile(
+                    tests, d -> false, f -> integrationName(f.getFileName().toString()));
+        } catch (IOException e) {
+            return null;
+        }
+        if (!found) return null;
+        report.warning("test classes named `IT*`, `*IT` or `*ITCase` run under no Failsafe in this build, so"
+                + " `mvn test` leaves them out; they are jk's `integration` suite, which `jk test` leaves out"
+                + " too — run them with `jk test --suite integration`.");
+        return new ClassSuite(classPatterns(FAILSAFE_DEFAULT_INCLUDES, "<includes>", "classes", report), List.of());
+    }
+
+    /** Whether {@code fileName} is a source file Failsafe's default includes would select. */
+    static boolean integrationName(String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        if (dot <= 0) return false;
+        String ext = fileName.substring(dot + 1);
+        if (!ext.equals("java") && !ext.equals("kt") && !ext.equals("groovy")) return false;
+        String simple = fileName.substring(0, dot);
+        return simple.startsWith("IT") || simple.endsWith("IT") || simple.endsWith("ITCase");
+    }
+
+    private static @Nullable Path testSourceDirectory(Model model) {
+        String declared = model.getBuild() == null ? null : model.getBuild().getTestSourceDirectory();
+        File base = model.getProjectDirectory();
+        if (declared != null && !declared.isBlank()) {
+            Path p = Path.of(declared);
+            if (!p.isAbsolute() && base != null) p = base.toPath().resolve(p);
+            return Files.isDirectory(p) ? p : null;
+        }
+        if (base == null) return null;
+        Path conventional = base.toPath().resolve("src/test/java");
+        return Files.isDirectory(conventional) ? conventional : null;
     }
 
     /**
