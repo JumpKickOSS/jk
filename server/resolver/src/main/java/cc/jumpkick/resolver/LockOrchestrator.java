@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
@@ -81,6 +82,9 @@ public final class LockOrchestrator {
     /** How a lock's member solves overlap; {@code null} sizes them from this JVM when the pass starts. */
     private @Nullable MemberSolves memberSolves;
 
+    /** What the previous solve of a series left for this one to reuse; {@code null} for a lone lock. */
+    private @Nullable Rounds rounds;
+
     /** URL → the repository a dependency POM declared during {@link #lock}, with the policy the POM wrote. */
     private final Map<String, Pom.Repository> declaredRepositories = new ConcurrentHashMap<>();
 
@@ -132,6 +136,117 @@ public final class LockOrchestrator {
     }
 
     /** The features the consumer activated on each path library, keyed by the module its row carries. */
+    /**
+     * Solve as one of a series over the same workspace: a member whose solve inputs equal the
+     * previous solve's reuses that answer, and the merged solve is reused when {@code rounds} says so.
+     */
+    public LockOrchestrator withRounds(Rounds rounds) {
+        this.rounds = rounds;
+        return this;
+    }
+
+    /**
+     * What one series of solves over a workspace carries from a solve to the next: each member's
+     * answer with the inputs it was solved from, and the merged solve. The solver is deterministic
+     * and a series reads one repository state, so equal inputs give the answer a re-solve would.
+     * The import's probe rounds are such a series; a lock is a series of one.
+     */
+    public static final class Rounds {
+        private final boolean reuse;
+        private final Map<String, Remembered> members = new ConcurrentHashMap<>();
+        private @Nullable Merged merged;
+        private boolean reuseMerged;
+        private final AtomicInteger memberSolves = new AtomicInteger();
+        private final AtomicInteger memberReuses = new AtomicInteger();
+        private final AtomicInteger mergedSolves = new AtomicInteger();
+
+        private record Remembered(MemberInputs inputs, MemberPartitions.MemberSolve solve) {}
+
+        public Rounds() {
+            this(true);
+        }
+
+        private Rounds(boolean reuse) {
+            this.reuse = reuse;
+        }
+
+        /** A series that counts its solves but reuses nothing: every solve runs in full. */
+        public static Rounds solvingEverything() {
+            return new Rounds(false);
+        }
+
+        /**
+         * Whether the next solve reuses this one's merged solve: true only when the caller knows the
+         * merged manifest's changes cannot move its graph.
+         */
+        public void reuseMergedNext(boolean reuse) {
+            this.reuseMerged = reuse;
+        }
+
+        /** Member solves run since the last {@link #resetCounts}; a reused answer is not one. */
+        public int memberSolves() {
+            return memberSolves.get();
+        }
+
+        /** Member answers reused since the last {@link #resetCounts}. */
+        public int memberReuses() {
+            return memberReuses.get();
+        }
+
+        /** Merged solves run since the last {@link #resetCounts}. */
+        public int mergedSolves() {
+            return mergedSolves.get();
+        }
+
+        public void resetCounts() {
+            memberSolves.set(0);
+            memberReuses.set(0);
+            mergedSolves.set(0);
+        }
+
+        @Nullable
+        Merged merged() {
+            return reuse && reuseMerged ? merged : null;
+        }
+
+        void solvedMerged(Merged solved) {
+            merged = solved;
+            mergedSolves.incrementAndGet();
+        }
+
+        MemberPartitions.@Nullable MemberSolve prior(String member, MemberInputs inputs) {
+            Remembered r = reuse ? members.get(member) : null;
+            if (r == null || !r.inputs().equals(inputs)) return null;
+            memberReuses.incrementAndGet();
+            return r.solve();
+        }
+
+        void solvedMember(String member, MemberInputs inputs, MemberPartitions.MemberSolve solve) {
+            members.put(member, new Remembered(inputs, solve));
+            memberSolves.incrementAndGet();
+        }
+    }
+
+    /** Everything one member's own solve reads besides the repositories and the merged answer. */
+    record MemberInputs(
+            JkBuild manifest,
+            List<String> features,
+            Map<String, String> prefs,
+            Map<String, String> floors,
+            Set<String> unshared,
+            Set<String> carried) {
+        MemberInputs {
+            features = List.copyOf(features);
+            prefs = Map.copyOf(prefs);
+            floors = Map.copyOf(floors);
+            unshared = Set.copyOf(unshared);
+            carried = Set.copyOf(carried);
+        }
+    }
+
+    /** The merged manifest's solve and the rows assembled from it. */
+    record Merged(Solve union, Lockfile lockfile) {}
+
     /** Member solves overlap as {@code solves} allows instead of as this JVM's heap does. */
     LockOrchestrator withMemberSolves(MemberSolves solves) {
         this.memberSolves = solves;
@@ -351,40 +466,36 @@ public final class LockOrchestrator {
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         // ... and one table per BOM, shared by the merged manifest's platform table and every member's.
         PlatformConstraints.BomTables bomTables = new PlatformConstraints.BomTables();
-        PlatformConstraints constraints =
-                PlatformConstraints.collect(sharedPlatform(project), repos, pomBuilder, bomTables);
-        adoptVersionlessRoots(project, constraints, pomBuilder, bomTables);
-        Solve union = solveManifest(
-                projectDir,
-                project,
-                declaredFeatures(project, featuresRequested),
-                withDefaults,
-                prefs.shared(),
-                floors.shared(),
-                progress,
-                observer,
-                pomBuilder,
-                constraints,
-                unionFloorPins());
-        for (String line : repos.checksumNotes()) observer.onNote(line);
-        for (String line : repos.mirrorNotes()) observer.onNote(line);
-        // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
-        // A workspace's merged test graph mixes its members' lines; each member is judged on its own rows below.
-        if (members.isEmpty()) JupiterAlignment.check(union.solved().test());
-
-        progress.materializePhase(
-                progress.graphPackages() + union.roots().fileDeps().size());
-        Lockfile lockfile = assemble(union, project, jkVersion, progress, pomBuilder);
-        // Which POM-declared repositories served a row is known once the rows are assembled.
-        if (union.source() != null) {
-            for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
+        Merged merged = rounds != null ? rounds.merged() : null;
+        if (merged == null) {
+            merged = solveMerged(
+                    project,
+                    jkVersion,
+                    featuresRequested,
+                    withDefaults,
+                    observer,
+                    prefs,
+                    floors,
+                    progress,
+                    pomBuilder,
+                    bomTables);
+            if (rounds != null) rounds.solvedMerged(merged);
         }
+        Solve union = merged.union();
+        Lockfile lockfile = merged.lockfile();
         if (!members.isEmpty()) {
             Map<String, Set<String>> carriedBy = new HashMap<>();
             for (Member m : members) carriedBy.put(m.path(), m.carried());
             MemberPartitions.MemberSolver solver = (member, manifest, features, memberPrefs, own, unshared) -> {
                 // A pin the member holds only through a sibling is the sibling's: a floor here.
                 Set<String> carried = carriedBy.getOrDefault(member, Set.of());
+                Map<String, String> memberFloors = without(floors.forMember(member), unshared);
+                MemberInputs inputs =
+                        new MemberInputs(manifest, List.copyOf(features), memberPrefs, memberFloors, unshared, carried);
+                if (rounds != null) {
+                    MemberPartitions.MemberSolve prior = rounds.prior(member, inputs);
+                    if (prior != null) return prior;
+                }
                 // A member solved on its own: its rows, assembled against its own platform table.
                 LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
                 ResolveProfile.Phases steps = ResolveProfile.phases();
@@ -397,7 +508,7 @@ public final class LockOrchestrator {
                             features,
                             withDefaults,
                             memberPrefs,
-                            without(floors.forMember(member), unshared),
+                            memberFloors,
                             silent,
                             ResolveObserver.NOOP,
                             pomBuilder,
@@ -405,7 +516,10 @@ public final class LockOrchestrator {
                             ga -> pinsAsFloors || carried.contains(ga));
                     steps.begin(ResolveProfile::memberAssemble);
                     silent.materializePhase(0);
-                    return assemble(solve, manifest, jkVersion, silent, pomBuilder);
+                    MemberPartitions.MemberSolve solved = new MemberPartitions.MemberSolve(
+                            assemble(solve, manifest, jkVersion, silent, pomBuilder), own);
+                    if (rounds != null) rounds.solvedMember(member, inputs, solved);
+                    return solved;
                 } finally {
                     steps.end();
                 }
@@ -580,6 +694,50 @@ public final class LockOrchestrator {
      * @param source the package source the graphs were solved over; {@code null} under a test's
      *     resolver override
      */
+    /** The merged manifest solved under the workspace's platform table and its rows assembled. */
+    private Merged solveMerged(
+            JkBuild project,
+            String jkVersion,
+            Collection<String> featuresRequested,
+            boolean withDefaults,
+            ResolveObserver observer,
+            PriorVersions prefs,
+            PriorVersions floors,
+            LockProgress progress,
+            EffectivePomBuilder pomBuilder,
+            PlatformConstraints.BomTables bomTables)
+            throws IOException, InterruptedException {
+        PlatformConstraints constraints =
+                PlatformConstraints.collect(sharedPlatform(project), repos, pomBuilder, bomTables);
+        adoptVersionlessRoots(project, constraints, pomBuilder, bomTables);
+        Solve union = solveManifest(
+                projectDir,
+                project,
+                declaredFeatures(project, featuresRequested),
+                withDefaults,
+                prefs.shared(),
+                floors.shared(),
+                progress,
+                observer,
+                pomBuilder,
+                constraints,
+                unionFloorPins());
+        for (String line : repos.checksumNotes()) observer.onNote(line);
+        for (String line : repos.mirrorNotes()) observer.onNote(line);
+        // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
+        // A workspace's merged test graph mixes its members' lines; each member is judged on its own rows below.
+        if (members.isEmpty()) JupiterAlignment.check(union.solved().test());
+
+        progress.materializePhase(
+                progress.graphPackages() + union.roots().fileDeps().size());
+        Lockfile lockfile = assemble(union, project, jkVersion, progress, pomBuilder);
+        // Which POM-declared repositories served a row is known once the rows are assembled.
+        if (union.source() != null) {
+            for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
+        }
+        return new Merged(union, lockfile);
+    }
+
     record Solve(
             PlatformConstraints constraints,
             LockRoots.Roots roots,

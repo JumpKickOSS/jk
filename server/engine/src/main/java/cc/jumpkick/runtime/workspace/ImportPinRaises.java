@@ -36,12 +36,31 @@ public final class ImportPinRaises {
 
     /** {@link #apply(Path, Path)} resolving from {@code repoUrl} in place of the default repositories. */
     static List<String> apply(Path lockDir, Path cache, @Nullable URI repoUrl) throws Exception {
+        return rounds(lockDir, cache, repoUrl, true).lines();
+    }
+
+    /** What one probe round solved: member solves run and reused, and whether the merged solve ran. */
+    record Round(int memberSolves, int memberReuses, int mergedSolves) {}
+
+    /** The report lines and each round's solve counts. */
+    record Outcome(List<String> lines, List<Round> rounds) {}
+
+    /**
+     * The raise, round by round. With {@code reuse}, a later round re-solves only the members whose
+     * solve inputs moved and keeps the previous merged solve when no raise can move it; without, every
+     * round solves everything — the same answers, at the cost of a full solve each.
+     */
+    static Outcome rounds(Path lockDir, Path cache, @Nullable URI repoUrl, boolean reuse) throws Exception {
         List<String> lines = new ArrayList<>();
+        List<Round> spent = new ArrayList<>();
+        LockOrchestrator.Rounds series =
+                reuse ? new LockOrchestrator.Rounds() : LockOrchestrator.Rounds.solvingEverything();
         // A raised pin moves what the members depending on its member carry, which can put their own
         // pins below a floor in turn: probe again while a raise moves a graph the probe resolved.
         for (int round = 0; round < MAX_ROUNDS; round++) {
             LockPlans.LockScope scope = LockPlans.lockScope(lockDir);
             PROBES.increment();
+            series.resetCounts();
             Lockfile probe = new LockPipeline(
                             scope.lockDir(),
                             scope.effective(),
@@ -50,7 +69,9 @@ public final class ImportPinRaises {
                             List.of(),
                             true,
                             new LockMode.PinFloors())
+                    .withRounds(series)
                     .resolve(null, ResolveObserver.NOOP, LockPipeline.Progress.SILENT);
+            spent.add(new Round(series.memberSolves(), series.memberReuses(), series.mergedSolves()));
             ManifestUpdates.Plan plan = ManifestUpdates.raise(lockDir, probe);
             if (plan.rewrites().isEmpty()) break;
             ManifestUpdates.apply(plan);
@@ -59,8 +80,26 @@ public final class ImportPinRaises {
                     ? LockPlans.lockMembers(lockDir, scope.effective()).members()
                     : List.of();
             if (!movesAGraph(probe, lockDir, members, plan.rewrites())) break;
+            series.reuseMergedNext(!movesMerged(probe, lockDir, plan.rewrites()));
         }
-        return lines;
+        return new Outcome(lines, spent);
+    }
+
+    /**
+     * Whether {@code rewrites} can move the merged solve: a raise of the root's or the workspace's
+     * entry, or of a member pin the merged rows hold below its new version. A member pin is a floor in
+     * the merged solve, so raising it to a version the merged graph already holds changes nothing.
+     */
+    static boolean movesMerged(Lockfile probe, Path lockDir, List<ManifestUpdates.Rewrite> rewrites) {
+        Path root = lockDir.toAbsolutePath().normalize();
+        List<Lockfile.Artifact> merged =
+                probe.artifacts().stream().filter(a -> !a.isPartition()).toList();
+        for (ManifestUpdates.Rewrite r : rewrites) {
+            if (r.dir().toAbsolutePath().normalize().equals(root)) return true;
+            if (r.table().equals(ManifestUpdates.WORKSPACE_TABLE)) return true;
+            if (below(merged, r)) return true;
+        }
+        return false;
     }
 
     /** Probe solves run so far: the seam that proves a round is spent only where it can find a raise. */
