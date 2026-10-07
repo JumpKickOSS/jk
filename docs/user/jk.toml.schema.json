@@ -273,6 +273,10 @@
           "items": { "type": "string" },
           "description": "KSP processor options as key=value strings."
         },
+        "ksp-version": {
+          "type": "string",
+          "description": "The KSP2 release this module's KSP round runs, an exact version. Absent: jk's own pin, which moves with jk releases. jk update moves this pin like any tool pin."
+        },
         "extra-src": {
           "type": "array",
           "items": { "type": "string" },

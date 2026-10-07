@@ -230,6 +230,39 @@ class ManifestUpdatesTest {
                 .containsExactlyInAnyOrder(tuple("dokka", "3.0.0"), tuple("grpc-java", "1.81.0"));
     }
 
+    /** {@code [build] ksp-version} is a tool pin: {@code jk update ksp} moves it on its major, beside {@code ksp-options}. */
+    @Test
+    void the_ksp_version_pin_moves_like_a_tool_pin(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+                java = 25
+
+                [build]
+                ksp-options = ["room.schemaLocation=schemas"]
+                ksp-version = "2.3.10"
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "com.google.devtools.ksp", "symbol-processing-aa-embeddable", "2.3.10", "2.3.12", "3.0.0");
+
+        ManifestUpdates.Plan plan =
+                ManifestUpdates.plan(project, http.base(), new ManifestUpdates.Selection(List.of("ksp"), false));
+
+        assertThat(plan.rewrites())
+                .extracting(r -> r.table(), r -> r.module(), r -> r.from(), r -> r.to())
+                .containsExactly(tuple(
+                        "build.ksp-version",
+                        "com.google.devtools.ksp:symbol-processing-aa-embeddable",
+                        "2.3.10",
+                        "2.3.12"));
+        String text = Objects.requireNonNull(plan.contents().get(project.resolve("jk.toml")));
+        assertThat(text)
+                .contains("ksp-version = \"2.3.12\"")
+                .contains("ksp-options = [\"room.schemaLocation=schemas\"]");
+        assertThat(JkBuildParser.parse(text).build().kspVersion()).isEqualTo("2.3.12");
+    }
+
     /**
      * A plugin whose step-dependency coordinate templates its group or artifact from the table —
      * or, per entry, from the entry — pins the module those values name, and the key holding the
