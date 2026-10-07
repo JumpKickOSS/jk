@@ -44,7 +44,7 @@ class ArgumentsTest {
                 .containsExactly("--proto_path=" + UNPACKED, "--java_out=" + OUT);
         assertThatThrownBy(() -> Arguments.expand(List.of("${in}"), unpacked))
                 .hasMessageContaining("${in} names the first input")
-                .hasMessageContaining("declares none");
+                .hasMessageContaining("this run has none");
         assertThatThrownBy(() -> Arguments.expand(List.of("${unpacked}"), SCOPE))
                 .hasMessageContaining("this entry has no unpack");
     }

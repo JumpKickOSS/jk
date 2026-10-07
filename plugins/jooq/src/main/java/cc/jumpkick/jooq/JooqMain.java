@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jooq;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -23,6 +29,10 @@ import org.jspecify.annotations.Nullable;
  * jOOQ detects its dialect from the connection. Runs in the generator step's forked JVM with the
  * generator's closure on the classpath and reaches it by reflection, so this worker compiles
  * against nothing of jOOQ's and the forked JVM needs nothing of jk's.
+ *
+ * <p>{@code --schema-digest --jdbc-url <url> [--jdbc-user <u>] [--jdbc-password <p>] [--schema
+ * PUBLIC]} prints, as its last line, the SHA-256 of jOOQ's own DDL export of the input schema: the
+ * step's key probe, so a schema change regenerates and an unchanged one is a cache hit.
  */
 public final class JooqMain {
 
@@ -52,11 +62,16 @@ public final class JooqMain {
             @Nullable String jdbcUrl,
             @Nullable String jdbcUser,
             @Nullable String jdbcPassword,
-            List<Path> scripts) {}
+            List<Path> scripts,
+            boolean schemaDigest) {}
 
     /** The exit status: zero when the generator ran. */
     static int run(String[] args) throws Exception {
         Options options = parse(args);
+        if (options.schemaDigest()) {
+            System.out.println(schemaDigest(options));
+            return 0;
+        }
         Path scripts = options.jdbcUrl() == null ? stageScripts(options.scripts()) : null;
         try {
             String xml = configuration(options, scripts);
@@ -87,6 +102,7 @@ public final class JooqMain {
         @Nullable String user = null;
         @Nullable String password = null;
         List<Path> scripts = new ArrayList<>();
+        boolean digest = false;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--out" -> out = value(args, ++i);
@@ -108,11 +124,18 @@ public final class JooqMain {
                 case "--jdbc-url" -> url = value(args, ++i);
                 case "--jdbc-user" -> user = value(args, ++i);
                 case "--jdbc-password" -> password = value(args, ++i);
+                case "--schema-digest" -> digest = true;
                 default -> {
                     if (args[i].startsWith("--")) throw new IllegalArgumentException("unknown option " + args[i]);
                     scripts.add(Path.of(args[i]).toAbsolutePath().normalize());
                 }
             }
+        }
+        if (digest) {
+            if (url == null)
+                throw new IllegalArgumentException("--schema-digest reads a live schema: --jdbc-url is required");
+            out = out == null ? "." : out;
+            pkg = pkg == null ? "" : pkg;
         }
         if (out == null) throw new IllegalArgumentException("--out <dir> is required");
         if (pkg == null) throw new IllegalArgumentException("--package <name> is required");
@@ -131,7 +154,50 @@ public final class JooqMain {
                 url,
                 user,
                 password,
-                scripts);
+                scripts,
+                digest);
+    }
+
+    /**
+     * The SHA-256 of jOOQ's DDL export of the input schema, read over JDBC through the declared
+     * driver: {@code DSL.using(connection).meta().filterSchemas(name).ddl()}, deterministic and
+     * dialect-neutral, exactly what the generator reads. A schema the database does not have fails
+     * naming the ones it does, since an empty export would key every schema change the same.
+     */
+    static String schemaDigest(Options options) throws Exception {
+        String url = Objects.requireNonNull(options.jdbcUrl(), "--jdbc-url");
+        ClassLoader loader = JooqMain.class.getClassLoader();
+        Class<?> dsl = Class.forName("org.jooq.impl.DSL", true, loader);
+        Class<?> context = Class.forName("org.jooq.DSLContext", true, loader);
+        Class<?> metaType = Class.forName("org.jooq.Meta", true, loader);
+        Method nameOf = Class.forName("org.jooq.Named", true, loader).getMethod("getName");
+        try (Connection connection = DriverManager.getConnection(url, options.jdbcUser(), options.jdbcPassword())) {
+            Object meta = context.getMethod("meta")
+                    .invoke(dsl.getMethod("using", Connection.class).invoke(null, connection));
+            Predicate<Object> wanted = schema -> options.schema().equals(name(nameOf, schema));
+            Object filtered =
+                    metaType.getMethod("filterSchemas", Predicate.class).invoke(meta, wanted);
+            if (((List<?>) metaType.getMethod("getSchemas").invoke(filtered)).isEmpty()) {
+                List<String> present = new ArrayList<>();
+                for (Object schema : (List<?>) metaType.getMethod("getSchemas").invoke(meta))
+                    present.add(name(nameOf, schema));
+                throw new IllegalArgumentException(
+                        "schema " + options.schema() + " is not in " + url + "; it has " + present);
+            }
+            String ddl = String.valueOf(metaType.getMethod("ddl").invoke(filtered));
+            return Hashing.sha256Hex(ddl);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof Exception cause) throw cause;
+            throw e;
+        }
+    }
+
+    private static String name(Method nameOf, @Nullable Object named) {
+        try {
+            return String.valueOf(nameOf.invoke(named));
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** The scripts copied under one directory, by file name, for DDLDatabase to order and apply. */

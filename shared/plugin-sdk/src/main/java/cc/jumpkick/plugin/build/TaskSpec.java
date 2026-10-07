@@ -31,6 +31,7 @@ public final class TaskSpec {
     private final List<String> contributesTestClasspath = new ArrayList<>();
     private final List<String> contributesTestJvmArgs = new ArrayList<>();
     private boolean oneTestJvm;
+    private @Nullable KeyProbe keyProbe;
     private @Nullable String transformsClasses;
     /**
      * Optional product stage wire name ({@code generate}, {@code compile}, {@code test}, …). Null
@@ -107,6 +108,12 @@ public final class TaskSpec {
         return this;
     }
 
+    /** An input measured when the step's key is computed; see {@link KeyProbe}. */
+    public TaskSpec keyProbe(KeyProbe probe) {
+        this.keyProbe = probe;
+        return this;
+    }
+
     public TaskSpec transformsClasses(String relDir) {
         this.transformsClasses = relDir;
         return this;
@@ -169,6 +176,10 @@ public final class TaskSpec {
     /** Whether the module's tests run in one JVM ({@link #oneTestJvm()}). */
     public boolean runsTestsInOneJvm() {
         return oneTestJvm;
+    }
+
+    public @Nullable KeyProbe keyProbe() {
+        return keyProbe;
     }
 
     public @Nullable String classesTransform() {

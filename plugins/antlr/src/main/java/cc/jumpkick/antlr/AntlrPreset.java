@@ -74,7 +74,8 @@ public final class AntlrPreset implements Plugin, BuildExtension {
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/antlr",
                 classpath,
-                List.of());
+                List.of(),
+                null);
     }
 
     /** This worker's own jar (or classes directory), which carries {@link AntlrMain}. */

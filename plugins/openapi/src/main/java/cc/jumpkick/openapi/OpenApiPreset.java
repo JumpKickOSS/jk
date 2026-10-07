@@ -115,6 +115,7 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/openapi",
                 List.of(),
-                List.of());
+                List.of(),
+                null);
     }
 }

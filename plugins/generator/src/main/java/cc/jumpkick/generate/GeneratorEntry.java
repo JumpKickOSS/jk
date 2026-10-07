@@ -2,6 +2,7 @@
 package cc.jumpkick.generate;
 
 import cc.jumpkick.plugin.build.In;
+import cc.jumpkick.plugin.build.KeyProbe;
 import cc.jumpkick.plugin.build.TaskSpec;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -35,6 +36,8 @@ import org.jspecify.annotations.Nullable;
  *     own {@code main} over a library that ships none
  * @param discard paths under the output, or globs over it, removed once the tool has run: what it
  *     writes beside its contribution (DGS codegen's {@code generated-examples})
+ * @param keyProbe what the tool reads that no file holds (a live schema), measured into the step's
+ *     key before it is looked up; with one, inputs that match no file do not skip the tool
  */
 public record GeneratorEntry(
         String name,
@@ -47,7 +50,8 @@ public record GeneratorEntry(
         Contribution contributes,
         String out,
         List<Path> classpath,
-        List<String> discard) {
+        List<String> discard,
+        @Nullable KeyProbe keyProbe) {
 
     /** Where a generator's output joins the module. */
     public enum Contribution {
@@ -73,7 +77,7 @@ public record GeneratorEntry(
         args = List.copyOf(args);
         classpath = List.copyOf(classpath);
         discard = List.copyOf(discard);
-        if (inputs.isEmpty() && unpack == null) {
+        if (inputs.isEmpty() && unpack == null && keyProbe == null) {
             throw new IllegalArgumentException("[generate." + name + "] declares no inputs — name the files the tool"
                     + " reads (inputs), or the jar whose contents it reads (unpack)");
         }
@@ -99,7 +103,8 @@ public record GeneratorEntry(
                 Contribution.parse((String) values.getOrDefault("contributes", "sources"), where),
                 (String) values.getOrDefault("out", "generated/" + name),
                 List.of(),
-                (List<String>) values.getOrDefault("discard", List.of()));
+                (List<String>) values.getOrDefault("discard", List.of()),
+                null);
     }
 
     /** The step's name on the plan: {@code generate-<name>}, the name a manifest's {@code for-step} uses. */
@@ -127,6 +132,7 @@ public record GeneratorEntry(
                 .inputs(ins.toArray(In[]::new))
                 .outputs(out)
                 .run(exec -> GeneratorStep.run(exec, this));
+        if (keyProbe != null) spec.keyProbe(keyProbe);
         return switch (contributes) {
             case SOURCES -> spec.contributesSources(out);
             case TEST_SOURCES -> spec.contributesTestSources(out);

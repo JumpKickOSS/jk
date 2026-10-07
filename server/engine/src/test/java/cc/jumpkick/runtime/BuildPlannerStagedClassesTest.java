@@ -259,7 +259,8 @@ class BuildPlannerStagedClassesTest {
                 List.of(),
                 null,
                 null,
-                false);
+                false,
+                null);
         var decls = new PluginDeclarations(List.of(step), null, List.of());
         Path contributed = Files.createDirectories(
                 PluginBuild.taskScratch(layout, AOT_STEP).resolve("generated/classes"));

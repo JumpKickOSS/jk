@@ -22,6 +22,7 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.build.In;
+import cc.jumpkick.plugin.build.KeyProbe;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.manifest.PluginContributions;
@@ -37,6 +38,7 @@ import cc.jumpkick.runtime.base.SdkComponents;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -419,6 +421,15 @@ public final class PlannerPlugin {
     }
 
     /**
+     * The forecast of a step it expects cached. A forecast connects to nothing, so a step whose key
+     * carries a {@link KeyProbe} says it is measured only when it runs.
+     */
+    static TaskForecast.Task cachedForecast(TaskDecl step) {
+        String note = step.keyProbe() != null ? step.name() + " · its live input is probed when the step runs" : "";
+        return new TaskForecast.Task("plugin-" + step.name(), TaskForecast.Status.CACHED, note, null);
+    }
+
+    /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
     static Task pluginTask(
@@ -500,7 +511,10 @@ public final class PlannerPlugin {
                     // The step's CODE is an input: a changed plugin jar must re-run the
                     // step, or a plugin upgrade (or first-party dev iteration) silently restores
                     // outputs produced by the old code.
-                    tokens.add("worker:" + ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
+                    Path workerJar = PluginBuild.workerJarFor(active, in.cache());
+                    tokens.add("worker:" + ClasspathFingerprint.entry(workerJar));
+                    probeToken(ctx, step, javaHome, workerJar, toolExtras, in.dir())
+                            .ifPresent(tokens::add);
                     String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
                     String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
                     ActionCache actionCache = cx.actionCache();
@@ -582,6 +596,21 @@ public final class PlannerPlugin {
      * {@code file:line[:col]: message} header the journal parses for a locus, an error when the
      * tool said so, a warning otherwise.
      */
+    /** The key token of an input no file holds (a live schema), measured before the lookup; empty without a probe. */
+    private static Optional<String> probeToken(
+            TaskContext ctx, TaskDecl step, Path javaHome, Path workerJar, Map<String, Path> tools, Path dir)
+            throws IOException, InterruptedException {
+        KeyProbe probe = step.keyProbe();
+        if (probe == null) return Optional.empty();
+        ctx.label(step.name() + " probing");
+        try {
+            return Optional.of(KeyProbes.token(probe, javaHome, workerJar, tools, dir));
+        } catch (IOException e) {
+            ctx.error(step.name(), Errors.text(e));
+            throw e;
+        }
+    }
+
     static void forwardStepDiagnostic(TaskContext ctx, String step, String line) {
         StringBuilder text = new StringBuilder();
         @Nullable String file = Jsonl.str(line, "file");

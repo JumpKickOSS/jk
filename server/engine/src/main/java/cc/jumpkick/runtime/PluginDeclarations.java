@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.build.KeyProbe;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -51,7 +52,8 @@ public record PluginDeclarations(
                             Jsonl.strArray(line, "contributesTestJvmArgs"),
                             Jsonl.str(line, "transformsClasses"),
                             blankToNull(Jsonl.str(line, "stage")),
-                            Jsonl.bool(line, "oneTestJvm", false)));
+                            Jsonl.bool(line, "oneTestJvm", false),
+                            keyProbe(line)));
                 case "packager" ->
                     packager = new PackagerDecl(Jsonl.requiredStr(line, "name"), Jsonl.strArray(line, "inputs"));
                 case "command" ->
@@ -63,6 +65,12 @@ public record PluginDeclarations(
             }
         }
         return new PluginDeclarations(steps, packager, commands);
+    }
+
+    private static @Nullable KeyProbe keyProbe(String line) {
+        @Nullable String main = Jsonl.str(line, "probeMain");
+        if (main == null || main.isBlank()) return null;
+        return new KeyProbe(main, Jsonl.strArray(line, "probeTools"), Jsonl.strArray(line, "probeArgs"));
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

@@ -4,6 +4,7 @@ package cc.jumpkick.generate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.plugin.build.KeyProbe;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
 import java.io.InputStream;
@@ -97,6 +98,34 @@ class GeneratorStepTest {
                         + "; nothing was generated");
     }
 
+    /** A key probe names what the tool reads instead (a live schema): inputs that match nothing still run it. */
+    @Test
+    void an_entry_with_a_key_probe_runs_the_tool_without_matching_inputs(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+        GeneratorEntry probed = new GeneratorEntry(
+                "api",
+                "api",
+                "com.example:stub-gen:1.0",
+                null,
+                List.of("api/*.yaml"),
+                null,
+                List.of("-o", "${out}"),
+                GeneratorEntry.Contribution.SOURCES,
+                "generated/api",
+                List.of(),
+                List.of(),
+                new KeyProbe("com.example.Digest", List.of("api"), List.of("--url", "jdbc:x")));
+
+        GeneratorStep.run(io, probed);
+
+        assertThat(tmp.resolve("scratch/generated/api/argv.txt"))
+                .as("the tool was forked")
+                .isRegularFile();
+        assertThat(io.labels()).containsExactly("api (live input)");
+        assertThat(probed.task().keyProbe()).isEqualTo(probed.keyProbe());
+    }
+
     @Test
     void a_jar_without_a_main_class_asks_for_main(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = new FakeBuildIo(tmp, "generate");
@@ -125,7 +154,8 @@ class GeneratorStepTest {
                 GeneratorEntry.Contribution.TEST_SOURCES,
                 "generated/api",
                 List.of(),
-                List.of());
+                List.of(),
+                null);
         GeneratorStep.run(io, entry);
 
         Path unpacked = tmp.resolve("scratch/unpacked");
@@ -155,7 +185,8 @@ class GeneratorStepTest {
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/api",
                 List.of(stubJar(tmp.resolve("shim/shim.jar"), null)),
-                List.of());
+                List.of(),
+                null);
         GeneratorStep.run(io, entry);
 
         assertThat(tmp.resolve("scratch/generated/api/Hello.java")).isRegularFile();
@@ -177,7 +208,8 @@ class GeneratorStepTest {
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/taglib",
                 List.of(stubJar(tmp.resolve("shim/shim.jar"), null)),
-                List.of());
+                List.of(),
+                null);
         GeneratorStep.run(io, entry);
 
         assertThat(tmp.resolve("scratch/generated/taglib/Hello.java")).isRegularFile();
@@ -192,7 +224,8 @@ class GeneratorStepTest {
                         GeneratorEntry.Contribution.SOURCES,
                         "generated/bare",
                         List.of(),
-                        List.of()))
+                        List.of(),
+                        null))
                 .hasMessageContaining("names no tool", List.of());
     }
 
@@ -213,7 +246,8 @@ class GeneratorStepTest {
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/api",
                 List.of(),
-                List.of("generated-examples", "**/*.txt"));
+                List.of("generated-examples", "**/*.txt"),
+                null);
         GeneratorStep.run(io, entry);
 
         Path out = tmp.resolve("scratch/generated/api");
@@ -234,7 +268,8 @@ class GeneratorStepTest {
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/api",
                 List.of(),
-                List.of());
+                List.of(),
+                null);
     }
 
     /** {@link StubTool}'s class file in a jar, with the given {@code Main-Class} (none when null). */

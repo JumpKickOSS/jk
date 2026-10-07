@@ -197,8 +197,17 @@ public final class BuildPluginHarness {
                     .append(",\"transformsClasses\":")
                     .append(Jsonl.quote(classesTransform == null ? "" : classesTransform))
                     .append(",\"stage\":")
-                    .append(Jsonl.quote(stage == null ? "" : stage))
-                    .append('}');
+                    .append(Jsonl.quote(stage == null ? "" : stage));
+            @Nullable KeyProbe probe = step.keyProbe();
+            if (probe != null) {
+                b.append(",\"probeMain\":")
+                        .append(Jsonl.quote(probe.main()))
+                        .append(",\"probeTools\":")
+                        .append(quoteArray(probe.tools()))
+                        .append(",\"probeArgs\":")
+                        .append(quoteArray(probe.args()));
+            }
+            b.append('}');
             out.emit(b.toString());
         }
         @Nullable PackagerSpec packager = recorder.packager();

@@ -125,6 +125,49 @@ class JooqMainTest {
                 .doesNotContain("<properties>");
     }
 
+    /**
+     * The live-schema digest through H2: an in-memory database built per connection from a script
+     * stands in for a server, so editing the script is a schema change no declared input sees.
+     */
+    @Test
+    void the_schema_digest_is_stable_until_the_schema_changes(@TempDir Path tmp) throws Exception {
+        Path schema = write(tmp.resolve("schema.sql"), V1);
+        String url =
+                "jdbc:h2:mem:digest;INIT=RUNSCRIPT FROM '" + schema.toString().replace('\\', '/') + "'";
+
+        String first = digest(url, "PUBLIC");
+        assertThat(first).matches("[0-9a-f]{64}");
+        assertThat(digest(url, "PUBLIC")).as("the same schema").isEqualTo(first);
+
+        Files.writeString(schema, V1.replace("not null", "not null,\n  name varchar(80)"));
+        assertThat(digest(url, "PUBLIC")).as("a column added").isNotEqualTo(first);
+    }
+
+    @Test
+    void a_schema_the_database_lacks_is_refused_naming_the_ones_it_has(@TempDir Path tmp) throws Exception {
+        Path schema = write(tmp.resolve("schema.sql"), V1);
+        String url =
+                "jdbc:h2:mem:missing;INIT=RUNSCRIPT FROM '" + schema.toString().replace('\\', '/') + "'";
+
+        assertThatThrownBy(() -> digest(url, "SHOP"))
+                .hasMessageContaining("schema SHOP is not in")
+                .hasMessageContaining("PUBLIC");
+    }
+
+    @Test
+    void the_digest_mode_needs_a_url_and_nothing_the_generator_does() {
+        assertThatThrownBy(() -> JooqMain.parse(new String[] {"--schema-digest"}))
+                .hasMessageContaining("--jdbc-url is required");
+        assertThat(JooqMain.parse(new String[] {"--schema-digest", "--jdbc-url", "jdbc:h2:mem:x"})
+                        .schemaDigest())
+                .isTrue();
+    }
+
+    private static String digest(String url, String schema) throws Exception {
+        return JooqMain.schemaDigest(
+                JooqMain.parse(new String[] {"--schema-digest", "--jdbc-url", url, "--schema", schema}));
+    }
+
     @Test
     void a_broken_script_is_the_generators_own_failure(@TempDir Path tmp) throws Exception {
         Path broken = write(tmp.resolve("V1__broken.sql"), "create tabel nope (id int);");
