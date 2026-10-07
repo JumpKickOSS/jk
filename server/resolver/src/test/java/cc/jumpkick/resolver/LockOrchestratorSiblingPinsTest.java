@@ -323,6 +323,65 @@ class LockOrchestratorSiblingPinsTest {
     }
 
     /**
+     * A sibling's exact pin reaches the members that depend on it as an ordinary transitive version:
+     * lib pins leaf 1.0, app depends on lib and on ranged, whose POM needs leaf 2.0 or later. app
+     * reads 2.0 and lib keeps its 1.0, as a Maven consumer of lib would.
+     */
+    @Test
+    void a_siblings_pin_is_a_floor_in_the_members_that_depend_on_it(@TempDir Path tempDir) throws Exception {
+        publishRanged();
+        JkBuild lib = manifest(
+                "lib", Map.of(Scope.MAIN, List.of(new Dependency("com.foo:leaf", VersionSelector.parse("=1.0")))));
+        JkBuild app = manifest(
+                "app",
+                Map.of(
+                        Scope.MAIN,
+                        List.of(
+                                Dependency.workspace("lib"),
+                                new Dependency("com.foo:ranged", VersionSelector.parse("=1.0")))));
+
+        Lockfile lock = lockWorkspace(tempDir, List.of(lib, app));
+
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("2.0");
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("1.0");
+    }
+
+    /** A member's own exact pin stays exact: app pins leaf 1.0 itself beside ranged's 2.0 floor, and the lock names leaf. */
+    @Test
+    void a_members_own_pin_below_a_floor_its_graph_needs_still_fails(@TempDir Path tempDir) throws Exception {
+        publishRanged();
+        JkBuild app = manifest(
+                "app",
+                Map.of(
+                        Scope.MAIN,
+                        List.of(
+                                new Dependency("com.foo:leaf", VersionSelector.parse("=1.0")),
+                                new Dependency("com.foo:ranged", VersionSelector.parse("=1.0")))));
+        JkBuild other = manifest(
+                "other", Map.of(Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0")))));
+
+        assertThatThrownBy(() -> lockWorkspace(tempDir, List.of(app, other))).hasMessageContaining("com.foo:leaf");
+    }
+
+    /** {@code com.foo:ranged:1.0}, whose POM needs leaf 2.0 or later. */
+    private void publishRanged() {
+        upstream.metadata("com.foo", "ranged", "1.0");
+        upstream.pom("com.foo", "ranged", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>ranged</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.foo</groupId><artifactId>leaf</artifactId><version>[2.0,)</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("com.foo", "ranged", "1.0");
+    }
+
+    /**
      * A version the workspace owns is every member's: a sibling whose graph needs it higher fails the
      * lock and names it, as one pin for the whole reactor would.
      */
@@ -374,8 +433,8 @@ class LockOrchestratorSiblingPinsTest {
             throws Exception {
         List<LockOrchestrator.Member> members = new ArrayList<>();
         for (JkBuild module : modules) {
-            members.add(new LockOrchestrator.Member(
-                    module.project().name(), WorkspaceMerge.applyToModule(root, module, modules)));
+            WorkspaceMerge.Applied applied = WorkspaceMerge.applyToModuleCarrying(root, module, modules);
+            members.add(new LockOrchestrator.Member(module.project().name(), applied.manifest(), applied.carried()));
         }
         ResolveObserver recording = new ResolveObserver() {
             @Override

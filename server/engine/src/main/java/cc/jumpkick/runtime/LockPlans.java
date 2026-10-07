@@ -584,8 +584,9 @@ public final class LockPlans {
             for (Map.Entry<Path, JkBuild> entry : modules.entrySet()) {
                 String rel = lockDir.relativize(entry.getKey()).toString().replace('\\', '/');
                 if (rel.isEmpty()) rel = ".";
-                out.add(new LockOrchestrator.Member(
-                        rel, WorkspaceMerge.applyToModule(rootManifest, entry.getValue(), modules.values())));
+                WorkspaceMerge.Applied applied =
+                        WorkspaceMerge.applyToModuleCarrying(rootManifest, entry.getValue(), modules.values());
+                out.add(new LockOrchestrator.Member(rel, applied.manifest(), applied.carried()));
             }
             return new LockMembers(out, workspaceVersions(rootManifest));
         } catch (IOException | RuntimeException e) {
