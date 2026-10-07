@@ -114,6 +114,78 @@ class ImportPinRaisesTest {
                 .containsExactly("2.0.1.MR");
     }
 
+    /**
+     * A raise in one member can put another member's pin below a floor: lib's optional shell needs
+     * core 2.0, so lib's core pin rises; app depends on lib, so app now carries core 2.0, whose POM
+     * needs api 2.0 above app's own pin. The second round raises it and the workspace locks.
+     */
+    @Test
+    void a_raise_that_moves_a_dependent_members_floor_raises_that_members_pin_too(@TempDir Path ws) throws Exception {
+        for (String v : List.of("1.0", "2.0")) {
+            upstream.metadata("org.ex", "api", "1.0", "2.0");
+            upstream.pom("org.ex", "api", v, MavenStub.emptyPom("org.ex", "api", v));
+            upstream.jar("org.ex", "api", v);
+        }
+        upstream.metadata("org.ex", "core", "1.0", "2.0");
+        upstream.pom("org.ex", "core", "1.0", MavenStub.emptyPom("org.ex", "core", "1.0"));
+        upstream.jar("org.ex", "core", "1.0");
+        upstream.pom("org.ex", "core", "2.0", """
+                <project>
+                  <groupId>org.ex</groupId><artifactId>core</artifactId><version>2.0</version>
+                  <dependencies>
+                    <dependency><groupId>org.ex</groupId><artifactId>api</artifactId><version>[2.0,)</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("org.ex", "core", "2.0");
+        upstream.metadata("org.ex", "shell", "1.0");
+        upstream.pom("org.ex", "shell", "1.0", """
+                <project>
+                  <groupId>org.ex</groupId><artifactId>shell</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>org.ex</groupId><artifactId>core</artifactId><version>[2.0,)</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("org.ex", "shell", "1.0");
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "org.ex"
+                name = "parent"
+                version = "1.0"
+                java = 25
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        Files.createDirectories(ws.resolve("lib"));
+        Files.writeString(ws.resolve("lib").resolve("jk.toml"), """
+                group = "org.ex"
+                name = "lib"
+                version = "1.0"
+
+                [dependencies]
+                core = "org.ex:core:1.0"
+                shell = { group = "org.ex", version = "1.0", optional = true }
+                """);
+        Files.createDirectories(ws.resolve("app"));
+        Files.writeString(ws.resolve("app").resolve("jk.toml"), """
+                group = "org.ex"
+                name = "app"
+                version = "1.0"
+
+                [dependencies]
+                lib.workspace = true
+                api = "org.ex:api:1.0"
+                """);
+
+        List<String> lines = ImportPinRaises.apply(ws, ws.resolve("cache-probe"), http.base());
+
+        assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:core` 1.0 → 2.0 ([dependencies] in org.ex:lib)"));
+        assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:api` 1.0 → 2.0 ([dependencies] in org.ex:app)"));
+        LockFlow.Result lock = LockFlow.run(ws, ws.resolve("cache-lock"), List.of(), false, http.base());
+        assertThat(lock.status()).as(String.valueOf(lock.error())).isZero();
+    }
+
     @Test
     void a_project_whose_pins_already_meet_every_floor_is_left_alone(@TempDir Path project) throws Exception {
         String manifest = """
