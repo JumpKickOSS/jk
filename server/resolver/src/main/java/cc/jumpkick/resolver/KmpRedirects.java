@@ -68,11 +68,11 @@ public final class KmpRedirects {
         PROCESS_CACHE.clear();
     }
 
-    /** Drop the selection memo and return how many selections went; for the idle engine. */
+    /** Drop the selection memo and the loaded marker answers; how many entries went. For the idle engine. */
     public static int dropProcessMemo() {
         int dropped = PROCESS_CACHE.size();
         PROCESS_CACHE.clear();
-        return dropped;
+        return dropped + GradleMarkerAnswers.drop();
     }
 
     /**
@@ -195,13 +195,12 @@ public final class KmpRedirects {
             PackageId id = PackageId.parse(module);
             Coordinate coord = id.withVersion(version);
             // The POM is already disk-cached by the dependency walk; the marker comment is the
-            // cheap gate that keeps non-KMP modules to zero extra fetches. Only the head of the
-            // file is scanned — Gradle writes the marker near the top; reading multi-MB POMs as
-            // full strings dominated warm Android locks (hundreds of KMP roots).
+            // cheap gate that keeps non-KMP modules to zero extra fetches. The answer is recorded
+            // per POM digest, so each POM head is scanned once, not once per engine.
             var pomHit = Objects.requireNonNull(repos, "NONE never reaches the POM scan")
                     .tryFetchPom(coord);
             if (pomHit.isEmpty()) return ModuleFacts.NONE;
-            if (!pomHasGradleMetadataMarker(pomHit.get().fetched().cachePath())) return ModuleFacts.NONE;
+            if (!GradleMarkerAnswers.marked(pomHit.get())) return ModuleFacts.NONE;
 
             // Gradle publishes the .module beside the POM, so the repository that served the POM is
             // the one asked for it — a walk over every repository would 404 on each that publishes
