@@ -71,6 +71,10 @@ options   = { useTags = "false" }  # --additional-properties, over the preset's 
 # api-package = "com.acme.api.controller"   # each replaces the name the root derives
 # model-package = "com.acme.dto"
 # invoker-package = "com.acme.api.client"
+# library = "spring-boot"                    # --library
+# model-name-suffix = "Dto"                  # --model-name-suffix (model-name-prefix likewise)
+# import-mappings = { Nullable = "org.jspecify.annotations.Nullable" }   # --import-mappings
+# type-mappings = { DateTime = "java.time.Instant" }                     # --type-mappings
 ```
 
 The preset expands to one generator entry — `openapi-generator-cli generate -i <spec> -g
@@ -81,7 +85,8 @@ when a code base keeps them apart (api under `<root>.api`, say, with models unde
 interface-only API a Boot module compiles with no extra libraries: `interfaceOnly`,
 `useSpringBoot3`, `useJakartaEe`, no documentation provider or annotation library, no
 `JsonNullable`, `useTags`. Any of them is overridden by `options`; another generator gets only
-what `options` says.
+what `options` says. Naming a `documentationProvider` in `options` leaves the annotation library to
+the generator, which checks the two together.
 
 The worked example: [`examples/openapi-spring`](examples/openapi-spring/) — a Boot controller
 implementing the generated interface. `jk import` writes this table from a POM's

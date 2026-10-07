@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -70,10 +72,42 @@ final class GeneratorStep {
         }
         if (exit != 0) {
             List<String> tail = output.subList(Math.max(0, output.size() - TAIL), output.size());
-            throw new IllegalStateException(
-                    main + " failed (exit " + exit + ")" + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
+            String cause = failureCause(output);
+            throw new IllegalStateException(main + " failed (exit " + exit + ")" + (cause == null ? "" : ": " + cause)
+                    + (tail.isEmpty() ? "" : "\n" + String.join("\n", tail)));
         }
         discard(out, entry.discard());
+    }
+
+    private static final Pattern UNCAUGHT = Pattern.compile("^Exception in thread \"[^\"]*\" (.+)$");
+    private static final Pattern LOGGED_ERROR =
+            Pattern.compile("^(?:\\[[^\\]]*\\]\\s*)?(?:ERROR|FATAL|SEVERE)\\b\\s*(.+)$");
+
+    /**
+     * The line that says why the tool failed, for the head of the failure message, which is what a
+     * terminal shows when it shows one line: the uncaught exception (its last {@code Caused by:}
+     * when there is one), else the last error-level log line; null when the output has neither.
+     */
+    static @Nullable String failureCause(List<String> output) {
+        String uncaught = null;
+        String causedBy = null;
+        String logged = null;
+        for (String raw : output) {
+            String line = raw.strip();
+            Matcher m = UNCAUGHT.matcher(line);
+            if (m.matches()) {
+                uncaught = m.group(1);
+                causedBy = null;
+            } else if (line.startsWith("Caused by: ") && uncaught != null) {
+                causedBy = line.substring("Caused by: ".length());
+            } else {
+                Matcher e = LOGGED_ERROR.matcher(line);
+                if (e.matches()) logged = e.group(1);
+            }
+        }
+        if (causedBy != null) return causedBy;
+        if (uncaught != null) return uncaught;
+        return logged;
     }
 
     /**

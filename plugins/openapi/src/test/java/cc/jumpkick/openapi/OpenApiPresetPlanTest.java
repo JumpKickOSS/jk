@@ -12,6 +12,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -104,6 +105,53 @@ class OpenApiPresetPlanTest {
 
         String properties = entry.args().getLast();
         assertThat(properties).contains("useSpringBoot4=true").doesNotContain("useSpringBoot3");
+    }
+
+    /**
+     * The generator refuses a documentation provider beside an annotation library it does not
+     * support; naming a provider leaves the library to the generator, as a Maven build does.
+     */
+    @Test
+    void naming_a_documentation_provider_drops_the_annotation_library_default() {
+        GeneratorEntry entry = OpenApiPreset.entry(
+                new PluginConfig(
+                        "openapi",
+                        Map.of("generator", "spring", "options", Map.of("documentationProvider", "springdoc"))),
+                PROJECT);
+
+        String properties = entry.args().getLast();
+        assertThat(properties).contains("documentationProvider=springdoc").doesNotContain("annotationLibrary");
+
+        GeneratorEntry both = OpenApiPreset.entry(
+                new PluginConfig(
+                        "openapi",
+                        Map.of(
+                                "generator",
+                                "spring",
+                                "options",
+                                Map.of("documentationProvider", "springdoc", "annotationLibrary", "swagger2"))),
+                PROJECT);
+        assertThat(both.args().getLast()).contains("annotationLibrary=swagger2");
+    }
+
+    @Test
+    void library_model_names_and_mappings_are_their_own_flags() {
+        Map<String, Object> table = new LinkedHashMap<>();
+        table.put("generator", "spring");
+        table.put("library", "spring-boot");
+        table.put("model-name-prefix", "Api");
+        table.put("model-name-suffix", "Dto");
+        table.put("import-mappings", Map.of("Nullable", "org.jspecify.annotations.Nullable"));
+        table.put("type-mappings", Map.of("DateTime", "java.time.Instant"));
+        List<String> args =
+                OpenApiPreset.entry(new PluginConfig("openapi", table), PROJECT).args();
+
+        assertThat(args).containsSubsequence("--library", "spring-boot");
+        assertThat(args).containsSubsequence("--model-name-prefix", "Api");
+        assertThat(args).containsSubsequence("--model-name-suffix", "Dto");
+        assertThat(args).containsSubsequence("--import-mappings", "Nullable=org.jspecify.annotations.Nullable");
+        assertThat(args).containsSubsequence("--type-mappings", "DateTime=java.time.Instant");
+        assertThat(args.get(args.size() - 2)).isEqualTo("--additional-properties");
     }
 
     @Test

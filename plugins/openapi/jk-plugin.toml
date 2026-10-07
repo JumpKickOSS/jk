@@ -22,6 +22,11 @@ model-package   = { type = "string", example = "com.acme.dto", hint = "the model
 invoker-package = { type = "string", example = "com.acme.api.client", hint = "the invoker package when it is not <package>" }
 version   = { type = "string", default = "latest", example = "7.11.0", hint = "the openapi-generator-cli release; a bare version is exact, latest the newest stable" }
 options   = { type = "string-map", default = {} }   # --additional-properties, over the preset's defaults for the generator
+library           = { type = "string", example = "spring-boot", hint = "the generator's library (--library): spring-boot, spring-cloud, resttemplate, …" }
+model-name-prefix = { type = "string", example = "Api", hint = "prepended to every model class name (--model-name-prefix)" }
+model-name-suffix = { type = "string", example = "Dto", hint = "appended to every model class name (--model-name-suffix)" }
+import-mappings   = { type = "string-map", default = {}, hint = "a schema name → the existing class used instead of a generated one (--import-mappings)" }
+type-mappings     = { type = "string-map", default = {}, hint = "an OpenAPI type or format → the type the code uses (--type-mappings)" }
 
 # The CLI is one shaded jar; its Main-Class is the entry point.
 [[contribute.step-dependency]]
