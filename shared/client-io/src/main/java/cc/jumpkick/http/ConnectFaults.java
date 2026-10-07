@@ -28,6 +28,10 @@ import org.jspecify.annotations.Nullable;
  * routes it through one, else the URL's own — so a stub on another port of the same host is
  * unaffected, a settings.xml mirror routed to another address is asked on its own account, and a
  * host a direct request found dead is still asked through a proxy that can reach it.
+ *
+ * <p>An address on this machine is remembered only until the next command starts ({@link
+ * #forgetLoopback}): a local repository or proxy that was down is usually started next, and the
+ * re-run must reach it.
  */
 public final class ConnectFaults {
 
@@ -87,6 +91,11 @@ public final class ConnectFaults {
     /** As {@link #refusing(String)} for a request that dials {@code uri}'s own address. */
     static @Nullable String refusing(URI uri) {
         return refusing(authority(uri));
+    }
+
+    /** Forget the refusing addresses on this machine; the engine calls this as each command starts. */
+    public static void forgetLoopback() {
+        REFUSING.keySet().removeIf(Loopback::authority);
     }
 
     /** Forget every refusing address (a forced session, tests). */
