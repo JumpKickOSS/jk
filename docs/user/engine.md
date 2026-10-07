@@ -371,13 +371,18 @@ of idleness later it does both again, once the harvest and the client disconnect
 job have finished, and also empties the memos a next build of the same workspace would have
 reused — parsed manifests, scanned TOML files, parsed versions, the interned-string table, the
 file-hash and ABI stores (persisted first; the next build reloads them from disk), and the
-resolve memos: effective POMs, repository hits, version lists and Gradle module metadata — so an
-engine that has built many workspaces does not keep every one of their manifest trees or POM
-graphs. The workspace built last keeps its manifests and TOML files, so a first build after a
-pause on a large reactor re-reads nothing. It logs one `idle trim:` line with what came back,
-what was dropped and which root was kept. Between trims every memo is bounded by entries and
-starts over past its cap — 4,096 manifests or TOML files, 8,192 effective POMs, 16,384
-repository hits — so a long session that locks many projects cannot hold every POM it built.
+resolve memos: effective POMs, parsed store POMs, store sidecars, metadata bodies, repository
+hits, version lists and Gradle module metadata — so an engine that has built many workspaces does
+not keep every one of their manifest trees or POM graphs. The workspace built last keeps its
+manifests and TOML files, so a first build after a pause on a large reactor re-reads nothing. It
+logs one `idle trim:` line with what came back, what was dropped and which root was kept. Between
+trims every memo is bounded — 4,096 manifests or TOML files, 16,384 repository hits; effective
+and parsed POMs by how many entries they declare, the least recently used going first — so a
+long session that locks many projects cannot hold every POM it built. A store file is read once
+while it is unchanged: the memos of POMs, `.jk` sidecars and metadata bodies check the file's
+size, mtime and identity, and the store replaces a file by rename. Whether a POM was published
+with Gradle module metadata is answered once per POM content and kept beside the metadata cache
+(`metadata/gradle-markers`), so a fresh engine does not scan every POM head again.
 The remembered not-found answers stay through a trim: they expire on their own, and a re-lock
 after a pause is what they save. Two settings on the
 spawn line keep the native side bounded between trims: HotSpot's periodic trim
