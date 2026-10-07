@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -32,9 +33,19 @@ public final class GradleModuleMetadata {
     /**
      * A {@code dependencyConstraints} entry: whenever {@code group}:{@code module} is in the graph
      * it sits at a version matching {@code version}; the constraint alone never adds it. {@code
-     * strictly} marks Gradle's {@code strictly} form, which pins rather than floors.
+     * strictly} marks Gradle's {@code strictly} form, which pins rather than floors. {@code version}
+     * is empty when the entry only rejects. {@code rejects} are versions or ranges the publisher
+     * fenced off, excluded even inside {@code version}.
      */
-    public record Constraint(String group, String module, String version, boolean strictly) {}
+    public record Constraint(String group, String module, String version, boolean strictly, List<String> rejects) {
+        public Constraint {
+            rejects = List.copyOf(rejects);
+        }
+
+        public Constraint(String group, String module, String version, boolean strictly) {
+            this(group, module, version, strictly, List.of());
+        }
+    }
 
     /**
      * Process-wide parse memo keyed by absolute path + size + mtime. First-in-process Android locks
@@ -151,7 +162,7 @@ public final class GradleModuleMetadata {
      * usage whose environment matches contribute, under the same absent-means-standard-jvm rule as
      * the redirect; the other environment stands in when none matches. One constraint per module:
      * the first variant to name it speaks for it. An entry with only a {@code prefers} is soft and
-     * contributes nothing.
+     * contributes nothing; one with only {@code rejects} excludes those versions and requires none.
      */
     public List<Constraint> dependencyConstraints(String jvmEnvironment) {
         String fallback = "android".equals(jvmEnvironment) ? "standard-jvm" : "android";
@@ -183,13 +194,17 @@ public final class GradleModuleMetadata {
         if (!(entry instanceof Map<?, ?> c)) return null;
         if (!(c.get("group") instanceof String group) || !(c.get("module") instanceof String module)) return null;
         if (!(c.get("version") instanceof Map<?, ?> version)) return null;
+        List<String> rejects = new ArrayList<>();
+        if (version.get("rejects") instanceof List<?> listed) {
+            for (Object r : listed) if (r instanceof String s && !s.isBlank()) rejects.add(s.trim());
+        }
         if (version.get("strictly") instanceof String strictly && !strictly.isBlank()) {
-            return new Constraint(group, module, strictly, true);
+            return new Constraint(group, module, strictly, true, rejects);
         }
         if (version.get("requires") instanceof String requires && !requires.isBlank()) {
-            return new Constraint(group, module, requires, false);
+            return new Constraint(group, module, requires, false, rejects);
         }
-        return null;
+        return rejects.isEmpty() ? null : new Constraint(group, module, "", false, rejects);
     }
 
     private static @Nullable Redirect availableAt(Map<String, Object> variant) {

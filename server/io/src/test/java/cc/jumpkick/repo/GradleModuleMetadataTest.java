@@ -222,4 +222,25 @@ class GradleModuleMetadataTest {
         assertThat(GradleModuleMetadata.parse(module).dependencyConstraints("standard-jvm"))
                 .isEmpty();
     }
+
+    @Test
+    void rejects_ride_on_the_constraint_and_an_entry_may_only_reject(@TempDir Path dir) throws Exception {
+        String json = """
+                { "formatVersion": "1.1", "variants": [ {
+                    "name": "runtimeElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime" },
+                    "dependencyConstraints": [
+                      { "group": "g", "module": "x", "version": { "requires": "1.2", "rejects": ["1.3", "[2.0,3.0)"] } },
+                      { "group": "g", "module": "y", "version": { "rejects": ["4.0"] } },
+                      { "group": "g", "module": "z", "version": { "prefers": "1.0" } }
+                    ]
+                } ] }
+                """;
+        Path module = Files.writeString(dir.resolve("m.module"), json);
+
+        assertThat(GradleModuleMetadata.parse(module).dependencyConstraints("standard-jvm"))
+                .containsExactly(
+                        new GradleModuleMetadata.Constraint("g", "x", "1.2", false, List.of("1.3", "[2.0,3.0)")),
+                        new GradleModuleMetadata.Constraint("g", "y", "", false, List.of("4.0")));
+    }
 }

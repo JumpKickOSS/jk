@@ -38,7 +38,7 @@ class CompactVersionWindowTest {
 
     @Test
     void the_window_holds_stable_releases_even_when_pre_releases_are_higher() {
-        List<String> window = MavenPackageSource.compactVersionCandidates(jacksonHighestFirst());
+        List<String> window = CandidateWindow.of(jacksonHighestFirst());
 
         assertThat(window).containsExactly("2.22", "2.21", "2.20", "2.19.4");
         assertThat(window).noneMatch(v -> v.contains("rc"));
@@ -48,7 +48,7 @@ class CompactVersionWindowTest {
     void the_window_stays_highest_first() {
         // AllowedSet walks the universe in index order and infers a front-loaded pin by comparison,
         // so the ordering is load-bearing, not cosmetic.
-        List<String> window = MavenPackageSource.compactVersionCandidates(jacksonHighestFirst());
+        List<String> window = CandidateWindow.of(jacksonHighestFirst());
 
         for (int i = 1; i < window.size(); i++) {
             assertThat(Versions.compare(window.get(i - 1), window.get(i)))
@@ -63,8 +63,7 @@ class CompactVersionWindowTest {
         // pre-releases take the leftover slots.
         List<String> onlyRcs = new ArrayList<>(List.of("1.0-rc5", "1.0-rc4", "1.0-rc3", "1.0-rc2", "1.0-rc1"));
 
-        assertThat(MavenPackageSource.compactVersionCandidates(onlyRcs))
-                .containsExactly("1.0-rc5", "1.0-rc4", "1.0-rc3", "1.0-rc2");
+        assertThat(CandidateWindow.of(onlyRcs)).containsExactly("1.0-rc5", "1.0-rc4", "1.0-rc3", "1.0-rc2");
     }
 
     @Test
@@ -73,7 +72,7 @@ class CompactVersionWindowTest {
         // already see a stable candidate — there is nothing to protect against.
         List<String> shortList = new ArrayList<>(List.of("3.0-rc1", "2.0", "1.0"));
 
-        assertThat(MavenPackageSource.compactVersionCandidates(shortList)).containsExactly("3.0-rc1", "2.0", "1.0");
+        assertThat(CandidateWindow.of(shortList)).containsExactly("3.0-rc1", "2.0", "1.0");
     }
 
     @Test
@@ -85,7 +84,7 @@ class CompactVersionWindowTest {
         List<String> pinned = jacksonHighestFirst();
         MavenPackageSource.preferFirst(pinned, "3.0-rc3");
 
-        List<String> window = MavenPackageSource.compactVersionCandidates(pinned);
+        List<String> window = CandidateWindow.of(pinned);
 
         assertThat(window).startsWith("3.0-rc3");
         assertThat(window).contains("3.0-rc5");
@@ -99,7 +98,7 @@ class CompactVersionWindowTest {
         List<String> pinned = jacksonHighestFirst();
         MavenPackageSource.preferFirst(pinned, "2.20");
 
-        List<String> window = MavenPackageSource.compactVersionCandidates(pinned);
+        List<String> window = CandidateWindow.of(pinned);
 
         assertThat(window).startsWith("2.20").contains("3.0-rc5");
     }
@@ -107,7 +106,7 @@ class CompactVersionWindowTest {
     @Test
     void the_snapshot_window_keeps_the_newest_whatever_it_is() {
         // `snapshot` is the sanctioned opt-in, so no stability narrowing applies to it.
-        assertThat(MavenPackageSource.compactHighest(jacksonHighestFirst()))
+        assertThat(CandidateWindow.highest(jacksonHighestFirst()))
                 .containsExactly("3.0-rc5", "3.0-rc4", "3.0-rc3", "3.0-rc2");
     }
 }
