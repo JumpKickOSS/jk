@@ -524,12 +524,18 @@ public final class BuildEta {
 
     /**
      * Forecast forced RUN because an upstream compile-scope sibling is dirty (action key still
-     * hashed the pre-rebuild jar). Live keys usually hit when the upstream jar is byte-identical.
+     * hashed the pre-rebuild jar), whatever the forecast's hint about that sibling's edit says.
+     * Live keys usually hit when the upstream jar is byte-identical.
      */
     static boolean isCascadeForcedStep(TaskForecast.Task s) {
         if (s == null || s.cached()) return false;
         String t = s.text() == null ? "" : s.text();
-        return t.contains("dependency changed") || t.contains("main changed") || t.contains("compile changed");
+        return t.contains("dependency changed")
+                || t.contains("main changed")
+                || t.contains("compile changed")
+                || t.startsWith(TaskForecast.LIKELY_UP_TO_DATE)
+                || t.startsWith(TaskForecast.LIKELY_RECOMPILE)
+                || t.contains(TaskForecast.ONLY_IF_COMPILE_RUNS);
     }
 
     static boolean isCompileStepName(String name) {
