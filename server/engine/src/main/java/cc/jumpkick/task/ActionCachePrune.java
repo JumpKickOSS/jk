@@ -14,6 +14,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -511,9 +512,11 @@ public final class ActionCachePrune {
     }
 
     /**
-     * Window then budget over the Zinc analysis trees, a task directory at a time. The {@code zinc}
-     * file's mtime is the last compile that wrote it, so no stamping is needed here — unlike a key
-     * record, incremental state is rewritten by every use.
+     * Window then budget over the Zinc analysis trees, a task directory at a time. A tree's age is
+     * the newest mtime anywhere in it, its directories included: a compile stamps its tree as it
+     * starts ({@link #markInUse}) and creates directories before it writes a file, so a tree in use
+     * by any engine on the machine is inside the grace window. The prune holds only this engine's
+     * locks; that stamp is what keeps it off another engine's compile.
      */
     private static Incremental pruneIncremental(Path actionsDir, Policy policy, long now, long grace, boolean dryRun)
             throws IOException {
@@ -528,11 +531,10 @@ public final class ActionCachePrune {
                     long[] size = {0L};
                     long[] newest = {0L};
                     try (Stream<Path> walk = Files.walk(dir)) {
-                        for (Path file : (Iterable<Path>) walk::iterator) {
-                            if (!Files.isRegularFile(file)) continue;
-                            size[0] += Files.size(file);
+                        for (Path entry : (Iterable<Path>) walk::iterator) {
                             newest[0] = Math.max(
-                                    newest[0], Files.getLastModifiedTime(file).toMillis());
+                                    newest[0], Files.getLastModifiedTime(entry).toMillis());
+                            if (Files.isRegularFile(entry)) size[0] += Files.size(entry);
                         }
                     } catch (NoSuchFileException vanished) {
                         continue;
@@ -561,6 +563,21 @@ public final class ActionCachePrune {
             used -= tree.bytes();
         }
         return new Incremental(deletedFiles, freed, used);
+    }
+
+    /**
+     * Stamp an incremental tree as used now, before a compile reads or rewrites it. A prune — this
+     * engine's or another's sharing the cache — takes no tree younger than {@link
+     * Sweep#MIN_AGE_FOR_SWEEP}, so the stamp holds the tree for the compile's duration. A tree not
+     * there yet needs none: the directories the compile creates are its first stamp.
+     */
+    static void markInUse(Path stateDir) throws IOException {
+        if (!Files.isDirectory(stateDir)) return;
+        try {
+            Files.setLastModifiedTime(stateDir, FileTime.fromMillis(Clock.SYSTEM.millis()));
+        } catch (NoSuchFileException vanished) {
+            // Taken between the check and the stamp; the compile recreates what it writes.
+        }
     }
 
     private static int countFiles(Path dir) throws IOException {

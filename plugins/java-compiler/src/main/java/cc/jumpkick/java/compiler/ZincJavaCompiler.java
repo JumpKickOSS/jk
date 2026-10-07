@@ -343,7 +343,10 @@ public final class ZincJavaCompiler {
         } catch (IOException e) {
             // Errors.text, not getMessage(): a message-less IOException would otherwise put null on
             // the wire as the diagnostic text.
-            return new Result(false, List.of(new Diag("ERROR", null, 0, 0, Errors.text(e))), List.of());
+            return new Result(
+                    false,
+                    List.of(new Diag("ERROR", null, 0, 0, "incremental compile I/O failed: " + Errors.text(e))),
+                    List.of());
         } catch (CompileFailed failed) {
             // The reporter's own rows carry javac's keys; the problems on the throw are the same
             // rows without them, so they stand in only when the reporter logged nothing.

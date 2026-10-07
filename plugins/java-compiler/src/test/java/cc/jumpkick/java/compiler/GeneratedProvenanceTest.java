@@ -50,6 +50,23 @@ class GeneratedProvenanceTest {
                 .isFalse();
     }
 
+    /** The workdir is cache: a prune that took it mid-compile costs the next build, not this one. */
+    @Test
+    void a_workdir_taken_during_the_compile_is_recreated_for_this_compiles_map(@TempDir Path tmp) throws Exception {
+        Path workdir = tmp.resolve("work");
+        Path sourceOutput = Files.createDirectories(tmp.resolve("gen"));
+        Path classOutput = Files.createDirectories(tmp.resolve("classes"));
+        Path origin = Files.createDirectories(tmp.resolve("src")).resolve("A.java");
+        Files.writeString(origin, "class A {}");
+        Path generated = sourceOutput.resolve("AGen.java");
+        Files.writeString(generated, "class AGen {}");
+
+        GeneratedProvenance.of(workdir)
+                .reconcile(sourceOutput, classOutput, List.of(origin), Map.of(generated, Set.of(origin)));
+
+        assertThat(Files.readString(workdir.resolve("provenance.tsv"))).contains("AGen.java");
+    }
+
     @Test
     void a_pre_escaping_row_is_dropped_and_the_file_is_rewritten_clean(@TempDir Path tmp) throws Exception {
         Path workdir = Files.createDirectories(tmp.resolve("work"));

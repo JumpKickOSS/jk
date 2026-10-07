@@ -245,6 +245,7 @@ public final class LangCompile {
         // Stream the worker's output dir into the CAS as it's produced, then
         // snapshot the whole dir for the record.
         Files.createDirectories(outputDir);
+        if (stateDir != null) ActionCachePrune.markInUse(stateDir);
         CasPrewriter prewriter = CasPrewriter.watching(cas, outputDir);
         CompileResult cr;
         Map<String, String> outputs;
