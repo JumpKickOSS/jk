@@ -89,8 +89,12 @@ class ImportPinRaisesTest {
                 jakarta-inject-api = "jakarta.inject:jakarta.inject-api:2.0.1"
                 """);
 
+        long probes = ImportPinRaises.PROBES.sum();
         List<String> lines = ImportPinRaises.apply(ws, ws.resolve("cache-probe"), http.base());
 
+        assertThat(ImportPinRaises.PROBES.sum() - probes)
+                .as("a raise no other member carries needs no second probe")
+                .isEqualTo(1);
         assertThat(lines)
                 .singleElement()
                 .asString()
@@ -178,8 +182,12 @@ class ImportPinRaisesTest {
                 api = "org.ex:api:1.0"
                 """);
 
+        long probes = ImportPinRaises.PROBES.sum();
         List<String> lines = ImportPinRaises.apply(ws, ws.resolve("cache-probe"), http.base());
 
+        assertThat(ImportPinRaises.PROBES.sum() - probes)
+                .as("lib's raise moves what app carries, app's raise moves nothing another member carries")
+                .isEqualTo(2);
         assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:core` 1.0 → 2.0 ([dependencies] in org.ex:lib)"));
         assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:api` 1.0 → 2.0 ([dependencies] in org.ex:app)"));
         LockFlow.Result lock = LockFlow.run(ws, ws.resolve("cache-lock"), List.of(), false, http.base());
