@@ -564,6 +564,10 @@ class JkBuildParserDependencyTest {
         // Feature `deps` are now dep names (not coord strings). Resolution
         // happens at activation time, against [dependencies.*].
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                postgres-jdbc = { group = "org.postgresql", name = "postgresql", version = "42.7.4", optional = true }
+                hikari = { group = "com.zaxxer", name = "HikariCP", version = "6.2.1", optional = true }
+
                 [features]
                 default = ["postgres"]
 
@@ -575,6 +579,38 @@ class JkBuildParserDependencyTest {
         assertThat(Objects.requireNonNull(parsed.features().byName().get("postgres"))
                         .deps())
                 .containsExactly("postgres-jdbc", "hikari");
+    }
+
+    @Test
+    void a_features_list_naming_an_undeclared_handle_is_refused_with_its_line() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [dependencies]
+                        postgres = { group = "org.postgresql", name = "postgresql", version = "42.7.4", optional = true }
+
+                        [features.db]
+                        deps = ["postgress"]
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("features.db.deps names `postgress`")
+                .hasMessageContaining("(line 10)")
+                .hasMessageContaining("no dependency table declares");
+    }
+
+    @Test
+    void a_features_list_may_name_a_workspace_edge_in_any_dependency_table() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                core = { path = "../core", optional = true }
+
+                [test-dependencies]
+                core-tests = { path = "../core-testkit", optional = true }
+
+                [features.noshade]
+                deps = ["core", "core-tests"]
+                """);
+        assertThat(Objects.requireNonNull(parsed.features().byName().get("noshade"))
+                        .deps())
+                .containsExactly("core", "core-tests");
     }
 
     // ── splitEmbeddedUrl unit tests ──────────────────────────────────────────
