@@ -65,13 +65,14 @@ class GuardSuiteForecastTextTest {
         ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
         var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
         String key = Objects.requireNonNull(
-                GuardKeys.probeModuleLane(root, root, layout, load).key(), "the lane's key");
+                GuardKeys.probeModuleLane(root, root, layout, load, true).key(), "the lane's key");
         cache.storeVerdict(ActionKey.qualifiedTaskId(TaskNames.GUARD, root), key, Map.of());
         assertThat(lane(root, layout, cache).status()).isEqualTo(TaskForecast.Status.CACHED);
 
         Files.writeString(notes, "two\n");
 
-        assertThat(GuardKeys.probeModuleLane(root, root, layout, load).key()).isNotEqualTo(key);
+        assertThat(GuardKeys.probeModuleLane(root, root, layout, load, true).key())
+                .isNotEqualTo(key);
         TaskForecast.Task after = lane(root, layout, cache);
         assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
         assertThat(after.text()).contains("rules to evaluate");
