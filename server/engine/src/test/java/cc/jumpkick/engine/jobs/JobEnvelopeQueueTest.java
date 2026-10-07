@@ -7,9 +7,6 @@ import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.protocol.JobQueuedFrame;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.StringReader;
 import java.io.StringWriter;
 import java.time.Duration;
 import java.util.List;
@@ -101,14 +98,14 @@ class JobEnvelopeQueueTest {
         AtomicBoolean secondRan = new AtomicBoolean();
         StringWriter out = new StringWriter();
         Thread second = Thread.ofVirtual()
-                .start(() -> env.submit(
+                .start(() -> ConnectedClient.submit(
+                        env,
                         "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-b\"}",
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                             secondRan.set(true);
                             return JobOutcome.declined();
                         }),
-                        new JobTransport.SocketWatch(
-                                new BufferedReader(new StringReader("")), new BufferedWriter(out))));
+                        out));
         // The wire line is written after the queue slot is taken, so it is the line that is awaited.
         Await.until(Duration.ofSeconds(5), () -> out.toString().contains("job-queued"));
         assertThat(env.queued()).isEqualTo(1);
@@ -145,14 +142,14 @@ class JobEnvelopeQueueTest {
         StringWriter out = new StringWriter();
         AtomicLong secondResult = new AtomicLong(Long.MIN_VALUE);
         Thread second = Thread.ofVirtual()
-                .start(() -> secondResult.set(env.submit(
+                .start(() -> secondResult.set(ConnectedClient.submit(
+                        env,
                         "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-b\"}",
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                             secondRan.set(true);
                             return JobOutcome.declined();
                         }),
-                        new JobTransport.SocketWatch(
-                                new BufferedReader(new StringReader("")), new BufferedWriter(out)))));
+                        out)));
         // The wire line is written after the queue slot is taken, so it is the line that is awaited.
         Await.until(Duration.ofSeconds(5), () -> out.toString().contains("job-queued"));
         assertThat(env.queued()).isEqualTo(1);
@@ -194,11 +191,11 @@ class JobEnvelopeQueueTest {
                 new JobTransport.FireAndForget());
         StringWriter out = new StringWriter();
         Thread second = Thread.ofVirtual()
-                .start(() -> env.submit(
+                .start(() -> ConnectedClient.submit(
+                        env,
                         "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-lib\"}",
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
-                        new JobTransport.SocketWatch(
-                                new BufferedReader(new StringReader("")), new BufferedWriter(out))));
+                        out));
         Await.until(Duration.ofSeconds(5), () -> out.toString().contains("job-queued"));
 
         List<JobRow> rows = env.jobs();
@@ -245,14 +242,14 @@ class JobEnvelopeQueueTest {
         StringWriter out = new StringWriter();
         AtomicLong secondResult = new AtomicLong(Long.MIN_VALUE);
         Thread second = Thread.ofVirtual()
-                .start(() -> secondResult.set(env.submit(
+                .start(() -> secondResult.set(ConnectedClient.submit(
+                        env,
                         "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-lib\"}",
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                             secondRan.set(true);
                             return JobOutcome.declined();
                         }),
-                        new JobTransport.SocketWatch(
-                                new BufferedReader(new StringReader("")), new BufferedWriter(out)))));
+                        out)));
         Await.until(Duration.ofSeconds(5), () -> out.toString().contains("job-queued"));
 
         clock.now += 120_000L;

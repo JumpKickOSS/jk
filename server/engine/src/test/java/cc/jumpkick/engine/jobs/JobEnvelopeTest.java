@@ -60,13 +60,14 @@ class JobEnvelopeTest {
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         AtomicBoolean ran = new AtomicBoolean();
         StringWriter out = new StringWriter();
-        env.submit(
+        ConnectedClient.submit(
+                env,
                 "{\"type\":\"build-request\",\"dir\":\"/p\"}",
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     ran.set(true);
                     return JobOutcome.declined();
                 }),
-                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                out);
         assertThat(ran).isFalse();
         assertThat(out.toString()).contains("shutting down");
         assertThat(host.abandoned).hasValue(0);
@@ -78,13 +79,14 @@ class JobEnvelopeTest {
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         AtomicBoolean ran = new AtomicBoolean();
         StringWriter out = new StringWriter();
-        env.submit(
+        ConnectedClient.submit(
+                env,
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.plan("lock", "jk-test-", (line, tok, w) -> {
                     ran.set(true);
                     return JobOutcome.declined();
                 }),
-                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                out);
         assertThat(ran).isTrue();
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish")))
                 .isTrue();
@@ -100,17 +102,19 @@ class JobEnvelopeTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
-        env.submit(
+        ConnectedClient.submit(
+                env,
                 "{\"type\":\"cache-prune-request\",\"op\":\"clear\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.maintenance("cache", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
-                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                out);
         // A clean that leaves a fresh target/jk-profile.json behind un-cleans itself.
         assertThat(host.lastNoTimeline).isTrue();
 
-        env.submit(
+        ConnectedClient.submit(
+                env,
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
-                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                out);
         assertThat(host.lastNoTimeline).isFalse();
     }
 
@@ -119,10 +123,11 @@ class JobEnvelopeTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
-        env.submit(
+        ConnectedClient.submit(
+                env,
                 "{\"type\":\"provision-request\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.toolchain("provision", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
-                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                out);
         // Provisioning acts on the machine, not the project: the run it precedes owns target/.
         assertThat(host.lastNoTimeline).isTrue();
     }
@@ -132,10 +137,11 @@ class JobEnvelopeTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
-        env.submit(
+        ConnectedClient.submit(
+                env,
                 "{\"type\":\"mvn-results-request\",\"dir\":" + Jsonl.quote(dir.toString()) + "}",
                 JobRequest.plan("mvn", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
-                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                out);
         assertThat(host.lastBuildNumber).isPositive();
         assertThat(out.toString()).contains("\"buildNumber\":" + host.lastBuildNumber);
     }
@@ -595,10 +601,11 @@ class JobEnvelopeTest {
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
 
-        env.submit(
+        ConnectedClient.submit(
+                env,
                 "{\"type\":\"cache-prune-request\",\"op\":\"prune\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.maintenance("cache", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
-                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                out);
 
         assertThat(host.journalWritten).isTrue();
         BuildRecord record = host.journalRecord();
@@ -654,7 +661,8 @@ class JobEnvelopeTest {
                 System.Logger.Level.INFO,
                 UnaryOperator.identity());
         try {
-            env.submit(
+            ConnectedClient.submit(
+                    env,
                     "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
                     JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                         // The way a real caller stands: a Session derived inside the request
@@ -664,7 +672,7 @@ class JobEnvelopeTest {
                                 () -> RunNotices.warnOnce("test-notice", () -> "a run-scoped notice"));
                         return JobOutcome.declined();
                     }),
-                    new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                    out);
         } finally {
             Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
@@ -735,12 +743,13 @@ class JobEnvelopeTest {
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
 
-        env.submit(
+        ConnectedClient.submit(
+                env,
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     throw new NoClassDefFoundError("cc/example/Missing");
                 }),
-                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                out);
 
         assertThat(host.logs)
                 .as("the log carries the throwable and its stack, not just that something failed")
@@ -904,18 +913,43 @@ class JobEnvelopeTest {
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         host.journalThrows = true;
         StringWriter out = new StringWriter();
-        assertThatThrownBy(() -> new JobEnvelope(host, JobLimits.DEFAULTS)
-                        .submit(
-                                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                                JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
-                                new JobTransport.SocketWatch(
-                                        new BufferedReader(new StringReader("")), new BufferedWriter(out))))
+        assertThatThrownBy(() -> ConnectedClient.submit(
+                        new JobEnvelope(host, JobLimits.DEFAULTS),
+                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                        JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
+                        out))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("journal disk full");
         assertThat(out.toString().lines().map(EngineProtocol::typeOf))
                 .as("the client reads its terminal, not EOF")
                 .contains(EngineProtocol.JOB_FINISH);
         assertThat(host.sequence).containsSubsequence("request-finish", "writeJournal");
+    }
+
+    /**
+     * EOF on the connection before the body has finished is the client gone, and cancels the job —
+     * why every other socket test submits through {@link ConnectedClient}.
+     */
+    @Test
+    void eof_before_the_body_finishes_is_a_disconnect_and_cancels_it() {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        AtomicBoolean interrupted = new AtomicBoolean();
+        StringWriter out = new StringWriter();
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    // Never finishes on its own: only the disconnect's cancel ends it.
+                    try {
+                        new CountDownLatch(1).await();
+                    } catch (InterruptedException e) {
+                        interrupted.set(true);
+                    }
+                    return JobOutcome.declined();
+                }),
+                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+        assertThat(interrupted).isTrue();
+        assertThat(out.toString()).contains("\"cancelled\":true");
     }
 
     /** The detached tail runs on its own thread; the idle boundary is its last effect. */
