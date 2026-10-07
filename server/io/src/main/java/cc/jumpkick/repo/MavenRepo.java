@@ -553,8 +553,10 @@ public final class MavenRepo {
         }
         URI uri = fetchBase.resolve(relativePath);
         refuseIfUnreachable();
-        // A miss this repository already answered is answered again without a request.
-        if (!force && RepoMisses.known(uri)) {
+        // A miss this repository already answered is answered again without a request; a catalog's
+        // for an hour, a POM's or artifact's for the metadata cache's day.
+        RepoMisses misses = relativePath.endsWith("maven-metadata.xml") ? RepoMisses.CATALOGS : RepoMisses.FETCHES;
+        if (!force && misses.known(uri)) {
             throw new ArtifactNotFoundException("not found in " + name + ": " + uri, coord);
         }
         // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
@@ -587,7 +589,7 @@ public final class MavenRepo {
                 stored = download.run(coord, uri, relativePath, mirror, leg, expectedSha256, abort);
             }
             SessionContext.current().io().remoteDown(stored.size());
-            RepoMisses.forget(uri);
+            misses.forget(uri);
             Path placed = stored.path();
             if (mirror) {
                 placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
@@ -601,7 +603,7 @@ public final class MavenRepo {
             }
             return new Fetched(uri, placed, stored.sha256(), stored.size());
         } catch (ArtifactNotFoundException missing) {
-            RepoMisses.record(uri);
+            misses.record(uri);
             throw missing;
         } catch (FetchAbortedException aborted) {
             throw aborted;

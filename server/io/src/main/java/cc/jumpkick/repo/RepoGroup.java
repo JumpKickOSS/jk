@@ -519,7 +519,9 @@ public final class RepoGroup {
                 + coord.group() + ":" + coord.artifact();
         // Force means the caller does not trust any cached view of what exists; a loopback
         // repository's answer speaks for the process that holds the port right now.
-        boolean memoable = !MavenMetadataCache.forceRevalidate() && memoizesEveryRepo();
+        boolean force = MavenMetadataCache.forceRevalidate()
+                || SessionContext.current().config().forceOr(false);
+        boolean memoable = !force && memoizesEveryRepo();
         if (memoable) {
             VersionsEntry cached = VERSIONS_CACHE.get(key);
             if (cached != null && !cached.expired() && cached.versions().containsAll(wanted)) return cached.versions();
