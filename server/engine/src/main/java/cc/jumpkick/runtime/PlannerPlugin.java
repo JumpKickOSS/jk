@@ -776,14 +776,22 @@ public final class PlannerPlugin {
         ctx.progress(1);
     }
 
-    /** The resolved application entry point: declared, else the unique compiled main (when scannable). */
+    /**
+     * The resolved application entry point: declared, else the unique compiled main (when
+     * scannable), else {@code null}. No main is not an error here: a framework that generates its
+     * own entry point (Quarkus) needs none, and a packager that does need one refuses the null.
+     */
     static @Nullable String resolvedMain(JkBuild project, Path moduleDir, Path classes) throws IOException {
         String main = project.mainClass();
         if ((main == null || main.isBlank())
                 && PluginBuild.shape(project, moduleDir)
                         .map(sh -> sh.mainScan())
                         .orElse(false)) {
-            main = MainClassScanner.scanUnique(classes);
+            try {
+                main = MainClassScanner.scanUnique(classes);
+            } catch (MainClassScanner.NoMainFoundException none) {
+                main = null;
+            }
         }
         return main;
     }

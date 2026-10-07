@@ -297,6 +297,64 @@ class PomTestPluginImportTest {
         assertThat(result.jkBuild().build().testExcludeDependencies()).containsExactly("org.slf4j:slf4j-simple");
     }
 
+    /**
+     * The Quarkus quickstart shape: its {@code *IT} class extends the unit test and runs only under
+     * a profile's Failsafe, so {@code mvn test} never runs it — and neither does {@code jk test}.
+     */
+    @Test
+    void an_it_class_no_default_failsafe_runs_is_the_integration_suite(@TempDir Path tempDir) throws Exception {
+        Path tests = Files.createDirectories(tempDir.resolve("project/src/test/java/org/acme"));
+        Files.writeString(
+                tests.resolve("GreetingResourceTest.java"), "package org.acme; class GreetingResourceTest {}\n");
+        Files.writeString(tests.resolve("GreetingResourceIT.java"), "package org.acme; class GreetingResourceIT {}\n");
+        PomImporter.Result result = TestImporters.importXml(tempDir, PROFILE_ONLY_FAILSAFE);
+        assertThat(result.jkBuild().build().testClassSuites())
+                .containsExactly(Map.entry("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase"))));
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith("test classes named `IT*`") && m.contains("jk test --suite integration"));
+    }
+
+    @Test
+    void test_sources_without_an_it_class_get_no_integration_suite(@TempDir Path tempDir) throws Exception {
+        Path tests = Files.createDirectories(tempDir.resolve("project/src/test/java/org/acme"));
+        Files.writeString(
+                tests.resolve("GreetingResourceTest.java"), "package org.acme; class GreetingResourceTest {}\n");
+        PomImporter.Result result = TestImporters.importXml(tempDir, PROFILE_ONLY_FAILSAFE);
+        assertThat(result.jkBuild().build().testClassSuites()).isEmpty();
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.startsWith("test classes named `IT*`"));
+    }
+
+    @Test
+    void failsafes_default_includes_name_the_integration_classes() {
+        assertThat(TestPlugins.integrationName("GreetingResourceIT.java")).isTrue();
+        assertThat(TestPlugins.integrationName("ITGreeting.java")).isTrue();
+        assertThat(TestPlugins.integrationName("GreetingITCase.kt")).isTrue();
+        assertThat(TestPlugins.integrationName("GreetingResourceTest.java")).isFalse();
+        assertThat(TestPlugins.integrationName("GreetingIT.properties")).isFalse();
+    }
+
+    private static final String PROFILE_ONLY_FAILSAFE = """
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>org.acme</groupId>
+              <artifactId>getting-started</artifactId>
+              <version>1.0.0-SNAPSHOT</version>
+              <profiles>
+                <profile>
+                  <id>native</id>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>3.5.4</version>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </profile>
+              </profiles>
+            </project>
+            """;
+
     private static Path writeManifest(Path tempDir, String rendered) throws Exception {
         Path manifest = tempDir.resolve("rendered").resolve("jk.toml");
         Files.createDirectories(manifest.getParent());
