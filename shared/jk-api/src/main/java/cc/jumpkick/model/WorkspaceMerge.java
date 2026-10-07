@@ -28,7 +28,24 @@ public final class WorkspaceMerge {
      * Returns external Maven deps only for lock orchestration.
      */
     public static JkBuild applyToModule(JkBuild root, JkBuild module, Collection<JkBuild> allModules) {
-        if (allModules.isEmpty()) return Variants.unionDependencies(module);
+        return applyToModuleCarrying(root, module, allModules).manifest();
+    }
+
+    /**
+     * A member as {@link #applyToModule} folds it, and the {@code group:artifact}s it carries only
+     * because a sibling it depends on declares them. Such a version is the sibling's: in the member's
+     * own graph it is an ordinary transitive version, as a Maven dependency's own pin is to its
+     * consumers.
+     */
+    public record Applied(JkBuild manifest, Set<String> carried) {
+        public Applied {
+            carried = Set.copyOf(carried);
+        }
+    }
+
+    /** {@link #applyToModule}, naming what the member carries from its siblings ({@link Applied}). */
+    public static Applied applyToModuleCarrying(JkBuild root, JkBuild module, Collection<JkBuild> allModules) {
+        if (allModules.isEmpty()) return new Applied(Variants.unionDependencies(module), Set.of());
 
         // Lock scopes see the UNION of every variant value's dependency overlays — one lockfile
         // covers every variant (Variants.unionDependencies; the build folds only the selected
@@ -75,6 +92,10 @@ public final class WorkspaceMerge {
         for (Dependency d : root.dependencies().of(Scope.MANAGED)) addPlatform(managed, d);
         for (Dependency d : resolvedByScope.getOrDefault(Scope.MANAGED, List.of())) addPlatform(managed, d);
 
+        Set<String> own = new HashSet<>();
+        for (List<Dependency> deps : resolvedByScope.values()) for (Dependency d : deps) own.add(d.module());
+        Set<String> carried = new LinkedHashSet<>();
+
         // Transitive MAIN+EXPORT externals from reachable siblings into this module's main scope.
         Set<String> visited = new LinkedHashSet<>(dependedSiblings);
         ArrayDeque<String> queue = new ArrayDeque<>(dependedSiblings);
@@ -95,6 +116,7 @@ public final class WorkspaceMerge {
                     List<Dependency> mainList = resolvedByScope.computeIfAbsent(Scope.MAIN, k -> new ArrayList<>());
                     if (mainList.stream().noneMatch(e -> e.packageKey().equals(r.packageKey()))) {
                         mainList.add(r);
+                        if (!own.contains(r.module())) carried.add(r.module());
                     }
                 }
             }
@@ -110,7 +132,7 @@ public final class WorkspaceMerge {
             resolvedByScope.put(Scope.MANAGED, managed);
         }
 
-        return module.withDependencies(new JkBuild.Dependencies(resolvedByScope));
+        return new Applied(module.withDependencies(new JkBuild.Dependencies(resolvedByScope)), carried);
     }
 
     /** Add a BOM or managed entry to a member's table unless an earlier entry already manages that module. */
