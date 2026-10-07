@@ -645,9 +645,7 @@ public final class Http {
                     return send(reissue(request, mirrored).build(), handler, drain);
                 }
                 throw new NoAnswerException(
-                        verb + " " + SafeUri.forMessage(uri) + " got no answer within " + requestTimeout.toSeconds()
-                                + " s",
-                        e);
+                        verb + " " + SafeUri.forMessage(uri) + " got no answer within " + spoken(requestTimeout), e);
             } catch (IOException e) {
                 lastIo = e;
                 if (!retriesSilence) break;
@@ -667,6 +665,12 @@ public final class Http {
         }
         throw new IOException(
                 verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
+    }
+
+    /** A timeout as a message names it: whole seconds as {@code 2 s}, anything finer as {@code 400 ms}. */
+    static String spoken(Duration timeout) {
+        long millis = timeout.toMillis();
+        return millis % 1000 == 0 ? millis / 1000 + " s" : millis + " ms";
     }
 
     /**
