@@ -242,6 +242,10 @@ final class FrontendPlugin {
                 }
             }
         }
+        // A module that only runs the package manager uses the Node its parent installs, at the
+        // version the inherited plugin configuration names.
+        String inherited = version == null ? setting(shared, null, "nodeVersion") : null;
+        if (inherited != null) version = nodeVersion(inherited);
         if (version == null) {
             report.warning(where + " names no nodeVersion: write `node = 24` (or the version the project needs)");
         }

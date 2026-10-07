@@ -133,6 +133,29 @@ class PomFrontendImportTest {
         assertThat(messages(result.report())).noneMatch(m -> m.contains("beside its JVM sources"));
     }
 
+    /** A module that installs no Node itself takes the version the inherited plugin configuration names. */
+    @Test
+    void a_module_that_only_runs_the_package_manager_takes_the_inherited_node_version(@TempDir Path tmp)
+            throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("project"));
+        write(project.resolve("package.json"), "{ \"name\": \"ui\", \"packageManager\": \"npm@11.6.0\" }");
+        write(project.resolve("package-lock.json"), "{}");
+        write(project.resolve("src/app/main.ts"), "export {};\n");
+        write(project.resolve("pom.xml"), pom("ui", "jar", "", PLUGIN_HEAD + """
+                    <configuration><workingDirectory>${basedir}</workingDirectory><nodeVersion>v24.9.0</nodeVersion></configuration>
+                    <executions>
+                      <execution><id>npm ci</id><goals><goal>npm</goal></goals>
+                        <configuration><arguments>ci</arguments></configuration></execution>
+                    </executions>
+                  </plugin>
+                """));
+
+        PomImporter.WorkspaceImportResult result = importing(tmp).importWorkspace(project.resolve("pom.xml"));
+
+        assertThat(result.root().project().nodeSpec().requiredVersion()).isEqualTo("24.9.0");
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("names no nodeVersion"));
+    }
+
     /** The same front end beside JVM sources stays refused: it belongs in src/main/node. */
     @Test
     void a_frontend_at_the_root_beside_jvm_sources_is_refused(@TempDir Path tmp) throws Exception {
