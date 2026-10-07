@@ -81,6 +81,8 @@ final class ReactorVersions {
                 && supplied.contains(d.module())
                 && !reactor.contains(d.module())
                 && d.version() instanceof VersionSelector.Exact
+                // A member's own platform supplies that version; a shared entry must carry one.
+                && !d.isPlatformManaged()
                 && !d.isWorkspace()
                 && !d.isGit()
                 && !d.isPath()
