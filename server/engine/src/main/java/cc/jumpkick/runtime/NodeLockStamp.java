@@ -60,7 +60,8 @@ final class NodeLockStamp {
             spec = s;
             specAt = e.getKey();
             Path nodeDir = NodeShape.nodeDir(e.getValue(), e.getKey());
-            if (nodeDir == null) continue;
+            // A skipped build runs no package manager, so it pins none.
+            if (nodeDir == null || e.getValue().node().skip()) continue;
             NodeProject project = NodeProject.infer(nodeDir, e.getValue().node());
             PackageManagerSpec m = managerOf(project);
             if (m == null) continue;
