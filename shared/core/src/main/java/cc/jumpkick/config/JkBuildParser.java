@@ -377,6 +377,7 @@ public final class JkBuildParser {
         List<RepositorySpec> repos = ManifestTables.parseRepositories(result);
         Profiles profiles = ManifestTables.parseProfiles(result);
         Features features = ManifestTables.parseFeatures(result);
+        ManifestTables.checkFeatureDeps(result, features, deps);
         Map<String, String> manifest = ManifestTables.parseManifest(result);
         List<PluginDeclaration> plugins = ManifestBuild.parsePlugins(result);
         JkBuild.Application application =
