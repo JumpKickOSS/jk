@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
@@ -20,7 +19,6 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
-import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -95,7 +93,7 @@ class ThirdPartyPluginTest {
     @Test
     void hello_world_plugin_runs_from_a_published_coordinate(@TempDir Path tmp) throws Exception {
         Path repo = publishFixture(tmp.resolve("repo"));
-        publishSdkFloor(repo);
+        ThirdPartyPluginFixture.publishSdkFloor(repo);
         Path cache = tmp.resolve("cache");
         Path project = Files.createDirectories(tmp.resolve("proj"));
         Path stateDir = Files.createDirectories(tmp.resolve("state"));
@@ -260,27 +258,6 @@ class ThirdPartyPluginTest {
         // The refusal left no memo behind: the right pin still answers with the right bytes.
         assertThat(repos.tryFetchArtifact(coord, hex).orElseThrow().fetched().sha256())
                 .isEqualToIgnoringCase(hex);
-    }
-
-    /**
-     * The SDK floor in Maven layout under {@code repo}: the {@code jk-plugin-sdk} and {@code jk-host}
-     * jars and POMs this checkout's {@code jk build} packaged, at the running jk's version.
-     */
-    private static void publishSdkFloor(Path repo) throws IOException {
-        Path root = RepoRoot.find(ThirdPartyPluginTest.class);
-        for (String artifact : PluginSdkFloor.ARTIFACTS) {
-            Path lib = root.resolve("target/shared")
-                    .resolve(artifact.substring("jk-".length()))
-                    .resolve("lib");
-            String stem = artifact + "-" + JkVersion.VERSION;
-            assumeTrue(
-                    Files.isRegularFile(lib.resolve(stem + ".jar")) && Files.isRegularFile(lib.resolve(stem + ".pom")),
-                    "the checkout's own " + artifact + " jar and POM are the fixture: run `jk build` first");
-            Path dir = Files.createDirectories(
-                    repo.resolve("cc/jumpkick").resolve(artifact).resolve(JkVersion.VERSION));
-            Files.copy(lib.resolve(stem + ".jar"), dir.resolve(stem + ".jar"));
-            Files.copy(lib.resolve(stem + ".pom"), dir.resolve(stem + ".pom"));
-        }
     }
 
     /** Compile the fixture main, jar it with the manifest, publish to a Maven-layout dir. */
