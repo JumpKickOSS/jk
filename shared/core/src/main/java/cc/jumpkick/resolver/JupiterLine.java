@@ -5,6 +5,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -60,6 +61,17 @@ public final class JupiterLine {
 
     private static VersionSelector latest() {
         return VersionSelector.parse("latest");
+    }
+
+    /**
+     * The launcher version a managed Jupiter implies when nothing manages the launcher itself: the
+     * Platform line of the first Jupiter artifact {@code managed} (module to version) holds, or null.
+     */
+    public static @Nullable String launcherForManaged(Map<String, String> managed) {
+        for (var e : managed.entrySet()) {
+            if (e.getKey().startsWith(JUPITER_GROUP + ":junit-jupiter")) return platformVersion(e.getValue());
+        }
+        return null;
     }
 
     /** The declared test-scope Jupiter artifact — aggregate, api, engine or params — or null. */
