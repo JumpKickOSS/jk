@@ -311,6 +311,8 @@ final class PlannerGuards {
                     tokens.add("module:" + module);
                     tokens.add("facts:" + main.bodyDigest());
                     if (test != null) tokens.add("test-facts:" + test.bodyDigest());
+                    // Without compiled tests the lane runs fewer rules; its verdict is not the build's.
+                    if (!indexTests) tokens.add(GuardKeys.TESTS_NOT_COMPILED);
                     EvalContext ectx = new EvalContext(
                             Lane.MODULE,
                             g.root(),
@@ -659,6 +661,9 @@ final class PlannerGuards {
         }
         List<Rule> rules = new ArrayList<>(LaneRun.rulesFor(lane, load.rules(), ectx.module()));
         if (lane == Lane.OUTPUT && !coverageAsked(env, ectx)) rules.removeIf(PlannerGuards::readsCoverage);
+        // jk guard compiles no tests: a rule over them waits for a build that does, rather than
+        // recording a population over no test classes and drifting the baseline between the two.
+        if (lane == Lane.MODULE && !indexesTestClasses(env.in())) rules.removeIf(Evaluators::readsTestClasses);
         rules.addAll(extraRules);
         ectx = ectx.withRules(load.rules());
         Path baselineFile = GuardsPresence.baselineFile(g.root());

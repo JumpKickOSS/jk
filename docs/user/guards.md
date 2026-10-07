@@ -67,7 +67,10 @@ naming a module exempts that module's sites.
 A module-lane rule that reads test classes (`tiers`, `annotate` with `on = "test-class"`) is clean
 in a module that has none — a workspace has modules without tests, and a rule with nothing to
 examine there has nothing to say. It carries no bite evidence from such a module; what proves it can
-fire is a module where it does, or a `fixture`.
+fire is a module where it does, or a `fixture`. A run that compiles no tests (`jk guard`,
+`--guard --skip-tests`) does not run such a rule at all, so its baseline population is only ever
+measured over test classes a build compiled; `jk build` and `jk test` judge it, and
+`jk guard freeze` reads the test classes the last build left.
 
 ## Kinds
 

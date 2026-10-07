@@ -77,7 +77,7 @@ final class GuardKeys {
         if (upstreamDirty) return Optional.of(run("guards · module recompiles"));
         try {
             LoadResult load = PlannerGuards.rules(g);
-            LaneProbe probe = probeModuleLane(root, dir, layout, load);
+            LaneProbe probe = probeModuleLane(root, dir, layout, load, !skipTests);
             String key = probe.key();
             if (key == null) return Optional.of(run(probe.runReason()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
@@ -98,6 +98,9 @@ final class GuardKeys {
         }
     }
 
+    /** The module-lane key token of a run that compiled no tests, and so ran no rule over them. */
+    static final String TESTS_NOT_COMPILED = "tests:not-compiled";
+
     /** A module lane's forecast key, or why the lane runs with none (an index to extract first). */
     record LaneProbe(@Nullable String key, String runReason) {}
 
@@ -105,7 +108,8 @@ final class GuardKeys {
      * The key the module lane at {@code dir} would run under, read-only: the run builds the same
      * tokens in the same order, the suite's through {@link #suiteTokens}.
      */
-    static LaneProbe probeModuleLane(Path root, Path dir, BuildLayout layout, LoadResult load) throws IOException {
+    static LaneProbe probeModuleLane(Path root, Path dir, BuildLayout layout, LoadResult load, boolean testsIndexed)
+            throws IOException {
         if (load.hasErrors()) return new LaneProbe(null, "guards · jk-guards.toml does not load");
         Optional<String> main =
                 FactsIndexing.freshDigest(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
@@ -114,12 +118,13 @@ final class GuardKeys {
         tokens.add("module:" + WorkspaceModel.rel(root, dir));
         tokens.add("facts:" + main.get());
         Path testClasses = layout.testClassesDir();
-        if (Files.isDirectory(testClasses)) {
+        if (testsIndexed && Files.isDirectory(testClasses)) {
             Optional<String> test =
                     FactsIndexing.freshDigest(testClasses, FactsIndexing.indexPath(layout.buildDir(), "test"));
             if (test.isEmpty()) return new LaneProbe(null, "guards · test facts index stale");
             tokens.add("test-facts:" + test.get());
         }
+        if (!testsIndexed) tokens.add(TESTS_NOT_COMPILED);
         Path guardClasses = layout.guardClassesDir();
         if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(dir, PlannerGuards.compact(dir))) {
             Path suiteIndex = FactsIndexing.indexPath(layout.buildDir(), "guard");

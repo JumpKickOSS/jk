@@ -86,6 +86,19 @@ public final class Evaluators {
         return new Tolerance(floor, width);
     }
 
+    /**
+     * Whether the rule judges the module's test classes ({@code tiers}, or {@code annotate} on a
+     * test class): a run that does not compile them leaves it out, so its population is only ever
+     * measured over test classes the run built.
+     */
+    public static boolean readsTestClasses(Rule rule) {
+        return switch (rule.kind()) {
+            case TIERS -> true;
+            case ANNOTATE -> "test-class".equals(rule.table().getString("on"));
+            default -> false;
+        };
+    }
+
     public static boolean acceptsBaseline(Rule rule) {
         return rule.kind() != Kind.API || ApiEvaluator.acceptsBaseline(rule);
     }
