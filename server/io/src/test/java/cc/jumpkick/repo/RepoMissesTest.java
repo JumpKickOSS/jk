@@ -14,6 +14,7 @@ import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
@@ -65,7 +66,7 @@ class RepoMissesTest {
     }
 
     @Test
-    void a_catalog_miss_is_asked_again_because_a_catalog_answers_once_something_is_published(@TempDir Path tmp)
+    void a_loopback_catalog_miss_is_asked_again_because_the_port_answers_for_whoever_holds_it(@TempDir Path tmp)
             throws Exception {
         RepoGroup group = group(tmp);
 
@@ -75,13 +76,56 @@ class RepoMissesTest {
         RepoGroup.clearProcessVersionsCache();
         assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactlyInAnyOrder("1.0", "2.0");
 
-        assertThat(empty.requestsFor(META)).as("a catalog is asked every time").isEqualTo(2);
+        assertThat(empty.requestsFor(META))
+                .as("a loopback catalog is asked every time")
+                .isEqualTo(2);
         // A loopback repository's list is revalidated on every ask (a conditional GET), never
         // served for the day from the on-disk copy: the port names whatever process holds it now.
         assertThat(full.requestsFor(META))
                 .as("a loopback catalog is asked again the second time")
                 .isEqualTo(2);
-        assertThat(RepoMisses.size()).as("catalogs are not memoized").isZero();
+        assertThat(RepoMisses.CATALOGS.size())
+                .as("a loopback catalog miss is not memoized")
+                .isZero();
+    }
+
+    /**
+     * A version list asks every repository when a version is wanted, and on a multi-repository
+     * project the ones that lack the artifact are most of those requests. Each is asked once within
+     * the hour: the probe rounds of an import and the lock after them pay one miss per repository,
+     * not one per list.
+     */
+    @Test
+    void a_remote_catalog_miss_is_asked_once_within_the_hour(@TempDir Path tmp) throws Exception {
+        RepoGroup group = remoteGroup(tmp);
+
+        assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactly("1.0");
+        RepoGroup.clearProcessVersionsCache(); // the list memo lapses between probe rounds
+        assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactly("1.0");
+
+        assertThat(emptyRemote.requestsFor(META)).isEqualTo(1);
+        assertThat(RepoMisses.CATALOGS.size()).isEqualTo(1);
+        assertThat(RepoMisses.CATALOGS.ttl()).isEqualTo(Duration.ofHours(1));
+    }
+
+    /** A forced session ({@code --force}, {@code jk update}, {@code jk outdated}) asks past the memo and sees a first release. */
+    @Test
+    void a_forced_session_asks_a_missing_catalog_again_and_sees_its_first_release(@TempDir Path tmp) throws Exception {
+        RepoGroup group = remoteGroup(tmp);
+        assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactly("1.0");
+        // Published since on the repository that had nothing.
+        new MavenStub(emptyRemote.served).metadata("com.example", "lib", "2.0");
+        RepoGroup.clearProcessVersionsCache();
+        assertThat(group.availableVersions(LIB, Set.of("1.0"), false))
+                .as("within the hour the memo answers")
+                .containsExactly("1.0");
+
+        SessionContext.installConfig(JkConfig.empty().withForce(true));
+        assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactlyInAnyOrder("1.0", "2.0");
+        SessionContext.reset();
+
+        assertThat(emptyRemote.requestsFor(META)).isEqualTo(2);
+        assertThat(RepoMisses.CATALOGS.size()).as("the answer forgets the miss").isZero();
     }
 
     @Test
@@ -95,7 +139,7 @@ class RepoMissesTest {
 
         assertThat(emptyRemote.requestsFor(POM)).isEqualTo(1);
         assertThat(emptyRemote.requestsFor(JAR)).isEqualTo(1);
-        assertThat(RepoMisses.size()).isEqualTo(2);
+        assertThat(RepoMisses.FETCHES.size()).isEqualTo(2);
     }
 
     @Test
@@ -120,7 +164,7 @@ class RepoMissesTest {
         assertThat(repo.fetchPom(LIB).url().getPath()).isEqualTo(POM);
         SessionContext.reset();
 
-        assertThat(RepoMisses.size()).as("a hit forgets the miss").isZero();
+        assertThat(RepoMisses.FETCHES.size()).as("a hit forgets the miss").isZero();
         assertThat(emptyRemote.requestsFor(POM)).isEqualTo(2);
     }
 
@@ -134,7 +178,7 @@ class RepoMissesTest {
             throws Exception {
         MavenRepo central = emptyRemote.repo(tmp, "central");
         assertThatThrownBy(() -> central.fetchPom(LIB)).isInstanceOf(MavenRepo.ArtifactNotFoundException.class);
-        assertThat(RepoMisses.size()).isEqualTo(1);
+        assertThat(RepoMisses.FETCHES.size()).isEqualTo(1);
 
         // ~/.m2/settings.xml gains a <mirror> for central: the same repository, its requests opened elsewhere.
         MavenRepo mirrored = central.mirroredThrough(
@@ -163,7 +207,7 @@ class RepoMissesTest {
                 .isFalse();
 
         assertThatThrownBy(() -> local.fetchPom(LIB)).isInstanceOf(MavenRepo.ArtifactNotFoundException.class);
-        assertThat(RepoMisses.size()).as("the miss was not kept").isZero();
+        assertThat(RepoMisses.FETCHES.size()).as("the miss was not kept").isZero();
 
         // Published since, by a path or git materialization writing into the directory.
         Path pom = dir.resolve("com/example/lib/1.0/lib-1.0.pom");
@@ -171,6 +215,10 @@ class RepoMissesTest {
         Files.writeString(pom, "<project><modelVersion>4.0.0</modelVersion></project>");
 
         assertThat(local.fetchPom(LIB).url().getPath()).endsWith("/com/example/lib/1.0/lib-1.0.pom");
+    }
+
+    private RepoGroup remoteGroup(Path tmp) {
+        return new RepoGroup(List.of(emptyRemote.repo(tmp, "empty"), fullRemote.repo(tmp, "full")));
     }
 
     private RepoGroup group(Path tmp) {
