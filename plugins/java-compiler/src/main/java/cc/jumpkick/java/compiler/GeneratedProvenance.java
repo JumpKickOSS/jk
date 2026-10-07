@@ -265,6 +265,10 @@ final class GeneratedProvenance {
             for (Path origin : e.getValue()) sb.append('\t').append(escape(origin.toString()));
             lines.add(sb.toString());
         }
+        // The workdir is cache: a prune may have taken it while this compile ran, and the map this
+        // compile built is still the right one to keep.
+        Path dir = file.getParent();
+        if (dir != null) Files.createDirectories(dir);
         Files.write(file, lines, StandardCharsets.UTF_8);
     }
 

@@ -210,6 +210,10 @@ final class ZincWorkdir {
      * the retry to see it at all.
      */
     void persistAnalysis(AnalysisStore store, AnalysisContents contents) throws IOException {
+        // The workdir is cache, which a prune may have taken mid-compile; this compile's analysis is
+        // still the one that describes its output.
+        Path dir = analysisFile.getParent();
+        if (dir != null) Files.createDirectories(dir);
         for (int attempt = 1; ; attempt++) {
             try {
                 store.set(contents);

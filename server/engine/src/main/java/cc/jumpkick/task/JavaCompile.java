@@ -151,6 +151,7 @@ public final class JavaCompile {
             PathUtil.deleteRecursively(stateDir);
             Files.createDirectories(stateDir);
         }
+        ActionCachePrune.markInUse(stateDir);
 
         // The record's inputs describe the bytes the key hashed, so they are taken here, before
         // the worker reads a source; the same snapshot is what the post-fork re-read is held to.
