@@ -271,9 +271,9 @@ public final class PlatformConstraints {
      */
     LockRoots.Roots apply(LockRoots.Roots roots, Set<String> injectedRuntimes) {
         Map<String, String> pinned = exactPins(roots);
-        stripBomForExactRoots(roots.main(), versions, provenance, injectedRuntimes);
-        stripBomForExactRoots(roots.test(), versions, provenance, injectedRuntimes);
-        stripBomForExactRoots(roots.processor(), versions, provenance, injectedRuntimes);
+        stripBomForExactRoots(roots.main(), versions, provenance, injectedRuntimes, managedByManifest);
+        stripBomForExactRoots(roots.test(), versions, provenance, injectedRuntimes, managedByManifest);
+        stripBomForExactRoots(roots.processor(), versions, provenance, injectedRuntimes, managedByManifest);
         overrides.keySet().retainAll(versions.keySet());
         return new LockRoots.Roots(
                 materializePlatformManaged(roots.main(), pinned),
@@ -490,10 +490,16 @@ public final class PlatformConstraints {
             List<Dependency> declared,
             Map<String, String> bomConstraints,
             Map<String, String> constraintProvenance,
-            Set<String> injectedRuntimes) {
+            Set<String> injectedRuntimes,
+            Set<String> managedByManifest) {
         for (Dependency d : declared) {
             if (d.isPlatformManaged()) continue;
-            if (!(d.version() instanceof VersionSelector.Exact)) continue;
+            if (!(d.version() instanceof VersionSelector.Exact exact)) continue;
+            // A root that agrees with the project's own managed entry has nothing to override: the
+            // entry keeps governing every edge onto the module at that version, as a POM's
+            // dependencyManagement does.
+            if (managedByManifest.contains(d.module()) && exact.version().equals(bomConstraints.get(d.module())))
+                continue;
             // An INJECTED runtime root is jk's own bookkeeping, not a user override — it
             // already carries the BOM's managed version, and stripping the BOM here would
             // flip every other edge of the GA to raw POM fills (grails-core declares a
