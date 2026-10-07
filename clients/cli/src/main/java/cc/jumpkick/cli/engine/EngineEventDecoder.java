@@ -10,6 +10,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.wire.protocol.ClassFinishEvent;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ErrorLineEvent;
@@ -354,6 +355,10 @@ final class EngineEventDecoder {
                 listener.warn(e.task(), e.code(), e.message());
             }
             case EngineProtocol.ERROR_LINE -> dispatchError(listener, line, texts);
+            case EngineProtocol.CLASS_FINISH -> {
+                ClassFinishEvent e = ClassFinishEvent.decode(line);
+                listener.testClass(e.task(), e.result());
+            }
             case EngineProtocol.TASK_FINISH -> {
                 TaskFinishEvent e = TaskFinishEvent.decode(line);
                 listener.stepFinish(

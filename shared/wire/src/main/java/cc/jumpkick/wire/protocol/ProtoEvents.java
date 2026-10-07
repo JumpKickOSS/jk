@@ -4,6 +4,7 @@ package cc.jumpkick.wire.protocol;
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
@@ -401,6 +402,10 @@ public final class ProtoEvents {
 
     public static String auditFinding(String dir, AuditReport.Finding finding) {
         return AuditFindingEvent.of(dir, finding).encode();
+    }
+
+    public static String classFinish(String dir, String step, TestClassResult result) {
+        return new ClassFinishEvent(dir, step, result).encode();
     }
 
     public static String formatFile(

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import org.jspecify.annotations.Nullable;
@@ -79,6 +80,8 @@ public sealed interface EngineEvent {
 
     record ErrorFailure(String dir, String step, String code, String message, TestFailureInfo failure)
             implements EngineEvent {}
+
+    record ClassFinish(String dir, String step, TestClassResult result) implements EngineEvent {}
 
     record PlanDiagnosticFailure(String dir, String step, String code, String message, TestFailureInfo failure)
             implements EngineEvent {}

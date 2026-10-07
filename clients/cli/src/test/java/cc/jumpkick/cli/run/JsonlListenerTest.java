@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TestClassResult;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -29,6 +30,16 @@ class JsonlListenerTest {
         lis.progress("compile", 1, new BuildPlanView("build", 50, 100, 3, 1, false));
         assertThat(LiveProgress.get().percent()).isEqualTo(50.0);
         assertThat(buf.toString(StandardCharsets.UTF_8)).contains("\"type\":\"progress\"");
+    }
+
+    @Test
+    void a_finished_test_class_is_written_as_its_own_line() {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        JsonlListener lis = new JsonlListener(new PrintStream(buf, true, StandardCharsets.UTF_8));
+        lis.testClass("run-tests", new TestClassResult("g:a", "demo.A", 3, 1, 1, 40));
+        assertThat(buf.toString(StandardCharsets.UTF_8))
+                .contains("\"type\":\"class-finish\"")
+                .contains("\"testClass\":\"demo.A\",\"tests\":3,\"failed\":1,\"skipped\":1,\"millis\":40");
     }
 
     @Test

@@ -5,6 +5,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
 import org.jspecify.annotations.Nullable;
@@ -97,6 +98,12 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         a.error(step, code, message, failure);
         b.error(step, code, message, failure);
+    }
+
+    @Override
+    public void testClass(String step, TestClassResult result) {
+        a.testClass(step, result);
+        b.testClass(step, result);
     }
 
     @Override

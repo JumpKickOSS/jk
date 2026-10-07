@@ -88,6 +88,9 @@ public interface TaskContext {
         error(code, message, TestFailureInfo.label(failure.module(), failure.method(), 0), failure.exceptionClass());
     }
 
+    /** A test class finished; reported as it happens so a cut-short run keeps what completed. */
+    default void testClass(TestClassResult result) {}
+
     /** True when cancelled (sibling failure or Ctrl-C); poll in long loops. */
     boolean cancelled();
 
