@@ -125,6 +125,22 @@ class PinFloorsLockTest {
     }
 
     /**
+     * A pin its own {@code [managed-dependencies]} entry agrees with leaves the entry governing every
+     * edge onto the module, as a POM's dependencyManagement does: cryptofs's 2.0.1.MR is held at
+     * 2.0.1 and the project locks as written. Read as floors the pin stays too, so the import raises
+     * nothing.
+     */
+    @Test
+    void a_managed_module_s_pin_stays_where_it_is_read_as_floors(@TempDir Path tempDir) throws Exception {
+        Lockfile exact = new LockOrchestrator(repoGroup(tempDir)).lock(managedProject(), "test");
+        Lockfile floors =
+                new LockOrchestrator(repoGroup(tempDir)).withPinsAsFloors(true).lock(managedProject(), "test");
+
+        assertThat(row(exact, INJECT_API).version()).isEqualTo("2.0.1");
+        assertThat(row(floors, INJECT_API).version()).isEqualTo("2.0.1");
+    }
+
+    /**
      * A test-scope dependency asks for more than a main-scope pin allows. The test classpath is
      * the main classpath plus the test rows, so the pin is the version there too: the test solve
      * takes it for every edge onto the module, the lock carries one row with both scopes rather
@@ -233,6 +249,16 @@ class PinFloorsLockTest {
                 List.of(
                         new Dependency("org.cryptomator:cryptofs", VersionSelector.parse("=2.10.0")),
                         new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1"))));
+        return new JkBuild(new Project("org.cryptomator", "cryptomator", "1.0", 25), new JkBuild.Dependencies(byScope));
+    }
+
+    /** {@link #project()} with the pinned module also under the project's own managed entries. */
+    private static JkBuild managedProject() {
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.putAll(project().dependencies().byScope());
+        byScope.put(
+                Scope.MANAGED,
+                List.of(new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1"))));
         return new JkBuild(new Project("org.cryptomator", "cryptomator", "1.0", 25), new JkBuild.Dependencies(byScope));
     }
 
