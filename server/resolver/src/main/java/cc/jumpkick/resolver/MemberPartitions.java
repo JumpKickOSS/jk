@@ -57,10 +57,11 @@ final class MemberPartitions {
      * Solves one member's effective manifest ({@code member} is its workspace path) under the
      * requested features it declares, the given soft preferences and its own platform table, and
      * assembles its rows. {@code unshared} are the {@code group:artifact}s whose merged version is
-     * not the member's, which no floor the workspace's rows set may hold up.
+     * not the member's, which no floor the workspace's rows set may hold up. The answer carries the
+     * platform table the rows were solved under, as the solve left it: the fold reads that one.
      */
     interface MemberSolver {
-        Lockfile solve(
+        MemberSolve solve(
                 String member,
                 JkBuild manifest,
                 Collection<String> features,
@@ -69,6 +70,9 @@ final class MemberPartitions {
                 Set<String> unshared)
                 throws IOException, InterruptedException;
     }
+
+    /** One member's own rows and the platform table its solve left them pinned by. */
+    record MemberSolve(Lockfile lockfile, PlatformConstraints own) {}
 
     /** How many partitioned coordinates one member's note names before counting the rest. */
     private static final int NOTE_COORDINATES = 6;
@@ -142,12 +146,12 @@ final class MemberPartitions {
         // name@version → the provenance a holder's table lends a merged row it agrees with.
         Map<String, String> carried = new LinkedHashMap<>();
         List<Flagged> flaggedMembers = flaggedMembers(members, merged, carried);
-        List<Lockfile> solvedMembers = solveAll(flaggedMembers, memberPrefs, solver, observer);
+        List<MemberSolve> solvedMembers = solveAll(flaggedMembers, memberPrefs, solver, observer);
         for (int i = 0; i < flaggedMembers.size(); i++) {
             Flagged flaggedMember = flaggedMembers.get(i);
             LockOrchestrator.Member member = flaggedMember.member();
-            PlatformConstraints own = flaggedMember.own();
-            Lockfile mine = solvedMembers.get(i);
+            PlatformConstraints own = solvedMembers.get(i).own();
+            Lockfile mine = solvedMembers.get(i).lockfile();
             Map<String, String> differing = new TreeMap<>();
             Map<String, Set<String>> pruned = new HashMap<>();
             // The BOM or entry of the member's own table that pins each differing row's version, by
@@ -346,13 +350,13 @@ final class MemberPartitions {
      * #solves}; each is charged by the size of its graph in the merged solve, and the phase label
      * of each is said as it starts.
      */
-    private List<Lockfile> solveAll(
+    private List<MemberSolve> solveAll(
             List<Flagged> flaggedMembers,
             Map<String, Map<String, String>> memberPrefs,
             MemberSolver solver,
             ResolveObserver observer)
             throws IOException, InterruptedException {
-        List<MemberSolves.Job<Lockfile>> jobs = new ArrayList<>(flaggedMembers.size());
+        List<MemberSolves.Job<MemberSolve>> jobs = new ArrayList<>(flaggedMembers.size());
         for (Flagged flaggedMember : flaggedMembers) {
             LockOrchestrator.Member member = flaggedMember.member();
             JkBuild manifest = flaggedMember.manifest();

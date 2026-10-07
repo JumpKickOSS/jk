@@ -8,6 +8,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -125,6 +126,62 @@ class ImportPinRaisesTest {
      */
     @Test
     void a_raise_that_moves_a_dependent_members_floor_raises_that_members_pin_too(@TempDir Path ws) throws Exception {
+        publishChain();
+        writeChain(ws, false);
+
+        long probes = ImportPinRaises.PROBES.sum();
+        List<String> lines = ImportPinRaises.apply(ws, ws.resolve("cache-probe"), http.base());
+
+        assertThat(ImportPinRaises.PROBES.sum() - probes)
+                .as("lib's raise moves what app carries, app's raise moves nothing another member carries")
+                .isEqualTo(2);
+        assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:core` 1.0 → 2.0 ([dependencies] in org.ex:lib)"));
+        assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:api` 1.0 → 2.0 ([dependencies] in org.ex:app)"));
+        LockFlow.Result lock = LockFlow.run(ws, ws.resolve("cache-lock"), List.of(), false, http.base());
+        assertThat(lock.status()).as(String.valueOf(lock.error())).isZero();
+    }
+
+    /**
+     * The second round of the chain above, solved two ways: re-solving only the members whose inputs
+     * moved, and re-solving everything. solo pins api 1.0 and nothing it reaches asks higher, so it
+     * has a solve of its own that no raise touches; lib's raise lifts core to what the merged graph
+     * already holds. Both ways raise the same pins to the same versions; the second round reuses
+     * solo's answer and the merged solve instead of running them again.
+     */
+    @Test
+    void a_later_round_re_solves_only_what_moved_and_raises_what_a_full_round_does(@TempDir Path tmp) throws Exception {
+        publishChain();
+        Path subset = Files.createDirectories(tmp.resolve("subset"));
+        Path full = Files.createDirectories(tmp.resolve("full"));
+        writeChain(subset, true);
+        writeChain(full, true);
+
+        ImportPinRaises.Outcome reused = ImportPinRaises.rounds(subset, tmp.resolve("cache-subset"), http.base(), true);
+        ImportPinRaises.Outcome everything =
+                ImportPinRaises.rounds(full, tmp.resolve("cache-full"), http.base(), false);
+
+        assertThat(reused.lines()).isEqualTo(everything.lines());
+        for (String manifest : List.of("jk.toml", "lib/jk.toml", "app/jk.toml", "solo/jk.toml")) {
+            assertThat(Files.readString(subset.resolve(manifest)))
+                    .as(manifest)
+                    .isEqualTo(Files.readString(full.resolve(manifest)));
+        }
+        assertThat(Files.readString(subset.resolve("solo/jk.toml"))).contains("api = \"org.ex:api:1.0\"");
+        assertThat(reused.rounds()).hasSize(2);
+        ImportPinRaises.Round second = reused.rounds().get(1);
+        assertThat(second.mergedSolves())
+                .as("lib's raise is a floor the merged graph already holds")
+                .isZero();
+        assertThat(second.memberReuses()).as("solo's inputs did not move").isEqualTo(1);
+        assertThat(second.memberSolves())
+                .as("one fewer than the full round's")
+                .isEqualTo(everything.rounds().get(1).memberSolves() - 1);
+        assertThat(everything.rounds().get(1).mergedSolves()).isEqualTo(1);
+        assertThat(everything.rounds().get(1).memberReuses()).isZero();
+    }
+
+    /** api 1.0 and 2.0; core 2.0 needs api 2.0; shell needs core 2.0. */
+    private void publishChain() {
         for (String v : List.of("1.0", "2.0")) {
             upstream.metadata("org.ex", "api", "1.0", "2.0");
             upstream.pom("org.ex", "api", v, MavenStub.emptyPom("org.ex", "api", v));
@@ -152,15 +209,20 @@ class ImportPinRaisesTest {
                 </project>
                 """);
         upstream.jar("org.ex", "shell", "1.0");
-        Files.writeString(ws.resolve("jk.toml"), """
+    }
+
+    /** lib pins core 1.0 beside an optional shell; app depends on lib and pins api 1.0; solo, when asked, pins api 1.0 alone. */
+    private static void writeChain(Path ws, boolean solo) throws IOException {
+        Files.writeString(
+                ws.resolve("jk.toml"), """
                 group = "org.ex"
                 name = "parent"
                 version = "1.0"
                 java = 25
 
                 [workspace]
-                modules = ["lib", "app"]
-                """);
+                modules = [%s]
+                """.formatted(solo ? "\"lib\", \"app\", \"solo\"" : "\"lib\", \"app\""));
         Files.createDirectories(ws.resolve("lib"));
         Files.writeString(ws.resolve("lib").resolve("jk.toml"), """
                 group = "org.ex"
@@ -181,17 +243,16 @@ class ImportPinRaisesTest {
                 lib.workspace = true
                 api = "org.ex:api:1.0"
                 """);
+        if (!solo) return;
+        Files.createDirectories(ws.resolve("solo"));
+        Files.writeString(ws.resolve("solo").resolve("jk.toml"), """
+                group = "org.ex"
+                name = "solo"
+                version = "1.0"
 
-        long probes = ImportPinRaises.PROBES.sum();
-        List<String> lines = ImportPinRaises.apply(ws, ws.resolve("cache-probe"), http.base());
-
-        assertThat(ImportPinRaises.PROBES.sum() - probes)
-                .as("lib's raise moves what app carries, app's raise moves nothing another member carries")
-                .isEqualTo(2);
-        assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:core` 1.0 → 2.0 ([dependencies] in org.ex:lib)"));
-        assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:api` 1.0 → 2.0 ([dependencies] in org.ex:app)"));
-        LockFlow.Result lock = LockFlow.run(ws, ws.resolve("cache-lock"), List.of(), false, http.base());
-        assertThat(lock.status()).as(String.valueOf(lock.error())).isZero();
+                [dependencies]
+                api = "org.ex:api:1.0"
+                """);
     }
 
     @Test
