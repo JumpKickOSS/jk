@@ -199,7 +199,7 @@ public final class PomRuntimeClasspath {
         out.add(worker);
         try {
             EffectivePomBuilder builder = new EffectivePomBuilder(repos);
-            Pom raw = PomParser.parse(Files.readAllBytes(pom));
+            Pom raw = StorePoms.parse(pom);
             EffectivePom effective = builder.build(raw);
             walk(effective, rootPins(raw, effective), coordinateOf(worker), builder, repos, out);
         } catch (IllegalStateException e) {
@@ -235,7 +235,7 @@ public final class PomRuntimeClasspath {
         Pom raw = repos.tryFetchPom(root)
                 .map(hit -> {
                     try {
-                        return PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
+                        return StorePoms.parse(hit.fetched().cachePath());
                     } catch (IOException e) {
                         throw new IllegalStateException("failed reading worker POM " + root + ": " + e.getMessage(), e);
                     }

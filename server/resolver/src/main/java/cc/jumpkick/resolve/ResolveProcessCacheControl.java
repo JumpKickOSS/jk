@@ -22,7 +22,7 @@ public final class ResolveProcessCacheControl {
 
     /** Drop the positive resolve memos and say how many entries went; for the idle engine. */
     public static Dropped dropMemos() {
-        int poms = EffectivePomBuilder.dropProcessMemo();
+        int poms = EffectivePomBuilder.dropProcessMemo() + RepoProcessMemos.dropStoreFileMemos();
         int hits = RepoGroup.dropHitMemos();
         int versions = RepoGroup.dropVersionsMemo();
         int modules = GradleModuleMetadata.dropParseMemo() + KmpRedirects.dropProcessMemo();
