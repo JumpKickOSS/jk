@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * A repository's use of the Maven local repository ({@code ~/.m2/repository}). A local-repo file
@@ -52,6 +53,31 @@ final class M2Adoption {
 
     /** A local-repo file adopted into the store: where it landed, its SHA-256 and its size. */
     record Adopted(Path placed, String sha256, long size) {}
+
+    /** Full reads of a local-repository file this process made: the seam that proves the memo saves one. */
+    static final LongAdder READS = new LongAdder();
+
+    /**
+     * The SHA-256 of the local-repository file at {@code relativePath}, from its memo in the store
+     * ({@link RepoArtifactStore#m2MemoPath}) while its size and mtime still match, else hashed and
+     * the memo written. The local file is not the store's, so the memo is the only way a later
+     * probe of an unchanged file skips reading it.
+     */
+    private String localSha256(Path candidate, String relativePath) throws IOException {
+        Path memo = repoStore.m2MemoPath(relativePath);
+        Optional<ArtifactMemo> held = ArtifactMemo.read(memo);
+        if (held.isPresent() && held.get().stillMatches(candidate, held.get().sha256()))
+            return held.get().sha256();
+        READS.increment();
+        String sha256 = Hashing.sha256Hex(candidate);
+        try {
+            ArtifactMemo.ofBlob(candidate, RepoArtifactStore.inferGav(relativePath), sha256)
+                    .write(memo);
+        } catch (IOException e) {
+            Log.debug("localSha256: the memo is a shortcut; the hash stands without it", e);
+        }
+        return sha256;
+    }
 
     private boolean enabled() {
         return m2integration && JkM2Config.resolve().integration();
@@ -110,12 +136,17 @@ final class M2Adoption {
             // any `mvn install` could have seeded). The SHA-256 is computed once: it is both the
             // comparison and the memo the adoption records.
             ChecksumSidecars sidecars = ChecksumSidecars.start(transport, credential, uri);
-            String sha256 = Hashing.sha256Hex(candidate);
+            String sha256 = localSha256(candidate, relativePath);
             Optional<ChecksumSidecars.Published> published = sidecars.strongestSha();
             if (published.isEmpty()) return Optional.empty();
             ChecksumSidecars.Algorithm algorithm = published.get().algorithm();
-            String actual =
-                    algorithm == ChecksumSidecars.Algorithm.SHA256 ? sha256 : Hashing.fileHex(algorithm.jca, candidate);
+            String actual;
+            if (algorithm == ChecksumSidecars.Algorithm.SHA256) {
+                actual = sha256;
+            } else {
+                READS.increment();
+                actual = Hashing.fileHex(algorithm.jca, candidate);
+            }
             if (!actual.equalsIgnoreCase(published.get().hex())) return Optional.empty();
             String vouchAlgo = algorithm.label;
 

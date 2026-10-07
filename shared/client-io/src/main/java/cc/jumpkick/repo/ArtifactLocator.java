@@ -88,7 +88,7 @@ public final class ArtifactLocator {
         if (found.isPresent()) return found;
         if (m2File != null
                 && Files.isRegularFile(m2File)
-                && verified(m2File, m2MemoPath(store, relativePath), gav, expectedSha256)) {
+                && verified(m2File, store.m2MemoPath(relativePath), gav, expectedSha256)) {
             store.materialize(relativePath, m2File, expectedSha256);
             return fromStore(store, relativePath, expectedSha256);
         }
@@ -105,20 +105,6 @@ public final class ArtifactLocator {
                     .locate(relativePath, expectedSha256);
         }
         return found.map(p -> p.toAbsolutePath().normalize());
-    }
-
-    /**
-     * The ~/.m2 probe gets its own memo ({@code <artifact>.m2.jk}), distinct from the store's own
-     * {@code .jk} sidecar: one memo records one blob's (mtime, size), and the m2 file and the store
-     * file are two blobs. It lives beside the repository's own store, so two origins sharing a name
-     * keep separate m2 verdicts too.
-     */
-    private Path m2MemoPath(RepoArtifactStore store, String relativePath) {
-        Path dir = Objects.requireNonNull(store.root(), "a store with a root");
-        Path memo = ArtifactMemo.jkPath(dir, relativePath);
-        String n = memo.getFileName().toString();
-        String m2n = (n.endsWith(".jk") ? n.substring(0, n.length() - 3) : n) + ".m2.jk";
-        return memo.resolveSibling(m2n);
     }
 
     private static boolean verified(Path blob, Path jkFile, String gav, String expectedSha256) {
