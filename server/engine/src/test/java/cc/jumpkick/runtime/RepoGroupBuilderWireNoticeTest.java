@@ -9,10 +9,10 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.jobs.ConnectedClient;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
-import cc.jumpkick.engine.jobs.JobTransport;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.model.RepositorySpec;
@@ -20,11 +20,9 @@ import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import java.io.StringReader;
 import java.io.StringWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -65,7 +63,8 @@ class RepoGroupBuilderWireNoticeTest {
         var originalErr = System.err;
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         try {
-            env.submit(
+            ConnectedClient.submit(
+                    env,
                     "{\"type\":\"build-request\",\"dir\":\"/tmp/repo-notice\"}",
                     JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                         // The way the planner stands when it builds the group: a Session derived
@@ -75,7 +74,7 @@ class RepoGroupBuilderWireNoticeTest {
                                 () -> RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(UNBOUND_PAIR, NO_BINDINGS));
                         return JobOutcome.declined();
                     }),
-                    new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+                    out);
         } finally {
             System.setErr(originalErr);
         }
