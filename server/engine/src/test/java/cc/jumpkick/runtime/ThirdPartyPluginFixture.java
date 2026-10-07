@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.testing.RepoRoot;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -66,5 +71,28 @@ final class ThirdPartyPluginFixture {
                 </project>
                 """.formatted(group, artifact, version));
         return repo;
+    }
+
+    /**
+     * The SDK floor in Maven layout under {@code repo}: the {@code jk-plugin-sdk} and {@code jk-host}
+     * jars and POMs this checkout's {@code jk build} packaged, at the running jk's version. Skips the
+     * calling test when they are not built.
+     */
+    static void publishSdkFloor(Path repo) throws IOException {
+        Path root = RepoRoot.find(ThirdPartyPluginFixture.class);
+        for (String artifact : PluginSdkFloor.ARTIFACTS) {
+            Path target = root.resolve("shared")
+                    .resolve(artifact.substring("jk-".length()))
+                    .resolve("target");
+            String stem = artifact + "-" + JkVersion.VERSION;
+            assumeTrue(
+                    Files.isRegularFile(target.resolve(stem + ".jar"))
+                            && Files.isRegularFile(target.resolve(stem + ".pom")),
+                    "the checkout's own " + artifact + " jar and POM are the fixture: run `jk build` first");
+            Path dir = Files.createDirectories(
+                    repo.resolve("cc/jumpkick").resolve(artifact).resolve(JkVersion.VERSION));
+            Files.copy(target.resolve(stem + ".jar"), dir.resolve(stem + ".jar"));
+            Files.copy(target.resolve(stem + ".pom"), dir.resolve(stem + ".pom"));
+        }
     }
 }
