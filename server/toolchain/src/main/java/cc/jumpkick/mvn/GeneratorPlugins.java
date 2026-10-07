@@ -92,7 +92,12 @@ final class GeneratorPlugins {
             "invokerPackage",
             "packageName",
             "configOptions",
-            "additionalProperties");
+            "additionalProperties",
+            "library",
+            "modelNamePrefix",
+            "modelNameSuffix",
+            "importMappings",
+            "typeMappings");
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/openapi";
 
@@ -218,6 +223,16 @@ final class GeneratorPlugins {
         }
         Map<String, String> options = options(configs);
         if (!options.isEmpty()) values.put("options", options);
+        for (String[] key : new String[][] {
+            {"library", "library"}, {"modelNamePrefix", "model-name-prefix"}, {"modelNameSuffix", "model-name-suffix"}
+        }) {
+            String v = value(configs, key[0]);
+            if (v != null) values.put(key[1], v);
+        }
+        Map<String, String> imports = mappings(configs, "importMappings");
+        if (!imports.isEmpty()) values.put("import-mappings", imports);
+        Map<String, String> types = mappings(configs, "typeMappings");
+        if (!types.isEmpty()) values.put("type-mappings", types);
         reportUncovered(configs, report);
         if ("spring".equals(generator)) {
             report.warning("`[openapi] generator = \"spring\"` applies jk's defaults (interfaceOnly, useSpringBoot3,"
@@ -311,6 +326,35 @@ final class GeneratorPlugins {
             }
         }
         return options;
+    }
+
+    /**
+     * {@code <importMappings>} / {@code <typeMappings>}: {@code name=value} children, or one
+     * comma-separated value, in declaration order.
+     */
+    private static Map<String, String> mappings(List<Xpp3Dom> configs, String element) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Xpp3Dom config : configs) {
+            Xpp3Dom list = config.getChild(element);
+            if (list == null) continue;
+            List<String> entries = new ArrayList<>();
+            for (Xpp3Dom child : list.getChildren()) {
+                String v = PluginFacts.usable(child.getValue());
+                if (v != null) entries.add(v);
+            }
+            String inline = PluginFacts.usable(list.getValue());
+            if (list.getChildCount() == 0 && inline != null) entries.add(inline);
+            for (String entry : entries) {
+                for (String pair : entry.split(",")) {
+                    int eq = pair.indexOf('=');
+                    if (eq > 0)
+                        out.put(
+                                pair.substring(0, eq).trim(),
+                                pair.substring(eq + 1).trim());
+                }
+            }
+        }
+        return out;
     }
 
     /** Every configuration element the preset has no key for, as one row. */

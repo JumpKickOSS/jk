@@ -288,4 +288,23 @@ class GeneratorStepTest {
         }
         return jar;
     }
+
+    @Test
+    void a_failure_leads_with_the_tools_own_error_not_its_log() {
+        assertThat(
+                        GeneratorStep.failureCause(
+                                List.of(
+                                        "[main] INFO  o.o.codegen.DefaultGenerator - Generating with dryRun=false",
+                                        "Exception in thread \"main\" java.lang.IllegalArgumentException: no such annotation library",
+                                        "\tat org.openapitools.codegen.languages.AbstractJavaCodegen.processOpts(AbstractJavaCodegen.java:442)")))
+                .isEqualTo("java.lang.IllegalArgumentException: no such annotation library");
+        assertThat(GeneratorStep.failureCause(List.of(
+                        "Exception in thread \"main\" java.lang.RuntimeException: wrapped",
+                        "\tat a.B.c(B.java:1)",
+                        "Caused by: java.io.FileNotFoundException: spec.yml")))
+                .isEqualTo("java.io.FileNotFoundException: spec.yml");
+        assertThat(GeneratorStep.failureCause(List.of("[main] INFO starting", "[main] ERROR the spec has 2 errors")))
+                .isEqualTo("the spec has 2 errors");
+        assertThat(GeneratorStep.failureCause(List.of("[main] INFO starting"))).isNull();
+    }
 }

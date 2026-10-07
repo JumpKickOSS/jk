@@ -111,6 +111,41 @@ class PomGeneratorImportTest {
                 .anySatisfy(m -> assertThat(m).contains("already there").contains("was not fetched"));
     }
 
+    /** spring-petclinic-rest's shape: a library, a model-name suffix and an import mapping beside the spec. */
+    @Test
+    void library_model_names_and_mappings_land_on_their_keys(@TempDir Path tempDir) throws Exception {
+        String xml = TestImporters.fixture("plugins", "openapi-pom.xml")
+                .replace(
+                        "<inputSpec>${apollo.openapi.spec.url}</inputSpec>",
+                        "<inputSpec>${project.basedir}/src/main/resources/openapi.yaml</inputSpec>"
+                                + "<library>spring-boot</library>"
+                                + "<modelNameSuffix>Dto</modelNameSuffix>"
+                                + "<importMappings><importMapping>Nullable=org.jspecify.annotations.Nullable"
+                                + "</importMapping></importMappings>"
+                                + "<typeMappings>DateTime=java.time.Instant,Date=java.time.LocalDate</typeMappings>");
+        PomImporter.Result result = TestImporters.importXml(tempDir, xml, uri -> {
+            throw new AssertionError("a file spec is not fetched");
+        });
+
+        PluginConfig openapi = result.jkBuild().pluginConfig("openapi").orElseThrow();
+        assertThat(openapi.string("library")).isEqualTo("spring-boot");
+        assertThat(openapi.string("model-name-suffix")).isEqualTo("Dto");
+        assertThat(openapi.stringMap("import-mappings"))
+                .containsExactly(Map.entry("Nullable", "org.jspecify.annotations.Nullable"));
+        assertThat(openapi.stringMap("type-mappings"))
+                .containsExactly(Map.entry("DateTime", "java.time.Instant"), Map.entry("Date", "java.time.LocalDate"));
+        assertThat(messages(result))
+                .noneMatch(m -> m.contains("`<library>`")
+                        || m.contains("`<modelNameSuffix>`")
+                        || m.contains("`<importMappings>`")
+                        || m.contains("`<typeMappings>`"));
+        PluginConfig reparsed = JkBuildParser.parse(JkBuildRenderer.render(result.jkBuild()))
+                .pluginConfig("openapi")
+                .orElseThrow();
+        assertThat(reparsed.stringMap("import-mappings")).isEqualTo(openapi.stringMap("import-mappings"));
+        assertThat(reparsed.string("model-name-suffix")).isEqualTo("Dto");
+    }
+
     @Test
     void a_file_spec_is_written_module_relative(@TempDir Path tempDir) throws Exception {
         String xml = TestImporters.fixture("plugins", "openapi-pom.xml")
