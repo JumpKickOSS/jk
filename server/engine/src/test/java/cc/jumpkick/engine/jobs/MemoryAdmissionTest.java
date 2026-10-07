@@ -191,17 +191,17 @@ class MemoryAdmissionTest {
         MemoryAdmission gate = gate(heap, (kind, dir) -> dir.equals("/small") ? 10 * MIB : 400 * MIB);
         assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         assertThat(gate.admit(2, "build", "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
-        List<Long> admittedOrder = new CopyOnWriteArrayList<>();
-        CompletableFuture<Verdict> third = async(() -> {
-            Verdict v = gate.admit(3, "build", "/c", (ahead, waited) -> {}, () -> false);
-            admittedOrder.add(3L);
-            return v;
-        });
+        CompletableFuture<Verdict> third =
+                async(() -> gate.admit(3, "build", "/c", (ahead, waited) -> {}, () -> false));
         Await.until(HANG, () -> gate.queued() == 1);
         AtomicInteger smallAhead = new AtomicInteger(-1);
+        // Read as the small job leaves admit: the queue is first come, first served, so the job ahead
+        // of it has already left the queue by then. Two threads returning from admit race each other;
+        // the queue does not.
+        AtomicInteger queuedWhenSmallAdmitted = new AtomicInteger(-1);
         CompletableFuture<Verdict> small = async(() -> {
             Verdict v = gate.admit(4, "build", "/small", (ahead, waited) -> smallAhead.set(ahead), () -> false);
-            admittedOrder.add(4L);
+            queuedWhenSmallAdmitted.set(gate.queued());
             return v;
         });
         Await.until(HANG, () -> gate.queued() == 2);
@@ -212,7 +212,7 @@ class MemoryAdmissionTest {
 
         assertThat(third.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         assertThat(small.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
-        assertThat(admittedOrder).containsExactly(3L, 4L);
+        assertThat(queuedWhenSmallAdmitted).hasValue(0);
     }
 
     /** A clock the test advances by hand. */
