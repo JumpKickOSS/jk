@@ -223,7 +223,8 @@ snakeyaml  = { group = "org.yaml", name = "snakeyaml", version = "2.3" }
 
 Every transitive edge onto a managed module takes the entry's version, the way a one-module BOM's
 would, under both pin policies. The order on one module is Maven's: an exact version you declare
-under `[dependencies]` beats the managed entry; the managed entry beats every
+under `[dependencies]` beats the managed entry (one that agrees with it leaves the entry governing
+every edge onto the module); the managed entry beats every
 `[platform-dependencies]` BOM (as a POM's own `dependencyManagement` beats the BOMs it imports —
 `jk lock` says which BOM gave way); the BOMs decide among themselves in declaration order
 ([Platforms](platforms.md#two-boms-that-manage-one-module)); a module none of them manage takes the
