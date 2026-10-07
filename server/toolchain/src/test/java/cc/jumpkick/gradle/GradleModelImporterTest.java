@@ -381,11 +381,11 @@ class GradleModelImporterTest {
 
     /**
      * junit-multiple-engines: Kotlin and Groovy plugins over Java test sources, {@code --release}
-     * set on every JavaCompile. The module declares java at that release so its Java compiles; a jk
-     * module compiles Groovy or Kotlin, so Kotlin is written and the Groovy sources are a row.
+     * set on every JavaCompile. The module declares java at that release so its Java compiles, and
+     * Kotlin and Groovy side by side, as Gradle compiles them.
      */
     @Test
-    void a_kotlin_and_groovy_project_with_java_sources_declares_java_and_kotlin(@TempDir Path dir) throws Exception {
+    void a_kotlin_and_groovy_project_with_java_sources_declares_all_three(@TempDir Path dir) throws Exception {
         Path test = dir.resolve("src/test/java/junit/JupiterTests.java");
         Files.createDirectories(test.getParent());
         Files.writeString(test, "package junit; class JupiterTests {}");
@@ -409,9 +409,8 @@ class GradleModelImporterTest {
         JkBuild build = result.root();
         assertThat(build.project().java()).isEqualTo(17);
         assertThat(Objects.requireNonNull(build.project().kotlin()).raw()).isEqualTo("2.4.20");
-        assertThat(build.project().groovy()).isNull();
-        assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m).contains("plugin `groovy`").contains("groovy = \"5.1.2\""));
+        assertThat(Objects.requireNonNull(build.project().groovy()).raw()).isEqualTo("5.1.2");
+        assertThat(messages(result.report())).noneSatisfy(m -> assertThat(m).contains("plugin `groovy`"));
     }
 
     /** A Groovy module over Java sources declares the Groovy its classpath resolves and java at the release. */

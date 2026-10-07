@@ -7,6 +7,12 @@ module is **traditional** (Maven). Otherwise it is **simple** (Mill-like).
 
 Language is by **file extension**. `.java` / `.kt` / `.groovy` may share a directory.
 `jk new` still asks which tree to scaffold; that only **places files**.
+
+One module may mix Java, Kotlin and Groovy, in main and in tests, compiled in Gradle's order:
+Kotlin first (reading Java declarations from source), then Groovy against Kotlin's output
+(sweeping the Java sources in joint mode), then Java against both. So Groovy and Java may
+reference Kotlin, and Java may reference Groovy; Kotlin cannot reference Groovy. Scala does not
+mix with Kotlin or Groovy in one module.
 `jk new --layout simple` scaffolds the Mill-like columns.
 
 `--layout` on `jk new` is file placement only. Prefer shaping the tree so detection

@@ -183,7 +183,8 @@ final class ModuleForecast {
             List<Path> ktSrc,
             List<Path> gvSrc,
             boolean mixedKotlin,
-            boolean mixedGroovy) {}
+            boolean mixedGroovy,
+            boolean kotlinModule) {}
 
     TaskForecast.Module run() {
         if (dep == null) dep = TaskForecaster.DepDirtiness.NONE;
@@ -325,7 +326,8 @@ final class ModuleForecast {
                 ktSrc,
                 gvSrc,
                 mixedKotlin,
-                mixedGroovy);
+                mixedGroovy,
+                langs.kotlin());
     }
 
     private void compileMain(Prepared prepared) throws Exception {
@@ -798,9 +800,7 @@ final class ModuleForecast {
             knownResourceDrift = mainResourceDrift;
             if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                 Path resTest = ModuleLayout.testResourcesDir(dir, compact);
-                if (TaskForecaster.resourcesOutOfSync(resTest, layout.testClassesDir())) {
-                    testResourceDrift = true;
-                }
+                testResourceDrift = TaskForecaster.resourcesOutOfSync(resTest, layout.testClassesDir());
             }
         }
     }

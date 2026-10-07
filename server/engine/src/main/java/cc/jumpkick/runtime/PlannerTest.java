@@ -121,26 +121,31 @@ public final class PlannerTest {
                             .resolve("incremental")
                             .resolve(ResourceMirror.TEST_LEDGER);
                     if (!Files.isRegularFile(testLedger)) forgetTestCompileState(in.cache(), testClasses);
-                    boolean mixedTest =
-                            !src.javaTest().isEmpty() && !src.ktTest().isEmpty();
-                    boolean mixedTestGv =
-                            !src.javaTest().isEmpty() && !src.gvTest().isEmpty();
-                    // In a mixed test module each language gets its own output dir, merged below.
+                    // Two test languages side by side: each compiles into its own dir, merged below.
+                    // kotlinc prunes what it did not write and groovyc's cache snapshots its whole
+                    // output dir, so neither can share target/test-classes with another compiler.
+                    boolean javaTests = !src.javaTest().isEmpty();
+                    boolean mixedTest = !src.ktTest().isEmpty()
+                            && (javaTests || !src.gvTest().isEmpty());
+                    boolean mixedTestGv = !src.gvTest().isEmpty()
+                            && (javaTests || !src.ktTest().isEmpty());
                     Path gvTestOut = mixedTestGv ? ctx.require(LAYOUT).groovyTestClassesDir() : testClasses;
                     Path ktTestOut = mixedTest ? ctx.require(LAYOUT).kotlinTestClassesDir() : testClasses;
+                    // Kotlin first, then Groovy against its output (Gradle's order), then Java against both.
+                    compileKotlinTests(
+                            ctx, in, cas, actionCache, src, baseCp, ktTestOut, testClasses, mixedTest && javaTests);
                     compileGroovyTests(
                             ctx,
                             in,
                             cas,
                             actionCache,
                             src,
-                            baseCp,
+                            src.ktTest().isEmpty() ? baseCp : PlannerCompile.withKotlinTestOutput(baseCp, ktTestOut),
                             gvTestOut,
                             testClasses,
                             compiledSuites,
                             compact,
-                            mixedTestGv);
-                    compileKotlinTests(ctx, in, cas, actionCache, src, baseCp, ktTestOut, testClasses, mixedTest);
+                            mixedTestGv && javaTests);
                     compileJavaTests(
                             ctx, in, cas, src, baseCp, testClasses, ktTestOut, gvTestOut, mixedTest, mixedTestGv);
                     mergeLanguageOutputs(
@@ -313,8 +318,8 @@ public final class PlannerTest {
     }
 
     /**
-     * Groovy test sources first (joint mode sweeps the Java test roots for resolution), so Java
-     * tests can reference Groovy test types.
+     * Groovy test sources before Java's (joint mode sweeps the Java test roots for resolution), so
+     * Java tests can reference Groovy test types. {@code jointWithJava} sweeps the Java roots.
      */
     private static void compileGroovyTests(
             TaskContext ctx,
@@ -327,13 +332,13 @@ public final class PlannerTest {
             Path testClasses,
             List<String> suiteNames,
             boolean compact,
-            boolean mixedTestGv)
+            boolean jointWithJava)
             throws Exception {
         if (src.gvTest().isEmpty()) return;
         ctx.label("compiling " + src.gvTest().size() + " Groovy test sources");
         String gvTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_GROOVY, testClasses);
         List<Path> gvJavaRoots = null;
-        if (mixedTestGv) {
+        if (jointWithJava) {
             gvJavaRoots = new ArrayList<>();
             for (String suite : suiteNames) {
                 for (Path root : TestSuites.javaRoots(in.dir(), compact, suite)) {
@@ -356,8 +361,8 @@ public final class PlannerTest {
     }
 
     /**
-     * Kotlin test sources first, so Java tests can reference Kotlin test types (mirrors the main
-     * mixed-module ordering).
+     * Kotlin test sources first, so Groovy and Java tests can reference Kotlin test types (mirrors
+     * the main ordering). {@code readsJava} has kotlinc read the Java test sources' declarations.
      */
     private static void compileKotlinTests(
             TaskContext ctx,
@@ -368,7 +373,7 @@ public final class PlannerTest {
             List<Path> baseCp,
             Path ktTestOut,
             Path testClasses,
-            boolean mixedTest)
+            boolean readsJava)
             throws Exception {
         if (src.ktTest().isEmpty()) return;
         ctx.label("compiling " + src.ktTest().size() + " Kotlin test sources");
@@ -377,7 +382,7 @@ public final class PlannerTest {
                 ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(in.cache())),
                 TaskNames.COMPILE_TEST_KOTLIN,
                 testClasses);
-        List<Path> javaRoots = mixedTest ? List.of(src.javaTestSrc()) : null;
+        List<Path> javaRoots = readsJava ? List.of(src.javaTestSrc()) : null;
         PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
                 ctx,
                 in,

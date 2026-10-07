@@ -145,15 +145,9 @@ final class CorePlan {
     }
 
     private void rejectUnsupportedLanguagePairs() {
-        // Triple-language modules are out of scopefail loudly rather than guess an
-        // ordering between two stub-generating compilers.
-        if (useKotlin && useGroovy) {
-            throw new IllegalStateException(
-                    "groovy+kotlin in one module is not supported yet — split the languages into separate modules");
-        }
         // Scala compiles with Java in one Zinc session, but a second stub-generating compiler
-        // (kotlinc / groovyc) can't parse .scala, so the combo fails with a cryptic unresolved
-        // reference instead of the loud error above.
+        // (kotlinc / groovyc) can't parse .scala, so the combo would fail with a cryptic
+        // unresolved reference: refuse it by name instead.
         if (useScala && (useKotlin || useGroovy)) {
             throw new IllegalStateException("scala+" + (useKotlin ? "kotlin" : "groovy")
                     + " in one module is not supported — split the languages into separate modules");
@@ -214,11 +208,12 @@ final class CorePlan {
         final boolean mixedGroovy = useJava && useGroovy;
         final boolean kotlinModule = useKotlin; // effectively-final copy for lambdas
         final boolean groovyModule = useGroovy;
+        // Kotlin and Groovy without Java: Kotlin first, Groovy against its output, so Groovy is last.
         String mainCompile = (mixed || mixedGroovy)
                 ? TaskNames.ASSEMBLE_CLASSES
-                : (useKotlin
-                        ? TaskNames.COMPILE_KOTLIN
-                        : (useGroovy ? TaskNames.COMPILE_GROOVY : TaskNames.COMPILE_JAVA));
+                : (useGroovy
+                        ? TaskNames.COMPILE_GROOVY
+                        : (useKotlin ? TaskNames.COMPILE_KOTLIN : TaskNames.COMPILE_JAVA));
 
         // Predict each step's bar weight from the work it will actually do this
         // run (skipped/cached steps collapse to ~1; real work dominates). Computed

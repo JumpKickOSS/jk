@@ -310,12 +310,6 @@ final class GradleModelImporter {
         String groovy = applied.contains("groovy") ? groovyVersion(p, local) : null;
         Set<String> unreported = new LinkedHashSet<>(applied);
         unreported.remove("groovy");
-        if (groovy != null && p.kotlinVersion() != null) {
-            local.warning("plugin `groovy` is applied beside Kotlin, and a jk module compiles Groovy or Kotlin, not"
-                    + " both: the Groovy sources are not compiled — move them into a module of their own with"
-                    + " `groovy = \"" + groovy + "\"`.");
-            groovy = null;
-        }
         reportPlugins(p, unreported, local);
         reportTasks(p, local);
         reportSourceSets(p, local);
