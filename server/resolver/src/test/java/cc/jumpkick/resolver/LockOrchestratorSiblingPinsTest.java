@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.Cas;
@@ -287,6 +288,67 @@ class LockOrchestratorSiblingPinsTest {
         assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
                 .extracting(Lockfile.Artifact::version)
                 .containsExactly("2.0");
+    }
+
+    /**
+     * A member's pin below what a sibling's graph needs fails neither: app pins leaf 1.0, lib reaches
+     * leaf through upper, whose POM declares 2.0. app reads its 1.0, lib the 2.0 its graph asks for,
+     * as each module of a Maven reactor resolves on its own.
+     */
+    @Test
+    void a_members_pin_below_what_a_siblings_graph_needs_is_that_members_alone(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "upper", "1.0");
+        upstream.pom("com.foo", "upper", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>upper</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.foo</groupId><artifactId>leaf</artifactId><version>2.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("com.foo", "upper", "1.0");
+        JkBuild app = manifest(
+                "app", Map.of(Scope.MAIN, List.of(new Dependency("com.foo:leaf", VersionSelector.parse("=1.0")))));
+        JkBuild lib = manifest(
+                "lib", Map.of(Scope.MAIN, List.of(new Dependency("com.foo:upper", VersionSelector.parse("=1.0")))));
+
+        Lockfile lock = lockWorkspace(tempDir, List.of(app, lib));
+
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("1.0");
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("2.0");
+    }
+
+    /**
+     * A version the workspace owns is every member's: a sibling whose graph needs it higher fails the
+     * lock and names it, as one pin for the whole reactor would.
+     */
+    @Test
+    void a_workspace_version_below_what_a_siblings_graph_needs_fails_the_lock(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "upper", "1.0");
+        upstream.pom("com.foo", "upper", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>upper</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.foo</groupId><artifactId>leaf</artifactId><version>2.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("com.foo", "upper", "1.0");
+        JkBuild app = manifest(
+                "app", Map.of(Scope.MAIN, List.of(new Dependency("com.foo:leaf", VersionSelector.parse("=1.0")))));
+        JkBuild lib = manifest(
+                "lib", Map.of(Scope.MAIN, List.of(new Dependency("com.foo:upper", VersionSelector.parse("=1.0")))));
+        JkBuild root = JkBuild.builder(new Project("com.example", "root", "0.1.0", 25))
+                .workspace(new Workspace(List.of("app", "lib")))
+                .build();
+
+        assertThatThrownBy(() ->
+                        lockWorkspace(tempDir, root, List.of(app, lib), Set.of("com.foo:leaf"), new ArrayList<>()))
+                .hasMessageContaining("com.foo:leaf");
     }
 
     /** The workspace locked as the pipeline locks it, under a root with no declarations of its own. */

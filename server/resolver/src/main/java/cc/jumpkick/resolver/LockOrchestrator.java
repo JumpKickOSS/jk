@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -356,11 +357,13 @@ public final class LockOrchestrator {
                 progress,
                 observer,
                 pomBuilder,
-                constraints);
+                constraints,
+                unionFloorPins());
         for (String line : repos.checksumNotes()) observer.onNote(line);
         for (String line : repos.mirrorNotes()) observer.onNote(line);
         // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
-        JupiterAlignment.check(union.solved().test());
+        // A workspace's merged test graph mixes its members' lines; each member is judged on its own rows below.
+        if (members.isEmpty()) JupiterAlignment.check(union.solved().test());
 
         progress.materializePhase(
                 progress.graphPackages() + union.roots().fileDeps().size());
@@ -387,7 +390,8 @@ public final class LockOrchestrator {
                             silent,
                             ResolveObserver.NOOP,
                             pomBuilder,
-                            own);
+                            own,
+                            ga -> pinsAsFloors);
                     steps.begin(ResolveProfile::memberAssemble);
                     silent.materializePhase(0);
                     return assemble(solve, manifest, jkVersion, silent, pomBuilder);
@@ -408,6 +412,10 @@ public final class LockOrchestrator {
             pass.begin(ResolveProfile::phasePartition);
             try {
                 lockfile = partitions.apply(lockfile, members, prefs.members(), solver, observer);
+                for (Member member : members) {
+                    if (JupiterLine.declaredJupiter(member.manifest()) == null) continue;
+                    JupiterAlignment.check(lockfile.forMember(member.path()), member.path());
+                }
             } finally {
                 pass.end();
             }
@@ -584,7 +592,8 @@ public final class LockOrchestrator {
             LockProgress progress,
             ResolveObserver observer,
             EffectivePomBuilder pomBuilder,
-            PlatformConstraints constraints)
+            PlatformConstraints constraints,
+            Predicate<String> floorPin)
             throws IOException, InterruptedException {
         LockRoots.Declared declared = LockRoots.partition(project, featuresRequested, withDefaults);
         Map<String, String> bomConstraints = constraints.versions();
@@ -618,7 +627,7 @@ public final class LockOrchestrator {
         }
 
         progress.graphPhase(roots.declaredCount());
-        ScopeSolves scopeSolves = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinsAsFloors);
+        ScopeSolves scopeSolves = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, floorPin);
         ScopeSolves.Solved solved = scopeSolves.solve(roots, prefs, progress);
         for (String line : scopeSolves.overrides()) observer.onOverride(line);
         if (sharedSource != null) {
@@ -628,6 +637,18 @@ public final class LockOrchestrator {
             declaredRepositories.putAll(sharedSource.declaredRepositoriesByUrl());
         }
         return new Solve(constraints, roots, solved, sharedSource, kmp);
+    }
+
+    /**
+     * Which exact pins the workspace's merged solve reads as floors: every pin under {@link
+     * #withPinsAsFloors}; otherwise a member's pin on a module whose version is not the workspace's.
+     * That pin is the member's alone: it holds in the member's own solve, and in the merged one it is
+     * a floor a sibling's graph may raise, so one member's pin never fails another member's graph.
+     */
+    private Predicate<String> unionFloorPins() {
+        if (pinsAsFloors) return ga -> true;
+        if (members.isEmpty()) return ga -> false;
+        return ga -> !workspaceVersions.contains(ga);
     }
 
     /**
