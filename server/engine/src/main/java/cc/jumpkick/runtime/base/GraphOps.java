@@ -2,6 +2,8 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
@@ -20,6 +22,7 @@ import cc.jumpkick.resolver.LockGraph;
 import cc.jumpkick.resolver.Provenance;
 import cc.jumpkick.wire.protocol.WhyReport;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,7 +111,8 @@ public final class GraphOps {
                     paths,
                     selectors,
                     roots,
-                    prunedEdges(lock, query));
+                    prunedEdges(lock, query),
+                    matches.isEmpty() ? siblingNamed(dir, query) : null);
         } catch (IOException | RuntimeException e) {
             return WhyReport.error(Errors.text(e));
         }
@@ -173,6 +177,29 @@ public final class GraphOps {
      * Match a lockfile package name/key against a user query. Exact match, GA match (query
      * {@code g:a} vs lock {@code g:a:jar:}), artifact-only match, or substring.
      */
+    /**
+     * The workspace member {@code query} names by {@code group:name} or {@code name}, as its directory
+     * from the workspace root; {@code null} when none does. A sibling builds from source and has no
+     * lock row, so a query for one finds nothing in the lock.
+     */
+    static @Nullable String siblingNamed(Path dir, @Nullable String query) throws IOException {
+        if (query == null || query.isBlank()) return null;
+        Path root = WorkspaceScan.owningRoot(dir).orElse(null);
+        if (root == null || !Files.isRegularFile(ManifestPaths.manifestIn(root))) return null;
+        JkBuild rootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(root));
+        String[] parts = query.strip().split(":", -1);
+        String wanted = parts.length >= 2 ? parts[0] + ":" + parts[1] : parts[0];
+        for (var e : WorkspaceLoader.loadModules(root, rootBuild).entrySet()) {
+            var project = e.getValue().project();
+            if (wanted.equals(project.name()) || wanted.equals(project.group() + ":" + project.name())) {
+                return root.relativize(e.getKey().toAbsolutePath().normalize())
+                        .toString()
+                        .replace('\\', '/');
+            }
+        }
+        return null;
+    }
+
     private static boolean matchesQuery(String name, @Nullable String rawQuery) {
         String query = rawQuery == null ? "" : rawQuery;
         if (name.equals(query)) return true;

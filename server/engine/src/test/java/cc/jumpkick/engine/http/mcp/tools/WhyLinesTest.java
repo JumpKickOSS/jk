@@ -22,7 +22,8 @@ class WhyLinesTest {
                 List.of("app@1.0.0>com.google.guava:guava@33.4.0"),
                 List.of("\t"),
                 List.of(""),
-                List.of());
+                List.of(),
+                null);
         String text = WhyLines.of(report, "guava");
         assertThat(text.lines().count()).isLessThanOrEqualTo(WhyLines.MAX_LINES);
         assertThat(text).contains("com.google.guava:guava 33.4.0 · pinned by ");
@@ -34,7 +35,7 @@ class WhyLinesTest {
         List<String> names = new ArrayList<>();
         for (int i = 0; i < 8; i++) names.add("g:a" + i);
         WhyReport report = new WhyReport(
-                null, names, names, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                null, names, names, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
         assertThat(WhyLines.of(report, "a").lines().count()).isLessThanOrEqualTo(WhyLines.MAX_LINES);
     }
 
@@ -50,8 +51,28 @@ class WhyLinesTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of("com.acme:gone\tjk.toml:app\tcom.acme:parent@1.0"));
+                List.of("com.acme:gone\tjk.toml:app\tcom.acme:parent@1.0"),
+                null);
         assertThat(WhyLines.of(report, "gone"))
                 .contains("com.acme:gone excluded under com.acme:parent@1.0 (by jk.toml:app)");
+    }
+
+    @Test
+    void a_workspace_sibling_is_named_as_one() {
+        WhyReport report = new WhyReport(
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "libs/core");
+        assertThat(WhyLines.of(report, "core"))
+                .startsWith("core is the workspace sibling libs/core/")
+                .doesNotContain("is not in jk-lock.toml");
     }
 }
