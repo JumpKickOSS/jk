@@ -545,7 +545,7 @@ public final class MavenPackageSource implements PackageSource {
             // release than the pre-release that was asked for.
             try {
                 List<String> ordered = orderedVersions(pkg);
-                String newest = highestOf(ordered);
+                String newest = CandidateWindow.highestOf(ordered);
                 if (newest != null) return Optional.of(newest);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -598,7 +598,7 @@ public final class MavenPackageSource implements PackageSource {
         List<String> ordered = orderedVersions(pkg, wanted);
         // `snapshot` asked for the bleeding edge explicitly, so leave its window unnarrowed.
         List<String> result =
-                List.copyOf(isSnapshotPackage(pkg) ? compactHighest(ordered) : compactVersionCandidates(ordered));
+                List.copyOf(isSnapshotPackage(pkg) ? CandidateWindow.highest(ordered) : CandidateWindow.of(ordered));
         versionCache.put(pkg, result);
         wantedAtCache.put(pkg, Set.copyOf(wanted));
         readsCompleted.incrementAndGet();
@@ -661,94 +661,6 @@ public final class MavenPackageSource implements PackageSource {
         preferFirst(sorted, lockedVersionPrefs.get(ga));
         preferFirst(sorted, lockedVersionPrefs.get(pkg));
         return sorted;
-    }
-
-    /** How many candidates the compact window keeps. */
-    private static final int COMPACT_CANDIDATES = 4;
-
-    /**
-     * Cap the candidate list while preserving the soft-prefer front and, critically, keeping
-     * something <em>stable</em> in the window.
-     *
-     * <p>The cap exists so PubGrub does not thrash on 80-version histories. Taking simply
-     * the highest four, though, starves {@link
-     * cc.jumpkick.resolver.pubgrub.AllowedSet#choosePreferred} of any stable candidate whenever a
-     * project publishes four or more pre-releases above its latest release. jackson-annotations sits
-     * at 3.0-rc5..rc2 above a stable 2.22, so a caret on 2.22 resolved to <b>3.0-rc5</b>.
-     * The stable preference downstream was correct all along — it was simply never offered a stable.
-     *
-     * <p>So the highest <em>stable</em> versions fill the window first and pre-releases take only the
-     * slots left over (which is what keeps a project that has never cut a stable release resolvable).
-     * A constraint that genuinely needs a pre-release still resolves: every stable candidate fails it,
-     * the window is exhausted, and the solver widens to the unfiltered history via {@link
-     * #expandedVersions} — the path that exists for exactly this shape of miss. That keeps
-     * transitive POM edges pinned to milestone builds working, since those arrive as constraints
-     * rather than as manifest selectors.
-     */
-    static List<String> compactVersionCandidates(List<String> sortedHighestFirst) {
-        if (sortedHighestFirst.size() <= COMPACT_CANDIDATES) {
-            // The full history is the universe, so the downstream stable preference can already see
-            // a stable candidate. Nothing to protect against here.
-            return sortedHighestFirst;
-        }
-
-        // A lock/BOM soft-prefer sits at index 0 without necessarily being the highest version, and
-        // it must survive the cap even when it is itself a pre-release: an explicit pin outranks this
-        // policy.
-        String front = sortedHighestFirst.get(0);
-        String naturalMax = highestOf(sortedHighestFirst);
-        boolean pinnedFront = !front.equals(naturalMax);
-
-        LinkedHashSet<String> picked = new LinkedHashSet<>();
-        if (pinnedFront) {
-            picked.add(front);
-            // Keep the natural max too. AllowedSet infers "this front is a pin, take it
-            // unconditionally" by finding some higher version in the universe — drop that and a
-            // pre-release pin silently loses to a lower stable.
-            picked.add(naturalMax);
-        }
-        for (String v : sortedHighestFirst) {
-            if (picked.size() >= COMPACT_CANDIDATES) break;
-            if (Versions.isStable(v)) picked.add(v);
-        }
-        for (String v : sortedHighestFirst) {
-            if (picked.size() >= COMPACT_CANDIDATES) break;
-            picked.add(v);
-        }
-
-        // Restore highest-first order (choosePreferred walks the universe in index order), then put
-        // any pin back at the front where preferFirst/preferBom left it.
-        List<String> out = new ArrayList<>(picked);
-        out.sort((a, b) -> Versions.compare(b, a));
-        if (pinnedFront) {
-            out.remove(front);
-            out.add(0, front);
-        }
-        return List.copyOf(out);
-    }
-
-    /**
-     * Cap to the highest candidates with no stability policy at all — the window for a {@code
-     * snapshot} package, which asked for the newest thing published whatever it is.
-     */
-    static List<String> compactHighest(List<String> sortedHighestFirst) {
-        if (sortedHighestFirst.size() <= COMPACT_CANDIDATES) return sortedHighestFirst;
-        List<String> out = new ArrayList<>(COMPACT_CANDIDATES);
-        for (String v : sortedHighestFirst) {
-            if (out.contains(v)) continue;
-            out.add(v);
-            if (out.size() == COMPACT_CANDIDATES) break;
-        }
-        return List.copyOf(out);
-    }
-
-    /** The highest version under Maven ordering, or null for an empty list. */
-    private static @Nullable String highestOf(List<String> versions) {
-        String max = null;
-        for (String v : versions) {
-            if (max == null || Versions.compare(v, max) > 0) max = v;
-        }
-        return max;
     }
 
     /**
@@ -887,7 +799,8 @@ public final class MavenPackageSource implements PackageSource {
         for (GradleModuleMetadata.Constraint c : kmp.constraintsFor(pkg, version)) {
             String depPkg = PackageId.ofGa(c.group() + ":" + c.module()).key();
             String spec = c.version().trim();
-            String declared = c.strictly() || VersionSelectors.looksLikeMavenRange(spec) ? null : spec;
+            String declared =
+                    spec.isEmpty() || c.strictly() || VersionSelectors.looksLikeMavenRange(spec) ? null : spec;
             out.add(new RawEdge(depPkg, constraintForGmmConstraint(depPkg, c), Set.of(), declared, true));
         }
         for (Pom.Dep dep : pom.dependencies()) {
@@ -1111,10 +1024,17 @@ public final class MavenPackageSource implements PackageSource {
      * requires} is a POM-style version — a floor under conflict resolution when bare, a range when
      * bracketed — and follows the platform rules of {@link #constraintForManagedEdge}. A {@code
      * strictly} pins, unless a platform BOM manages the module, in which case the BOM's say stands
-     * as it does for every edge.
+     * as it does for every edge. Each {@code rejects} entry, a version or a range, is subtracted from
+     * the result, so a fenced-off release is never picked; an entry that only rejects allows every
+     * other version.
      */
     VersionSet constraintForGmmConstraint(String depPkg, GradleModuleMetadata.Constraint c) {
+        return withoutRejected(baseForGmmConstraint(depPkg, c), c.rejects());
+    }
+
+    private VersionSet baseForGmmConstraint(String depPkg, GradleModuleMetadata.Constraint c) {
         String spec = c.version().trim();
+        if (spec.isEmpty()) return VersionSet.ALL;
         if (c.strictly() && !VersionSelectors.looksLikeMavenRange(spec)) {
             String ga = PackageId.parse(depPkg).ga();
             if (firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg)) == null) {
@@ -1122,6 +1042,17 @@ public final class MavenPackageSource implements PackageSource {
             }
         }
         return constraintForManagedEdge(depPkg, spec);
+    }
+
+    /** {@code set} less every rejected version (bare) or range (bracketed or comparator). */
+    static VersionSet withoutRejected(VersionSet set, List<String> rejects) {
+        VersionSet out = set;
+        for (String r : rejects) {
+            VersionSet rejected =
+                    VersionSelectors.looksLikeMavenRange(r) ? VersionSelectors.parseRange(r) : VersionSet.exact(r);
+            out = out.intersect(rejected.complement());
+        }
+        return out;
     }
 
     /**
@@ -1229,7 +1160,8 @@ public final class MavenPackageSource implements PackageSource {
                 if (pick == null) {
                     List<String> candidates = versions(pkg);
                     // Plain versions the edges wrote steer the solver to the highest of them.
-                    pick = highestOf(new ArrayList<>(declaredVersions(pkg).keySet()));
+                    pick = CandidateWindow.highestOf(
+                            new ArrayList<>(declaredVersions(pkg).keySet()));
                     if (pick == null && !candidates.isEmpty()) pick = candidates.getFirst();
                     if (pick == null) return;
                 }
