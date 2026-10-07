@@ -29,6 +29,7 @@ class ClasspathAnalysesTest {
     private static final String T2 =
             "package lib; public class T { public int a() { return 1; } public int b() { return 2; } }";
     private static final String U = "package lib; public class U { public int u() { return 3; } }";
+    private static final String U_BODY = "package lib; public class U { public int u() { return 4; } }";
     private static final String A = "package app; public class A { public int f() { return new lib.T().a(); } }";
     private static final String B = "package app; public class B { public int g() { return new lib.U().u(); } }";
 
@@ -66,12 +67,31 @@ class ClasspathAnalysesTest {
         assertThat(plan.reason()).isEqualTo("dependency lib.T changed");
     }
 
+    /**
+     * A Java class's API is its whole contract with a consumer: on a compile some other producer
+     * class's API change forced, a class whose body alone moved invalidates nothing.
+     */
+    @Test
+    void a_body_only_change_beside_an_api_change_recompiles_only_the_api_consumer(@TempDir Path dir) throws Exception {
+        Producer lib = Producer.compiled(dir.resolve("lib"), T1, U);
+        Consumer app = new Consumer(dir.resolve("app"), lib.jar, Map.of(lib.jar, lib.analysis));
+        app.compile();
+
+        lib.write("lib/T.java", T2);
+        lib.write("lib/U.java", U_BODY);
+        lib.compileAndJar();
+
+        ZincJavaCompiler.Plan plan = app.plan();
+        assertThat(names(plan.sources())).containsExactly("A.java");
+        assertThat(names(app.compile())).containsExactly("A.java");
+        assertThat(names(app.compile())).isEmpty();
+    }
+
     @Test
     void a_rebuild_with_nothing_changed_compiles_nothing(@TempDir Path dir) throws Exception {
         Producer lib = Producer.compiled(dir.resolve("lib"), T1, U);
         Consumer app = new Consumer(dir.resolve("app"), lib.jar, Map.of(lib.jar, lib.analysis));
         app.compile();
-
         assertThat(names(app.compile())).isEmpty();
         assertThat(app.plan().sources()).isEmpty();
     }

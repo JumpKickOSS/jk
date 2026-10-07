@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
+import sbt.internal.inc.APIs;
 import sbt.internal.inc.Analysis;
 import sbt.internal.inc.FileAnalysisStore;
 import sbt.internal.inc.Stamps;
@@ -94,10 +95,20 @@ final class ClasspathAnalyses {
         return Option.empty();
     }
 
+    private static boolean definedOnlyByJava(Analysis analysis, String className) {
+        var sources = analysis.relations().definesClass(className).iterator();
+        if (!sources.hasNext()) return false;
+        while (sources.hasNext()) {
+            if (!sources.next().id().endsWith(".java")) return false;
+        }
+        return true;
+    }
+
     /**
      * Whether the producer's current view of {@code binaryClassName} still has the hashes {@code
-     * recorded} — the comparison Zinc makes to decide an external class changed. A class no
-     * producer analysis knows any more compares as changed, as it does inside Zinc.
+     * recorded} — the comparison Zinc makes to decide an external class changed, over the same
+     * answer {@link #analyzedClass} gives Zinc. A class no producer analysis knows any more compares
+     * as changed, as it does inside Zinc.
      */
     boolean sameApi(String binaryClassName, AnalyzedClass recorded) {
         Option<AnalyzedClass> now = analyzedClass(binaryClassName);
@@ -134,7 +145,27 @@ final class ClasspathAnalyses {
         if (contents.isEmpty() || !(contents.get().getAnalysis() instanceof Analysis analysis)) {
             return Optional.empty();
         }
-        return describesDisk(analysis, current) ? Optional.of(analysis) : Optional.empty();
+        return describesDisk(analysis, current) ? Optional.of(apiOnlyForJava(analysis)) : Optional.empty();
+    }
+
+    /**
+     * {@code analysis} with the bytecode hashes of every class defined only by Java sources cleared.
+     * Java has no inline bodies, so a Java class's API and extra hashes are the whole of what a
+     * consumer depends on, and a body-only edit to it must not invalidate the consumer. Zinc both
+     * records an external class and compares it later from this analysis, and the forecast reads it
+     * too, so every side carries the same cleared hashes.
+     */
+    static Analysis apiOnlyForJava(Analysis analysis) {
+        APIs apis = analysis.apis();
+        var internal = apis.internal().iterator();
+        while (internal.hasNext()) {
+            var entry = internal.next();
+            if (!definedOnlyByJava(analysis, entry._1())) continue;
+            AnalyzedClass c = entry._2();
+            apis = apis.markInternalAPI(entry._1(), c.withBytecodeHash(0L).withTransitiveBytecodeHash(0L));
+        }
+        return (Analysis)
+                analysis.copy(analysis.stamps(), apis, analysis.relations(), analysis.infos(), analysis.compilations());
     }
 
     /**
