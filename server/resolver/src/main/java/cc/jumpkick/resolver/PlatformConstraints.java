@@ -524,6 +524,12 @@ public final class PlatformConstraints {
             Dependency root = d;
             if (d.isPlatformManaged()) {
                 String managed = versions.getOrDefault(d.module(), pinned.get(d.module()));
+                // The launcher jk injects rides a managed Jupiter; a BOM that manages Jupiter but not
+                // the launcher still names the line it runs on.
+                if (managed == null && d.module().equals(JupiterLine.LAUNCHER)) {
+                    managed = JupiterLine.launcherForManaged(versions);
+                    if (managed == null) managed = JupiterLine.launcherForManaged(pinned);
+                }
                 if (managed == null) {
                     throw new IllegalStateException("`" + d.module()
                             + "` is declared without a version, but no [platform-dependencies] BOM manages it"
