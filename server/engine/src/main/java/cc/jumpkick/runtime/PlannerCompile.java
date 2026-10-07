@@ -690,14 +690,35 @@ public final class PlannerCompile {
         return requires.toArray(new String[0]);
     }
 
-    static String[] groovyCompileRequires(@Nullable PluginDeclarations decls) {
+    static String[] groovyCompileRequires(@Nullable PluginDeclarations decls, boolean kotlinModule) {
         List<String> requires = new ArrayList<>(List.of(
                 TaskNames.PARSE_BUILD,
                 TaskNames.RESOLVE_DEPS,
                 TaskNames.ENSURE_JDK,
                 TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
+        // Kotlin compiles first in a module that has both, and Groovy reads its output.
+        if (kotlinModule) requires.add(TaskNames.COMPILE_KOTLIN);
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
+    }
+
+    /** A Groovy test compile's classpath: Kotlin's test output joins the module's test classpath. */
+    static List<Path> withKotlinTestOutput(List<Path> classpath, Path kotlinTestOut) {
+        List<Path> out = new ArrayList<>(classpath);
+        out.add(kotlinTestOut);
+        return out;
+    }
+
+    /**
+     * compile-groovy's classpath: the module's, plus Kotlin's output when the module compiled
+     * Kotlin, so a Groovy class can reference a Kotlin one (Kotlin cannot see Groovy: it compiles
+     * first, as under Gradle). The build and the forecast both key on this list.
+     */
+    public static List<Path> groovyClasspath(List<Path> classpath, BuildLayout layout, boolean kotlinOutput) {
+        if (!kotlinOutput) return classpath;
+        List<Path> out = new ArrayList<>(classpath);
+        out.add(layout.kotlinClassesDir());
+        return out;
     }
 
     /** True when the module declares {@code [processor-dependencies]} entries. */
@@ -866,6 +887,8 @@ public final class PlannerCompile {
         AtomicReference<@Nullable List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
         boolean compact = cx.compact();
         boolean mixedGroovy = cx.mixedGroovy();
+        boolean kotlinModule = cx.kotlinModule();
+        boolean mixedWithJava = cx.mixedWithJava();
         return Task.builder(TaskNames.COMPILE_GROOVY)
                 .stage(BuildStage.COMPILE)
                 .label("Groovy")
@@ -873,7 +896,7 @@ public final class PlannerCompile {
                 // Groovy compiles first (joint mode reads Java *declarations* by sweeping the
                 // .java roots; javac runs after it in a mixed module), so it only needs the
                 // base steps plus any source-generating plugin steps.
-                .requires(groovyCompileRequires(pluginDecls))
+                .requires(groovyCompileRequires(pluginDecls, cx.kotlinModule()))
                 .weight(() -> plan.get().compileGroovy())
                 .interpolated()
                 .ticks(() -> {
@@ -909,7 +932,10 @@ public final class PlannerCompile {
                         ctx.put(GROOVY_OUTCOME, "no-sources");
                         return;
                     }
-                    List<Path> classpath = ctx.require(CLASSPATH);
+                    List<Path> classpath = groovyClasspath(
+                            ctx.require(CLASSPATH),
+                            ctx.require(LAYOUT),
+                            kotlinModule && !kotlinSources(ctx).isEmpty());
                     // Freshness inputs: Groovy sources plus — in a mixed module — the Java
                     // sources, since joint mode resolves against them (any Java edit can make
                     // our.class files or retained stubs stale). Same conservative posture as
@@ -921,6 +947,14 @@ public final class PlannerCompile {
                     if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.GROOVY, freshInputs)) {
                         PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
+                        // Kotlin published here earlier in this run; its own dir still holds it.
+                        if (kotlinModule && !mixedWithJava) {
+                            mergeLanguageOutput(
+                                    ctx.require(LAYOUT).kotlinClassesDir(),
+                                    classes,
+                                    ctx.require(LAYOUT).buildDir(),
+                                    "kotlin");
+                        }
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
                     // Groovy compiles into its own dir, then we merge into the shared classes
