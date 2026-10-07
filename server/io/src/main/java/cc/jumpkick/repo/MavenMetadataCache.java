@@ -30,7 +30,7 @@ import java.util.concurrent.Callable;
  * <p><strong>Local first:</strong> within {@link #DEFAULT_TTL} (24h, Maven's daily policy) a
  * cached body is returned with <em>no</em> HTTP. Past TTL, conditional GET ({@code ETag} /
  * {@code Last-Modified}); 304 restarts the TTL. Network/429 errors reuse a stale copy; 404 →
- * {@link MavenRepo.ArtifactNotFoundException}.
+ * {@link MavenRepo.ArtifactNotFoundException}, remembered for {@link RepoMisses#CATALOGS}' hour.
  *
  * <p>{@link #withForceRevalidate} / {@code -F} skip the TTL short-circuit (still conditional
  * GET when validators exist). Reserved for {@code jk update} and explicit force — not every
@@ -163,6 +163,10 @@ public final class MavenMetadataCache {
             byte[] held = BODIES.get(body, Files::readAllBytes).orElse(null);
             if (held != null) return held.clone();
         }
+        // A repository that lacks the artifact answered so within the hour: a version list fans out
+        // to every repository, so on a multi-repository project the misses are most of its requests.
+        if (!force && RepoMisses.CATALOGS.known(uri))
+            throw new MavenRepo.ArtifactNotFoundException("not found: " + uri);
         Map<String, String> auth = AuthHeaders.of(credential);
         Map<String, String> headers = new LinkedHashMap<>(auth);
         // Validators speak only for the body they were stored beside. A sidecar that outlived its
@@ -188,12 +192,14 @@ public final class MavenMetadataCache {
                 status = resp.statusCode();
             }
             if (status == 200) {
+                RepoMisses.CATALOGS.forget(uri);
                 store(body, meta, resp);
                 // A fresh index off the network — a 304 revalidation costs no payload, so isn't metered.
                 SessionContext.current().io().remoteDown(body);
                 return resp.body();
             }
             if (status == 404) {
+                RepoMisses.CATALOGS.record(uri);
                 throw new MavenRepo.ArtifactNotFoundException("not found: " + uri);
             }
             // 4xx (incl. 429) / other: reuse a stale copy rather than fail the

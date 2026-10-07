@@ -396,8 +396,9 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   checksum sidecars of a download travel beside its body rather than after it. A POM or
   artifact path a repository answered "not found" is remembered for the metadata TTL, so a
   re-lock in the same engine pays none of those 404s a multi-repository walk produces; a version
-  catalog miss is never remembered, and `jk outdated`, `jk update` and `--force` read catalogs
-  past every memo. Neither the not-found memo nor the sixty-second version-list memo keeps an
+  catalog miss is remembered for an hour, so an import's probe rounds and the lock after them ask
+  each repository that lacks an artifact once, and `jk outdated`, `jk update` and `--force` read
+  catalogs past every memo. Neither the not-found memo nor the sixty-second version-list memo keeps an
   answer from a loopback repository (`localhost`, `127.*`, `::1`): its port names whatever process
   holds it now, and a loopback round trip is not the cost the memos exist to save.
 - **Download budget:** `DownloadSlots.width()` — four per core, one per 4 MiB of engine heap,

@@ -8,25 +8,25 @@ import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Process-wide memo of the POM and artifact URLs a repository answered "not found". On a
- * multi-repository project every path is asked of each repository ahead of the one that holds it,
- * so the misses outnumber the hits, and a re-lock in the same engine would pay each of them again —
- * the positive memos answer only for what was found. A known miss is answered without a request
- * until it expires.
+ * Process-wide memo of the URLs a repository answered "not found". On a multi-repository project
+ * every path is asked of each repository ahead of the one that holds it, so the misses outnumber
+ * the hits, and a re-lock in the same engine would pay each of them again — the positive memos
+ * answer only for what was found. A known miss is answered without a request until it expires.
  *
  * <p>The key is the URL the request opened, not the repository's logical origin: a repository a
  * settings.xml {@code <mirror>} starts routing is asked at the mirror's URL, which no miss recorded
  * at the origin answers for, and a mirror removed leaves the origin asked afresh.
  *
- * <p>Version catalogs are never memoized here: a {@code maven-metadata.xml} that is absent is a
- * coordinate nothing has been published under yet, exactly the answer that changes when something
- * is, so a catalog miss is asked again every time and {@code jk outdated} sees the first release.
+ * <p>Two memos, two lifetimes. {@link #FETCHES} holds POMs and artifacts for the window the
+ * {@code maven-metadata.xml} cache trusts a catalog: a published GAV is immutable, and the lock is
+ * already prepared to see a new one that late. {@link #CATALOGS} holds version catalogs for an
+ * hour — long enough that an import's probe rounds and the lock after them ask each repository
+ * that lacks an artifact once, short enough that a coordinate's first release is seen the same
+ * afternoon. {@code jk outdated} and {@code jk update} revalidate, so they see it at once.
  *
- * <p>An entry lives {@link #TTL}, the window the {@code maven-metadata.xml} cache already trusts a
- * catalog for: a published GAV is immutable, and the lock is already prepared to see a new one that
- * late. A forced session ({@code --force}, or a revalidating lock) bypasses the memo and refreshes
- * it, and {@link RepoGroup#clearProcessFetchCache()} drops it with the positive fetch memos. Capped
- * so a long-lived engine cannot retain an unbounded set of misses.
+ * <p>A forced session ({@code --force}, or a revalidating lock) bypasses both and refreshes them,
+ * and {@link RepoGroup#clearProcessFetchCache()} drops them with the positive fetch memos. Each is
+ * capped so a long-lived engine cannot retain an unbounded set of misses.
  *
  * <p>A loopback repository is never memoized: its URL names whatever process holds the port right
  * now — a stub, a proxy under development — and the memo exists to save remote round trips, which
@@ -36,23 +36,35 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 final class RepoMisses {
 
-    /** How long a miss is trusted; the same window as the metadata cache's. */
-    static final Duration TTL = MavenMetadataCache.DEFAULT_TTL;
+    /** POMs and artifacts: the same window as the metadata cache's. */
+    static final RepoMisses FETCHES = new RepoMisses(MavenMetadataCache.DEFAULT_TTL);
+
+    /** Version catalogs: one hour. */
+    static final RepoMisses CATALOGS = new RepoMisses(Duration.ofHours(1));
 
     private static final int MAX = 65_536;
 
+    private final Duration ttl;
+
     /** URL → the monotonic nanosecond reading at which the miss stops being trusted. */
-    private static final ConcurrentHashMap<String, Long> MISSES = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> misses = new ConcurrentHashMap<>();
 
-    private RepoMisses() {}
+    private RepoMisses(Duration ttl) {
+        this.ttl = ttl;
+    }
 
-    /** True when {@code uri} answered not-found within {@link #TTL}. */
-    static boolean known(URI uri) {
+    /** How long a miss is trusted. */
+    Duration ttl() {
+        return ttl;
+    }
+
+    /** True when {@code uri} answered not-found within {@link #ttl}. */
+    boolean known(URI uri) {
         String key = uri.toString();
-        Long expiresAt = MISSES.get(key);
+        Long expiresAt = misses.get(key);
         if (expiresAt == null) return false;
         if (Clock.SYSTEM.nanos() - expiresAt >= 0) {
-            MISSES.remove(key, expiresAt);
+            misses.remove(key, expiresAt);
             return false;
         }
         return true;
@@ -68,25 +80,26 @@ final class RepoMisses {
     }
 
     /** Remember that {@code uri} answered not-found; a loopback or file repository's miss is not kept. */
-    static void record(URI uri) {
+    void record(URI uri) {
         if (!memoizes(uri)) return;
         String key = uri.toString();
-        if (MISSES.size() >= MAX && !MISSES.containsKey(key)) return;
-        MISSES.put(key, Clock.SYSTEM.nanos() + TTL.toNanos());
+        if (misses.size() >= MAX && !misses.containsKey(key)) return;
+        misses.put(key, Clock.SYSTEM.nanos() + ttl.toNanos());
     }
 
     /** Forget a miss: {@code uri} answered after all (a forced session asked past the memo). */
-    static void forget(URI uri) {
-        MISSES.remove(uri.toString());
+    void forget(URI uri) {
+        misses.remove(uri.toString());
     }
 
-    /** Drop every miss. */
+    /** Drop every miss in both memos. */
     static void clear() {
-        MISSES.clear();
+        FETCHES.misses.clear();
+        CATALOGS.misses.clear();
     }
 
     /** How many misses are held; for tests. */
-    static int size() {
-        return MISSES.size();
+    int size() {
+        return misses.size();
     }
 }
