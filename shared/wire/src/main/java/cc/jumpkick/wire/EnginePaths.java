@@ -2,14 +2,24 @@
 package cc.jumpkick.wire;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Resolves the on-disk identity of the engine for a given state directory: a short key
@@ -66,7 +76,7 @@ public final class EnginePaths {
         return new Paths(
                 key,
                 dir,
-                dir.resolve(key + ".sock"),
+                socketDir(dir).resolve(key + ".sock"),
                 dir.resolve(key + ".lock"),
                 dir.resolve(key + ".pid"),
                 dir.resolve(key + ".log"),
@@ -119,7 +129,7 @@ public final class EnginePaths {
         return new Paths(
                 key,
                 dir,
-                dir.resolve(key + ".sock"),
+                socketDir(dir).resolve(key + ".sock"),
                 dir.resolve(key + ".lock"),
                 dir.resolve(key + ".pid"),
                 dir.resolve(key + ".log"),
@@ -161,7 +171,7 @@ public final class EnginePaths {
         return new Paths(
                 paths.key(),
                 dir,
-                dir.resolve(stem + ".sock"),
+                socketDir(dir).resolve(stem + ".sock"),
                 dir.resolve(stem + ".lock"),
                 dir.resolve(stem + ".pid"),
                 paths.log(),
@@ -178,7 +188,7 @@ public final class EnginePaths {
         try {
             String name = Files.readString(ep).trim();
             if (!name.isEmpty() && !name.contains("/") && !name.contains("\\")) {
-                return paths.dir().resolve(name);
+                return reachableSocketDir(paths.dir()).resolve(name);
             }
         } catch (IOException ignored) {
             // No pointer → no engine. The flat path below is a never-bound placeholder (nothing
@@ -219,6 +229,106 @@ public final class EnginePaths {
         String name = socket.getFileName().toString();
         String base = name.endsWith(".sock") ? name.substring(0, name.length() - ".sock".length()) : name;
         return socket.resolveSibling(base + suffix);
+    }
+
+    // ---- the socket's directory -----------------------------------------------------------
+
+    /**
+     * The longest socket path the OS binds, in bytes: {@code sun_path} holds 108 bytes on Linux and
+     * 104 on macOS, the terminating NUL included.
+     */
+    static int socketPathLimit() {
+        return Os.isDarwin() ? 103 : 107;
+    }
+
+    /** The longest socket name an engine binds: {@code <key>.gen<n>.sock}, with room for a six-digit generation. */
+    private static final String LONGEST_NAME = "0".repeat(KEY_LENGTH) + ".gen999999.sock";
+
+    /**
+     * Where {@code engineDir}'s sockets are bound and connected: {@code engineDir} itself when its
+     * longest socket path fits the OS limit, else a short owner-only link to it under the system
+     * temp root ({@link #shortLinkFor}). Every other engine file stays in {@code engineDir}; through
+     * the link a socket's pid and token siblings are the same files.
+     */
+    public static Path socketDir(Path engineDir) {
+        if (EngineTransport.useLoopbackTcp() || fits(engineDir.toAbsolutePath().normalize(), socketPathLimit())) {
+            return engineDir;
+        }
+        return shortLinkFor(engineDir);
+    }
+
+    /** Whether the longest socket under {@code dir} fits {@code limit} bytes. */
+    static boolean fits(Path dir, int limit) {
+        return dir.resolve(LONGEST_NAME).toString().getBytes(StandardCharsets.UTF_8).length <= limit;
+    }
+
+    /**
+     * {@code /tmp/jk-<user>/<hash>}: a link named by a hash of {@code engineDir}'s absolute path, so
+     * two state directories never share one and the same directory always gets the same link.
+     */
+    static Path shortLinkFor(Path engineDir) {
+        return linkRoot()
+                .resolve(
+                        Hashing.sha256Hex(engineDir.toAbsolutePath().normalize().toString())
+                                .substring(0, 12));
+    }
+
+    private static Path linkRoot() {
+        String user = System.getProperty("user.name", "user").replaceAll("[^A-Za-z0-9._-]", "_");
+        if (user.length() > 32) user = user.substring(0, 32);
+        return Path.of("/tmp", "jk-" + user);
+    }
+
+    /**
+     * {@link #socketDir}, with the short link created or repaired when one is in use, so a socket
+     * bound or connected through it reaches {@code engineDir}. A link root that is not this user's
+     * directory with mode {@code 0700} is not used: a socket path through it would let another
+     * account stand in for the engine. Then, or on any I/O failure, the link stays absent and the
+     * bind or connect through it fails naming the path.
+     */
+    public static Path reachableSocketDir(Path engineDir) {
+        Path dir = socketDir(engineDir);
+        if (dir.equals(engineDir)) return dir;
+        try {
+            ensureLink(dir, engineDir);
+        } catch (IOException ignored) {
+            // The bind or connect through the missing link reports the path.
+        }
+        return dir;
+    }
+
+    static void ensureLink(Path link, Path engineDir) throws IOException {
+        Path target = engineDir.toAbsolutePath().normalize();
+        Files.createDirectories(target);
+        Path root = Objects.requireNonNull(link.getParent(), "link root");
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
+            try {
+                OwnerOnlyFiles.createDirectory(root);
+            } catch (FileAlreadyExistsException raced) {
+                // Another jk made it first; it is checked below like any existing root.
+            }
+        }
+        if (!ownedPrivateDirectory(root, target)) {
+            throw new IOException(root + " is not a directory of this user's with mode 0700");
+        }
+        if (Files.isSymbolicLink(link) && Files.readSymbolicLink(link).equals(target)) return;
+        Path staging =
+                root.resolve(link.getFileName() + "." + ProcessHandle.current().pid() + ".tmp");
+        Files.deleteIfExists(staging);
+        Files.createSymbolicLink(staging, target);
+        try {
+            Files.move(staging, link, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(staging);
+        }
+    }
+
+    /** A real directory (not a link), owned by whoever owns {@code mine}, open to its owner alone. */
+    private static boolean ownedPrivateDirectory(Path dir, Path mine) throws IOException {
+        if (!Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS)) return false;
+        if (!Files.getOwner(dir, LinkOption.NOFOLLOW_LINKS).equals(Files.getOwner(mine))) return false;
+        Set<PosixFilePermission> perms = Files.getPosixFilePermissions(dir, LinkOption.NOFOLLOW_LINKS);
+        return perms.equals(PosixFilePermissions.fromString("rwx------"));
     }
 
     /** A short, stable hash of the resolved absolute state-dir path. */

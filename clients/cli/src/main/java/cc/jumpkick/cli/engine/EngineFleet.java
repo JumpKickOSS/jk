@@ -151,7 +151,7 @@ public final class EngineFleet {
                 if (pid <= 0 || known.contains(pid) || !alive(pid) || !isEnginePid(pid)) return;
                 String stem = pidFile.getFileName().toString();
                 stem = stem.substring(0, stem.length() - ".pid".length());
-                Path socket = pidFile.resolveSibling(stem + ".sock");
+                Path socket = EnginePaths.reachableSocketDir(dir).resolve(stem + ".sock");
                 String key = keyFromPidStem(stem);
                 EnginePaths.Paths paths = EnginePaths.forKey(key, stateDir);
                 Optional<EngineProbe.Status> status = EngineProbe.status(socket);

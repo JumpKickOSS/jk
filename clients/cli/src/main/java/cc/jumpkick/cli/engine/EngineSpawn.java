@@ -25,6 +25,8 @@ import cc.jumpkick.wire.protocol.HelloAckFrame;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -378,7 +380,34 @@ public final class EngineSpawn {
     }
 
     private static IOException notStarted(EnginePaths.Paths paths) {
-        return new IOException("could not start the build engine — see " + paths.log() + " for details");
+        String said = lastStartFailure(paths.log());
+        return new IOException("could not start the build engine"
+                + (said == null ? "" : ": " + said)
+                + " — see " + paths.log() + " for details");
+    }
+
+    /** How much of the log's end is searched for the engine's own reason. */
+    private static final int LOG_TAIL_BYTES = 64 * 1024;
+
+    private static final String START_FAILURE = "failed to start: ";
+
+    /** The engine's last {@code failed to start:} reason in {@code log}, or null when it logged none. */
+    static @Nullable String lastStartFailure(Path log) {
+        String tail;
+        try (var ch = FileChannel.open(log)) {
+            long from = Math.max(0, ch.size() - LOG_TAIL_BYTES);
+            var buf = ByteBuffer.allocate((int) (ch.size() - from));
+            ch.read(buf, from);
+            tail = new String(buf.array(), 0, buf.position(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return null;
+        }
+        String found = null;
+        for (String line : tail.split("\\R")) {
+            int at = line.indexOf(START_FAILURE);
+            if (at >= 0) found = line.substring(at + START_FAILURE.length()).strip();
+        }
+        return found == null || found.isEmpty() ? null : found;
     }
 
     /**
