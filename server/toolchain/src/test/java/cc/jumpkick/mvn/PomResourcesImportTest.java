@@ -139,4 +139,52 @@ class PomResourcesImportTest {
         assertThat(r.properties()).isEmpty();
         assertThat(TestImporters.messages(result)).anyMatch(m -> m.contains("`<targetPath>` on src/main/config"));
     }
+
+    /**
+     * neo4j's parent: the layout root, its META-INF again with that same target path, and the module
+     * directory itself narrowed to three license files. The first two are the layout root's files
+     * where they already land; the module directory is never a root, it would carry the sources.
+     */
+    @Test
+    void the_module_directory_and_a_layout_subdirectory_at_its_own_path_are_no_roots(@TempDir Path root)
+            throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <resources>
+                      <resource><directory>${basedir}/src/main/resources</directory></resource>
+                      <resource>
+                        <targetPath>META-INF</targetPath>
+                        <directory>${basedir}/src/main/resources/META-INF/</directory>
+                      </resource>
+                      <resource>
+                        <targetPath>META-INF</targetPath>
+                        <directory>${basedir}</directory>
+                        <includes><include>LICENSE.txt</include></includes>
+                      </resource>
+                    </resources>
+                    <testResources>
+                      <testResource><directory>${basedir}</directory></testResource>
+                    </testResources>
+                  </build>
+                </project>
+                """);
+        Files.createDirectories(root.resolve("src/main/resources/META-INF"));
+        Files.writeString(root.resolve("LICENSE.txt"), "license\n");
+
+        PomImporter.Result result = TestImporters.offline(root).importFrom(root.resolve("pom.xml"));
+        BuildBlock.Resources r = result.jkBuild().build().resources();
+
+        assertThat(r).isEqualTo(BuildBlock.Resources.EMPTY);
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).doesNotContain("[resources]");
+        assertThat(JkBuildParser.parse(rendered).build().resources()).isEqualTo(r);
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.contains("the module directory itself"))
+                .noneMatch(m -> m.contains("`<targetPath>` on src/main/resources/META-INF"));
+    }
 }
