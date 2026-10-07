@@ -78,7 +78,7 @@ class VariantSwitchTest {
                 project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
 
-        Path classes = project.resolve("target/classes/main/com/example/sw");
+        Path classes = project.resolve("target/classes/com/example/sw");
         BuildPlanResult a = buildVariant(project, cache, "mode=a");
         assertThat(a.errors()).isEmpty();
         assertThat(a.success()).as("variant a builds").isTrue();

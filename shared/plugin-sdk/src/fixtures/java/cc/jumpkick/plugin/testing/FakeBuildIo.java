@@ -40,9 +40,8 @@ import org.jspecify.annotations.Nullable;
  * A plugin's fixture <em>content</em> (an AAR's exploded layout, a boot loader jar, a Quarkus
  * augment tree) stays in the plugin's own test, built with {@link #jar} or by hand.
  *
- * <p>Layout, mirroring what the engine really passes: the artifact lands under
- * {@code <root>/target/lib/} — {@code BuildLayout.artifactDir} for a module with no declared
- * {@code main}, which is every Android app and library — and its parent directory already exists,
+ * <p>Layout, mirroring what the engine really passes: the artifact lands at the root of
+ * {@code <root>/target/} — {@code BuildLayout.artifactDir}, Maven's layout — and its parent directory already exists,
  * because {@code PlannerPackage} creates it before forking the worker. A packager that created the
  * directory itself would pass either way; one that relied on the engine having created it would
  * fail against a fake that did not.
@@ -86,7 +85,7 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
         this.pluginId = pluginId;
         this.classesDir = root.resolve("classes");
         this.moduleDir = root;
-        this.artifact = Files.createDirectories(root.resolve("target/lib")).resolve("app-1.0.0.jar");
+        this.artifact = Files.createDirectories(root.resolve("target")).resolve("app-1.0.0.jar");
         Files.createDirectories(classesDir);
         Files.createDirectories(scratch());
     }
@@ -150,9 +149,9 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
         return this;
     }
 
-    /** The produced artifact's name under {@code <root>/target/lib/}. */
+    /** The produced artifact's name under {@code <root>/target/}. */
     public FakeBuildIo artifact(String fileName) throws IOException {
-        this.artifact = Files.createDirectories(root.resolve("target/lib")).resolve(fileName);
+        this.artifact = Files.createDirectories(root.resolve("target")).resolve(fileName);
         return this;
     }
 

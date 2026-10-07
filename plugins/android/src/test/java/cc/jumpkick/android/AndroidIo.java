@@ -10,7 +10,7 @@ import java.nio.file.Path;
  *
  * <p>The engine fake itself is shared with every other plugin's tests; what is Android's — the
  * three config keys the schema requires of every module ({@code namespace}, {@code compile-sdk},
- * {@code min-sdk}) and the {@code target/lib/} artifact name — stays here, because it is fixture
+ * {@code min-sdk}) and the {@code target/} artifact name — stays here, because it is fixture
  * content and not a fact about the SPI.
  */
 final class AndroidIo {
