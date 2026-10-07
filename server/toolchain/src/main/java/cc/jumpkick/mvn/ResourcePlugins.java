@@ -88,6 +88,13 @@ final class ResourcePlugins {
             String dir =
                     raw == null || raw.isBlank() ? layoutDir : SourceTreePlugins.moduleRelative(raw.trim(), baseDir);
             if (dir.startsWith("/") || dir.contains("..") || !Files.isDirectory(baseDir.resolve(dir))) continue;
+            if (dir.isEmpty()) {
+                // The module directory itself: as a root it would put the sources and the POM on the
+                // classpath. Maven copies only what its includes name.
+                unsupported.add("the module directory itself (`${basedir}`)");
+                continue;
+            }
+            if (!resource.isFiltering() && underLayoutAtItsOwnPath(dir, layoutDir, resource.getTargetPath())) continue;
             if (!resource.getIncludes().isEmpty() || !resource.getExcludes().isEmpty()) {
                 unsupported.add("`<includes>`/`<excludes>` on " + dir);
             }
@@ -104,6 +111,17 @@ final class ResourcePlugins {
             report.warning(element + " " + String.join(", ", unsupported)
                     + " is not carried into [resources]: jk copies every file of a root to the classpath root.");
         }
+    }
+
+    /**
+     * A directory inside the layout's resource root whose {@code <targetPath>} is its own path there:
+     * the layout root already copies its files to that place, so it is no root of its own.
+     */
+    static boolean underLayoutAtItsOwnPath(String dir, String layoutDir, @Nullable String targetPath) {
+        if (targetPath == null || !dir.startsWith(layoutDir + "/")) return false;
+        String target = targetPath.strip().replace('\\', '/');
+        while (target.endsWith("/")) target = target.substring(0, target.length() - 1);
+        return target.equals(dir.substring(layoutDir.length() + 1));
     }
 
     /** The {@code ${name}} and {@code @name@} references of the filterable files under {@code root}. */
