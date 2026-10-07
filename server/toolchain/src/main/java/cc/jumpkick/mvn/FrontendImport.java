@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.EnvConfig;
@@ -111,14 +112,17 @@ final class FrontendImport {
             }
             return new Applied(build, new Relocation(frontend, moduleDir, output), FrontendFiles.NONE);
         }
-        if (frontend.workingDirectory().equals(".")) {
+        boolean atRoot = frontend.workingDirectory().equals(".");
+        if (atRoot && NodeShape.jvmSources(moduleDir)) {
             report.warning("`" + FrontendPlugin.ARTIFACT + "` builds the front end at the module's root, beside"
                     + " its JVM sources: move package.json and the front end's sources into src/main/node,"
                     + " then import again");
             return new Applied(build, null, FrontendFiles.NONE);
         }
-        String dir =
-                frontend.workingDirectory().equals(NodeTable.SIDE_BY_SIDE_DIR) ? null : frontend.workingDirectory();
+        // A front end at the root of a module with no JVM sources makes it a node module, built in place.
+        String dir = atRoot || frontend.workingDirectory().equals(NodeTable.SIDE_BY_SIDE_DIR)
+                ? null
+                : frontend.workingDirectory();
         Roots roots = roots(moduleDir, out, report);
         if (inPlace) {
             // The bundler writes where its config says; the output is read from there.

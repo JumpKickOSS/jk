@@ -59,7 +59,7 @@ public record NodeProject(
     /** The node build in {@code dir} as {@code table} overrides it. */
     public static NodeProject infer(Path dir, NodeTable table) {
         Object pkg = packageJson(dir);
-        Manager manager = manager(dir, pkg);
+        Manager manager = manager(dir, pkg, table.skip());
         String framework = table.framework() != null ? table.framework() : framework(dir, pkg);
         Defaults d = defaults(framework, dir, pkg);
         Object scripts = MiniJson.get(pkg, "scripts");
@@ -97,9 +97,10 @@ public record NodeProject(
 
     /**
      * The lockfile names the manager; {@code packageManager}, then {@code devEngines.packageManager},
-     * name it when there is none, and give its version. Yarn 1 is refused.
+     * name it when there is none, and give its version. Yarn 1 is refused unless the build is
+     * skipped: then no step runs, and the manager is only named.
      */
-    private static Manager manager(Path dir, @Nullable Object pkg) {
+    private static Manager manager(Path dir, @Nullable Object pkg, boolean skipped) {
         String declared = MiniJson.str(pkg, "packageManager");
         String name = null;
         String version = null;
@@ -121,7 +122,7 @@ public record NodeProject(
             fromLock = "npm";
         }
         String chosen = fromLock != null ? fromLock : name != null ? name : "npm";
-        if (chosen.equals("yarn")) refuseYarnClassic(dir, name, version);
+        if (chosen.equals("yarn") && !skipped) refuseYarnClassic(dir, name, version);
         return new Manager(chosen, chosen.equals(name) ? version : null);
     }
 

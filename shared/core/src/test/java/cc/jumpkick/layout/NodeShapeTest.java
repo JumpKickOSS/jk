@@ -169,6 +169,15 @@ class NodeShapeTest {
         assertThatThrownBy(() -> parse(web)).hasMessageContaining("Yarn 1 is not supported");
     }
 
+    /** A skipped node build runs no package manager, so Yarn 1 is no reason to refuse the manifest. */
+    @Test
+    void yarn_1_in_a_skipped_node_module_reads() throws IOException {
+        Path web = module("web", "[node]\nversion = 24\nskip = true");
+        write(web.resolve("package.json"), "{}");
+        write(web.resolve("yarn.lock"), "# yarn lockfile v1\n");
+        assertThat(parse(web).node().skip()).isTrue();
+    }
+
     @Test
     void a_workspace_root_s_package_json_is_left_alone() throws IOException {
         write(tmp.resolve("jk.toml"), """

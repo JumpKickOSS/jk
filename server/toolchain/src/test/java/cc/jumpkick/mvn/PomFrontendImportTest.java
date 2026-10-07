@@ -104,6 +104,56 @@ class PomFrontendImportTest {
         assertThat(reparsed.build().env()).isEqualTo(build.build().env());
     }
 
+    /**
+     * A front end at the root of a jar module with no JVM sources, as an Angular app module is, makes
+     * that module a node module built in place: {@code node} pinned, no {@code [node] dir}.
+     */
+    @Test
+    void a_frontend_at_the_root_of_a_module_without_jvm_sources_makes_it_a_node_module(@TempDir Path tmp)
+            throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("project"));
+        write(project.resolve("package.json"), "{ \"name\": \"ui\", \"packageManager\": \"npm@11.6.0\" }");
+        write(project.resolve("package-lock.json"), "{}");
+        write(project.resolve("src/app/main.ts"), "export {};\n");
+        write(project.resolve("pom.xml"), pom("ui", "jar", "", PLUGIN_HEAD + """
+                    <configuration><workingDirectory>${basedir}</workingDirectory></configuration>
+                    <executions>
+                      <execution><id>install node</id><goals><goal>install-node-and-npm</goal></goals>
+                        <configuration><nodeVersion>v24.21.0</nodeVersion></configuration></execution>
+                      <execution><id>npm ci</id><goals><goal>npm</goal></goals>
+                        <configuration><arguments>ci</arguments></configuration></execution>
+                    </executions>
+                  </plugin>
+                """));
+
+        PomImporter.WorkspaceImportResult result = importing(tmp).importWorkspace(project.resolve("pom.xml"));
+
+        assertThat(result.root().project().nodeSpec().requiredVersion()).isEqualTo("24.21.0");
+        assertThat(result.root().node().dir()).isNull();
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("beside its JVM sources"));
+    }
+
+    /** The same front end beside JVM sources stays refused: it belongs in src/main/node. */
+    @Test
+    void a_frontend_at_the_root_beside_jvm_sources_is_refused(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("project"));
+        write(project.resolve("package.json"), "{ \"name\": \"ui\", \"packageManager\": \"npm@11.6.0\" }");
+        write(project.resolve("src/main/java/demo/App.java"), "package demo; class App {}\n");
+        write(project.resolve("pom.xml"), pom("ui", "jar", "", PLUGIN_HEAD + """
+                    <configuration><workingDirectory>${basedir}</workingDirectory></configuration>
+                    <executions>
+                      <execution><id>npm ci</id><goals><goal>npm</goal></goals>
+                        <configuration><arguments>ci</arguments></configuration></execution>
+                    </executions>
+                  </plugin>
+                """));
+
+        PomImporter.WorkspaceImportResult result = importing(tmp).importWorkspace(project.resolve("pom.xml"));
+
+        assertThat(result.root().node()).isEqualTo(NodeTable.EMPTY);
+        assertThat(messages(result.report())).anyMatch(m -> m.contains("beside its JVM sources"));
+    }
+
     @Test
     void a_frontend_at_the_aggregator_writing_into_the_war_becomes_a_generated_node_module(@TempDir Path tmp)
             throws Exception {
@@ -172,7 +222,7 @@ class PomFrontendImportTest {
     }
 
     @Test
-    void a_yarn_one_project_is_refused_with_the_migration(@TempDir Path tmp) throws Exception {
+    void a_yarn_one_project_is_imported_skipped_with_the_migration(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("project"));
         Path front = Files.createDirectories(project.resolve("src/main/node"));
         write(front.resolve("package.json"), "{ \"name\": \"ui\" }");
@@ -185,8 +235,25 @@ class PomFrontendImportTest {
 
         PomImporter.WorkspaceImportResult result = importing(tmp).importWorkspace(project.resolve("pom.xml"));
 
-        assertThat(result.root().node()).isEqualTo(NodeTable.EMPTY);
-        assertThat(messages(result.report())).anyMatch(m -> m.contains("Yarn 1") && m.contains("yarn set version"));
+        assertThat(result.root().node().skip())
+                .as("the module declares its node build and runs none of it")
+                .isTrue();
+        assertThat(messages(result.report()))
+                .anyMatch(m -> m.contains("Yarn 1") && m.contains("skip = true") && m.contains("yarn set version"));
+    }
+
+    /** The module's own directory is {@code .} however the POM spells it, the interpolated absolute path included. */
+    @Test
+    void a_working_directory_naming_the_module_is_the_module_root(@TempDir Path tmp) {
+        Path module = tmp.resolve("ui");
+        assertThat(FrontendPlugin.workingDirectory(module.toString(), module)).isEqualTo(".");
+        assertThat(FrontendPlugin.workingDirectory("${basedir}", module)).isEqualTo(".");
+        assertThat(FrontendPlugin.workingDirectory(
+                        module.resolve("src/main/node").toString(), module))
+                .isEqualTo("src/main/node");
+        assertThat(FrontendPlugin.workingDirectory("${basedir}/src/main/node", module))
+                .isEqualTo("src/main/node");
+        assertThat(FrontendPlugin.workingDirectory(null, module)).isEqualTo(".");
     }
 
     @Test
