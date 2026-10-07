@@ -288,6 +288,8 @@ public final class GradleImporter {
             if (pin != null) pluginVersions.put(id, pin);
         });
         List<PluginConfig> pluginConfigs = mapPluginTables(applied.keySet(), pluginVersions, importRules, report);
+        PluginConfig hibernate = HibernateGradle.map(applied.keySet(), stripped, report);
+        if (hibernate != null) pluginConfigs.add(hibernate);
 
         Map<Scope, List<Dependency>> deps =
                 GradleDependencies.parse(stripped, catalog, properties, refreshVersions, report);

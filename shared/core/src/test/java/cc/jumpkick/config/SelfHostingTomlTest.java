@@ -104,7 +104,8 @@ class SelfHostingTomlTest {
                         "plugins/jooq",
                         "plugins/lint",
                         "plugins/android",
-                        "plugins/micronaut");
+                        "plugins/micronaut",
+                        "plugins/hibernate");
     }
 
     @Test

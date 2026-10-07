@@ -154,6 +154,33 @@ Start from the `android/compose` template (`jk new my-app -t android/compose`) �
 Compose app with a JVM unit test and the `jk run` deploy path; see
 [Templates](templates.md).
 
+## Hibernate bytecode enhancement
+
+**Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).
+
+An entity model that relies on build-time enhancement — a `FetchType.LAZY` basic attribute that
+must not load with its entity, inline dirty tracking, bidirectional association management —
+behaves differently without it. `[hibernate] enhance = true` runs the enhancer of the project's
+own Hibernate (whatever `hibernate-core` the module's runtime classpath resolves) over the
+compiled classes after compile; the enhanced classes are the module's classes from then on, so
+`jk test`, the jar and `jk run` all use them.
+
+```toml
+[hibernate]
+enhance                = true
+lazy-initialization    = true    # default true
+dirty-tracking         = true    # default true
+association-management = false   # default false
+extended-enhancement   = false   # default false
+```
+
+The switches are the `enable*` settings of `hibernate-enhance-maven-plugin` and the
+`org.hibernate.orm` Gradle plugin, with their defaults. The step is cached on the compiled
+classes, the runtime classpath and the switches: an unchanged module is a cache hit, and an
+edited entity re-enhances that module. `jk import` writes the table from
+`hibernate-enhance-maven-plugin`, from `hibernate-maven-plugin`'s `enhance` goal, and from the
+Gradle plugin's `hibernate { enhancement { … } }` block.
+
 ## Protobuf
 
 `[protobuf]` table: generate Java (and friends) from `.proto` sources as part of the

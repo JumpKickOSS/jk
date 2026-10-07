@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.15.0"
-generated-by-build = "4c53fa5ee65b"
-generated-by-build-time = "2026-10-05T17:16:51Z"
+generated-by-build = "f25f49a229b2"
+generated-by-build-time = "2026-10-07T00:14:41Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "a04e82443cbb84c050a22ae94458f842abebc128bedfd29dee54f5dcaa40deb9"
+manifests-sha256 = "28260d5d593f27ad15d4ecb8c6c827cafa77dac29818839ea8c021d83c0bb8a9"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -690,6 +690,14 @@ name     = "com.h2database:h2:jar:"
 version  = "2.4.240"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:29b70e427cc1c40cdc376283adbb0cc62853073797bb5fe5761f81fe73d57ce0"
+scopes   = ["test"]
+members  = ["plugins/jooq"]
+
+[[artifact]]
+name     = "com.h2database:h2:jar:"
+version  = "2.5.252"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:90b11dc413da82070ef15fc943282c1408e6ffd34fa68998335fea8603b5ff20"
 scopes   = ["test"]
 
 [[artifact]]
@@ -1528,11 +1536,32 @@ checksum = "sha256:c9db52100ce6c8aac95cc39075f95720d2e561b11f8051b81c121ad4effd7
 scopes   = ["test"]
 
 [[artifact]]
+name     = "jakarta.inject:jakarta.inject-api:jar:"
+version  = "2.0.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:f7dc98062fccf14126abb751b64fab12c312566e8cbdc8483598bffcea93af7c"
+scopes   = ["test"]
+
+[[artifact]]
 name     = "jakarta.json:jakarta.json-api:jar:"
 version  = "2.1.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:bc934142805ea1d794f1440563965a3861a2a9fb7414ecd3fe44f26500734414"
 scopes   = ["provided"]
+
+[[artifact]]
+name     = "jakarta.persistence:jakarta.persistence-api:jar:"
+version  = "3.2.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:be8a26b0e75c84c1b7600f759256fbc68d60333d89ec0ce3f784fc3ffa09aa8c"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "jakarta.transaction:jakarta.transaction-api:jar:"
+version  = "2.0.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:50c0a7c760c13ae6c042acf182b28f0047413db95b4636fb8879bcffab5ba875"
+scopes   = ["test"]
 
 [[artifact]]
 name     = "jakarta.xml.bind:jakarta.xml.bind-api:jar:"
@@ -1583,6 +1612,14 @@ name     = "net.bytebuddy:byte-buddy:jar:"
 version  = "1.18.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
+scopes   = ["test"]
+members  = ["clients/cli", "clients/cli-terminal", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/groovy-compiler", "plugins/image-builder", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+
+[[artifact]]
+name     = "net.bytebuddy:byte-buddy:jar:"
+version  = "1.18.8"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:227d3e0ad51915809143f6a744ac0f4cb21f03214dab28e52ee7007c5ad7e9d9"
 scopes   = ["test"]
 
 [[artifact]]
@@ -2356,7 +2393,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c4a445426c3c2861666863b842cc4ec7bbb1c4226fefd370b6d2fe83d6c4ff0f"
 scopes   = ["test"]
 deps = [
-  "net.bytebuddy:byte-buddy:jar:@1.18.3",
+  "net.bytebuddy:byte-buddy:jar:@1.18.8",
 ]
 
 [[artifact]]
@@ -2688,6 +2725,21 @@ scopes   = ["test"]
 
 [[artifact]]
 name     = "org.glassfish.jaxb:jaxb-core:jar:"
+version  = "4.0.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:f29af5c37592c3a06a912da8cdf1d16036e6ca6d4eed9be6f7670e60fa466601"
+scopes   = ["test"]
+members  = ["plugins/hibernate"]
+deps = [
+  "com.sun.istack:istack-commons-runtime:jar:@4.1.2",
+  "jakarta.activation:jakarta.activation-api:jar:@2.1.4",
+  "jakarta.xml.bind:jakarta.xml.bind-api:jar:@4.0.5",
+  "org.eclipse.angus:angus-activation:jar:@2.0.3",
+  "org.glassfish.jaxb:txw2:jar:@4.0.7",
+]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:jaxb-core:jar:"
 version  = "4.0.9"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6b014df25d22c8446cc2df0a378c5b2137747f197a731d99eb24c756b26f7e8d"
@@ -2698,6 +2750,17 @@ deps = [
   "jakarta.xml.bind:jakarta.xml.bind-api:jar:@4.0.5",
   "org.eclipse.angus:angus-activation:jar:@2.0.3",
   "org.glassfish.jaxb:txw2:jar:@4.0.9",
+]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:jaxb-runtime:jar:"
+version  = "4.0.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:61a5daf5a1987f7ed7149c5a883ddf220ca9bf714a8d8cffc85fac301e92b5f2"
+scopes   = ["test"]
+members  = ["plugins/hibernate"]
+deps = [
+  "org.glassfish.jaxb:jaxb-core:jar:@4.0.7",
 ]
 
 [[artifact]]
@@ -2724,6 +2787,14 @@ deps = [
   "org.glassfish.jaxb:jaxb-core:jar:@4.0.9",
   "org.glassfish.jaxb:xsom:jar:@4.0.9",
 ]
+
+[[artifact]]
+name     = "org.glassfish.jaxb:txw2:jar:"
+version  = "4.0.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c725676f2550caa3f57943f2d10dfac7e14c3abb34a6a9d89ac7ebbf1bde3269"
+scopes   = ["test"]
+members  = ["plugins/hibernate"]
 
 [[artifact]]
 name     = "org.glassfish.jaxb:txw2:jar:"
@@ -2760,6 +2831,34 @@ checksum = "sha256:f20b7adf174a8c61018ce4e717d9dda65fec27d00540e547e63f1bafa400a
 scopes   = ["provided"]
 
 [[artifact]]
+name     = "org.hibernate.models:hibernate-models:jar:"
+version  = "1.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d683d70e2592b23c5f2fbc3510d2e087aa61f2ac399a9090b941a1a42d3f3a98"
+scopes   = ["test"]
+deps = [
+  "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
+]
+
+[[artifact]]
+name     = "org.hibernate.orm:hibernate-core:jar:"
+version  = "7.4.12.Final"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5def41139bf6e8fbc825ea7f153d27de4c35788fd98422835e2c93d4f31417fc"
+scopes   = ["test"]
+deps = [
+  "jakarta.inject:jakarta.inject-api:jar:@2.0.1",
+  "jakarta.persistence:jakarta.persistence-api:jar:@3.2.0",
+  "jakarta.transaction:jakarta.transaction-api:jar:@2.0.1",
+  "jakarta.xml.bind:jakarta.xml.bind-api:jar:@4.0.5",
+  "net.bytebuddy:byte-buddy:jar:@1.18.8",
+  "org.antlr:antlr4-runtime:jar:@4.13.2",
+  "org.glassfish.jaxb:jaxb-runtime:jar:@4.0.9",
+  "org.hibernate.models:hibernate-models:jar:@1.1.2",
+  "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
+]
+
+[[artifact]]
 name     = "org.javassist:javassist:jar:"
 version  = "3.28.0-GA"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -2783,7 +2882,7 @@ version  = "3.6.3.Final"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:7c12ee575508f81e22b1db9334b969d0ec54ef0fd1dcba24eeab1a44235fc366"
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.0"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 
 [[artifact]]
 name     = "org.jboss.logmanager:jboss-logmanager:jar:"
@@ -2988,7 +3087,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ed0b0ec4daa1e8f657c16f7902fa9d382710f72d66f72e9d484b0d5168d038bc"
 scopes   = ["test"]
 deps = [
-  "com.h2database:h2:jar:@2.4.240",
+  "com.h2database:h2:jar:@2.5.252",
   "org.jooq:jooq-meta:jar:@3.21.8",
 ]
 
@@ -3755,6 +3854,14 @@ name    = "jk-groovy-compiler"
 version = "0.15.0"
 java    = 25
 description = "JumpKick's Groovy compiler plugin"
+
+[[module]]
+path    = "plugins/hibernate"
+group   = "cc.jumpkick"
+name    = "jk-hibernate"
+version = "0.15.0"
+java    = 25
+description = "JumpKick's Hibernate plugin: the project's own bytecode enhancer over the compiled entity classes, as a cached step whose output is the module's classes"
 
 [[module]]
 path    = "plugins/image-builder"
