@@ -337,6 +337,7 @@ differs; field **names** match.
 | Label | `label` |
 | User/compiler output | `output` |
 | Warning / error | `warn` / `error` (+ `test`, `exceptionClass`; a test failure adds `module`, `suite`, `class`, `method`, `stack`, `textId` / `sameText`) |
+| Test class | `class-finish` — one per test class as it finishes, in one test JVM or many: `module`, `testClass`, `tests`, `failed`, `skipped`, `millis`. A run stopped part way still has a row for every class that finished |
 | Plan / ETA | `plan`, `eta` (web; CLI via explain) |
 | Module | `module-start` / `module-finish` (paired) |
 | Workspace end | `workspace-finish` (exactly one, on every outcome) |

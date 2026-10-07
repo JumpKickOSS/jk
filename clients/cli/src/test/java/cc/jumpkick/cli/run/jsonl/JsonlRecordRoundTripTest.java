@@ -36,6 +36,7 @@ class JsonlRecordRoundTripTest {
             WarnLine.class,
             ErrorLine.class,
             TestFailureErrorLine.class,
+            ClassFinishLine.class,
             TaskFinishLine.class,
             PlanFinishLine.class,
             WorkspaceProgressLine.class,

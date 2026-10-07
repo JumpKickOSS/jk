@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.run.jsonl.ClassFinishLine;
 import cc.jumpkick.cli.run.jsonl.ErrorLine;
 import cc.jumpkick.cli.run.jsonl.EtaLine;
 import cc.jumpkick.cli.run.jsonl.JobLine;
@@ -52,6 +53,14 @@ class JsonlShapeFrozenBytesTest {
         assertThat(new SessionFinishLine(TS, 2, 5, "  ", List.of()).encode())
                 .as("a blank wedge is omitted")
                 .isEqualTo(ENV + "session-finish\",\"exit\":2,\"duration_ms\":5}");
+    }
+
+    @Test
+    void a_finished_test_class_carries_its_counts_and_wall() {
+        assertThat(new ClassFinishLine(TS, "run-tests", "g:a", "demo.A", 3, 1, 1, 40).encode())
+                .isEqualTo(ENV
+                        + "class-finish\",\"task\":\"run-tests\",\"module\":\"g:a\",\"testClass\":\"demo.A\","
+                        + "\"tests\":3,\"failed\":1,\"skipped\":1,\"millis\":40}");
     }
 
     @Test

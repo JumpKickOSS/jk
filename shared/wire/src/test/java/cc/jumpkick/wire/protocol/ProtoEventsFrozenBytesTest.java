@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.time.LocalDate;
@@ -210,6 +211,9 @@ class ProtoEventsFrozenBytesTest {
                                 new AuditReport.Ignore("test only", LocalDate.of(2026, 12, 31), true))))
                 .isEqualTo(
                         "{\"type\":\"audit-finding\",\"dir\":\"a/b\",\"package\":\"g:x\",\"version\":\"1.2\",\"id\":\"GHSA-1\",\"severity\":\"HIGH\",\"summary\":\"bad\",\"fixedIn\":\"1.3\",\"ignoreReason\":\"test only\",\"ignoreUntil\":\"2026-12-31\",\"ignoreExpired\":true}");
+        assertThat(ProtoEvents.classFinish("a/b", "run-tests", new TestClassResult("g:a", "demo.A", 3, 1, 1, 40)))
+                .isEqualTo(
+                        "{\"schema\":1,\"type\":\"class-finish\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"module\":\"g:a\",\"testClass\":\"demo.A\",\"tests\":3,\"failed\":1,\"skipped\":1,\"millis\":40}");
         assertThat(ProtoEvents.formatFile("a/b", "src/A.java", "changed", null, 1, 16))
                 .isEqualTo(
                         "{\"type\":\"format-file\",\"dir\":\"a/b\",\"path\":\"src/A.java\",\"status\":\"changed\",\"message\":null,\"index\":1,\"total\":16}");

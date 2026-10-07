@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.cli.run.jsonl.ClassFinishLine;
 import cc.jumpkick.cli.run.jsonl.ErrorLine;
 import cc.jumpkick.cli.run.jsonl.EtaLine;
 import cc.jumpkick.cli.run.jsonl.JobLine;
@@ -26,6 +27,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
@@ -253,6 +255,19 @@ public final class JsonlShape {
                         stack,
                         ref.textId(),
                         ref.sameText())
+                .encode();
+    }
+
+    static String classFinish(String step, TestClassResult result) {
+        return new ClassFinishLine(
+                        nowMillis(),
+                        step,
+                        result.module(),
+                        result.className(),
+                        result.tests(),
+                        result.failed(),
+                        result.skipped(),
+                        result.durationMs())
                 .encode();
     }
 

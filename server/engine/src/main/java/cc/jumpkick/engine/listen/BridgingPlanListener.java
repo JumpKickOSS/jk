@@ -6,6 +6,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
 import java.util.function.Function;
@@ -174,6 +175,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
         TestFailureInfo safe = redactFailureHoisted(failure);
         String msg = redact(message == null || message.isEmpty() ? failure.message() : message);
         sink.emit(new EngineEvent.ErrorFailure(dir, step, code, msg, safe));
+    }
+
+    @Override
+    public void testClass(String step, TestClassResult result) {
+        sink.emit(new EngineEvent.ClassFinish(dir, step, result));
     }
 
     private TestFailureInfo redactFailureHoisted(TestFailureInfo f) {
