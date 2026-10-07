@@ -297,11 +297,15 @@ jooq = "3.21.8"                          # the generated classes read it at run 
 The step is `generate-jooq`. A **live database** is opt-in: `jdbc-url` (with `jdbc-user`,
 `jdbc-password`) reads the schema over JDBC instead, jOOQ detecting the dialect from the
 connection, and `driver = "org.postgresql:postgresql:42.7.9"` puts its driver on the generator's
-classpath. The scripts named in `sql` stay the cache key — they are what built that schema — so
-name the migrations that did; a database jk cannot see is a database jk cannot key on. Running
-one for the build (a Testcontainer, a compose file) is the module's own affair. `jk import`
-writes the table from a POM's `jooq-codegen-maven`
-([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+classpath. Before the step looks itself up, every build connects through that driver and digests
+jOOQ's own DDL export of the input `schema` into the step's key: an unchanged schema is a cache
+hit and a changed one regenerates, whether or not any scripts are named — a module with no
+migrations in the tree generates from the database alone. Scripts named in `sql` still key the
+step too. The database must be up when the build reaches the step: one that is down, or a
+`schema` it does not have, fails the step with the driver's message. `jk explain` connects to
+nothing, so it says the live input is probed when the step runs. Running a database for the build
+(a Testcontainer, a compose file) is the module's own affair. `jk import` writes the table from a
+POM's `jooq-codegen-maven` ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
 ## Related
 

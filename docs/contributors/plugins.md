@@ -328,6 +328,12 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   rewritten to its mirror while Central is refusing this host — with the credential the request
   carries. The body asks exactly these and never names Central itself. The action key carries the
   declared set, not the routing; a body that did not declare the input reads an empty list.
+- **Key probes** — an input no file holds (a live database schema) is `TaskSpec.keyProbe(new
+  KeyProbe(main, tools, args))`: before the lookup the engine runs `java <main> <args>` on the
+  build's JDK with the plugin's jar and the named step-dependency closures on the classpath, and
+  the SHA-256 of the last line it prints joins the action key. A non-zero exit fails the step with
+  the probe's output. It runs on every build that reaches the step and never in a forecast, which
+  says the input is probed when the step runs. The jOOQ preset's live schema is the one user.
 - **Diagnostics** — a body reports a located finding with `TaskExec.diagnostic(severity, file,
   line, col, message)`; the engine forwards each as the step's warning or error (the
   `file:line[:col]: message` header the journal parses), before a failing body's throw.
@@ -415,7 +421,9 @@ contributes = "sources"                                      # sources | resourc
   and the closure's hash is in the action key. The body receives the jar or the closure directory
   by the entry's name and reads `Main-Class` from the jar named after the coordinate's artifact.
 - **Action key** = the inputs' glob bases (`In.projectFiles`) + the entry's config (`In.config()`,
-  which carries `args`, `main`, `tool`) + tool hashes + JDK + worker jar. Unchanged inputs restore
+  which carries `args`, `main`, `tool`) + tool hashes + JDK + worker jar, plus a preset entry's
+  key probe when it reads something no file holds (`GeneratorEntry.keyProbe`, the jOOQ live
+  schema); such an entry runs even when its inputs match no file. Unchanged inputs restore
   `${out}`; the step shows in `jk explain` and the results Deliverables table like any other.
 - **Isolation**: `java -cp <tool> <main> <args>` forks on the build JDK with `${out}` as its
   working directory. `${in}` expands to the first input, `${inputs}` to all, `${module.dir}` to

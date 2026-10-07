@@ -25,11 +25,6 @@ final class Arguments {
 
     /** What the variables stand for in one run; {@code unpacked} is null when the entry unpacks nothing. */
     record Scope(List<Path> inputs, @Nullable Path unpacked, Path out, Path moduleDir) {
-        Scope {
-            if (inputs.isEmpty() && unpacked == null) {
-                throw new IllegalArgumentException("a generator runs over at least one input");
-            }
-        }
 
         String joined() {
             return Classpaths.join(inputs);
@@ -37,8 +32,7 @@ final class Arguments {
 
         Path first() {
             if (inputs.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "${in} names the first input, and this entry declares none — it reads ${unpacked}");
+                throw new IllegalArgumentException("${in} names the first input, and this run has none");
             }
             return inputs.getFirst();
         }

@@ -26,7 +26,7 @@ pojos     = { type = "bool", default = false, hint = "generate POJOs" }
 daos      = { type = "bool", default = false, hint = "generate DAOs (implies pojos)" }
 fluent-setters = { type = "bool", default = false, hint = "setters return this" }
 properties = { type = "string-map", default = {}, hint = "further DDLDatabase properties (parseIgnoreComments, logExecutedQueries, …)" }
-jdbc-url  = { type = "string", example = "jdbc:postgresql://localhost:5432/app", hint = "generate from a live database instead of the scripts: the URL; the scripts named in sql stay the cache key, so name the migrations that built that schema" }
+jdbc-url  = { type = "string", example = "jdbc:postgresql://localhost:5432/app", hint = "generate from a live database instead of the scripts: the URL; each build digests the schema over JDBC into the step's key, so a schema change regenerates and no sql file is required" }
 jdbc-user = { type = "string" }
 jdbc-password = { type = "string" }
 driver    = { type = "string", default = "com.h2database:h2:2.5.250", example = "org.postgresql:postgresql:42.7.9", hint = "the JDBC driver on the generator's classpath; H2 serves the scripts, a live database needs its own" }

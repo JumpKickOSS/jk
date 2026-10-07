@@ -73,6 +73,7 @@ public final class JaxbPreset implements Plugin, BuildExtension {
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/jaxb",
                 List.of(),
-                List.of());
+                List.of(),
+                null);
     }
 }
