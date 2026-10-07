@@ -3,14 +3,17 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.runtime.LockPipeline;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.version.Versions;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.LongAdder;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -35,9 +38,10 @@ public final class ImportPinRaises {
     static List<String> apply(Path lockDir, Path cache, @Nullable URI repoUrl) throws Exception {
         List<String> lines = new ArrayList<>();
         // A raised pin moves what the members depending on its member carry, which can put their own
-        // pins below a floor in turn: probe again until a round raises nothing.
+        // pins below a floor in turn: probe again while a raise moves a graph the probe resolved.
         for (int round = 0; round < MAX_ROUNDS; round++) {
             LockPlans.LockScope scope = LockPlans.lockScope(lockDir);
+            PROBES.increment();
             Lockfile probe = new LockPipeline(
                             scope.lockDir(),
                             scope.effective(),
@@ -51,8 +55,56 @@ public final class ImportPinRaises {
             if (plan.rewrites().isEmpty()) break;
             ManifestUpdates.apply(plan);
             for (ManifestUpdates.Rewrite r : plan.rewrites()) lines.add(line(r, probe));
+            List<LockOrchestrator.Member> members = scope.workspace()
+                    ? LockPlans.lockMembers(lockDir, scope.effective()).members()
+                    : List.of();
+            if (!movesAGraph(probe, lockDir, members, plan.rewrites())) break;
         }
         return lines;
+    }
+
+    /** Probe solves run so far: the seam that proves a round is spent only where it can find a raise. */
+    static final LongAdder PROBES = new LongAdder();
+
+    /**
+     * Whether {@code rewrites} can change a graph {@code probe} resolved, so a further probe may find
+     * a raise. A raised pin reaches the graphs that read it — every graph for the root's or the
+     * workspace's entry, else the members that carry the module through the member whose pin rose —
+     * and changes one only where that graph holds the module below its new version. Where none does,
+     * the probe that planned the raises has already seen everything they lead to.
+     */
+    static boolean movesAGraph(
+            Lockfile probe,
+            Path lockDir,
+            List<LockOrchestrator.Member> members,
+            List<ManifestUpdates.Rewrite> rewrites) {
+        Path root = lockDir.toAbsolutePath().normalize();
+        for (ManifestUpdates.Rewrite r : rewrites) {
+            Path dir = r.dir().toAbsolutePath().normalize();
+            boolean shared = dir.equals(root) || r.table().equals(ManifestUpdates.WORKSPACE_TABLE);
+            if (shared
+                    && below(
+                            probe.artifacts().stream()
+                                    .filter(a -> !a.isPartition())
+                                    .toList(),
+                            r)) return true;
+            String from = root.relativize(dir).toString().replace('\\', '/');
+            for (LockOrchestrator.Member m : members) {
+                boolean reads = shared || (!m.path().equals(from) && m.carried().contains(r.module()));
+                if (reads && below(probe.forMember(m.path()).artifacts(), r)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether {@code rows} hold {@code r}'s module below the version it was raised to. */
+    private static boolean below(List<Lockfile.Artifact> rows, ManifestUpdates.Rewrite r) {
+        for (Lockfile.Artifact a : rows) {
+            if (!PackageId.isMavenPackageKey(a.name())) continue;
+            if (PackageId.parse(a.name()).ga().equals(r.module()) && Versions.compare(a.version(), r.to()) < 0)
+                return true;
+        }
+        return false;
     }
 
     /** Probe rounds before the raise stops; each round moves only pins below a version the graph holds. */
