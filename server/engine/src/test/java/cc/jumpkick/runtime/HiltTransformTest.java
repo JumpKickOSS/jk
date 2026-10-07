@@ -112,7 +112,7 @@ class HiltTransformTest {
                 .isNotEqualTo("com/example/hilttx/Hilt_MainActivity");
 
         // And the whole thing packaged (dex ran over the transformed dir).
-        assertThat(project.resolve("target/lib/hilttx-1.0.0.apk")).exists();
+        assertThat(project.resolve("target/hilttx-1.0.0.apk")).exists();
     }
 
     private static String superOf(Path classFile) throws Exception {

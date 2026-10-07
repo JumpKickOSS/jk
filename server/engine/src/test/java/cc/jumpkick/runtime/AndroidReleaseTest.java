@@ -107,7 +107,7 @@ class AndroidReleaseTest {
         assertThat(stepNames).contains("plugin-android-r8").doesNotContain("plugin-android-dex");
 
         // The artifact is the AAB, in bundletool's base-module layout.
-        Path aab = app.resolve("target/lib/relapp-1.0.0.aab");
+        Path aab = app.resolve("target/relapp-1.0.0.aab");
         assertThat(aab).exists();
         Set<String> entries = zipEntries(aab);
         assertThat(entries)
