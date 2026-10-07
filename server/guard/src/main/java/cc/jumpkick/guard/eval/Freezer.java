@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -165,6 +166,13 @@ public final class Freezer {
                 FactsIndexing.Ensured main =
                         FactsIndexing.ensure(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
                 if (main.tier() == FactsIndexing.Ensured.Tier.ABSENT) continue;
+                // The test classes the last build compiled, as its module lane read them: a freeze
+                // measures the population that build recorded, not one over main alone.
+                FactsIndexing.Ensured test = FactsIndexing.ensure(
+                        layout.testClassesDir(), FactsIndexing.indexPath(layout.buildDir(), "test"));
+                Supplier<@Nullable FactsIndex> testFacts = test.tier() == FactsIndexing.Ensured.Tier.ABSENT
+                        ? () -> null
+                        : EvalContext.lazy(() -> FactsIndexing.load(test))::get;
                 out.add(new EvalContext(
                         lane,
                         root,
@@ -172,7 +180,7 @@ public final class Freezer {
                         m,
                         List.of(m),
                         EvalContext.lazy(() -> FactsIndexing.load(main)),
-                        () -> null,
+                        testFacts,
                         List::of));
             }
             return out;
