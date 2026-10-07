@@ -42,7 +42,8 @@ class PluginTestJvmArgsTest {
                 jvmArgFiles,
                 null,
                 null,
-                false);
+                false,
+                null);
     }
 
     @Test

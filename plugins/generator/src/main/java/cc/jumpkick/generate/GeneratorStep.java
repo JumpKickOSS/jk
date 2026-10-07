@@ -19,7 +19,8 @@ import org.jspecify.annotations.Nullable;
  * {@code java -cp <tool> <main> <args>} on the build's JDK with the output dir as the working
  * directory, report every located line the tool printed as a diagnostic, fail on a non-zero exit
  * with the output's tail. Inputs that name no file under the module — a table a reactor parent
- * hands to a module with nothing to generate — leave the output empty and say so once.
+ * hands to a module with nothing to generate — leave the output empty and say so once, unless the
+ * entry's key probe names what the tool reads instead.
  */
 final class GeneratorStep {
 
@@ -30,7 +31,7 @@ final class GeneratorStep {
 
     static void run(TaskExec exec, GeneratorEntry entry) throws Exception {
         List<Path> inputs = Inputs.expand(exec.moduleDir(), entry.inputs());
-        if (inputs.isEmpty() && !entry.inputs().isEmpty()) {
+        if (inputs.isEmpty() && !entry.inputs().isEmpty() && entry.keyProbe() == null) {
             exec.outputDir(entry.out());
             exec.label(entry.name() + " (no inputs)");
             exec.diagnostic(
@@ -97,7 +98,7 @@ final class GeneratorStep {
 
     /** The step label's parenthetical: the input count, or the unpacked coordinate when there are none. */
     private static String describe(List<Path> inputs, GeneratorEntry entry) {
-        if (inputs.isEmpty()) return "unpacked " + entry.unpack();
+        if (inputs.isEmpty()) return entry.unpack() != null ? "unpacked " + entry.unpack() : "live input";
         return inputs.size() + (inputs.size() == 1 ? " input" : " inputs");
     }
 

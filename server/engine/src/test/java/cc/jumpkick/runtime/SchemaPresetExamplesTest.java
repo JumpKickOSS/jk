@@ -99,7 +99,7 @@ class SchemaPresetExamplesTest {
     }
 
     /** The plugin's example fixture copied under {@code tmp}, its worker jar handed to the engine. */
-    private static Path example(Path tmp, PluginJar worker, String module) throws IOException {
+    static Path example(Path tmp, PluginJar worker, String module) throws IOException {
         workerJarFromWorkspace(PluginJar.GENERATOR, "plugins/generator");
         workerJarFromWorkspace(worker, module);
         Path project = tmp.resolve("example");
@@ -107,7 +107,7 @@ class SchemaPresetExamplesTest {
         return project;
     }
 
-    private static void lock(Path project, Path cache) throws Exception {
+    static void lock(Path project, Path cache) throws Exception {
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlanResult lock = LockPlans.lockBuildPlan(
                         project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
@@ -125,7 +125,7 @@ class SchemaPresetExamplesTest {
         System.setProperty(worker.jarProperty(), jar.toAbsolutePath().toString());
     }
 
-    private static BuildPlanResult build(Path project, Path cache) throws Exception {
+    static BuildPlanResult build(Path project, Path cache) throws Exception {
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
@@ -145,7 +145,7 @@ class SchemaPresetExamplesTest {
         return BuildPlanner.fullPlan(in).run();
     }
 
-    private static BuildPlanResult.StepReport step(BuildPlanResult result, String name) {
+    static BuildPlanResult.StepReport step(BuildPlanResult result, String name) {
         Optional<BuildPlanResult.StepReport> step =
                 result.steps().stream().filter(s -> s.name().contains(name)).findFirst();
         assertThat(step)
@@ -155,7 +155,7 @@ class SchemaPresetExamplesTest {
         return step.get();
     }
 
-    private static boolean anyFile(Path root, String nameFragment) throws IOException {
+    static boolean anyFile(Path root, String nameFragment) throws IOException {
         boolean[] found = new boolean[1];
         PathUtil.forEachRegularFile(root, (file, attrs) -> {
             if (file.getFileName().toString().contains(nameFragment)) found[0] = true;

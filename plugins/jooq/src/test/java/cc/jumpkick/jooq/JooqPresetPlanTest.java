@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.generate.GeneratorEntry;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.build.KeyProbe;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 /** The {@code [jooq]} table as the generator entry it expands to. */
@@ -52,6 +54,7 @@ class JooqPresetPlanTest {
         assertThat(entry.contributes()).isEqualTo(GeneratorEntry.Contribution.SOURCES);
         assertThat(entry.out()).isEqualTo("generated/jooq");
         assertThat(entry.classpath()).containsExactly(SHIM);
+        assertThat(entry.keyProbe()).as("the scripts alone key the step").isNull();
     }
 
     @Test
@@ -105,6 +108,22 @@ class JooqPresetPlanTest {
                         "--jdbc-password",
                         "secret",
                         "${inputs}");
+        assertThat(entry.keyProbe()).as("the live schema keys the step").isNotNull();
+        KeyProbe probe = Objects.requireNonNull(entry.keyProbe());
+        assertThat(probe.main()).isEqualTo("cc.jumpkick.jooq.JooqMain");
+        assertThat(probe.tools()).containsExactly("jooq-codegen");
+        assertThat(probe.args())
+                .containsExactly(
+                        "--schema-digest",
+                        "--schema",
+                        "shop",
+                        "--jdbc-url",
+                        "jdbc:postgresql://localhost:5432/shop",
+                        "--jdbc-user",
+                        "shop",
+                        "--jdbc-password",
+                        "secret");
+        assertThat(entry.task().keyProbe()).isEqualTo(probe);
     }
 
     @Test

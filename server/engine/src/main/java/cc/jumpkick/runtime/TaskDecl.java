@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.plugin.build.KeyProbe;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -26,7 +27,9 @@ public record TaskDecl(
          */
         @Nullable String stage,
         /** Whether the module's tests run in one JVM ({@code TaskSpec.oneTestJvm}). */
-        boolean oneTestJvm) {
+        boolean oneTestJvm,
+        /** The input measured when the key is computed ({@code TaskSpec.keyProbe}), or null. */
+        @Nullable KeyProbe keyProbe) {
 
     /** True when this task replaces the module's classes dir downstream. */
     public boolean transforms() {

@@ -821,7 +821,7 @@ final class ModuleForecast {
                 String when = PlannerPlugin.beforeCompile(step) ? "before compile" : "after compile";
                 steps.add(new TaskForecast.Task(name, TaskForecast.Status.RUN, step.name() + " · " + when, null));
             } else {
-                steps.add(new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", null));
+                steps.add(PlannerPlugin.cachedForecast(step));
             }
         }
     }
