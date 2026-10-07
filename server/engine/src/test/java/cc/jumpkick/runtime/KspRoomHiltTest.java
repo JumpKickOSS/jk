@@ -105,7 +105,7 @@ class KspRoomHiltTest {
         }
 
         // And the whole thing packaged: the debug APK exists (dex closure included the gen).
-        assertThat(project.resolve("target/lib/roomhilt-1.0.0.apk")).exists();
+        assertThat(project.resolve("target/roomhilt-1.0.0.apk")).exists();
     }
 
     private static boolean anyFile(Path root, String stem) throws Exception {

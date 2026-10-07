@@ -57,16 +57,15 @@ class AndroidWorkspaceTest {
         acceptLicenses();
 
         // ---- 1. Build the library module: AAR + conventional classes jar ----
-        // Workspace members write to the central out tree: <workspace>/target/<module>/…
-        // (Mill-style layout; artifacts under lib/ since the modules declare no main).
         Path lib = root.resolve("lib");
         BuildPlanResult libResult = build(lib, cache);
         assertThat(libResult.errors()).isEmpty();
         assertThat(libResult.success()).isTrue();
 
-        Path libTarget = root.resolve("target/lib");
-        Path aar = libTarget.resolve("lib/lib-1.0.0.aar");
-        Path conventional = libTarget.resolve("lib/lib-1.0.0.jar");
+        // Each member writes Maven's layout under its own target/.
+        Path libTarget = lib.resolve("target");
+        Path aar = libTarget.resolve("lib-1.0.0.aar");
+        Path conventional = libTarget.resolve("lib-1.0.0.jar");
         assertThat(aar).exists();
         assertThat(conventional).exists();
         Set<String> aarEntries = zipEntries(aar);
@@ -98,7 +97,7 @@ class AndroidWorkspaceTest {
         assertThat(appResult.errors()).isEmpty();
         assertThat(appResult.success()).isTrue();
 
-        Path appTarget = root.resolve("target/app");
+        Path appTarget = app.resolve("target");
 
         // The library manifest joined the merge (--libs): its permission is in the app manifest.
         String merged = Files.readString(appTarget.resolve("plugin/android-manifest/merged/AndroidManifest.xml"));
@@ -121,7 +120,7 @@ class AndroidWorkspaceTest {
                 .contains("app_name");
 
         // The APK carries the library's file-shaped resources and the dexed closure.
-        Path apk = appTarget.resolve("lib/app-1.0.0.apk");
+        Path apk = appTarget.resolve("app-1.0.0.apk");
         assertThat(apk).exists();
         assertThat(zipEntries(apk)).contains("classes.dex", "res/layout/lib_view.xml", "resources.arsc");
     }

@@ -148,8 +148,8 @@ final class AndroidDeps {
         Path mapping =
                 io.stepOutput("android-r8").map(dir -> dir.resolve("mapping")).orElse(null);
         if (mapping == null || !Files.isDirectory(mapping)) return;
-        Path artifactDir = io.artifactPath().getParent();
-        Path target = artifactDir == null ? null : artifactDir.getParent();
+        // The artifact sits at the root of target/, so its directory is target/.
+        Path target = io.artifactPath().getParent();
         if (target == null) throw new IOException("artifact path has no target directory: " + io.artifactPath());
         Path targetR8 = target.resolve("r8");
         Files.createDirectories(targetR8);
