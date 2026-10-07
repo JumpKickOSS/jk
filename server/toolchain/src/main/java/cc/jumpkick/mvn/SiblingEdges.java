@@ -4,6 +4,8 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
+import cc.jumpkick.model.Feature;
+import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.Pom;
@@ -66,6 +68,7 @@ final class SiblingEdges {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         Map<Scope, List<Dependency>> carried = new EnumMap<>(Scope.class);
         Set<String> declared = declaredModules(module);
+        Set<String> dropped = new HashSet<>();
         boolean changed = false;
         for (Scope scope : Scope.values()) {
             List<Dependency> in = module.dependencies().of(scope);
@@ -107,6 +110,7 @@ final class SiblingEdges {
                                         ? ImportReport.Severity.WARNING
                                         : ImportReport.Severity.ERROR,
                                 reactorPom.row(d.module(), platform, written));
+                        dropped.add(d.library());
                         continue;
                     }
                     // External test-jar keeps kind=tests (lock/resolve map to g:a:test-jar:tests).
@@ -150,7 +154,21 @@ final class SiblingEdges {
             PomImporter.uniquifyHandles(byScope, handles);
             rows.addAll(moduleKey, handles.build());
         }
-        return module.withDependencies(new JkBuild.Dependencies(byScope));
+        for (List<Dependency> deps : byScope.values()) for (Dependency d : deps) dropped.remove(d.library());
+        JkBuild rewritten = module.withDependencies(new JkBuild.Dependencies(byScope));
+        return dropped.isEmpty() ? rewritten : rewritten.withFeatures(withoutHandles(module.features(), dropped));
+    }
+
+    /** {@code features} with no list naming a dropped dependency's handle, which nothing declares now. */
+    static Features withoutHandles(Features features, Set<String> dropped) {
+        Map<String, Feature> byName = new LinkedHashMap<>();
+        for (var e : features.byName().entrySet()) {
+            Feature f = e.getValue();
+            List<String> deps =
+                    f.deps().stream().filter(n -> !dropped.contains(n)).toList();
+            byName.put(e.getKey(), new Feature(f.name(), deps, f.features()));
+        }
+        return new Features(byName, features.defaults());
     }
 
     /** True when {@code module} is a POM of the reactor: a member, an aggregator or a reactor BOM. */

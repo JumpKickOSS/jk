@@ -356,6 +356,29 @@ public record JkBuild(
                 library);
     }
 
+    /** This build with its {@code [features]} replaced. */
+    public JkBuild withFeatures(Features features) {
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                application,
+                nativeConfig,
+                pluginConfigs,
+                build,
+                format,
+                variants,
+                install,
+                publish,
+                image,
+                library);
+    }
+
     /** True when the {@code [spring-boot]} plugin table is declared. */
     public boolean isSpringBoot() {
         return pluginConfigs.containsKey(SPRING_BOOT_ID);

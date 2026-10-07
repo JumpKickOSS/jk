@@ -5,6 +5,8 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.JkBuildRenderer;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -194,6 +196,51 @@ class PomReactorUnbuiltDependencyImportTest {
                                             + " root pom.xml lists, and that profile is not active on this machine")
                             .contains("the dependency was not written");
                 });
+    }
+
+    /**
+     * keycloak's testsuite shape: a profile adds a dependency on a module the workspace does not
+     * build beside an external one. The profile is a feature; the dropped dependency's handle leaves
+     * the feature's list with it, so the manifest names only handles it declares and parses back.
+     */
+    @Test
+    void a_profile_feature_names_no_dependency_the_import_dropped(@TempDir Path root) throws Exception {
+        writeReactor(root, "");
+        write(root, "legacy/pom.xml", leaf("legacy"));
+        write(root, "docs/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  %s
+                  <artifactId>docs</artifactId>
+                  <profiles>
+                    <profile>
+                      <id>legacy-server</id>
+                      <dependencies>
+                        <dependency>
+                          <groupId>org.demo</groupId>
+                          <artifactId>legacy</artifactId>
+                          <version>1.0.0</version>
+                        </dependency>
+                        <dependency>
+                          <groupId>org.slf4j</groupId>
+                          <artifactId>slf4j-api</artifactId>
+                          <version>2.0.17</version>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                  </profiles>
+                </project>
+                """.formatted(PARENT));
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        JkBuild docs = requireNonNull(result.modules().get("docs"));
+        assertThat(docs.features().byName()).containsKey("legacy-server");
+        assertThat(requireNonNull(docs.features().byName().get("legacy-server")).deps())
+                .as("the dropped reactor module is no handle any more; the external one still is")
+                .containsExactly("slf4j-api");
+        String rendered = JkBuildRenderer.render(docs);
+        assertThat(JkBuildParser.parse(rendered).features().byName()).containsKey("legacy-server");
     }
 
     /** A root listing `js` (an aggregator of two members) and `docs`, plus `legacy` under an inactive profile. */
