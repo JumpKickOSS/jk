@@ -64,6 +64,7 @@ final class PluginFacts {
             "maven-jaxb2-plugin",
             "jaxb-maven-plugin",
             "jooq-codegen-maven",
+            "hibernate-enhance-maven-plugin",
             "maven-checkstyle-plugin",
             "maven-pmd-plugin",
             "spotbugs-maven-plugin",

@@ -79,6 +79,7 @@ modules = [
   "plugins/lint",
   "plugins/android",
   "plugins/micronaut",
+  "plugins/hibernate",
 ]
 
 # ---------------------------------------------------------------------------
