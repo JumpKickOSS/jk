@@ -89,6 +89,8 @@ final class MemberPartitions {
     /** package key → the merged solve's module, main graph first. */
     private final Map<String, Resolution.ResolvedModule> unionByKey = new LinkedHashMap<>();
 
+    private final MemberSolves solves;
+
     MemberPartitions(
             LockOrchestrator.Solve union,
             RepoGroup repos,
@@ -96,8 +98,10 @@ final class MemberPartitions {
             PlatformConstraints.BomTables bomTables,
             Collection<String> featuresRequested,
             boolean withDefaults,
-            Set<String> workspaceVersions) {
+            Set<String> workspaceVersions,
+            MemberSolves solves) {
         this.union = union;
+        this.solves = solves;
         this.repos = repos;
         this.pomBuilder = pomBuilder;
         this.bomTables = bomTables;
@@ -138,21 +142,12 @@ final class MemberPartitions {
         // name@version → the provenance a holder's table lends a merged row it agrees with.
         Map<String, String> carried = new LinkedHashMap<>();
         List<Flagged> flaggedMembers = flaggedMembers(members, merged, carried);
-        int solved = 0;
-        for (Flagged flaggedMember : flaggedMembers) {
+        List<Lockfile> solvedMembers = solveAll(flaggedMembers, memberPrefs, solver, observer);
+        for (int i = 0; i < flaggedMembers.size(); i++) {
+            Flagged flaggedMember = flaggedMembers.get(i);
             LockOrchestrator.Member member = flaggedMember.member();
-            JkBuild manifest = flaggedMember.manifest();
             PlatformConstraints own = flaggedMember.own();
-            // Each flagged member costs a solve of its own; on a cold large reactor that is where
-            // the lock's time goes, so the label says which member and how many remain.
-            observer.onPhase(passLabel(member.path(), ++solved, flaggedMembers.size()));
-            Map<String, String> prefs = prefsFor(
-                    reach(manifest).closure(),
-                    flaggedMember.flagged(),
-                    memberPrefs.getOrDefault(member.path(), Map.of()));
-            // The table read to flag the member is the table its solve runs under.
-            Lockfile mine =
-                    solver.solve(member.path(), manifest, featuresFor(manifest), prefs, own, flaggedMember.flagged());
+            Lockfile mine = solvedMembers.get(i);
             Map<String, String> differing = new TreeMap<>();
             Map<String, Set<String>> pruned = new HashMap<>();
             // The BOM or entry of the member's own table that pins each differing row's version, by
@@ -344,6 +339,41 @@ final class MemberPartitions {
             out.add(new Flagged(member, manifest, own, flagged, graphOnly));
         }
         return out;
+    }
+
+    /**
+     * Every flagged member's own solve, in workspace order. The solves overlap under {@link
+     * #solves}; each is charged by the size of its graph in the merged solve, and the phase label
+     * of each is said as it starts.
+     */
+    private List<Lockfile> solveAll(
+            List<Flagged> flaggedMembers,
+            Map<String, Map<String, String>> memberPrefs,
+            MemberSolver solver,
+            ResolveObserver observer)
+            throws IOException, InterruptedException {
+        List<MemberSolves.Job<Lockfile>> jobs = new ArrayList<>(flaggedMembers.size());
+        int[] started = {0};
+        for (Flagged flaggedMember : flaggedMembers) {
+            LockOrchestrator.Member member = flaggedMember.member();
+            JkBuild manifest = flaggedMember.manifest();
+            Set<String> closure = reach(manifest).closure();
+            Map<String, String> prefs =
+                    prefsFor(closure, flaggedMember.flagged(), memberPrefs.getOrDefault(member.path(), Map.of()));
+            Collection<String> features = featuresFor(manifest);
+            long bytes = MemberSolves.BYTES_PER_MODULE * Math.max(1, closure.size());
+            jobs.add(new MemberSolves.Job<>(bytes, () -> {
+                // Each flagged member costs a solve of its own; on a cold large reactor that is where
+                // the lock's time goes, so the label says which member and how many there are.
+                synchronized (started) {
+                    observer.onPhase(passLabel(member.path(), ++started[0], flaggedMembers.size()));
+                }
+                // The table read to flag the member is the table its solve runs under.
+                return solver.solve(
+                        member.path(), manifest, features, prefs, flaggedMember.own(), flaggedMember.flagged());
+            }));
+        }
+        return solves.runAll(jobs);
     }
 
     /** The phase label of one member's solve: {@code Solving members on their own… 2 of 7: services/api}. */
