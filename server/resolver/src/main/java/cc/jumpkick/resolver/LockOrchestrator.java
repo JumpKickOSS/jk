@@ -86,12 +86,19 @@ public final class LockOrchestrator {
 
     /**
      * One workspace member as the lock sees it: its {@code [[module]]} path and its manifest with
-     * workspace placeholders resolved, sibling externals and platform tables folded in.
+     * workspace placeholders resolved, sibling externals and platform tables folded in. {@code
+     * carried} names the {@code group:artifact}s it holds only through a sibling: a pin on one is
+     * the sibling's, so the member's own solve reads it as a floor.
      */
-    public record Member(String path, JkBuild manifest) {
+    public record Member(String path, JkBuild manifest, Set<String> carried) {
         public Member {
             Objects.requireNonNull(path, "path");
             Objects.requireNonNull(manifest, "manifest");
+            carried = Set.copyOf(carried);
+        }
+
+        public Member(String path, JkBuild manifest) {
+            this(path, manifest, Set.of());
         }
     }
 
@@ -373,7 +380,11 @@ public final class LockOrchestrator {
             for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
         }
         if (!members.isEmpty()) {
+            Map<String, Set<String>> carriedBy = new HashMap<>();
+            for (Member m : members) carriedBy.put(m.path(), m.carried());
             MemberPartitions.MemberSolver solver = (member, manifest, features, memberPrefs, own, unshared) -> {
+                // A pin the member holds only through a sibling is the sibling's: a floor here.
+                Set<String> carried = carriedBy.getOrDefault(member, Set.of());
                 // A member solved on its own: its rows, assembled against its own platform table.
                 LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
                 ResolveProfile.Phases steps = ResolveProfile.phases();
@@ -391,7 +402,7 @@ public final class LockOrchestrator {
                             ResolveObserver.NOOP,
                             pomBuilder,
                             own,
-                            ga -> pinsAsFloors);
+                            ga -> pinsAsFloors || carried.contains(ga));
                     steps.begin(ResolveProfile::memberAssemble);
                     silent.materializePhase(0);
                     return assemble(solve, manifest, jkVersion, silent, pomBuilder);
