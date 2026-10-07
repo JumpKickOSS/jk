@@ -33,16 +33,30 @@ public final class ImportPinRaises {
 
     /** {@link #apply(Path, Path)} resolving from {@code repoUrl} in place of the default repositories. */
     static List<String> apply(Path lockDir, Path cache, @Nullable URI repoUrl) throws Exception {
-        LockPlans.LockScope scope = LockPlans.lockScope(lockDir);
-        Lockfile probe = new LockPipeline(
-                        scope.lockDir(), scope.effective(), cache, repoUrl, List.of(), true, new LockMode.PinFloors())
-                .resolve(null, ResolveObserver.NOOP, LockPipeline.Progress.SILENT);
-        ManifestUpdates.Plan plan = ManifestUpdates.raise(lockDir, probe);
-        ManifestUpdates.apply(plan);
-        List<String> lines = new ArrayList<>(plan.rewrites().size());
-        for (ManifestUpdates.Rewrite r : plan.rewrites()) lines.add(line(r, probe));
+        List<String> lines = new ArrayList<>();
+        // A raised pin moves what the members depending on its member carry, which can put their own
+        // pins below a floor in turn: probe again until a round raises nothing.
+        for (int round = 0; round < MAX_ROUNDS; round++) {
+            LockPlans.LockScope scope = LockPlans.lockScope(lockDir);
+            Lockfile probe = new LockPipeline(
+                            scope.lockDir(),
+                            scope.effective(),
+                            cache,
+                            repoUrl,
+                            List.of(),
+                            true,
+                            new LockMode.PinFloors())
+                    .resolve(null, ResolveObserver.NOOP, LockPipeline.Progress.SILENT);
+            ManifestUpdates.Plan plan = ManifestUpdates.raise(lockDir, probe);
+            if (plan.rewrites().isEmpty()) break;
+            ManifestUpdates.apply(plan);
+            for (ManifestUpdates.Rewrite r : plan.rewrites()) lines.add(line(r, probe));
+        }
         return lines;
     }
+
+    /** Probe rounds before the raise stops; each round moves only pins below a version the graph holds. */
+    static final int MAX_ROUNDS = 4;
 
     /** One report line for {@code r}, naming up to {@value #PARENTS_NAMED} of the modules that depend on it. */
     static String line(ManifestUpdates.Rewrite r, Lockfile probe) {
