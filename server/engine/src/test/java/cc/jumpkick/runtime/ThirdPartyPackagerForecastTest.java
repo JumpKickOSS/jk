@@ -101,6 +101,7 @@ class ThirdPartyPackagerForecastTest {
     void plugin_owned_packaging_forecasts_run_then_cached(@TempDir Path tmp) throws Exception {
         Path repo = ThirdPartyPluginFixture.publish(
                 tmp.resolve("repo"), GROUP, ARTIFACT, VERSION, "HelloPackagerMain", MAIN, MANIFEST);
+        ThirdPartyPluginFixture.publishSdkFloor(repo);
         Path cache = tmp.resolve("cache");
         Path proj = Files.createDirectories(tmp.resolve("proj"));
         Path stateDir = Files.createDirectories(tmp.resolve("state"));
@@ -125,8 +126,10 @@ class ThirdPartyPackagerForecastTest {
                 integration = false
                 install = false
 
+                # The fixture stands in for the JumpKick repository, so the SDK floor's first-party
+                # coordinates resolve from it too.
                 [repositories]
-                local = "%s"
+                jumpkick = "%s"
 
                 [plugins]
                 hellopack = { group = "%s", name = "%s", version = "%s", sha256 = "%s" }
@@ -154,25 +157,31 @@ class ThirdPartyPackagerForecastTest {
                 .orElseThrow();
         cas.putFile(fetched.fetched().cachePath(), hex);
         Path lockFile = proj.resolve("jk-lock.toml");
+        // The SDK floor the plugin forks with rides in the lock as plugin-scoped rows.
+        List<Lockfile.Artifact> sdkRows =
+                PluginSdkFloor.rows(repos, parsed.plugins().getFirst(), null, note -> {});
+        assertThat(sdkRows).hasSize(PluginSdkFloor.ARTIFACTS.size());
         LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        null,
-                        null,
-                        List.of(),
-                        List.of(new Lockfile.PluginEntry(
-                                GROUP + ":" + ARTIFACT,
-                                VERSION,
-                                "sha256:" + fetched.fetched().sha256())),
-                        List.of(),
-                        List.of(),
-                        null,
-                        // Without the manifest digest the lock reads as stale and the forecast
-                        // short-circuits to a single "lock update needed" step.
-                        LockManifestDigest.compute(proj),
-                        null),
+                PluginSdkFloor.withRows(
+                        new Lockfile(
+                                Lockfile.CURRENT_VERSION,
+                                "test",
+                                Lockfile.RESOLUTION_ALGORITHM,
+                                null,
+                                null,
+                                List.of(),
+                                List.of(new Lockfile.PluginEntry(
+                                        GROUP + ":" + ARTIFACT,
+                                        VERSION,
+                                        "sha256:" + fetched.fetched().sha256())),
+                                List.of(),
+                                List.of(),
+                                null,
+                                // Without the manifest digest the lock reads as stale and the forecast
+                                // short-circuits to a single "lock update needed" step.
+                                LockManifestDigest.compute(proj),
+                                null),
+                        sdkRows),
                 lockFile);
         assertThat(PluginDescriptorOps.ensureMaterialized(proj, cache)).isTrue();
         TrustedPlugins.load(stateDir).add(GROUP + ":" + ARTIFACT);
