@@ -9,7 +9,6 @@ import cc.jumpkick.cli.tui.Badge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.terminal.Style;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -280,15 +279,15 @@ public final class DiagnosticReport {
         return Theme.paint(display, t.path());
     }
 
-    /** Relativize a path-like token; leave non-existent / non-path strings alone. */
+    /**
+     * An absolute path-like token shown relative to the project; a relative one is already written
+     * from where the user stands and stays as written, {@code ./gradlew}'s {@code ./} included.
+     */
     static String relativizePathToken(String tok) {
         if (tok == null || tok.isEmpty()) return tok;
         try {
             Path p = Path.of(tok);
-            // Only relativize when it looks absolute or exists under the project.
-            if (p.isAbsolute() || tok.startsWith("target/") || Files.exists(p)) {
-                return PathDisplay.of(p);
-            }
+            if (p.isAbsolute()) return PathDisplay.of(p);
         } catch (RuntimeException ignored) {
             // keep raw
         }

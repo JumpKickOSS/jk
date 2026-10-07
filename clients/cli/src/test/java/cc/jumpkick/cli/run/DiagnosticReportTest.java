@@ -140,4 +140,14 @@ class DiagnosticReportTest {
         assertThat(DiagnosticReport.titleCaseWords("ensure-jdk".replace('-', ' ')))
                 .isEqualTo("Ensure Jdk");
     }
+
+    @Test
+    void a_relative_path_in_prose_keeps_its_leading_dot_slash() {
+        assertThat(DiagnosticReport.relativizePathToken("./gradlew")).isEqualTo("./gradlew");
+        assertThat(DiagnosticReport.relativizePathToken("../jk-examples/README.md"))
+                .isEqualTo("../jk-examples/README.md");
+        assertThat(DiagnosticReport.relativizePathToken("target/jk-results.md")).isEqualTo("target/jk-results.md");
+        Path abs = Path.of("").toAbsolutePath().resolve("build.gradle");
+        assertThat(DiagnosticReport.relativizePathToken(abs.toString())).isEqualTo("build.gradle");
+    }
 }
