@@ -26,6 +26,10 @@ final class BuildFields {
     DebugInfo debug;
     List<BuildBlock.KotlinPluginDecl> kotlinPlugins;
     List<String> kspOptions;
+
+    @Nullable
+    String kspVersion;
+
     JavacConfig javac;
     List<String> extraSrc;
     List<String> testExtraSrc;
@@ -74,6 +78,7 @@ final class BuildFields {
         debug = b.debug();
         kotlinPlugins = b.kotlinPlugins();
         kspOptions = b.kspOptions();
+        kspVersion = b.kspVersion();
         javac = b.javac();
         extraSrc = b.extraSrc();
         testExtraSrc = b.testExtraSrc();
@@ -114,6 +119,7 @@ final class BuildFields {
                 debug,
                 kotlinPlugins,
                 kspOptions,
+                kspVersion,
                 javac,
                 extraSrc,
                 testExtraSrc,

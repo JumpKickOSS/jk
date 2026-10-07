@@ -3,13 +3,12 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
-import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -20,7 +19,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves/fetches the KSP2 tool closure for {@code KSPJvmMain} (Maven via {@link PubGrubResolver}),
- * CAS-cached under {@code tools/ksp/}. Newest stable standalone KSP2 release is chosen.
+ * CAS-cached under {@code tools/ksp/}. The version is {@link #DEFAULT_VERSION} unless the module
+ * pins another with {@code [build] ksp-version}; a build never asks the network which is newest.
  */
 public final class KspResolver {
 
@@ -30,32 +30,15 @@ public final class KspResolver {
     /** The CLI entry point inside the closure (ships in {@code symbol-processing-aa-embeddable}). */
     public static final String KSP_MAIN = "com.google.devtools.ksp.cmdline.KSPJvmMain";
 
+    /** jk's KSP2 release: a standalone version, independent of the Kotlin compiler's. */
+    public static final String DEFAULT_VERSION = "2.3.12";
+
     private KspResolver() {}
 
-    /**
-     * Pick the KSP2 version to use: the newest stable standalone release (plain semver — KSP1's
-     * {@code <kotlin>-<ksp>} compound versions are excluded).
-     */
-    public static String discoverVersion(RepoGroup repos) throws IOException, InterruptedException {
-        int colon = KSP_AA_MODULE.indexOf(':');
-        Coordinate coord = Coordinate.of(KSP_AA_MODULE.substring(0, colon), KSP_AA_MODULE.substring(colon + 1), "any");
-        List<String> available = repos.availableVersions(coord);
-        return available.stream()
-                .filter(KspResolver::standalone)
-                .filter(Versions::isStable)
-                .max(Versions::compare)
-                .orElseThrow(() -> new IOException("no standalone KSP2 release found for " + KSP_AA_MODULE));
-    }
-
-    /** True for the KSP2 standalone version shape ({@code 2.3.10}), false for {@code 2.0.0-1.0.21}. */
-    static boolean standalone(String version) {
-        // KSP1 compound versions carry a second dotted version after a dash (…-1.0.21);
-        // standalone versions have at most a prerelease word there. Three dash-separated
-        // dotted-number runs = compound.
-        int dash = version.indexOf('-');
-        if (dash < 0) return true;
-        String suffix = version.substring(dash + 1);
-        return !suffix.matches("\\d+(\\.\\d+)+");
+    /** The KSP2 release {@code build}'s round runs: its {@code [build] ksp-version}, else {@link #DEFAULT_VERSION}. */
+    public static String versionFor(JkBuild build) {
+        String pinned = build.build().kspVersion();
+        return pinned != null ? pinned : DEFAULT_VERSION;
     }
 
     /**

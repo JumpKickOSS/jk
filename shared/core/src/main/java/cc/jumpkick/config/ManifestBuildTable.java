@@ -6,6 +6,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.TestFailureMode;
+import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +40,10 @@ final class ManifestBuildTable {
         boolean lint = true;
         DebugInfo debug = DebugInfo.FULL;
         final List<String> kspOptions = new ArrayList<>();
+
+        @Nullable
+        String kspVersion;
+
         final List<String> extraSrc = new ArrayList<>();
         final List<String> testExtraSrc = new ArrayList<>();
 
@@ -68,6 +73,7 @@ final class ManifestBuildTable {
             "lint",
             "debug",
             "ksp-options",
+            "ksp-version",
             "extra-src",
             "test-workers",
             "test-parallel",
@@ -131,6 +137,18 @@ final class ManifestBuildTable {
                 }
                 s.kspOptions.add(str);
             }
+        }
+        // [build] ksp-version — the KSP2 release the round runs, an exact version; absent is jk's own pin.
+        Object rawKsp = build.get("ksp-version");
+        if (rawKsp != null) {
+            if (!(rawKsp instanceof String text) || text.isBlank()) {
+                throw new JkBuildParseException("[build].ksp-version must be a version string, e.g. \"2.3.12\"");
+            }
+            if (!(VersionSelector.parse(text) instanceof VersionSelector.Exact exact)) {
+                throw new JkBuildParseException("[build].ksp-version must be an exact version, not `" + text
+                        + "`: the KSP2 tool is pinned, and jk update moves the pin");
+            }
+            s.kspVersion = exact.version();
         }
         // [build] extra-src — additional module-relative source roots (variant overlays append).
         TomlArray es = build.getArray("extra-src");

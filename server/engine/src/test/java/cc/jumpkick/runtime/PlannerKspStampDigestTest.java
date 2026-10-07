@@ -13,7 +13,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The KSP round's freshness stamp records a digest of its processor options and toolchain, so an
- * edit to {@code [build] ksp-options} with untouched sources re-runs the round.
+ * edit to {@code [build] ksp-options} or a different KSP2 release with untouched sources re-runs the
+ * round.
  */
 class PlannerKspStampDigestTest {
 
@@ -45,12 +46,14 @@ class PlannerKspStampDigestTest {
             """;
 
     @Test
-    void ksp_options_and_the_kotlin_version_move_the_digest(@TempDir Path tmp) throws Exception {
+    void ksp_options_and_the_kotlin_and_ksp_versions_move_the_digest(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("app"));
         Path javaHome = Path.of(System.getProperty("java.home"));
 
-        String base = PlannerKsp.kspStampDigest(JkBuildParser.parse(PLAIN), LOCK, module, "2.4.10", javaHome, 25);
-        assertThat(PlannerKsp.kspStampDigest(JkBuildParser.parse(PLAIN), LOCK, module, "2.4.10", javaHome, 25))
+        String base =
+                PlannerKsp.kspStampDigest(JkBuildParser.parse(PLAIN), LOCK, module, "2.4.10", "2.3.12", javaHome, 25);
+        assertThat(PlannerKsp.kspStampDigest(
+                        JkBuildParser.parse(PLAIN), LOCK, module, "2.4.10", "2.3.12", javaHome, 25))
                 .isEqualTo(base);
 
         String withOptions = PLAIN + """
@@ -60,9 +63,14 @@ class PlannerKspStampDigestTest {
                 """;
         var optioned = JkBuildParser.parse(withOptions);
         assertThat(PlannerKsp.kspOptions(optioned, module, LOCK)).containsExactly("room.schemaLocation=schemas");
-        assertThat(PlannerKsp.kspStampDigest(optioned, LOCK, module, "2.4.10", javaHome, 25))
+        assertThat(PlannerKsp.kspStampDigest(optioned, LOCK, module, "2.4.10", "2.3.12", javaHome, 25))
                 .isNotEqualTo(base);
-        assertThat(PlannerKsp.kspStampDigest(JkBuildParser.parse(PLAIN), LOCK, module, "2.4.20", javaHome, 25))
+        assertThat(PlannerKsp.kspStampDigest(
+                        JkBuildParser.parse(PLAIN), LOCK, module, "2.4.20", "2.3.12", javaHome, 25))
+                .isNotEqualTo(base);
+        assertThat(PlannerKsp.kspStampDigest(
+                        JkBuildParser.parse(PLAIN), LOCK, module, "2.4.10", "2.3.10", javaHome, 25))
+                .as("a KSP2 release change re-runs the round on an unchanged tree")
                 .isNotEqualTo(base);
     }
 }

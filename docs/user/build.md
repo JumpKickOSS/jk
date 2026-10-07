@@ -85,6 +85,13 @@ A discovered processor and a declared one are the same thing downstream: the wor
 processor path, records what each processor generates, and the compile action key hashes the
 path's full content. A classpath that registers no processor hands javac none, and the key hashes
 it by ABI alone. `compile-main`, `compile-test`, fixtures and the guard suite all apply the rule.
+A Kotlin module whose processor path holds a KSP processor (Room, Hilt, Moshi's codegen) runs it
+in a KSP2 round before the Kotlin compile. The KSP2 tool is a pinned release, never the newest the
+network offers: jk's own pin by default (2.3.12 today, moved by jk releases), or the module's
+`[build] ksp-version = "2.3.10"`, an exact version that `jk update` moves on its major like any other
+tool pin. The release is a round input, so changing it re-runs the round on an unchanged tree, and
+the step's label names the release that ran (`KSP 2.3.12: 2 processor jar(s)`).
+
 Declare `[processor-dependencies]` when the manifest should say what runs, when the processor needs
 dependencies of its own that do not belong on the compile classpath, or when a classpath jar
 registers a processor you want silent; `[test-processor-dependencies]` when a processor belongs to
