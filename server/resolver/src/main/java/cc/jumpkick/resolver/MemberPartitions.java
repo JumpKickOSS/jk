@@ -353,7 +353,6 @@ final class MemberPartitions {
             ResolveObserver observer)
             throws IOException, InterruptedException {
         List<MemberSolves.Job<Lockfile>> jobs = new ArrayList<>(flaggedMembers.size());
-        int[] started = {0};
         for (Flagged flaggedMember : flaggedMembers) {
             LockOrchestrator.Member member = flaggedMember.member();
             JkBuild manifest = flaggedMember.manifest();
@@ -362,12 +361,10 @@ final class MemberPartitions {
                     prefsFor(closure, flaggedMember.flagged(), memberPrefs.getOrDefault(member.path(), Map.of()));
             Collection<String> features = featuresFor(manifest);
             long bytes = MemberSolves.BYTES_PER_MODULE * Math.max(1, closure.size());
-            jobs.add(new MemberSolves.Job<>(bytes, () -> {
-                // Each flagged member costs a solve of its own; on a cold large reactor that is where
-                // the lock's time goes, so the label says which member and how many there are.
-                synchronized (started) {
-                    observer.onPhase(passLabel(member.path(), ++started[0], flaggedMembers.size()));
-                }
+            // Each flagged member costs a solve of its own; on a cold large reactor that is where the
+            // lock's time goes, so the label says which member and how many there are.
+            String label = passLabel(member.path(), jobs.size() + 1, flaggedMembers.size());
+            jobs.add(new MemberSolves.Job<>(bytes, () -> observer.onPhase(label), () -> {
                 // The table read to flag the member is the table its solve runs under.
                 return solver.solve(
                         member.path(), manifest, features, prefs, flaggedMember.own(), flaggedMember.flagged());

@@ -32,8 +32,15 @@ final class MemberSolves {
     /** Heap left untouched when sizing the budget, as the engine's admission keeps it. */
     static final long RESERVE_BYTES = 32L << 20;
 
-    /** One member's solve: what it is charged, and the solve. */
-    record Job<T>(long bytes, Task<T> task) {}
+    /**
+     * One member's solve: what it is charged, what is said as it starts (run under the admission
+     * lock, so starts are said in the order given), and the solve.
+     */
+    record Job<T>(long bytes, Runnable onStart, Task<T> task) {
+        Job(long bytes, Task<T> task) {
+            this(bytes, () -> {}, task);
+        }
+    }
 
     /** A solve that reads the repositories and may be interrupted. */
     interface Task<T> {
@@ -102,7 +109,7 @@ final class MemberSolves {
     }
 
     private <T> T run(int index, Job<T> job) throws IOException, InterruptedException {
-        admit(index, job.bytes());
+        admit(index, job);
         try {
             return job.task().call();
         } finally {
@@ -110,8 +117,10 @@ final class MemberSolves {
         }
     }
 
-    private synchronized void admit(int index, long bytes) throws InterruptedException {
+    private synchronized void admit(int index, Job<?> job) throws InterruptedException {
+        long bytes = job.bytes();
         while (index != nextToStart || (running > 0 && (running >= slots || charged + bytes > budget))) wait();
+        job.onStart().run();
         nextToStart++;
         running++;
         charged += bytes;
