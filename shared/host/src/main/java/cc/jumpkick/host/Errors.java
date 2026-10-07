@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import java.nio.file.FileSystemException;
 import org.jspecify.annotations.Nullable;
 
 /** Error-message hygiene shared by engine verbs and client sync paths. */
@@ -16,7 +17,9 @@ public final class Errors {
     public static String text(@Nullable Throwable t) {
         if (t == null) return "unknown error";
         String m = t.getMessage();
-        return m == null || m.isBlank() ? t.toString() : m;
+        if (m == null || m.isBlank()) return t.toString();
+        // A file-system exception's message is only the path; the type is what says what happened.
+        return t instanceof FileSystemException ? t.getClass().getSimpleName() + ": " + m : m;
     }
 
     /**

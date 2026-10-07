@@ -385,6 +385,37 @@ class ActionCachePruneTest {
         assertThat(report.incrementalFinalBytes()).isEqualTo(400_000);
     }
 
+    /**
+     * A compile creates its tree's directories before it writes a file, and another engine sharing
+     * the cache may prune meanwhile: a tree that holds only fresh directories is in use, not empty.
+     */
+    @Test
+    void a_tree_a_compile_has_just_created_is_young(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        Path creating = root.resolve("actions/incremental-java/compile-main@creating");
+        Files.createDirectories(creating.resolve("gen"));
+
+        ActionCachePrune.run(root, cas, windows(1024L * 1024 * 1024), Set.of(), false);
+
+        assertThat(creating).exists();
+    }
+
+    /** A compile stamps an old tree as it starts, so a prune by any engine leaves it while it runs. */
+    @Test
+    void a_tree_a_compile_marks_in_use_survives_the_window(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        Path inUse =
+                analysis(root, "compile-main@inuse", 4_096, Duration.ofDays(10).toMillis());
+        Path idle =
+                analysis(root, "compile-main@idle", 4_096, Duration.ofDays(10).toMillis());
+
+        ActionCachePrune.markInUse(inUse);
+        ActionCachePrune.run(root, cas, windows(1024L * 1024 * 1024), Set.of(), false);
+
+        assertThat(inUse).as("its compile is running").exists();
+        assertThat(idle).doesNotExist();
+    }
+
     // ---------------------------------------------------------------- dry run
 
     @Test
@@ -546,6 +577,7 @@ class ActionCachePruneTest {
         Path zinc = dir.resolve("zinc");
         Files.write(zinc, payload);
         backdate(zinc, ageMillis);
+        backdate(dir, ageMillis);
         return dir;
     }
 
