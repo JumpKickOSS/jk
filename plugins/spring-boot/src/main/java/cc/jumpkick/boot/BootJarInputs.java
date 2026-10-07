@@ -44,7 +44,8 @@ public record BootJarInputs(String bootVersion, String startClass, Path loaderJa
     public static BootJarInputs read(PackageIo io) throws IOException {
         String startClass = io.project().mainClass();
         if (startClass == null || startClass.isBlank()) {
-            throw new IOException("no application main class — a Boot-launcher jar needs a Start-Class");
+            throw new IOException("no application main class: the compiled classes have no `main` and jk.toml sets"
+                    + " none — a Boot-launcher jar needs a Start-Class; set `[application] main = \"...\"`");
         }
         Path loaderJar = io.extra(LOADER_EXTRA)
                 .orElseThrow(() -> new IOException(LOADER_EXTRA + " artifact missing from the packager inputs"));
