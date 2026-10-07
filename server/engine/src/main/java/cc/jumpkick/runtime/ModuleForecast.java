@@ -607,7 +607,7 @@ final class ModuleForecast {
             steps.add(new TaskForecast.Task(
                     TaskNames.COMPILE_TEST,
                     TaskForecast.Status.RUN,
-                    depOnlyDirty ? "recompile · only if the compile runs" : "recompile · main changed",
+                    depOnlyDirty ? "recompile · " + TaskForecast.ONLY_IF_COMPILE_RUNS : "recompile · main changed",
                     null));
             testDirty = true;
         } else if (!testSources.javacSources().isEmpty()) {
@@ -853,7 +853,7 @@ final class ModuleForecast {
             steps.add(new TaskForecast.Task(
                     TaskNames.PACKAGE_JAR,
                     TaskForecast.Status.RUN,
-                    depOnlyDirty ? "repackage · only if the compile runs" : "repackage · compile changed",
+                    depOnlyDirty ? "repackage · " + TaskForecast.ONLY_IF_COMPILE_RUNS : "repackage · compile changed",
                     null));
         } else if (PackagingKeys.ownsPackaging(plugin)) {
             // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android).

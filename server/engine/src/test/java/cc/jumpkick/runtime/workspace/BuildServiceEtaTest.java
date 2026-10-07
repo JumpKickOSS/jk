@@ -306,6 +306,69 @@ class BuildServiceEtaTest {
         assertThat(cliCost.weight()).isLessThan(cliCost.testWeight() + 30);
     }
 
+    /**
+     * The step texts the forecaster writes for a consumer whose only dirtiness is a dependency's:
+     * a compile hint and the steps that run only if that compile does. Each is the dependency's
+     * consequence, so the module prices as a cascade recheck, not as its own edit with a suite.
+     */
+    @Test
+    void a_hinted_dependency_only_module_prices_as_a_cascade() throws Exception {
+        Path core = Path.of("/ws/core");
+        Path app = Path.of("/ws/app");
+        var producer = new TaskForecast.Module(
+                core,
+                "g:core",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 1 source changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~200 tests", null)),
+                10,
+                200,
+                true,
+                false);
+        for (String compileText : List.of(
+                TaskForecast.LIKELY_UP_TO_DATE + " · body-only edit in core (hint)",
+                TaskForecast.LIKELY_RECOMPILE + " · API changed in core: Core.java (hint)")) {
+            var consumer = new TaskForecast.Module(
+                    app,
+                    "g:app",
+                    List.of(
+                            new TaskForecast.Task("compile-main", TaskForecast.Status.RUN, compileText, null),
+                            new TaskForecast.Task(
+                                    "compile-test",
+                                    TaskForecast.Status.RUN,
+                                    "recompile · " + TaskForecast.ONLY_IF_COMPILE_RUNS,
+                                    null),
+                            new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~400 tests", null),
+                            new TaskForecast.Task(
+                                    "package-jar",
+                                    TaskForecast.Status.RUN,
+                                    "repackage · " + TaskForecast.ONLY_IF_COMPILE_RUNS,
+                                    null)),
+                    40,
+                    400,
+                    true,
+                    false);
+            for (TaskForecast.Task step : consumer.steps()) {
+                if (!step.name().equals("run-tests")) {
+                    assertThat(BuildService.isCascadeForcedStep(step))
+                            .as(step.text())
+                            .isTrue();
+                }
+            }
+            var plan = new ExplainPlan(
+                    List.of(producer, consumer), Map.of(core, Set.of(), app, Set.of(core)), 2, List.of());
+            List<EffortWeights.ModuleCost> costs = SessionContext.where(
+                    Session.defaults(),
+                    () -> BuildService.etaCostsFromExplainPlan(
+                            plan, Path.of("/tmp/jk-eta-hinted-cascade-test-cache"), 1, null, null, false, false, 0));
+            EffortWeights.ModuleCost appCost =
+                    costs.stream().filter(c -> c.dir().equals(app)).findFirst().orElseThrow();
+            assertThat(appCost.testWeight()).as(compileText).isZero();
+            assertThat(appCost.weight()).as(compileText).isLessThan(20);
+        }
+    }
+
     @Test
     void full_work_shape_needs_depth_not_just_width() {
         // 28 lightly dirty modules (cascade / parse-heavy) must NOT look like a full rebuild.

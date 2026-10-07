@@ -21,6 +21,18 @@ public final class TaskForecast {
      */
     public static final String LAST_RUN_FAILED = "last run failed";
 
+    /**
+     * Lead of a compile step held to run only because a compile-scope dependency is rebuilding,
+     * when every such dependency's edit is body-only: its key is expected to hold.
+     */
+    public static final String LIKELY_UP_TO_DATE = "likely up to date";
+
+    /** As {@link #LIKELY_UP_TO_DATE} when a dependency's declarations moved: the key is expected to miss. */
+    public static final String LIKELY_RECOMPILE = "likely recompile";
+
+    /** Detail of a step that runs only if this module's own compile does: its dirtiness is a dependency's. */
+    public static final String ONLY_IF_COMPILE_RUNS = "only if the compile runs";
+
     /** Per-step verdict. CACHED = restored from cache; the rest do real work. */
     public enum Status {
         CACHED,

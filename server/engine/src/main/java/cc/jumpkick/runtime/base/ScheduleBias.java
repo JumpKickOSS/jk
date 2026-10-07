@@ -54,24 +54,26 @@ public final class ScheduleBias {
      * The bounds an observation is folded within and a stored bias is read within: the same pair,
      * so a correction the fold recorded is applied as recorded, and only a hand-edited store is
      * clamped on read. A simulator running 2x hot or 2x cold is a real shape of a real project
-     * (a wide dogfood rebuild measured 0.6, a 13-module cascade 2.0), so both halves are wide.
+     * (a wide dogfood rebuild measured 0.6, a 13-module cascade 2.0), so both halves are wide, and
+     * they are reciprocal: the fold runs in log space, where 2.5x hot and 2.5x cold are the same
+     * distance from 1.
      */
-    static final double MIN_BIAS = 0.5;
+    static final double MIN_BIAS = 0.4;
 
     static final double MAX_BIAS = 2.5;
 
     /**
-     * Observations only from builds big enough for contention to be signal, not noise.
-     *
-     * <p>This was 4, which meant a narrow incremental — the shape run most often — never taught the
-     * bias anything and was always priced at 1.0. Bucketing makes a narrow observation safe to
-     * learn from: it can no longer leak into the wide buckets. The wall thresholds below still keep
-     * trivial builds out.
+     * Observations only from builds big enough for contention to be signal, not noise. Bucketing
+     * makes a narrow observation safe to learn from: it can no longer leak into the wide buckets.
      */
     public static final int MIN_MODULES = 1;
 
+    /**
+     * The smallest simulated schedule worth learning from. The gate is on the prediction, not on
+     * the wall: a build predicted at 36 s that took 5 s is an over-estimate to learn, and a floor
+     * on the actual wall would discard exactly the observations that pull the bias down.
+     */
     static final long MIN_RAW_MS = 5_000;
-    static final long MIN_ACTUAL_MS = 10_000;
 
     private ScheduleBias() {}
 
@@ -117,14 +119,13 @@ public final class ScheduleBias {
     }
 
     /**
-     * Fold one successful build's outcome into the EWMA. No-ops for small builds, sub-threshold
-     * walls, or nonsense ratios — the bias must only ever learn from runs where the schedule
-     * model was genuinely exercised.
+     * Fold one successful build's outcome into the EWMA of {@code ln(actual / simulated)}. No-ops
+     * for builds whose simulated schedule is too small to have exercised the model.
      */
     public static void observe(Path entryDir, long rawScheduleMs, long actualMs, int dirtyModules) {
-        if (dirtyModules < MIN_MODULES || rawScheduleMs < MIN_RAW_MS || actualMs < MIN_ACTUAL_MS) return;
-        // One observation moves the EWMA by at most a quarter of the way to these bounds; a
-        // build that finished in a third of its schedule teaches 0.5, not 0.37.
+        if (dirtyModules < MIN_MODULES || rawScheduleMs < MIN_RAW_MS || actualMs <= 0) return;
+        // Clamped first, so one observation moves the EWMA by at most a quarter of the way to a
+        // bound: a build that finished in a seventh of its schedule teaches 0.4, not 0.15.
         double ratio = Math.max(MIN_BIAS, Math.min(MAX_BIAS, actualMs / (double) rawScheduleMs));
         // Read-fold-write under the file's lock: two builds finishing together, in one engine or
         // two, otherwise each rewrite the whole file from their own read and one loses its row.
@@ -134,13 +135,22 @@ public final class ScheduleBias {
                 Map<String, Double> m = load(f);
                 String k = shapeKey(entryDir, dirtyModules);
                 Double prev = m.get(k);
-                m.put(k, prev == null ? ratio : prev + ALPHA * (ratio - prev));
+                m.put(k, prev == null ? ratio : fold(prev, ratio));
                 write(f, m);
             });
         } catch (RuntimeException | IOException e) {
             // best-effort — an unlearned bias just means the raw schedule is used
             Log.debug("observe: best-effort", e);
         }
+    }
+
+    /**
+     * One EWMA step in log space: a ratio is a multiplier, so halving and doubling must pull the
+     * bias equally far. A stored value outside the bounds (a hand edit) is clamped first.
+     */
+    static double fold(double prev, double ratio) {
+        double from = Math.log(Math.max(MIN_BIAS, Math.min(MAX_BIAS, prev)));
+        return Math.exp(from + ALPHA * (Math.log(ratio) - from));
     }
 
     private static Path lockFile(Path f) {
