@@ -251,7 +251,7 @@ public final class NodeShape {
     }
 
     /** Whether {@code dir} holds JVM sources a compile would read. */
-    static boolean jvmSources(Path dir) {
+    public static boolean jvmSources(Path dir) {
         for (String lang : List.of("java", "kotlin", "groovy", "scala")) {
             if (Files.isDirectory(dir.resolve("src/main/" + lang))) return true;
         }

@@ -164,15 +164,17 @@ final class FrontendPlugin {
     private record Placed(String id, int phase, NodeTable.Command command) {}
 
     /**
-     * The node build {@code model}'s frontend-maven-plugin describes, or null when it has none, when
-     * no {@code package.json} is there to build, or when the project is on Yarn 1.
+     * The node build {@code model}'s frontend-maven-plugin describes, or null when it has none or no
+     * {@code package.json} is there to build. A project on Yarn 1, which jk does not run, is imported
+     * with {@code [node] skip = true}: the module declares its Node.js and builds no front end, so the
+     * rest of the project locks and builds until the project moves to a supported Yarn.
      */
     static @Nullable Frontend map(Model model, Path moduleDir, ImportReport.Builder report) {
         Plugin plugin = PluginFacts.plugin(model, ARTIFACT).orElse(null);
         if (plugin == null) return null;
         Xpp3Dom shared = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
         String configured = setting(shared, null, "workingDirectory");
-        String workingDirectory = workingDirectory(configured);
+        String workingDirectory = workingDirectory(configured, moduleDir);
         Path dir = moduleDir.resolve(workingDirectory).normalize();
         String where = "`" + ARTIFACT + "`";
         if (!Files.isRegularFile(dir.resolve("package.json"))) {
@@ -184,12 +186,13 @@ final class FrontendPlugin {
             return null;
         }
         String packageManager = packageManager(dir);
-        if (yarnOne(dir, packageManager)) {
-            report.error(where + " builds with Yarn 1, which jk does not run: in `" + workingDirectory
-                    + "` run `yarn set version stable && yarn install`, then commit, and import again");
-            return null;
+        boolean yarnOne = yarnOne(dir, packageManager);
+        if (yarnOne) {
+            report.error(where + " builds with Yarn 1, which jk does not run: imported with `[node] skip = true`, so"
+                    + " this module builds no front end. In `" + workingDirectory + "` run `yarn set version stable"
+                    + " && yarn install`, commit, and import again");
         }
-        boolean skip = false;
+        boolean skip = yarnOne;
         for (String property : SKIP_PROPERTIES) {
             if (isTrue(model.getProperties().getProperty(property))) skip = true;
         }
@@ -432,8 +435,20 @@ final class FrontendPlugin {
     }
 
     /** {@code workingDirectory} relative to the module, with a leading {@code ${basedir}/} dropped. */
-    private static String workingDirectory(@Nullable String raw) {
+    /**
+     * The plugin's {@code workingDirectory} relative to the module: {@code .} for the module itself,
+     * however it is spelled ({@code ${basedir}}, or the absolute path the effective POM interpolates it
+     * to).
+     */
+    static String workingDirectory(@Nullable String raw, Path moduleDir) {
         if (raw == null) return ".";
+        if (raw.equals("${basedir}") || raw.equals("${project.basedir}")) return ".";
+        Path module = moduleDir.toAbsolutePath().normalize();
+        Path given = Path.of(raw);
+        if (given.isAbsolute() && given.normalize().startsWith(module)) {
+            String rel = module.relativize(given.normalize()).toString().replace('\\', '/');
+            return rel.isEmpty() ? "." : rel;
+        }
         String p = raw.replace('\\', '/');
         for (String prefix : List.of("${basedir}/", "${project.basedir}/", "./")) {
             if (p.startsWith(prefix)) p = p.substring(prefix.length());

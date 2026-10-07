@@ -189,7 +189,8 @@ Where the build lands depends on where its bundler (webpack's `output.path`, Vit
 `build.outDir`) wrote:
 
 - into the module's own war or resources: a side-by-side build in that module, `[node] dir` set to
-  the plugin's `workingDirectory`, the output placed by `webapp-root` or `classpath-root`;
+  the plugin's `workingDirectory`, the output placed by `webapp-root` or `classpath-root`; a front
+  end at the root of a module with no JVM sources makes the module a node module, built in place;
 - from a `pom` module, or into another module: a generated node module (`web/`). The import moves
   `package.json`, the lockfile, the package manager's and the tools' config files and the source
   directories the bundler config names into it, and the consuming module depends on it with the
@@ -198,7 +199,9 @@ Where the build lands depends on where its bundler (webpack's `output.path`, Vit
 Either way the bundler config is rewritten to write `dist/`, and jk places the output; nothing is
 built into `src/`. `jk import --dry-run` prints every move and rewrite and changes nothing. Bower and
 the task-runner goals (grunt, gulp, karma, webpack, ember, jspm) are not imported: run them from an
-npm script or an `npx` step. Yarn 1 is not supported.
+npm script or an `npx` step. Yarn 1 is not supported: a project on it imports with `[node] skip =
+true` and a row with the migration, so the rest of the project locks and builds while the module
+builds no front end; a skipped build runs no package manager and the lock pins none for it.
 
 ## Building a pom.xml in place
 
