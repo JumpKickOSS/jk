@@ -39,7 +39,9 @@ public record WhyReport(
         List<String> pathSelectors,
         /** Per path, the workspace units that declared its root ({@code group:name}, comma-joined); {@code ""} when the project's one manifest did. */
         List<String> pathRoots,
-        List<String> exclusions) {
+        List<String> exclusions,
+        /** When nothing matched and the query names a workspace member: its directory from the root; else {@code null}. */
+        @Nullable String sibling) {
 
     /** Joins the per-step selectors of one path; no selector grammar contains a tab. */
     public static final String STEP_SELECTOR_SEPARATOR = "\t";
@@ -50,7 +52,13 @@ public record WhyReport(
     public static WhyReport error(String message) {
         return new WhyReport(
                 message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of());
+                List.of(), null);
+    }
+
+    /** What a query that names workspace member {@code dir} gets in place of a lock row. */
+    public static String siblingLine(String query, String dir) {
+        return query + " is the workspace sibling " + dir + "/: it builds from source, so jk-lock.toml has no row"
+                + " for it (jk tree " + dir + " shows its dependencies)";
     }
 
     /** The three fields of pruned edge {@code index}: child, origin, and the row that dropped it. */
@@ -70,6 +78,7 @@ public record WhyReport(
                 .array("pathSelectors", pathSelectors)
                 .array("pathRoots", pathRoots)
                 .array("exclusions", exclusions)
+                .string("sibling", sibling)
                 .finish();
     }
 
@@ -141,6 +150,7 @@ public record WhyReport(
             pruned.add(row);
         }
         m.put("exclusions", pruned);
+        if (sibling != null) m.put("sibling", sibling);
         return m;
     }
 
@@ -155,6 +165,7 @@ public record WhyReport(
                 Jsonl.strArray(line, "paths"),
                 Jsonl.strArray(line, "pathSelectors"),
                 Jsonl.strArray(line, "pathRoots"),
-                Jsonl.strArray(line, "exclusions"));
+                Jsonl.strArray(line, "exclusions"),
+                Jsonl.str(line, "sibling"));
     }
 }
