@@ -314,7 +314,7 @@ public final class MavenRepo {
         Duration ttl =
                 RepositorySpec.loopback(this.fetchBase.getHost()) ? Duration.ZERO : MavenMetadataCache.DEFAULT_TTL;
         this.metadataCache = (httpOrNull != null && isHttp(this.fetchBase))
-                ? new MavenMetadataCache(httpOrNull, cas.root().resolve("metadata"), ttl)
+                ? new MavenMetadataCache(httpOrNull, metadataDir(), ttl)
                 : null;
         this.m2 = new M2Adoption(name, transport, credential, isHttp(this.fetchBase), repoStore, m2integration);
         this.download = new DownloadLeg(name, this.fetchBase, transport, credential, storeDir(), allowUnverified);
@@ -392,6 +392,11 @@ public final class MavenRepo {
     private static boolean isHttp(URI uri) {
         String scheme = uri.getScheme();
         return scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
+    }
+
+    /** The directory the metadata cache keeps its bodies in, and the resolver its per-POM answers. */
+    public Path metadataDir() {
+        return cas.root().resolve("metadata");
     }
 
     /** True when this repo carries the HTTP client, so the metadata TTL/conditional-GET cache is live. */

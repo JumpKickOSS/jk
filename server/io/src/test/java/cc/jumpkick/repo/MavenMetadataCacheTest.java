@@ -15,7 +15,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -94,6 +96,34 @@ class MavenMetadataCacheTest {
 
         // Second resolve within the TTL must not touch the network at all.
         assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+        assertThat(hits.get()).isEqualTo(1);
+    }
+
+    @Test
+    void within_ttl_the_body_is_read_from_disk_once_until_it_changes(@TempDir Path dir) throws Exception {
+        MavenMetadataCache cache = cache(dir, Duration.ofHours(1));
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+
+        long before = MavenMetadataCache.bodyReads();
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+        assertThat(MavenMetadataCache.bodyReads() - before).isEqualTo(1);
+
+        // A caller that scribbles on its copy does not reach the next caller's.
+        byte[] mine = cache.fetch(uri, RepoCredential.ANONYMOUS);
+        mine[0] = 'X';
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+
+        // A revalidation restarts the TTL by touching the body: a new stamp, read once more.
+        Path body;
+        try (var files = Files.list(dir)) {
+            body = files.filter(p -> !p.getFileName().toString().endsWith(".h"))
+                    .findFirst()
+                    .orElseThrow();
+        }
+        Files.setLastModifiedTime(body, FileTime.from(Instant.now().plusSeconds(1)));
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+        assertThat(MavenMetadataCache.bodyReads() - before).isEqualTo(2);
         assertThat(hits.get()).isEqualTo(1);
     }
 

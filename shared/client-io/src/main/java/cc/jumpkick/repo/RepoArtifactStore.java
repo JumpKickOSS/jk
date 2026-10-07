@@ -276,11 +276,35 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * SHA-256 from the {@code .jk} memo without re-statting the artifact.
+     * The {@code .jk} memos this process has read, by path: a lock asks for the same POM's digest
+     * once per repository probe and per parent walk, and a sidecar changes only when its blob does.
+     */
+    private static final StoreFileMemo<String> SIDECARS = new StoreFileMemo<>(16_384, sha -> 1);
+
+    /** Drop the sidecar memo and return how many went; force, tests and the idle engine. */
+    public static int dropSidecarMemo() {
+        return SIDECARS.clear();
+    }
+
+    /** How many sidecar files this process has read: the seam that proves the memo serves a repeat. */
+    static long sidecarReads() {
+        return SIDECARS.reads();
+    }
+
+    /**
+     * SHA-256 from the {@code .jk} memo without re-statting the artifact. An unreadable memo answers
+     * empty, as a missing one does.
      */
     public Optional<String> readSha256Sidecar(String relativePath) {
         if (root == null) return Optional.empty();
-        return ArtifactMemo.read(sidecarPath(relativePath)).map(ArtifactMemo::sha256);
+        try {
+            return SIDECARS.get(sidecarPath(relativePath), file -> ArtifactMemo.read(file)
+                            .map(ArtifactMemo::sha256)
+                            .orElse(""))
+                    .filter(sha -> !sha.isEmpty());
+        } catch (IOException e) {
+            return Optional.empty();
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -620,6 +644,18 @@ public final class RepoArtifactStore {
         Path dir = rootOf(this);
         MavenLayout.safeResolve(dir, relativePath); // reject traversal before deriving the sidecar
         return ArtifactMemo.jkPath(dir, relativePath);
+    }
+
+    /**
+     * The memo of the Maven local repository's copy of {@code relativePath} ({@code
+     * <artifact>.m2.jk}), distinct from this store's own {@code .jk}: one memo records one blob's
+     * (mtime, size), and the local file and the store file are two blobs. It lives in this store,
+     * so two origins sharing a name keep separate verdicts, and never in the local repository.
+     */
+    public Path m2MemoPath(String relativePath) {
+        Path memo = sidecarPath(relativePath);
+        String n = memo.getFileName().toString();
+        return memo.resolveSibling((n.endsWith(".jk") ? n.substring(0, n.length() - 3) : n) + ".m2.jk");
     }
 
     /** The root of a store that has one; every path derivation is reached behind a {@code root == null} guard. */

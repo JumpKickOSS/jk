@@ -81,6 +81,22 @@ public final class MavenMetadataCache {
         });
     }
 
+    /**
+     * Bodies inside their TTL, by file: one lock asks each artifact's version list from every
+     * member that names it. A revalidation touches the file, so a refreshed body is read again.
+     */
+    private static final StoreFileMemo<byte[]> BODIES = new StoreFileMemo<>(16L << 20, body -> body.length);
+
+    /** Drop the in-memory bodies and return how many went; force, tests and the idle engine. */
+    public static int dropBodyMemo() {
+        return BODIES.clear();
+    }
+
+    /** How many bodies this process has read from disk inside their TTL. */
+    static long bodyReads() {
+        return BODIES.reads();
+    }
+
     private final Http http;
     private final Path dir;
     private final Duration ttl;
@@ -144,7 +160,8 @@ public final class MavenMetadataCache {
         // cost only a conditional GET (304); warm TTL hits never leave the disk.
         boolean force = SessionContext.current().config().forceOr(false) || forceRevalidate();
         if (!force && fresh(body)) {
-            return Files.readAllBytes(body);
+            byte[] held = BODIES.get(body, Files::readAllBytes).orElse(null);
+            if (held != null) return held.clone();
         }
         Map<String, String> auth = AuthHeaders.of(credential);
         Map<String, String> headers = new LinkedHashMap<>(auth);
