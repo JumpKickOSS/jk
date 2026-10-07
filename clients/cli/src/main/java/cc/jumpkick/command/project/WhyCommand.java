@@ -79,6 +79,10 @@ public final class WhyCommand implements CliCommand {
             return Exit.CONFIG;
         }
         if (report.matchNames().isEmpty() && report.exclusions().isEmpty()) {
+            if (report.sibling() != null) {
+                CliOutput.out(WhyReport.siblingLine(query, report.sibling()));
+                return 0;
+            }
             CommandWedge.printFail("Why", query + " is not in jk-lock.toml");
             return 1;
         }

@@ -17,6 +17,7 @@ final class WhyLines {
     static String of(WhyReport report, String query) {
         if (report.error() != null) return finish(report.error().strip());
         if (report.matchNames().isEmpty() && report.exclusions().isEmpty()) {
+            if (report.sibling() != null) return finish(WhyReport.siblingLine(query, report.sibling()));
             return finish(query + " is not in jk-lock.toml");
         }
         List<String> lines = new ArrayList<>();
