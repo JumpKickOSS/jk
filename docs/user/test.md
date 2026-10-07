@@ -466,7 +466,8 @@ shares the Platform's number, so `junit-jupiter = "5.9.0"` locks `junit-platform
 `"^5.9"` locks `^1.9`, and a module with no Jupiter (or a range) takes `latest`. A Platform 6
 launcher beside a Jupiter 5 engine would drop the engine without a word and the run would report
 success with no tests; a lock whose launcher and Jupiter engine sit on different lines — your own
-launcher pin on the wrong line — is refused by `jk lock` with the pin that aligns them.
+launcher pin on the wrong line — is refused by `jk lock` with the pin that aligns them. In a
+workspace each member is judged on the rows it reads, and the refusal names the member.
 
 A run that discovers no test where test classes declare one fails the `run-tests` step with the
 count (`no tests discovered in 3 classes under …`): an engine missing from the classpath, a

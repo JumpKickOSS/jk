@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -45,7 +46,7 @@ final class ScopeSolves {
     private final @Nullable MavenPackageSource sharedSource;
     private final EffectivePomBuilder pomBuilder;
     private final KmpRedirects kmp;
-    private final boolean pinsAsFloors;
+    private final Predicate<String> floorPin;
 
     /** One sentence per test-scope exact pin that gave way to main's version. */
     private final List<String> overrides = new ArrayList<>();
@@ -53,20 +54,20 @@ final class ScopeSolves {
     /**
      * @param resolverOverride a test's stand-in solver, or {@code null} for PubGrub over {@code sharedSource}
      * @param sharedSource the package source shared by all three graphs; {@code null} only with an override
-     * @param pinsAsFloors whether each root's exact pin is read as a floor the graph may raise
-     *     (highest wins) rather than as the version
+     * @param floorPin which roots' exact pins, by {@code group:artifact}, read as a floor the graph
+     *     may raise (steered to the pin where nothing asks higher) rather than as the version
      */
     ScopeSolves(
             @Nullable Resolver resolverOverride,
             @Nullable MavenPackageSource sharedSource,
             EffectivePomBuilder pomBuilder,
             KmpRedirects kmp,
-            boolean pinsAsFloors) {
+            Predicate<String> floorPin) {
         this.resolverOverride = resolverOverride;
         this.sharedSource = sharedSource;
         this.pomBuilder = pomBuilder;
         this.kmp = kmp;
-        this.pinsAsFloors = pinsAsFloors;
+        this.floorPin = floorPin;
     }
 
     /** Solve every graph in {@link #ORDER}, seeding each with {@code lockedVersionPrefs} plus every earlier decision. */
@@ -182,7 +183,11 @@ final class ScopeSolves {
         Map<String, String> wanted = new LinkedHashMap<>(exact);
         inheritedPins.forEach(wanted::putIfAbsent);
         sharedSource.setExactRoots(wanted);
-        if (pinsAsFloors) roots = asFloors(roots);
+        Map<String, String> floors = new LinkedHashMap<>();
+        exact.forEach((ga, version) -> {
+            if (floorPin.test(ga)) floors.put(ga, version);
+        });
+        if (!floors.isEmpty()) roots = asFloors(roots, floors.keySet());
         // Main's classpath already fixed these versions; a module this graph pins itself keeps its own.
         Map<String, String> governing = new LinkedHashMap<>();
         for (var e : inheritedPins.entrySet()) {
@@ -193,17 +198,19 @@ final class ScopeSolves {
         // the test/processor solves.
         sharedSource.resetSolveScopedState();
         return new PubGrubResolver(sharedSource, pomBuilder, kmp)
-                .withPinFloors(pinsAsFloors ? exact : Map.of())
+                .withPinFloors(floors)
                 .withOnDecision(progress::graphPackage)
                 .resolve(roots);
     }
 
-    /** {@code roots} with each exact pin a floor: {@code 1.2} reads as {@code >=1.2}. */
-    private static List<Dependency> asFloors(List<Dependency> roots) {
+    /** {@code roots} with the exact pin of each module in {@code modules} a floor: {@code 1.2} reads as {@code >=1.2}. */
+    private static List<Dependency> asFloors(List<Dependency> roots, Set<String> modules) {
         List<Dependency> out = new ArrayList<>(roots.size());
         for (Dependency d : roots) {
             out.add(
-                    !d.isWorkspace() && d.version() instanceof VersionSelector.Exact exact
+                    !d.isWorkspace()
+                                    && modules.contains(d.module())
+                                    && d.version() instanceof VersionSelector.Exact exact
                             ? d.withVersion(VersionSelector.parse(">=" + exact.version()))
                             : d);
         }
