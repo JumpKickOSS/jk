@@ -196,7 +196,10 @@ final class ForecastLangArms {
                     dir,
                     cas,
                     gvSrc,
-                    cp,
+                    PlannerCompile.groovyClasspath(
+                            cp,
+                            layout,
+                            prepared.kotlinModule() && !prepared.ktSrc().isEmpty()),
                     layout.groovyClassesDir(),
                     javaRoots,
                     mixed ? layout.groovyStubsDir() : null,
