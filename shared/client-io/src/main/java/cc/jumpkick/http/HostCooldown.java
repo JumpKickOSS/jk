@@ -100,9 +100,7 @@ public final class HostCooldown {
      * quota and should be honoured like any other.
      */
     static boolean exempt(String host) {
-        if (host == null || host.isBlank()) return true;
-        String h = host.toLowerCase(Locale.ROOT);
-        return h.equals("localhost") || h.equals("127.0.0.1") || h.equals("::1") || h.equals("[::1]");
+        return host == null || host.isBlank() || Loopback.is(host);
     }
 
     /** When {@code host} may be asked again, or empty when it is not cooling down. */

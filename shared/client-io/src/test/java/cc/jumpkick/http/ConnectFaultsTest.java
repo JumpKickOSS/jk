@@ -112,6 +112,22 @@ class ConnectFaultsTest {
                 .hasCauseInstanceOf(ConnectFaults.Remembered.class);
     }
 
+    /** A local repository started after a failed command is reached by the next one; a remote outage is still remembered. */
+    @Test
+    void the_next_command_forgets_this_machines_dead_addresses_and_keeps_remote_ones() {
+        ConnectFaults.noteRefusing("127.0.0.1:8081", "ConnectException: refused");
+        ConnectFaults.noteRefusing("localhost:4873", "ConnectException: refused");
+        ConnectFaults.noteRefusing("[::1]:8081", "ConnectException: refused");
+        ConnectFaults.noteRefusing("repo.example.com:443", "UnknownHostException: repo.example.com");
+
+        ConnectFaults.forgetLoopback();
+
+        assertThat(ConnectFaults.refusing("127.0.0.1:8081")).isNull();
+        assertThat(ConnectFaults.refusing("localhost:4873")).isNull();
+        assertThat(ConnectFaults.refusing("[::1]:8081")).isNull();
+        assertThat(ConnectFaults.refusing("repo.example.com:443")).startsWith("UnknownHostException");
+    }
+
     @Test
     void the_authority_carries_the_schemes_default_port_when_the_url_names_none() {
         assertThat(ConnectFaults.authority(URI.create("https://Repo.Example/maven2/")))
