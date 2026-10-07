@@ -41,6 +41,7 @@ public final class SseEventSink implements EventSink {
             case EngineEvent.Warn e -> {}
             case EngineEvent.ErrorLine e -> {}
             case EngineEvent.ErrorFailure e -> {}
+            case EngineEvent.ClassFinish e -> {}
             case EngineEvent.PlanDiagnostic e -> {}
             case EngineEvent.PlanDiagnosticFailure e -> {}
             case EngineEvent.PlanFinishLine e -> {}

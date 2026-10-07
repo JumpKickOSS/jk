@@ -60,6 +60,9 @@ public interface BuildPlanListener {
                 failure.exceptionClass());
     }
 
+    /** A test class finished under {@code step}. */
+    default void testClass(String step, TestClassResult result) {}
+
     /**
      * @param duration the step's wall clock, queue wait included
      * @param waited the part of that wall the step spent blocked on a shared resource ({@link

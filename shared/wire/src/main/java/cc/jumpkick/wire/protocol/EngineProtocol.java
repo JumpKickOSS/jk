@@ -185,6 +185,9 @@ public final class EngineProtocol {
     /** Server → client, repeated, immediately before {@link #BUILDPLAN_FINISH}: one of its result's diagnostics. */
     public static final String BUILDPLAN_DIAGNOSTIC = "buildplan-diagnostic";
 
+    /** Server → client: {@code BuildPlanListener.testClass} — one test class finished. */
+    public static final String CLASS_FINISH = "class-finish";
+
     /** Server → client: {@code BuildPlanListener.stepFinish}. */
     public static final String TASK_FINISH = "task-finish";
 

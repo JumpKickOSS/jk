@@ -495,6 +495,8 @@ public final class TestSupport {
             // about the root arrives once per fork; the run reports it once.
             private final Set<String> warned = ConcurrentHashMap.newKeySet();
 
+            private final TestClassTally classes = new TestClassTally(module);
+
             @Override
             public void onDiscoveryTotal(int classes, int tests) {
                 if (tests > 0) {
@@ -526,7 +528,12 @@ public final class TestSupport {
                     boolean wasStatic,
                     long durationMs,
                     int workerId) {
-                if (!isTest) return;
+                if (!isTest) {
+                    // Sent as the class completes, so a run stopped later still records it.
+                    classes.containerFinished(id, status, durationMs).ifPresent(ctx::testClass);
+                    return;
+                }
+                classes.finished(id, status);
                 if (wasStatic) ctx.progress(1);
                 // Keep the label in sync on finish for fast suites (start+finish race); also
                 // covers engines that omit start events for some nodes.
@@ -537,6 +544,7 @@ public final class TestSupport {
             public void onTestSkipped(
                     String id, String display, String reason, boolean isTest, boolean wasStatic, int workerId) {
                 if (!isTest) return;
+                classes.skipped(id);
                 if (wasStatic) ctx.progress(1);
             }
 

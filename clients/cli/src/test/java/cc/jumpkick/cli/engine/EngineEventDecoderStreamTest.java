@@ -8,6 +8,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineWireException;
@@ -114,6 +115,29 @@ class EngineEventDecoderStreamTest {
                                 "compile", steps -> new BuildPlanListener() {}, (type, line) -> {}, null)))
                 .isInstanceOf(EngineWireException.class)
                 .hasMessageContaining("workspace vocabulary");
+    }
+
+    @Test
+    void a_finished_test_class_reaches_the_plan_listener_as_it_streams() throws Exception {
+        List<String> seen = new ArrayList<>();
+        BufferedReader reader = stream(
+                ProtoLifecycle.jobStart(44, "test", "/proj", 9),
+                ProtoEvents.planDone(0),
+                ProtoEvents.classFinish("/proj", "run-tests", new TestClassResult("g:a", "demo.A", 3, 1, 1, 40)),
+                ProtoEvents.planFinish("/proj", false, false));
+
+        EngineEventDecoder.streamSingleBuildPlanEvents(
+                reader,
+                steps -> new BuildPlanListener() {
+                    @Override
+                    public void testClass(String step, TestClassResult result) {
+                        seen.add(step + " " + result);
+                    }
+                },
+                null,
+                null);
+
+        assertThat(seen).containsExactly("run-tests " + new TestClassResult("g:a", "demo.A", 3, 1, 1, 40));
     }
 
     @Test
