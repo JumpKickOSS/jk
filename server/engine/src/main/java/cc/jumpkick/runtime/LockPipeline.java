@@ -189,6 +189,15 @@ public final class LockPipeline {
     /** What the last {@link #resolve} checked its downloads against; {@code NONE} until it ran. */
     private volatile RepoGroup.TrustSummary trust = RepoGroup.TrustSummary.NONE;
 
+    /** The series this resolve belongs to, whose earlier answers it may reuse; {@code null} for a lone lock. */
+    private LockOrchestrator.@Nullable Rounds rounds;
+
+    /** Resolve as one of {@code rounds}: see {@link LockOrchestrator#withRounds}. */
+    public LockPipeline withRounds(LockOrchestrator.Rounds rounds) {
+        this.rounds = rounds;
+        return this;
+    }
+
     /**
      * @param lockDir the directory that owns the lockfile — a workspace root for a member, else the
      *     project itself (see {@link LockPlans#lockScope})
@@ -349,6 +358,7 @@ public final class LockPipeline {
                 .withPlatformPolicy(policy.platform())
                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
                 .withPinsAsFloors(policy.pinsAsFloors());
+        if (rounds != null) orchestrator.withRounds(rounds);
 
         boolean keepPins = policy.keepPins() && existing != null;
         // Compiler pins first: the solve injects each language's stdlib pinned to its compiler.
