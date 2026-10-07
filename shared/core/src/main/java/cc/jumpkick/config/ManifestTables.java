@@ -27,17 +27,20 @@ import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
+import org.tomlj.TomlPosition;
 import org.tomlj.TomlTable;
 
 /**
@@ -549,6 +552,27 @@ public final class ManifestTables {
             byName.put(key, new Feature(key, deps, nested));
         }
         return new Features(byName, defaults);
+    }
+
+    /**
+     * Every name a {@code [features]} {@code deps} list holds is a dependency handle this manifest
+     * declares, workspace edges included. The lock leaves out a name it cannot find, because the
+     * workspace merge drops sibling edges before the solve, so a typo is caught here or nowhere.
+     */
+    static void checkFeatureDeps(TomlParseResult root, Features features, JkBuild.Dependencies deps) {
+        if (features.isEmpty()) return;
+        Set<String> declared = new HashSet<>();
+        for (List<Dependency> scoped : deps.byScope().values()) for (Dependency d : scoped) declared.add(d.library());
+        for (Feature feature : features.byName().values()) {
+            for (String name : feature.deps()) {
+                if (declared.contains(name)) continue;
+                TomlPosition at = root.inputPositionOf(List.of("features", feature.name(), "deps"));
+                throw new JkBuildParseException("features." + feature.name() + ".deps names `" + name + "`"
+                        + (at == null ? "" : " (line " + at.line() + ")")
+                        + ", which no dependency table declares — declare it with `optional = true`"
+                        + " or correct the name");
+            }
+        }
     }
 
     static @Nullable Workspace parseWorkspace(TomlTable root, LibraryCatalog catalog) {

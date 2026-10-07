@@ -120,6 +120,8 @@ way a published POM's optional edges stay out of a consumer's graph, and the POM
 marks it `<optional>`. What it means to the module itself depends on `[features]`: an optional
 dependency no feature names is the module's own root, on its classpaths like any other; one a
 feature names is off until that feature is active ([Projects](projects.md#features-profiles-variants)).
+Every name a `[features]` `deps` list holds must be a handle one of the manifest's dependency tables
+declares, workspace edges included; a name declared nowhere is refused when the manifest is read.
 A consumer that wants the library declares it, or activates the feature.
 
 ### Exclusions
