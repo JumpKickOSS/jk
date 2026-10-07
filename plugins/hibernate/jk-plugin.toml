@@ -1,0 +1,23 @@
+# Hibernate bytecode enhancement: the project's own Hibernate enhancer rewrites the compiled
+# entity classes after compile, and the rewritten classes are the module's classes from then on
+# (tests, the jar, run). The switches mirror hibernate-enhance-maven-plugin's and the
+# org.hibernate.orm Gradle plugin's, with their defaults.
+[plugin]
+id        = "hibernate"
+table     = "hibernate"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-hibernate"
+protocol-prefix = "##JKHIB:"
+
+[schema]
+enhance                = { type = "bool", default = false, hint = "run Hibernate's bytecode enhancer over the compiled classes; it is the project's own Hibernate, from its runtime classpath" }
+lazy-initialization    = { type = "bool", default = true, hint = "basic attributes marked lazy load on first access (enableLazyInitialization)" }
+dirty-tracking         = { type = "bool", default = true, hint = "entities record their own changed attributes (enableDirtyTracking)" }
+association-management = { type = "bool", default = false, hint = "setting one side of a bidirectional association sets the other (enableAssociationManagement)" }
+extended-enhancement   = { type = "bool", default = false, hint = "field access from outside the entity goes through the enhanced accessors (enableExtendedEnhancement)" }
+
+[[import.gradle-plugin]]
+id = "org.hibernate.orm"

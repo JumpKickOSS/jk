@@ -40,6 +40,7 @@ register.
 | build-info | `[build-info]`: `git.properties` and Boot's `build-info.properties` as cached resources in the jar | core | Boot's `/info` endpoint on every imported service; the git-commit-id plugins' consumers |
 | android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
 | grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | tracks an 8.x milestone; `latest` would pick Grails 7 |
+| hibernate | `[hibernate] enhance = true`: the project's own Hibernate bytecode enhancer over the compiled entities, a cached step whose output is the module's classes | **contrib** | entity models that rely on lazy basic attributes or dirty tracking behave differently without it; most projects do not enhance at build time |
 | Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | compiles; no cross-building, Scala.js/Native or sbt parity |
 
 Coverage (`jk test --coverage` / the Coverage block), sources and javadoc jars, Central Portal

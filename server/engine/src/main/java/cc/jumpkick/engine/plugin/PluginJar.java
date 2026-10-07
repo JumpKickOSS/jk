@@ -54,7 +54,8 @@ public enum PluginJar {
     JAXB("jk-jaxb", "jk.jaxb.plugin.jar"),
     JOOQ("jk-jooq", "jk.jooq.plugin.jar"),
     LINT("jk-lint", "jk.lint.plugin.jar"),
-    MINIFIED("jk-minified", "jk.minified.plugin.jar");
+    MINIFIED("jk-minified", "jk.minified.plugin.jar"),
+    HIBERNATE("jk-hibernate", "jk.hibernate.plugin.jar");
 
     private final String artifactId;
     private final String jarProperty;

@@ -264,6 +264,9 @@ public final class PomImporter {
         GeneratorPlugins.Generators generators = GeneratorPlugins.map(em.model(), remote, report);
         Set<String> consumedPlugins = new HashSet<>(generators.consumedPlugins());
         consumedPlugins.addAll(BuildExtensions.extensionPlugins(em.model()));
+        // hibernate-maven-plugin is the table only when it enhances; its other goals keep the row.
+        PluginConfig hibernate = HibernateEnhancePlugin.map(em.model(), report);
+        if (hibernate != null) consumedPlugins.add(HibernateEnhancePlugin.MAVEN_PLUGIN);
         SourceTreePlugins.SourceTree sourceTree =
                 SourceTreePlugins.map(em, generators.outputRoots(), consumedPlugins, report, inherited, false);
         Project project = mapProject(em, report, sourceTree);
@@ -304,6 +307,7 @@ public final class PomImporter {
                 .image(packaging.image())
                 .pluginConfig(packaging.springBoot())
                 .pluginConfig(packaging.quarkus())
+                .pluginConfig(hibernate)
                 .pluginConfig(LintPlugins.map(em, report, inherited, resolver.repos()));
         for (PluginConfig table : generators.tables()) builder.pluginConfig(table);
         List<ReleaseSources> releases = MultiReleasePlugins.map(em.model(), report);
