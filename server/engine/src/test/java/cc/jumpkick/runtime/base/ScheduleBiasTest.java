@@ -107,10 +107,42 @@ class ScheduleBiasTest {
         // Sim said 90s, reality 120s → ratio 1.333; first observation seeds the EWMA directly.
         ScheduleBias.observe(proj, 90_000, 120_000, 29);
         assertThat(ScheduleBias.current(proj, 29)).isCloseTo(120_000 / 90_000.0, offset(0.01));
-        // A perfectly-priced follow-up pulls the bias back toward 1.0 (alpha 0.4).
+        // A perfectly-priced follow-up pulls the bias back toward 1.0, a quarter of the way in log space.
         ScheduleBias.observe(proj, 100_000, 100_000, 29);
-        double expected = (120_000 / 90_000.0) + ScheduleBias.ALPHA * (1.0 - (120_000 / 90_000.0));
+        double expected = Math.exp((1 - ScheduleBias.ALPHA) * Math.log(120_000 / 90_000.0));
         assertThat(ScheduleBias.current(proj, 29)).isCloseTo(expected, offset(0.01));
+    }
+
+    /** A ratio is a multiplier: running 2x hot and 2x cold pull the bias equally far from 1. */
+    @Test
+    void the_fold_is_symmetric_in_log_space() {
+        double hot = ScheduleBias.fold(1.0, 0.5);
+        double cold = ScheduleBias.fold(1.0, 2.0);
+        assertThat(hot * cold).isCloseTo(1.0, offset(1e-9));
+        assertThat(hot).isLessThan(1.0);
+        assertThat(cold).isGreaterThan(1.0);
+    }
+
+    /**
+     * A dependency-neutral cascade: predicted at 36.6 s over 13 dirty modules, done in 5.4 s
+     * because the dependents were cache hits. A floor on the actual wall threw this observation
+     * away, so the bucket never learned that its shape runs fast.
+     */
+    @Test
+    void a_fast_wide_build_teaches_the_bias_down() {
+        Path proj = home.resolve("proj");
+        ScheduleBias.observe(proj, 36_601, 5_398, 13);
+        assertThat(ScheduleBias.current(proj, 13))
+                .as("the first observation seeds the w8 bucket at the clamped ratio")
+                .isEqualTo(ScheduleBias.MIN_BIAS);
+
+        Path other = home.resolve("other");
+        ScheduleBias.observe(other, 40_000, 40_000, 13);
+        ScheduleBias.observe(other, 36_601, 5_398, 13);
+        assertThat(ScheduleBias.current(other, 13))
+                .as("a settled bucket moves down on a short actual")
+                .isCloseTo(Math.exp(ScheduleBias.ALPHA * Math.log(ScheduleBias.MIN_BIAS)), offset(1e-3))
+                .isLessThan(0.8);
     }
 
     /**
@@ -158,11 +190,13 @@ class ScheduleBiasTest {
                 .isCloseTo(1.0, offset(0.01));
     }
 
+    /** A schedule too small to have exercised the model teaches nothing, whatever the wall. */
     @Test
-    void trivial_builds_never_teach_the_bias() {
+    void trivial_schedules_never_teach_the_bias() {
         Path proj = home.resolve("proj");
-        ScheduleBias.observe(proj, 1_000, 200_000, 29); // sim below threshold
-        ScheduleBias.observe(proj, 90_000, 4_000, 29); // wall below threshold
+        ScheduleBias.observe(proj, 1_000, 200_000, 29);
+        ScheduleBias.observe(proj, 4_999, 300, 29);
+        ScheduleBias.observe(proj, 90_000, 0, 29);
         assertThat(ScheduleBias.current(proj, 29)).isEqualTo(1.0);
     }
 

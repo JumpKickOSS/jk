@@ -436,12 +436,12 @@ public final class TaskForecaster {
         if (!apiChanged.isEmpty()) {
             return new DepHint(
                     SourceApiIndex.Kind.API_CHANGED,
-                    "likely recompile · API changed in " + String.join("; ", apiChanged) + " (hint)");
+                    TaskForecast.LIKELY_RECOMPILE + " · API changed in " + String.join("; ", apiChanged) + " (hint)");
         }
         if (unknown) return DepHint.NONE;
         return new DepHint(
                 SourceApiIndex.Kind.BODY_ONLY,
-                "likely up to date · body-only edit in " + String.join(", ", bodyOnly) + " (hint)");
+                TaskForecast.LIKELY_UP_TO_DATE + " · body-only edit in " + String.join(", ", bodyOnly) + " (hint)");
     }
 
     static DepDirtiness depDirtiness(
