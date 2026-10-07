@@ -64,6 +64,15 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
      * derives from; {@code api-package}, {@code model-package} and {@code invoker-package} each
      * replace their derived name.
      */
+    /** {@code flag k=v,k2=v2}, in the table's order; nothing when the map is empty. */
+    private static void mapping(List<String> args, String flag, Map<String, String> pairs) {
+        if (pairs.isEmpty()) return;
+        List<String> joined = new ArrayList<>(pairs.size());
+        pairs.forEach((k, v) -> joined.add(k + "=" + v));
+        args.add(flag);
+        args.add(String.join(",", joined));
+    }
+
     static GeneratorEntry entry(PluginConfig config, ProjectFacts project) {
         String generator = config.string("generator");
         String pkg = config.stringOpt("package").orElse(project.group() + ".api");
@@ -83,6 +92,11 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
                 config.stringOpt("invoker-package").orElse(pkg),
                 "--package-name",
                 pkg));
+        config.stringOpt("library").ifPresent(v -> args.addAll(List.of("--library", v)));
+        config.stringOpt("model-name-prefix").ifPresent(v -> args.addAll(List.of("--model-name-prefix", v)));
+        config.stringOpt("model-name-suffix").ifPresent(v -> args.addAll(List.of("--model-name-suffix", v)));
+        mapping(args, "--import-mappings", config.stringMap("import-mappings"));
+        mapping(args, "--type-mappings", config.stringMap("type-mappings"));
         Map<String, String> options = new LinkedHashMap<>();
         if (generator.equals("spring")) {
             for (String pair : SPRING_DEFAULTS) {
@@ -97,6 +111,11 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
         if (EnvValues.parseBool(declared.get("useSpringBoot4")).orElse(false)
                 && !declared.containsKey("useSpringBoot3")) {
             options.remove("useSpringBoot3");
+        }
+        // The generator checks the annotation library against the documentation provider: a table
+        // that names a provider leaves the library to the generator's choice for that provider.
+        if (declared.containsKey("documentationProvider") && !declared.containsKey("annotationLibrary")) {
+            options.remove("annotationLibrary");
         }
         if (!options.isEmpty()) {
             List<String> pairs = new ArrayList<>(options.size());
