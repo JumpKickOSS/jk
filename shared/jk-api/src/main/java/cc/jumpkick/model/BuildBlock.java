@@ -28,6 +28,8 @@ public record BuildBlock(
         DebugInfo debug,
         List<KotlinPluginDecl> kotlinPlugins,
         List<String> kspOptions,
+        /** {@code [build] ksp-version}: the KSP2 release this module's round runs; {@code null} is jk's default. */
+        @Nullable String kspVersion,
         /** {@code [javac]}: the javac plugins compile-main and compile-test invoke, and verbatim args. */
         JavacConfig javac,
         List<String> extraSrc,
@@ -179,6 +181,7 @@ public record BuildBlock(
             DebugInfo.FULL,
             List.of(),
             List.of(),
+            null,
             JavacConfig.EMPTY,
             List.of(),
             List.of(),

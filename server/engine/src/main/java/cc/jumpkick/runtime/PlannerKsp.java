@@ -270,8 +270,15 @@ public final class PlannerKsp {
         }
         // Processor options and the toolchain are round inputs no file mtime reflects; the digest
         // is what makes a `ksp-options` edit with untouched sources re-run the round.
+        String kspVersion = KspResolver.versionFor(project);
         String optionsDigest = kspStampDigest(
-                project, ctx.require(LOCKFILE), in.dir(), kotlinVersion, ctx.require(JAVA_HOME), ctx.require(RELEASE));
+                project,
+                ctx.require(LOCKFILE),
+                in.dir(),
+                kotlinVersion,
+                kspVersion,
+                ctx.require(JAVA_HOME),
+                ctx.require(RELEASE));
         if (!rerun
                 && FreshnessStamp.isFresh(
                         outBase, BuildStamps.KSP, stampInputs, stampCp, ctx.require(RELEASE), optionsDigest)) {
@@ -281,10 +288,10 @@ public final class PlannerKsp {
             return;
         }
 
-        ctx.label("KSP: " + split.ksp().size() + " processor jar(s)");
+        ctx.label("KSP " + kspVersion + ": " + split.ksp().size() + " processor jar(s)");
         // Before the round reads a source: a source edited while it runs is stale next time.
         long readClock = FreshnessStamp.clockNow(outBase);
-        KspToolchain toolchain = resolveKspToolchain(project, cx.cas(), kotlinVersion);
+        KspToolchain toolchain = resolveKspToolchain(project, cx.cas(), kotlinVersion, kspVersion);
 
         // A stale round's outputs must not survive into the source union.
         for (String sub : List.of("kotlin", "java", "classes", "resources")) {
@@ -332,14 +339,21 @@ public final class PlannerKsp {
 
     /**
      * Digest of the round's option-bearing inputs for its freshness stamp: the Kotlin version
-     * (language and API level, and the KSP2 runtime resolved against it), the JDK, the module
-     * name and every processor option.
+     * (language and API level), the KSP2 release, the JDK, the module name and every processor
+     * option.
      */
     static String kspStampDigest(
-            JkBuild project, Lockfile lock, Path moduleDir, String kotlinVersion, Path javaHome, int release)
+            JkBuild project,
+            Lockfile lock,
+            Path moduleDir,
+            String kotlinVersion,
+            String kspVersion,
+            Path javaHome,
+            int release)
             throws IOException {
         List<String> parts = new ArrayList<>();
         parts.add("kotlin:" + kotlinVersion);
+        parts.add("ksp:" + kspVersion);
         parts.add("jvmTarget:" + CompileSupport.kotlinJvmTarget(release, JvmOptions.hostFeature(javaHome)));
         parts.add("jdk:" + ActionKey.jdkToken(javaHome));
         parts.add("moduleName:" + project.project().name());
@@ -350,10 +364,10 @@ public final class PlannerKsp {
     /** The KSP2 runtime classpath and the Kotlin stdlib the round compiles against. */
     private record KspToolchain(List<Path> kspClasspath, Path stdlib) {}
 
-    private static KspToolchain resolveKspToolchain(JkBuild project, Cas cas, String kotlinVersion) throws Exception {
+    private static KspToolchain resolveKspToolchain(JkBuild project, Cas cas, String kotlinVersion, String kspVersion)
+            throws Exception {
         try {
             RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
-            String kspVersion = KspResolver.discoverVersion(repos);
             List<Path> kspClasspath = KspResolver.resolveClasspath(repos, cas, kspVersion);
             Path stdlib = KotlinBtaResolver.resolveStdlib(repos, cas, kotlinVersion);
             return new KspToolchain(kspClasspath, stdlib);

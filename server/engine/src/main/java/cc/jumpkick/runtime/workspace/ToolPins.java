@@ -11,6 +11,7 @@ import cc.jumpkick.plugin.manifest.Interpolation;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.runtime.base.DokkaResolver;
+import cc.jumpkick.runtime.base.KspResolver;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +22,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The exact pins a manifest's tool tables carry, read the way the engine reads them: {@code
- * [dokka] version} pins {@link DokkaResolver#CLI}, and every {@code [[contribute.step-dependency]]}
+ * [dokka] version} pins {@link DokkaResolver#CLI}, {@code [build] ksp-version} pins {@link
+ * KspResolver#KSP_AA_MODULE}, and every {@code [[contribute.step-dependency]]}
  * of an active plugin whose coordinate takes its version from the plugin's table — {@code
  * ${config.<key>}} in the version slot ({@code [protobuf] version} → {@code
  * com.google.protobuf:protoc}), a {@code ${entry.<key>}} coordinate on each {@code
@@ -64,6 +66,8 @@ final class ToolPins {
             String raw = build.build().dokka().version().raw().trim();
             exact(raw).ifPresent(v -> out.add(new ToolPin("dokka", "version", "dokka", DokkaResolver.CLI, v, raw)));
         }
+        String ksp = build.build().kspVersion();
+        if (ksp != null) out.add(new ToolPin("build", "ksp-version", "ksp", KspResolver.KSP_AA_MODULE, ksp, ksp));
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(null, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
