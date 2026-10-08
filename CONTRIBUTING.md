@@ -129,6 +129,14 @@ jk build                                     # every module, fast tier included
 jk test --profile integration                # the pre-merge bar
 ```
 
+On Windows the same gate is expected to pass, so a red test there is a finding, not the platform.
+The integration profile is long; run it a module at a time (`-m jk-engine`, `-m jk-cli`, …,
+with `--continue` past a dependency's failure). A failure that only one checkout reproduces is
+usually its stale test sandbox under `~/.jk/test-homes/`: delete that slot and it is reseeded.
+Tests stay portable through `cc.jumpkick.testing`: `Sleepers` for stand-in processes (never a
+literal `sleep` or `bash`), `Symlinks.create` for links, `ShortTempDirs` for synthetic absolute
+paths.
+
 ### CI lanes
 
 | Lane | When | What |
