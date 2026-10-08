@@ -15,9 +15,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What one store file says, read once per change: keyed by path and served while the file's stat
- * identity (size, mtime, file key) still matches. The store replaces a file by rename, so a
- * rewritten file carries a new identity and is read again. Values must be immutable; the memo is
- * an {@link LruMemo} bounded by their weight.
+ * identity (size, mtime, creation time, file key) still matches. The store replaces a file by
+ * rename, so a rewritten file carries a new identity and is read again. Windows has no file key; a
+ * rename there keeps the replacement's own creation time, which tells it apart. Values must be
+ * immutable; the memo is an {@link LruMemo} bounded by their weight.
  */
 public final class StoreFileMemo<V> {
 
@@ -28,9 +29,16 @@ public final class StoreFileMemo<V> {
     }
 
     private record Stamp(
-            long size, long mtimeNanos, @Nullable Object fileKey) {
+            long size,
+            long mtimeNanos,
+            long ctimeNanos,
+            @Nullable Object fileKey) {
         static Stamp of(BasicFileAttributes attrs) {
-            return new Stamp(attrs.size(), attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS), attrs.fileKey());
+            return new Stamp(
+                    attrs.size(),
+                    attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
+                    attrs.creationTime().to(TimeUnit.NANOSECONDS),
+                    attrs.fileKey());
         }
     }
 
