@@ -402,7 +402,7 @@ target/dist/
       …
 ```
 
-`install.sh <dist>/jk` copies the binary, materializes the engine jar from `lib/` (`jk self
+`install.sh <dist>/jk` (on Windows, `install.cmd <dist>\jk.exe`) copies the binary, materializes the engine jar from `lib/` (`jk self
 materialize`) and shelves `repos/jk-local/` onto the home's `<store>/repos/jk-local/` (`jk self
 shelve`, one `.jk` memo per artifact, the materialized engine recorded as the packager and the
 jars pinned to it in `jk-shelf.toml`). The
