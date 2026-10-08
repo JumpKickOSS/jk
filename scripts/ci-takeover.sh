@@ -16,6 +16,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 : "${JK_HOME:?JK_HOME must name the isolated home of this job}"
+# A runner's Windows JK_HOME (D:\a\_temp/jk-home) would turn the log globs below into escapes.
+case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) JK_HOME="$(cygpath -u "$JK_HOME")" && export JK_HOME ;; esac
 
 build=0
 checks=1

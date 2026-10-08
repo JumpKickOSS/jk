@@ -14,19 +14,24 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 : "${JK_HOME:?JK_HOME must name the isolated home of this job}"
+# A runner's JK_HOME is a Windows path (D:\a\_temp/jk-home): its drive colon splits a PATH entry and
+# its backslashes escape a glob. The POSIX form reaches native children as C:/… all the same.
+windows=0
+case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) windows=1 ;; esac
+if ((windows)); then JK_HOME="$(cygpath -u "$JK_HOME")"; export JK_HOME; fi
 
 version="$(tr -d '[:space:]' < "$ROOT/.jk/ci-bootstrap-version")"
 echo "bootstrapping jk $version from https://jumpkick.build"
-case "$(uname -s)" in
-  MINGW* | MSYS* | CYGWIN*)
-    JK_VERSION="$version" pwsh -NoProfile -Command 'Invoke-RestMethod https://jumpkick.build/install.ps1 | Invoke-Expression'
-    ;;
-  *)
-    curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
-    ;;
-esac
+if ((windows)); then
+  JK_VERSION="$version" pwsh -NoProfile -Command 'Invoke-RestMethod https://jumpkick.build/install.ps1 | Invoke-Expression'
+else
+  curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+fi
 export PATH="$JK_HOME/bin:$PATH"
-if [[ -n "${GITHUB_PATH:-}" ]]; then echo "$JK_HOME/bin" >> "$GITHUB_PATH"; fi
+if [[ -n "${GITHUB_PATH:-}" ]]; then
+  # The runner prepends GITHUB_PATH entries to the Windows PATH as written.
+  if ((windows)); then cygpath -w "$JK_HOME/bin" >> "$GITHUB_PATH"; else echo "$JK_HOME/bin" >> "$GITHUB_PATH"; fi
+fi
 
 reader_file="$ROOT/.jk/ci-bootstrap-reader"
 if [[ ! -f "$reader_file" ]]; then
@@ -44,7 +49,7 @@ fi
 rm -rf "$bridge"
 git -C "$ROOT" worktree add --detach "$bridge" "$sha"
 
-if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+if ((windows)); then
   # The release's engine keeps PATH and drops INCLUDE and LIB; with neither, native-image locates
   # Visual Studio 2022 itself (the same reset the workflows apply before their own native build).
   unset INCLUDE LIB LIBPATH EXTERNAL_INCLUDE
