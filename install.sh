@@ -24,7 +24,7 @@
 #                    owns lives under it, on every platform. The client is
 #                    installed to $JK_HOME/bin.
 #   JK_CLIENT        `native` or `jvm`. Unset: the native client where one is
-#                    hosted (Linux on x86_64, macOS on aarch64), else the JVM
+#                    hosted (Linux on x86_64/aarch64, macOS on aarch64), else the JVM
 #                    client — jk-<version>.jar on a JDK 25+ you provide — for
 #                    every other OS and architecture. `jvm` asks for the JVM
 #                    client on a hosted platform too.
@@ -128,7 +128,7 @@ main() {
   # The release this installer ships with. A signed pointer naming anything older is a
   # rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
   # refused; JK_VERSION remains the deliberate way to install a specific release.
-  RELEASE_FLOOR="0.15.0"
+  RELEASE_FLOOR="0.15.1"
 
   # Verify the release key's RSA/SHA-256 signature in <sig-file> over the exact bytes of
   # <signed-file>, or die naming <what>. Every remote input that steers the install — the
@@ -212,7 +212,7 @@ main() {
   fi
 
   # Native release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself uses
-  # (HostPlatform), for the hosts a release serves one for: linux-x86_64 and macos-aarch64.
+  # (HostPlatform), for the hosts a release serves one for: linux-x86_64, linux-aarch64 and macos-aarch64.
   # Windows uses install.ps1 (irm|iex); this script never runs there. Prints nothing for a host
   # with no native client, which installs the JVM client instead.
   native_target() {
@@ -228,14 +228,14 @@ main() {
       *) return 1 ;;
     esac
     case "$os-$arch" in
-      linux-x86_64|macos-aarch64) printf '%s-%s' "$os" "$arch" ;;
+      linux-x86_64|linux-aarch64|macos-aarch64) printf '%s-%s' "$os" "$arch" ;;
       *) return 1 ;;
     esac
   }
 
   # Which client to install: `native` or `jvm`. JK_CLIENT decides; unset, the host decides — the
   # native client where one is hosted, the JVM client everywhere else (any OS and architecture a
-  # JDK 25 runs on: macOS on Intel, Windows on ARM, Linux on ARM or a Raspberry Pi, Solaris,
+  # JDK 25 runs on: macOS on Intel, Windows on ARM, 32-bit ARM or a Raspberry Pi, Solaris,
   # FreeBSD, …). A local file or an explicit URL names its own kind by extension.
   CLIENT="${JK_CLIENT:-}"
   case "$CLIENT" in
@@ -329,7 +329,7 @@ main() {
       if TARGET="$(native_target)"; then
         CLIENT="native"
       elif [ "$CLIENT" = "native" ]; then
-        die "no native jk client for $(uname -s)/$(uname -m) (hosted: Linux on x86_64, macOS on aarch64);" \
+        die "no native jk client for $(uname -s)/$(uname -m) (hosted: Linux on x86_64 and aarch64, macOS on aarch64);" \
             "unset JK_CLIENT to install the JVM client instead."
       else
         CLIENT="jvm"
