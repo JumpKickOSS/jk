@@ -28,6 +28,7 @@ import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -690,11 +691,9 @@ public final class TaskForecaster {
         try {
             if (!Files.isRegularFile(copy)) return true;
             if (Files.size(copy) != Files.size(src)) return true;
-            if (Files.getLastModifiedTime(src).compareTo(Files.getLastModifiedTime(copy)) > 0
-                    && Files.mismatch(src, copy) >= 0) {
-                return true;
-            }
-            return false;
+            // Any mtime difference, older included: a restored manifest carries an older one.
+            return !Files.getLastModifiedTime(src).equals(Files.getLastModifiedTime(copy))
+                    && Files.mismatch(src, copy) >= 0;
         } catch (IOException e) {
             return true;
         }
@@ -718,8 +717,12 @@ public final class TaskForecaster {
                     dirty[0] = true;
                     return;
                 }
-                if (attrs.lastModifiedTime().compareTo(target.get().lastModifiedTime()) > 0
-                        && Files.mismatch(source, copy) >= 0) {
+                // Any mtime difference, older included, is settled by content. Through the hash
+                // memo, so a copy whose mtime never matches its source's is read once, not per check.
+                if (!attrs.lastModifiedTime().equals(target.get().lastModifiedTime())
+                        && !FileHashMemo.contentHash(source.toAbsolutePath().normalize(), attrs)
+                                .equals(FileHashMemo.contentHash(
+                                        copy.toAbsolutePath().normalize(), target.get()))) {
                     dirty[0] = true;
                 }
             });
