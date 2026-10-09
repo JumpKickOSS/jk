@@ -221,11 +221,12 @@ if [ "$GOT" != "$WANT" ]; then
   echo "jk wrapper: sha256 mismatch for $FILE — refusing (expected $WANT, got $GOT)." >&2
   exit 1
 fi
-# Stock macOS has no xz binary; /usr/bin/compression_tool decodes the xz container.
+# Stock macOS has no xz binary; /usr/bin/compression_tool decodes an .xz stream with -a lzma
+# (-A reads its own block container instead).
 if command -v xz >/dev/null 2>&1; then
   xz -dc "$TMP/$FILE" > "$TMP/jk"
 elif [ "$(uname -s)" = "Darwin" ] && [ -x /usr/bin/compression_tool ]; then
-  /usr/bin/compression_tool -decode -A lzma -i "$TMP/$FILE" -o "$TMP/jk"
+  /usr/bin/compression_tool -decode -a lzma -i "$TMP/$FILE" -o "$TMP/jk"
 else
   echo "jk wrapper: cannot decompress .xz; install xz and re-run (Linux: xz-utils; macOS: brew install xz)." >&2
   exit 1
