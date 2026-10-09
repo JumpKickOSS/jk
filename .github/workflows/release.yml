@@ -51,10 +51,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # One row per platform jumpkick.build serves a client for at the release
-        # .jk/ci-bootstrap-version pins — a native client for linux-x86_64 and windows-x86_64, the
-        # JVM client everywhere else the installer runs. jk is installed the way a user installs
-        # it, the same bootstrap as ci.yml's self-host job, and builds this commit's dist.
+        # One row per platform jumpkick.build serves a native client for at the release
+        # .jk/ci-bootstrap-version pins. jk is installed the way a user installs it, the same
+        # bootstrap as ci.yml's self-host job, and builds this commit's dist.
         # linux-aarch64 and macos-x86_64 have no runner here and no client in the tree; the
         # platform list the publish job flattens (JK_RELEASE_PLATFORMS below) names exactly the
         # rows of this matrix.
@@ -96,11 +95,11 @@ jobs:
       # scripts/ci-bootstrap.sh installs: the hosted release .jk/ci-bootstrap-version pins, or the
       # bridge commit .jk/ci-bootstrap-reader names, built by it. JK_VERSION in this job's
       # environment is the release being cut; the script hands the pin's version to the installer alone.
-      # The pin serves no macOS native client, so that row asks the installer for the JVM client.
+      # Every row bootstraps a native client, so a platform the pin stops serving fails here.
       - name: Bootstrap jk from the hosted release
         shell: bash
         env:
-          JK_CLIENT: ${{ runner.os == 'macOS' && 'jvm' || 'native' }}
+          JK_CLIENT: native
         run: bash scripts/ci-bootstrap.sh
 
       # On Windows, setup-graalvm exports the Visual Studio environment and puts cl.exe on PATH.

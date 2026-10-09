@@ -359,8 +359,7 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    `v`; `scripts/release-version.sh` refuses any other tag before anything is built.
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
-   installed as a user installs it: the native client on linux-x86_64 and windows-x86_64, the
-   JVM client on macos-aarch64 ([below](#platforms-without-a-hosted-client)). The linux-x86_64
+   installed as a user installs it: the native client on every row. The linux-x86_64
    lane also runs `jk install`, so the first-party plugins it stages for `repo/` are the commit's
    own.
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
@@ -395,10 +394,9 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 
 ### Platforms without a hosted client
 
-jumpkick.build serves native clients for **linux-x86_64**, **linux-aarch64**, **macos-aarch64** and
-**windows-x86_64**, beside the engine jar and the JVM client. linux-aarch64 has no runner in the
-matrix, so its client is built by hand for each release; macOS on Intel has no native client. The
-installers put the JVM client on such a host, and a contributor there builds the tree with it and
+jumpkick.build serves native clients for **linux-x86_64**, **macos-aarch64** and
+**windows-x86_64**, the rows of the release matrix, beside the engine jar and the JVM client. Linux
+on ARM and macOS on Intel have no native client. The installers put the JVM client on such a host, and a contributor there builds the tree with it and
 lets the checkout's own jk take over ([self-host](self-host.md#bootstrap)).
 
 Users on those hosts — and on every host no native client will ever be built for — install the
