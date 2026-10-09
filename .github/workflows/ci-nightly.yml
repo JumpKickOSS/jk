@@ -375,7 +375,7 @@ jobs:
         run: scripts/examples-lock-drift.sh . jk-examples
 
   # Product smoke on the OSes the PR gate does not run. Bootstraps the hosted client the way a user
-  # installs it (the JVM client on macOS, jk.exe on Windows), hands the home to the checkout's own
+  # installs it (the native client on macOS, jk.exe on Windows), hands the home to the checkout's own
   # jk, and drives a fresh project end to end. Network is required (first lock/build of a fresh
   # project).
   os-smoke:
@@ -402,11 +402,10 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # The pin serves no macOS native client, so that row asks the installer for the JVM client.
       - name: Bootstrap jk from the hosted release
         shell: bash
         env:
-          JK_CLIENT: ${{ runner.os == 'macOS' && 'jvm' || 'native' }}
+          JK_CLIENT: native
         run: bash scripts/ci-bootstrap.sh
 
       # On Windows, setup-graalvm exports the Visual Studio environment and puts cl.exe on PATH;

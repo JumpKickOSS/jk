@@ -167,7 +167,7 @@ engine running your builds is the one you just compiled ([Install jk with jk](#i
 The native client needs a GraalVM-capable JDK on the machine: `jk build` links it with the GraalVM
 `--graal` / `GRAALVM_HOME` names, else an installed one.
 
-A platform with no hosted native client (macOS on Intel) bootstraps through the installer's JVM
+A platform with no hosted native client (Linux on ARM, macOS on Intel) bootstraps through the installer's JVM
 client; [releases](releases.md#platforms-without-a-hosted-client) says how the first hosted client for a
 platform is produced.
 
