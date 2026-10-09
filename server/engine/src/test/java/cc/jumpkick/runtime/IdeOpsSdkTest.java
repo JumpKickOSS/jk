@@ -79,4 +79,45 @@ class IdeOpsSdkTest {
                 .containsExactlyInAnyOrder("jk-temurin-25", "jk-corretto-24", "jk-temurin-21");
         for (String home : model.sdkHomes()) assertThat(Path.of(home)).isDirectory();
     }
+
+    @Test
+    void a_member_jdk_pin_outranks_the_workspace_lock_suggestion(@TempDir Path tmp) throws Exception {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        FakeJdk.create(jdks.resolve("temurin-25.0.1"), "25.0.1");
+        FakeJdk.create(jdks.resolve("temurin-21.0.5"), "21.0.5");
+
+        Path ws = tmp.resolve("ws");
+        Files.createDirectories(ws.resolve("b"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+                jdk = 25
+
+                [workspace]
+                modules = ["b"]
+                """);
+        Files.writeString(ws.resolve("b/jk.toml"), """
+                group = "com.example"
+                name = "b"
+                version = "1.0.0"
+                jdk = 21
+                """);
+        Files.writeString(ws.resolve("jk-lock.toml"), """
+                version = 1
+                generated-by = "jk 0.15.1"
+                resolution-algorithm = "pubgrub-v1"
+                jk-min = "0.12.0"
+
+                [jdk]
+                suggested-vendor = "temurin"
+                suggested-version = "25.0.1"
+                """);
+
+        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false);
+        assertThat(model.error()).isNull();
+        int b = model.names().indexOf("b");
+        assertThat(model.sdkNames().get(b)).isEqualTo("jk-temurin-21");
+        assertThat(model.defSdkName()).isEqualTo("jk-temurin-25");
+    }
 }

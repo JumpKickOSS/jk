@@ -193,6 +193,48 @@ class IdeIdeaGenerationTest {
     }
 
     @Test
+    void a_member_jdk_pin_gets_its_own_sdk_in_a_locked_workspace(@TempDir Path tmp) throws IOException {
+        Path ws = tmp.resolve("ws");
+        Files.createDirectories(ws);
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "dev.example"
+                name = "root"
+                version = "0.1.0"
+                jdk = 25
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        module(ws.resolve("a"), "a", 25);
+        module(ws.resolve("b"), "b", 21); // differs from the project default (25)
+
+        Path jdks = tmp.resolve("jdks");
+        Files.createDirectories(jdks);
+        fakeJdk(jdks, "temurin-25.0.3", "25.0.3");
+        fakeJdk(jdks, "temurin-21.0.5", "21.0.5");
+
+        Path ideConfig = tmp.resolve("ideconfig");
+        Files.createDirectories(ideConfig.resolve("JetBrains/IntelliJIdea2025.1/options"));
+
+        int exit = runIdea(ws, jdks, ideConfig, tmp.resolve("cache"));
+        assertThat(exit).isEqualTo(0);
+
+        // Default-level module inherits the project SDK.
+        assertThat(Files.readString(ws.resolve("a/a.iml"))).contains("<orderEntry type=\"inheritedJdk\" />");
+
+        // #2 — the off-level module gets its own SDK + source language level.
+        String bIml = Files.readString(ws.resolve("b/b.iml"));
+        assertThat(bIml)
+                .contains("LANGUAGE_LEVEL=\"JDK_21\"")
+                .contains("<orderEntry type=\"jdk\" jdkName=\"jk-temurin-21\" jdkType=\"JavaSDK\" />");
+
+        // Both SDKs registered; project default is the root's level.
+        String table = Files.readString(ideConfig.resolve("JetBrains/IntelliJIdea2025.1/options/jdk.table.xml"));
+        assertThat(table).contains("jk-temurin-25").contains("jk-temurin-21");
+        assertThat(Files.readString(ws.resolve(".idea/misc.xml"))).contains("project-jdk-name=\"jk-temurin-25\"");
+    }
+
+    @Test
     void sibling_module_dep_is_wired_even_when_the_jar_is_not_built(@TempDir Path tmp) throws IOException {
         Path ws = tmp.resolve("ws");
         Files.createDirectories(ws);

@@ -164,7 +164,8 @@ required-version  = "25.0.4"      # exact: 25.0.3, 25.1.0 and 26.0.2 all fail
 
 `suggested-*` is a record of what created the lock. It binds nothing but the major: a build on a
 newer JDK is fine, an older one is not — and because it is a record, `jk lock` leaves it as it
-found it. Re-locking on a machine with a different vendor does not rewrite what built the lock;
+found it. A `jdk` in `jk.toml` outranks it: the project's, or a workspace member's own under the
+workspace lock, names the install that module builds with, at any major. Re-locking on a machine with a different vendor does not rewrite what built the lock;
 only `jk update`, whose job is moving forward, refreshes it. An exception: a previous suggestion
 that names a vendor jk cannot install is dropped and rewritten from the toolchain that resolved.
 Copying `nosuchvendor-99` forward would make the next `jk build` try to install a catalog-missing

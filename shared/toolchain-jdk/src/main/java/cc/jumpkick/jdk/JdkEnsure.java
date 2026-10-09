@@ -210,8 +210,7 @@ public final class JdkEnsure {
     }
 
     /**
-     * Walk the one canonical resolution order (--jdk / JK_JDK / .jdk-version / jk-lock.toml /
-     * project.jdk / project.java-floor / default / env / PATH).
+     * Walk the one canonical resolution order ({@link JdkResolution}).
      */
     private static JdkResolution.Resolved resolve(
             Path projectDir,
