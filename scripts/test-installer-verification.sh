@@ -225,6 +225,7 @@ grep -q "JK_HOME must be an absolute path" "$WORK/last-install.log" || {
 # URL instead of leaving the user with curl's bare exit status. A fixture uname makes the host a
 # hosted one whatever runs the suite.
 fixture_uname() {
+  # shellcheck disable=SC2016 # ${1:-} belongs to the generated uname script, not to this one
   printf '#!/usr/bin/env sh\ncase "${1:-}" in -s) echo %s ;; -m) echo %s ;; *) echo %s ;; esac\n' "$1" "$2" "$1" >"$WORK/bin/uname"
   chmod +x "$WORK/bin/uname"
 }
@@ -394,12 +395,10 @@ grep -q "no native jk client for SunOS/sun4v" "$WORK/last-install.log" || { cat 
 [[ ! -e "$WORK/home-jvm-refused/bin/jk" ]] || { echo "the refusal installed something" >&2; exit 1; }
 
 # An Intel Mac: a known OS and architecture with no native client in a release.
-for host in "Darwin x86_64"; do
-  fixture_uname $host
-  home="$WORK/home-jvm-${host// /-}"
-  run_jvm_installer "$home" || { cat "$WORK/last-install.log" >&2; echo "JVM install on $host failed" >&2; exit 1; }
-  cmp -s "$RELEASE/$JVM_JAR" "$home/lib/jk/$JVM_JAR" || { echo "$host did not install the JVM client" >&2; exit 1; }
-done
+fixture_uname Darwin x86_64
+home="$WORK/home-jvm-Darwin-x86_64"
+run_jvm_installer "$home" || { cat "$WORK/last-install.log" >&2; echo "JVM install on Darwin x86_64 failed" >&2; exit 1; }
+cmp -s "$RELEASE/$JVM_JAR" "$home/lib/jk/$JVM_JAR" || { echo "Darwin x86_64 did not install the JVM client" >&2; exit 1; }
 fixture_uname SunOS sun4v
 
 # A JDK too old, and a JRE: refused before anything is downloaded or written.
