@@ -141,7 +141,7 @@ paths.
 
 | Lane | When | What |
 |---|---|---|
-| **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; the shell fixtures; the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
+| **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
 | **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test --profile integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
 Native multi-OS **images** stay on the **release** matrix (`release.yml`). Coverage is a
