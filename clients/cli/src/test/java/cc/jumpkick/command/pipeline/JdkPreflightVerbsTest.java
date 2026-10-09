@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.jdk.JdkEnsure;
 import java.io.IOException;
@@ -22,9 +23,12 @@ import org.junit.jupiter.params.provider.ValueSource;
  * Every build-kind verb runs the JDK pre-flight before anything else it does. The observable is
  * the pre-flight's own failure: a pin no registry holds, under {@code --offline}, cannot fetch the
  * feed — so the verb stops on the {@code JDK} fail wedge naming the offline refusal, ahead of any
- * build, without a byte of network.
+ * build, without a byte of network. The store is the test's own: a JDK catalog another test cached
+ * would answer offline, and on a host the pinned vendor does not build for (macOS on aarch64) the
+ * pre-flight would stop on "no JDK matches" instead.
  */
 @Tag("integration")
+@IsolatedStore
 class JdkPreflightVerbsTest {
 
     @BeforeEach
