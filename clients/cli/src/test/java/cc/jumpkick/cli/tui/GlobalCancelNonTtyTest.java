@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
@@ -69,12 +70,14 @@ class GlobalCancelNonTtyTest {
     private static final int EXIT_WAIT_SECONDS = 45;
 
     /**
-     * Under {@code /tmp}, not {@code @TempDir}: the stub engine below binds a real Unix domain
-     * socket inside this home, and the JDK refuses to bind one past
-     * {@code UnixSocketPaths.MAX_PATH_LENGTH} characters — the module's {@code build/tmp} JUnit
-     * root is well past that once the socket name is appended.
+     * A short home under {@link ShortTempDirs#root()}, not {@code @TempDir}: the stub binds the
+     * engine socket in the engine directory, and the child, on the Unix transport, looks there only
+     * while its longest socket path fits the OS limit (103 bytes on macOS); past it the child
+     * connects through a short link the stub never made.
      */
     private @Nullable Path home;
+
+    private static final AtomicInteger HOMES = new AtomicInteger();
 
     @AfterEach
     void removeHome() throws IOException {
@@ -91,7 +94,7 @@ class GlobalCancelNonTtyTest {
     }
 
     private Path newHome() throws IOException {
-        home = Files.createTempDirectory(ShortTempDirs.root(), "jk-sigint-");
+        home = Files.createDirectories(ShortTempDirs.root().resolve("sigint-" + HOMES.incrementAndGet()));
         return home;
     }
 
