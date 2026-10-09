@@ -490,6 +490,8 @@ and exclusions stay GA-scoped.
    first source. A source whose bytes move while the compiler runs is re-read afterwards: the
    compile is reported and not recorded, its incremental analysis is dropped, and the stamp reads
    stale for that source, so the next build compiles the module from what is then on disk.
+   The stamp also records each source's size and mtime and reads stale on any difference, an
+   older mtime included, so a file restored from a backup or moved into place is compiled.
    Every key opens with its task id, `<base>@<tag>`, and the tag names the output within the
    project — the lock's `project-id` plus the output's workspace-relative path, hashed — never
    the checkout. Two worktrees of one project therefore compute one key set and share every

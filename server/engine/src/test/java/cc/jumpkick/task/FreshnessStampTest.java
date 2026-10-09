@@ -145,16 +145,11 @@ class FreshnessStampTest {
     void unchanged_inputs_are_fresh(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        Path jar = writeFile(tempDir.resolve("dep.jar"), "stub");
+        Path src = settled(tempDir.resolve("A.java"), "class A {}");
+        Path jar = settled(tempDir.resolve("dep.jar"), "stub");
 
         FreshnessStamp.write(
                 classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE, DIGEST);
-        // Backdate the inputs by a second to make sure the mtime comparison
-        // sees them as <= the stamp's millis (filesystem timestamp resolution
-        // varies; same-millisecond can flake either way).
-        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-        Files.setLastModifiedTime(jar, FileTime.fromMillis(System.currentTimeMillis() - 1000));
 
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE, DIGEST))
                 .isTrue();
@@ -166,10 +161,8 @@ class FreshnessStampTest {
         // not be trusted even when every file mtime still looks unchanged.
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path src = settled(tempDir.resolve("A.java"), "class A {}");
         FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), 17, DIGEST);
-        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), 21, DIGEST))
                 .isFalse();
     }
@@ -192,12 +185,11 @@ class FreshnessStampTest {
     void jar_classpath_mtime_churn_does_not_bust_freshness(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path src = settled(tempDir.resolve("A.java"), "class A {}");
         Path jar = writeFile(tempDir.resolve("guava-33.4.8.jar"), "payload");
 
         FreshnessStamp.write(
                 classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE, DIGEST);
-        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         Files.setLastModifiedTime(jar, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
 
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE, DIGEST))
@@ -208,15 +200,46 @@ class FreshnessStampTest {
     void jar_content_change_busts_freshness(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path src = settled(tempDir.resolve("A.java"), "class A {}");
         Path localJar = writeFile(tempDir.resolve("dep.jar"), "stub");
 
         FreshnessStamp.write(
                 classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(localJar), RELEASE, DIGEST);
-        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         Files.writeString(localJar, "stub-MUTATED");
 
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(localJar), RELEASE, DIGEST))
+                .isFalse();
+    }
+
+    /**
+     * A restore from backup or an {@code mv} of an older copy puts different bytes behind an
+     * older mtime. Either moved stat is a change, so neither reads fresh.
+     */
+    @Test
+    void a_source_replaced_under_an_older_mtime_is_not_fresh(@TempDir Path tempDir) throws IOException {
+        Path classes = Files.createDirectories(tempDir.resolve("classes"));
+        Path src = settled(tempDir.resolve("A.java"), "class A { int fixed; }");
+        long older = Files.getLastModifiedTime(src).toMillis() - 60_000;
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
+                .isTrue();
+
+        Files.writeString(src, "class A {}");
+        Files.setLastModifiedTime(src, FileTime.fromMillis(older));
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
+                .as("other size, older mtime")
+                .isFalse();
+        assertThat(FreshnessStamp.looksFresh(classes, BuildStamps.JAVA, List.of(src)))
+                .isFalse();
+
+        // Same size, older mtime: the bytes behind it cannot be told apart by stat, so it is stale.
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
+        Files.writeString(src, "class B {}");
+        Files.setLastModifiedTime(src, FileTime.fromMillis(older - 60_000));
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
+                .as("same size, older mtime")
                 .isFalse();
     }
 
@@ -244,13 +267,11 @@ class FreshnessStampTest {
     void added_source_invalidates_stamp(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path a = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path a = settled(tempDir.resolve("A.java"), "class A {}");
         FreshnessStamp.write(
                 classes, BuildStamps.JAVA, "compile-main", "key123", List.of(a), List.of(), RELEASE, DIGEST);
 
-        Path b = writeFile(tempDir.resolve("B.java"), "class B {}");
-        Files.setLastModifiedTime(a, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-        Files.setLastModifiedTime(b, FileTime.fromMillis(System.currentTimeMillis() - 1000));
+        Path b = settled(tempDir.resolve("B.java"), "class B {}");
 
         // Source set composition changed → not fresh, even though both files
         // are older than the stamp.
@@ -262,13 +283,12 @@ class FreshnessStampTest {
     void removed_source_invalidates_stamp(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path a = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path a = settled(tempDir.resolve("A.java"), "class A {}");
         Path b = writeFile(tempDir.resolve("B.java"), "class B {}");
         FreshnessStamp.write(
                 classes, BuildStamps.JAVA, "compile-main", "key123", List.of(a, b), List.of(), RELEASE, DIGEST);
 
         // Caller passes a smaller source list — stamp said it covered two.
-        Files.setLastModifiedTime(a, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(a), List.of(), RELEASE, DIGEST))
                 .isFalse();
     }
@@ -307,12 +327,10 @@ class FreshnessStampTest {
     void classpath_touched_after_stamp_is_not_fresh(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path src = settled(tempDir.resolve("A.java"), "class A {}");
         Path jar = writeFile(tempDir.resolve("dep.jar"), "stub");
         FreshnessStamp.write(
                 classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE, DIGEST);
-
-        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         Files.writeString(jar, "stub-rebuilt");
 
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE, DIGEST))
@@ -337,11 +355,9 @@ class FreshnessStampTest {
         // input that records them, so a stamp written under other options is stale.
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path src = settled(tempDir.resolve("A.java"), "class A {}");
         FreshnessStamp.write(
                 classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
-        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
                 .isTrue();
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, "options-b"))
@@ -354,10 +370,8 @@ class FreshnessStampTest {
     void a_stamp_without_a_digest_matches_only_a_producer_without_options(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path src = settled(tempDir.resolve("A.java"), "class A {}");
         FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, "");
-        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, ""))
                 .isTrue();
         assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
@@ -415,6 +429,13 @@ class FreshnessStampTest {
 
     private static Path writeFile(Path file, String body) throws IOException {
         Files.writeString(file, body);
+        return file;
+    }
+
+    /** A file written a minute ago: older than any stamp the test writes next. */
+    private static Path settled(Path file, String body) throws IOException {
+        writeFile(file, body);
+        Files.setLastModifiedTime(file, FileTime.fromMillis(System.currentTimeMillis() - 60_000));
         return file;
     }
 }

@@ -52,6 +52,7 @@ import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.util.JkDirs;
@@ -469,9 +470,10 @@ public final class PlannerSupport {
                     .resolve(proj.name())
                     .resolve(proj.version());
             Path staged = shelf.resolve(proj.name() + "-" + proj.version() + ".jar");
+            // By content: a sibling jar restored under an older mtime is still a new jar.
             if (Files.isRegularFile(staged)
                     && Files.size(staged) == Files.size(jar)
-                    && Files.getLastModifiedTime(staged).compareTo(Files.getLastModifiedTime(jar)) >= 0) {
+                    && FileHashMemo.contentHash(staged).equals(FileHashMemo.contentHash(jar))) {
                 continue;
             }
             Files.createDirectories(shelf);
