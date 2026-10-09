@@ -7,7 +7,6 @@ import com.intellij.execution.PsiLocation;
 import com.intellij.execution.actions.ConfigurationContext;
 import com.intellij.execution.actions.ConfigurationFromContext;
 import com.intellij.openapi.application.WriteAction;
-import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder;
 import com.intellij.openapi.externalSystem.model.DataNode;
 import com.intellij.openapi.externalSystem.model.ProjectKeys;
 import com.intellij.openapi.externalSystem.model.project.ContentRootData;
@@ -17,11 +16,7 @@ import com.intellij.openapi.externalSystem.model.project.LibraryDependencyData;
 import com.intellij.openapi.externalSystem.model.project.LibraryPathType;
 import com.intellij.openapi.externalSystem.model.project.ModuleData;
 import com.intellij.openapi.externalSystem.model.project.ProjectData;
-import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMode;
-import com.intellij.openapi.externalSystem.service.project.ExternalProjectRefreshCallback;
-import com.intellij.openapi.externalSystem.service.project.ProjectDataManager;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
-import com.intellij.openapi.externalSystem.util.ExternalSystemUtil;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.projectRoots.ProjectJdkTable;
@@ -39,7 +34,6 @@ import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.testFramework.HeavyPlatformTestCase;
 import com.intellij.testFramework.PlatformTestUtil;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,7 +43,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.jetbrains.annotations.Nullable;
-import org.junit.Assume;
 
 /**
  * Headless import of this checkout — jk's own workspace — through the real external-system path:
@@ -103,14 +96,14 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
 
     public void test_jk_workspace_imports_with_roots_libraries_sdks_and_no_iml() throws Exception {
         Path checkout = checkoutRoot();
-        assumeJkOnPath();
+        JkImport.assumeJkOnPath(JkWorkspaceImportTest.class);
 
         JkCliRunner.Result sources = JkCliRunner.run(checkout.toFile(), "sync", "--sources");
         assertTrue("jk sync --sources: " + sources.stderr(), sources.ok());
 
-        Import result = importProject(checkout.toFile());
-        assertNull("sync failed: " + result.failure, result.failure);
-        DataNode<ProjectData> graph = requireNonNull(result.graph);
+        JkImport.Result result = JkImport.importProject(getProject(), checkout.toFile());
+        assertNull("sync failed: " + result.failure(), result.failure());
+        DataNode<ProjectData> graph = requireNonNull(result.graph());
 
         List<DataNode<ModuleData>> resolved = modules(graph);
         assertTrue("jk's workspace has dozens of modules, resolved " + resolved.size(), resolved.size() >= 30);
@@ -234,39 +227,11 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
         assertTrue(fake.toFile().setExecutable(true));
         System.setProperty("jk.bin", fake.toString());
 
-        Import result = importProject(checkout.toFile());
-        assertNull(result.graph);
-        String failure = requireNonNull(result.failure);
+        JkImport.Result result = JkImport.importProject(getProject(), checkout.toFile());
+        assertNull(result.graph());
+        String failure = requireNonNull(result.failure());
         assertTrue(failure, failure.contains("jk: engine refused the connection"));
         assertFalse(failure, failure.contains("second line"));
-    }
-
-    private record Import(
-            @Nullable DataNode<ProjectData> graph, @Nullable String failure) {}
-
-    private Import importProject(File base) {
-        JkSync.link(getProject(), base);
-        assertTrue(JkSync.isLinked(getProject(), base));
-        List<DataNode<ProjectData>> graph = new ArrayList<>();
-        List<String> failure = new ArrayList<>();
-        ImportSpecBuilder spec = new ImportSpecBuilder(getProject(), JkSystem.ID)
-                .use(ProgressExecutionMode.MODAL_SYNC)
-                .dontReportRefreshErrors()
-                .callback(new ExternalProjectRefreshCallback() {
-                    @Override
-                    public void onSuccess(@Nullable DataNode<ProjectData> node) {
-                        if (node == null) return;
-                        graph.add(node);
-                        ProjectDataManager.getInstance().importData(node, getProject());
-                    }
-
-                    @Override
-                    public void onFailure(String message, @Nullable String details) {
-                        failure.add(message + (details == null ? "" : "\n" + details));
-                    }
-                });
-        ExternalSystemUtil.refreshProject(JkSync.projectPath(base), spec);
-        return new Import(graph.isEmpty() ? null : graph.get(0), failure.isEmpty() ? null : failure.get(0));
     }
 
     private static List<DataNode<ModuleData>> modules(DataNode<ProjectData> graph) {
@@ -300,23 +265,6 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
             dir = dir.getParent();
         }
         throw new AssertionError("no checkout root above " + Path.of("").toAbsolutePath());
-    }
-
-    private static void assumeJkOnPath() {
-        boolean present;
-        try {
-            Process p = new ProcessBuilder(JkBin.path(), "--version")
-                    .redirectErrorStream(true)
-                    .start();
-            p.getInputStream().readAllBytes();
-            present = p.waitFor() == 0;
-        } catch (IOException | InterruptedException e) {
-            present = false;
-        }
-        if (!present)
-            System.err.println(
-                    "SKIPPED " + JkWorkspaceImportTest.class.getSimpleName() + ": no jk on PATH (JK_BIN / -Djk.bin)");
-        Assume.assumeTrue("jk on PATH", present);
     }
 
     private static List<String> imlFiles(Path root) throws IOException {
