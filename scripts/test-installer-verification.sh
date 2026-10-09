@@ -3,7 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-installer-test.XXXXXX")"
+# `cd && pwd` drops the `//` macOS's trailing-slash TMPDIR leaves, as the installer does.
+WORK="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/jk-installer-test.XXXXXX")" && pwd)"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/http/releases/1.0.0" "$WORK/bin"
 
@@ -221,12 +222,14 @@ grep -q "JK_HOME must be an absolute path" "$WORK/last-install.log" || {
 
 # Without JK_VERSION the installer reads the signed latest/LATEST pointer and takes the host's
 # artifact from the release directory it names. A missing pointer (404, DNS) is reported with its
-# URL instead of leaving the user with curl's bare exit status.
-host_os="$(uname -s)"
-case "$host_os" in Linux) host_os=linux ;; Darwin) host_os=macos ;; esac
-host_arch="$(uname -m)"
-case "$host_arch" in x86_64|amd64) host_arch=x86_64 ;; aarch64|arm64) host_arch=aarch64 ;; esac
-LATEST_ARTIFACT="jk-$host_os-$host_arch-1.0.0.gz"
+# URL instead of leaving the user with curl's bare exit status. A fixture uname makes the host a
+# hosted one whatever runs the suite.
+fixture_uname() {
+  printf '#!/usr/bin/env sh\ncase "${1:-}" in -s) echo %s ;; -m) echo %s ;; *) echo %s ;; esac\n' "$1" "$2" "$1" >"$WORK/bin/uname"
+  chmod +x "$WORK/bin/uname"
+}
+fixture_uname Linux x86_64
+LATEST_ARTIFACT="jk-linux-x86_64-1.0.0.gz"
 LATEST_DIR="$WORK/http/releases/latest"
 write_pointer() {
   rm -rf "$LATEST_DIR"
@@ -356,12 +359,8 @@ SH
 chmod +x "$WORK/bin/java"
 mkdir -p "$WORK/jdk/bin"
 touch "$WORK/jdk/bin/javac" && chmod +x "$WORK/jdk/bin/javac"
-# A fixture uname: a host neither installer table knows, so the installer must choose the JVM client.
-cat >"$WORK/bin/uname" <<'SH'
-#!/usr/bin/env sh
-case "${1:-}" in -s) echo SunOS ;; -m) echo sun4v ;; *) echo SunOS ;; esac
-SH
-chmod +x "$WORK/bin/uname"
+# A host neither installer table knows, so the installer must choose the JVM client.
+fixture_uname SunOS sun4v
 
 JVM_JAR="jk-1.0.0.jar"
 ENGINE_JAR="jk-engine-1.0.0.jar"
@@ -393,6 +392,15 @@ if run_jvm_installer "$WORK/home-jvm-refused" JK_CLIENT=native; then
 fi
 grep -q "no native jk client for SunOS/sun4v" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the native refusal did not name the host" >&2; exit 1; }
 [[ ! -e "$WORK/home-jvm-refused/bin/jk" ]] || { echo "the refusal installed something" >&2; exit 1; }
+
+# An Intel Mac and an ARM Linux: a known OS and architecture with no native client in a release.
+for host in "Darwin x86_64" "Linux aarch64"; do
+  fixture_uname $host
+  home="$WORK/home-jvm-${host// /-}"
+  run_jvm_installer "$home" || { cat "$WORK/last-install.log" >&2; echo "JVM install on $host failed" >&2; exit 1; }
+  cmp -s "$RELEASE/$JVM_JAR" "$home/lib/jk/$JVM_JAR" || { echo "$host did not install the JVM client" >&2; exit 1; }
+done
+fixture_uname SunOS sun4v
 
 # A JDK too old, and a JRE: refused before anything is downloaded or written.
 if run_jvm_installer "$WORK/home-jvm-old" FIXTURE_JAVA_VERSION=21.0.4; then
