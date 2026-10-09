@@ -24,7 +24,7 @@
 #                    owns lives under it, on every platform. The client is
 #                    installed to $JK_HOME/bin.
 #   JK_CLIENT        `native` or `jvm`. Unset: the native client where one is
-#                    hosted (Linux and macOS on x86_64/aarch64), else the JVM
+#                    hosted (Linux on x86_64, macOS on aarch64), else the JVM
 #                    client — jk-<version>.jar on a JDK 25+ you provide — for
 #                    every other OS and architecture. `jvm` asks for the JVM
 #                    client on a hosted platform too.
@@ -212,9 +212,9 @@ main() {
   fi
 
   # Native release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself uses
-  # (HostPlatform): linux|macos × x86_64|aarch64. Windows uses install.ps1 (irm|iex); this script
-  # never runs there. Prints nothing for a host with no native client, which installs the JVM
-  # client instead.
+  # (HostPlatform), for the hosts a release serves one for: linux-x86_64 and macos-aarch64.
+  # Windows uses install.ps1 (irm|iex); this script never runs there. Prints nothing for a host
+  # with no native client, which installs the JVM client instead.
   native_target() {
     local os arch
     case "$(uname -s)" in
@@ -227,7 +227,10 @@ main() {
       aarch64|arm64) arch="aarch64" ;;
       *) return 1 ;;
     esac
-    printf '%s-%s' "$os" "$arch"
+    case "$os-$arch" in
+      linux-x86_64|macos-aarch64) printf '%s-%s' "$os" "$arch" ;;
+      *) return 1 ;;
+    esac
   }
 
   # Which client to install: `native` or `jvm`. JK_CLIENT decides; unset, the host decides — the
@@ -326,7 +329,7 @@ main() {
       if TARGET="$(native_target)"; then
         CLIENT="native"
       elif [ "$CLIENT" = "native" ]; then
-        die "no native jk client for $(uname -s)/$(uname -m) (hosted: Linux and macOS on x86_64 and aarch64);" \
+        die "no native jk client for $(uname -s)/$(uname -m) (hosted: Linux on x86_64, macOS on aarch64);" \
             "unset JK_CLIENT to install the JVM client instead."
       else
         CLIENT="jvm"
