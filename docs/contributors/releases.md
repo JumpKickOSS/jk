@@ -391,8 +391,8 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    names the matrix rows, and a tree short of one, or a platform-neutral jar whose bytes differ
    between platforms, is refused), re-signs the combined `SHA256SUMS`, and takes the CycloneDX
    SBOM the linux-x86_64 build wrote of the engine (`jk publish --sbom --dry-run` in
-   `server/engine`, which leaves `target/server/engine/sbom/jk-engine-<version>.cdx.json` at the
-   workspace root — the document the engine jar embeds under `META-INF/sbom/`, derived from
+   `server/engine`, which leaves `server/engine/target/sbom/jk-engine-<version>.cdx.json` — the
+   document the engine jar embeds under `META-INF/sbom/`, derived from
    `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` — beside the tree, so the signed
    `SHA256SUMS` the installers verify is untouched. A dispatch ends here.
 6. **`gsutil rsync`** to GCS, then the pointer (`scripts/sign-latest-pointer.sh`): one `gsutil cp`
@@ -505,7 +505,7 @@ head -n 2 LATEST                                                                
 #    releases. Publish the draft last.
 scripts/release-notes.sh 0.13.6 > RELEASE_NOTES.md
 (cd server/engine && jk publish --sbom --dry-run)   # prints the path it wrote, under the root's target/
-cp target/server/engine/sbom/jk-engine-0.13.6.cdx.json jk-0.13.6.cdx.json
+cp server/engine/target/sbom/jk-engine-0.13.6.cdx.json jk-0.13.6.cdx.json
 scripts/publish-github-release.sh 0.13.6 RELEASE_NOTES.md target/release/0.13.6/* jk-0.13.6.cdx.json
 ```
 
