@@ -352,17 +352,27 @@ path, network-free, against a fixture release signed with a throwaway key.
 
 Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
-A release is cut by publishing one on GitHub, nothing else: push the tag, publish a release for
-it, and the workflow does the rest. Nothing reaches the bucket, the pointer, the installers or
-the release page from a developer machine.
+A release is cut by publishing one on GitHub: push the tag, create the release as a draft, attach
+the linux-aarch64 client from an Apple-silicon Mac, publish the draft, and the workflow does the
+rest. Nothing else reaches the bucket, the pointer, the installers or the release page from a
+developer machine.
 
 ```bash
-git tag v0.14.0 && git push origin v0.14.0
-gh release create v0.14.0 --title "jk 0.14.0" --notes "building"   # the body is replaced by CI
-gh run watch                                                         # ~30 min across the matrix
+git tag -a v0.14.0 -m "jk 0.14.0" && git push origin v0.14.0
+gh release create v0.14.0 --draft --title "jk 0.14.0" --notes "building"   # the body is replaced by CI
+scripts/release-linux-aarch64.sh 0.14.0                                     # on the Mac, ~5 min
+gh release edit v0.14.0 --draft=false                                       # starts the workflow
+gh run watch                                                                # ~30 min across the matrix
 ```
 
-The release exists empty while the matrix builds; the workflow attaches the tree as its last step,
+No runner builds linux-aarch64. `scripts/release-linux-aarch64.sh` is that row: an Apple
+`container machine` (an arm64 Linux guest with gcc and zlib headers, mounting the Mac's home) clones
+the tag into its own disk, bootstraps the pinned jk into a home of its own, builds the tree as a
+matrix row does, checks the client reports the version, and attaches
+`jk-linux-aarch64-<version>.{gz,xz}` to the draft. `JK_CONTAINER_MACHINE` names the machine;
+`--no-upload` builds without attaching. A draft starts no workflow, so the order is safe.
+
+The release exists without the tree while the matrix builds; the workflow attaches the tree as its last step,
 after the bucket and the installers are live. A `workflow_dispatch` of the same workflow is the
 dry run: it builds every platform, flattens and signs the tree and stops with it as a workflow
 artifact, publishing nothing.
@@ -387,14 +397,16 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 4. The publish job first writes the release notes (`scripts/release-notes.sh <version>`: the
    version's entry under [Highlights](#highlights), then the commits since the previous tag) and
    refuses a version with no entry before anything is downloaded.
-5. It flattens the matrix's trees into one (`scripts/flatten-release.sh`; `JK_RELEASE_PLATFORMS`
-   names the matrix rows, and a tree short of one, or a platform-neutral jar whose bytes differ
+5. It downloads the linux-aarch64 archives from the release as that platform's tree, then
+   flattens every tree into one (`scripts/flatten-release.sh`; `JK_RELEASE_PLATFORMS` names the
+   matrix rows and linux-aarch64, and a tree short of one, or a platform-neutral jar whose bytes differ
    between platforms, is refused), re-signs the combined `SHA256SUMS`, and takes the CycloneDX
    SBOM the linux-x86_64 build wrote of the engine (`jk publish --sbom --dry-run` in
    `server/engine`, which leaves `server/engine/target/sbom/jk-engine-<version>.cdx.json` — the
    document the engine jar embeds under `META-INF/sbom/`, derived from
    `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` — beside the tree, so the signed
-   `SHA256SUMS` the installers verify is untouched. A dispatch ends here.
+   `SHA256SUMS` the installers verify is untouched. A dispatch ends here; it has no release to
+   take linux-aarch64 from, so it flattens the matrix rows alone.
 6. **`gsutil rsync`** to GCS, then the pointer (`scripts/sign-latest-pointer.sh`): one `gsutil cp`
    of `LATEST` with a no-cache header. The object carries its own signature, so the publish is
    atomic. `VERSION` is copied beside it; nothing verifies it. A leftover `LATEST.sig` is removed.
@@ -415,8 +427,9 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 
 jumpkick.build serves native clients for **linux-x86_64**, **linux-aarch64**, **macos-aarch64** and
 **windows-x86_64**, beside the engine jar and the JVM client. linux-aarch64 has no runner in the
-matrix: its client is built on an Apple-silicon Mac inside a `container machine` (an arm64 Linux
-guest) from the release commit, and joins the tree at the flatten. macOS on Intel has no native
+matrix: `scripts/release-linux-aarch64.sh` builds its client from the release tag on an
+Apple-silicon Mac inside a `container machine` and attaches it to the draft, and the publish job
+takes it from there. macOS on Intel has no native
 client and never will. The installers put the JVM client on such a host, and a contributor there builds the tree with it and
 lets the checkout's own jk take over ([self-host](self-host.md#bootstrap)).
 

@@ -2,8 +2,9 @@
 #
 # Trigger: a GitHub Release published for tag vX.Y.Z (X.Y.Z must equal JkVersion without the v).
 # The tag is a request; JkVersion.java is the answer, and a request that differs from it fails
-# before anything is built (scripts/release-version.sh). Cutting a release: push the tag, then
-# publish a release for it on GitHub (`gh release create vX.Y.Z --generate-notes`); this workflow
+# before anything is built (scripts/release-version.sh). Cutting a release: push the tag, create a
+# draft release for it (`gh release create vX.Y.Z --draft`), attach the linux-aarch64 client from an
+# Apple-silicon Mac (scripts/release-linux-aarch64.sh X.Y.Z), then publish the draft; this workflow
 # builds every platform, signs the tree, uploads it to GCS, redeploys the installers and attaches
 # the artifacts, the SBOM and the notes to that release. A workflow_dispatch is the dry run: it
 # builds, flattens and signs, and stops with the tree as a workflow artifact; nothing is published.
@@ -54,9 +55,8 @@ jobs:
         # One row per platform jumpkick.build serves a native client for at the release
         # .jk/ci-bootstrap-version pins. jk is installed the way a user installs it, the same
         # bootstrap as ci.yml's self-host job, and builds this commit's dist.
-        # linux-aarch64 and macos-x86_64 have no runner here and no client in the tree; the
-        # platform list the publish job flattens (JK_RELEASE_PLATFORMS below) names exactly the
-        # rows of this matrix.
+        # linux-aarch64 has no runner here: scripts/release-linux-aarch64.sh builds it on a Mac and
+        # the publish job takes it from the release. macOS on Intel has no client.
         include:
           - os: ubuntu-latest
             arch_label: linux-x86_64
@@ -208,9 +208,10 @@ jobs:
       id-token: write
       attestations: write
     env:
-      # The platforms the flatten requires: every row of the build matrix, and nothing the matrix
-      # cannot build. A tree short of one of these is refused, never published.
-      JK_RELEASE_PLATFORMS: linux-x86_64 macos-aarch64 windows-x86_64
+      # The platforms the flatten requires: every row of the build matrix and, on a release,
+      # linux-aarch64, which the release carries in from scripts/release-linux-aarch64.sh. A tree
+      # short of one of these is refused, never published. A dispatch has no release to read it from.
+      JK_RELEASE_PLATFORMS: ${{ github.event_name == 'release' && 'linux-x86_64 linux-aarch64 macos-aarch64 windows-x86_64' || 'linux-x86_64 macos-aarch64 windows-x86_64' }}
     steps:
       # The whole history and every tag: the notes list the commits since the previous release.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -256,6 +257,25 @@ jobs:
           path: target/release/repo
           pattern: maven-repo-*
           merge-multiple: true
+
+      # No runner builds linux-aarch64: scripts/release-linux-aarch64.sh builds it on an
+      # Apple-silicon Mac and attaches the two archives to the draft before it is published. They
+      # join the staging as that platform's tree; the flatten refuses a release without them.
+      - name: Download the linux-aarch64 client from the release
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          dir="staging/release-${JK_VERSION}-linux-aarch64"
+          mkdir -p "$dir"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$dir" \
+            --pattern "jk-linux-aarch64-${JK_VERSION}.gz" --pattern "jk-linux-aarch64-${JK_VERSION}.xz" || {
+            echo "::error::$RELEASE_TAG carries no jk-linux-aarch64-${JK_VERSION} archives: attach them to the draft with scripts/release-linux-aarch64.sh ${JK_VERSION} before publishing"
+            exit 1
+          }
+          ls -la "$dir"
 
       # One tree from the matrix: each platform's client, and the platform-neutral jars from
       # linux-x86_64 alone. The refusals (a missing platform, an engine jar whose bytes differ, two
