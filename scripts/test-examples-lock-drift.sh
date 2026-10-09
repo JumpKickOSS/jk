@@ -8,6 +8,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-lock-drift-test.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
+# In-place sed that BSD sed (macOS) and GNU sed both read: the last argument is the file.
+sed_i() { sed -i.bak "$@" && rm -f "${*: -1}.bak"; }
+
 sample="docs/user/examples/sample"
 lock="$sample/jk-lock.toml"
 npm_lock="$sample/web/package-lock.json"
@@ -60,19 +63,19 @@ refuses_naming() {
 
 passes "a clean tree"
 
-sed -i 's/sha256:1111/sha256:9999/' "$WORK/$lock"
+sed_i 's/sha256:1111/sha256:9999/' "$WORK/$lock"
 passes "a first-party plugin checksum that moved"
 reset
 
-sed -i -e 's/6d2260154724/d43f1559f875/' -e 's/21:18:26Z/22:55:01Z/' -e 's/jk 0.14.0/jk 0.15.0/' "$WORK/$lock"
+sed_i -e 's/6d2260154724/d43f1559f875/' -e 's/21:18:26Z/22:55:01Z/' -e 's/jk 0.14.0/jk 0.15.0/' "$WORK/$lock"
 passes "a relock by another jk build, which restamps the writer lines"
 reset
 
-sed -i 's/junit-jupiter:6.1.3/junit-jupiter:6.2.0/' "$WORK/$lock"
+sed_i 's/junit-jupiter:6.1.3/junit-jupiter:6.2.0/' "$WORK/$lock"
 refuses_naming "a dependency pin that moved" "junit-jupiter:6.2.0"
 reset
 
-sed -i 's/"8.3.0"/"8.4.0"/' "$WORK/$npm_lock"
+sed_i 's/"8.3.0"/"8.4.0"/' "$WORK/$npm_lock"
 refuses_naming "an npm lock the job rewrote" "$npm_lock"
 reset
 
@@ -96,14 +99,14 @@ with_examples() { "$ROOT/scripts/examples-lock-drift.sh" "$WORK" "$EX"; }
 if ! with_examples >"$WORK/last.log" 2>&1; then
   echo "test-examples-lock-drift: a clean jk-examples checkout was refused:" >&2; cat "$WORK/last.log" >&2; exit 1
 fi
-sed -i 's/"8.3.0"/"8.4.0"/' "$EX/$scenario/package-lock.json"
+sed_i 's/"8.3.0"/"8.4.0"/' "$EX/$scenario/package-lock.json"
 if with_examples >"$WORK/last.log" 2>&1; then
   echo "test-examples-lock-drift: a jk-examples npm lock the job rewrote was accepted" >&2; exit 1
 fi
 grep -qF "$scenario/package-lock.json" "$WORK/last.log" \
   || { echo "test-examples-lock-drift: the jk-examples npm drift was not named:" >&2; cat "$WORK/last.log" >&2; exit 1; }
 git -C "$EX" checkout -q -- .
-sed -i 's/junit-jupiter:6.1.3/junit-jupiter:6.2.0/' "$EX/$scenario/jk-lock.toml"
+sed_i 's/junit-jupiter:6.1.3/junit-jupiter:6.2.0/' "$EX/$scenario/jk-lock.toml"
 if JK_EXAMPLES_DIR="$EX" "$ROOT/scripts/examples-lock-drift.sh" "$WORK" >"$WORK/last.log" 2>&1; then
   echo "test-examples-lock-drift: a jk-examples pin that moved was accepted (JK_EXAMPLES_DIR)" >&2; exit 1
 fi
