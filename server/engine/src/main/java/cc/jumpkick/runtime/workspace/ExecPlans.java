@@ -16,10 +16,8 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Linking;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
-import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.layout.NodeShape;
@@ -268,7 +266,7 @@ public final class ExecPlans {
                     ? NodeRun.devPlan(dir, project, path, DevSidecars.resolve(dir, project, clientEnv))
                     : NodeRun.plan(dir, project, path);
         }
-        Path javaHome = projectJavaHome(dir);
+        Path javaHome = JavaHomes.resolveJavaHome(dir);
         String java = javaBin(javaHome);
 
         ExecPlan plan = dev ? null : packagedPlan(dir, layout, hostShape, javaHome, java, debug == null);
@@ -694,7 +692,7 @@ public final class ExecPlans {
             // the PATH client is left as it is.
             Path jvmLauncher = LauncherName.resolveChild(binDir, AppLauncher.launcherFileName(productBin + "-jvm"));
             String jvmScript = AppLauncher.renderScript(
-                    projectJavaHome(dir),
+                    JavaHomes.resolveJavaHome(dir),
                     resolveMain(project, layout, mainOverride),
                     thinClasspath(dir, project, layout));
             if (!InstallPlans.installsNativeBinary(project, layout)) {
@@ -709,7 +707,7 @@ public final class ExecPlans {
                     jvmScript,
                     dest.toString());
         }
-        Path javaHome = projectJavaHome(dir);
+        Path javaHome = JavaHomes.resolveJavaHome(dir);
         Path libRoot = libDirOverride != null ? libDirOverride : JkDirs.productLib();
         String nativeName =
                 project.nativeConfigOpt().map(JkBuild.NativeConfig::name).orElse(null);
@@ -885,7 +883,7 @@ public final class ExecPlans {
         // The tier follows the JDK the app will actually run under, not a `jdk` pin the manifest
         // may not carry: `java = 25` with no pin resolves to the host JDK 25 and trains a JEP 514
         // cache; anything older gets an AppCDS archive.
-        Path javaHome = projectJavaHome(dir);
+        Path javaHome = JavaHomes.resolveJavaHome(dir);
         String tier = JavaHomes.featureVersion(javaHome) >= 25 ? "aot" : "cds";
 
         List<String> libNames = new ArrayList<>();
@@ -950,16 +948,6 @@ public final class ExecPlans {
     }
 
     /** The project-pinned JDK when resolvable; the engine's own JVM home otherwise. */
-    private static Path projectJavaHome(Path dir) {
-        try {
-            return JdkResolver.forProject(dir, JkDirs.jdks())
-                    .map(InstalledJdk::home)
-                    .orElseGet(JavaHomes::runningJavaHome);
-        } catch (IOException e) {
-            return JavaHomes.runningJavaHome();
-        }
-    }
-
     private static @Nullable Path fetchDevtools(JkBuild project, Path cache) {
         try {
             String bootVersion = project.pluginConfig("spring-boot")
