@@ -8,7 +8,6 @@ import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.plugin.JobWorkers;
@@ -877,8 +876,10 @@ class JobEnvelopeTest {
             host.sequence.clear();
         }
 
-        String a = BuildJobFingerprint.canonicalDir("/tmp/job-env-switch-a");
-        String b = BuildJobFingerprint.canonicalDir("/tmp/job-env-switch-b");
+        // A root is the dir as sent, normalized: on macOS /tmp is a link to /private/tmp, which a
+        // real-path form would resolve whenever another test has created the directory.
+        Path a = Path.of("/tmp/job-env-switch-a").toAbsolutePath().normalize();
+        Path b = Path.of("/tmp/job-env-switch-b").toAbsolutePath().normalize();
         assertThat(host.switches).endsWith(a + " -> " + b);
         assertThat(host.switches).doesNotContain(a + " -> " + a);
     }
