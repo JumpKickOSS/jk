@@ -53,10 +53,16 @@ jobs:
   # The shell fixtures behind the installers, the wrapper, the Maven-repository publisher, the
   # release scripts and the curated lane's runner: network-free, and they need bash, openssl and xz
   # rather than a JDK, so they are a merge requirement of their own instead of sharing a verdict
-  # with the self-host job.
+  # with the self-host job. The macOS row runs them on BSD userland, LibreSSL and stock macOS's
+  # missing xz, which install.sh and the jk wrapper meet there.
   fixtures:
-    name: Shell fixtures (installer, wrapper, publish, release, curated lane)
-    runs-on: ubuntu-latest
+    name: Shell fixtures (installer, wrapper, publish, release, curated lane)${{ matrix.os == 'macos-latest' && ' on macOS' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 

@@ -128,8 +128,8 @@ grep -q "checked jk-test-runner:$VERSION (self-contained" "$WORK/out.log" \
 alpha="$STAGE/cc/jumpkick/jk-alpha/maven-metadata.xml"
 [[ -f "$alpha" ]] || fail "jk-alpha has no staged metadata"
 [[ "$(element groupId "$alpha")" == "cc.jumpkick" ]] || fail "jk-alpha groupId: $(element groupId "$alpha")"
-[[ "$(element version "$alpha" | paste -sd' ')" == "0.13.1 0.13.3 0.13.10" ]] \
-  || fail "jk-alpha versions are not the merged list in dotted numeric order: $(element version "$alpha" | paste -sd' ')"
+[[ "$(element version "$alpha" | paste -sd' ' -)" == "0.13.1 0.13.3 0.13.10" ]] \
+  || fail "jk-alpha versions are not the merged list in dotted numeric order: $(element version "$alpha" | paste -sd' ' -)"
 [[ "$(element latest "$alpha")" == "0.13.10" ]] || fail "jk-alpha latest is not the merged maximum: $(element latest "$alpha")"
 [[ "$(element release "$alpha")" == "0.13.10" ]] || fail "jk-alpha release is not the merged maximum: $(element release "$alpha")"
 
@@ -139,7 +139,7 @@ alpha="$STAGE/cc/jumpkick/jk-alpha/maven-metadata.xml"
 spring="$STAGE/cc/jumpkick/guards/spring/maven-metadata.xml"
 [[ -f "$spring" ]] || fail "guards/spring has no staged metadata"
 [[ "$(element groupId "$spring")" == "cc.jumpkick.guards" ]] || fail "guards/spring groupId: $(element groupId "$spring")"
-[[ "$(element version "$spring" | paste -sd' ')" == "$VERSION" ]] || fail "guards/spring versions: $(element version "$spring" | paste -sd' ')"
+[[ "$(element version "$spring" | paste -sd' ' -)" == "$VERSION" ]] || fail "guards/spring versions: $(element version "$spring" | paste -sd' ' -)"
 [[ "$(element latest "$spring")" == "$VERSION" ]] || fail "guards/spring latest: $(element latest "$spring")"
 
 grep -q "checked jk-image-builder:$VERSION (declares 2 dependencies)" "$WORK/out.log" || fail "the worker POM was not checked, or its test-scope dependency was counted"
