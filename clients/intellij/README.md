@@ -79,11 +79,14 @@ extension (`clients/vscode/`).
 - unit tests over the reader, the wire model, root discovery and the graph (a captured
   two-module `ide-model` under `src/test/resources`), the debouncer and the manifest filter;
 - IntelliJ Platform tests (`HeavyPlatformTestCase`): the debounced trigger over real VFS
-  events, and `JkWorkspaceImportTest`, which imports this repository's own workspace through the
+  events; `JkWorkspaceImportTest`, which imports this repository's own workspace through the
   real external-system path — link, resolver running the installed `jk`, platform applying the
   result — and asserts every module, roots, libraries (with sources jars, after a
   `jk sync --sources` of the checkout), SDKs, `target/jdt` outputs and that no `.iml` lands in
-  the checkout. It skips, printing why, when no `jk` is on PATH.
+  the checkout; and `JkDebugBreakpointTest`, the gutter's Debug end to end: a project `jk new`
+  scaffolds is imported, a line breakpoint is set in its test, the producer's JumpKick
+  configuration runs under the Debug executor, and the session must pause on that line and
+  `jk test` exit 0 after a resume. Both skip, printing why, when no `jk` is on PATH.
 
 ## Run and debug through jk
 
@@ -95,7 +98,8 @@ tool window's console. The producer is preferred over the bundled JUnit and Appl
 these modules, which stay in the list as alternatives. Under Debug, `JkCommandState` picks a free
 loopback port, passes `--debug-jvm=localhost:<port>` — jk starts the one JVM suspended with a
 JDWP listener there — and `JkDebugRunner` attaches the Java debugger to that address, retrying
-while jk builds (up to ten minutes); a breakpoint in the test or the application stops as usual.
+while jk builds (up to ten minutes); a breakpoint in the test or the application stops as usual
+(`JkDebugBreakpointTest` drives that stop for a test).
 `--class <fqcn>#<method>` selects one method, so a method's gutter action runs that method alone.
 
 ## Manual today
