@@ -173,6 +173,24 @@ JK_RELEASE_PLATFORMS="linux-x86_64 macos-aarch64" run_flatten "$WORK/staging" "$
   || { cat "$WORK/last.log" >&2; echo "test-flatten-release: a list without Windows still demanded the Windows zip" >&2; exit 1; }
 JK_RELEASE_PLATFORMS="macos-aarch64" assert_refused "$WORK/staging" "JK_RELEASE_PLATFORMS must name linux-x86_64"
 
+# ---- linux-aarch64 from the release ----------------------------------------------------------
+# On a release the publish job adds the linux-aarch64 tree it downloads: client archives only, no
+# jars. It joins the three matrix rows; a release whose draft lacks it is refused by name.
+LIST="linux-x86_64 linux-aarch64 macos-aarch64 windows-x86_64"
+stage "$WORK/staging"
+rm -rf "$WORK/staging/release-$VER-macos-x86_64"
+rm -f "$WORK/staging/release-$VER-linux-aarch64/"{jk-engine-$VER.jar,jk-$VER.jar,jk-maven-spy-$VER.jar,SHA256SUMS,SHA256SUMS.sig}
+rm -rf "$WORK/out-arm"
+JK_RELEASE_PLATFORMS="$LIST" run_flatten "$WORK/staging" "$WORK/out-arm" \
+  || { cat "$WORK/last.log" >&2; echo "test-flatten-release: a client-only linux-aarch64 tree was refused" >&2; exit 1; }
+[[ "$(wc -l <"$WORK/out-arm/SHA256SUMS" | tr -d '[:space:]')" == "11" ]] || {
+  cat "$WORK/out-arm/SHA256SUMS" >&2
+  echo "test-flatten-release: four platforms flatten to eleven artifacts" >&2
+  exit 1
+}
+rm -rf "$WORK/staging/release-$VER-linux-aarch64"
+JK_RELEASE_PLATFORMS="$LIST" assert_refused "$WORK/staging" "missing client jk-linux-aarch64-$VER.xz"
+
 # ---- no staging directory at all -----------------------------------------------------------
 assert_refused "$WORK/nowhere" "staging directory not found"
 
