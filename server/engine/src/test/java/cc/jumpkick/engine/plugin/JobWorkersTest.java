@@ -7,8 +7,7 @@ import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.Sleepers;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -93,11 +92,13 @@ class JobWorkersTest {
         }
     }
 
-    /** The process state letter from {@code /proc/<pid>/stat} ({@code T} = stopped), or {@code ?}. */
+    /** The process state letter from {@code ps} ({@code T} = stopped), or {@code ?}; macOS has no {@code /proc}. */
     private static char state(long pid) {
         try {
-            String stat = Files.readString(Path.of("/proc", Long.toString(pid), "stat"));
-            return stat.charAt(stat.lastIndexOf(')') + 2);
+            Process ps = new ProcessBuilder("ps", "-o", "stat=", "-p", Long.toString(pid)).start();
+            String stat = new String(ps.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+            ps.waitFor();
+            return stat.isEmpty() ? '?' : stat.charAt(0);
         } catch (Exception e) {
             return '?';
         }
