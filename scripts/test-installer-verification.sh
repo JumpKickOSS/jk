@@ -393,8 +393,8 @@ fi
 grep -q "no native jk client for SunOS/sun4v" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the native refusal did not name the host" >&2; exit 1; }
 [[ ! -e "$WORK/home-jvm-refused/bin/jk" ]] || { echo "the refusal installed something" >&2; exit 1; }
 
-# An Intel Mac and an ARM Linux: a known OS and architecture with no native client in a release.
-for host in "Darwin x86_64" "Linux aarch64"; do
+# An Intel Mac: a known OS and architecture with no native client in a release.
+for host in "Darwin x86_64"; do
   fixture_uname $host
   home="$WORK/home-jvm-${host// /-}"
   run_jvm_installer "$home" || { cat "$WORK/last-install.log" >&2; echo "JVM install on $host failed" >&2; exit 1; }

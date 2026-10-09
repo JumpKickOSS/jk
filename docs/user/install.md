@@ -16,8 +16,8 @@ The installer puts **`jk`** and **`jkx`** on your PATH. JumpKick requires **JDK 
 run and will install one if needed. After that, prefer `java = N` in `jk.toml` for
 language level — [Concepts](concepts.md).
 
-Native clients are hosted for Linux and Windows on x86_64 and for macOS on Apple silicon.
-Every other host — macOS on Intel, Windows on ARM, Linux on ARM or a Raspberry Pi, Solaris,
+Native clients are hosted for Linux on x86_64 and aarch64, Windows on x86_64 and macOS on Apple
+silicon. Every other host — macOS on Intel, Windows on ARM, 32-bit ARM or a Raspberry Pi, Solaris,
 FreeBSD, anything else a JDK 25 runs on — gets the [JVM client](#the-jvm-client) from the same
 installers.
 
@@ -65,7 +65,7 @@ whenever `uname` names a host no native client is hosted for; `install.ps1` pick
 `JK_CLIENT=native` refuses to fall back.
 
 ```bash
-# Linux on ARM, macOS on Intel, FreeBSD, Solaris, … — the same command
+# macOS on Intel, FreeBSD, Solaris, … — the same command
 curl -fsSL https://jumpkick.build/install.sh | bash
 ```
 
