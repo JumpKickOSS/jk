@@ -154,20 +154,20 @@ class IdeIdeaGenerationTest {
     }
 
     @Test
-    void per_module_jdk_when_a_module_differs_from_the_project_default(@TempDir Path tmp) throws IOException {
+    void a_module_on_an_older_java_level_keeps_the_project_sdk_at_its_own_level(@TempDir Path tmp) throws IOException {
         Path ws = tmp.resolve("ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
                 group = "dev.example"
                 name = "root"
                 version = "0.1.0"
-                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["a", "b"]
                 """);
-        module(ws.resolve("a"), "a", 25);
-        module(ws.resolve("b"), "b", 21); // differs from the project default (25)
+        javaModule(ws.resolve("a"), "a", 25);
+        javaModule(ws.resolve("b"), "b", 21); // compiles on the workspace JDK with --release 21
 
         Path jdks = tmp.resolve("jdks");
         Files.createDirectories(jdks);
@@ -180,18 +180,15 @@ class IdeIdeaGenerationTest {
         int exit = runIdea(ws, jdks, ideConfig, tmp.resolve("cache"));
         assertThat(exit).isEqualTo(0);
 
-        // Default-level module inherits the project SDK.
-        assertThat(Files.readString(ws.resolve("a/a.iml"))).contains("<orderEntry type=\"inheritedJdk\" />");
+        String aIml = Files.readString(ws.resolve("a/a.iml"));
+        assertThat(aIml).contains("<orderEntry type=\"inheritedJdk\" />").doesNotContain("LANGUAGE_LEVEL");
 
-        // #2 — the off-level module gets its own SDK + source language level.
+        // The JDK the build compiles b with is the project's; only the language level differs.
         String bIml = Files.readString(ws.resolve("b/b.iml"));
-        assertThat(bIml)
-                .contains("LANGUAGE_LEVEL=\"JDK_21\"")
-                .contains("<orderEntry type=\"jdk\" jdkName=\"jk-temurin-21\" jdkType=\"JavaSDK\" />");
+        assertThat(bIml).contains("LANGUAGE_LEVEL=\"JDK_21\"").contains("<orderEntry type=\"inheritedJdk\" />");
 
-        // Both SDKs registered; project default is the root's level.
         String table = Files.readString(ideConfig.resolve("JetBrains/IntelliJIdea2025.1/options/jdk.table.xml"));
-        assertThat(table).contains("jk-temurin-25").contains("jk-temurin-21");
+        assertThat(table).contains("jk-temurin-25").doesNotContain("jk-temurin-21");
         assertThat(Files.readString(ws.resolve(".idea/misc.xml"))).contains("project-jdk-name=\"jk-temurin-25\"");
     }
 
@@ -314,6 +311,16 @@ class IdeIdeaGenerationTest {
                         + "isTestSource=\"true\" generated=\"true\"");
         // ...and the processor is NOT a compile-scoped library order entry.
         assertThat(iml).doesNotContain("org.example:myprocessor:1.0.0");
+    }
+
+    private static void javaModule(Path dir, String name, int java) throws IOException {
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "dev.example"
+                name = "%s"
+                version = "0.1.0"
+                java = %d
+                """.formatted(name, java));
     }
 
     private static void module(Path dir, String name, int jdk) throws IOException {

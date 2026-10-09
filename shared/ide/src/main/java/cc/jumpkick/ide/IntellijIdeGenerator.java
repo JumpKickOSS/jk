@@ -237,7 +237,8 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         StringBuilder sb = xmlHeader();
         sb.append("<module type=\"JAVA_MODULE\" version=\"4\">\n");
         sb.append("  <component name=\"NewModuleRootManager\" inherit-compiler-output=\"false\"");
-        if (ownJdk && langLevel > 0) {
+        // A module on the project SDK still has its own level: java = 17 on a JDK 25 is level 17.
+        if (langLevel > 0 && (ownJdk || langLevel != defaultSdk.languageLevel())) {
             sb.append(" LANGUAGE_LEVEL=\"JDK_").append(langLevel).append("\"");
         }
         sb.append(">\n");
