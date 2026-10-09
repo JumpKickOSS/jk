@@ -25,16 +25,17 @@ for asset in "$@"; do
 done
 
 TAG="v$VERSION"
+# Expanded as ${arr[@]+"${arr[@]}"}: macOS bash 3.2 reads an empty array under `set -u` as unbound.
 REPO_ARGS=()
 [[ -n "${GITHUB_REPOSITORY:-}" ]] && REPO_ARGS=(--repo "$GITHUB_REPOSITORY")
 
-if ! prerelease="$(gh release view "$TAG" "${REPO_ARGS[@]}" --json isPrerelease --jq '.isPrerelease' 2>/dev/null)"; then
+if ! prerelease="$(gh release view "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --json isPrerelease --jq '.isPrerelease' 2>/dev/null)"; then
   echo "publish-github-release: no GitHub Release exists for $TAG — publish one for the tag; that is what runs the release" >&2
   exit 1
 fi
 
-gh release upload "$TAG" "${REPO_ARGS[@]}" --clobber "$@"
+gh release upload "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --clobber "$@"
 latest=(--latest)
 [[ "$prerelease" == "true" ]] && latest=()
-gh release edit "$TAG" "${REPO_ARGS[@]}" --title "jk $VERSION" --notes-file "$NOTES" "${latest[@]}"
+gh release edit "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --title "jk $VERSION" --notes-file "$NOTES" ${latest[@]+"${latest[@]}"}
 echo "publish-github-release: $TAG holds $# asset(s)"
