@@ -61,7 +61,7 @@ fi
 slug="${GITHUB_REPOSITORY:-}"
 if [[ -z "$slug" ]]; then
   origin="$(git -C "$REPO" remote get-url origin 2>/dev/null || true)"
-  if [[ "$origin" =~ github\.com[:/]([^/]+/[^/]+?)(\.git)?$ ]]; then slug="${BASH_REMATCH[1]}"; fi
+  if [[ "$origin" =~ github\.com[:/]([^/]+/[^/]+)$ ]]; then slug="${BASH_REMATCH[1]%.git}"; fi
 fi
 
 echo "## Highlights"
