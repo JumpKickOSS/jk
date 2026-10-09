@@ -14,8 +14,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Canonical JDK resolution shared by the build plan and {@code jk activate}. Order: {@code --jdk},
- * {@code JK_JDK}, {@code .jdk-version}, lock, {@code jdk}, java-release floor, the inventory default,
- * {@code JAVA_HOME}/{@code GRAALVM_HOME}, then {@code PATH}. {@link #resolve} stops on an
+ * {@code JK_JDK}, {@code .jdk-version}, a lock requirement, {@code jdk}, a lock suggestion,
+ * java-release floor, the inventory default, {@code JAVA_HOME}/{@code GRAALVM_HOME}, then {@code PATH}. {@link #resolve} stops on an
  * uninstalled named pin with {@code wouldInstall}; {@link #resolveForHook} never installs and falls through.
  */
 public final class JdkResolution {
@@ -126,14 +126,17 @@ public final class JdkResolution {
         if ((r = named(req.switchSpec(), Tier.SWITCH, reg, canInstall, null)) != null) return r;
         if ((r = named(req.envSpec(), Tier.JK_ENV, reg, canInstall, null)) != null) return r;
         if ((r = jdkVersionFile(req.projectDir(), reg, canInstall)) != null) return r;
-        if ((r = lockfile(req.lockJdk(), reg, canInstall)) != null) return r;
+        JdkPin lockJdk = req.lockJdk();
+        boolean lockRequires = lockJdk != null && lockJdk.hasRequirement();
+        if (lockRequires && (r = lockfile(lockJdk, reg, canInstall)) != null) return r;
         // An unsatisfied lock suggestion is a floor, not a skip — on the build path as much as the
-        // hook. Later tiers may only pick a JDK that still meets it (do not build a 25 lock on 21).
-        String lockFloor =
-                req.lockJdk() == null || req.lockJdk().suggestedVersion().isEmpty()
-                        ? null
-                        : req.lockJdk().suggestedVersion();
-        if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall, lockFloor)) != null) return r;
+        // hook. The tiers that choose for the user may only pick a JDK that still meets it.
+        String lockFloor = lockJdk == null || lockJdk.suggestedVersion().isEmpty() ? null : lockJdk.suggestedVersion();
+        // The manifest's jdk names the install the user chose; a suggestion only records what built
+        // the lock (a workspace's, for a member), so it neither outranks nor floors that choice.
+        if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall, lockRequires ? lockFloor : null))
+                != null) return r;
+        if (!lockRequires && (r = lockfile(lockJdk, reg, canInstall)) != null) return r;
 
         // project.java floor: only when nothing is explicitly pinned and the
         // requested language level is newer than the latest LTS — then we need a

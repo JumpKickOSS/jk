@@ -47,15 +47,71 @@ class JdkResolutionTest {
     }
 
     @Test
-    void lock_beats_toml(@TempDir Path tmp) throws IOException {
+    void the_manifest_jdk_beats_a_lock_suggestion(@TempDir Path tmp) throws IOException {
         Path jdks = jdks(tmp);
         makeJdk(jdks, "temurin-21.0.5");
         makeJdk(jdks, "temurin-25.0.3");
         var req = req(tmp).lockJdk("temurin", "21.0.5").projectJdkSpec("25").build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.PROJECT_TOML);
+        assertThat(r.jdkOpt().get().home().getFileName().toString()).isEqualTo("temurin-25.0.3");
+    }
+
+    @Test
+    void a_manifest_jdk_below_the_suggested_major_is_still_the_choice(@TempDir Path tmp) throws IOException {
+        // A workspace member's jdk under the workspace lock's suggestion, which recorded the root's JDK.
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-21.0.5");
+        makeJdk(jdks, "temurin-25.0.3");
+        var req = req(tmp).lockJdk("temurin", "25.0.3").projectJdkSpec("21").build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.PROJECT_TOML);
+        assertThat(r.jdkOpt().get().home().getFileName().toString()).isEqualTo("temurin-21.0.5");
+    }
+
+    @Test
+    void a_manifest_vendor_beats_a_suggestion_on_the_same_major(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-25.0.3");
+        makeJdk(jdks, "corretto-25.0.2");
+        var req = req(tmp).lockJdk("temurin", "25.0.3")
+                .projectJdkSpec("corretto-25")
+                .build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.PROJECT_TOML);
+        assertThat(r.jdkOpt().get().home().getFileName().toString()).isEqualTo("corretto-25.0.2");
+    }
+
+    @Test
+    void a_lock_requirement_beats_the_manifest_jdk(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-21.0.5");
+        makeJdk(jdks, "temurin-25.0.3");
+        var req = req(tmp).lockJdk(new JdkPin("", "", "temurin", "21.0.5"))
+                .projectJdkSpec("25")
+                .build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
         assertThat(r.jdkOpt().get().home().getFileName().toString()).isEqualTo("temurin-21.0.5");
+    }
+
+    @Test
+    void an_uninstalled_manifest_jdk_installs_rather_than_settling_on_the_suggestion(@TempDir Path tmp)
+            throws IOException {
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-25.0.3");
+        var req = req(tmp).lockJdk("temurin", "25.0.3")
+                .projectJdkSpec("corretto-25")
+                .build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.wouldInstall()).isTrue();
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.PROJECT_TOML);
+        assertThat(r.installSpec()).isEqualTo("corretto-25");
     }
 
     @Test
@@ -231,8 +287,9 @@ class JdkResolutionTest {
         Files.writeString(JdkFingerprint.java(home), "#!/fake");
         Files.writeString(JdkFingerprint.javac(home), "#!/fake");
         String version = dirName.substring(dirName.indexOf('-') + 1);
+        String implementor = dirName.startsWith("corretto-") ? "Amazon.com Inc." : "Eclipse Adoptium";
         Files.writeString(
-                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
         JdkOwnership.mark(home);
         return home.toRealPath();
     }
