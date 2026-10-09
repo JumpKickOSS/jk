@@ -35,8 +35,9 @@ trim() {
   printf '%s' "$s"
 }
 
-declare -A CLASSES=()
+# Parallel arrays, MODULES[i] and its `--class` flags in CLASSES[i]: macOS bash 3.2 has no `declare -A`.
 MODULES=()
+CLASSES=()
 lineno=0
 while IFS= read -r raw || [[ -n "$raw" ]]; do
   lineno=$((lineno + 1))
@@ -52,10 +53,15 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   IFS='|' read -r module fqcn _surface _outcomes _why <<<"$line"
   module="$(trim "$module")"
   fqcn="$(trim "$fqcn")"
-  if [[ -z "${CLASSES[$module]:-}" ]]; then
+  i=0
+  while [[ $i -lt ${#MODULES[@]} && "${MODULES[$i]}" != "$module" ]]; do
+    i=$((i + 1))
+  done
+  if [[ $i -eq ${#MODULES[@]} ]]; then
     MODULES+=("$module")
+    CLASSES+=("")
   fi
-  CLASSES[$module]+=" --class $fqcn"
+  CLASSES[i]+=" --class $fqcn"
 done <"$REGISTRY"
 
 if [[ ${#MODULES[@]} -eq 0 ]]; then
@@ -64,10 +70,11 @@ if [[ ${#MODULES[@]} -eq 0 ]]; then
 fi
 
 failed=0
-for module in "${MODULES[@]}"; do
+for i in "${!MODULES[@]}"; do
+  module="${MODULES[$i]}"
   cmd=("$JK" test --profile integration --no-ansi -m "$module")
   # shellcheck disable=SC2206 # the value is the space-separated `--class <fqcn>` flags built above
-  cmd+=(${CLASSES[$module]})
+  cmd+=(${CLASSES[$i]})
   if [[ "$MODE" == "--print" ]]; then
     printf '%s\n' "${cmd[*]}"
     continue
