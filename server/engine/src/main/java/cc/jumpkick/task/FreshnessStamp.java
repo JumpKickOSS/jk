@@ -10,19 +10,27 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Cheap mtime-based up-to-date check written into a compile output dir under one of the
+ * Cheap stat-based up-to-date check written into a compile output dir under one of the
  * {@link BuildStamps} names. Sits in front of the content-hashed {@link ActionCache}: one
- * {@code stat} per input, fall through to CAS when anything looks stale. Mtime equality is
- * treated as stale (ms truncation); spoofed mtimes are caught by the action-cache layer.
+ * {@code stat} per input, fall through to CAS when anything looks stale.
+ *
+ * <p>Each source is recorded with its size and nanosecond mtime, and any difference is stale,
+ * whichever way the mtime moved: a restore from backup, an {@code mv} of an older copy or an
+ * archive extraction puts different bytes behind an older mtime. A source must also predate the
+ * stamp's instant (equality is stale, for millisecond truncation).
  *
  * <p>Files are not the only compile inputs. Compiler options, compiler plugins and the JDK decide
  * the output too, and none of them touches a source or a classpath entry's mtime — so the stamp
@@ -86,9 +94,7 @@ public final class FreshnessStamp {
         Set<Path> recordedCp = normalise(stamp.classpath());
         if (!currentCp.equals(recordedCp)) return false;
 
-        for (Path src : normalise(sources)) {
-            if (newerThan(src, stamp.stampMillis())) return false;
-        }
+        if (anySourceChanged(stamp, sources)) return false;
         for (Path cp : currentCp) {
             // Content-addressed store jars encode their payload in the path
             // (…/store/sha256/ab/cd/<hex>). Set equality already proved the locked
@@ -119,10 +125,7 @@ public final class FreshnessStamp {
         // A path-spelled stamp carries no tokens; it matches only a producer that checks by path.
         if (!stamp.classpath().isEmpty()) return false;
         if (!new TreeSet<>(classpath.lines()).equals(new TreeSet<>(stamp.classpathTokens()))) return false;
-        for (Path src : normalise(sources)) {
-            if (newerThan(src, stamp.stampMillis())) return false;
-        }
-        return true;
+        return !anySourceChanged(stamp, sources);
     }
 
     /** The stamp, when its release, option digest and source set are the producer's; else null. */
@@ -190,7 +193,7 @@ public final class FreshnessStamp {
     }
 
     /**
-     * Cheap bar-sizing probe: stamp exists and no source mtime is newer. Does not compare
+     * Cheap bar-sizing probe: stamp exists and no source changed. Does not compare
      * source/classpath sets (unlike {@link #isFresh}).
      */
     public static boolean looksFresh(Path outputDir, String stampName, List<Path> sources) {
@@ -203,11 +206,7 @@ public final class FreshnessStamp {
             Optional<Stamp> read = read(outputDir, stampName);
             if (read.isEmpty()) return false;
             if (optionsDigest.isPresent() && !read.get().optionsDigest().equals(optionsDigest.get())) return false;
-            long stampMillis = read.get().stampMillis();
-            for (Path src : sources) {
-                if (newerThan(src, stampMillis)) return false;
-            }
-            return true;
+            return !anySourceChanged(read.get(), sources);
         } catch (IOException e) {
             return false;
         }
@@ -360,7 +359,14 @@ public final class FreshnessStamp {
         sb.append("RELEASE ").append(release).append('\n');
         sb.append("DIGEST ").append(optionsDigest).append('\n');
         for (Path src : sortedAbs(sources)) {
-            sb.append("SOURCE ").append(src).append('\n');
+            Seen seen = seen(src);
+            sb.append("SOURCE ")
+                    .append(seen.size())
+                    .append(' ')
+                    .append(seen.mtimeNanos())
+                    .append(' ')
+                    .append(src)
+                    .append('\n');
         }
         for (Path cp : sortedAbs(classpath)) {
             sb.append("CP ").append(cp).append('\n');
@@ -381,7 +387,7 @@ public final class FreshnessStamp {
         int release = 0;
         // A stamp without a DIGEST line records no options; it matches only a producer with none.
         String optionsDigest = "";
-        List<Path> sources = new ArrayList<>();
+        Map<Path, Seen> sources = new LinkedHashMap<>();
         List<Path> classpath = new ArrayList<>();
         List<String> classpathTokens = new ArrayList<>();
         for (String line : content.split("\n")) {
@@ -398,7 +404,14 @@ public final class FreshnessStamp {
             } else if (line.startsWith("DIGEST ")) {
                 optionsDigest = line.substring("DIGEST ".length()).trim();
             } else if (line.startsWith("SOURCE ")) {
-                sources.add(Path.of(line.substring("SOURCE ".length()).trim()));
+                // SOURCE <size> <mtime-nanos> <path>; a line in any other shape voids the stamp.
+                String[] parts = line.substring("SOURCE ".length()).trim().split(" ", 3);
+                if (parts.length != 3) return Optional.empty();
+                try {
+                    sources.put(Path.of(parts[2]), new Seen(Long.parseLong(parts[0]), Long.parseLong(parts[1])));
+                } catch (NumberFormatException e) {
+                    return Optional.empty();
+                }
             } else if (line.startsWith("CP ")) {
                 classpath.add(Path.of(line.substring("CP ".length()).trim()));
             } else if (line.startsWith("TOKEN ")) {
@@ -410,24 +423,66 @@ public final class FreshnessStamp {
                 new Stamp(taskId, actionKey, stampMillis, release, optionsDigest, sources, classpath, classpathTokens));
     }
 
-    /** One stamp; exactly one of {@code classpath} and {@code classpathTokens} is non-empty. */
+    /**
+     * One stamp; exactly one of {@code classpath} and {@code classpathTokens} is non-empty.
+     * {@code sourceStats} maps each recorded source to its stat when the stamp was written.
+     */
     public record Stamp(
             String taskId,
             String actionKey,
             long stampMillis,
             int release,
             String optionsDigest,
-            List<Path> sources,
+            Map<Path, Seen> sourceStats,
             List<Path> classpath,
             List<String> classpathTokens) {
         public Stamp {
             Objects.requireNonNull(taskId, "taskId");
             Objects.requireNonNull(actionKey, "actionKey");
             Objects.requireNonNull(optionsDigest, "optionsDigest");
-            sources = List.copyOf(sources);
+            sourceStats = Collections.unmodifiableMap(new LinkedHashMap<>(sourceStats));
             classpath = List.copyOf(classpath);
             classpathTokens = List.copyOf(classpathTokens);
         }
+
+        public List<Path> sources() {
+            return List.copyOf(sourceStats.keySet());
+        }
+    }
+
+    /**
+     * A source's stat identity: size and nanosecond mtime, or {@code -1} for both when it was
+     * absent or a directory.
+     */
+    public record Seen(long size, long mtimeNanos) {
+        static final Seen NONE = new Seen(-1, -1);
+
+        static Seen of(BasicFileAttributes attrs) {
+            if (!attrs.isRegularFile()) return NONE;
+            return new Seen(attrs.size(), attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
+        }
+    }
+
+    private static Seen seen(Path file) {
+        return PathUtil.stat(file).map(Seen::of).orElse(Seen.NONE);
+    }
+
+    /**
+     * True when any source no longer has the stat the stamp recorded for it, or reaches the
+     * stamp's instant. A source the stamp does not name ({@link #looksFresh} skips the set
+     * compare) answers on its mtime alone.
+     */
+    private static boolean anySourceChanged(Stamp stamp, List<Path> sources) throws IOException {
+        for (Path src : normalise(sources)) {
+            // One readAttributes answers present, kind, size and mtime together; this runs over
+            // every source of a module on each check.
+            Optional<BasicFileAttributes> stat = PathUtil.stat(src);
+            if (stat.isEmpty()) return true;
+            Seen recorded = stamp.sourceStats().get(src);
+            if (recorded != null && !recorded.equals(Seen.of(stat.get()))) return true;
+            if (newerThan(src, stat.get(), stamp.stampMillis())) return true;
+        }
+        return false;
     }
 
     private static Set<Path> normalise(List<Path> paths) {
@@ -469,7 +524,10 @@ public final class FreshnessStamp {
         // on ext4) — three ops per input, over ~1,300 sources, twice per isFresh.
         Optional<BasicFileAttributes> stat = PathUtil.stat(file);
         if (stat.isEmpty()) return true; // disappearing input → treat as changed
-        BasicFileAttributes attrs = stat.get();
+        return newerThan(file, stat.get(), stampMillis);
+    }
+
+    private static boolean newerThan(Path file, BasicFileAttributes attrs, long stampMillis) throws IOException {
         // A directory input (sibling lane's classes dir): its ROOT mtime does not change when
         // nested files are rewritten — walk for the newest nested mtime. Deletions
         // bump the parent dir's mtime, which the walk also sees.

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -27,21 +28,52 @@ class BuildCacheTest {
                 public class Hello { public static String greet() { return "hi"; } }
                 """);
 
-        Path cache = tempDir.resolve("cache");
-        // First build: stamp is absent, action cache misses, real compile.
-        int first = run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString());
-        assertThat(first).isEqualTo(0);
-
         // Backdate the source so its mtime is unambiguously older than the
         // freshness stamp. Without this the test races filesystem mtime
         // granularity (a coarse mount can truncate the source's mtime into the
         // same second as the stamp), making the fast-skip nondeterministic.
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 5_000));
 
+        Path cache = tempDir.resolve("cache");
+        // First build: stamp is absent, action cache misses, real compile.
+        int first = run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString());
+        assertThat(first).isEqualTo(0);
+
         // Second build: stamp is fresh, no input newer → fast skip without
         // even hashing source content for an action-key lookup.
         String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(stdout).contains("project up to date");
+    }
+
+    /**
+     * A restore from backup or an {@code mv} of an older copy puts new bytes behind an older
+     * mtime; the build compiles them rather than keeping the classes of the bytes it replaced.
+     */
+    @Test
+    void a_source_replaced_under_an_older_mtime_is_recompiled(@TempDir Path tempDir) throws Exception {
+        run("new", "--name", "widget", tempDir.toString());
+        Path src = tempDir.resolve("src/main/java/example/Hello.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, """
+                package example;
+                public class Hello { public static String greet() { return "first"; } }
+                """);
+        long settled = System.currentTimeMillis() - 60_000;
+        Files.setLastModifiedTime(src, FileTime.fromMillis(settled));
+        Path cache = tempDir.resolve("cache");
+        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+                .isEqualTo(0);
+        Path classFile = tempDir.resolve("target/classes/example/Hello.class");
+        assertThat(Files.readString(classFile, StandardCharsets.ISO_8859_1)).contains("first");
+
+        Files.writeString(src, """
+                package example;
+                public class Hello { public static String greet() { return "restored-from-backup"; } }
+                """);
+        Files.setLastModifiedTime(src, FileTime.fromMillis(settled - 60_000));
+        String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        assertThat(stdout).doesNotContain("project up to date");
+        assertThat(Files.readString(classFile, StandardCharsets.ISO_8859_1)).contains("restored-from-backup");
     }
 
     @Test
