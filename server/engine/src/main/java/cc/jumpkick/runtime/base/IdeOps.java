@@ -8,19 +8,19 @@ import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.discovery.ToolHealth;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.IntellijJdkDir;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkHit;
-import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
-import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -109,8 +109,7 @@ public final class IdeOps {
         for (Map.Entry<Path, JkBuild> me : allModules.entrySet()) {
             sdkRefs.put(me.getKey(), sdkRefFor(me.getKey(), me.getValue(), jdkRegistry, pointer, sdkEntries, seenSdk));
         }
-        String[] defaultSdk =
-                defaultSdkRef(wsRoot, rootBuild, modules, sdkRefs, jdkRegistry, pointer, sdkEntries, seenSdk);
+        String[] defaultSdk = defaultSdkRef(wsRoot, rootBuild, sdkRefs, jdkRegistry, pointer, sdkEntries, seenSdk);
 
         List<Path> dirs = new ArrayList<>(allModules.keySet());
         Edges edges = edges(dirs, allModules, modules, allLibs);
@@ -344,11 +343,10 @@ public final class IdeOps {
 
     /**
      * Resolve a module's stable SDK handle as {@code {stableName, sdkName, languageLevel, javaHome,
-     * version}}. The module's declared {@code project.jdk} level wins; the workspace lock's
-     * {@code [jdk]} pin supplies the level only when the module declares none, and its vendor and
-     * exact version only when it agrees with the level in force. Falls back to level 21 and the
-     * default vendor (Temurin). When the JDK is installed, ensures the {@link StableJdkPointer} and
-     * queues a {@code name|home|version} SDK entry (once per SDK).
+     * version}}. The SDK is the JDK the build compiles the module with ({@link
+     * JavaHomes#resolveJavaHome}), so {@code java = 17} under a host JDK 25 is the JDK 25 SDK at
+     * language level 17. Ensures the {@link StableJdkPointer} and queues a {@code name|home|version}
+     * SDK entry once per SDK.
      */
     private static String[] sdkRefFor(
             Path moduleDir,
@@ -358,89 +356,43 @@ public final class IdeOps {
             List<String> sdkEntries,
             Set<String> seen)
             throws IOException {
-        int declared = module.project().jdkMajor() > 0
-                ? module.project().jdkMajor()
-                : module.project().javaRelease();
-        int level = declared;
-        JdkPin lockJdk = readLockJdk(moduleDir);
-        Integer pinMajor = lockJdk == null ? null : JdkKeywords.leadingMajor(lockJdk.version());
-        // The lock governing a member is the WORKSPACE lock, one table for every module. It names
-        // the toolchain jk resolved for the build, so it fills in a level the module never declared
-        // and never overrides one it did — otherwise a workspace-wide pin flattens every module to
-        // the same level and per-module levels become unexpressible.
-        if (pinMajor != null && declared <= 0) level = pinMajor;
-        if (level <= 0) level = 21;
+        Path home = JavaHomes.resolveJavaHome(moduleDir, registry);
+        Optional<JdkHit> hit = LockPinMatch.hitFor(home, registry.listHits());
+        JdkVendor v = hit.map(JdkHit::vendor).orElseGet(() -> JdkVendor.fromRelease(home));
+        String vendor = v.jbPrefix().orElse(v.vendor().toLowerCase(Locale.ROOT));
+        int major = JavaHomes.featureVersion(home);
+        String version =
+                hit.map(JdkHit::version).or(() -> ToolHealth.javaVersion(home)).orElse(String.valueOf(major));
 
-        // Only a pin that agrees with this module's level describes this module's JDK; a module off
-        // the pinned level resolves its own, or IntelliJ gets the pinned home under the wrong name.
-        boolean pinFits = lockJdk != null && pinMajor != null && pinMajor == level;
-        Optional<JdkHit> hit = Optional.empty();
-        if (lockJdk != null && pinFits) {
-            hit = LockPinMatch.choose(registry.listHits(), lockJdk);
-        }
-        if (hit.isEmpty()) hit = registry.findHitBySpec(String.valueOf(level));
-
-        String vendor;
-        String version = lockJdk != null && pinFits ? lockJdk.version() : null;
-        if (hit.isPresent()) {
-            JdkVendor v = hit.get().vendor();
-            vendor = v.jbPrefix().orElse(v.vendor().toLowerCase(Locale.ROOT));
-            if (version == null) version = hit.get().version();
-        } else if (lockJdk != null && pinFits && !lockJdk.vendor().isBlank()) {
-            vendor = lockJdk.vendor();
-        } else {
-            vendor = "temurin";
-        }
-
-        String stableName = vendor + "-" + level;
+        String stableName = vendor + "-" + major;
         String sdkName = "jk-" + stableName;
-        if (hit.isPresent() && seen.add(sdkName)) {
-            pointer.ensure(stableName, IntellijJdkDir.installDirOf(hit.get().home()));
-            sdkEntries.add(sdkName + "|" + pointer.javaHome(stableName) + "|"
-                    + (version != null ? version : String.valueOf(level)));
+        if (seen.add(sdkName)) {
+            pointer.ensure(stableName, IntellijJdkDir.installDirOf(home));
+            sdkEntries.add(sdkName + "|" + pointer.javaHome(stableName) + "|" + version);
         }
-        int langLevel = module.project().javaRelease() > 0 ? module.project().javaRelease() : level;
+        int langLevel = module.project().javaRelease() > 0 ? module.project().javaRelease() : major;
         return new String[] {
             stableName,
             sdkName,
             String.valueOf(langLevel),
             pointer.javaHome(stableName).toString(),
-            version != null ? version : String.valueOf(level)
+            version
         };
     }
 
-    /**
-     * The project-default SDK: root {@code jdk}, else the highest module level. Reuses a
-     * module's resolved handle when one matches that level; otherwise resolves the root build.
-     */
+    /** The project-default SDK: the root module's, else the JDK the build resolves at the workspace root. */
     private static String[] defaultSdkRef(
             Path wsRoot,
             JkBuild root,
-            Map<Path, JkBuild> modules,
             Map<Path, String[]> sdkRefs,
             JdkRegistry registry,
             StableJdkPointer pointer,
             List<String> sdkEntries,
             Set<String> seen)
             throws IOException {
-        if (sdkRefs.containsKey(wsRoot)) return sdkRefs.get(wsRoot);
-        int level = root.project().jdkMajor();
-        if (level == 0)
-            for (JkBuild m : modules.values())
-                level = Math.max(level, m.project().jdkMajor());
-        for (String[] r : sdkRefs.values()) if (Integer.parseInt(r[2]) == level) return r;
+        String[] rootRef = sdkRefs.get(wsRoot);
+        if (rootRef != null) return rootRef;
         return sdkRefFor(wsRoot, root, registry, pointer, sdkEntries, seen);
-    }
-
-    /** The resolved JDK pin stamped in the workspace {@code jk-lock.toml}, or null. */
-    private static @Nullable JdkPin readLockJdk(Path moduleDir) {
-        Path lf = LockPaths.lockFile(moduleDir);
-        if (!Files.exists(lf)) return null;
-        try {
-            return LockfileReader.read(lf).jdk();
-        } catch (RuntimeException | IOException e) {
-            return null;
-        }
     }
 
     // =========================================================================
