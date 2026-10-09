@@ -26,6 +26,25 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
 
+### 0.15.1
+
+- **A native client for Linux on ARM.** `install.sh` installs `jk-linux-aarch64` on an aarch64 Linux
+  host instead of the JVM client, and `jk self update` and the `jk` wrapper fetch it there.
+- **macOS fixes.** The `jk` wrapper decodes a release on a Mac without Homebrew's `xz`; an engine
+  under a `JK_HOME` too deep for a Unix socket path binds through a short link instead of failing
+  to start; `install.sh` on an Intel Mac installs the JVM client instead of asking for a native
+  archive that does not exist.
+- **Imports go further.** `jk import` probes again after each round that raised a pin, reads a
+  member's pin on a sibling as a floor as Maven does, keeps Kotlin and Groovy side by side in one
+  module, and carries openapi-generator, Quarkus test layouts, Yarn 1 front ends and more of
+  Maven's resource and Node.js configuration across.
+- **Locks and builds are faster.** A lock reads each unchanged store file once and solves
+  workspace members side by side; a stale guard index rebuilds in parallel; a dead local
+  repository is forgotten when the next job starts.
+- **Smaller:** `[mirrors] jdk` serves JDK downloads; a contrib `[hibernate]` battery runs bytecode
+  enhancement; `jk why` names workspace siblings; `jk clean` on Windows names the process holding a
+  file; `--skip-tests` skips the guard lanes unless `--guard` is given.
+
 ### 0.15.0
 
 - **Each module builds into its own `target/`, in Maven's layout.** `target/classes`, `target/test-classes`,
@@ -394,9 +413,11 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 
 ### Platforms without a hosted client
 
-jumpkick.build serves native clients for **linux-x86_64**, **macos-aarch64** and
-**windows-x86_64**, the rows of the release matrix, beside the engine jar and the JVM client. Linux
-on ARM and macOS on Intel have no native client. The installers put the JVM client on such a host, and a contributor there builds the tree with it and
+jumpkick.build serves native clients for **linux-x86_64**, **linux-aarch64**, **macos-aarch64** and
+**windows-x86_64**, beside the engine jar and the JVM client. linux-aarch64 has no runner in the
+matrix: its client is built on an Apple-silicon Mac inside a `container machine` (an arm64 Linux
+guest) from the release commit, and joins the tree at the flatten. macOS on Intel has no native
+client and never will. The installers put the JVM client on such a host, and a contributor there builds the tree with it and
 lets the checkout's own jk take over ([self-host](self-host.md#bootstrap)).
 
 Users on those hosts — and on every host no native client will ever be built for — install the
