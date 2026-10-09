@@ -11,6 +11,7 @@ import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
@@ -51,9 +52,8 @@ class ConnectFaultsTest {
     @Test
     void an_address_that_answered_nothing_through_a_whole_ladder_is_refused_before_the_next_request_dials()
             throws Exception {
-        try (SocketChannel held = refusingPort()) {
-            int port = ((InetSocketAddress) held.getLocalAddress()).getPort();
-            ladderThenRefused(port);
+        try (RefusingPort refusing = RefusingPort.open()) {
+            ladderThenRefused(refusing.port());
         }
     }
 
@@ -86,8 +86,8 @@ class ConnectFaultsTest {
     /** Through a proxy the proxy is what answers nothing; the target host is not blamed for it. */
     @Test
     void a_request_routed_through_a_proxy_that_answers_nothing_remembers_the_proxy_not_the_target() throws Exception {
-        try (SocketChannel held = refusingPort()) {
-            proxyAnswersNothing(((InetSocketAddress) held.getLocalAddress()).getPort());
+        try (RefusingPort refusing = RefusingPort.open()) {
+            proxyAnswersNothing(refusing.port());
         }
     }
 
@@ -139,13 +139,29 @@ class ConnectFaultsTest {
     }
 
     /**
-     * A loopback port that refuses connections for as long as the channel is open: bound, never
-     * listening. Closing a probe socket instead frees the port for any process on the host to take.
+     * A loopback port that refuses connections while open: the local end of an established
+     * connection, which no listener shares. A bound, never-listening channel is refused on Linux
+     * but silently dropped on macOS, and a closed probe socket frees the port for any process.
      */
-    private static SocketChannel refusingPort() throws IOException {
-        SocketChannel channel = SocketChannel.open();
-        channel.bind(new InetSocketAddress("127.0.0.1", 0));
-        return channel;
+    private record RefusingPort(ServerSocketChannel server, SocketChannel held, SocketChannel accepted)
+            implements AutoCloseable {
+
+        static RefusingPort open() throws IOException {
+            ServerSocketChannel server = ServerSocketChannel.open().bind(new InetSocketAddress("127.0.0.1", 0));
+            SocketChannel held = SocketChannel.open(server.getLocalAddress());
+            return new RefusingPort(server, held, server.accept());
+        }
+
+        int port() throws IOException {
+            return ((InetSocketAddress) held.getLocalAddress()).getPort();
+        }
+
+        @Override
+        public void close() throws IOException {
+            try (server;
+                    held;
+                    accepted) {}
+        }
     }
 
     private static Http http() {
