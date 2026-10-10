@@ -27,7 +27,10 @@ import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar;
+import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiJavaFile;
@@ -45,22 +48,20 @@ import java.util.stream.Stream;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Headless import of this checkout — jk's own workspace — through the real external-system path:
- * link, {@link JkProjectResolver} running the installed {@code jk}, and the platform applying the
- * result. Asserts every module resolved with roots, libraries with sources, SDKs, compiler output
- * under {@code target/jdt}, and no {@code .iml} anywhere in the checkout. Skips, loudly, when no
- * {@code jk} is on PATH.
+ * Headless import of a two-module jk workspace through the real external-system path: link, {@link
+ * JkProjectResolver} running the {@code jk} on PATH, and the platform applying the result. Asserts
+ * every module resolved with roots, a library with its sources jar, SDKs, compiler output under
+ * {@code target/jdt}, the gutter's run configuration, and no {@code .iml} in the workspace. Skips,
+ * loudly, when no {@code jk} is on PATH.
  */
 public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
 
     private @Nullable String previousJkBin;
-    private List<String> imlsBefore = List.of();
 
     @Override
     protected void setUp() throws Exception {
         super.setUp();
         previousJkBin = System.getProperty("jk.bin");
-        imlsBefore = imlFiles(checkoutRoot());
     }
 
     /** External module storage applies to directory-based projects only, as every opened jk project is. */
@@ -76,11 +77,6 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
     @Override
     protected void tearDown() throws Exception {
         try {
-            // A red run must not leave module files in the checkout: drop only what this test added.
-            Path checkout = checkoutRoot();
-            for (String iml : imlFiles(checkout)) {
-                if (!imlsBefore.contains(iml)) Files.deleteIfExists(checkout.resolve(iml));
-            }
             if (previousJkBin == null) System.clearProperty("jk.bin");
             else System.setProperty("jk.bin", previousJkBin);
             WriteAction.run(() -> {
@@ -95,18 +91,23 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
     }
 
     public void test_jk_workspace_imports_with_roots_libraries_sdks_and_no_iml() throws Exception {
-        Path checkout = checkoutRoot();
         JkImport.assumeJkOnPath(JkWorkspaceImportTest.class);
+        Path ws = workspace(createTempDir("jk-import").toPath());
+        // Written behind the IDE's back: the VFS sees the roots only once it has looked.
+        VfsUtil.markDirtyAndRefresh(
+                false, true, true, requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(ws)));
 
-        JkCliRunner.Result sources = JkCliRunner.run(checkout.toFile(), "sync", "--sources");
+        JkCliRunner.Result sources = JkCliRunner.run(ws.toFile(), "sync", "--sources");
         assertTrue("jk sync --sources: " + sources.stderr(), sources.ok());
 
-        JkImport.Result result = JkImport.importProject(getProject(), checkout.toFile());
+        JkImport.Result result = JkImport.importProject(getProject(), ws.toFile());
         assertNull("sync failed: " + result.failure(), result.failure());
         DataNode<ProjectData> graph = requireNonNull(result.graph());
 
         List<DataNode<ModuleData>> resolved = modules(graph);
-        assertTrue("jk's workspace has dozens of modules, resolved " + resolved.size(), resolved.size() >= 30);
+        List<String> names = new ArrayList<>();
+        for (DataNode<ModuleData> node : resolved) names.add(node.getData().getExternalName());
+        assertEquals("the workspace's modules and its root", Set.of("core", "app", "acme"), Set.copyOf(names));
         int jkModules = 0;
         for (Module m : ModuleManager.getInstance(getProject()).getModules()) {
             if (ExternalSystemApiUtil.isExternalSystemAwareModule(JkSystem.ID, m)) jkModules++;
@@ -144,7 +145,7 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
                 assertFalse(main, main.contains("/target/classes"));
             }
         }
-        assertTrue("modules with source roots: " + withSourceRoots, withSourceRoots >= 30);
+        assertEquals("modules with source roots", 2, withSourceRoots);
 
         Library[] libraries = LibraryTablesRegistrar.getInstance()
                 .getLibraryTable(getProject())
@@ -159,7 +160,9 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
         }
         // The platform materializes the libraries some module depends on; the rest stay nodes.
         assertEquals("every referenced library became a project library", referenced.size(), libraries.length);
-        assertTrue("jk depends on more than a hundred artifacts: " + libraries.length, libraries.length > 100);
+        assertTrue(
+                "slf4j-api is a project library: " + referenced,
+                referenced.stream().anyMatch(name -> name.startsWith("org.slf4j:slf4j-api:")));
         int withSources = 0;
         for (Library lib : libraries) if (lib.getUrls(OrderRootType.SOURCES).length > 0) withSources++;
         int modelWithSources = 0;
@@ -176,19 +179,16 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
         // one, and each becomes a SOURCES root of its project library.
         assertEquals("libraries with sources jars", modelWithSources, withSources);
         assertTrue("libraries with sources jars after jk sync --sources: " + withSources, withSources > 0);
-        System.out.println("jk workspace import: " + resolved.size() + " modules, " + libraries.length + " libraries, "
-                + withSources + " with sources");
 
         Sdk projectSdk =
                 requireNonNull(ProjectRootManager.getInstance(getProject()).getProjectSdk(), "project SDK set");
         assertTrue(projectSdk.getName(), projectSdk.getName().startsWith("jk-"));
 
-        assertGutterRoutesThroughJk(checkout);
+        assertGutterRoutesThroughJk(ws);
 
         PlatformTestUtil.saveProject(getProject());
-        assertEquals("no .iml written into the checkout", imlsBefore, imlFiles(checkout));
-        assertFalse(
-                ".idea/modules.xml not written into the checkout", Files.exists(checkout.resolve(".idea/modules.xml")));
+        assertEquals("no .iml written into the workspace", List.of(), imlFiles(ws));
+        assertFalse(".idea/modules.xml not written into the workspace", Files.exists(ws.resolve(".idea/modules.xml")));
     }
 
     /**
@@ -196,9 +196,8 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
      * configuration: {@code jk test -m <module> --class <fqcn>} from the workspace root, and under
      * Debug the same command with the JDWP address the debugger attaches to.
      */
-    private void assertGutterRoutesThroughJk(Path checkout) throws Exception {
-        Path source = checkout.resolve("shared/host/src/test/java/cc/jumpkick/host/PathUtilTest.java");
-        assertTrue(source.toString(), Files.isRegularFile(source));
+    private void assertGutterRoutesThroughJk(Path ws) throws Exception {
+        Path source = ws.resolve("core/src/test/java/com/example/core/GreeterTest.java");
         VirtualFile vf = requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source));
         PsiJavaFile psi = (PsiJavaFile)
                 requireNonNull(PsiManager.getInstance(getProject()).findFile(vf));
@@ -209,29 +208,113 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
                 requireNonNull(new JkRunConfigurationProducer().createConfigurationFromContext(context));
         JkRunConfiguration config = (JkRunConfiguration) from.getConfiguration();
         assertEquals(JkCommandLines.KIND_TEST, config.kind());
-        assertEquals(checkout.toString(), config.rootDir());
-        assertEquals("shared/host", config.moduleRel());
+        assertEquals(
+                FileUtil.toSystemIndependentName(ws.toString()), FileUtil.toSystemIndependentName(config.rootDir()));
+        assertEquals("core", config.moduleRel());
         assertEquals(cls.getQualifiedName(), config.className());
-        assertEquals("jk test PathUtilTest", config.getName());
+        assertEquals("jk test GreeterTest", config.getName());
         assertTrue(new JkRunConfigurationProducer().isConfigurationFromContext(config, context));
         assertEquals(
-                List.of("test", "-m", "shared/host", "--class", cls.getQualifiedName(), "--debug-jvm=localhost:7007"),
+                List.of("test", "-m", "core", "--class", cls.getQualifiedName(), "--debug-jvm=localhost:7007"),
                 JkCommandLines.args(config.kind(), config.moduleRel(), config.className(), "localhost:7007"));
     }
 
     public void test_a_failing_cli_surfaces_its_first_error_line() throws Exception {
-        Path checkout = checkoutRoot();
-        Path fake = createTempDir("fake-jk").toPath().resolve("jk");
-        Files.writeString(
-                fake, "#!/bin/sh\necho 'jk: engine refused the connection' >&2\necho 'second line' >&2\nexit 3\n");
-        assertTrue(fake.toFile().setExecutable(true));
+        Path ws = workspace(createTempDir("jk-import").toPath());
+        Path fake = fakeJk(createTempDir("fake-jk").toPath(), "jk: engine refused the connection", "second line", 3);
         System.setProperty("jk.bin", fake.toString());
 
-        JkImport.Result result = JkImport.importProject(getProject(), checkout.toFile());
+        JkImport.Result result = JkImport.importProject(getProject(), ws.toFile());
         assertNull(result.graph());
         String failure = requireNonNull(result.failure());
         assertTrue(failure, failure.contains("jk: engine refused the connection"));
         assertFalse(failure, failure.contains("second line"));
+    }
+
+    /**
+     * A workspace {@code acme} under {@code dir}: {@code core} with a library that publishes sources
+     * and a JUnit test, and {@code app} depending on {@code core}.
+     */
+    private static Path workspace(Path dir) throws IOException {
+        Path ws = dir.resolve("acme");
+        write(ws.resolve("jk.toml"), """
+                group = "com.example"
+                name = "acme"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["core", "app"]
+                """);
+        write(ws.resolve("core/jk.toml"), """
+                name = "core"
+
+                [dependencies]
+                slf4j-api = { group = "org.slf4j", version = "2.0.17" }
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+                """);
+        write(ws.resolve("core/src/main/java/com/example/core/Greeter.java"), """
+                package com.example.core;
+
+                public final class Greeter {
+                    public static String greet(String name) {
+                        return "hello " + name;
+                    }
+                }
+                """);
+        write(ws.resolve("core/src/test/java/com/example/core/GreeterTest.java"), """
+                package com.example.core;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import org.junit.jupiter.api.Test;
+
+                class GreeterTest {
+                    @Test
+                    void greets() {
+                        assertEquals("hello jk", Greeter.greet("jk"));
+                    }
+                }
+                """);
+        write(ws.resolve("app/jk.toml"), """
+                name = "app"
+
+                [dependencies]
+                core.workspace = true
+                """);
+        write(ws.resolve("app/src/main/java/com/example/app/App.java"), """
+                package com.example.app;
+
+                import com.example.core.Greeter;
+
+                public final class App {
+                    public static void main(String[] args) {
+                        System.out.println(Greeter.greet("app"));
+                    }
+                }
+                """);
+        return ws;
+    }
+
+    private static void write(Path file, String text) throws IOException {
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, text);
+    }
+
+    /** A stand-in jk that prints {@code first} and {@code second} on stderr and exits {@code exit}. */
+    private static Path fakeJk(Path dir, String first, String second, int exit) throws IOException {
+        if (SystemInfo.isWindows) {
+            Path cmd = dir.resolve("jk.cmd");
+            Files.writeString(
+                    cmd, "@echo " + first + " 1>&2\r\n@echo " + second + " 1>&2\r\n@exit /b " + exit + "\r\n");
+            return cmd;
+        }
+        Path sh = dir.resolve("jk");
+        Files.writeString(sh, "#!/bin/sh\necho '" + first + "' >&2\necho '" + second + "' >&2\nexit " + exit + "\n");
+        if (!sh.toFile().setExecutable(true)) throw new IOException("cannot make " + sh + " executable");
+        return sh;
     }
 
     private static List<DataNode<ModuleData>> modules(DataNode<ProjectData> graph) {
@@ -256,22 +339,10 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
         return false;
     }
 
-    /** The checkout root: the nearest ancestor of the working dir holding {@code jk.toml} and this plugin. */
-    private static Path checkoutRoot() {
-        Path dir = Path.of("").toAbsolutePath();
-        while (dir != null) {
-            if (Files.isRegularFile(dir.resolve("jk.toml")) && Files.isDirectory(dir.resolve("clients/intellij")))
-                return dir;
-            dir = dir.getParent();
-        }
-        throw new AssertionError("no checkout root above " + Path.of("").toAbsolutePath());
-    }
-
     private static List<String> imlFiles(Path root) throws IOException {
         List<String> out = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(root)) {
             walk.filter(p -> p.getFileName().toString().endsWith(".iml"))
-                    .filter(p -> !p.toString().contains("/.git/"))
                     .forEach(p -> out.add(root.relativize(p).toString()));
         }
         return out;

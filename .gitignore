@@ -19,9 +19,6 @@ build/
 hs_err_pid*
 replay_pid*
 
-# The IntelliJ client's own Gradle wrapper jar stays tracked (overrides *.jar above).
-!clients/intellij/gradle/wrapper/gradle-wrapper.jar
-
 # --- VS Code extension packaging ---
 *.vsix
 clients/vscode/node_modules/
@@ -32,8 +29,6 @@ clients/vscode/node_modules/
 *.iws
 *.ipr
 out/
-clients/intellij/.gradle/
-clients/intellij/.intellijPlatform/
 
 # --- Eclipse ---
 .classpath

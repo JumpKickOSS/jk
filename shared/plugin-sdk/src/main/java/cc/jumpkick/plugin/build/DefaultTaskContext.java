@@ -100,8 +100,8 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
     }
 
     @Override
-    public TaskContribution contributesTestClasspath(String relDir) {
-        contributesTestClasspath.add(relDir);
+    public TaskContribution contributesTestClasspath(String relPath) {
+        contributesTestClasspath.add(relPath);
         return this;
     }
 

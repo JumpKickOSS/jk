@@ -54,7 +54,7 @@
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
 # leave the module are dropped — a cross-module edge cannot close a cycle the module graph already
-# forbids. `clients/intellij` is outside the scan (see PackageGraph.outsideTree).
+# forbids.
 #
 # Shrinking any of these is per-module follow-up work. This file makes the number one the build
 # defends.

@@ -358,7 +358,8 @@ public final class PlannerPlugin {
      * tell two tools apart by name at all.
      *
      * <p>A fetched artifact — a jar, or a CAS-materialized transitive closure dir — <em>is</em> its
-     * content, so it is fingerprinted. A step-dependency that names a whole provisioned SDK
+     * content, so it is fingerprinted; an unpacked archive is its archive's digest, which names its
+     * directory. A step-dependency that names a whole provisioned SDK
      * component instead ({@code sdk-component} with no {@code sdk-path}) is a <b>location</b>, not
      * an artifact: android's {@code sdk-root} resolves to the managed Android SDK root, so
      * fingerprinting it walked every installed platform, system image and emulator binary on the
@@ -382,7 +383,10 @@ public final class PlannerPlugin {
         for (Map.Entry<String, Path> tool : extras.entrySet()) {
             String component = wholeComponents.get(tool.getKey());
             if (component == null) {
-                tokens.add("tool:" + tool.getKey() + ":" + ClasspathFingerprint.entry(tool.getValue()));
+                String identity = ToolArchives.isUnpacked(tool.getValue())
+                        ? ToolArchives.identity(tool.getValue())
+                        : ClasspathFingerprint.entry(tool.getValue());
+                tokens.add("tool:" + tool.getKey() + ":" + identity);
                 continue;
             }
             String revision = sdkPins.get(component);

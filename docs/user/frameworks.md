@@ -154,6 +154,48 @@ Start from the `android/compose` template (`jk new my-app -t android/compose`) �
 Compose app with a JVM unit test and the `jk run` deploy path; see
 [Templates](templates.md).
 
+## IntelliJ Platform plugins
+
+`[intellij]` builds a plugin for IntelliJ IDEA and the IDEs on its platform: the module compiles
+against an IntelliJ distribution, its tests run inside a headless IDE, and its artifact is the
+zip an IDE installs from disk (**Settings → Plugins → ⚙ → Install Plugin from Disk…**).
+
+```toml
+name    = "my-plugin"
+version = "1.0.0"
+
+[intellij]
+version = "262.10968.63"   # the platform build: IntelliJ IDEA's About dialog shows IC-262.10968.63
+plugins = ["java"]         # bundled plugins the code uses, by directory under the IDE's plugins/
+# product     = "ideaIC"   # ideaIC (Community, the default) or ideaIU (Ultimate)
+# since-build = "262"      # defaults to the branch of version
+# until-build = "263.*"    # no upper bound unless set
+
+[repositories.jetbrains]
+url    = "https://www.jetbrains.com/intellij-repository/releases"
+groups = ["com.jetbrains.intellij.*"]
+```
+
+- **The distribution.** `com.jetbrains.intellij.idea:<product>:<version>` is fetched from
+  JetBrains' repository and unpacked once into the store. Its `lib/` jars, and those of each
+  bundled plugin `plugins` names, are the module's provided classpath: compiled against, on the
+  test classpath, never packaged. `jk ide` lists them as provided libraries.
+- **Tests.** The platform test framework (`com.jetbrains.intellij.platform:test-framework` at the
+  same build, with JUnit 4 for its `TestCase` bases) joins the test classpath. The test JVM is
+  started with the distribution's own launcher flags from its `product-info.json`, a sandbox
+  under `target/intellij-sandbox/<version>/`, the module's `plugin.xml` read from the classpath,
+  and the jars of every bundled plugin the named ones require. All of a module's tests run in one
+  JVM, as one IDE. The test JVM is the module's JDK, so pick a platform build that runs on it:
+  2026.2 requires 25, and older platforms' debuggers do not start on 25.
+- **The zip.** `target/<name>-<version>.zip` holds `<name>/lib/`: the module's classes as
+  `<name>-<version>.jar` and its runtime dependencies. The packaged `META-INF/plugin.xml` gets
+  `<version>` from the module and `<idea-version since-build … until-build …>` from the table;
+  the source file is left as written.
+
+The step that sets up the test JVM shows in `jk explain` as `intellij-test-env`; the packager is
+`intellij-plugin`. Running a sandbox IDE, the plugin verifier and Marketplace publishing are not
+part of the battery.
+
 ## Hibernate bytecode enhancement
 
 **Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).

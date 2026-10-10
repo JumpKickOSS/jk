@@ -238,7 +238,9 @@ public record PluginDescriptor(
              * only when the value it resolves to is such a URL, so {@code ${config.<key>}} over a
              * key that names a module file — or nothing — is no tool.
              */
-            @Nullable String url) {
+            @Nullable String url,
+            /** The fetched file is a zip the tool is handed unpacked, as a directory. */
+            boolean unpack) {
 
         public StepDependency {
             with = with == null ? List.of() : List.copyOf(with);
@@ -246,15 +248,25 @@ public record PluginDescriptor(
         }
 
         public StepDependency(String artifact, @Nullable String coordinate, @Nullable Condition when) {
-            this(artifact, coordinate, false, null, null, null, List.of(), List.of(), false, when, null);
+            this(artifact, coordinate, false, null, null, null, List.of(), List.of(), false, when, null, false);
         }
     }
 
     /**
-     * Step-dependency also on the COMPILE classpath (PROVIDED: compile-only, not packaged).
+     * A step-dependency also on the compile and test classpaths (PROVIDED: never packaged).
+     * {@code jars} are globs relative to an unpacked tool's directory, each matching jar an entry
+     * (empty: the tool's own path); {@code testOnly} keeps it off the main compile classpath.
      */
     public record ProvidedClasspath(
-            String dependency, @Nullable Condition when) {}
+            String dependency,
+            List<String> jars,
+            boolean testOnly,
+            @Nullable Condition when) {
+
+        public ProvidedClasspath {
+            jars = jars == null ? List.of() : List.copyOf(jars);
+        }
+    }
 
     /**
      * BOM-style platform dependency; injected at parse time (may not use {@code classpath-has}).

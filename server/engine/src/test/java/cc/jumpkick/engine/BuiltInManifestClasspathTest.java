@@ -38,7 +38,8 @@ class BuiltInManifestClasspathTest {
                         "jaxb",
                         "jooq",
                         "lint",
-                        "minified");
+                        "minified",
+                        "intellij");
     }
 
     /**

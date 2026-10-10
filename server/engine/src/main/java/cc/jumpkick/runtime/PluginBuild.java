@@ -313,24 +313,24 @@ public final class PluginBuild {
                             SdkComponents.resolve(dep.sdkComponent(), dep.sdkPath(), sdkPins.get(dep.sdkComponent())));
                     continue;
                 }
+                Path fetched;
                 if (dep.url() != null) {
-                    out.put(dep.artifact(), UrlTools.fetch(dep.url(), cas));
-                    continue;
+                    fetched = UrlTools.fetch(dep.url(), cas);
+                } else {
+                    if (repos == null) repos = RepoGroupBuilder.buildFor(project, null, cas);
+                    if (dep.transitive()) {
+                        out.put(dep.artifact(), ToolClosures.materialize(dep, repos, cas));
+                        continue;
+                    }
+                    Coordinate coord = resolveCoordinate(repos, dep.coordinateSpec());
+                    fetched = repos.tryFetchArtifact(coord)
+                            .orElseThrow(() -> new IOException("cannot fetch " + coord
+                                    + " — the coordinate a plugin's step-dependency names must exist in a"
+                                    + " declared repo"))
+                            .fetched()
+                            .cachePath();
                 }
-                if (repos == null) repos = RepoGroupBuilder.buildFor(project, null, cas);
-                if (dep.transitive()) {
-                    out.put(dep.artifact(), ToolClosures.materialize(dep, repos, cas));
-                    continue;
-                }
-                Coordinate coord = resolveCoordinate(repos, dep.coordinateSpec());
-                out.put(
-                        dep.artifact(),
-                        repos.tryFetchArtifact(coord)
-                                .orElseThrow(() -> new IOException("cannot fetch " + coord
-                                        + " — the coordinate a plugin's step-dependency names must exist in a"
-                                        + " declared repo"))
-                                .fetched()
-                                .cachePath());
+                out.put(dep.artifact(), dep.unpack() ? ToolArchives.unpack(fetched, cas) : fetched);
             } catch (IOException | RuntimeException e) {
                 if (!lenient) throw e;
                 // Best-effort: the command that needs this tool reports the miss itself.

@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime;
+
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.util.AtomicWrites;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+/**
+ * A step-dependency handed over unpacked ({@code unpack = true}): the fetched zip is extracted once
+ * into the store under {@code tools/unpacked/<sha256 of the archive>/}, staged and published
+ * atomically, so the directory is whole or absent and an unchanged archive is never unpacked again.
+ * The directory's name is the archive's content digest, which is the tool's identity in an action
+ * key ({@link #identity}): fingerprinting the unpacked tree would walk every file of it per build.
+ */
+final class ToolArchives {
+
+    /** Written last into a whole directory; a directory without it is a torn unpack. */
+    static final String COMPLETE = ".jk-unpacked";
+
+    private ToolArchives() {}
+
+    /** The unpacked directory of {@code archive}, extracted on first use. */
+    static Path unpack(Path archive, Cas cas) throws IOException {
+        String sha = FileHashMemo.contentHash(archive.toAbsolutePath().normalize());
+        Path dir = cas.root().resolve("tools").resolve("unpacked").resolve(sha);
+        if (Files.isRegularFile(dir.resolve(COMPLETE))) return dir;
+        Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".unpack-");
+        try {
+            JdkInstaller.extract(archive, staging, "zip");
+            Files.writeString(staging.resolve(COMPLETE), archive.getFileName() + "\n");
+            if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
+            AtomicWrites.publishDir(staging, dir);
+        } catch (IOException e) {
+            PathUtil.deleteRecursively(staging);
+            if (Files.isRegularFile(dir.resolve(COMPLETE))) return dir;
+            throw new IOException("unpacking " + archive + " into " + dir + " failed: " + e.getMessage(), e);
+        }
+        return dir;
+    }
+
+    /** True when {@code path} is a directory {@link #unpack} published. */
+    static boolean isUnpacked(Path path) {
+        return Files.isRegularFile(path.resolve(COMPLETE));
+    }
+
+    /** An unpacked tool's action-key identity: the archive digest its directory is named by. */
+    static String identity(Path dir) {
+        return "unpacked:" + dir.getFileName();
+    }
+}

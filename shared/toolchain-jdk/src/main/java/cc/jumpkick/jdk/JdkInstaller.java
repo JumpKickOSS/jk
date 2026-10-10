@@ -552,7 +552,11 @@ public final class JdkInstaller {
         };
     }
 
-    static void extract(Path archive, Path destDir, String archiveType) throws IOException {
+    /**
+     * Extract a {@code zip}, {@code tar.gz} or {@code tar} archive into {@code destDir}; an entry that
+     * would land outside it is refused before anything under it is written.
+     */
+    public static void extract(Path archive, Path destDir, String archiveType) throws IOException {
         Files.createDirectories(destDir);
         switch (archiveType) {
             case "zip" -> unzip(archive, destDir);

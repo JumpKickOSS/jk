@@ -225,7 +225,8 @@ public final class PluginContributions {
      * One resolved step-dependency, handed to the step as {@code artifact}: a Maven coordinate
      * spec ({@code group:artifact:version[:classifier]}, {@code transitive} = the runtime closure),
      * a provisioned SDK component ({@code sdkComponent}/{@code sdkPath}), or a file at an http(s)
-     * {@code url} the engine fetches once into the store.
+     * {@code url} the engine fetches once into the store. {@code unpack} hands a fetched zip over as
+     * its unpacked directory.
      *
      * <p>{@code managedBy} / {@code with} mirror the manifest: BOM-aligned multi-root tool graphs.
      * {@code forSteps} names the steps or packagers that read the tool; empty means all of them.
@@ -239,7 +240,8 @@ public final class PluginContributions {
             @Nullable String managedBy,
             List<String> with,
             List<String> forSteps,
-            @Nullable String url) {
+            @Nullable String url,
+            boolean unpack) {
 
         public StepDep {
             with = with == null ? List.of() : List.copyOf(with);
@@ -247,7 +249,7 @@ public final class PluginContributions {
         }
 
         public StepDep(String artifact, @Nullable String coordinateSpec) {
-            this(artifact, coordinateSpec, false, null, null, null, List.of(), List.of(), null);
+            this(artifact, coordinateSpec, false, null, null, null, List.of(), List.of(), null, false);
         }
 
         public StepDep(
@@ -256,12 +258,12 @@ public final class PluginContributions {
                 boolean transitive,
                 @Nullable String sdkComponent,
                 @Nullable String sdkPath) {
-            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of(), List.of(), null);
+            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of(), List.of(), null, false);
         }
 
         /** A file at {@code url}, handed to the steps {@code forSteps} name as {@code artifact}. */
-        public static StepDep atUrl(String artifact, String url, List<String> forSteps) {
-            return new StepDep(artifact, null, false, null, null, null, List.of(), forSteps, url);
+        public static StepDep atUrl(String artifact, String url, List<String> forSteps, boolean unpack) {
+            return new StepDep(artifact, null, false, null, null, null, List.of(), forSteps, url, unpack);
         }
 
         /** True when {@code consumer} — a step or packager name — receives this tool. */
@@ -378,11 +380,11 @@ public final class PluginContributions {
         if (sd.url() != null) {
             if (!Interpolation.configProvides(sd.url(), config)) return null;
             String url = Interpolation.resolve(sd.url(), config, project, null, entry);
-            return isHttpUrl(url) ? StepDep.atUrl(artifact, url, forSteps) : null;
+            return isHttpUrl(url) ? StepDep.atUrl(artifact, url, forSteps, sd.unpack()) : null;
         }
         if (sd.sdkComponent() != null) {
             String component = Interpolation.resolve(sd.sdkComponent(), config, project, null, entry);
-            return new StepDep(artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps, null);
+            return new StepDep(artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps, null, false);
         }
         String template = Objects.requireNonNull(sd.coordinate(), "coordinate");
         if (!Interpolation.configProvides(template, config)) return null;
@@ -408,7 +410,8 @@ public final class PluginContributions {
             }
             with.add(resolved);
         }
-        return new StepDep(artifact, coordinate, sd.transitive(), null, null, managedBy, with, forSteps, null);
+        return new StepDep(
+                artifact, coordinate, sd.transitive(), null, null, managedBy, with, forSteps, null, sd.unpack());
     }
 
     /** True for an {@code http://} or {@code https://} value. */
@@ -417,12 +420,25 @@ public final class PluginContributions {
     }
 
     /**
-     * The active plugins' {@code [[contribute.provided-classpath]]} entries with conditions
-     * evaluated: names of declared step-dependency artifacts whose resolved paths join the
-     * module's COMPILE classpath (PROVIDED posture — compile-only, never runtime/packaging).
+     * One provided-classpath contribution: the step tool {@code dependency} names, the {@code jars}
+     * globs under its directory with every {@code ${config.<key>}} resolved (empty: the tool's own
+     * path), and whether it joins the test classpaths alone.
      */
-    public static List<String> providedClasspath(JkBuild build, Path moduleDir) {
-        List<String> out = new ArrayList<>();
+    public record Provided(String dependency, List<String> jars, boolean testOnly) {
+
+        public Provided {
+            jars = List.copyOf(jars);
+        }
+    }
+
+    /**
+     * The active plugins' {@code [[contribute.provided-classpath]]} entries with conditions
+     * evaluated: declared step-dependency artifacts whose resolved paths join the module's compile
+     * and test classpaths (PROVIDED posture — never runtime or packaging). A {@code jars} glob over
+     * a string-list key is one glob per element.
+     */
+    public static List<Provided> providedClasspath(JkBuild build, @Nullable Path moduleDir) {
+        List<Provided> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
@@ -437,7 +453,9 @@ public final class PluginContributions {
                         manifest.id())) {
                     continue;
                 }
-                out.add(pc.dependency());
+                List<String> jars = new ArrayList<>();
+                for (String glob : pc.jars()) jars.addAll(Interpolation.resolveEach(glob, config, build.project()));
+                out.add(new Provided(pc.dependency(), jars, pc.testOnly()));
             }
         }
         return out;

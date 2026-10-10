@@ -91,8 +91,9 @@ public final class TaskSpec {
         return this;
     }
 
-    public TaskSpec contributesTestClasspath(String relDir) {
-        contributesTestClasspath.add(relDir);
+    /** See {@link TaskContribution#contributesTestClasspath}. */
+    public TaskSpec contributesTestClasspath(String relPath) {
+        contributesTestClasspath.add(relPath);
         return this;
     }
 

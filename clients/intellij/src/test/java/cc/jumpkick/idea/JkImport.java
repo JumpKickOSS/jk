@@ -14,7 +14,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.jetbrains.annotations.Nullable;
-import org.junit.Assume;
+import org.junit.jupiter.api.Assumptions;
 
 /** Links and resolves a jk project through the real external-system path, as a project open does. */
 final class JkImport {
@@ -63,6 +63,6 @@ final class JkImport {
             present = false;
         }
         if (!present) System.err.println("SKIPPED " + test.getSimpleName() + ": no jk on PATH (JK_BIN / -Djk.bin)");
-        Assume.assumeTrue("jk on PATH", present);
+        Assumptions.assumeTrue(present, "jk on PATH");
     }
 }

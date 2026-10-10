@@ -300,7 +300,7 @@ public final class PluginDescriptors {
             }
         }
         List<PluginDescriptor.ProvidedClasspath> provided =
-                parseProvidedClasspath(contribute, displayPath, stepDeps, commandDeps);
+                parseProvidedClasspath(contribute, displayPath, schemaKeys, stepDeps, commandDeps);
         String jvmEnvironment = parseJvmEnvironment(contribute, displayPath);
         return new PluginDescriptor.Contributions(
                 platformDeps,
@@ -432,18 +432,36 @@ public final class PluginDescriptors {
         return packagerDeps;
     }
 
-    /** Every provided-classpath entry must name a declared step tool — a command-only tool never joins a compile classpath. */
+    /**
+     * Every provided-classpath entry must name a declared step tool — a command-only tool never
+     * joins a compile classpath — and only a tool that is a directory (unpacked, or a transitive
+     * closure) can be globbed with {@code jars}.
+     */
     private static List<PluginDescriptor.ProvidedClasspath> parseProvidedClasspath(
             TomlTable contribute,
             String displayPath,
+            Set<String> schemaKeys,
             List<PluginDescriptor.StepDependency> stepDeps,
             List<PluginDescriptor.StepDependency> commandDeps) {
         List<PluginDescriptor.ProvidedClasspath> provided = new ArrayList<>();
         for (TomlTable t : tableArray(contribute, "provided-classpath", displayPath)) {
             String where = displayPath + ".contribute.provided-classpath";
             String dependency = requireString(t, "dependency", where);
-            boolean declared = stepDeps.stream().anyMatch(sd -> sd.artifact().equals(dependency));
-            if (!declared) {
+            PluginDescriptor.StepDependency tool = stepDeps.stream()
+                    .filter(sd -> sd.artifact().equals(dependency))
+                    .findFirst()
+                    .orElse(null);
+            List<String> jars = stringList(t, "jars", where);
+            for (String glob : jars) Interpolation.validate(glob, schemaKeys, where + ".jars");
+            if (!jars.isEmpty() && tool != null && !tool.unpack() && !tool.transitive()) {
+                throw new JkBuildParseException(where + ": jars globs a directory — `" + dependency
+                        + "` needs unpack = true (an archive) or transitive = true (a closure)");
+            }
+            String scope = t.getString("scope");
+            if (scope != null && !scope.equals("compile") && !scope.equals("test")) {
+                throw new JkBuildParseException(where + ": scope must be `compile` or `test` — got: " + scope);
+            }
+            if (tool == null) {
                 if (commandDeps.stream().anyMatch(cd -> cd.artifact().equals(dependency))) {
                     throw new JkBuildParseException(where + ": `" + dependency
                             + "` is a [[contribute.command-dependency]] — a command-only tool is provisioned"
@@ -453,7 +471,8 @@ public final class PluginDescriptors {
                 throw new JkBuildParseException(where + ": `" + dependency
                         + "` does not name a declared [[contribute.step-dependency]] artifact");
             }
-            provided.add(new PluginDescriptor.ProvidedClasspath(dependency, parseCondition(t, where)));
+            provided.add(new PluginDescriptor.ProvidedClasspath(
+                    dependency, jars, "test".equals(scope), parseCondition(t, where)));
         }
         return provided;
     }
@@ -518,6 +537,11 @@ public final class PluginDescriptors {
             if (transitive && coordinate == null) {
                 throw new JkBuildParseException(where + ": transitive only applies to a coordinate entry");
             }
+            boolean unpack = Boolean.TRUE.equals(t.getBoolean("unpack"));
+            if (unpack && (sdkComponent != null || transitive)) {
+                throw new JkBuildParseException(
+                        where + ": unpack applies to one archive — a coordinate" + " without transitive, or a url");
+            }
             String managedBy = t.getString("managed-by");
             if (managedBy != null) {
                 Interpolation.validate(managedBy, schemaKeys, entryKeys, where + ".managed-by");
@@ -558,7 +582,8 @@ public final class PluginDescriptors {
                     forSteps,
                     perEntry,
                     when,
-                    url));
+                    url,
+                    unpack));
         }
         return deps;
     }

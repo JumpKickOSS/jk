@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.idea;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** {@code jk ide --print-model} output, decoded without a JSON library: the shapes the plugin meets. */
-public class JkWireModelTest {
+class JkWireModelTest {
 
     private static final String MODEL = "{\"type\":\"ide-model-ack\",\"error\":null,\"wsRoot\":\"/w/app\","
             + "\"rootName\":\"app\",\"workspace\":true,"
@@ -32,87 +29,87 @@ public class JkWireModelTest {
             + "\"defSdkHome\":\"/j/21\",\"defSdkVersion\":\"21.0.1\",\"sdkEntries\":[\"jk-temurin-21|/j/21|21.0.1\"]}";
 
     @Test
-    public void a_full_model_decodes_every_field() {
+    void a_full_model_decodes_every_field() {
         JkWireModel m = JkWireModel.parse(MODEL);
-        assertNull(m.error);
-        assertEquals("/w/app", m.wsRoot);
-        assertEquals("app", m.rootName);
-        assertTrue(m.workspace);
-        assertEquals(2, m.moduleCount());
-        assertEquals(List.of("/w/app/core", "/w/app/cli"), m.moduleDirs());
+        assertThat(m.error).isNull();
+        assertThat(m.wsRoot).isEqualTo("/w/app");
+        assertThat(m.rootName).isEqualTo("app");
+        assertThat(m.workspace).isTrue();
+        assertThat(m.moduleCount()).isEqualTo(2);
+        assertThat(m.moduleDirs()).isEqualTo(List.of("/w/app/core", "/w/app/cli"));
 
         JkWireModel.Module cli = m.modules.get(1);
-        assertEquals("cli", cli.name());
-        assertEquals(21, cli.javaRelease());
-        assertEquals("cc.Main", cli.mainClass());
-        assertNull(m.modules.get(0).mainClass());
-        assertEquals("/w/app/cli/target/jdt/classes/main", cli.jdtClassesDir());
-        assertEquals("/w/app/cli/target/jdt/classes/test", cli.jdtTestClassesDir());
-        assertEquals("/w/app/target/cli/gen/main", cli.genSrcDir());
-        assertEquals(new JkWireModel.Sdk("temurin-21", "jk-temurin-21", 21, "/j/21", "21.0.1"), cli.sdk());
+        assertThat(cli.name()).isEqualTo("cli");
+        assertThat(cli.javaRelease()).isEqualTo(21);
+        assertThat(cli.mainClass()).isEqualTo("cc.Main");
+        assertThat(m.modules.get(0).mainClass()).isNull();
+        assertThat(cli.jdtClassesDir()).isEqualTo("/w/app/cli/target/jdt/classes/main");
+        assertThat(cli.jdtTestClassesDir()).isEqualTo("/w/app/cli/target/jdt/classes/test");
+        assertThat(cli.genSrcDir()).isEqualTo("/w/app/target/cli/gen/main");
+        assertThat(cli.sdk()).isEqualTo(new JkWireModel.Sdk("temurin-21", "jk-temurin-21", 21, "/j/21", "21.0.1"));
 
-        assertEquals(List.of(new JkWireModel.Lib("g:a:jar::1", "g_a_jar__1", "/s/a.jar", null)), m.libs);
-        assertEquals(List.of(new JkWireModel.SiblingRef(1, "core", "COMPILE")), m.siblingRefs);
-        assertEquals(
-                List.of(
+        assertThat(m.libs).isEqualTo(List.of(new JkWireModel.Lib("g:a:jar::1", "g_a_jar__1", "/s/a.jar", null)));
+        assertThat(m.siblingRefs).isEqualTo(List.of(new JkWireModel.SiblingRef(1, "core", "COMPILE")));
+        assertThat(m.libEntries)
+                .isEqualTo(List.of(
                         new JkWireModel.LibEntry(0, "g:a:jar::1", List.of("MAIN", "TEST")),
-                        new JkWireModel.LibEntry(1, "g:a:jar::1", List.of("TEST"))),
-                m.libEntries);
-        assertEquals(List.of(new JkWireModel.ProcessorJar(1, "/s/p.jar")), m.processorJars);
-        assertEquals(new JkWireModel.Sdk("temurin-21", "jk-temurin-21", 21, "/j/21", "21.0.1"), m.defaultSdk);
-        assertEquals(List.of(new JkWireModel.SdkEntry("jk-temurin-21", "/j/21", "21.0.1")), m.sdkEntries);
+                        new JkWireModel.LibEntry(1, "g:a:jar::1", List.of("TEST"))));
+        assertThat(m.processorJars).isEqualTo(List.of(new JkWireModel.ProcessorJar(1, "/s/p.jar")));
+        assertThat(m.defaultSdk).isEqualTo(new JkWireModel.Sdk("temurin-21", "jk-temurin-21", 21, "/j/21", "21.0.1"));
+        assertThat(m.sdkEntries).isEqualTo(List.of(new JkWireModel.SdkEntry("jk-temurin-21", "/j/21", "21.0.1")));
     }
 
     @Test
-    public void chrome_before_the_object_on_stdout_is_ignored() {
+    void chrome_before_the_object_on_stdout_is_ignored() {
         JkWireModel m = JkWireModel.parse("jk: engine warming up\n" + MODEL + "\n");
-        assertEquals("app", m.rootName);
-        assertEquals(2, m.moduleCount());
+        assertThat(m.rootName).isEqualTo("app");
+        assertThat(m.moduleCount()).isEqualTo(2);
     }
 
     @Test
-    public void the_last_typed_object_wins_when_several_leak() {
+    void the_last_typed_object_wins_when_several_leak() {
         String earlier = "{\"type\":\"progress\",\"rootName\":\"stale\"}\n";
-        assertEquals("app", JkWireModel.parse(earlier + MODEL).rootName);
+        assertThat(JkWireModel.parse(earlier + MODEL).rootName).isEqualTo("app");
     }
 
     @Test
-    public void an_error_field_is_surfaced_and_a_json_null_is_absent() {
+    void an_error_field_is_surfaced_and_a_json_null_is_absent() {
         JkWireModel failed = JkWireModel.parse("{\"type\":\"ide-model-ack\",\"error\":\"no jk.toml in /w\"}");
-        assertEquals("no jk.toml in /w", failed.error);
-        assertNull(JkWireModel.parse(MODEL).error);
+        assertThat(failed.error).isEqualTo("no jk.toml in /w");
+        assertThat(JkWireModel.parse(MODEL).error).isNull();
     }
 
     @Test
-    public void escapes_in_strings_are_decoded() {
+    void escapes_in_strings_are_decoded() {
         JkWireModel m = JkWireModel.parse(
                 "{\"wsRoot\":\"C:\\\\w\\\\my \\\"app\\\"\",\"moduleDirs\":[\"C:\\\\w\\\\my \\\"app\\\"\\\\a\"],\"names\":[\"a\\nb\"]}");
-        assertEquals("C:\\w\\my \"app\"", m.wsRoot);
-        assertEquals("a\nb", m.modules.get(0).name());
+        assertThat(m.wsRoot).isEqualTo("C:\\w\\my \"app\"");
+        assertThat(m.modules.get(0).name()).isEqualTo("a\nb");
     }
 
     @Test
-    public void missing_fields_read_as_empty_not_null() {
+    void missing_fields_read_as_empty_not_null() {
         JkWireModel m = JkWireModel.parse("{}");
-        assertEquals("", m.wsRoot);
-        assertEquals("", m.rootName);
-        assertFalse(m.workspace);
-        assertEquals(0, m.moduleCount());
-        assertEquals(List.of(), m.libs);
-        assertEquals("", m.defaultSdk.name());
-        assertNull(m.error);
+        assertThat(m.wsRoot).isEqualTo("");
+        assertThat(m.rootName).isEqualTo("");
+        assertThat(m.workspace).isFalse();
+        assertThat(m.moduleCount()).isEqualTo(0);
+        assertThat(m.libs).isEqualTo(List.of());
+        assertThat(m.defaultSdk.name()).isEqualTo("");
+        assertThat(m.error).isNull();
     }
 
     @Test
-    public void a_short_parallel_array_reads_as_empty_cells() {
+    void a_short_parallel_array_reads_as_empty_cells() {
         JkWireModel m = JkWireModel.parse("{\"moduleDirs\":[\"/a\",\"/b\"],\"names\":[\"a\"]}");
-        assertEquals("a", m.modules.get(0).name());
-        assertEquals("", m.modules.get(1).name());
-        assertEquals(0, m.modules.get(1).sdk().level());
+        assertThat(m.modules.get(0).name()).isEqualTo("a");
+        assertThat(m.modules.get(1).name()).isEqualTo("");
+        assertThat(m.modules.get(1).sdk().level()).isEqualTo(0);
     }
 
     @Test
-    public void no_object_on_stdout_is_an_error() {
-        assertThrows(IllegalArgumentException.class, () -> JkWireModel.parse("engine could not start\n"));
+    void no_object_on_stdout_is_an_error() {
+        assertThatThrownBy(() -> JkWireModel.parse("engine could not start\n"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }
