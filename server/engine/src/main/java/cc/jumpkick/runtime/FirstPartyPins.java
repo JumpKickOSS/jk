@@ -73,7 +73,7 @@ public final class FirstPartyPins {
             String manifestsSha = lock.manifestsSha256();
             if (manifestsSha == null) return List.of();
             // A lock a newer jk wrote is not this jk's to rewrite: its rows follow the newest jk.
-            if (LockRewriteGuard.refusal(lock) != null) return List.of();
+            if (LockRewriteGuard.olderThanWriter(lock) != null) return List.of();
             Cas cas = JkStores.storeCas();
             List<Repin> moved = new ArrayList<>();
             List<Lockfile.PluginEntry> rows = new ArrayList<>();

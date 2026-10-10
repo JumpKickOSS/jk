@@ -5,19 +5,28 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.version.Versions;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
+import org.tomlj.Toml;
+import org.tomlj.TomlArray;
+import org.tomlj.TomlParseResult;
+import org.tomlj.TomlTable;
 
 /**
  * Whether the running jk may rewrite a lock another jk wrote. A lock records its writer —
- * {@code generated-by} names the version, {@code generated-by-build} and its time name the build
- * — and a jk older than that writer does not relock: it would restate the lock in its own,
- * older format, and the newer tree that carries the lock could not boot from the result. A newer
- * jk always may (newest wins), the same build always may, and {@code jk lock --force} overrides
- * the refusal.
+ * {@code generated-by} names the version, {@code generated-by-build} and its time name the build.
+ * A newer jk and the same build always may. A jk older than the writer may only when it restates
+ * every key the lock carries: a key it does not know would be dropped, and the newer tree that
+ * carries the lock could not boot from the result. A change in what a known key means is the
+ * {@code jk-min} floor's to refuse, not this guard's. {@code jk lock --force} overrides the refusal.
  */
 public final class LockRewriteGuard {
 
@@ -35,25 +44,55 @@ public final class LockRewriteGuard {
      * force}. A missing or unreadable lock is no opinion: the relock that follows restates it.
      */
     public static void refuseUnlessForced(Path lockFile, boolean force) {
-        if (force || !Files.isRegularFile(lockFile)) return;
-        Lockfile existing;
-        try {
-            existing = LockfileReader.read(lockFile);
-        } catch (Exception unreadable) {
-            Log.debug("refuseUnlessForced: unreadable lock is restated by the relock", unreadable);
-            return;
-        }
-        String refusal = refusal(existing);
+        if (force) return;
+        String refusal = refusal(lockFile);
         if (refusal != null) throw new LockRewriteRefused(refusal);
     }
 
-    /** Why the running jk must not rewrite {@code existing}, or null when it may. */
-    public static @Nullable String refusal(Lockfile existing) {
-        return refusal(existing, JkVersion.VERSION, runningBuild());
+    /**
+     * Why the running jk must not rewrite the lock at {@code lockFile}, or null when it may. A
+     * missing or unreadable lock is no opinion: the relock that follows restates it.
+     */
+    public static @Nullable String refusal(Path lockFile) {
+        if (!Files.isRegularFile(lockFile)) return null;
+        String text;
+        Lockfile existing;
+        try {
+            text = Files.readString(lockFile);
+            existing = LockfileReader.read(lockFile);
+        } catch (IOException | RuntimeException unreadable) {
+            Log.debug("refusal: unreadable lock is restated by the relock", unreadable);
+            return null;
+        }
+        return refusal(text, existing, JkVersion.VERSION, runningBuild());
     }
 
-    /** The rule with the running identity explicit, for tests. */
-    static @Nullable String refusal(Lockfile existing, String runningVersion, @Nullable WriterBuild running) {
+    /** The rule with the lock's text and the running identity explicit, for tests. */
+    static @Nullable String refusal(
+            String text, Lockfile existing, String runningVersion, @Nullable WriterBuild running) {
+        String relation = olderThanWriter(existing, runningVersion, running);
+        if (relation == null) return null;
+        Set<String> dropped = droppedKeys(text, existing);
+        if (dropped.isEmpty()) return null;
+        return message(
+                Objects.requireNonNull(writerVersion(existing.generatedBy())),
+                existing.writerBuild(),
+                runningVersion,
+                running,
+                relation,
+                dropped);
+    }
+
+    /**
+     * How the running jk is older than the lock's writer ({@code "an older jk"}, {@code "an older
+     * build of the same version"}), or null when it is not.
+     */
+    public static @Nullable String olderThanWriter(Lockfile existing) {
+        return olderThanWriter(existing, JkVersion.VERSION, runningBuild());
+    }
+
+    /** {@link #olderThanWriter(Lockfile)} with the running identity explicit, for tests. */
+    static @Nullable String olderThanWriter(Lockfile existing, String runningVersion, @Nullable WriterBuild running) {
         String writerVersion = writerVersion(existing.generatedBy());
         if (writerVersion == null) return null;
         int order;
@@ -64,12 +103,43 @@ public final class LockRewriteGuard {
         }
         if (order < 0) return null;
         WriterBuild writer = existing.writerBuild();
-        if (order > 0) return message(writerVersion, writer, runningVersion, running, "an older jk");
+        if (order > 0) return "an older jk";
         if (writer == null || running == null || writer.id().equals(running.id())) return null;
         Instant wrote = writer.time();
         Instant runs = running.time();
         if (wrote == null || runs == null || !wrote.isAfter(runs)) return null;
-        return message(writerVersion, writer, runningVersion, running, "an older build of the same version");
+        return "an older build of the same version";
+    }
+
+    /**
+     * The key paths in {@code text} that this jk's writer does not restate from {@code existing},
+     * sorted: {@code module[].foo} for a key inside a row of {@code [[module]]}. Values are not
+     * compared — a relock changes them — only which keys survive.
+     */
+    static Set<String> droppedKeys(String text, Lockfile existing) {
+        Set<String> dropped = keyPaths(Toml.parse(text));
+        dropped.removeAll(keyPaths(Toml.parse(LockfileWriter.render(existing))));
+        return dropped;
+    }
+
+    private static Set<String> keyPaths(TomlParseResult toml) {
+        Set<String> out = new TreeSet<>();
+        collect("", toml, out);
+        return out;
+    }
+
+    private static void collect(String prefix, TomlTable table, Set<String> out) {
+        for (String key : table.keySet()) {
+            String path = prefix + key;
+            out.add(path);
+            Object value = table.get(List.of(key));
+            if (value instanceof TomlTable nested) collect(path + ".", nested, out);
+            if (value instanceof TomlArray array) {
+                for (int i = 0; i < array.size(); i++) {
+                    if (array.get(i) instanceof TomlTable row) collect(path + "[].", row, out);
+                }
+            }
+        }
     }
 
     /** The version {@code generated-by} names ({@code "jk 0.13.7"} → {@code "0.13.7"}), or null. */
@@ -85,11 +155,13 @@ public final class LockRewriteGuard {
             @Nullable WriterBuild writer,
             String runningVersion,
             @Nullable WriterBuild running,
-            String relation) {
+            String relation,
+            Set<String> dropped) {
         return "jk-lock.toml was written by jk " + writerVersion + describe(writer) + " and this engine is jk "
-                + runningVersion + describe(running) + ", " + relation
-                + " — a relock with it would restate the lock in the older jk's format, which the tree that"
-                + " carries the lock may not build from. Install the jk that wrote it (`jk self update`, or"
+                + runningVersion + describe(running) + ", " + relation + " that does not know its key(s) "
+                + String.join(", ", dropped)
+                + " — a relock with it would drop them, and the tree that carries the lock may not build"
+                + " from the result. Install the jk that wrote it (`jk self update`, or"
                 + " `jk install --skip-tests` from its checkout) and run `jk engine stop`, or pass"
                 + " `jk lock --force` to rewrite the lock with this engine anyway";
     }

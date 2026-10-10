@@ -17,16 +17,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A stale lock a newer jk wrote is not relocked by this one, on either entry: the build's
- * invisible freshen fails with the refusal instead of writing an older-format lock, and the
- * pipeline every lock verb runs refuses before it resolves. Nothing is fetched, so no repository
- * is needed.
+ * A stale lock a newer jk wrote, carrying a key this jk does not know, is not relocked by this one
+ * on either entry: the build's invisible freshen fails with the refusal instead of dropping the
+ * key, and the pipeline every lock verb runs refuses before it resolves. Nothing is fetched, so no
+ * repository is needed.
  */
 class LockRewriteRefusalTest {
 
     private static final String NEWER = "99.0.0";
 
-    /** A project whose lock a newer jk wrote, stamped for other manifests so it reads as stale. */
+    /**
+     * A project whose lock a newer jk wrote with a {@code [jdk]} key this jk does not know, stamped
+     * for other manifests so it reads as stale.
+     */
     private static Path staleProjectLockedByNewerJk(Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "com.acme"
@@ -35,6 +38,8 @@ class LockRewriteRefusalTest {
                 """);
         Path lock = tmp.resolve("jk-lock.toml");
         LockfileWriter.write(Lockfile.empty(NEWER), lock, "0".repeat(64));
+        Files.writeString(
+                lock, Files.readString(lock) + "\n[jdk]\nsuggested-vendor = \"temurin\"\nfuture-key = \"x\"\n");
         LockfileReader.clearCache();
         return lock;
     }
@@ -49,7 +54,8 @@ class LockRewriteRefusalTest {
                         tmp, existing, lock, tmp.resolve("cache"), null, List.of(), true, ResolveObserver.NOOP, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("written by jk " + NEWER)
-                .hasMessageContaining("this engine is jk " + JkVersion.VERSION);
+                .hasMessageContaining("this engine is jk " + JkVersion.VERSION)
+                .hasMessageContaining("jdk.future-key");
         assertThat(LockfileReader.read(lock).generatedBy())
                 .as("the lock on disk is untouched")
                 .isEqualTo("jk " + NEWER);
