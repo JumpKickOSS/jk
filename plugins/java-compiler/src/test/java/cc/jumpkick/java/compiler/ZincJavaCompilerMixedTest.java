@@ -364,7 +364,12 @@ class ZincJavaCompilerMixedTest {
                         || z.getEntry("xsbti/compile/CompilerInterface2.class") != null
                         || z.getEntry("dotty/tools/tasty/TastyReader.class") != null
                         || z.getEntry("dotty/tools/dotc/interfaces/Diagnostic.class") != null
-                        || z.getEntry("scala/tools/asm/ClassReader.class") != null) {
+                        || z.getEntry("scala/tools/asm/ClassReader.class") != null
+                        || z.getEntry("org/objectweb/asm/ClassReader.class") != null
+                        || z.getEntry("org/objectweb/asm/tree/ClassNode.class") != null
+                        || z.getEntry("org/objectweb/asm/tree/analysis/Analyzer.class") != null
+                        || z.getEntry("org/objectweb/asm/commons/Remapper.class") != null
+                        || z.getEntry("org/objectweb/asm/util/Printer.class") != null) {
                     return Kind.TOOL;
                 }
                 return Kind.OTHER;

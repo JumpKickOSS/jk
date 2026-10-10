@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +36,8 @@ class MvnRealResultsTest {
     @BeforeEach
     void useThisBuildsSpyJar() {
         previousSpy = System.getProperty("jk.maven-spy.jar");
-        Path jar = RepoRoot.file(MvnRealResultsTest.class, "target/jk-maven-spy-" + JkVersion.VERSION + ".jar");
+        Path jar = RepoRoot.file(
+                MvnRealResultsTest.class, "clients/maven-spy/target/jk-maven-spy-" + JkVersion.VERSION + ".jar");
         System.setProperty("jk.maven-spy.jar", jar.toString());
     }
 
@@ -61,12 +63,12 @@ class MvnRealResultsTest {
 
         Path results = projectDir.resolve("target").resolve("jk-results.md");
         assertThat(results).exists();
-        String md = Files.readString(results);
+        String md = MarkdownReports.strip(Files.readString(results));
         assertThat(md).startsWith("# jk results — FAIL");
         assertThat(md).contains("trigger: cli · tool: mvn");
         assertThat(md).contains("## Tests");
         assertThat(md).contains("#### com.example.AppTest\n");
-        assertThat(md).contains("##### `adds()`");
+        assertThat(md).contains("##### `adds`");
         assertThat(md).contains("expected: <4> but was: <5>");
         assertThat(md).contains("at com.example.AppTest.adds(AppTest.java:");
         assertThat(md).contains("## Modules");

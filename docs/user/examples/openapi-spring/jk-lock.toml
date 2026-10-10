@@ -1,5 +1,7 @@
 version = 1
-generated-by = "jk 0.13.7"
+generated-by = "jk 0.15.1"
+generated-by-build = "95029c41956f"
+generated-by-build-time = "2026-10-10T19:11:09Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
 manifests-sha256 = "168632de84ad90ad06bea0c5e1b3bb2afe4f34c635b680adb8e30b96b6e85fba"
@@ -194,6 +196,9 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:e7b966dcaac8c5ffa4f10e44031ebf5b71f2123560c08ac8b7120028615aea08"
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
+excluded-by = [
+  "org.apache.tomcat:tomcat-annotations-api <- org.springframework.boot:spring-boot-starter-tomcat-runtime@4.1.1, org.springframework.boot:spring-boot-tomcat@4.1.1",
+]
 
 [[artifact]]
 name     = "org.apache.tomcat.embed:tomcat-embed-el:jar:"
@@ -843,11 +848,11 @@ deps = [
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-openapi"
-version    = "0.13.7"
+version    = "0.15.1"
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-spring-boot"
-version    = "0.13.7"
+version    = "0.15.1"
 
 [[module]]
 path    = "."
