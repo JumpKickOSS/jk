@@ -360,7 +360,7 @@ SH
 chmod +x "$WORK/bin/java"
 mkdir -p "$WORK/jdk/bin"
 touch "$WORK/jdk/bin/javac" && chmod +x "$WORK/jdk/bin/javac"
-# A host neither installer table knows, so the installer must choose the JVM client.
+# A host no release lists a native client for, so the installer must choose the JVM client.
 fixture_uname SunOS sun4v
 
 JVM_JAR="jk-1.0.0.jar"
@@ -391,7 +391,7 @@ grep -q "installing the JVM client" "$WORK/last-install.log" || { cat "$WORK/las
 if run_jvm_installer "$WORK/home-jvm-refused" JK_CLIENT=native; then
   cat "$WORK/last-install.log" >&2; echo "JK_CLIENT=native unexpectedly installed on an unhosted host" >&2; exit 1
 fi
-grep -q "no native jk client for SunOS/sun4v" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the native refusal did not name the host" >&2; exit 1; }
+grep -q "jk 1.0.0 publishes no native sunos-sun4v client" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the native refusal did not name the host" >&2; exit 1; }
 [[ ! -e "$WORK/home-jvm-refused/bin/jk" ]] || { echo "the refusal installed something" >&2; exit 1; }
 
 # An Intel Mac: a known OS and architecture with no native client in a release.
@@ -399,9 +399,24 @@ fixture_uname Darwin x86_64
 home="$WORK/home-jvm-Darwin-x86_64"
 run_jvm_installer "$home" || { cat "$WORK/last-install.log" >&2; echo "JVM install on Darwin x86_64 failed" >&2; exit 1; }
 cmp -s "$RELEASE/$JVM_JAR" "$home/lib/jk/$JVM_JAR" || { echo "Darwin x86_64 did not install the JVM client" >&2; exit 1; }
+
+# The release, not the installer, decides: a host whose native client the sums list gets it,
+# whatever the host.
+if command -v gzip >/dev/null 2>&1; then
+  fixture_uname FreeBSD amd64
+  BSD_ARTIFACT="jk-freebsd-x86_64-1.0.0.gz"
+  gzip -cn "$RELEASE/$ARTIFACT" >"$RELEASE/$BSD_ARTIFACT"
+  bsd_hash="$(openssl dgst -sha256 "$RELEASE/$BSD_ARTIFACT" | awk '{print tolower($NF)}')"
+  write_evidence "$jvm_hash  $JVM_JAR"$'\n'"$engine_hash  $ENGINE_JAR"$'\n'"$bsd_hash  $BSD_ARTIFACT"$'\n'
+  run_jvm_installer "$WORK/home-native-freebsd" || { cat "$WORK/last-install.log" >&2; echo "a listed FreeBSD client failed to install" >&2; exit 1; }
+  cmp -s "$RELEASE/$ARTIFACT" "$WORK/home-native-freebsd/bin/jk" || { echo "a listed FreeBSD client was not installed natively" >&2; exit 1; }
+  [[ ! -e "$WORK/home-native-freebsd/lib/jk/$JVM_JAR" ]] || { echo "a listed native client still installed the JVM client" >&2; exit 1; }
+  rm -f "$RELEASE/$BSD_ARTIFACT"
+  write_evidence "$jvm_hash  $JVM_JAR"$'\n'"$engine_hash  $ENGINE_JAR"$'\n'
+fi
 fixture_uname SunOS sun4v
 
-# A JDK too old, and a JRE: refused before anything is downloaded or written.
+# A JDK too old, and a JRE: refused before the client is downloaded or anything is written.
 if run_jvm_installer "$WORK/home-jvm-old" FIXTURE_JAVA_VERSION=21.0.4; then
   cat "$WORK/last-install.log" >&2; echo "a Java 21 unexpectedly installed the JVM client" >&2; exit 1
 fi

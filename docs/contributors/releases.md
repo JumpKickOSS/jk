@@ -281,8 +281,8 @@ releases/
     jk-windows-x86_64-0.13.6.xz    # self-update (engine inflates; no system xz needed)
     jk-windows-x86_64-0.13.6.zip   # install.ps1 / jk.bat only
     jk-engine-0.13.6.jar
-    jk-0.13.6.jar                  # the JVM client: every host with no native client (install.sh
-                                   # falls back to it; install.ps1 on JK_CLIENT=jvm)
+    jk-0.13.6.jar                  # the JVM client: every host these sums list no native
+                                   # client for (installers and wrappers fall back to it)
     jk-maven-spy-0.13.6.jar        # the Maven core extension `jk mvn` attaches; a client fetches
                                    # its own version's on the first `jk mvn` (native and JVM alike)
     SHA256SUMS              # coreutils: <hex>  <filename>
@@ -291,9 +291,12 @@ releases/
 
 `install.sh` fetches `jk-<os>-<arch>-<version>.gz` and inflates it with `gunzip`. `jk.bat` /
 `install.ps1` fetch the Windows `.zip`. The Unix `jk` wrapper and `jk self update` fetch the
-`.xz` beside that `.gz`. On a host with no native client, `install.sh` fetches
-`jk-<version>.jar` and `jk-engine-<version>.jar` instead (so does `install.ps1` on
-`JK_CLIENT=jvm`, and `jk self update` from a JVM install). No installer fetches
+`.xz` beside that `.gz`. Each reads the signed `SHA256SUMS` first and takes the native client only
+when it lists `jk-<os>-<arch>-<version>` for the host; on any other host the installers fetch
+`jk-<version>.jar` and `jk-engine-<version>.jar` instead, the wrappers fetch `jk-<version>.jar`
+(the client fetches its engine), and `jk self update` from a JVM install updates the jar, or swaps
+in the native client once a release lists one for its host (unless `JK_CLIENT=jvm`). Publishing
+a native client for a new platform needs no installer or wrapper change. No installer fetches
 `jk-maven-spy-<version>.jar`: the client does, from the same version directory and against the
 same signed sums, the first time `jk mvn` runs and finds none under `~/.jk/lib/` (a dist install
 copies it there). All three jars are platform-neutral, built by every platform job, and

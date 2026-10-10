@@ -3,8 +3,10 @@
 #
 # Bootstraps CURRENT jk, never a historical one: uses the locally installed jk that
 # satisfies the lock's optional `jk-min` floor, else fetches the latest published release
-# (its signed latest/LATEST pointer, then the signed release SHA256SUMS) and execs it. The lock
-# pins inputs, not the operator — there is no version pin here and none in jk-lock.toml.
+# (its signed latest/LATEST pointer, then the signed release SHA256SUMS) and execs it: the native
+# client when those sums list one for this OS and architecture, else the JVM client on the user's
+# JDK 25+. The lock pins inputs, not the operator — there is no version pin here and none in
+# jk-lock.toml.
 set -eu
 
 # Where jk lives / gets installed — the SAME answer as install.sh and JkDirs, which is now
@@ -15,7 +17,8 @@ case "${JK_HOME:-/}" in
   /*) ;;
   *) echo "jk wrapper: JK_HOME must be an absolute path: $JK_HOME" >&2; exit 1 ;;
 esac
-BIN_DIR="${JK_HOME:-$HOME/.jk}/bin"
+HOME_DIR="${JK_HOME:-$HOME/.jk}"
+BIN_DIR="$HOME_DIR/bin"
 RELEASES="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 RELEASE_RSA_SPKI="MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA2t27ZGJXSS9btuDOBzZN04fq8qcp9Ej/tNbmCpCo10Y6wjcQQY8sJfva4zqvhdZNZz/OEYvwePuZIkTVwmrCOU5jKHeHpP/9m9gYTx7DKr7o5koU/26UOi8kII2LfgU7J5iaYkVR3jUX54lGfXJbNJo2VY7aFRPojW+aCBAI7O0GbQ2h60HK12ltdIk3yomWbBpEYs7XTCScU+jAz2RKpznX966Ue9Obhw5r1/hDITBLbCSEChjsVXwx1343k17xXVgreO8X+gwrwBDw9MwSIpGg5LwJ7enLpW6ua8sfLRnjhyyeBJ+RMrc30KVHfPsgYuSvlF1iCcokM8JJBOK7XGKQSszUn2D/fPC5xjOmDT/4K6c0GnSmybSfzL6zUa5ShIkuiq4eix+WfJ7PGl77vqxQUT4/nURMsFVQJ+Qe9+7pegXbW9/oLZ01/+6AKuZaf7qyMN89p3nGJiOTgACOygY8YEc/Xl3Ue4zxgbu/dR+S3P8dATD2iBhGs6AHR8OPAgMBAAE="
 case "$0" in */*) DIR="${0%/*}" ;; *) DIR="." ;; esac
@@ -49,14 +52,18 @@ ver_ge() {
 }
 
 BIN="$BIN_DIR/jk"
-if [ -x "$BIN" ]; then
+# True when the installed jk may run: it exists, and there is no floor, no VERSION record to
+# compare (the binary enforces the lock itself), or a VERSION that meets the floor.
+installed_ok() {
+  [ -x "$BIN" ] || return 1
   INSTALLED=""
   if [ -f "$BIN_DIR/VERSION" ]; then
     INSTALLED="$(tr -d '[:space:]' < "$BIN_DIR/VERSION")"
   fi
-  if [ -z "$FLOOR" ] || [ -z "$INSTALLED" ] || ver_ge "$INSTALLED" "$FLOOR"; then
-    exec "$BIN" "$@"
-  fi
+  [ -z "$FLOOR" ] || [ -z "$INSTALLED" ] || ver_ge "$INSTALLED" "$FLOOR"
+}
+if installed_ok; then
+  exec "$BIN" "$@"
 fi
 # Canonical path of $1: symlinks resolved, relative made absolute. realpath and readlink -f
 # are not on every host (older macOS has neither), so the fallback resolves the directory
@@ -160,12 +167,62 @@ split_latest_pointer() {
   printf '%s\n' "${_sp_l3#signature }" > "$3"
 }
 
+# Which client: JK_CLIENT as install.sh reads it; unset, the native client when the release lists
+# one for this host, else the JVM client.
+CLIENT="${JK_CLIENT:-}"
+case "$CLIENT" in
+  ""|native|jvm) ;;
+  *) echo "jk wrapper: JK_CLIENT must be native or jvm, not $CLIENT — refusing." >&2; exit 1 ;;
+esac
+
+# One download per JK_HOME: mkdir is atomic, so the wrapper that creates the lock directory
+# installs and every other one waits. A lock older than ten minutes, or whose owner process on
+# this host is gone, is broken; losing that race costs a second download, never a broken
+# install. The scratch directory lives inside the lock, so releasing it clears it.
+LOCK="$BIN_DIR/.jk-wrapper.lock"
+HOST="$(uname -n 2>/dev/null || echo unknown)"
+break_stale_lock() {
+  STALE=""
+  if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+    STALE=1
+  elif [ -f "$LOCK/owner" ]; then
+    read -r OWNER_PID OWNER_HOST < "$LOCK/owner" || true
+    case "${OWNER_PID:-}" in
+      ''|*[!0-9]*) ;;
+      *) if [ "${OWNER_HOST:-}" = "$HOST" ] && ! kill -0 "$OWNER_PID" 2>/dev/null; then STALE=1; fi ;;
+    esac
+  fi
+  if [ -n "$STALE" ] && mv "$LOCK" "$LOCK.stale.$$" 2>/dev/null; then
+    rm -rf "$LOCK.stale.$$"
+  fi
+}
+mkdir -p "$BIN_DIR"
+WAITED=0
+while ! mkdir "$LOCK" 2>/dev/null; do
+  if [ "$WAITED" -eq 0 ]; then
+    echo "jk wrapper: another jk wrapper is installing jk; waiting for it ..." >&2
+  fi
+  if [ $((WAITED % 5)) -eq 0 ]; then
+    break_stale_lock
+  fi
+  sleep 1
+  WAITED=$((WAITED + 1))
+done
+trap 'rm -rf "$LOCK"' EXIT
+trap 'exit 1' HUP INT TERM
+printf '%s %s\n' "$$" "$HOST" > "$LOCK/owner"
+# The wrapper this one waited on may have installed a jk that now satisfies the floor.
+if installed_ok; then
+  rm -rf "$LOCK"
+  exec "$BIN" "$@"
+fi
+TMP="$LOCK/fetch"
+mkdir "$TMP"
+
 # Nothing suitable installed — bootstrap the latest published release. The pointer is one
 # signed object — `version <v>`, `issued <unix-seconds>`, and `signature` over those two
 # lines — and is read literally once the signature verifies; the lock's jk-min floor below is
 # what refuses a pointer rolled back to a release too old for this checkout.
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 if ! curl -fsSL -o "$TMP/LATEST" "$RELEASES/latest/LATEST"; then
   echo "jk wrapper: could not read $RELEASES/latest/LATEST — offline, or JK_RELEASES_URL is wrong." >&2
   exit 1
@@ -189,19 +246,61 @@ if [ -n "$FLOOR" ] && ! ver_ge "$VERSION" "$FLOOR"; then
   exit 1
 fi
 
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-case "$OS" in darwin) OS=macos ;; esac
-ARCH="$(uname -m)"
-case "$ARCH" in amd64) ARCH=x86_64 ;; arm64) ARCH=aarch64 ;; esac
-FILE="jk-$OS-$ARCH-$VERSION.xz"
 echo "jk wrapper: fetching jk $VERSION ..." >&2
-for NAME in "$FILE" SHA256SUMS SHA256SUMS.sig; do
-  curl -fsSL -o "$TMP/$NAME" "$RELEASES/$VERSION/$NAME" || {
-    echo "jk wrapper: could not read $RELEASES/$VERSION/$NAME — the release host does not serve jk $VERSION, or JK_RELEASES_URL is wrong." >&2
+fetch() {
+  curl -fsSL -o "$TMP/$1" "$RELEASES/$VERSION/$1" || {
+    echo "jk wrapper: could not read $RELEASES/$VERSION/$1 — the release host does not serve jk $VERSION, or JK_RELEASES_URL is wrong." >&2
     exit 1
   }
-done
+}
+fetch SHA256SUMS
+fetch SHA256SUMS.sig
 verify_release_signature "$TMP/SHA256SUMS" "$TMP/SHA256SUMS.sig" "release"
+
+# This host as a release names its native client, jk-<os>-<arch>-<version>; the signed sums say
+# whether this release has one. Anywhere else, the JVM client runs on the user's JDK.
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+case "$OS" in darwin) OS=macos ;; esac
+ARCH="$(uname -m | tr '[:upper:]' '[:lower:]')"
+case "$ARCH" in amd64) ARCH=x86_64 ;; arm64) ARCH=aarch64 ;; esac
+TARGET="$(printf '%s' "$OS" | tr -c 'a-z0-9_' '_')-$(printf '%s' "$ARCH" | tr -c 'a-z0-9_' '_')"
+if [ "$CLIENT" != "jvm" ] && awk -v wanted="jk-$TARGET-$VERSION.xz" '
+  substr($0, 65, 2) == "  " && substr($0, 67) == wanted { found = 1 } END { exit !found }
+' "$TMP/SHA256SUMS"; then
+  CLIENT=native
+  FILE="jk-$TARGET-$VERSION.xz"
+elif [ "$CLIENT" = "native" ]; then
+  echo "jk wrapper: jk $VERSION publishes no native $TARGET client; unset JK_CLIENT to use the JVM client." >&2
+  exit 1
+else
+  if [ -z "$CLIENT" ]; then
+    echo "jk wrapper: jk $VERSION publishes no native $TARGET client; installing the JVM client." >&2
+  fi
+  CLIENT=jvm
+  FILE="jk-$VERSION.jar"
+  # A JDK 25 or newer, with javac (the engine compiles on it): JK_JAVA_HOME, else JAVA_HOME, else
+  # java on PATH — the order install.sh reads.
+  if [ -n "${JK_JAVA_HOME:-}" ]; then
+    JAVA="$JK_JAVA_HOME/bin/java"
+  elif [ -n "${JAVA_HOME:-}" ]; then
+    JAVA="$JAVA_HOME/bin/java"
+  else
+    JAVA="$(command -v java 2>/dev/null || true)"
+  fi
+  JAVA_MAJOR=""
+  JAVA_AT=""
+  if [ -n "$JAVA" ] && [ -x "$JAVA" ]; then
+    JAVA_PROPS="$("$JAVA" -XshowSettings:properties -version 2>&1 || true)"
+    JAVA_MAJOR="$(printf '%s\n' "$JAVA_PROPS" | awk -F'"' '/ version "/ { split($2, v, /[._]/); if (v[1] == "1") print v[2]; else print v[1]; exit }')"
+    JAVA_AT="$(printf '%s\n' "$JAVA_PROPS" | awk -F' = ' '/^ *java\.home = / { print $2; exit }')"
+  fi
+  case "$JAVA_MAJOR" in ''|*[!0-9]*) JAVA_MAJOR=0 ;; esac
+  if [ "$JAVA_MAJOR" -lt 25 ] || { [ -n "$JAVA_AT" ] && [ ! -x "$JAVA_AT/bin/javac" ]; }; then
+    echo "jk wrapper: the jk JVM client needs a JDK 25 or newer — set JAVA_HOME or JK_JAVA_HOME to one and re-run." >&2
+    exit 1
+  fi
+fi
+fetch "$FILE"
 WANT="$(awk -v wanted="$FILE" '
   {
     hash = substr($0, 1, 64)
@@ -221,6 +320,26 @@ if [ "$GOT" != "$WANT" ]; then
   echo "jk wrapper: sha256 mismatch for $FILE — refusing (expected $WANT, got $GOT)." >&2
   exit 1
 fi
+
+if [ "$CLIENT" = "jvm" ]; then
+  # The jar goes under <home>/lib/jk, as JvmClientInstall lays it out; the client itself then
+  # writes bin/jk over the JDK checked above. It fetches its own engine on first use, as a
+  # downloaded native client does.
+  LIB="$HOME_DIR/lib/jk"
+  mkdir -p "$LIB"
+  cp "$TMP/$FILE" "$LIB/$FILE.part" && mv -f "$LIB/$FILE.part" "$LIB/$FILE"
+  for OLD in "$LIB"/jk-*.jar; do
+    [ "$OLD" = "$LIB/$FILE" ] || rm -f "$OLD"
+  done
+  JK_HOME="$HOME_DIR" "$JAVA" --enable-native-access=ALL-UNNAMED -jar "$LIB/$FILE" self write-launcher >/dev/null || {
+    echo "jk wrapper: $JAVA could not write the JVM client's launcher into $BIN_DIR." >&2
+    exit 1
+  }
+  printf '%s\n' "$VERSION" > "$BIN_DIR/VERSION"
+  rm -rf "$LOCK"
+  exec "$BIN" "$@"
+fi
+
 # Stock macOS has no xz binary; /usr/bin/compression_tool decodes an .xz stream with -a lzma
 # (-A reads its own block container instead).
 if command -v xz >/dev/null 2>&1; then
@@ -231,7 +350,6 @@ else
   echo "jk wrapper: cannot decompress .xz; install xz and re-run (Linux: xz-utils; macOS: brew install xz)." >&2
   exit 1
 fi
-mkdir -p "$BIN_DIR"
 if [ -e "$BIN" ] || [ -L "$BIN" ]; then
   mv -f "$BIN" "$BIN.old" 2>/dev/null || rm -f "$BIN"
 fi
@@ -239,6 +357,6 @@ cp "$TMP/jk" "$BIN.part" && chmod +x "$BIN.part" && mv "$BIN.part" "$BIN"
 printf '%s\n' "$VERSION" > "$BIN_DIR/VERSION"
 rm -f "$BIN.old" 2>/dev/null || true
 
-# exec replaces this shell, so the EXIT trap never runs: the scratch directory goes first.
-rm -rf "$TMP"
+# exec replaces this shell, so the EXIT trap never runs: the lock and its scratch go first.
+rm -rf "$LOCK"
 exec "$BIN" "$@"

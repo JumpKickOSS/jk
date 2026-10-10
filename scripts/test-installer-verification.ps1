@@ -249,29 +249,28 @@ try {
         Assert-PointerRefused "malformed pointer '$($malformed -replace "`r", '\r' -replace "`n", '\n')'" "latest-release pointer is malformed"
     }
 
-    # ---- host mapping: releases publish windows-x86_64 only ---------------------------------
+    # ---- host mapping: every host has a name; the release's sums say whether it has a client ----
     Import-InstallerFunction "Get-JkTarget"
     $script:notes = @()
-    $target = Get-JkTarget -ArchName "Arm64" -ProcessorArchitecture "ARM64"
-    if ($target -cne "windows-x86_64") { throw "Arm64 mapped to $target instead of the windows-x86_64 build" }
-    if (-not ($script:notes -match "windows-x86_64")) { throw "Arm64 mapping printed no note naming the x86_64 build" }
-    $script:notes = @()
-    if ((Get-JkTarget -ArchName "X64" -ProcessorArchitecture "AMD64") -cne "windows-x86_64") { throw "X64 did not map to windows-x86_64" }
-    if ($script:notes.Count -ne 0) { throw "X64 mapping printed a note: $($script:notes -join ' | ')" }
-    if ((Get-JkTarget -ArchName "" -ProcessorArchitecture "ARM64") -cne "windows-x86_64") { throw "PROCESSOR_ARCHITECTURE=ARM64 fallback did not map to windows-x86_64" }
-    if ((Get-JkTarget -ArchName "" -ProcessorArchitecture "x86") -cne "windows-x86_64") { throw "PROCESSOR_ARCHITECTURE=x86 fallback did not map to windows-x86_64" }
-    try {
-        Get-JkTarget -ArchName "Mips" -ProcessorArchitecture "MIPS" | Out-Null
-        throw "an unknown architecture was accepted"
-    } catch {
-        if ($_.Exception.Message -notmatch "unsupported architecture") { throw }
+    foreach ($case in @(
+            @("X64", "AMD64", "windows-x86_64"),
+            @("Arm64", "ARM64", "windows-aarch64"),
+            @("", "AMD64", "windows-x86_64"),
+            @("", "ARM64", "windows-aarch64"),
+            @("", "x86", "windows-x86"),
+            @("X86", "x86", "windows-x86"),
+            @("Mips", "MIPS", "windows-mips"),
+            @("", "", "windows-unknown"))) {
+        $target = Get-JkTarget -ArchName $case[0] -ProcessorArchitecture $case[1]
+        if ($target -cne $case[2]) { throw "'$($case[0])'/'$($case[1])' mapped to $target instead of $($case[2])" }
     }
+    if ($script:notes.Count -ne 0) { throw "the host mapping printed a note: $($script:notes -join ' | ')" }
 
     # ---- the architecture probe never fails on a host whose runtime lacks RuntimeInformation ----
     Import-InstallerFunction "Get-OsArchitectureName"
     $archName = Get-OsArchitectureName
     if ($null -eq $archName) { throw "Get-OsArchitectureName returned null instead of a string" }
-    if ((Get-JkTarget -ArchName $archName -ProcessorArchitecture "AMD64") -cne "windows-x86_64") { throw "the probed architecture did not map on an AMD64 host" }
+    if ((Get-JkTarget -ArchName $archName -ProcessorArchitecture "AMD64") -cnotmatch '^windows-[a-z0-9_]+$') { throw "the probed architecture did not map to a release name" }
 
     # ---- a native program's stderr is read as text, not raised, even under Stop ---------------
     Import-InstallerFunction "Invoke-NativeLines"
