@@ -16,10 +16,11 @@ The installer puts **`jk`** and **`jkx`** on your PATH. JumpKick requires **JDK 
 run and will install one if needed. After that, prefer `java = N` in `jk.toml` for
 language level — [Concepts](concepts.md).
 
-Native clients are hosted for Linux on x86_64 and aarch64, Windows on x86_64 and macOS on Apple
-silicon. Every other host — macOS on Intel, Windows on ARM, 32-bit ARM or a Raspberry Pi, Solaris,
-FreeBSD, anything else a JDK 25 runs on — gets the [JVM client](#the-jvm-client) from the same
-installers.
+The installers and the [wrapper](wrapper.md) ask the release which client to install: when its
+signed `SHA256SUMS` lists a native client for your OS and architecture (today Linux on x86_64 and
+aarch64, Windows on x86_64 and macOS on Apple silicon), you get that. Every other host — macOS on
+Intel, Windows on ARM, 32-bit ARM or a Raspberry Pi, Solaris, AIX, FreeBSD, anything else a JDK 25
+runs on — gets the [JVM client](#the-jvm-client).
 
 Remote installs authenticate the exact `SHA256SUMS` bytes with the built-in RSA-3072 key,
 require one exact checksum entry, and hash the archive before replacing or executing anything.
@@ -37,9 +38,7 @@ uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and Powe
 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` for you to run; it applies that command
 itself only with `-SetExecutionPolicy` or `JK_SET_EXECUTION_POLICY=1`, because a persistent
 policy change is nothing an uninstall reverts. Group Policy that locks the policy is reported
-with a note — ask an admin. Windows on ARM64 installs the `windows-x86_64` build, which runs
-under x64 emulation; no `windows-aarch64` release exists. `JK_CLIENT=jvm` installs the [JVM
-client](#the-jvm-client) on an ARM64 JDK instead.
+with a note — ask an admin.
 
 Local dogfood from this repository needs a jk to build it; the hosted `jk.exe` the installer
 puts in place is one. With it installed, `jk build --skip-tests` writes `target\dist\jk.exe` and
@@ -59,9 +58,9 @@ signature or install defect: [Security](security.md).
 jk's client is a plain JVM program; the native binary is that program compiled ahead of time
 for the hosts a release builds it for. On any other host the installers install the program
 itself: `jk-<version>.jar`, one platform-neutral jar published beside the native clients and
-verified against the same signed `SHA256SUMS`, plus the engine jar. `install.sh` picks it
-whenever `uname` names a host no native client is hosted for; `install.ps1` picks it on
-`JK_CLIENT=jvm` (or `-Jvm`). `JK_CLIENT=jvm` asks for it on a hosted platform too;
+verified against the same signed `SHA256SUMS`, plus the engine jar. `install.sh`, `install.ps1`
+and the wrapper pick it whenever that `SHA256SUMS` lists no `jk-<os>-<arch>-<version>` client for
+the host. `JK_CLIENT=jvm` (or `install.ps1 -Jvm`) asks for it where a native client exists too;
 `JK_CLIENT=native` refuses to fall back.
 
 ```bash
@@ -70,15 +69,16 @@ curl -fsSL https://jumpkick.build/install.sh | bash
 ```
 
 ```powershell
-# Windows on ARM64, on an ARM64 JDK
-$env:JK_CLIENT = "jvm"; irm https://jumpkick.build/install.ps1 | iex
+# Windows on ARM64 — the same command, on an ARM64 JDK
+irm https://jumpkick.build/install.ps1 | iex
 ```
 
 What lands is the jar under `~/.jk/lib/jk/jk-<version>.jar`, the engine under
 `~/.jk/lib/jk-engine/` as always, and a launcher on the PATH in place of the binary: `~/.jk/bin/jk`
 (POSIX `sh`) or `%USERPROFILE%\.jk\bin\jk.bat`. `jkx` comes with it. Everything else — `jk
 activate`, the engine, `jk self update` — is the same; the update replaces the jar and rewrites
-the launcher instead of swapping a binary.
+the launcher instead of swapping a binary. Once a release lists a native client for the host,
+`jk self update` installs that in place of the JVM client (`JK_CLIENT=jvm` keeps the JVM client).
 
 **You bring the JDK.** jk downloads JDKs only for hosts the JDK feed covers, and a host on this
 path is by definition one it does not. The installer needs a full JDK (not a JRE) of **25 or
@@ -157,7 +157,7 @@ Five names, and `JK_HOME` is the only one most people need.
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
 | `JK_M2_INTEGRATION` | `false` skips the Maven local repo for third-party jars (same as `[m2] integration = false`) |
 | `JK_M2_INSTALL` | `false` keeps `jk install` under `JK_STORE_DIR/repos/jk-local` instead of the Maven local repo (same as `[m2] install = false`) |
-| `JK_CLIENT` | Installer only: `native` or `jvm`. Unset picks the native client where one is hosted and the [JVM client](#the-jvm-client) elsewhere |
+| `JK_CLIENT` | Installers and wrapper only: `native` or `jvm`. Unset picks the native client when the release lists one for the host, else the [JVM client](#the-jvm-client) |
 | `JK_JAVA_HOME` | The JDK the JVM client (and, by default, its engine) runs on; the launcher checks it before the JDK it was installed with, `JAVA_HOME`, and the PATH |
 | `JK_CLIENT_OPTS` | Extra JVM flags for the JVM client's own launch (the engine's are `JK_JVM_ARGS`) |
 | `JK_ACCEPT_UNVERIFIED_TOOL` | `1`: `jk mvn` / `jk gradle` / `jk tool install` install a distribution no checksum vouches for and record its digest — the environment spelling of `--accept-unverified-tool` ([migration](migration.md)) |

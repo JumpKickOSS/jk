@@ -19,7 +19,6 @@ import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -363,17 +362,27 @@ public final class SelfCommand extends GroupCommand {
             }
 
             ReleaseArtifacts.Manifest release = ReleaseArtifacts.manifest(base, target, verifier);
-            if (JvmClient.installed()) {
+            boolean jvm = JvmClient.installed();
+            // A JVM client moves to the native one as soon as a release lists it for this host,
+            // unless JK_CLIENT=jvm asks to stay; a native client has nothing else to move to.
+            String nativeClient = !jvm
+                    ? pickClientArtifact(release.text(), target)
+                    : "jvm".equals(System.getenv("JK_CLIENT"))
+                            ? null
+                            : nativeClientArtifact(release.text(), target).orElse(null);
+            if (nativeClient == null) {
                 // The install the launcher describes: a new jar under <home>/lib/jk and a launcher
-                // rewritten over it, on the JVM this update runs on. Never a native binary — the
-                // host may have none, and a PATH client the launcher does not name is a second jk.
+                // rewritten over it, on the JVM this update runs on.
                 EngineInstall.Materialized engine = fetchAndMaterializeJvm(release, target, install, cas);
                 CommandWedge.printOk("Self", target + " installed (" + engine.engineJar() + ")");
             } else {
-                Fetched fetched = fetchAndMaterialize(release, target, install, cas);
+                Fetched fetched = fetchAndMaterialize(release, target, install, cas, nativeClient);
                 EngineInstall.installBinaries(cas.pathFor(fetched.clientSha()), JkDirs.binDir());
+                if (jvm) JvmClientInstall.retire(JkDirs.binDir(), JvmClientInstall.libDir(), Os.isWindows());
                 CommandWedge.printOk(
-                        "Self", target + " installed (" + fetched.engine().engineJar() + ")");
+                        "Self",
+                        target + " installed (" + fetched.engine().engineJar() + ")"
+                                + (jvm ? " — the native client replaces the JVM client" : ""));
             }
 
             // Hand the engine over: --now stops the old daemon (killing its jobs) first;
@@ -446,12 +455,11 @@ public final class SelfCommand extends GroupCommand {
         }
 
         static Fetched fetchAndMaterialize(
-                ReleaseArtifacts.Manifest release, String version, EngineInstall install, Cas cas) throws IOException {
-            // Engine jar (platform-neutral) + the platform client. Prefer the .xz (every OS,
-            // including Windows); Windows releases also ship a .zip for install.ps1 / jk.bat,
-            // which have no system xz. The native CLI never inflates xz — the engine jar does.
+                ReleaseArtifacts.Manifest release, String version, EngineInstall install, Cas cas, String clientName)
+                throws IOException {
+            // Engine jar (platform-neutral) + the platform client. The native CLI never inflates
+            // xz — the engine jar does.
             ReleaseArtifacts.Verified jar = fetch(release, engineJarName(version), "engine jar", version);
-            String clientName = pickClientArtifact(release.text(), version);
             ReleaseArtifacts.Verified clientArchive = fetch(release, clientName, "client binary", version);
             Path client = clientName.endsWith(".xz")
                     ? inflateXzViaEngine(jar.bytes(), clientArchive.bytes())
@@ -478,30 +486,77 @@ public final class SelfCommand extends GroupCommand {
             }
         }
 
+        /** This host's native client in the release, or a refusal naming what the sums lack. */
+        static String pickClientArtifact(String sumsText, String version) throws IOException {
+            return pickClientArtifact(sumsText, hostOs(), hostArch(), version);
+        }
+
+        /** Visible for tests — pass release vocabulary ({@link #hostOs}, {@link #hostArch}). */
+        static String pickClientArtifact(String sumsText, String os, String arch, String version) throws IOException {
+            var found = nativeClientArtifact(sumsText, os, arch, version);
+            if (found.isPresent()) return found.get();
+            String base = "jk-" + os + "-" + arch + "-" + version;
+            throw new IOException("release SHA256SUMS has no " + base + ".xz"
+                    + ("windows".equals(os) ? " (or " + base + ".zip)" : "")
+                    + " — refusing to install an unverifiable client binary");
+        }
+
+        /** This host's native client when the release lists one. */
+        static Optional<String> nativeClientArtifact(String sumsText, String version) throws IOException {
+            return nativeClientArtifact(sumsText, hostOs(), hostArch(), version);
+        }
+
         /**
          * {@code jk-<os>-<arch>-<version>.xz} when the sums list it, else the Windows {@code .zip}.
          * Unix releases do not ship a zip. The version is part of the name on purpose: the manifest
          * is signed but not bound to its directory, so a manifest copied from another release names
          * that release's artifacts and cannot satisfy a request for this one.
          */
-        static String pickClientArtifact(String sumsText, String version) throws IOException {
-            String os = HostPlatform.currentOs().toLowerCase(Locale.ROOT);
-            String arch = HostPlatform.currentArch();
-            return pickClientArtifact(sumsText, os, arch, version);
-        }
-
-        /** Visible for tests — pass HostPlatform vocabulary already lower-cased. */
-        static String pickClientArtifact(String sumsText, String os, String arch, String version) throws IOException {
+        static Optional<String> nativeClientArtifact(String sumsText, String os, String arch, String version)
+                throws IOException {
             String base = "jk-" + os + "-" + arch + "-" + version;
             String xz = base + ".xz";
-            if (sumHas(sumsText, xz)) return xz;
+            if (sumHas(sumsText, xz)) return Optional.of(xz);
             if ("windows".equals(os)) {
                 String zip = base + ".zip";
-                if (sumHas(sumsText, zip)) return zip;
+                if (sumHas(sumsText, zip)) return Optional.of(zip);
             }
-            throw new IOException("release SHA256SUMS has no " + xz
-                    + ("windows".equals(os) ? " (or " + base + ".zip)" : "")
-                    + " — refusing to install an unverifiable client binary");
+            return Optional.empty();
+        }
+
+        /**
+         * This OS as release artifacts name it, the vocabulary the installers and wrappers derive
+         * from {@code uname -s}: {@code linux}, {@code macos}, {@code windows}, else the OS name
+         * lower-cased ({@code freebsd}, {@code sunos}, {@code aix}).
+         */
+        static String hostOs() {
+            return releaseOs(Os.name());
+        }
+
+        static String releaseOs(String osName) {
+            String n = osName.toLowerCase(Locale.ROOT);
+            if (n.startsWith("windows")) return "windows";
+            if (n.startsWith("mac") || n.startsWith("darwin")) return "macos";
+            return releaseToken(n);
+        }
+
+        /** This architecture as release artifacts name it: {@code x86_64}, {@code aarch64}, else as reported. */
+        static String hostArch() {
+            return releaseArch(System.getProperty("os.arch", ""));
+        }
+
+        static String releaseArch(String osArch) {
+            String a = osArch.toLowerCase(Locale.ROOT);
+            return switch (a) {
+                case "amd64", "x86_64", "x64" -> "x86_64";
+                case "aarch64", "arm64" -> "aarch64";
+                default -> releaseToken(a);
+            };
+        }
+
+        private static String releaseToken(String s) {
+            String t = s.replaceAll("[^a-z0-9_]", "_");
+            return t.isEmpty() ? "unknown" : t;
         }
 
         private static boolean sumHas(String sumsText, String name) throws IOException {
