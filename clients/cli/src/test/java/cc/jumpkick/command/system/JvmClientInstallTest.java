@@ -127,6 +127,34 @@ class JvmClientInstallTest {
         assertThat(Files.readString(launcher)).startsWith("@echo off\r\n");
     }
 
+    /**
+     * Once a native client is installed over the JVM one, nothing of the JVM client is left for
+     * {@code jk} to resolve to: on Windows the launcher and the jkx shim are parked beside the new
+     * {@code jk.exe}; on POSIX the native {@code jk} is left alone. The jars go either way.
+     */
+    @Test
+    void retire_leaves_only_the_native_client(@TempDir Path tmp) throws Exception {
+        for (boolean windows : new boolean[] {true, false}) {
+            Path home = tmp.resolve(windows ? "windows" : "posix");
+            Path bin = Files.createDirectories(home.resolve("bin"));
+            Path lib = Files.createDirectories(home.resolve("lib/jk"));
+            Files.write(lib.resolve("jk-1.2.3.jar"), new byte[] {1});
+            Files.writeString(bin.resolve("jk.bat"), "@echo off\r\n");
+            Files.writeString(bin.resolve("jkx.cmd"), "@echo off\r\n");
+            Path nativeClient = bin.resolve(windows ? "jk.exe" : "jk");
+            Files.write(nativeClient, new byte[] {'M', 'Z'});
+
+            JvmClientInstall.retire(bin, lib, windows);
+
+            assertThat(nativeClient).hasBinaryContent(new byte[] {'M', 'Z'});
+            assertThat(lib.resolve("jk-1.2.3.jar")).doesNotExist();
+            if (windows) {
+                assertThat(bin.resolve("jk.bat")).doesNotExist();
+                assertThat(bin.resolve("jkx.cmd")).doesNotExist();
+            }
+        }
+    }
+
     @Test
     void the_jar_and_launcher_names_follow_the_version_and_platform() {
         assertThat(JvmClientInstall.jarName("0.13.3")).isEqualTo("jk-0.13.3.jar");

@@ -130,6 +130,34 @@ public final class JvmClientInstall {
         return launcher;
     }
 
+    /**
+     * Retire the JVM client once a native one is installed over it in {@code binDir}: on Windows
+     * the {@code jk.bat} launcher and {@code jkx.cmd} shim are parked (on POSIX the native
+     * {@code jk} and {@code jkx} already replaced them), and every client jar under {@code libDir}
+     * goes. A jar the running client still maps cannot be deleted on Windows; it is parked as
+     * {@code .old}.
+     */
+    public static void retire(Path binDir, Path libDir, boolean windows) throws IOException {
+        if (windows) {
+            EngineInstall.displaceToOld(binDir.resolve("jk.bat"));
+            EngineInstall.displaceToOld(binDir.resolve("jkx.cmd"));
+        }
+        if (!Files.isDirectory(libDir)) return;
+        List<Path> jars = new ArrayList<>();
+        PathUtil.forEachChild(libDir, (p, attrs) -> {
+            String n = p.getFileName().toString();
+            if (n.startsWith("jk-") && n.endsWith(".jar")) jars.add(p);
+            return true;
+        });
+        for (Path jar : jars) {
+            try {
+                Files.deleteIfExists(jar);
+            } catch (IOException mapped) {
+                EngineInstall.displaceToOld(jar);
+            }
+        }
+    }
+
     /** The POSIX launcher: plain {@code sh}, so a host without bash runs it. */
     static String renderPosix(Path jar, Path java) {
         String jarPath = jar.toAbsolutePath().toString();

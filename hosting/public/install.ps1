@@ -10,9 +10,9 @@
 # Environment variables:
 #   JK_ARCHIVE_URL   Override the archive URL. JK_VERSION is required; signed evidence
 #                    still comes from JK_RELEASES_URL\<version>\. Supports .zip and .jar.
-#   JK_CLIENT        `native` or `jvm`. Unset: the native jk.exe (x64; ARM64 runs it under
-#                    emulation). `jvm` installs the JVM client instead — jk-<version>.jar on a
-#                    JDK 25+ you provide, as bin\jk.bat — native speed on Windows on ARM.
+#   JK_CLIENT        `native` or `jvm`. Unset: the native jk.exe when the release lists one for
+#                    this architecture, else the JVM client — jk-<version>.jar on a JDK 25+ you
+#                    provide, as bin\jk.bat. `jvm` asks for it even where a native one exists.
 #   JK_JAVA_HOME     The JDK the JVM client runs on (else JAVA_HOME, else java on the PATH).
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
@@ -150,23 +150,22 @@ function Get-OsArchitectureName {
 }
 
 function Get-JkTarget {
-    # Releases publish windows-x86_64 only. Windows on ARM runs that build under x64 emulation,
-    # so an ARM64 host installs it and is told so rather than asking for an artifact that does
-    # not exist. The inputs are parameters so the mapping is testable off the host.
+    # This host as a release names its native client, jk-windows-<arch>-<version>.zip. Every host
+    # has a name; whether a release serves a client for it is the signed SHA256SUMS's to say. The
+    # inputs are parameters so the mapping is testable off the host.
     param(
         [string] $ArchName = (Get-OsArchitectureName),
-        # Fallback for older hosts / unusual report strings.
-        [string] $ProcessorArchitecture = $env:PROCESSOR_ARCHITECTURE
+        # Fallback for older hosts / unusual report strings: the OS's, not a 32-bit process's.
+        [string] $ProcessorArchitecture = $(if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE })
     )
-    $arm64 = ($ArchName -match "^Arm64$") -or
-        ($ArchName -notmatch "^(X64|Amd64)$" -and $ProcessorArchitecture -match "(?i)ARM64")
-    $x64 = ($ArchName -match "^(X64|Amd64)$") -or ($ProcessorArchitecture -match "(?i)AMD64|X86")
-    if ($arm64) {
-        Write-Note "Windows on ARM64: no windows-aarch64 release exists yet; installing the windows-x86_64 build (runs under x64 emulation). JK_CLIENT=jvm installs the JVM client on an ARM64 JDK instead."
-    } elseif (-not $x64) {
-        Die "unsupported architecture: $ArchName (supported: x86_64; ARM64 installs the x86_64 build; JK_CLIENT=jvm installs the JVM client on any JDK 25+)"
+    $name = if ($ArchName) { $ArchName } else { $ProcessorArchitecture }
+    $arch = switch -Regex ($name) {
+        "^(X64|Amd64)$" { "x86_64"; break }
+        "^Arm64$" { "aarch64"; break }
+        default { ($name.ToLowerInvariant() -replace '[^a-z0-9_]', '_') }
     }
-    return "windows-x86_64"
+    if (-not $arch) { $arch = "unknown" }
+    return "windows-$arch"
 }
 
 # The feature version a `java -version` first line reports: `openjdk version "25.0.1" 2025-10-21`
@@ -678,13 +677,16 @@ if ($LocalPath) {
         } catch {
             Die $_.Exception.Message
         }
+        if (-not $listsNative -and $env:JK_CLIENT -eq "native") {
+            Die "jk $version publishes no native $target client; unset JK_CLIENT to install the JVM client instead."
+        }
         if (-not $listsNative) {
             $probedJava = Find-Java -Probe
             if ($probedJava) {
-                Write-Note "jk $version publishes no $target client yet; installing the JVM client (jk-$version.jar) on $probedJava instead."
+                Write-Note "jk $version publishes no native $target client; installing the JVM client (jk-$version.jar) on $probedJava instead."
                 $UseJvm = $true
             } else {
-                Die "jk $version publishes no $target client yet, and no JDK 25 or newer was found for the JVM client. Install a JDK 25+ (set JAVA_HOME) and re-run, or set JK_VERSION to a release that has a $target build."
+                Die "jk $version publishes no native $target client, and no JDK 25 or newer was found for the JVM client. Install a JDK 25+ (set JAVA_HOME) and re-run, or set JK_VERSION to a release that has a $target build."
             }
         }
     }

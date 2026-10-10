@@ -23,11 +23,10 @@
 #   JK_HOME          jk's home directory. Default $HOME/.jk; everything jk
 #                    owns lives under it, on every platform. The client is
 #                    installed to $JK_HOME/bin.
-#   JK_CLIENT        `native` or `jvm`. Unset: the native client where one is
-#                    hosted (Linux on x86_64/aarch64, macOS on aarch64), else the JVM
-#                    client — jk-<version>.jar on a JDK 25+ you provide — for
-#                    every other OS and architecture. `jvm` asks for the JVM
-#                    client on a hosted platform too.
+#   JK_CLIENT        `native` or `jvm`. Unset: the native client when the release
+#                    lists one for this OS and architecture, else the JVM client —
+#                    jk-<version>.jar on a JDK 25+ you provide. `jvm` asks for the
+#                    JVM client even where a native one exists.
 #   JK_JAVA_HOME     The JDK the JVM client runs on (else JAVA_HOME, else `java`
 #                    on the PATH). A JDK, 25 or newer.
 #
@@ -211,32 +210,28 @@ main() {
     fi
   fi
 
-  # Native release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself uses
-  # (HostPlatform), for the hosts a release serves one for: linux-x86_64, linux-aarch64 and macos-aarch64.
-  # Windows uses install.ps1 (irm|iex); this script never runs there. Prints nothing for a host
-  # with no native client, which installs the JVM client instead.
-  native_target() {
+  # This host as a release names its native client, jk-<os>-<arch>-<version> — the vocabulary jk
+  # itself uses (HostPlatform). Every host has a name; whether a release serves a client for it
+  # is for the release's signed SHA256SUMS to say.
+  host_target() {
     local os arch
-    case "$(uname -s)" in
-      Linux)  os="linux" ;;
-      Darwin) os="macos" ;;
-      *) return 1 ;;
-    esac
-    case "$(uname -m)" in
-      x86_64|amd64) arch="x86_64" ;;
-      aarch64|arm64) arch="aarch64" ;;
-      *) return 1 ;;
-    esac
-    case "$os-$arch" in
-      linux-x86_64|linux-aarch64|macos-aarch64) printf '%s-%s' "$os" "$arch" ;;
-      *) return 1 ;;
-    esac
+    os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    arch="$(uname -m | tr '[:upper:]' '[:lower:]')"
+    case "$os" in darwin) os="macos" ;; esac
+    case "$arch" in amd64) arch="x86_64" ;; arm64) arch="aarch64" ;; esac
+    printf '%s-%s' "$(printf '%s' "$os" | tr -c 'a-z0-9_' '_')" "$(printf '%s' "$arch" | tr -c 'a-z0-9_' '_')"
   }
 
-  # Which client to install: `native` or `jvm`. JK_CLIENT decides; unset, the host decides — the
-  # native client where one is hosted, the JVM client everywhere else (any OS and architecture a
-  # JDK 25 runs on: macOS on Intel, Windows on ARM, 32-bit ARM or a Raspberry Pi, Solaris,
-  # FreeBSD, …). A local file or an explicit URL names its own kind by extension.
+  # True when the sums file $1 has an entry named exactly $2. verify_artifact still checks the
+  # whole file, and the digest, before anything is installed.
+  sums_lists() {
+    awk -v wanted="$2" 'substr($0, 65, 2) == "  " && substr($0, 67) == wanted { found = 1 } END { exit !found }' "$1"
+  }
+
+  # Which client to install: `native` or `jvm`. JK_CLIENT decides; unset, the release decides —
+  # the native client when its signed sums list one for this host, the JVM client on any other
+  # OS and architecture a JDK 25 runs on. A local file or an explicit URL names its own kind by
+  # extension.
   CLIENT="${JK_CLIENT:-}"
   case "$CLIENT" in
     ""|native|jvm) ;;
@@ -325,21 +320,6 @@ main() {
     ARCHIVE_URL="$JK_ARCHIVE_URL"
     infer_decompress "${ARCHIVE_URL%%\?*}"
   else
-    if [ "$CLIENT" != "jvm" ]; then
-      if TARGET="$(native_target)"; then
-        CLIENT="native"
-      elif [ "$CLIENT" = "native" ]; then
-        die "no native jk client for $(uname -s)/$(uname -m) (hosted: Linux on x86_64 and aarch64, macOS on aarch64);" \
-            "unset JK_CLIENT to install the JVM client instead."
-      else
-        CLIENT="jvm"
-        note "no native jk client for $(uname -s)/$(uname -m); installing the JVM client (jk-<version>.jar on your JDK)"
-      fi
-    fi
-    if [ "$CLIENT" = "native" ]; then
-      have gunzip || die "gunzip is required to install the native jk client."
-      EXT="gz"
-    fi
     if [ -n "${JK_VERSION:-}" ]; then
       VERSION="$JK_VERSION"
     else
@@ -357,10 +337,32 @@ main() {
                "refusing a rolled-back pointer (set JK_VERSION to install a specific release)."
     fi
     [ -n "$VERSION" ] || die "could not resolve the latest jk version from $RELEASES_URL/latest/LATEST"
+    case "$VERSION" in
+      *[!A-Za-z0-9._-]*) die "invalid release version: $VERSION" ;;
+    esac
+    # The version's signed sums are read before any client download: they say whether this host
+    # has a native client, and the download below is verified against the same copy.
+    download "$RELEASES_URL/$VERSION/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS" \
+      || die "failed to download release checksum evidence."
+    download "$RELEASES_URL/$VERSION/SHA256SUMS.sig" "$TMPDIR_JK/SHA256SUMS.sig" \
+      || die "failed to download release signature evidence."
+    verify_signature "$TMPDIR_JK/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS.sig" "release"
+    TARGET="$(host_target)"
+    if [ "$CLIENT" != "jvm" ]; then
+      if sums_lists "$TMPDIR_JK/SHA256SUMS" "jk-$TARGET-$VERSION.gz"; then
+        CLIENT="native"
+      elif [ "$CLIENT" = "native" ]; then
+        die "jk $VERSION publishes no native $TARGET client; unset JK_CLIENT to install the JVM client instead."
+      else
+        CLIENT="jvm"
+        note "jk $VERSION publishes no native $TARGET client; installing the JVM client (jk-$VERSION.jar on your JDK)"
+      fi
+    fi
     if [ "$CLIENT" = "jvm" ]; then
       ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$VERSION.jar"
     else
-      ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$TARGET-$VERSION.$EXT"
+      have gunzip || die "gunzip is required to install the native jk client."
+      ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$TARGET-$VERSION.gz"
     fi
     infer_decompress "$ARCHIVE_URL"
   fi
@@ -387,12 +389,14 @@ main() {
     ARCHIVE_FILE="$TMPDIR_JK/$ARTIFACT_NAME"
     download "$ARCHIVE_URL" "$ARCHIVE_FILE" \
       || die "failed to download $ARCHIVE_URL"
-    download "$RELEASE_VERSION_URL/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS" \
-      || die "failed to download release checksum evidence."
-    download "$RELEASE_VERSION_URL/SHA256SUMS.sig" "$TMPDIR_JK/SHA256SUMS.sig" \
-      || die "failed to download release signature evidence."
-
-    verify_signature "$TMPDIR_JK/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS.sig" "release"
+    # A release resolved from the pointer or JK_VERSION already holds its verified sums.
+    if [ ! -f "$TMPDIR_JK/SHA256SUMS" ] || [ ! -f "$TMPDIR_JK/SHA256SUMS.sig" ]; then
+      download "$RELEASE_VERSION_URL/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS" \
+        || die "failed to download release checksum evidence."
+      download "$RELEASE_VERSION_URL/SHA256SUMS.sig" "$TMPDIR_JK/SHA256SUMS.sig" \
+        || die "failed to download release signature evidence."
+      verify_signature "$TMPDIR_JK/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS.sig" "release"
+    fi
 
     # verify_artifact <file> <name> — <file> hashes to the one exact SHA256SUMS entry for <name>, or die.
     verify_artifact() {
