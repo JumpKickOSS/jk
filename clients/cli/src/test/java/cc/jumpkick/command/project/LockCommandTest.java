@@ -549,8 +549,9 @@ class LockCommandTest {
     }
 
     /**
-     * A lock a newer jk wrote is not rewritten by this one when the manifest moves: the lock stays
-     * as it was and the command fails, and {@code --force} is the override that rewrites it.
+     * A lock a newer jk wrote with a row key this jk does not know is not rewritten by this one when
+     * the manifest moves: the lock stays as it was and the command fails, and {@code --force} is
+     * the override that rewrites it.
      */
     @Test
     void a_lock_a_newer_jk_wrote_is_left_alone_unless_forced(@TempDir Path tempDir) throws Exception {
@@ -569,7 +570,8 @@ class LockCommandTest {
 
         Path lock = tempDir.resolve("jk-lock.toml");
         String byNewerJk = Files.readString(lock)
-                .replaceFirst("(?m)^generated-by = \"jk [^\"]*\"$", "generated-by = \"jk 99.0.0\"");
+                .replaceFirst("(?m)^generated-by = \"jk [^\"]*\"$", "generated-by = \"jk 99.0.0\"")
+                .replaceFirst("(?m)^\\[\\[artifact]]$", "[[artifact]]\nmirror = \"elsewhere\"");
         Files.writeString(lock, byNewerJk);
         Files.writeString(tempDir.resolve("jk.toml"), Files.readString(tempDir.resolve("jk.toml")) + "\n# moved\n");
         LockfileReader.clearCache();
@@ -577,7 +579,9 @@ class LockCommandTest {
         assertThat(run(lockArgs))
                 .as("an older jk does not rewrite a newer jk's lock")
                 .isNotEqualTo(0);
-        assertThat(Files.readString(lock)).contains("generated-by = \"jk 99.0.0\"");
+        assertThat(Files.readString(lock))
+                .contains("generated-by = \"jk 99.0.0\"")
+                .contains("mirror = ");
 
         String[] forced = Arrays.copyOf(lockArgs, lockArgs.length + 1);
         forced[lockArgs.length] = "--force";

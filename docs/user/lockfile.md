@@ -511,20 +511,23 @@ and all. Two commits with identical code are one build, with one identity and on
 time names the commit whose source last changed the bytes; a fresher stamp on identical bytes
 would give one build identity two times.
 
-A jk **older than the writer never relocks**. When the manifests move and the build, `jk sync`
-or `jk lock` would rewrite a lock a newer jk wrote — a newer version, or a later build of the same
-version — the command fails naming both:
+A jk **older than the writer relocks only what it can restate whole**. When the manifests move
+and the build, `jk sync` or `jk lock` would rewrite a lock a newer jk wrote — a newer version, or a
+later build of the same version — the older jk first restates the lock with its own writer. If
+every key the lock carries survives, the relock goes ahead: the format has not moved between the
+two. If a key would be dropped, the command fails naming both builds and the keys:
 
 ```
 jk-lock.toml was written by jk 0.13.7 (build 1a2b3c4d5e6f of 2026-09-17T15:57:16Z) and this
 engine is jk 0.13.7 (build 4ee07400a592 of 2026-09-16T13:12:00Z), an older build of the same
-version — a relock with it would restate the lock in the older jk's format …
+version that does not know its key(s) artifact[].mirror — a relock with it would drop them …
 ```
 
 Install the jk that wrote the lock (`jk self update`, or `jk install --skip-tests` from its
 checkout) and run `jk engine stop` so the next command starts it; `jk lock --force` rewrites the
 lock with the running jk anyway. A newer jk always may relock, and a lock the same build wrote is
-never in question.
+never in question. A key whose *meaning* changed is not this check's to catch: the lock's `jk-min`
+floor refuses a jk too old to read it right.
 
 ## Related
 
