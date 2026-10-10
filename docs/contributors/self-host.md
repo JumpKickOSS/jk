@@ -110,7 +110,9 @@ tree is hosted. `.jk/ci-bootstrap-reader` names a bridge commit (one full sha) t
 release can build and whose jk reads the tree; `scripts/ci-bootstrap.sh` checks it out beside the
 job, has the pinned release relock it in its own format (`jk lock --force`: the bridge checkout is
 thrown away, never committed) and build and install it, and every later step of the job builds the
-tree with the bridge. `.jk/bootstrap-reads.txt` then records the bridge's reads
+tree with the bridge. A bridge that adds a plugin and uses it in the same tree is built without the
+members that open a table the pinned release's plugins do not own, so the release builds that plugin
+and the bridge's jk reads the whole tree. `.jk/bootstrap-reads.txt` then records the bridge's reads
 (`scripts/bootstrap-reads.sh <bridge sha>`). G57 holds the file to one full sha. It goes when the
 pin moves to a release cut from the tree (step 2 above); G112 then judges the lock by that release.
 

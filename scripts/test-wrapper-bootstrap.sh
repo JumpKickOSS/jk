@@ -84,14 +84,16 @@ write_lock() {
 }
 
 # Runs the checkout's wrapper with JK_HOME=$1 and the remaining arguments, in an environment
-# holding only what the wrapper documents, with $RELEASES_URL (the fixture) as the release host.
+# holding only what the wrapper documents, with $RELEASES_URL (the fixture) as the release host and
+# $CLIENT, when set, as JK_CLIENT.
 RELEASES_URL="file://$RELEASES"
+CLIENT=""
 run_wrapper() {
   local home="$1"
   shift
   mkdir -p "$WORK/tmp"
   env -i PATH="$FIXTURE_PATH" HOME="$WORK/home" TMPDIR="$WORK/tmp" \
-    JK_HOME="$home" JK_RELEASES_URL="$RELEASES_URL" \
+    JK_HOME="$home" JK_RELEASES_URL="$RELEASES_URL" ${CLIENT:+JK_CLIENT="$CLIENT"} \
     "$REPO/jk" "$@" >"$WORK/last-stdout" 2>"$WORK/last-stderr"
 }
 
@@ -216,13 +218,18 @@ assert_refused_unchanged "tampered-manifest" "release signature verification fai
 write_evidence "" "$WORK/other-key.pem"
 assert_refused_unchanged "foreign-manifest" "release signature verification failed"
 
-# A validly signed manifest that does not name this host's artifact exactly once.
-write_evidence "$(artifact_hash)  jk-$OS-$ARCH-0.9.0.xz"$'\n'
-assert_refused_unchanged "other-release-manifest" "lacks one exact $ARTIFACT entry"
+# A validly signed manifest that names this host's artifact twice.
 write_evidence "$(artifact_hash)  $ARTIFACT"$'\n'"$(artifact_hash)  $ARTIFACT"$'\n'
 assert_refused_unchanged "duplicate-entry" "lacks one exact $ARTIFACT entry"
+
+# A manifest without one exact entry for this host's artifact has no native client for it. Without
+# JK_CLIENT that means the JVM client; JK_CLIENT=native refuses instead.
+CLIENT=native
+write_evidence "$(artifact_hash)  jk-$OS-$ARCH-0.9.0.xz"$'\n'
+assert_refused_unchanged "other-release-manifest" "publishes no native"
 write_evidence "$(artifact_hash)  $ARTIFACT"$'\r\n'
-assert_refused_unchanged "crlf-manifest" "lacks one exact $ARTIFACT entry"
+assert_refused_unchanged "crlf-manifest" "publishes no native"
+CLIENT=""
 
 # A signature file that is not one base64 line of an RSA-3072 signature, or is missing.
 write_evidence
