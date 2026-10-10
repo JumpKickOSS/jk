@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.runtime.ProvidedClasspath;
 import cc.jumpkick.runtime.base.IdeOps;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.IdeModelRequest;
@@ -49,7 +51,11 @@ public final class IdeModelVerb implements HostedVerb {
                 IdeModelRequest req = IdeModelRequest.decode(requestLine);
                 String jdksDir = req.jdksDir();
                 model = IdeOps.ideModel(
-                        Path.of(req.dir()), Path.of(req.cache()), jdksDir == null ? null : Path.of(jdksDir), false);
+                        Path.of(req.dir()),
+                        Path.of(req.cache()),
+                        jdksDir == null ? null : Path.of(jdksDir),
+                        false,
+                        ProvidedClasspath.providedJars(JkStores.storeCas()));
             } catch (RuntimeException e) {
                 model = IdeWireModel.error(Errors.text(e));
             }

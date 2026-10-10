@@ -79,6 +79,7 @@ class SelfHostingTomlTest {
                         "clients/cli",
                         "clients/cli-terminal",
                         "clients/web",
+                        "clients/intellij",
                         "clients/maven-spy",
                         "plugins/test-runner",
                         "plugins/java-compiler",
@@ -105,7 +106,8 @@ class SelfHostingTomlTest {
                         "plugins/lint",
                         "plugins/android",
                         "plugins/micronaut",
-                        "plugins/hibernate");
+                        "plugins/hibernate",
+                        "plugins/intellij");
     }
 
     @Test
@@ -231,6 +233,11 @@ class SelfHostingTomlTest {
                 continue;
             }
             assertThat(parsed.project().group()).isEqualTo("cc.jumpkick");
+            if (module.equals("clients/intellij")) {
+                // The IDE plugin is named for the folder an IDE installs it under, not for Maven.
+                assertThat(parsed.project().name()).isEqualTo("jumpkick-intellij");
+                continue;
+            }
             assertThat(parsed.project().name()).startsWith("jk-");
         }
     }

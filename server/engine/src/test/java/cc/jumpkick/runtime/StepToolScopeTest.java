@@ -219,7 +219,12 @@ class StepToolScopeTest {
         assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-test-config"))
                 .isEmpty();
         assertThat(tools.named(
-                        build, tmp, tmp.resolve("jk-lock.toml"), PluginContributions.providedClasspath(build, tmp)))
+                        build,
+                        tmp,
+                        tmp.resolve("jk-lock.toml"),
+                        PluginContributions.providedClasspath(build, tmp).stream()
+                                .map(PluginContributions.Provided::dependency)
+                                .toList()))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("android-jar");
     }

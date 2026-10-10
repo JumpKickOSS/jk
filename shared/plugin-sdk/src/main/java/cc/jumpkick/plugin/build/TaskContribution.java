@@ -54,8 +54,11 @@ public interface TaskContribution {
     /** Fold a declared output dir into packaging + the native-image classpath as resources. */
     TaskContribution contributesResources(String relDir);
 
-    /** Append a declared output dir to the module's test runtime classpath. */
-    TaskContribution contributesTestClasspath(String relDir);
+    /**
+     * Append to the module's test runtime classpath: a declared output dir, or a declared output
+     * file whose non-blank lines are absolute classpath entries (jars the step located, not wrote).
+     */
+    TaskContribution contributesTestClasspath(String relPath);
 
     /**
      * A declared output file (relative to the task's scratch root) whose non-blank lines the engine

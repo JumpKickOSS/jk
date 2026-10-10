@@ -208,7 +208,7 @@ jk lock && jk build && jk test --modules app
 
 ```bash
 ./scripts/package-vscode.sh      # → clients/vscode/jumpkick-*.vsix (gitignored)
-./scripts/package-intellij.sh    # → clients/intellij/build/distributions/*.zip
+jk build -m clients/intellij     # → clients/intellij/target/jumpkick-intellij-<version>.zip
 ```
 
 Requires `jk` on PATH. No engine jars in the IDE process. See `clients/vscode/README.md` and

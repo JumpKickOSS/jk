@@ -51,6 +51,8 @@ modules = [
   "clients/cli",
   "clients/cli-terminal",
   "clients/web",
+  # The IntelliJ plugin, built by the [intellij] battery; wire-only, never sees a jk jar
+  "clients/intellij",
   # A Maven core extension jk mvn attaches to the user's Maven; not a jk plugin
   "clients/maven-spy",
   # Plugins/Workers
@@ -80,6 +82,7 @@ modules = [
   "plugins/android",
   "plugins/micronaut",
   "plugins/hibernate",
+  "plugins/intellij",
 ]
 
 # ---------------------------------------------------------------------------

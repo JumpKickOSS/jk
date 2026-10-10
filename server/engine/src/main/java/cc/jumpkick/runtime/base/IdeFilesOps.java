@@ -53,8 +53,9 @@ public final class IdeFilesOps {
             @Nullable Path jdksDir,
             @Nullable Path ideConfigDir,
             Set<IdeTarget> targets,
-            boolean preview) {
-        IdeWireModel wire = IdeOps.ideModel(startDir, cache, jdksDir, true);
+            boolean preview,
+            ProvidedJars provided) {
+        IdeWireModel wire = IdeOps.ideModel(startDir, cache, jdksDir, true, provided);
         if (wire.error() != null) return Result.error(wire.error());
         try {
             IdeModel model = IdeModel.fromWire(wire, ideConfigDir);

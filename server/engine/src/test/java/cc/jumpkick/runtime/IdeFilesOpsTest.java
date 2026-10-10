@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.ide.IdeGeneration;
 import cc.jumpkick.ide.IdeTarget;
 import cc.jumpkick.runtime.base.IdeFilesOps;
+import cc.jumpkick.runtime.base.ProvidedJars;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,7 +37,13 @@ class IdeFilesOpsTest {
 
     private static IdeFilesOps.Result run(Path tmp, Path dir, EnumSet<IdeTarget> targets, boolean preview) {
         return IdeFilesOps.generate(
-                dir, tmp.resolve("cache"), tmp.resolve("jdks"), tmp.resolve("ide-config"), targets, preview);
+                dir,
+                tmp.resolve("cache"),
+                tmp.resolve("jdks"),
+                tmp.resolve("ide-config"),
+                targets,
+                preview,
+                ProvidedJars.NONE);
     }
 
     private static List<Path> files(IdeFilesOps.Result result) {

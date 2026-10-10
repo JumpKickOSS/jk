@@ -111,7 +111,7 @@ product and epic 1 absorbs it.
 **Open**
 
 - Marketplace listings for IntelliJ and VS Code. Both plugins are packaged from this
-  repository (`scripts/package-intellij.sh`, `scripts/package-vscode.sh`) and installed from
+  repository (`jk build -m clients/intellij`, `scripts/package-vscode.sh`) and installed from
   disk.
 
 ### 4. Daily-loop batteries (P1)

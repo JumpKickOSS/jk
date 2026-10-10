@@ -39,20 +39,24 @@ error line; a missing `jk` binary names the `JK_BIN` / PATH fix.
 
 ## Distribution
 
-Not on the JetBrains Marketplace: `publishPlugin` is not wired and no release runs it. Install from
-the zip `buildPlugin` produces, or run from source. Editor intelligence for `jk.toml` does not
+Not on the JetBrains Marketplace: no release publishes it. Install from the zip `jk build`
+writes. Editor intelligence for `jk.toml` does not
 depend on this plugin — see the JSON Schema note in `docs/user/projects.md`.
 
 ## Requirements
 
-- IntelliJ IDEA 2024.1+ (Community or Ultimate)
+- IntelliJ IDEA 2026.2+ (Community or Ultimate)
 - `jk` on PATH (`jk --version`), or `JK_BIN` / system property `jk.bin`
 
 ## Build installable zip
 
+The plugin is a member of jk's workspace, built by the `[intellij]` battery
+([Frameworks](../../docs/user/frameworks.md#intellij-platform-plugins)) against IntelliJ IDEA
+Community with the bundled Java plugin:
+
 ```bash
-./scripts/package-intellij.sh
-# → clients/intellij/build/distributions/jumpkick-intellij-*.zip
+jk build -m clients/intellij
+# → clients/intellij/target/jumpkick-intellij-<version>.zip
 ```
 
 **Install from disk:** Settings → Plugins → ⚙ → Install Plugin from Disk…
@@ -74,16 +78,17 @@ extension (`clients/vscode/`).
 
 ## Tests
 
-`clients/intellij/gradlew test` runs two tiers:
+Two tiers:
 
-- unit tests over the reader, the wire model, root discovery and the graph (a captured
-  two-module `ide-model` under `src/test/resources`), the debouncer and the manifest filter;
-- IntelliJ Platform tests (`HeavyPlatformTestCase`): the debounced trigger over real VFS
-  events; `JkWorkspaceImportTest`, which imports this repository's own workspace through the
-  real external-system path — link, resolver running the installed `jk`, platform applying the
+- `jk test -m clients/intellij`: unit tests over the reader, the wire model, root discovery and the
+  graph (a captured two-module `ide-model` under `src/test/resources`), the debouncer and the
+  manifest filter;
+- `jk test -m clients/intellij --profile integration`: the IntelliJ Platform tests
+  (`HeavyPlatformTestCase`, run by `IdeHostedTest` in one headless IDE): the debounced trigger over
+  real VFS events; `JkWorkspaceImportTest`, which imports a two-module workspace through the
+  real external-system path — link, resolver running the `jk` on PATH, platform applying the
   result — and asserts every module, roots, libraries (with sources jars, after a
-  `jk sync --sources` of the checkout), SDKs, `target/jdt` outputs and that no `.iml` lands in
-  the checkout; and `JkDebugBreakpointTest`, the gutter's Debug end to end: a project `jk new`
+  `jk sync --sources`), SDKs, `target/jdt` outputs and that no `.iml` lands in the workspace; and `JkDebugBreakpointTest`, the gutter's Debug end to end: a project `jk new`
   scaffolds is imported, a line breakpoint is set in its test, the producer's JumpKick
   configuration runs under the Debug executor, and the session must pause on that line and
   `jk test` exit 0 after a resume. Both skip, printing why, when no `jk` is on PATH.

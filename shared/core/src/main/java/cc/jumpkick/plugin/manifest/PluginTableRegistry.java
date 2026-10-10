@@ -68,7 +68,8 @@ public final class PluginTableRegistry {
             "lint.jk-plugin.toml",
             "minified.jk-plugin.toml",
             "micronaut.jk-plugin.toml",
-            "hibernate.jk-plugin.toml");
+            "hibernate.jk-plugin.toml",
+            "intellij.jk-plugin.toml");
 
     /** The built-in manifest filenames — the only names the resources strip may delete. */
     public static List<String> builtInManifestNames() {

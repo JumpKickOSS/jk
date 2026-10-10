@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerSupport.contributedProvidedClasspath;
 import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 import static cc.jumpkick.runtime.PlannerSupport.unresolvedProcessorDeps;
 
@@ -350,7 +349,8 @@ public final class PlannerSetup {
         // Plugin-contributed PROVIDED classpath (an Android platform jar): javac
         // sees it, runtime/packaging never do. Resolved through the same engine
         // fetch the steps use, so the compile action key fingerprints it.
-        List<Path> contributedProvided = contributedProvidedClasspath(project, in, cas, tools);
+        ProvidedClasspath.Provided provided = ProvidedClasspath.contributed(project, in, cas, tools);
+        List<Path> contributedProvided = provided.compile();
         mainCp.addAll(contributedProvided);
         ctx.put(CLASSPATH, mainCp);
 
@@ -415,10 +415,13 @@ public final class PlannerSetup {
         List<Path> testRuntimeCp = new ArrayList<>(resolver.testRuntimeClasspathFor(lock, true, project, in.dir()));
         testRuntimeCp.addAll(testSiblings.siblingClosureJars());
         // A plugin's contributed provided classpath is provided scope by another door: on both test
-        // classpaths, as a [provided-dependencies] row is, and in no artifact.
-        compileTestCp.addAll(contributedProvided);
-        for (Path p : contributedProvided) {
-            if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
+        // classpaths, as a [provided-dependencies] row is, and in no artifact. Its test-only entries
+        // (a platform's test framework) join here and nowhere else.
+        for (List<Path> entries : List.of(contributedProvided, provided.testOnly())) {
+            compileTestCp.addAll(entries);
+            for (Path p : entries) {
+                if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
+            }
         }
         ctx.put(PROVIDED_CP, contributedProvided);
         ctx.put(COMPILE_TEST_CP, compileTestCp);

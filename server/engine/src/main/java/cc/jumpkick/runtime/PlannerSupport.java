@@ -37,7 +37,6 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
@@ -81,36 +80,6 @@ import org.jspecify.annotations.Nullable;
 public final class PlannerSupport {
 
     private PlannerSupport() {}
-
-    /**
-     * The resolved paths of {@code [[contribute.provided-classpath]]} entries — declared
-     * step-dependency artifacts (an SDK platform jar) that join the COMPILE classpaths only. The
-     * entry names its tool itself, so only the named tools are fetched, whatever their scope.
-     */
-    static List<Path> contributedProvidedClasspath(
-            JkBuild project, BuildPlanner.Inputs in, Cas cas, PluginBuild.StepTools tools) {
-        List<String> names = PluginContributions.providedClasspath(project, in.dir());
-        if (names.isEmpty()) return List.of();
-        try {
-            Map<String, Path> fetched = tools.fetch(
-                    tools.named(project, in.dir(), in.lockFile(), names),
-                    project,
-                    cas,
-                    PluginBuild.sdkPins(in.lockFile()));
-            List<Path> out = new ArrayList<>();
-            for (String name : names) {
-                Path path = fetched.get(name);
-                if (path == null) {
-                    throw new RuntimeException("[[contribute.provided-classpath]] names `" + name
-                            + "` but no step-dependency resolved under that artifact name");
-                }
-                out.add(path);
-            }
-            return out;
-        } catch (IOException | InterruptedException e) {
-            throw new RuntimeException("cannot resolve the plugin-contributed compile classpath: " + e.getMessage(), e);
-        }
-    }
 
     /**
      * The {@code -processorpath} / KSP processor classpath: the module's classpath over {@code

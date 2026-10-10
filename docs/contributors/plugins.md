@@ -187,6 +187,21 @@ A tool both lanes need is declared once, as a `step-dependency` — commands rec
 so one artifact may not sit in both (parse error). `[[contribute.provided-classpath]]` resolves
 against the step lane only: a command-only tool never joins a compile classpath.
 
+**Archives (`unpack`).** A `coordinate` (not `transitive`) or `url` entry with `unpack = true` is
+a zip handed over unpacked: extracted once into the store under `tools/unpacked/<sha256 of the
+archive>/` and published whole, so a step receives the directory. Its action-key identity is that
+digest, not a walk of the tree. The IntelliJ battery's distribution is one
+(`com.jetbrains.intellij.idea:ideaIC:${config.version}!zip`).
+
+**The provided classpath.** A `[[contribute.provided-classpath]]` entry puts its tool on the main
+compile classpath and both test classpaths, never on the runtime or in an artifact. `scope =
+"test"` keeps it to the test classpaths (a platform's test framework). `jars` globs a directory
+tool — unpacked or a transitive closure — instead of naming it whole: each regular file a glob
+matches (`*` within a path segment, `**` across them) is an entry, in glob order and path order
+within a glob, and a glob over a string-list key is one glob per element
+(`plugins/${config.plugins}/lib/*.jar`). `jk ide` lists every entry as a provided (or test)
+library of the module.
+
 **Scope (`for-step`).** Without it, a step tool is fetched by, handed to, and keyed into every
 step and packager the plugin registers. `for-step = "<name>"` — or a list, `["android-dex",
 "android-r8"]` — names the steps or packagers that read the tool (a `TaskSpec.named(…)` or
@@ -318,6 +333,11 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   unrecognized name is an error. A task may never `require` a task in a later stage — the plan is
   rejected before anything runs. Stages are a closed set (`resolve`, `generate`, `compile`,
   `test`, `package`, `native`, `image`, `other`).
+- **The test JVM** — a TEST-window step shapes the forked test JVMs: `contributesTestJvmArgs(file)`
+  appends each non-blank line of a file it wrote as one flag; `contributesTestClasspath(path)`
+  appends a directory it wrote, or, when the path is a file, each non-blank line as one absolute
+  entry (jars it located rather than wrote — the IntelliJ battery's bundled plugins);
+  `oneTestJvm()` runs the module's suites in one JVM (an application that owns its state).
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
 - Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
 - **Repositories** — a step whose own resolver fetches outside the lock (a framework's build-time

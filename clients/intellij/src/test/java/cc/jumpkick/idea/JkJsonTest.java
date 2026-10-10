@@ -1,52 +1,51 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.idea;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** The reader over the shapes the CLI prints: flat objects of strings, arrays, bools and ints. */
-public class JkJsonTest {
+class JkJsonTest {
 
     @Test
-    public void every_value_kind_round_trips() {
+    void every_value_kind_round_trips() {
         Map<String, Object> o = JkJson.object(
                 JkJson.parse(
                         "{\"s\":\"a\\\"b\\\\c\\n\\u0041\",\"n\":25,\"d\":1.5,\"t\":true,\"f\":false,\"z\":null,"
                                 + "\"a\":[\"x\",[1,2],{}],\"o\":{\"k\":\"v\"}}",
                         0),
                 Map.of());
-        assertEquals("a\"b\\c\nA", o.get("s"));
-        assertEquals(25L, o.get("n"));
-        assertEquals(1.5, o.get("d"));
-        assertEquals(Boolean.TRUE, o.get("t"));
-        assertEquals(Boolean.FALSE, o.get("f"));
-        assertNull(o.get("z"));
-        assertEquals(List.of("x", List.of(1L, 2L), Map.of()), o.get("a"));
-        assertEquals(Map.of("k", "v"), o.get("o"));
+        assertThat(o.get("s")).isEqualTo("a\"b\\c\nA");
+        assertThat(o.get("n")).isEqualTo(25L);
+        assertThat(o.get("d")).isEqualTo(1.5);
+        assertThat(o.get("t")).isEqualTo(Boolean.TRUE);
+        assertThat(o.get("f")).isEqualTo(Boolean.FALSE);
+        assertThat(o.get("z")).isNull();
+        assertThat(o.get("a")).isEqualTo(List.of("x", List.of(1L, 2L), Map.of()));
+        assertThat(o.get("o")).isEqualTo(Map.of("k", "v"));
     }
 
     @Test
-    public void a_bracket_inside_a_string_does_not_end_the_array() {
+    void a_bracket_inside_a_string_does_not_end_the_array() {
         Map<String, Object> o = JkJson.object(JkJson.parse("{\"a\":[\"x]y\",\"z\"]}", 0), Map.of());
-        assertEquals(List.of("x]y", "z"), o.get("a"));
+        assertThat(o.get("a")).isEqualTo(List.of("x]y", "z"));
     }
 
     @Test
-    public void whitespace_and_trailing_text_are_tolerated() {
+    void whitespace_and_trailing_text_are_tolerated() {
         Map<String, Object> o =
                 JkJson.object(JkJson.parse("  { \"a\" : [ 1 , 2 ] , \"b\" : \"c\" }\nmore", 0), Map.of());
-        assertEquals(List.of(1L, 2L), o.get("a"));
-        assertEquals("c", o.get("b"));
+        assertThat(o.get("a")).isEqualTo(List.of(1L, 2L));
+        assertThat(o.get("b")).isEqualTo("c");
     }
 
     @Test
-    public void a_truncated_object_is_an_error_not_a_partial_model() {
-        assertThrows(IllegalArgumentException.class, () -> JkJson.parse("{\"a\":[\"x\"", 0));
-        assertThrows(IllegalArgumentException.class, () -> JkJson.parse("{\"a\" \"x\"}", 0));
+    void a_truncated_object_is_an_error_not_a_partial_model() {
+        assertThatThrownBy(() -> JkJson.parse("{\"a\":[\"x\"", 0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> JkJson.parse("{\"a\" \"x\"}", 0)).isInstanceOf(IllegalArgumentException.class);
     }
 }

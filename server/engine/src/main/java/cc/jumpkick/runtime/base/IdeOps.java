@@ -68,15 +68,17 @@ public final class IdeOps {
 
     private IdeOps() {}
 
-    public static IdeWireModel ideModel(Path startDir, Path cache, @Nullable Path jdksDir, boolean fetchMissing) {
+    public static IdeWireModel ideModel(
+            Path startDir, Path cache, @Nullable Path jdksDir, boolean fetchMissing, ProvidedJars provided) {
         try {
-            return build(startDir, cache, jdksDir, fetchMissing);
+            return build(startDir, cache, jdksDir, fetchMissing, provided);
         } catch (IOException | RuntimeException e) {
             return IdeWireModel.error(Errors.text(e));
         }
     }
 
-    private static IdeWireModel build(Path startDir, Path cache, @Nullable Path jdksDir, boolean fetchMissing)
+    private static IdeWireModel build(
+            Path startDir, Path cache, @Nullable Path jdksDir, boolean fetchMissing, ProvidedJars provided)
             throws IOException {
         Cas cas = JkStores.storeCas();
 
@@ -99,6 +101,19 @@ public final class IdeOps {
         for (Map.Entry<Path, JkBuild> me : allModules.entrySet()) {
             collectLibDefs(me.getKey(), me.getValue(), modules, cas, allLibs, fetchMissing);
         }
+        // A battery's provided jars are libraries too, provided scope (test scope when only the
+        // test classpaths carry them), one per jar as the lock's rows are.
+        Map<Path, List<String[]>> providedEntries = new LinkedHashMap<>();
+        for (Map.Entry<Path, JkBuild> me : allModules.entrySet()) {
+            List<String[]> entries = new ArrayList<>();
+            for (ProvidedJars.Jar jar : provided.of(me.getKey(), me.getValue())) {
+                allLibs.putIfAbsent(
+                        jar.name(),
+                        new String[] {libFileName(jar.name()), jar.path().toString(), null});
+                entries.add(new String[] {jar.name(), jar.testOnly() ? Scope.TEST.name() : Scope.PROVIDED.name()});
+            }
+            providedEntries.put(me.getKey(), entries);
+        }
 
         // Per-module JDK/SDK handles.
         JdkRegistry jdkRegistry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
@@ -112,7 +127,7 @@ public final class IdeOps {
         String[] defaultSdk = defaultSdkRef(wsRoot, rootBuild, sdkRefs, jdkRegistry, pointer, sdkEntries, seenSdk);
 
         List<Path> dirs = new ArrayList<>(allModules.keySet());
-        Edges edges = edges(dirs, allModules, modules, allLibs);
+        Edges edges = edges(dirs, allModules, modules, allLibs, providedEntries);
         ModuleColumns m = moduleColumns(dirs, allModules, sdkRefs);
         LibColumns libs = libColumns(allLibs);
         List<String> scalaJars = scalaJars(dirs, m.scalaVersions(), cas);
@@ -226,7 +241,11 @@ public final class IdeOps {
     private record Edges(List<String> siblingRefs, List<String> libEntries, List<String> processorJars) {}
 
     private static Edges edges(
-            List<Path> dirs, Map<Path, JkBuild> allModules, Map<Path, JkBuild> modules, Map<String, String[]> allLibs)
+            List<Path> dirs,
+            Map<Path, JkBuild> allModules,
+            Map<Path, JkBuild> modules,
+            Map<String, String[]> allLibs,
+            Map<Path, List<String[]>> providedEntries)
             throws IOException {
         List<String> siblingRefs = new ArrayList<>(); // "i|name|scope"
         List<String> libEntries = new ArrayList<>(); // "i|libName|SCOPE1,SCOPE2"
@@ -244,6 +263,9 @@ public final class IdeOps {
                 libEntries.add(i + "|" + le[0] + "|" + le[1]);
             }
             for (String[] le : moduleLibEntries(dir, module, modules, allLibs)) {
+                libEntries.add(i + "|" + le[0] + "|" + le[1]);
+            }
+            for (String[] le : providedEntries.getOrDefault(dir, List.of())) {
                 libEntries.add(i + "|" + le[0] + "|" + le[1]);
             }
             for (String jar : processorLibFiles(dir, module, modules, allLibs)) {

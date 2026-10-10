@@ -743,4 +743,85 @@ class PluginContributionsTest {
                 .extracting(PluginContributions.StepDep::coordinateSpec)
                 .containsExactly("com.acme:tool:^7.1", "com.acme:platform-jar:2.5.0");
     }
+
+    /** An unpacked archive's jars join by glob, a list key's glob once per element; scope test keeps a jar off main. */
+    @Test
+    void an_unpacked_tool_joins_the_classpaths_by_glob_and_a_test_scoped_tool_joins_tests_alone() {
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                        [plugin]
+                        id = "unpack-fixture"
+                        table = "unpack-fixture"
+
+                        [schema]
+                        version = { type = "string", required = true }
+                        bundled = { type = "string-list", default = [] }
+
+                        [[contribute.step-dependency]]
+                        artifact = "ide"
+                        coordinate = "com.acme:ide:${config.version}!zip"
+                        unpack = true
+
+                        [[contribute.step-dependency]]
+                        artifact = "test-kit"
+                        coordinate = "com.acme:test-kit:${config.version}"
+
+                        [[contribute.provided-classpath]]
+                        dependency = "ide"
+                        jars = ["lib/*.jar", "plugins/${config.bundled}/lib/*.jar"]
+
+                        [[contribute.provided-classpath]]
+                        dependency = "test-kit"
+                        scope = "test"
+                        """, "unpack-fixture.toml"), null);
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [unpack-fixture]
+                version = "2.0"
+                bundled = ["java", "kotlin"]
+                """);
+
+        assertThat(PluginContributions.stepDependencies(build, null, Map.of()))
+                .extracting(PluginContributions.StepDep::artifact, PluginContributions.StepDep::unpack)
+                .containsExactly(tuple("ide", true), tuple("test-kit", false));
+        assertThat(PluginContributions.providedClasspath(build, null))
+                .containsExactly(
+                        new PluginContributions.Provided(
+                                "ide",
+                                List.of("lib/*.jar", "plugins/java/lib/*.jar", "plugins/kotlin/lib/*.jar"),
+                                false),
+                        new PluginContributions.Provided("test-kit", List.of(), true));
+    }
+
+    @Test
+    void unpack_jars_and_scope_are_refused_where_they_cannot_apply() {
+        String plugin = """
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.step-dependency]]
+                artifact = "tool"
+                %s
+
+                [[contribute.provided-classpath]]
+                dependency = "tool"
+                %s
+                """;
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        plugin.formatted("coordinate = \"g:a:1\"\ntransitive = true\nunpack = true", ""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("unpack applies to one archive");
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        plugin.formatted("coordinate = \"g:a:1\"", "jars = [\"lib/*.jar\"]"), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jars globs a directory");
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        plugin.formatted("coordinate = \"g:a:1\"", "scope = \"runtime\""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("scope must be `compile` or `test`");
+    }
 }

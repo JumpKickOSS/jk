@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.runtime.base.IdeOps;
+import cc.jumpkick.runtime.base.ProvidedJars;
 import cc.jumpkick.testing.FakeJdk;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.nio.file.Files;
@@ -57,7 +58,7 @@ class IdeOpsSdkTest {
                 jdk = 21
                 """);
 
-        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false);
+        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false, ProvidedJars.NONE);
         assertThat(model.error()).isNull();
 
         int legacy = model.names().indexOf("legacy");
@@ -114,7 +115,7 @@ class IdeOpsSdkTest {
                 suggested-version = "25.0.1"
                 """);
 
-        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false);
+        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false, ProvidedJars.NONE);
         assertThat(model.error()).isNull();
         int b = model.names().indexOf("b");
         assertThat(model.sdkNames().get(b)).isEqualTo("jk-temurin-21");

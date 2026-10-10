@@ -141,6 +141,10 @@ baseline   = true
 instead    = "cc.jumpkick.host.PathUtil.forEachRegularFile(root, (file, attrs) -> …)"
 why        = "re-resolving each path to ask again is the dominant cost of walking a large tree"
 
+[[guards.blind-tree-walks.allow]]
+in     = "clients/intellij"
+reason = "the IntelliJ plugin is wire-only and never loads a jk jar, so PathUtil is not on its classpath"
+
 # G46. Removing a JDK is minutes of download and may be pinned by an IDE, a shell or another
 # project's lockfile: it happens only when the user asked for it, in an explicit jk jdk verb.
 [guards.jdk-removal-confined]
@@ -172,6 +176,10 @@ owner   = "cc.jumpkick.host.ManifestNames"
 instead = "ManifestNames.<CONSTANT>, or ManifestPaths.<CONSTANT> from core upward"
 why     = "a file jk owns is named once, in ManifestNames"
 
+[[guards.manifest-names.allow]]
+in     = "clients/intellij"
+reason = "the IntelliJ plugin is wire-only and never loads a jk jar, so ManifestNames is not on its classpath"
+
 # G15. A cache tier is named once, in the CacheTree enum. A directory that is not a cache tier —
 # a module's own build/generated, say — must not borrow the constant.
 [guards.cache-tiers]
@@ -199,6 +207,10 @@ owner   = "cc.jumpkick.host.OutputDirs"
 shape   = "regex:target"
 instead = "BuildLayout.TARGET, or BuildLayout.moduleTargetDir(mod)"
 why     = "the output directory is named once; renaming it must not miss a spelling"
+
+[[guards.target-dir.allow]]
+in     = "clients/intellij"
+reason = "the IntelliJ plugin is wire-only and never loads a jk jar, so OutputDirs is not on its classpath"
 
 [[guards.target-dir.allow]]
 in     = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolInstallCommand.java"

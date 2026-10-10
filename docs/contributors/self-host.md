@@ -3,9 +3,10 @@
 jk builds jk. The root **`jk.toml`** is a workspace (members under `shared/`, `server/`,
 `clients/`, `plugins/*` and the rule packs under `server/guard/packs/`), `jk-lock.toml` at the root
 is the one lock, and every output lands under `target/`. There is no second build definition in
-the tree: the IntelliJ plugin under `clients/intellij` and the VS Code extension under
-`clients/vscode` keep their own build tools because that is how those platforms ship plugins, and
-the Gradle projects under `bench/jar-size/` are fixtures the fat-jar bench compares jk against.
+the tree: the IntelliJ plugin under `clients/intellij` is a member built by the `[intellij]`
+battery, the VS Code extension under `clients/vscode` keeps npm because that is how VS Code ships
+extensions, and the Gradle projects under `bench/jar-size/` are fixtures the fat-jar bench
+compares jk against.
 
 ## The gate
 

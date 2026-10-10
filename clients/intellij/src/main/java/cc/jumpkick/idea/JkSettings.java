@@ -35,11 +35,6 @@ public final class JkSettings extends AbstractExternalSystemSettings<JkSettings,
     }
 
     @Override
-    public void subscribe(@NotNull ExternalSystemSettingsListener<JkProjectSettings> listener) {
-        subscribe(listener, this);
-    }
-
-    @Override
     protected void copyExtraSettingsFrom(@NotNull JkSettings settings) {}
 
     @Override

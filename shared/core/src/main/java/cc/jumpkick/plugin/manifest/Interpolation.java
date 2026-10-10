@@ -172,6 +172,27 @@ public final class Interpolation {
         return List.of(resolve(template, config, project, kotlinVersion, entry));
     }
 
+    /**
+     * {@code template} once per element of the first string-list {@code ${config.<key>}} it names,
+     * that variable replaced by the element — {@code plugins/${config.plugins}/lib/*.jar} over
+     * {@code ["java", "gradle"]} is two strings; with no list key it is {@link #resolve}'s one string.
+     */
+    public static List<String> resolveEach(String template, PluginConfig config, Project project) {
+        Matcher m = VAR.matcher(template);
+        while (m.find()) {
+            String var = m.group(1);
+            if (!var.startsWith("config.")) continue;
+            if (!(config.values().get(var.substring("config.".length())) instanceof List<?> list)) continue;
+            List<String> out = new ArrayList<>(list.size());
+            for (Object element : list) {
+                String one = template.substring(0, m.start()) + element + template.substring(m.end());
+                out.addAll(resolveEach(one, config, project));
+            }
+            return out;
+        }
+        return List.of(resolve(template, config, project, null, null));
+    }
+
     /** As {@link #resolve(String, PluginConfig, Project, String)} inside one entry's scope. */
     public static String resolve(
             @Nullable String template,

@@ -1,0 +1,102 @@
+# The IntelliJ Platform battery's declarative manifest. Owns [intellij]: the module compiles against
+# an IntelliJ distribution's platform jars and the bundled plugins it names, its tests run inside a
+# headless IDE on the platform test framework, and its main artifact is the installable plugin zip.
+# The distribution and the test framework come from JetBrains' repository, which the module
+# declares (`[repositories.jetbrains]`, groups com.jetbrains.intellij.*).
+
+[plugin]
+id        = "intellij"
+table     = "intellij"
+version   = "0.1.0"
+jk-compat = ">=0.15"
+
+[code]
+worker          = "jk-intellij"
+protocol-prefix = "##JKIJ:"
+
+# The plugin zip replaces the main artifact; an IDE loads it, nothing runs it.
+[packaging]
+packager           = "intellij-plugin"
+exec-mode          = "none"
+artifact-extension = "zip"
+
+[schema]
+version     = { type = "string", required = true, example = "262.10968.63", hint = "the IntelliJ Platform build to compile and test against: the build number IntelliJ IDEA's About dialog shows after IC-" }
+product     = { type = "string", default = "ideaIC", hint = "the distribution under com.jetbrains.intellij.idea: ideaIC (Community) or ideaIU (Ultimate)" }
+plugins     = { type = "string-list", default = [], example = "[\"java\"]", hint = "bundled plugins whose jars join the classpaths, by their directory under the IDE's plugins/" }
+since-build = { type = "string", hint = "plugin.xml's since-build; the branch of version (262) when unset" }
+until-build = { type = "string", hint = "plugin.xml's until-build; no upper bound when unset" }
+
+# The distribution, unpacked once into the store. Its jars are the provided classpath below; the
+# test-environment step reads its product-info.json for the IDE's own JVM flags.
+[[contribute.step-dependency]]
+artifact   = "intellij-ide"
+coordinate = "com.jetbrains.intellij.idea:${config.product}:${config.version}!zip"
+unpack     = true
+for-step   = "intellij-test-env"
+
+[[contribute.provided-classpath]]
+dependency = "intellij-ide"
+jars       = [
+  "lib/*.jar",
+  "lib/modules/*.jar",
+  "plugins/${config.plugins}/lib/*.jar",
+  "plugins/${config.plugins}/lib/modules/*.jar",
+]
+
+# The platform test framework (HeavyPlatformTestCase, BasePlatformTestCase, the JUnit 5 fixtures)
+# and the two jars it needs beyond the IDE's own: on the test classpaths only. Its other
+# dependencies are the platform modules and libraries the distribution already ships.
+[[contribute.step-dependency]]
+artifact   = "intellij-test-framework"
+coordinate = "com.jetbrains.intellij.platform:test-framework:${config.version}"
+for-step   = "intellij-test-env"
+
+[[contribute.step-dependency]]
+artifact   = "intellij-test-framework-core"
+coordinate = "com.jetbrains.intellij.platform:test-framework-core:${config.version}"
+for-step   = "intellij-test-env"
+
+[[contribute.step-dependency]]
+artifact   = "intellij-test-framework-common"
+coordinate = "com.jetbrains.intellij.platform:test-framework-common:${config.version}"
+for-step   = "intellij-test-env"
+
+[[contribute.step-dependency]]
+artifact   = "intellij-test-junit4"
+coordinate = "junit:junit:4.13.2"
+for-step   = "intellij-test-env"
+
+[[contribute.step-dependency]]
+artifact   = "intellij-test-hamcrest"
+coordinate = "org.hamcrest:hamcrest-core:1.3"
+for-step   = "intellij-test-env"
+
+[[contribute.step-dependency]]
+artifact   = "intellij-test-opentest4j"
+coordinate = "org.opentest4j:opentest4j:1.3.0"
+for-step   = "intellij-test-env"
+
+[[contribute.provided-classpath]]
+dependency = "intellij-test-framework"
+scope      = "test"
+
+[[contribute.provided-classpath]]
+dependency = "intellij-test-framework-core"
+scope      = "test"
+
+[[contribute.provided-classpath]]
+dependency = "intellij-test-framework-common"
+scope      = "test"
+
+[[contribute.provided-classpath]]
+dependency = "intellij-test-junit4"
+scope      = "test"
+
+[[contribute.provided-classpath]]
+dependency = "intellij-test-hamcrest"
+scope      = "test"
+
+[[contribute.provided-classpath]]
+dependency = "intellij-test-opentest4j"
+scope      = "test"

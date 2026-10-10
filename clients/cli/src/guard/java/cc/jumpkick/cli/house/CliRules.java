@@ -9,6 +9,7 @@ import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -258,14 +259,19 @@ final class CliRules {
                 v.add(
                         new TextSite(modelFile, 0, field),
                         "JkWireModel reads wire field " + field + ", which IdeWireModel.encode() does not emit");
-        // the IntelliJ plugin pins no untilBuild
-        Matcher until = Pattern.compile("untilBuild\\s*(?:=|\\.set\\()\\s*\"([^\"]+)\"")
-                .matcher(raw(text, "clients/intellij/build.gradle.kts"));
-        if (until.find())
-            v.add(
-                    new TextSite("clients/intellij/build.gradle.kts", 0, "untilBuild"),
-                    "clients/intellij pins untilBuild " + until.group(1)
-                            + " — the plugin becomes uninstallable the moment JetBrains ships the next build line");
+        // the IntelliJ plugin pins no until-build, in its [intellij] table or in plugin.xml
+        String manifest = "clients/intellij/jk.toml";
+        for (Map.Entry<String, Pattern> pin : Map.of(
+                        manifest, Pattern.compile("(?m)^\\s*until-build\\s*=\\s*\"([^\"]+)\""),
+                        pluginXml, Pattern.compile("until-build=\"([^\"]+)\""))
+                .entrySet()) {
+            Matcher until = pin.getValue().matcher(raw(text, pin.getKey()));
+            if (until.find())
+                v.add(
+                        new TextSite(pin.getKey(), 0, "until-build"),
+                        "clients/intellij pins until-build " + until.group(1)
+                                + " — the plugin becomes uninstallable the moment JetBrains ships the next build line");
+        }
         v.population(declared.size() + verbs.size() + classes.size() + read.size());
     }
 }

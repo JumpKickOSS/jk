@@ -117,14 +117,23 @@ public final class PlannerKsp {
         return out;
     }
 
-    /** Plugin steps' declared test-classpath contribution dirs (existing ones only). */
-    static List<Path> pluginTestClasspath(BuildLayout layout, @Nullable PluginDeclarations decls) {
+    /**
+     * Plugin steps' declared test-classpath contributions that exist: a directory is one entry, a
+     * file lists one absolute entry per non-blank line.
+     */
+    static List<Path> pluginTestClasspath(BuildLayout layout, @Nullable PluginDeclarations decls) throws IOException {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
         for (TaskDecl step : decls.steps()) {
             for (String rel : step.contributesTestClasspath()) {
-                Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
-                if (Files.isDirectory(dir)) out.add(dir);
+                Path path = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
+                if (Files.isDirectory(path)) {
+                    out.add(path);
+                } else if (Files.isRegularFile(path)) {
+                    for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+                        if (!line.isBlank()) out.add(Path.of(line.strip()));
+                    }
+                }
             }
         }
         return out;

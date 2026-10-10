@@ -138,8 +138,8 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
 
 ## Editor extensions
 
-- **IntelliJ** — the plugin in `clients/intellij/` is the IntelliJ path; package it with
-  `./scripts/package-intellij.sh`. It is an IntelliJ *external system*: opening a project with
+- **IntelliJ** — the plugin in `clients/intellij/` is the IntelliJ path; `jk build -m
+  clients/intellij` writes the installable zip under its `target/`. It is an IntelliJ *external system*: opening a project with
   `jk.toml` links it and resolves modules, every source and test-suite root, libraries with
   sources ([above](#library-sources)), per-module JDKs and the `target/jdt` compiler outputs from the engine `ide-model`
   (`jk ide --print-model`), with no `*.iml` or `.idea/modules.xml` written. A change to
