@@ -126,6 +126,15 @@ git worktree add ../jk-reader <last commit the pinned release reads>
 JK_HOME="$JK_HOME" jk engine stop --now
 ```
 
+Your own `~/.jk` falls behind the same way: an install older than a commit that adds a plugin
+and uses it in the same tree cannot build that tree. `scripts/reinstall-chain.sh` reinstalls from
+the checkout anyway. It tries the plain `jk build --skip-tests && jk install --skip-tests` first.
+When the failure is a table no installed plugin owns, it installs HEAD from a scratch worktree
+without the members that open that table, so the tree's own plugin for it is installed. Any other
+failure bisects the first-parent history after the installed jk's source (its engine jar's
+`Build-Time`) for the newest commit the installed jk builds, and installs that. Then it tries the
+checkout again. Scratch locks are forced and thrown away; the checkout is never edited.
+
 The failure mode names itself: a jk older than the lock's writer refuses the lock with
 `written by jk <newer> and this is jk <older>; a newer lock format needs a newer reader, not a
 re-lock` and points here, instead of suggesting `jk lock` — which would restate the branch's lock

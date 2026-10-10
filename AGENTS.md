@@ -122,6 +122,7 @@ jk build --skip-tests && jk install --skip-tests
 | `jk build --skip-tests` | Every module compiled and packaged; `target/dist/jk` (native CLI) + `target/dist/lib/jk-engine-<version>.jar` |
 | `jk install --skip-tests` | Shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
 | `./install.sh target/dist/jk` | The same ship layout onto a machine with no jk yet |
+| `scripts/reinstall-chain.sh` | The same two steps when the installed jk is too old to build the checkout: installs stepping stones from a scratch worktree first ([self-host](docs/contributors/self-host.md#the-bootstrap-chain)) |
 
 A host with no native client gets the JVM client from the same installer ([releases](docs/contributors/releases.md#platforms-without-a-hosted-client)).
 
