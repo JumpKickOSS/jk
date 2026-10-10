@@ -1,10 +1,10 @@
 version = 1
-generated-by = "jk 0.13.7"
-generated-by-build = "3eecdaa9db1b"
-generated-by-build-time = "2026-09-18T10:16:11Z"
+generated-by = "jk 0.15.1"
+generated-by-build = "95029c41956f"
+generated-by-build-time = "2026-10-10T19:11:09Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "a8db8aac14d98c8bce057d74fc3a2a53fab9500df80bf0bea88debed145a3307"
+manifests-sha256 = "9ec8e1d4bdf694f72da543313af9f38e05d6f7a18d76a10f09000a89f9aec030"
 project-id = "f10b3ac96aedcb2e0760ad23f4e56589"
 
 [jdk]
@@ -12,21 +12,11 @@ suggested-vendor = "temurin"
 suggested-version = "25.0.4.1"
 
 [[artifact]]
-name     = "cc.jumpkick:jk-host:jar:"
-version  = "0.13.7"
-source   = "jumpkick+https://jumpkick.build/repo/"
-checksum = "sha256:84a0485d131a9c382fc803aaf875578efe22515c5f491e4682d895e2c0be5d34"
-scopes   = ["main"]
-
-[[artifact]]
 name     = "cc.jumpkick:jk-plugin-sdk:jar:"
-version  = "0.13.7"
+version  = "0.15.1"
 source   = "jumpkick+https://jumpkick.build/repo/"
-checksum = "sha256:bacb225bc9932e45a1ff0b3f249733c62439d3ce898af3f282aa689d72681f72"
+checksum = "sha256:7afdae188497b9b1081e0bf70696409c012b06f88335e100a46b2c86942b1254"
 scopes   = ["main"]
-deps = [
-  "cc.jumpkick:jk-host:jar:@0.13.7",
-]
 
 [[artifact]]
 name     = "org.apiguardian:apiguardian-api:jar:"

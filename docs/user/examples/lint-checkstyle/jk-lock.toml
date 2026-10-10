@@ -1,7 +1,7 @@
 version = 1
-generated-by = "jk 0.13.7"
-generated-by-build = "c302bcd67744"
-generated-by-build-time = "2026-09-18T01:27:52Z"
+generated-by = "jk 0.15.1"
+generated-by-build = "95029c41956f"
+generated-by-build-time = "2026-10-10T19:11:09Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
 manifests-sha256 = "18eb2318c79e190eea5d50e17662bc6744871f9a63ede891576cbc9f9a4aa9fb"
@@ -120,7 +120,7 @@ scopes   = ["test"]
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-lint"
-version    = "0.13.7"
+version    = "0.15.1"
 
 [[module]]
 path    = "."

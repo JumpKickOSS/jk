@@ -5,9 +5,9 @@ description = "JumpKick's Java compiler plugin"
 jk-plugin-sdk.workspace = true
 # Compile + worker POM runtime (thin jar).
 zinc = "2.0.4"
-# The Scala library the mixed-compile tests' scala3-compiler 3.9.0 links against: the test classpath
+# The Scala library the mixed-compile tests' scala3-compiler 3.10.0 links against: the test classpath
 # carries the main graph's version, and zinc alone declares 3.8.4.
-scala3-library = { group = "org.scala-lang", name = "scala3-library_3", version = "3.9.0" }
+scala3-library = { group = "org.scala-lang", name = "scala3-library_3", version = "3.10.0" }
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
@@ -43,5 +43,5 @@ jk-host = { workspace = true, fixtures = true }
 assertj-core = "3.27.7"
 junit-jupiter = "6.1.3"
 # Mixed Java+Scala tests; not on the production worker classpath.
-scala3-compiler = "3.9.0"
-scala3-sbt-bridge = "3.9.0"
+scala3-compiler = "3.10.0"
+scala3-sbt-bridge = "3.10.0"

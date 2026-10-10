@@ -30,7 +30,7 @@ class LogbackCoreEdgeFullTest {
                 assembly = true
 
                 [micronaut]
-                version = "5"
+                version = "5.2.2"
 
                 [dependencies]
                 micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }
