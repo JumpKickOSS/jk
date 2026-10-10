@@ -58,9 +58,38 @@ if ((windows)); then
   jk engine stop --now --no-ansi || true
 fi
 
+# A table no plugin of the pinned release owns belongs to a plugin the bridge adds itself: the
+# members that open it leave the bridge's root jk.toml, so the pinned release builds that plugin and
+# the bridge's own jk reads the whole tree.
+member_line() { echo "^[[:space:]]*\"$1\",\{0,1\}[[:space:]]*\(#.*\)\{0,1\}$"; }
+users_of_table() {
+  local manifest dir
+  while IFS= read -r manifest; do
+    dir="${manifest%/jk.toml}"
+    grep -q "$(member_line "$dir")" "$bridge/jk.toml" || continue
+    if grep -Eq "^\[{1,2}$1(\.[^]]*)?\]{1,2}[[:space:]]*(#.*)?$" "$bridge/$manifest"; then echo "$dir"; fi
+  done < <(git -C "$bridge" ls-files | grep -E '/jk\.toml$')
+}
+stripped=" "
+# The text renderer of a pinned release may drop the reason a lock failed; its JSONL keeps it.
+while ! (cd "$bridge" && jk lock --force --no-ansi --output jsonl) >"$bridge.lock.log" 2>&1; do
+  cat "$bridge.lock.log"
+  table="$(grep -aoE '\[[a-z0-9-]+\] is not owned by any installed plugin' "$bridge.lock.log" | head -n 1 \
+    | sed -E 's/^\[([^]]+)\].*/\1/' || true)"
+  if [[ -z "$table" || "$stripped" == *" $table "* ]]; then exit 1; fi
+  stripped="$stripped$table "
+  users="$(users_of_table "$table")"
+  [[ -n "$users" ]] || exit 1
+  while IFS= read -r member; do
+    echo "the bridge leaves out $member, which opens [$table]"
+    sed -i.bak "\|$(member_line "$member")|d" "$bridge/jk.toml"
+    rm -f "$bridge/jk.toml.bak"
+  done <<<"$users"
+done
+cat "$bridge.lock.log"
+
 (
   cd "$bridge"
-  jk lock --force --no-ansi
   jk build --skip-tests --no-ansi
   # The release's client stops after packaging the shelf; the bridge's own client, which the first
   # pass installs, completes the second.
