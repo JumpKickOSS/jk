@@ -96,6 +96,9 @@ jobs:
       - name: Shelf descriptor check fixtures
         run: bash scripts/test-check-shelf-descriptors.sh
 
+      - name: Reinstall chain fixtures
+        run: bash scripts/test-reinstall-chain.sh
+
   # The workflow files themselves. actionlint (syntax, expressions, shellcheck of every run:
   # script), then the two rules scripts/check-workflows.sh owns: every action pinned to a commit
   # sha with its tag in a comment, every workflow's token read-only unless a job says otherwise.
