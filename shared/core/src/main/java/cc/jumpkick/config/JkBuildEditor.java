@@ -25,8 +25,8 @@ public final class JkBuildEditor {
     /** Header line for the {@code [dependencies]} table (MAIN scope). */
     private static final Pattern DEPS_FLAT_HEADER = Pattern.compile("^\\s*\\[dependencies]\\s*$");
 
-    /** Any TOML table header. */
-    private static final Pattern ANY_HEADER = Pattern.compile("^\\s*\\[[^]]+]\\s*$");
+    /** Any table header, {@code [table]} or {@code [[array.of.tables]]}: where the table before it ends. */
+    private static final Pattern ANY_HEADER = Pattern.compile("^\\s*(\\[[^\\[\\]]+]|\\[\\[[^\\[\\]]+]])\\s*$");
 
     /** Header line for the {@code [workspace]} table. */
     private static final Pattern WORKSPACE_HEADER = Pattern.compile("^(\\s*)\\[workspace]\\s*$");
@@ -42,11 +42,7 @@ public final class JkBuildEditor {
      */
     private static final Pattern QUOTED = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
 
-    /**
-     * A dep entry line: {@code key = { ... }} or {@code key.workspace = true}. Captures key in group
-     * 2.
-     */
-    /** A dependency entry: its bare or quoted key (an import writes {@code "jakarta.inject-api"}), then {@code =}. */
+    /** A dependency entry: its bare or quoted key (an import writes {@code "jakarta.inject-api"}) in group 2, then {@code =}. */
     private static final Pattern DEP_ENTRY =
             Pattern.compile("^(\\s*)(\"[^\"]+\"|[A-Za-z][A-Za-z0-9_-]*)(?:\\.[a-zA-Z][a-zA-Z0-9_-]*)?\\s*=.*$");
 
@@ -111,14 +107,16 @@ public final class JkBuildEditor {
             throw new IllegalArgumentException("classifier must be a non-blank word without `:`");
         }
 
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         if (findDepKey(lines, scope, name) >= 0) {
             throw new IllegalStateException(scope.tomlSection() + " already contains \"" + name + "\"");
         }
         String entry = classifier == null
                 ? renderDependencyEntry(catalog, name, group, artifact, versionLiteral)
                 : renderClassifiedEntry(name, group, artifact, versionLiteral, classifier);
-        return validated(join(insertEntry(lines, scope, entry)));
+        insertEntry(lines, scope, entry);
+        return validated(manifest.join());
     }
 
     /** The inline table for a classified jar: group, name, version and classifier, every key written. */
@@ -247,7 +245,8 @@ public final class JkBuildEditor {
         }
         if (artifact == null || artifact.isBlank()) artifact = library;
 
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         if (findDepKey(lines, scope, library) >= 0) {
             throw new IllegalStateException(scope.tomlSection() + " already contains \"" + library + "\"");
         }
@@ -263,7 +262,8 @@ public final class JkBuildEditor {
         sb.append(", version = ")
                 .append(MinimalToml.quote(bareLiteral(version)))
                 .append(" }");
-        return validated(join(insertEntry(lines, scope, sb.toString())));
+        insertEntry(lines, scope, sb.toString());
+        return validated(manifest.join());
     }
 
     /**
@@ -276,7 +276,8 @@ public final class JkBuildEditor {
     public static String removeDependency(String content, Scope scope, String name) {
         requireWritable(scope);
         validateName(name);
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         int hit = findDepKey(lines, scope, name);
         if (hit < 0) {
             // Determine whether the scope section existed for a better error.
@@ -286,7 +287,7 @@ public final class JkBuildEditor {
             throw new IllegalStateException("\"" + name + "\" not found in " + scope.tomlSection());
         }
         lines.remove(hit);
-        return validated(join(lines));
+        return validated(manifest.join());
     }
 
     /**
@@ -319,7 +320,8 @@ public final class JkBuildEditor {
         }
         String path = modulePath.replace('\\', '/');
 
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         int wsHeader = -1;
         String wsIndent = "";
         for (int i = 0; i < lines.size(); i++) {
@@ -336,12 +338,10 @@ public final class JkBuildEditor {
             }
             // Promote a plain project into a workspace: append a [workspace]
             // table with this module as its first entry.
-            StringBuilder sb = new StringBuilder(content);
-            if (!content.isEmpty() && !content.endsWith("\n")) sb.append('\n');
-            sb.append("\n[workspace]\nmodules = [")
-                    .append(MinimalToml.quote(path))
-                    .append("]\n");
-            return validated(sb.toString());
+            ensureTrailingBlankLine(lines);
+            lines.add("[workspace]");
+            lines.add("modules = [" + MinimalToml.quote(path) + "]");
+            return validated(manifest.join());
         }
 
         int end = endOfTable(lines, wsHeader);
@@ -355,21 +355,10 @@ public final class JkBuildEditor {
         // No modules key yet — add one right under the header.
         if (modulesLine < 0) {
             lines.add(wsHeader + 1, wsIndent + "modules = [" + MinimalToml.quote(path) + "]");
-            return validated(join(lines));
+            return validated(manifest.join());
         }
 
-        // Find the line carrying the array's closing ']'. String elements
-        // never contain ']', so the first ']' at/after modulesLine closes it.
-        int closeLine = -1;
-        for (int i = modulesLine; i < end; i++) {
-            if (lines.get(i).indexOf(']') >= 0) {
-                closeLine = i;
-                break;
-            }
-        }
-        if (closeLine < 0) {
-            throw new IllegalStateException("malformed modules array in [workspace]");
-        }
+        int closeLine = arrayClose(lines, modulesLine, end);
 
         // Idempotency: collect existing elements across the array's lines. A glob that already
         // covers the new module counts — appending the literal beside `libs/*` would list it twice.
@@ -386,7 +375,7 @@ public final class JkBuildEditor {
         } else {
             insertMultilineModule(lines, modulesLine, closeLine, path);
         }
-        return validated(join(lines));
+        return validated(manifest.join());
     }
 
     /**
@@ -400,7 +389,8 @@ public final class JkBuildEditor {
         }
         String path = modulePath.replace('\\', '/');
 
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         int wsHeader = -1;
         for (int i = 0; i < lines.size(); i++) {
             if (WORKSPACE_HEADER.matcher(lines.get(i)).matches()) {
@@ -420,16 +410,7 @@ public final class JkBuildEditor {
         }
         if (modulesLine < 0) return content;
 
-        int closeLine = -1;
-        for (int i = modulesLine; i < end; i++) {
-            if (lines.get(i).indexOf(']') >= 0) {
-                closeLine = i;
-                break;
-            }
-        }
-        if (closeLine < 0) {
-            throw new IllegalStateException("malformed modules array in [workspace]");
-        }
+        int closeLine = arrayClose(lines, modulesLine, end);
 
         for (int i = modulesLine; i <= closeLine; i++) {
             String line = lines.get(i);
@@ -456,7 +437,7 @@ public final class JkBuildEditor {
                 } else {
                     lines.set(i, rewritten);
                 }
-                return validated(join(lines));
+                return validated(manifest.join());
             }
         }
         return content; // not a registered module — idempotent
@@ -465,7 +446,7 @@ public final class JkBuildEditor {
     /** Insert {@code "path"} before the {@code ]} on a single-line modules array. */
     private static void insertInlineModule(List<String> lines, int lineIdx, String path) {
         String line = lines.get(lineIdx);
-        int close = line.lastIndexOf(']');
+        int close = codeIndexOf(line, ']');
         int j = close - 1;
         while (j >= 0 && Character.isWhitespace(line.charAt(j))) j--;
         char prev = j >= 0 ? line.charAt(j) : '\0';
@@ -500,6 +481,17 @@ public final class JkBuildEditor {
     }
 
     // --- internals ---------------------------------------------------------
+
+    /**
+     * The line carrying the {@code ]} that closes the array opened on {@code modulesLine}; a
+     * {@code ]} inside a string or a comment does not count.
+     */
+    private static int arrayClose(List<String> lines, int modulesLine, int end) {
+        for (int i = modulesLine; i < end; i++) {
+            if (codeIndexOf(lines.get(i), ']') >= 0) return i;
+        }
+        throw new IllegalStateException("malformed modules array in [workspace]");
+    }
 
     /**
      * Locate the line that opens the section for {@code scope}. MAIN scope uses the {@code
@@ -568,20 +560,22 @@ public final class JkBuildEditor {
     public static String setDependencyVersion(String content, Scope scope, String name, String versionLiteral) {
         requireName(name);
         requireVersionLiteral(versionLiteral);
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         int hit = findDepKey(lines, scope, name);
         if (hit < 0) {
             throw new IllegalStateException("\"" + name + "\" not found in " + scope.tomlSection());
         }
         lines.set(hit, rewriteVersion(lines.get(hit), scope.tomlSection() + "." + name, versionLiteral));
-        return validated(join(lines));
+        return validated(manifest.join());
     }
 
     /** {@link #setDependencyVersion} for a {@code [workspace.dependencies]} entry. */
     public static String setWorkspaceDependencyVersion(String content, String name, String versionLiteral) {
         requireName(name);
         requireVersionLiteral(versionLiteral);
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         Pattern header = Pattern.compile("^\\s*\\[workspace\\.dependencies]\\s*$");
         int headerLine = -1;
         for (int i = 0; i < lines.size(); i++) {
@@ -598,7 +592,7 @@ public final class JkBuildEditor {
             Matcher m = DEP_ENTRY.matcher(lines.get(i));
             if (m.matches() && depKey(m).equals(name)) {
                 lines.set(i, rewriteVersion(lines.get(i), "workspace.dependencies." + name, versionLiteral));
-                return validated(join(lines));
+                return validated(manifest.join());
             }
         }
         throw new IllegalStateException("\"" + name + "\" not found in [workspace.dependencies]");
@@ -688,7 +682,8 @@ public final class JkBuildEditor {
 
     /** Write {@code key = true} under {@code [application]}, or remove the key when false. */
     private static String setApplicationFlag(String content, String key, boolean value) {
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         Pattern appHeader = Pattern.compile("^\\s*\\[application]\\s*$");
         Pattern flagKey = Pattern.compile("^(\\s*)" + Pattern.quote(key) + "\\s*=");
         int header = -1;
@@ -713,7 +708,7 @@ public final class JkBuildEditor {
         }
         if (assignment == null) {
             if (existing >= 0) lines.remove(existing);
-            return validated(join(lines));
+            return validated(manifest.join());
         }
         String line = assignment;
         if (existing >= 0) {
@@ -725,7 +720,7 @@ public final class JkBuildEditor {
             while (insertAt > header + 1 && lines.get(insertAt - 1).isBlank()) insertAt--;
             lines.add(insertAt, line);
         }
-        return validated(join(lines));
+        return validated(manifest.join());
     }
 
     /**
@@ -737,7 +732,8 @@ public final class JkBuildEditor {
      *     string
      */
     public static String setTableString(String content, String tablePath, String key, String value) {
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         Pattern header = Pattern.compile("^\\s*\\[" + Pattern.quote(tablePath) + "]\\s*$");
         int headerLine = -1;
         for (int i = 0; i < lines.size(); i++) {
@@ -758,7 +754,7 @@ public final class JkBuildEditor {
                 throw new IllegalStateException("[" + tablePath + "] " + key + " is not a string");
             }
             lines.set(i, m.group() + MinimalToml.quote(value) + rest.substring(literal.end()));
-            return validated(join(lines));
+            return validated(manifest.join());
         }
         throw new IllegalStateException("[" + tablePath + "] has no `" + key + "` to rewrite");
     }
@@ -771,7 +767,8 @@ public final class JkBuildEditor {
      * @throws IllegalStateException when the table or the key is absent
      */
     public static String setTableScalar(String content, String tablePath, String key, String value) {
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         Pattern header = Pattern.compile("^\\s*\\[" + Pattern.quote(tablePath) + "]\\s*$");
         int headerLine = -1;
         for (int i = 0; i < lines.size(); i++) {
@@ -788,7 +785,7 @@ public final class JkBuildEditor {
             if (!m.find()) continue;
             String comment = trailingComment(lines.get(i).substring(m.end()));
             lines.set(i, m.group() + value + comment);
-            return validated(join(lines));
+            return validated(manifest.join());
         }
         throw new IllegalStateException("[" + tablePath + "] has no `" + key + "` to rewrite");
     }
@@ -807,7 +804,8 @@ public final class JkBuildEditor {
             throw new IllegalArgumentException("root key must match [A-Za-z][A-Za-z0-9_-]* (got: " + key + ")");
         }
         String assignment = key + " = " + value;
-        List<String> lines = splitPreservingTerminator(content);
+        Lines manifest = Lines.split(content);
+        List<String> lines = manifest.lines();
         // Groups 1 and 2 keep the author's indent and their `=` column: a hand-aligned manifest
         // stays aligned across an edit.
         Pattern rootKey = Pattern.compile("^([ \\t]*)" + Pattern.quote(key) + "([ \\t]*)=");
@@ -818,7 +816,7 @@ public final class JkBuildEditor {
             if (m.find()) {
                 String comment = trailingComment(line.substring(m.end()));
                 lines.set(i, m.group(1) + key + m.group(2) + "= " + value + comment);
-                return validated(join(lines));
+                return validated(manifest.join());
             }
         }
         int firstHeader = lines.size();
@@ -830,7 +828,7 @@ public final class JkBuildEditor {
         }
         while (firstHeader > 0 && lines.get(firstHeader - 1).isBlank()) firstHeader--;
         lines.add(firstHeader, assignment);
-        return validated(join(lines));
+        return validated(manifest.join());
     }
 
     /**
@@ -840,21 +838,34 @@ public final class JkBuildEditor {
      * would be the same class of loss as reflowing their file.
      */
     private static String trailingComment(String afterEquals) {
+        int hash = codeIndexOf(afterEquals, '#');
+        return hash < 0 ? "" : "  " + afterEquals.substring(hash).strip();
+    }
+
+    /**
+     * The index of the first {@code ch} on {@code line} that is TOML code: outside a basic or
+     * literal string and before any comment. {@code -1} when there is none.
+     */
+    private static int codeIndexOf(String line, char ch) {
         boolean basic = false;
         boolean literal = false;
-        for (int i = 0; i < afterEquals.length(); i++) {
-            char c = afterEquals.charAt(i);
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
             if (c == '\\' && basic) {
                 i++; // an escaped character cannot close the string
             } else if (c == '"' && !literal) {
                 basic = !basic;
             } else if (c == '\'' && !basic) {
                 literal = !literal;
-            } else if (c == '#' && !basic && !literal) {
-                return "  " + afterEquals.substring(i).strip();
+            } else if (basic || literal) {
+                continue;
+            } else if (c == ch) {
+                return i;
+            } else if (c == '#') {
+                return -1;
             }
         }
-        return "";
+        return -1;
     }
 
     /** The element a {@link #QUOTED} match names, decoded by the one TOML codec. */
@@ -871,19 +882,33 @@ public final class JkBuildEditor {
         return text;
     }
 
-    private static List<String> splitPreservingTerminator(String content) {
-        List<String> lines = new ArrayList<>();
-        int start = 0;
-        for (int i = 0; i < content.length(); i++) {
-            if (content.charAt(i) == '\n') {
-                lines.add(content.substring(start, i));
+    /**
+     * The manifest as lines without their terminators, plus the terminator its first line uses, so
+     * a CRLF file is written back as CRLF with the edit as the only difference. A last line that
+     * has no terminator is given one.
+     */
+    private record Lines(List<String> lines, String terminator) {
+
+        static Lines split(String content) {
+            List<String> lines = new ArrayList<>();
+            String terminator = "\n";
+            int start = 0;
+            for (int i = 0; i < content.length(); i++) {
+                if (content.charAt(i) != '\n') continue;
+                int end = i > start && content.charAt(i - 1) == '\r' ? i - 1 : i;
+                if (lines.isEmpty() && end < i) terminator = "\r\n";
+                lines.add(content.substring(start, end));
                 start = i + 1;
             }
+            if (start < content.length()) lines.add(content.substring(start));
+            return new Lines(lines, terminator);
         }
-        if (start < content.length()) {
-            lines.add(content.substring(start));
+
+        String join() {
+            StringBuilder sb = new StringBuilder();
+            for (String line : lines) sb.append(line).append(terminator);
+            return sb.toString();
         }
-        return lines;
     }
 
     private static void ensureTrailingBlankLine(List<String> lines) {
@@ -891,13 +916,5 @@ public final class JkBuildEditor {
         if (!lines.getLast().isBlank()) {
             lines.add("");
         }
-    }
-
-    private static String join(List<String> lines) {
-        StringBuilder sb = new StringBuilder();
-        for (String line : lines) {
-            sb.append(line).append('\n');
-        }
-        return sb.toString();
     }
 }
