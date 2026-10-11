@@ -239,11 +239,14 @@ public final class PlannerTails {
                     // Module-scoped runtime closure (not the whole workspace lock).
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
                     // Packaging cache: the fat jar's key comes from PackagingKeys, the same body
-                    // the forecast calls, so a worker module can forecast up-to-date.
+                    // the forecast calls, so a worker module can forecast up-to-date. The jar is
+                    // written with exactly the attributes it is keyed on.
+                    Map<String, String> assemblyAttrs = PackagingKeys.assemblyAttributes(layout.moduleRoot(), project);
                     PackagingKeys.Keyed keyed = PackagingKeys.assembly(
                             assemblyJar,
                             layout.moduleRoot(),
                             project,
+                            assemblyAttrs,
                             ClasspathFingerprint.entry(classes),
                             contributionsToken(contributed),
                             ClasspathFingerprint.of(depJars));
@@ -258,8 +261,6 @@ public final class PlannerTails {
                     ctx.label("package " + assemblyJar.getFileName());
                     classes = stageClassesWithContributions(ctx, classes, contributed, layout);
                     byte[] assemblySbom = null;
-                    Map<String, String> assemblyAttrs =
-                            assemblyAttributes(project, PlannerBuildInfo.worktree(layout.moduleRoot()));
                     if (Files.exists(lockFile)) {
                         assemblySbom = applicationSbom(project, LockfileReader.read(lockFile));
                         assemblyAttrs.put("Sbom-Format", "CycloneDX");
@@ -292,13 +293,11 @@ public final class PlannerTails {
      * The assembly's manifest attributes: the {@code [manifest]} table, plus {@link
      * BuildIdentity#BUILD_TIME_ATTRIBUTE} when the module is the one jk installs as its own product
      * lib and {@code worktree} describes its checkout. The value is the checkout's commit time, so
-     * the jar stays a function of its source — the same commit packages the same bytes — while two
-     * engines of one version are ordered by the commit they were built from rather than by when a
-     * jar was copied into place. The time is not part of the assembly's key: a commit that leaves
-     * the inputs untouched restores the earlier archive from the action cache, stamp included, so
-     * the stamp names the source the bytes came from rather than the checkout that packaged them.
-     * Any other assembly, and one built outside a checkout, carries what the table says and nothing
-     * more.
+     * two engines of one version are ordered by the commit they were built from rather than by when
+     * a jar was copied into place. The attributes are the assembly's {@code manifest:} key token
+     * ({@link PackagingKeys#assembly}), so the same commit packages the same bytes on every host
+     * whatever its action cache holds. Any other assembly, and one built outside a checkout,
+     * carries what the table says and nothing more.
      */
     static Map<String, String> assemblyAttributes(JkBuild project, Optional<GitFetcher.Worktree> worktree) {
         Map<String, String> attrs = new LinkedHashMap<>(project.manifest());

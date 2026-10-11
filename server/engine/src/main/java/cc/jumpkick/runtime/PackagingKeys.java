@@ -97,16 +97,43 @@ public final class PackagingKeys {
      * and in what shape, is derived here.
      */
     public static Keyed assembly(
-            Path assemblyJar, Path moduleDir, JkBuild project, String classesTok, String contribTok, String depsTok) {
+            Path assemblyJar, Path moduleDir, JkBuild project, String classesTok, String contribTok, String depsTok)
+            throws IOException {
+        return assembly(
+                assemblyJar,
+                moduleDir,
+                project,
+                assemblyAttributes(moduleDir, project),
+                classesTok,
+                contribTok,
+                depsTok);
+    }
+
+    /**
+     * The manifest attributes the fat jar is written with, and therefore the {@code manifest:}
+     * token in its key. A fresh mutable map; see {@link PlannerTails#assemblyAttributes}.
+     */
+    public static Map<String, String> assemblyAttributes(Path moduleDir, JkBuild project) throws IOException {
+        return PlannerTails.assemblyAttributes(project, PlannerBuildInfo.worktree(moduleDir));
+    }
+
+    static Keyed assembly(
+            Path assemblyJar,
+            Path moduleDir,
+            JkBuild project,
+            Map<String, String> attributes,
+            String classesTok,
+            String contribTok,
+            String depsTok) {
         // The fat jar is a pure function of the main classes, the plugin-contributed dirs merged
-        // over them, the bundled dependency jars' content, the main class, the manifest and the
-        // package relocations.
+        // over them, the bundled dependency jars' content, the main class, the manifest attributes
+        // it is written with and the package relocations.
         List<String> tokens = List.of(
                 "classes:" + classesTok,
                 "contrib:" + contribTok,
                 "deps:" + depsTok,
                 "main:" + orEmpty(mainClass(moduleDir, project)),
-                "manifest:" + project.manifest(),
+                "manifest:" + attributes,
                 "relocate:" + relocate(project),
                 "packaging:fat"); // distinct from shrink / thin package-jar
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, assemblyJar);
