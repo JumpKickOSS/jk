@@ -407,29 +407,71 @@ class MavenPackageSourceExclusionTest {
     }
 
     /**
-     * The accumulator's own contract: registrations intersect, so a path that strips nothing
-     * clears the set no matter which order the paths arrive in.
+     * The solver tries b@1.5 first, whose clean edge registers c with nothing excluded; b@1.5
+     * conflicts with a over d, the solver backjumps to b@1.0, and the only edge to c in the final
+     * graph excludes x. Maven drops x; so must the lock, and c's row says who pruned it.
      */
     @Test
-    void registered_exclusions_intersect_across_paths(@TempDir Path tempDir) {
-        MavenPackageSource src =
-                new MavenPackageSource(repoGroup(tempDir), new EffectivePomBuilder(repoGroup(tempDir)));
+    void a_backtracked_parents_clean_edge_does_not_widen_the_childs_exclusion_set(@TempDir Path tempDir)
+            throws Exception {
+        upstream.metadata("com.foo", "a", "1.0");
+        upstream.metadata("com.foo", "b", "1.0", "1.5");
+        upstream.metadata("com.foo", "c", "1.0");
+        upstream.metadata("com.foo", "d", "1.0", "2.0");
+        upstream.metadata("com.foo", "x", "1.0");
+        upstream.pomOnly("com.foo", "a", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>a</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.foo</groupId><artifactId>d</artifactId><version>[1.0]</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.pomOnly("com.foo", "b", "1.5", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>b</artifactId><version>1.5</version>
+                  <dependencies>
+                    <dependency><groupId>com.foo</groupId><artifactId>c</artifactId><version>1.0</version></dependency>
+                    <dependency><groupId>com.foo</groupId><artifactId>d</artifactId><version>[2.0]</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.pomOnly("com.foo", "b", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>b</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>c</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.foo</groupId><artifactId>x</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.pomOnly("com.foo", "c", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>c</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.foo</groupId><artifactId>x</artifactId><version>1.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        for (String v : List.of("1.0", "2.0"))
+            upstream.pomOnly("com.foo", "d", v, MavenStub.emptyPom("com.foo", "d", v));
+        upstream.pomOnly("com.foo", "x", "1.0", MavenStub.emptyPom("com.foo", "x", "1.0"));
 
-        src.registerExclusions("com.foo:target", Set.of("com.foo:leaf", "com.foo:other"));
-        assertThat(src.exclusionsFor("com.foo:target")).containsExactlyInAnyOrder("com.foo:leaf", "com.foo:other");
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(
+                        new Dependency("com.foo:a", VersionSelector.parse("=1.0")),
+                        new Dependency("com.foo:b", VersionSelector.parse("^1.0"))));
 
-        // A second path strips only one of them — the other is no longer excluded everywhere.
-        src.registerExclusions("com.foo:target", Set.of("com.foo:leaf"));
-        assertThat(src.exclusionsFor("com.foo:target")).containsExactly("com.foo:leaf");
-
-        // A path that strips nothing clears the set.
-        src.registerExclusions("com.foo:target", Set.of());
-        assertThat(src.exclusionsFor("com.foo:target")).isEmpty();
-
-        // And an unencumbered path first is just as final.
-        src.registerExclusions("com.foo:second", Set.of());
-        src.registerExclusions("com.foo:second", Set.of("com.foo:leaf"));
-        assertThat(src.exclusionsFor("com.foo:second")).isEmpty();
+        assertThat(requireNonNull(result.modules().get("com.foo:b:jar:")).version())
+                .isEqualTo("1.0");
+        assertThat(result.modules()).containsKey("com.foo:c:jar:");
+        assertThat(result.modules()).doesNotContainKey("com.foo:x:jar:");
+        assertThat(requireNonNull(result.modules().get("com.foo:c:jar:")).excluded())
+                .containsExactly("com.foo:x <- com.foo:b@1.0");
     }
 
     /**
