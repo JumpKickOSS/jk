@@ -12,12 +12,16 @@ import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -29,6 +33,10 @@ import org.jspecify.annotations.Nullable;
  * the worker's whole life — started under the launching request's session so the JVM it forks is
  * sized and flagged with that request's tuning and stops on its cancel token. Report accumulation
  * (XML, Markdown) stays with the launcher; this class only forks, dispatches and merges.
+ *
+ * <p>A worker is complete only when it exited 0 after the parent told it {@code DONE}: a JVM that
+ * ends earlier, on any exit, left its in-flight class unreported and is a failure row, and classes
+ * still queued once every worker has ended are a shortfall row. Neither is ever scored green.
  */
 final class PullWorkerPool {
 
@@ -65,7 +73,10 @@ final class PullWorkerPool {
         var queue = new ConcurrentLinkedDeque<>(classes);
         var aggregators = new ArrayList<ResultAggregator>();
         var workerThreads = new ArrayList<Thread>();
+        // A worker whose thread never stored an exit — its body threw — is a death, not a clean 0.
         int[] exits = new int[actualWorkers];
+        Arrays.fill(exits, -1);
+        var dones = new ArrayList<AtomicBoolean>();
         var captures = new ArrayList<CaptureBuffer>();
         var lastClasses = new ArrayList<AtomicReference<String>>();
         var handlerFailures = new ArrayList<AtomicReference<@Nullable RuntimeException>>();
@@ -81,6 +92,8 @@ final class PullWorkerPool {
             aggregators.add(agg);
             final var crash = new CaptureBuffer();
             captures.add(crash);
+            final var done = new AtomicBoolean();
+            dones.add(done);
             final var last = new AtomicReference<String>("");
             lastClasses.add(last);
             final var handlerFailure = new AtomicReference<@Nullable RuntimeException>();
@@ -93,7 +106,7 @@ final class PullWorkerPool {
             Thread t = SessionContext.startVirtual(
                     "jk-test-worker-" + workerId,
                     () -> exits[idx] = driveWorker(
-                            workerId, totalWorkers, args, queue, agg, crash, last, handlerFailure, command));
+                            workerId, totalWorkers, args, queue, agg, crash, done, last, handlerFailure, command));
             workerThreads.add(t);
         }
         // Each worker thread owns its process (via PluginProcess.converse) and
@@ -101,8 +114,12 @@ final class PullWorkerPool {
         // has exited. Join them and take the worst exit.
         for (Thread t : workerThreads) t.join();
         int worstExit = 0;
-        for (int e : exits) {
-            if (e != 0) worstExit = e;
+        boolean[] incomplete = new boolean[actualWorkers];
+        boolean anyIncomplete = false;
+        for (int i = 0; i < actualWorkers; i++) {
+            if (exits[i] != 0) worstExit = exits[i];
+            incomplete[i] = exits[i] != 0 || !dones.get(i).get();
+            anyIncomplete |= incomplete[i];
         }
         // Merge per-worker aggregators into one TestSummary.
         long total = 0, succeeded = 0, failed = 0, skipped = 0, classCount = 0;
@@ -119,14 +136,14 @@ final class PullWorkerPool {
             r.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
         }
         boolean handlerFailed = handlerFailures.stream().anyMatch(f -> f.get() != null);
-        if (total == 0 && worstExit != 0 && !handlerFailed) {
+        if (total == 0 && anyIncomplete && !handlerFailed) {
             // No test events but a worker died — the launcher failed before any test ran; what
             // the crashed worker(s) printed (the dropped stderr) is the evidence, and how the
             // first of them was started is the evidence when they printed nothing.
             StringBuilder crash = new StringBuilder();
             List<String> command = List.of();
             for (int i = 0; i < actualWorkers; i++) {
-                if (exits[i] == 0) continue;
+                if (!incomplete[i]) continue;
                 if (command.isEmpty()) command = commands.get(i).get();
                 if (!captures.get(i).isEmpty()) {
                     if (crash.length() > 0) crash.append('\n');
@@ -137,13 +154,13 @@ final class PullWorkerPool {
         }
         // A worker that dies mid-suite while its siblings keep going must not vanish silently:
         // its in-flight class is neither run nor reported, and the suite would go green with a
-        // shortfall. Surface every abnormal exit as a failure naming the worker's last class
-        // (idle-watchdog kills land here too), and a conversation the parent's own handler ended
-        // as the parent-side bug it is. Skipped on user cancel: those exits are the kill we
-        // asked for.
-        if (worstExit != 0 && !SessionCancel.cancelled()) {
+        // shortfall. Surface every worker that ended before DONE as a failure naming its last
+        // class (idle-watchdog kills and a clean exit 0 land here too), and a conversation the
+        // parent's own handler ended as the parent-side bug it is. Skipped on user cancel: those
+        // exits are the kill we asked for, and the shortfall row below says so.
+        if (anyIncomplete && !SessionCancel.cancelled()) {
             for (int i = 0; i < actualWorkers; i++) {
-                if (exits[i] == 0) continue;
+                if (!incomplete[i]) continue;
                 total += 1;
                 failed += 1;
                 allFailures.add(WorkerFailureRow.of(
@@ -156,7 +173,7 @@ final class PullWorkerPool {
             }
         }
         TestFailureInfo shortfall =
-                CancelledShortfall.row(moduleLabel, SessionCancel.cancelled(), worstExit, queue.size());
+                RunShortfall.row(moduleLabel, SessionCancel.cancelled(), anyIncomplete, queue.size());
         if (shortfall != null) {
             total += 1;
             failed += 1;
@@ -167,12 +184,15 @@ final class PullWorkerPool {
 
     /**
      * The pull protocol's parent side: each {@code ready} pulls the next class from the shared
-     * queue onto the child's stdin ({@code DONE} once the queue is empty); every other event is
-     * the aggregator's. A throw from here ends the conversation as a {@link
-     * PluginProcess.HandlerFailure}.
+     * queue onto the child's stdin ({@code DONE} once the queue is empty, which also sets {@code
+     * done}: the worker owes nothing more); every other event is the aggregator's. A throw from
+     * here ends the conversation as a {@link PluginProcess.HandlerFailure}.
      */
     static BiConsumer<String, PluginProcess.Conversation> pullHandler(
-            ConcurrentLinkedDeque<String> queue, ResultAggregator aggregator, AtomicReference<String> lastClass) {
+            ConcurrentLinkedDeque<String> queue,
+            ResultAggregator aggregator,
+            AtomicBoolean done,
+            AtomicReference<String> lastClass) {
         return (json, convo) -> {
             String event = Jsonl.str(json, "event");
             if ("ready".equals(event)) {
@@ -181,6 +201,7 @@ final class PullWorkerPool {
                     lastClass.set(next);
                     convo.send("RUN " + next);
                 } else {
+                    done.set(true);
                     convo.send("DONE");
                     convo.closeInput();
                 }
@@ -195,7 +216,8 @@ final class PullWorkerPool {
      * dispatch the next class from the shared queue (or {@code DONE} when the queue is empty) by
      * writing one line to the child's stdin. Non-protocol lines are user test output — passed through
      * to the parent's stdout, tagged with the worker id. A handler that throws ends the worker with
-     * {@code -1} and leaves its exception in {@code handlerFailure} for the summary to name.
+     * {@code -1} and leaves its exception in {@code handlerFailure} for the summary to name; any
+     * other parent-side throw ends it with {@code -1} and its stack in the worker's output.
      */
     private int driveWorker(
             int workerId,
@@ -204,10 +226,11 @@ final class PullWorkerPool {
             ConcurrentLinkedDeque<String> queue,
             ResultAggregator aggregator,
             CaptureBuffer crash,
+            AtomicBoolean done,
             AtomicReference<String> lastClass,
             AtomicReference<@Nullable RuntimeException> handlerFailure,
             AtomicReference<List<String>> command) {
-        BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, lastClass);
+        BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, done, lastClass);
         Consumer<String> passthrough = line -> {
             crash.add(line);
             aggregator.userOutput(line);
@@ -265,6 +288,13 @@ final class PullWorkerPool {
             return -1;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return -1;
+        } catch (RuntimeException e) {
+            StringWriter stack = new StringWriter();
+            e.printStackTrace(new PrintWriter(stack, true));
+            String text = "test worker driver failed: " + stack;
+            crash.add(text);
+            listener.onUserOutput(workerId, text);
             return -1;
         }
     }

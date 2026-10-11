@@ -14,8 +14,8 @@ import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
-import cc.jumpkick.test.CancelledShortfall;
 import cc.jumpkick.test.RunResults;
+import cc.jumpkick.test.RunShortfall;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
@@ -837,13 +837,13 @@ public final class BuildAccumulator {
 
     /**
      * Fold one suite's counts into the record. Only tests count: the shortfall row a stopped run
-     * carries ({@link CancelledShortfall#rows}) fails the step but is no test, so it leaves
+     * carries ({@link RunShortfall#rows}) fails the step but is no test, so it leaves
      * {@code total} and {@code failed} here.
      */
     public synchronized void addTests(TestSummary t) {
         if (t == null) return;
         anyFact = true;
-        long shortfall = CancelledShortfall.rows(t.failures());
+        long shortfall = RunShortfall.rows(t.failures());
         long total = t.total() - shortfall;
         long failed = t.failed() - shortfall;
         tests = tests == null

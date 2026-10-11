@@ -293,6 +293,7 @@ class LearnedHeapRetryTest {
                   printf '%s\\n' '[0.2s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 180M->20M(256M) 1.0ms' > "$gc"
                 fi
                 printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","id":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","display":"alloc()","duration_ms":1}'
+                printf '%s\\n' '##JKT:{"event":"plan_finished","duration_ms":1,"failed":false}'
                 exit 0
                 """;
         Files.writeString(java, script.replace("MODE", mode));
