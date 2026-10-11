@@ -359,10 +359,10 @@ public final class MavenPackageSource implements PackageSource {
 
     /**
      * Reset per-solve expansion state before another scope solve on this shared source. Exclusion
-     * registrations (and the filtered-at-expansion records that drive the stale-expansion
-     * fixpoint) are facts about the <em>current</em> graph's paths: with intersection semantics a
-     * clean main-scope path collapses a child's exclusion set to empty, and carrying that into the
-     * test/processor solve would over-include modules that every path in the new graph excludes.
+     * registrations (and the expansion records that drive the stale-expansion fixpoint) are facts
+     * about the <em>current</em> graph's paths: with intersection semantics a clean main-scope path
+     * collapses a child's exclusion set to empty, and carrying that into the test/processor solve
+     * would over-include modules that every path in the new graph excludes.
      * Version and raw-POM-edge caches survive — raw edges are cached before exclusion filtering,
      * so they are graph-independent.
      */
@@ -701,7 +701,8 @@ public final class MavenPackageSource implements PackageSource {
         Set<String> excl = view.keySet();
         List<RawEdge> raw = rawEdges(pkg, version);
         List<Term> out = new ArrayList<>(raw.size());
-        Set<String> filtered = null;
+        Set<String> kept = new LinkedHashSet<>();
+        Set<String> filtered = new LinkedHashSet<>();
         for (RawEdge edge : raw) {
             if (edge.constraintOnly()) {
                 // Not a path to the module, so it neither obeys nor registers exclusions. The
@@ -713,13 +714,13 @@ public final class MavenPackageSource implements PackageSource {
                 continue;
             }
             if (isExcluded(edge.depPkg(), excl)) {
-                if (filtered == null) filtered = new LinkedHashSet<>();
                 filtered.add(edge.depPkg());
                 continue;
             }
-            // Cascade parent exclusions + edge exclusions onto the child. Registered even when
-            // empty: an unencumbered path is exactly what has to collapse the child's set to
-            // nothing, and staying silent here would leave another path's exclusions standing.
+            // Cascade parent exclusions + edge exclusions onto the child, under this coordinate as
+            // the origin. Registered even when empty: an unencumbered path is exactly what has to
+            // collapse the child's set to nothing.
+            kept.add(edge.depPkg());
             Map<String, Set<String>> child = new LinkedHashMap<>(view);
             if (!edge.edgeExclusions().isEmpty()) {
                 Set<String> origin = Set.of(ExclusionLedger.gaOf(pkg) + "@" + version);
@@ -732,13 +733,13 @@ public final class MavenPackageSource implements PackageSource {
                 }
             }
             addManagedExclusions(child, edge.depPkg());
-            exclusions.register(edge.depPkg(), child);
+            exclusions.register(edge.depPkg(), pkg + "@" + version, child);
             if (edge.declaredVersion() != null) declare(edge.depPkg(), edge.declaredVersion(), pkg, version);
             out.add(Term.positive(edge.depPkg(), governedOrOwn(pkg, version, edge)));
         }
-        // Remember what this expansion dropped so the resolver can detect a stale expansion
-        // after the exclusion sets converge (they only ever narrow).
-        exclusions.recordFiltered(pkg, version, filtered);
+        // What this expansion kept and dropped, so the resolver can tell once the round has
+        // decided whether the converged set disagrees with either.
+        exclusions.recordExpansion(pkg, version, kept, filtered);
         List<Term> immutable = List.copyOf(out);
         prefetchTransitiveAsync(immutable);
         if (ResolveProfile.on()) {
@@ -864,25 +865,16 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Intersect {@code extra} into the exclusion set applied when {@code pkg} is expanded — a
-     * module is stripped only if every observed parent path strips it; see {@link
-     * ExclusionLedger#register}. Package-visible for tests.
-     */
-    void registerExclusions(String pkg, Set<String> extra) {
-        exclusions.register(pkg, ExclusionLedger.view(extra == null ? Set.of() : extra, null));
-    }
-
-    /**
      * Register the view a manifest edge applies to its root: {@code patterns} pruned from the
      * subtree of {@code pkg}, each attributed to the declaring {@code handle}. A root that excludes
      * nothing registers an empty view, so a transitive path's exclusions never reach a package the
      * manifest declares directly.
      */
     void registerRootExclusions(String pkg, List<String> patterns, String handle) {
-        Map<String, Set<String>> view =
-                ExclusionLedger.view(new LinkedHashSet<>(patterns), ExclusionLedger.MANIFEST_ORIGIN + handle);
+        String origin = ExclusionLedger.MANIFEST_ORIGIN + handle;
+        Map<String, Set<String>> view = ExclusionLedger.view(new LinkedHashSet<>(patterns), origin);
         addManagedExclusions(view, pkg);
-        exclusions.register(pkg, view);
+        exclusions.register(pkg, origin, view);
     }
 
     /** {@code view} plus the managed exclusions on {@code pkg}'s module, origins merged per pattern. */
@@ -896,14 +888,14 @@ public final class MavenPackageSource implements PackageSource {
         }));
     }
 
-    /** The exclusions currently applied when {@code pkg} expands. Package-visible for tests. */
-    Set<String> exclusionsFor(String pkg) {
-        return exclusions.exclusionsFor(pkg);
+    /** Read the exclusion sets against a solved round from now on; see {@link ExclusionLedger#decided}. */
+    void decided(Map<String, String> decisions) {
+        exclusions.decided(decisions);
     }
 
-    /** Whether a decided package filtered an edge the converged set keeps; see {@link ExclusionLedger#anyExpansionStale}. */
-    boolean anyExpansionStale(Map<String, String> decisions) {
-        return exclusions.anyExpansionStale(decisions);
+    /** Whether a decided expansion disagrees with its converged set; see {@link ExclusionLedger#anyExpansionStale}. */
+    boolean anyExpansionStale() {
+        return exclusions.anyExpansionStale();
     }
 
     /** The edges {@code pkg@version} pruned, as lock {@code excluded-by} lines; see {@link ExclusionLedger#prunedEdges}. */

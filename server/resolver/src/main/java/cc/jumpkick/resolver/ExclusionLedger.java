@@ -14,15 +14,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The exclusions in force while packages expand, who declared them, and the edges they pruned.
+ * The exclusions each path registered for the packages it reaches, and the edges every expansion
+ * kept or pruned.
  *
  * <p>Maven drops a dependency only when <em>every</em> path reaching it excludes that dependency,
- * so the set applied when a package expands is the <strong>intersection</strong> of the sets the
- * paths to it registered, not their union: two parents, one excluding and one not, leave the
- * child expanding with nothing stripped. Intersection only shrinks, so registrations may arrive in
- * any order and still converge on the same set. Each pattern remembers the origins that registered
- * it — a manifest handle ({@code jk.toml:<handle>}) or a POM ({@code g:a@version}) — so a lock row
- * can say who pruned an edge.
+ * so the set applied when a package expands is the <strong>intersection</strong> of the views the
+ * paths to it registered, not their union. A registration is kept per origin — the {@code
+ * parent@version} coordinate whose edge reached the package, or the manifest handle ({@code
+ * jk.toml:<handle>}) that declares it — and only the live origins count: a manifest handle always,
+ * a parent coordinate while the solve the ledger is read against decided that parent at that
+ * version. Before a round has decided, every origin is live. Each pattern remembers the origins
+ * that declared it, so a lock row can say who pruned an edge.
  *
  * <p>A pattern is {@code group:artifact}, {@code group:*}, {@code *:artifact} or {@code *:*}; the
  * type and classifier of a package never escape an exclusion.
@@ -32,58 +34,92 @@ final class ExclusionLedger {
     /** Marks an exclusion a manifest declared: {@code jk.toml:<handle>}. */
     static final String MANIFEST_ORIGIN = "jk.toml:";
 
-    /** Package → the patterns in force when it expands. */
-    private final ConcurrentHashMap<String, Set<String>> whenExpanding = new ConcurrentHashMap<>();
+    /** What one expansion did with its edges: the children it kept and the ones it pruned. */
+    private record Expansion(Set<String> kept, Set<String> filtered) {}
 
-    /** Package → pattern → every origin that registered the pattern for it. */
-    private final ConcurrentHashMap<String, ConcurrentHashMap<String, Set<String>>> origins = new ConcurrentHashMap<>();
+    /** Package → origin → the view (pattern → declaring origins) that path registered. */
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, Map<String, Set<String>>>> registrations =
+            new ConcurrentHashMap<>();
 
-    /** {@code pkg@version} → the children its last expansion filtered. */
-    private final ConcurrentHashMap<String, Set<String>> filteredAtExpansion = new ConcurrentHashMap<>();
+    /** {@code pkg@version} → what its last expansion kept and pruned. */
+    private final ConcurrentHashMap<String, Expansion> expansions = new ConcurrentHashMap<>();
 
-    /** Forget every registration and pruned edge; the caches a solve does not own are elsewhere. */
+    /**
+     * The decisions of the last solve round, which say whether a parent origin is live; {@code null}
+     * before a round has decided, when every origin is.
+     */
+    private volatile @Nullable Map<String, String> decided;
+
+    /** Forget every registration, expansion and decided round; the caches a solve does not own are elsewhere. */
     void reset() {
-        whenExpanding.clear();
-        origins.clear();
-        filteredAtExpansion.clear();
+        registrations.clear();
+        expansions.clear();
+        decided = null;
+    }
+
+    /** Read every set against {@code decisions} from now on: a parent origin they decide elsewhere, or not at all, is dead. */
+    void decided(Map<String, String> decisions) {
+        decided = Map.copyOf(decisions);
     }
 
     /** The patterns applied when {@code pkg} expands. */
     Set<String> exclusionsFor(String pkg) {
-        return whenExpanding.getOrDefault(pkg, Set.of());
+        return viewFor(pkg).keySet();
     }
 
-    /** The converged view for {@code pkg}: each pattern in force with the origins that registered it. */
+    /**
+     * The converged view for {@code pkg}: the patterns every live origin registered, each with the
+     * origins that declared it. Empty when no live origin reaches the package.
+     */
     Map<String, Set<String>> viewFor(String pkg) {
-        Set<String> patterns = exclusionsFor(pkg);
-        if (patterns.isEmpty()) return Map.of();
-        Map<String, Set<String>> byPattern = origins.getOrDefault(pkg, new ConcurrentHashMap<>());
+        Map<String, Map<String, Set<String>>> byOrigin = registrations.get(pkg);
+        if (byOrigin == null) return Map.of();
+        Map<String, String> round = decided;
+        Set<String> patterns = null;
+        List<Map<String, Set<String>>> live = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Set<String>>> e : byOrigin.entrySet()) {
+            if (!isLive(e.getKey(), round)) continue;
+            live.add(e.getValue());
+            if (patterns == null) {
+                patterns = new LinkedHashSet<>(e.getValue().keySet());
+            } else {
+                patterns.retainAll(e.getValue().keySet());
+            }
+            if (patterns.isEmpty()) return Map.of();
+        }
+        if (patterns == null) return Map.of();
         Map<String, Set<String>> out = new LinkedHashMap<>();
-        for (String pattern : patterns) out.put(pattern, Set.copyOf(byPattern.getOrDefault(pattern, Set.of())));
+        for (String pattern : patterns) {
+            Set<String> from = new LinkedHashSet<>();
+            for (Map<String, Set<String>> view : live) from.addAll(view.getOrDefault(pattern, Set.of()));
+            out.put(pattern, Set.copyOf(from));
+        }
         return out;
     }
 
     /**
-     * Intersect one path's view into the set applied when {@code pkg} expands, and remember the
-     * origins. The first registration establishes the set; later ones can only narrow it, and an
-     * empty view — an unencumbered path — collapses it to nothing.
+     * Whether {@code origin} still reaches its package: a manifest handle always does, and a {@code
+     * parent@version} coordinate does while {@code round} decides the parent at that version.
      */
-    void register(String pkg, Map<String, Set<String>> view) {
-        Set<String> incoming = Set.copyOf(view.keySet());
-        whenExpanding.merge(pkg, incoming, (existing, fresh) -> {
-            if (existing.isEmpty() || fresh.isEmpty()) return Set.of();
-            Set<String> both = new LinkedHashSet<>(existing);
-            both.retainAll(fresh);
-            return Set.copyOf(both);
-        });
-        if (view.isEmpty()) return;
-        ConcurrentHashMap<String, Set<String>> byPattern = origins.computeIfAbsent(pkg, k -> new ConcurrentHashMap<>());
-        view.forEach((pattern, from) -> byPattern
-                .computeIfAbsent(pattern, k -> ConcurrentHashMap.newKeySet())
-                .addAll(from));
+    private static boolean isLive(String origin, @Nullable Map<String, String> round) {
+        if (round == null || origin.startsWith(MANIFEST_ORIGIN)) return true;
+        int at = origin.lastIndexOf('@');
+        return origin.substring(at + 1).equals(round.get(origin.substring(0, at)));
     }
 
-    /** One path's view of {@code patterns}, every one registered by {@code origin}; {@code null} records no origin. */
+    /**
+     * Record the view one path applies to {@code pkg}, under the {@code parent@version} coordinate or
+     * manifest handle the path comes from. A later registration from the same origin replaces the
+     * earlier one. An empty view is a registration too: an unencumbered live path collapses the
+     * converged set to nothing.
+     */
+    void register(String pkg, String origin, Map<String, Set<String>> view) {
+        Map<String, Set<String>> copy = new LinkedHashMap<>();
+        view.forEach((pattern, from) -> copy.put(pattern, Set.copyOf(from)));
+        registrations.computeIfAbsent(pkg, k -> new ConcurrentHashMap<>()).put(origin, Map.copyOf(copy));
+    }
+
+    /** One path's view of {@code patterns}, every one declared by {@code origin}; {@code null} records no origin. */
     static Map<String, Set<String>> view(Set<String> patterns, @Nullable String origin) {
         Map<String, Set<String>> out = new LinkedHashMap<>();
         for (String pattern : patterns) out.put(pattern, origin == null ? Set.of() : Set.of(origin));
@@ -91,31 +127,32 @@ final class ExclusionLedger {
     }
 
     /**
-     * Remember what the expansion of {@code pkg@version} dropped. Overwrite, not merge: a
+     * Remember what the expansion of {@code pkg@version} kept and dropped. Overwrite, not merge: a
      * re-expansion in a later solve round supersedes the earlier one.
      */
-    void recordFiltered(String pkg, String version, @Nullable Set<String> filtered) {
-        String key = pkg + "@" + version;
-        if (filtered == null || filtered.isEmpty()) {
-            filteredAtExpansion.remove(key);
-        } else {
-            filteredAtExpansion.put(key, Set.copyOf(filtered));
-        }
+    void recordExpansion(String pkg, String version, Set<String> kept, Set<String> filtered) {
+        expansions.put(pkg + "@" + version, new Expansion(Set.copyOf(kept), Set.copyOf(filtered)));
     }
 
     /**
-     * Whether any decided package's expansion filtered an edge the converged set would keep. A
-     * package decided before a clean path registered can bake a too-aggressive filter into the
-     * solve — the dropped child never enters the resolution and no conflict surfaces it — so the
-     * solve must run again with the converged sets.
+     * Whether a decided package expanded under a set its converged set now disagrees with: an edge
+     * it pruned that the converged set keeps, or one it kept that the converged set prunes. The
+     * first happens when a clean path registers after the package was decided, the second when the
+     * path that registered the clean view was backtracked away from; neither surfaces as a solver
+     * conflict, so the solve must run again with the converged sets. False before a round has decided.
      */
-    boolean anyExpansionStale(Map<String, String> decisions) {
-        for (Map.Entry<String, String> e : decisions.entrySet()) {
-            Set<String> filtered = filteredAtExpansion.get(e.getKey() + "@" + e.getValue());
-            if (filtered == null) continue;
+    boolean anyExpansionStale() {
+        Map<String, String> round = decided;
+        if (round == null) return false;
+        for (Map.Entry<String, String> e : round.entrySet()) {
+            Expansion expansion = expansions.get(e.getKey() + "@" + e.getValue());
+            if (expansion == null) continue;
             Set<String> converged = exclusionsFor(e.getKey());
-            for (String dep : filtered) {
+            for (String dep : expansion.filtered()) {
                 if (!isExcluded(dep, converged)) return true;
+            }
+            for (String dep : expansion.kept()) {
+                if (isExcluded(dep, converged)) return true;
             }
         }
         return false;
@@ -128,11 +165,11 @@ final class ExclusionLedger {
      * coordinate alone.
      */
     List<String> prunedEdges(String pkg, String version) {
-        Set<String> filtered = filteredAtExpansion.get(pkg + "@" + version);
-        if (filtered == null || filtered.isEmpty()) return List.of();
+        Expansion expansion = expansions.get(pkg + "@" + version);
+        if (expansion == null || expansion.filtered().isEmpty()) return List.of();
         Map<String, Set<String>> view = viewFor(pkg);
-        List<String> out = new ArrayList<>(filtered.size());
-        for (String child : new TreeSet<>(filtered)) {
+        List<String> out = new ArrayList<>(expansion.filtered().size());
+        for (String child : new TreeSet<>(expansion.filtered())) {
             if (!isExcluded(child, view.keySet())) continue;
             String ga = gaOf(child);
             Set<String> from = new TreeSet<>();

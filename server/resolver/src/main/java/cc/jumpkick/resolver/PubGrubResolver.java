@@ -162,14 +162,15 @@ public final class PubGrubResolver implements Resolver {
             source.warmUp();
             if (source instanceof MavenPackageSource mps) mps.prefetchRoots(rootTerms);
             decisions = solveFor(rootTerms);
-            // Intersection exclusion sets only narrow as paths register, so a package decided
-            // early can have filtered an edge the converged set keeps (clean path discovered
-            // deeper than the excluding one). Re-solve with the converged sets until no decided
-            // expansion is stale — sets only shrink, so this terminates; in practice one extra
-            // round, and only when the order-dependence actually bit.
+            // A package expands under the exclusions of the paths registered by then: a clean
+            // path found later, or a path the solver backtracked away from, leaves its expansion
+            // disagreeing with the set its live paths converge on. Re-solve against the decided
+            // round while that is so; in practice one extra round, and only when it bit.
             if (source instanceof MavenPackageSource mps) {
-                for (int round = 0; round < 4 && mps.anyExpansionStale(decisions); round++) {
+                mps.decided(decisions);
+                for (int round = 0; round < 4 && mps.anyExpansionStale(); round++) {
                     decisions = solveFor(rootTerms);
+                    mps.decided(decisions);
                 }
             }
         } finally {
