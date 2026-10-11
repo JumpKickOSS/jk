@@ -43,7 +43,7 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 |---|---|
 | What must be green to merge | the self-host job, the shell fixtures job, the workflow lint (actionlint, commit-pinned actions, read-only tokens: `scripts/check-workflows.sh`, the same rules `jk guard` holds as `workflow-pins-permissions`) and the authorship scan |
 | What produces the `jk` under test | the hosted release the pin names bootstraps; `jk install` then swaps in the checkout's own client, engine and workers |
-| Where CI installs it | `$GITHUB_WORKSPACE/.ci-jk-home` — never the runner's `~/.jk` |
+| Where CI installs it | `$GITHUB_WORKSPACE/../jk-home`, beside the checkout so no guard lane walks the store — never the runner's `~/.jk` |
 | What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml`; `cmp` of `target/dist/jk` against `$JK_HOME/bin/jk` and the engine sha against `jk-engine.toml` prove the takeover |
 | What audits the graph | `jk audit --severity HIGH --output json` over the committed lock, after the drift check, by the checkout's own jk: HIGH, CRITICAL and unlabelled advisories fail the job, `scripts/ci-audit-annotate.sh` names each one, the JSON is the `jk-audit` artifact; a pin bump or an `[audit] ignore` with a reason is the fix, never a skipped step |
 | What runs nightly | `jk test --profile integration`, `--profile slow`, `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |

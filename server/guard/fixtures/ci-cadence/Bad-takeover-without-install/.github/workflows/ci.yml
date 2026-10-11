@@ -11,7 +11,7 @@ jobs:
     name: Self-host (jk builds jk)
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@v4
 
