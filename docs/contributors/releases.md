@@ -8,10 +8,10 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.15.0`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.15.0`** | Next public release cut from that line |
-| Prior | **`0.14.0`** — previous release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.15.0`, `0.16.0`, … |
+| **`0.15.2`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.15.2`** | Next public release cut from that line |
+| Prior | **`0.15.1`** — previous release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.15.3`, `0.16.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -25,6 +25,22 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.15.2
+
+- **The release picks the client.** `install.sh`, `install.ps1`, the `jk` and `jk.bat` wrappers and
+  `jk self update` take the native client only when the signed `SHA256SUMS` lists one for the host,
+  and the JVM client everywhere else — Windows on ARM no longer runs the x86_64 build under
+  emulation. Concurrent wrappers download once.
+- **A module's `jdk =` takes effect in a workspace.** A member's pin wins over the JDK the lock
+  merely records, and `jk run` and installed application launchers use the build's own JDK
+  resolution instead of `.jdk-version` alone.
+- **A source replaced under an older mtime is recompiled** — a restore from backup, `cp -p` or an
+  archive extraction no longer leaves the old class in place.
+- **IntelliJ:** a first-party `[intellij]` battery builds IntelliJ Platform plugins; the
+  ide-model's SDK is the JDK the build compiles the module with, so a `java = 17` module on a
+  JDK 25 host gets a usable SDK at level 17.
+- **Smaller:** an older jk relocks a newer jk's lock when nothing would be dropped.
 
 ### 0.15.1
 
