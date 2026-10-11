@@ -95,9 +95,10 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   the PATH `jk`. One engine is hosted at a time, so there is no per-version directory tree. An upgrade
   writes the new jar **beside** the previous one (`jk-engine-<version>.jar`, or
   `jk-engine-<version>.<epochMillis>.jar` when that name is occupied) and points `jk-engine.toml` at it
-  — never rename or overwrite a jar `java.exe` may have mapped. The previous client is parked as
-  `jk.old` (`jk.exe.old` on Windows). GC deletes retired jars and parked clients once the displaced
-  engine drains. Handshake detects skew and takes over.
+  — never rename or overwrite a jar `java.exe` may have mapped. The replacement client is staged
+  beside the live one first; only then is the previous client parked as `jk.old` (`jk.exe.old` on
+  Windows) and the staged one moved in, so an install that fails leaves the previous client on
+  PATH. GC deletes retired jars and parked clients once the displaced engine drains. Handshake detects skew and takes over.
   **Newer always wins**: the lock's
   `jk-min` is a *floor*, never a pin — a jk older than the floor refuses artifact jobs with an
   upgrade error (`jk self update`) on every surface, and nothing ever fetches or runs an older

@@ -89,11 +89,7 @@ public final class AtomicWrites {
      * Linux's ~1.5.
      */
     public static void replace(Path target, byte[] bytes) throws IOException {
-        Path parent = directoryOf(target);
-        boolean ownerOnly = OwnerOnlyFiles.inState(target);
-        if (ownerOnly) OwnerOnlyFiles.directory(parent);
-        else Files.createDirectories(parent);
-        Path tmp = staging(parent, target, ownerOnly);
+        Path tmp = staging(target);
         boolean moved = false;
         try {
             Files.write(tmp, bytes);
@@ -113,11 +109,7 @@ public final class AtomicWrites {
      * would cost more than it protects — see the class javadoc.
      */
     public static void replaceDurably(Path target, byte[] bytes) throws IOException {
-        Path parent = directoryOf(target);
-        boolean ownerOnly = OwnerOnlyFiles.inState(target);
-        if (ownerOnly) OwnerOnlyFiles.directory(parent);
-        else Files.createDirectories(parent);
-        Path tmp = staging(parent, target, ownerOnly);
+        Path tmp = staging(target);
         boolean moved = false;
         try {
             try (FileChannel ch = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
@@ -152,6 +144,20 @@ public final class AtomicWrites {
         Path parent = target.getParent();
         if (parent != null) return parent;
         return Objects.requireNonNull(target.toAbsolutePath().getParent(), "a file has a directory");
+    }
+
+    /**
+     * A staging sibling for {@code target}, its parent created, carrying the mode {@code target}
+     * should end up with. For a caller that fills the file itself (a copy, a script it then marks
+     * executable) and publishes it with {@link #moveInto}; it deletes the sibling when the fill
+     * fails.
+     */
+    public static Path staging(Path target) throws IOException {
+        Path parent = directoryOf(target);
+        boolean ownerOnly = OwnerOnlyFiles.inState(target);
+        if (ownerOnly) OwnerOnlyFiles.directory(parent);
+        else Files.createDirectories(parent);
+        return staging(parent, target, ownerOnly);
     }
 
     /**

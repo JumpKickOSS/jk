@@ -166,6 +166,11 @@ class InstallCommandTest {
         assertThat(script).contains("-cp ");
         // Every launcher jk puts on PATH is attributed; app vs tool is told apart above.
         assertThat(script).contains(JkOwnership.GENERATED_BY);
+        // Staged beside its destination and moved in executable: no temp sibling survives.
+        assertThat(Files.isExecutable(launcher)).isTrue();
+        try (var entries = Files.list(bin)) {
+            assertThat(entries.map(p -> p.getFileName().toString())).noneMatch(n -> n.startsWith(".widget-"));
+        }
     }
 
     @Test

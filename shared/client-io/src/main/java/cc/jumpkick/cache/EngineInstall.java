@@ -211,28 +211,71 @@ public final class EngineInstall {
         installBinaries(clientSource, binDir, Os.isWindows());
     }
 
+    /**
+     * Replace the PATH client with a copy of {@code clientSource}. Both {@code jk} and {@code jkx}
+     * are staged beside their destination and made executable first; only then is the live pair
+     * parked as {@code .old} and the staged pair moved in. A failure after the park puts the parked
+     * client back, so the bin never ends up with no client at all.
+     */
     static void installBinaries(Path clientSource, Path binDir, boolean windows) throws IOException {
         Files.createDirectories(binDir);
         String jkName = windows ? "jk.exe" : "jk";
         String jkxName = windows ? "jkx.exe" : "jkx";
         Path jk = binDir.resolve(jkName);
         Path jkx = binDir.resolve(jkxName);
-        displaceToOld(jk);
-        displaceToOld(jkx);
-        Path tmp = jk.resolveSibling("." + jkName + "-new");
-        Files.deleteIfExists(tmp);
-        // A copy, never a link: the source is a CAS blob whose bytes its digest vouches for, and a
-        // linked bin/jk would share its inode — the chmod below, or any later rewrite of the PATH
-        // client, would then change the verified blob in place.
-        Files.copy(clientSource, tmp, StandardCopyOption.REPLACE_EXISTING);
-        makeExecutable(tmp);
-        AtomicWrites.moveInto(tmp, jk);
+        Path stagedJk = jk.resolveSibling("." + jkName + "-new");
+        Path stagedJkx = jkx.resolveSibling("." + jkxName + "-new");
+        Files.deleteIfExists(stagedJk);
+        Files.deleteIfExists(stagedJkx);
         try {
-            Files.createLink(jkx, jk);
-        } catch (IOException | UnsupportedOperationException noHardlink) {
-            Files.copy(jk, jkx, StandardCopyOption.REPLACE_EXISTING);
+            // A copy, never a link: the source is a CAS blob whose bytes its digest vouches for, and a
+            // linked bin/jk would share its inode — the chmod below, or any later rewrite of the PATH
+            // client, would then change the verified blob in place.
+            Files.copy(clientSource, stagedJk, StandardCopyOption.REPLACE_EXISTING);
+            makeExecutable(stagedJk);
+            try {
+                Files.createLink(stagedJkx, stagedJk);
+            } catch (IOException | UnsupportedOperationException noHardlink) {
+                Files.copy(stagedJk, stagedJkx, StandardCopyOption.REPLACE_EXISTING);
+            }
+            makeExecutable(stagedJkx);
+        } catch (IOException | RuntimeException staging) {
+            discard(stagedJk, staging);
+            discard(stagedJkx, staging);
+            throw staging;
         }
-        makeExecutable(jkx);
+        Optional<Path> parkedJk = Optional.empty();
+        Optional<Path> parkedJkx = Optional.empty();
+        try {
+            parkedJk = displaceToOld(jk);
+            parkedJkx = displaceToOld(jkx);
+            AtomicWrites.moveInto(stagedJk, jk);
+            AtomicWrites.moveInto(stagedJkx, jkx);
+        } catch (IOException | RuntimeException publish) {
+            restore(parkedJk, jk, publish);
+            restore(parkedJkx, jkx, publish);
+            discard(stagedJk, publish);
+            discard(stagedJkx, publish);
+            throw publish;
+        }
+    }
+
+    /** Put a parked client back as {@code live}, over whatever the failed publish left there. */
+    private static void restore(Optional<Path> parked, Path live, Exception cause) {
+        if (parked.isEmpty()) return;
+        try {
+            Files.move(parked.get(), live, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException | RuntimeException failed) {
+            cause.addSuppressed(failed);
+        }
+    }
+
+    private static void discard(Path staged, Exception cause) {
+        try {
+            Files.deleteIfExists(staged);
+        } catch (IOException | RuntimeException failed) {
+            cause.addSuppressed(failed);
+        }
     }
 
     static boolean isParkedClientName(String name) {
