@@ -888,4 +888,100 @@ class JkBuildEditorTest {
         assertThat(JkBuildEditor.setDependencyVersion(toml, Scope.MAIN, "jakarta.inject-api", "2.0.1.MR"))
                 .contains("\"jakarta.inject-api\" = \"jakarta.inject:jakarta.inject-api:2.0.1.MR\"");
     }
+
+    /** An array-of-tables header closes the table before it, so an edit never lands inside its row. */
+    @Test
+    void every_edit_stops_at_an_array_of_tables_header() {
+        String start = """
+                name = "widget"
+                java = 25
+
+                [dependencies]
+                guava = "33.4.0-jre"
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization:2.1.0"
+                guava = "not a dependency"
+                """;
+        String added =
+                JkBuildEditor.addDependency(start, Scope.MAIN, "jackson", "com.fasterxml.jackson", "jackson", "1.0");
+        assertThat(added)
+                .contains("guava = \"33.4.0-jre\"\njackson = \"com.fasterxml.jackson:jackson:1.0\"\n")
+                .contains(
+                        "coordinate = \"org.jetbrains.kotlin:kotlin-serialization:2.1.0\"\nguava = \"not a dependency\"\n");
+        assertThat(JkBuildParser.parse(added).dependencies().of(Scope.MAIN))
+                .extracting(Dependency::name)
+                .containsExactly("guava", "jackson");
+
+        assertThatThrownBy(() -> JkBuildEditor.removeDependency(start, Scope.MAIN, "coordinate"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not found");
+        assertThat(JkBuildEditor.setRootScalar(start, "version", "\"1.0\"")).contains("java = 25\nversion = \"1.0\"\n");
+    }
+
+    /** A CRLF manifest keeps its line ends: the edit is the only difference. */
+    @Test
+    void a_crlf_manifest_round_trips_through_every_edit() {
+        String start = ("""
+                        name = "widget"
+                        java = 25
+
+                        [dependencies]
+                        guava = "33.4.0-jre"
+                        jackson = "com.fasterxml.jackson:jackson:1.0"
+                        """).replace("\n", "\r\n");
+
+        String updated = JkBuildEditor.setDependencyVersion(start, Scope.MAIN, "guava", "33.5.0-jre");
+        assertThat(updated).isEqualTo(start.replace("33.4.0-jre", "33.5.0-jre"));
+
+        String added = JkBuildEditor.addDependency(start, Scope.MAIN, "hamcrest", "org.hamcrest", "hamcrest", "3.0");
+        assertThat(added)
+                .isEqualTo(start.replace(
+                        "guava = \"33.4.0-jre\"\r\n",
+                        "guava = \"33.4.0-jre\"\r\nhamcrest = \"org.hamcrest:hamcrest:3.0\"\r\n"));
+        assertThatThrownBy(
+                        () -> JkBuildEditor.addDependency(start, Scope.MAIN, "guava", "com.google.guava", "guava", "1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already contains");
+
+        assertThat(JkBuildEditor.removeDependency(start, Scope.MAIN, "jackson"))
+                .isEqualTo(start.replace("jackson = \"com.fasterxml.jackson:jackson:1.0\"\r\n", ""));
+
+        String withTest = JkBuildEditor.addDependency(start, Scope.TEST, "junit", "org.junit", "junit", "6.0.0");
+        assertThat(withTest)
+                .isEqualTo(start + "\r\n[test-dependencies]\r\njunit = \"org.junit:junit:6.0.0\"\r\n")
+                .doesNotContain("\n\n");
+
+        String ws = JkBuildEditor.registerWorkspaceModule(start, "core");
+        assertThat(ws).isEqualTo(start + "\r\n[workspace]\r\nmodules = [\"core\"]\r\n");
+        assertThat(JkBuildEditor.addWorkspaceModule(ws, "cli"))
+                .isEqualTo(ws.replace("[\"core\"]", "[\"core\", \"cli\"]"));
+    }
+
+    /** A {@code ]} inside a trailing comment or a quoted element is not the array's close. */
+    @Test
+    void a_bracket_in_a_comment_or_string_does_not_close_the_modules_array() {
+        String start = """
+                group = "cc.jumpkick"
+                name = "jk"
+                version = "0.1.0"
+
+                [workspace]
+                modules = [
+                    "core", # see [docs]
+                    "lib]s",
+                ]
+                """;
+        String removed = JkBuildEditor.removeWorkspaceModule(start, "lib]s");
+        assertThat(removed).contains("# see [docs]").doesNotContain("lib]s");
+        assertThat(workspaceOf(JkBuildParser.parse(removed)).modules()).containsExactly("core");
+
+        String added = JkBuildEditor.addWorkspaceModule(start, "cli");
+        assertThat(added).contains("    \"cli\",\n]");
+        assertThat(workspaceOf(JkBuildParser.parse(added)).modules()).containsExactly("core", "lib]s", "cli");
+
+        String inline = "[workspace]\nmodules = [\"core\"] # [x]\n";
+        assertThat(JkBuildEditor.addWorkspaceModule(inline, "cli"))
+                .isEqualTo("[workspace]\nmodules = [\"core\", \"cli\"] # [x]\n");
+    }
 }
