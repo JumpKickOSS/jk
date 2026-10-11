@@ -247,6 +247,108 @@ class PreflightMemoTest {
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
     }
 
+    /**
+     * A root declared outside {@code src/} is an input like any other: the memo must miss on an
+     * edit there, or the module builds as up to date with a stale jar.
+     */
+    @Test
+    void an_edit_under_a_build_extra_src_root_misses_the_memo(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+                jdk = 25
+                java = 25
+
+                [build]
+                extra-src = ["grails-app/services"]
+                """);
+        Path bar = Files.createDirectories(tmp.resolve("grails-app/services")).resolve("Bar.java");
+        Files.writeString(bar, "class Bar { int x = 1; }\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
+
+        Files.writeString(bar, "class Bar { int x = 2; }\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false))
+                .as("an edit under [build] extra-src is an input change")
+                .isEmpty();
+    }
+
+    @Test
+    void an_edit_under_a_test_extra_src_root_misses_the_memo(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+                jdk = 25
+                java = 25
+
+                [test]
+                extra-src = ["shared-tests/java"]
+                """);
+        Path helper = Files.createDirectories(tmp.resolve("shared-tests/java")).resolve("Helper.java");
+        Files.writeString(helper, "class Helper { int x = 1; }\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
+
+        Files.writeString(helper, "class Helper { int x = 2; }\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false))
+                .as("an edit under [test] extra-src is an input change")
+                .isEmpty();
+    }
+
+    @Test
+    void an_edit_under_a_fixtures_root_outside_src_misses_the_memo(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+                jdk = 25
+                java = 25
+
+                [test]
+                fixtures = "fixtures/java"
+                """);
+        Path fixture = Files.createDirectories(tmp.resolve("fixtures/java")).resolve("Fx.java");
+        Files.writeString(fixture, "class Fx { int x = 1; }\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
+
+        Files.writeString(fixture, "class Fx { int x = 2; }\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false))
+                .as("an edit under [test] fixtures is an input change")
+                .isEmpty();
+    }
+
+    /** A source that will not read is not a digest input; it is the reason the module is scheduled. */
+    @Test
+    void an_unreadable_source_is_an_uncertain_fingerprint_naming_the_file(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows());
+        writeProject(tmp);
+        Path src = tmp.resolve("src/main/java/App.java");
+        Set<PosixFilePermission> was = Files.getPosixFilePermissions(src);
+        Files.setPosixFilePermissions(src, Set.of());
+        assumeFalse(Files.isReadable(src), "running as a user the permission bits do not bind");
+        try {
+            PreflightMemo.Fingerprint fp = PreflightMemo.fingerprintModule(tmp, false);
+            assertThat(fp).isInstanceOf(PreflightMemo.Uncertain.class);
+            PreflightMemo.Uncertain uncertain = (PreflightMemo.Uncertain) fp;
+            assertThat(uncertain.input().getFileName().toString()).isEqualTo("App.java");
+            assertThat(uncertain.reason()).contains("App.java").contains("AccessDeniedException");
+        } finally {
+            Files.setPosixFilePermissions(src, was);
+        }
+    }
+
     @Test
     void clean_row_with_missing_outputs_reports_restore_not_memo_miss(@TempDir Path tmp) throws Exception {
         // Inputs still match after a wiped module target — memo hits with restoreNeeded.

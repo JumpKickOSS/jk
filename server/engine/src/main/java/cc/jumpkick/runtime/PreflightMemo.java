@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -53,9 +54,9 @@ import org.jspecify.annotations.Nullable;
  * full recompute (fail-open); an input that will not read is an {@link Uncertain} fingerprint,
  * which schedules the module and names the file.
  *
- * <p>Schema 3: module fingerprints cover every file under {@code src}/{@code test}/
- * suite resource dirs (resources included); dirty rows are stored with fingerprints captured at
- * preflight time, never post-build.
+ * <p>Module fingerprints cover every file under {@code src}/{@code test}/suite resource dirs
+ * (resources included) and every root the manifest declares beyond them; dirty rows are stored
+ * with fingerprints captured at preflight time, never post-build.
  */
 public final class PreflightMemo {
 
@@ -817,9 +818,11 @@ public final class PreflightMemo {
     // Module dirty fingerprint (sources)
 
     /**
-     * Every regular file under dirs the build consumes feeds the digest: main
-     * sources, main resources, default + named test suites and suite resources. Derived from
-     * {@link cc.jumpkick.layout.ModuleLayout#fingerprintDirs}, not a fixed literal list.
+     * Every regular file under the roots the build consumes feeds the digest: main sources, main
+     * resources, default + named test suites and suite resources ({@link ModuleLayout#fingerprintDirs}),
+     * plus the roots the manifest declares outside them — {@code [build] extra-src},
+     * {@code [test] extra-src}, {@code [test] fixtures}, plugin-contributed roots
+     * ({@link ModuleLayoutPlugins#declaredRoots}).
      */
     static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests) {
         return fingerprintModule(moduleDir, skipTests, "");
@@ -839,12 +842,19 @@ public final class PreflightMemo {
                 feedFile(md, moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST));
             }
             boolean mtimeMode = useMtimeMode();
-            List<Path> roots = new ArrayList<>(ModuleLayout.fingerprintDirs(moduleDir, skipTests));
-            for (var root : ModuleLayoutPlugins.pluginContributedRoots(moduleDir)) {
-                Path p = moduleDir.resolve(root.relative());
-                if (Files.isDirectory(p)) roots.add(p.toAbsolutePath().normalize());
-            }
-            for (Path r : roots) {
+            for (Path r : fingerprintRoots(moduleDir, skipTests)) {
+                if (Files.isRegularFile(r)) {
+                    var attrs = Files.readAttributes(r, BasicFileAttributes.class);
+                    feedFingerprint(
+                            md,
+                            moduleDir,
+                            r,
+                            attrs.size(),
+                            attrs.lastModifiedTime().toMillis(),
+                            attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
+                            mtimeMode);
+                    continue;
+                }
                 if (!Files.isDirectory(r)) continue;
                 var snap = InputTrees.of(r);
                 if (snap.overflow()) {
@@ -876,6 +886,29 @@ public final class PreflightMemo {
     }
 
     /**
+     * The layout's roots plus the manifest's declared roots, each walked once: a declared root
+     * under a layout root (a variant's {@code src/demo/kotlin}) is already covered, and a
+     * {@code [test] extra-src} entry may be a single file rather than a directory.
+     */
+    private static List<Path> fingerprintRoots(Path moduleDir, boolean skipTests) throws IOException {
+        List<Path> roots = new ArrayList<>(ModuleLayout.fingerprintDirs(moduleDir, skipTests));
+        Path toml = ManifestPaths.manifestIn(moduleDir);
+        if (!Files.isRegularFile(toml)) return roots;
+        JkBuild manifest = JkBuildParser.parse(toml);
+        for (Path declared : ModuleLayoutPlugins.declaredRoots(moduleDir, manifest, skipTests)) {
+            boolean covered = false;
+            for (Path r : roots) {
+                if (declared.startsWith(r)) {
+                    covered = true;
+                    break;
+                }
+            }
+            if (!covered) roots.add(declared);
+        }
+        return roots;
+    }
+
+    /**
      * A node build's inputs, when the module has one: its tree as {@code node-build} keys it, the
      * request's framework variables, and whether this run skips it — a skipped run must not leave
      * the module recorded as built from inputs no node step read.
@@ -902,7 +935,8 @@ public final class PreflightMemo {
      * from a snapshot or a live walk, or a module crossing the retain boundary between runs would
      * rebuild for no input change. Content goes through {@link FileHashMemo}, so a file the memo
      * has already hashed under this stat identity costs a map read: the preflight, the test stamp
-     * and the compile keys all read the same sources, and each build reads their bytes once.
+     * and the compile keys all read the same sources, and each build reads their bytes once. A
+     * file that will not read is an {@link UnreadableInput}, never a constant in the digest.
      */
     private static void feedFingerprint(
             MessageDigest md,
@@ -911,7 +945,8 @@ public final class PreflightMemo {
             long size,
             long mtimeMillis,
             long mtimeNanos,
-            boolean mtimeMode) {
+            boolean mtimeMode)
+            throws IOException {
         feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
         if (mtimeMode) {
             feed(md, Long.toString(size));
@@ -921,7 +956,7 @@ public final class PreflightMemo {
         try {
             feed(md, FileHashMemo.contentHash(file.toAbsolutePath().normalize(), size, mtimeMillis, mtimeNanos));
         } catch (IOException e) {
-            feed(md, "unreadable");
+            throw new UnreadableInput(file, e);
         }
     }
 

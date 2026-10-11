@@ -8,9 +8,10 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
-/** Plugin-contributed source roots. Engine-only — pulls {@code JkBuildParser}. */
+/** Source roots a manifest declares beyond the fixed layout. Engine-only — pulls {@code JkBuildParser}. */
 public final class ModuleLayoutPlugins {
 
     private ModuleLayoutPlugins() {}
@@ -29,5 +30,34 @@ public final class ModuleLayoutPlugins {
         } catch (Exception ignored) {
             return List.of();
         }
+    }
+
+    /**
+     * Every input the manifest declares outside the layout's fixed trees, resolved against the
+     * module dir and present on disk: {@code [build] extra-src}, plugin-contributed roots, and —
+     * unless {@code skipTests} — {@code [test] extra-src} (a directory or a single source file)
+     * and the {@code [test] fixtures} root. Absolute and normalized, declaration order.
+     */
+    public static List<Path> declaredRoots(Path moduleDir, JkBuild build, boolean skipTests) {
+        LinkedHashSet<Path> out = new LinkedHashSet<>();
+        for (String rel : build.build().extraSrc()) addDir(out, moduleDir, rel);
+        for (PluginContributions.SourceRoot root : PluginContributions.sourceRoots(build, moduleDir)) {
+            addDir(out, moduleDir, root.dir());
+        }
+        if (!skipTests) {
+            for (String rel : build.build().testExtraSrc()) {
+                Path p = moduleDir.resolve(rel);
+                if (Files.isDirectory(p) || Files.isRegularFile(p))
+                    out.add(p.toAbsolutePath().normalize());
+            }
+            String fixtures = build.build().fixtures();
+            if (fixtures != null) addDir(out, moduleDir, fixtures);
+        }
+        return List.copyOf(out);
+    }
+
+    private static void addDir(LinkedHashSet<Path> out, Path moduleDir, String rel) {
+        Path p = moduleDir.resolve(rel);
+        if (Files.isDirectory(p)) out.add(p.toAbsolutePath().normalize());
     }
 }
