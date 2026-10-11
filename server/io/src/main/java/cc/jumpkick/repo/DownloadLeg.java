@@ -206,7 +206,8 @@ final class DownloadLeg {
 
     /**
      * Confirm a copy the store already holds against the checksum this repository publishes at
-     * {@code uri}, the check a download of it gets, before a lock pins it. True when the copy may
+     * {@code uri}, the check a download of it gets, before a lock pins it; {@code sha256} is the
+     * digest of the bytes at {@code path}, verified by the caller. True when the copy may
      * stand: its bytes match, or the repository publishes no checksum and the rule that lets a
      * download through — a repository on local disk, or {@code allow-unverified} — lets it through.
      * False, with a note, when the repository disowns the bytes. A sidecar-less copy the rule

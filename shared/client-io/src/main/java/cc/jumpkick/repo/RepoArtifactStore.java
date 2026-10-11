@@ -226,8 +226,9 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * Verify the artifact at {@code relativePath} against {@code expectedSha256} (the lock pin).
-     * Uses the {@code .jk} memo's size+mtime fast path and re-hashes on doubt.
+     * Verify the artifact at {@code relativePath} against {@code expectedSha256} (the lock pin). A
+     * {@code .jk} memo that still describes the file (size and mtime, one stat) answers for its
+     * bytes; otherwise the file is re-hashed and the memo rewritten on a match.
      */
     public IndexState verify(String relativePath, String expectedSha256) {
         if (root == null) return IndexState.ABSENT;

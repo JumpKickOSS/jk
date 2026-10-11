@@ -12,6 +12,7 @@ import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -469,14 +470,22 @@ public final class RepoGroup {
     }
 
     /**
-     * Return a process-memo hit only when its on-disk payload is still present; drop stale paths
-     * (cache GC / manual wipe mid-process).
+     * Return a process-memo hit only when its on-disk payload is still a regular file of the size
+     * the hit recorded (one stat); a path gone or changed under the memo (cache GC, a manual wipe,
+     * a truncated file) is dropped so the store is asked again.
      */
     private static @Nullable RepoFetched liveHit(ConcurrentHashMap<String, RepoFetched> cache, String key) {
         RepoFetched hit = cache.get(key);
         if (hit == null) return null;
         Path path = hit.fetched().cachePath();
-        if (path != null && Files.isRegularFile(path)) return hit;
+        if (path != null) {
+            try {
+                BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+                if (attrs.isRegularFile() && attrs.size() == hit.fetched().size()) return hit;
+            } catch (IOException gone) {
+                // dropped below
+            }
+        }
         cache.remove(key, hit);
         return null;
     }

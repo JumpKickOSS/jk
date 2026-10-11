@@ -63,6 +63,33 @@ class RepoGroupTest {
     }
 
     @Test
+    void a_store_copy_truncated_under_the_process_memo_is_not_served(@TempDir Path tmp) throws Exception {
+        Coordinate coord = Coordinate.of("com.example", "lib", "1.0");
+        Path repoDir = tmp.resolve("repo");
+        Path jar = repoDir.resolve(MavenLayout.artifactPath(coord));
+        Files.createDirectories(jar.getParent());
+        byte[] bytes = "published-bytes".getBytes(StandardCharsets.UTF_8);
+        Files.write(jar, bytes);
+        String sha = Hashing.sha256Hex(bytes);
+
+        Cas cas = new Cas(tmp.resolve("cas"));
+        RepoGroup group = new RepoGroup(
+                List.of(new MavenRepo("internal", repoDir.toUri(), new Http(), cas, RepoCredential.ANONYMOUS, false)));
+        RepoGroup.RepoFetched warm = group.tryFetchArtifact(coord).orElseThrow();
+        assertThat(warm.fetched().sha256()).isEqualTo(sha);
+
+        // The store's file is torn under both memos, the process's and the .jk beside it.
+        Files.write(warm.fetched().cachePath(), new byte[0]);
+
+        for (RepoGroup.RepoFetched hit : List.of(
+                group.tryFetchArtifact(coord, sha).orElseThrow(),
+                group.tryFetchArtifact(coord).orElseThrow())) {
+            assertThat(hit.fetched().sha256()).isEqualTo(sha);
+            assertThat(Files.readAllBytes(hit.fetched().cachePath())).isEqualTo(bytes);
+        }
+    }
+
+    @Test
     void a_pinned_fetch_that_matches_the_memo_is_served_from_it(@TempDir Path tmp) throws Exception {
         Coordinate coord = Coordinate.of("com.example", "lib", "1.0");
         Path repoDir = tmp.resolve("repo");

@@ -5,7 +5,9 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -110,18 +112,32 @@ public record ArtifactMemo(
     }
 
     /**
-     * True when {@code blob} still matches {@code expectedSha256}. Trusts this memo when size and
-     * mtime still match; otherwise re-hashes and, on success, the caller should rewrite the memo.
+     * True when {@code blob} still matches {@code expectedSha256} on this memo's word: the memo
+     * names that digest, and the file's size and mtime are the ones the memo recorded. One stat,
+     * no read; false says nothing about the bytes until a re-hash has looked at them.
      */
     public boolean stillMatches(Path blob, String expectedSha256) throws IOException {
-        if (!Files.isRegularFile(blob)) return false;
-        if (!sha256.equalsIgnoreCase(expectedSha256)) return false;
-        return Files.size(blob) == size && Files.getLastModifiedTime(blob).toMillis() == mtimeMillis;
+        return sha256.equalsIgnoreCase(expectedSha256) && describes(blob);
+    }
+
+    /** True when {@code blob} is a regular file of the size and mtime this memo recorded (one stat). */
+    private boolean describes(Path blob) throws IOException {
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(blob, BasicFileAttributes.class);
+        } catch (NoSuchFileException absent) {
+            return false;
+        }
+        return attrs.isRegularFile()
+                && attrs.size() == size
+                && attrs.lastModifiedTime().toMillis() == mtimeMillis;
     }
 
     /**
      * Verify {@code blob} against {@code expectedSha256}, using {@code jkFile} as a size+mtime
-     * memo. On a successful re-hash, rewrites the memo. Empty coordinate is stored as {@code -}.
+     * memo: a memo that names that digest and still describes the file answers without a read;
+     * otherwise the file is hashed and, on a match, the memo rewritten. Empty coordinate is stored
+     * as {@code -}.
      */
     public static boolean verify(Path blob, Path jkFile, String coordinate, String expectedSha256) throws IOException {
         if (!Files.isRegularFile(blob) || expectedSha256 == null || expectedSha256.isBlank()) return false;

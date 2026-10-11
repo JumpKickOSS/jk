@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -480,7 +481,7 @@ public final class MavenRepo {
     public Optional<Fetched> tryLocalPom(Coordinate coord) {
         boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
-        return tryLocalMirror(coord, MavenLayout.pomPath(coord));
+        return tryLocalMirror(MavenLayout.pomPath(coord), null);
     }
 
     public Fetched fetchMetadata(Coordinate coord) throws IOException, InterruptedException {
@@ -542,7 +543,7 @@ public final class MavenRepo {
             @Nullable String expectedSha256)
             throws IOException, InterruptedException {
         if (SessionContext.current().config().offlineOr(false)) {
-            return fetchOffline(coord, relativePath);
+            return fetchOffline(coord, relativePath, expectedSha256);
         }
         // warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
         // --force always revalidates from the network (checksums re-checked).
@@ -676,23 +677,16 @@ public final class MavenRepo {
     }
 
     /**
-     * The store's copy of {@code relativePath} when it may answer for {@code coord}: under a pin,
-     * one whose digest is the pin (another digest is evicted, and the network leg replaces it);
-     * without one, an artifact the repository's published checksum confirms ({@link #confirmed}).
-     * A POM or metadata file is served as stored.
+     * The store's copy of {@code relativePath} when it may answer for {@code coord}: a copy whose
+     * bytes verify as the pin, or — without one — as what its memo recorded ({@link
+     * #tryLocalMirror}); an unpinned artifact is then confirmed by the checksum the repository
+     * publishes ({@link #confirmed}). A POM or metadata file is served as stored.
      */
     private Optional<Fetched> mirrored(
             Coordinate coord, String relativePath, Leg leg, @Nullable String expectedSha256, BooleanSupplier abort)
             throws IOException, InterruptedException {
-        Optional<Fetched> local = tryLocalMirror(coord, relativePath);
-        if (local.isEmpty()) return local;
-        if (expectedSha256 != null) {
-            if (local.get().sha256().equalsIgnoreCase(expectedSha256)) return local;
-            // Stale mirror copy against a changed pin: drop it and re-fetch from the network.
-            repoStore.evict(relativePath);
-            return Optional.empty();
-        }
-        if (leg != Leg.ARTIFACT) return local;
+        Optional<Fetched> local = tryLocalMirror(relativePath, expectedSha256);
+        if (local.isEmpty() || expectedSha256 != null || leg != Leg.ARTIFACT) return local;
         return confirmed(coord, relativePath, local.get(), abort);
     }
 
@@ -730,27 +724,38 @@ public final class MavenRepo {
     }
 
     /**
-     * If this repository's store already has a fully materialised artifact ({@code .jk} + bytes),
-     * return it without network I/O.
+     * This repository's store copy of {@code relativePath} once its bytes are known, without
+     * network I/O: under a pin, a copy that verifies as the pin; without one, a copy that is still
+     * what its {@code .jk} memo recorded. A memo that still describes the file (size and mtime)
+     * answers in one stat; otherwise the file is re-hashed and the memo refreshed. A copy that
+     * verifies as neither — a torn or truncated file beside an intact memo, a copy whose pin moved
+     * — is evicted so the network leg replaces it. Empty on a miss and after an eviction.
      */
-    private Optional<Fetched> tryLocalMirror(Coordinate coord, String relativePath) {
+    private Optional<Fetched> tryLocalMirror(String relativePath, @Nullable String expectedSha256) {
         Optional<Path> located = repoStore.locate(relativePath);
         if (located.isEmpty()) return Optional.empty();
+        Path path = located.get();
         try {
-            Path path = located.get();
-            String sha = repoStore.readSha256Sidecar(relativePath).orElseGet(() -> {
-                try {
-                    return Hashing.sha256Hex(path);
-                } catch (IOException e) {
-                    return "";
-                }
-            });
-            if (sha.isBlank()) return Optional.empty();
-            long size = Files.size(path);
+            String sha = expectedSha256 != null
+                    ? expectedSha256
+                    : repoStore.readSha256Sidecar(relativePath).orElseGet(() -> hashQuietly(path));
+            if (sha.isBlank() || repoStore.verify(relativePath, sha) != RepoArtifactStore.IndexState.VERIFIED) {
+                repoStore.evict(relativePath);
+                return Optional.empty();
+            }
             URI uri = baseUrl.resolve(relativePath);
-            return Optional.of(new Fetched(uri, path, sha, size));
+            return Optional.of(new Fetched(uri, path, sha.toLowerCase(Locale.ROOT), Files.size(path)));
         } catch (IOException e) {
             return Optional.empty();
+        }
+    }
+
+    /** {@code path}'s SHA-256 for a store copy that has no memo to speak for it; blank when unreadable. */
+    private static String hashQuietly(Path path) {
+        try {
+            return Hashing.sha256Hex(path);
+        } catch (IOException e) {
+            return "";
         }
     }
 
@@ -777,8 +782,9 @@ public final class MavenRepo {
      * that was never fetched (or mirrored) here is treated as not-found and the resolver falls
      * through cleanly.
      */
-    private Fetched fetchOffline(Coordinate coord, String relativePath) throws IOException {
-        Optional<Fetched> local = tryLocalMirror(coord, relativePath);
+    private Fetched fetchOffline(Coordinate coord, String relativePath, @Nullable String expectedSha256)
+            throws IOException {
+        Optional<Fetched> local = tryLocalMirror(relativePath, expectedSha256);
         if (local.isPresent()) return local.get();
         throw new ArtifactNotFoundException(
                 "offline: " + coord + " (" + relativePath + ") not in local index for " + name);
@@ -800,6 +806,13 @@ public final class MavenRepo {
         return safe;
     }
 
+    /**
+     * An artifact on disk: the URL it answers for, where it lies, and its SHA-256 and size. The
+     * digest is the digest of the bytes at {@code cachePath} as this process established it — hashed
+     * as a download landed or an adopted copy was read, or, for a store copy, verified against the
+     * file by its memo or a re-hash ({@link #tryLocalMirror}) — so a caller may name the file by it
+     * (a CAS put) without hashing it again.
+     */
     public record Fetched(URI url, Path cachePath, String sha256, long size) {}
 
     /**
