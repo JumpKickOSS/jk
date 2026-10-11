@@ -131,7 +131,7 @@ peak RSS included — how it was measured and what "warm" means per tool is in
 | One-file edit | 594 MiB | 1,497 MiB | 423 MiB |
 | Test run | 1,487 MiB | 1,703 MiB | 1,201 MiB |
 
-Measured 2026-09-28 on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `1a8c211a203d`); project spring-projects/spring-petclinic@818c4136e; Gradle 9.8.0; Maven 3.9.16; jk 0.14.0; jk tree at c3cd4139a; 5 timed runs per cell; loadavg 1.1 at start, engine live jobs ?.
+Measured 2026-09-28 on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `1a8c211a203d`); project spring-projects/spring-petclinic@818c4136e; Gradle 9.8.0; Maven 3.9.16; jk 0.14.0; jk tree at 21a8fc0ac; 5 timed runs per cell; loadavg 1.1 at start, engine live jobs ?.
 <!-- wall-table:end -->
 
 ---
@@ -316,14 +316,14 @@ and success rate**.
 If that number does not win, polish the Tier 0 surfaces until it does. Feature count will
 not save it.
 
-Measured 2026-09-28/29 with jk at `8457c2286` (0.14.0 plus the agent report and the five-tool
+Measured 2026-09-28/29 with jk at `3f03d9180` (0.14.0 plus the agent report and the five-tool
 MCP surface), Maven 3.9.16 and Gradle 9.8.0: 165 scenarios over 19 Spring guides and the JUnit
 5 starter, each agent driving all three tools with the same prompt and a 16-turn budget, on one
 host. Maven and Gradle run through the wrappers in `bench/agent-loop` — the same results file
 and MCP tools jk offers, built deliberately well — so the comparison is the output and the
 hints, not the presence of an agent surface. Five agents from three vendors, each at one model
 and reasoning effort ([results](../../bench/agent-loop/results/); the fast agent's subset and the
-second table below were measured later the same day with jk at `54c3a62a2`):
+second table below were measured later the same day with jk at `f8dab1711`):
 
 | Median per scenario, jk / Maven / Gradle | Fixed | Turns | Input + cache tokens | Output tokens | Wall to green |
 |---|---|---|---|---|---|
@@ -377,7 +377,7 @@ external-system model. What is still open, in [the 1.0 plan](../contributors/pla
 - **The plugin SDK is not on Maven Central.** `jk publish --central` can publish it; a release
   has not put the coordinate there.
 - **Maven top-20 corpus:** 13 of 20 build and 2 of 20 pass their tests (run 16, main
-  `03de088c6`, 2026-09-18). The table is in
+  `30c21270b`, 2026-09-18). The table is in
   [Migration](migration.md#where-import-stands-on-real-repositories).
 - **Memory is measured on one project and one host.** On [the table](performance.md) jk's whole tree is
   about a third of Gradle's on a build and in Maven's range, and on the test run under Gradle's

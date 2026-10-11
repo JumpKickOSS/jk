@@ -292,7 +292,7 @@ Tier-3 row where 0.13.7 wrote `=unresolved` and failed later. Run 3 lowered it a
 reason: the packaging mapping now names a `war` module (apollo, java-design-patterns) as a Tier-3
 row instead of importing it as a jar that Maven would never have built that way. An import count
 that falls because a silent mismatch became a named one is the ratchet working; a count that falls
-because a repository stopped importing is not. Run 4 (main 12de60df5, all of 2026-09-16) is the
+because a repository stopped importing is not. Run 4 (main f56e964e8, all of 2026-09-16) is the
 first with a repository green end to end: TheAlgorithms/Java runs and passes its 9,745 tests under
 jk, in 13 s against 37 s under Maven, once the test JVM kept the platform default thread stack.
 Its lock and build counts fell for a reason the table cannot show: run 3 imported dataease as one
@@ -300,19 +300,19 @@ module of fifteen and neo4j as three of 181, and locked those fragments; run 4 i
 reactor of each (nested aggregators, CI-friendly versions, sibling edges) and the full graph hits
 two walls the fragments never reached: two imported BOMs managing one artifact (seven
 repositories), and a workspace module's exact pin below a transitive's floor (neo4j, analysis-ik).
-Run 5 (main c3011aae3) passed both: ten repositories lock, four compile, and
+Run 5 (main d850dd643) passed both: ten repositories lock, four compile, and
 analysis-ik joins TheAlgorithms/Java with every test passing. The walls that stop the others now sit
 past the lock, in the compile and test steps, and each is a ticket: a classpath-discovered
 annotation processor run without its own dependencies (neo4j), a `module-info.java` compiled off
 the module path (cryptomator), a javadoc error the lenient mode still fails on (xxl-job), a
 sibling package the import drops (apollo), a test runner that exits before discovery (floci),
 and three resolver gaps (an ISO-style exclusive range, a `pkg` type, a version the listing
-misses). Run 6 (main 9439e27c4) imports thirteen clean and builds xxl-job, and lost mall's lock to
+misses). Run 6 (main ebd91969c) imports thirteen clean and builds xxl-job, and lost mall's lock to
 the same version-listing gap that stops nacos, now a P1. It carries a caveat the table cannot
 show: `install.sh` from a tree's `target/dist` does not shelve the tree's worker jars, so the engine
 in that run fetched the published 0.13.7 compiler worker and the worker-side fixes of the day
 (the module path, the diagnostic bridge) were not in it; cryptomator's wall in run 6 is that
-caveat, not a regression. Run 7 (main 39f7ad41d, the tree's own workers shelved by the installer)
+caveat, not a regression. Run 7 (main 9b2fc0053, the tree's own workers shelved by the installer)
 locks fourteen and compiles eight: mall, nacos and zipkin lock once the solver's version universe
 keeps older exact pins, dataease and jenkins lock once repositories carry their release and
 snapshot policy, and the walls move into the compile and test steps (a sibling package the import
@@ -320,54 +320,54 @@ drops in nacos and jenkins, a `javax.jms` transitive in zipkin, a JavaFX suite w
 open in cryptomator, a test that refuses jk's class directory in apollo), each a ticket. Its wall
 columns are not comparable: six gates shared the host during that run. The other walls are named
 in the corpus's `tier3-reasons.md`, each with its ticket.
-Run 8 (main dbd295c77) holds fourteen locks; its import count fell because neo4j's shaded sibling
+Run 8 (main a94970848) holds fourteen locks; its import count fell because neo4j's shaded sibling
 is now a named row, and its build count fell because floci's imported `[quarkus]` table runs the
 augment, which fails on a jar the POM excludes and that lock did not yet honour. hadoop's import
 rows fell from 105 to 4 once reactor parents resolved from the checkout, and quarkus's 760-module
 import outgrew the default engine heap, both tickets.
-Run 9 (main 3095183a7) compiles ten: spring-cloud-alibaba, floci and zipkin build for the first
+Run 9 (main 3c405a175) compiles ten: spring-cloud-alibaba, floci and zipkin build for the first
 time (their test compiles still fall, on a grpc protoc plugin the `[protobuf]` import has no key
 for and on a Zinc worker heap). quarkus imports for the first time, 727 Tier-3 rows down to 25, but
 its lock asks for the platform BOM the `[quarkus]` table implies at the reactor's own version, which
 no repository has; thingsboard's lock ends with the engine's heap in the materialize fan-out; hadoop's
 lock passes its parent-version wall and outruns the harness's fifteen-minute cap. The import count
 fell because nacos gained the same honest grpc row. Each is a ticket.
-Run 10 (main 62707c258) locks sixteen: thingsboard and hadoop lock for the first time, hadoop's in
+Run 10 (main 749506764) locks sixteen: thingsboard and hadoop lock for the first time, hadoop's in
 under five minutes where run 9 outran the harness's cap, and nacos compiles through to packaging. The
 build count fell by one because floci's Quarkus augment looks the application's own coordinate up on
 Central instead of taking the workspace root, and keycloak's lock outgrows the default engine heap at
 966 packages; both are tickets, as are the four new walls the runs exposed (a proto include path,
 a library module packaged as an application, `--add-exports` under `--release`, two spellings of one
 repository URL).
-Run 11 (main bd55560ec) compiles eleven: nacos and jenkins build through to their tests for the
+Run 11 (main f529e67d0) compiles eleven: nacos and jenkins build through to their tests for the
 first time (a plain jar where a bare Boot plugin packaged nothing, the `[antlr]` and `[taglib]`
 presets for jenkins core) and thingsboard builds until the harness's cap. Both new test walls are
 the same gap: a `provided` row Maven's test classpath carries and jk's does not (log4j-core for
 nacos's adapter, jsr305 for jenkins-war), one ticket.
-Run 12 (main 0dcdff45d) holds the counts while the set behind them moves: quarkus and hadoop lock in
+Run 12 (main 889f77e25) holds the counts while the set behind them moves: quarkus and hadoop lock in
 the harness for the first time (389 s and 132 s), thingsboard compiles all 51 modules in 122 s and
 reaches its tests where Maven fails to compile it, and floci builds through the Quarkus augment.
 Against that, hadoop's build took the 256 MB engine down with a heap dump 13 s in, jenkins's
 localizer plugin resolve and dataease's import both stalled in one twenty-minute window, and
 floci's Quarkus tests wait on a dev service under jk exactly as they do under surefire. Each is a
 ticket; the engine's heap on a hundred-module reactor is the first.
-Run 13 (main 7bd7c2299) is the regression the ratchet exists to catch: the `[lint]` tables the
+Run 13 (main ad1024c08) is the regression the ratchet exists to catch: the `[lint]` tables the
 import now writes met three real-tool faults (a SpotBugs launch flag, a Checkstyle config path
 resolved against the wrong module, a closure rename race) and the `managed` string form left
 jenkins and quarkus with versionless rows no BOM manages, so lock fell to fifteen and build to
-nine. Run 14 (main 50257cad1) has those fixes: lock is eighteen — java-design-patterns and
+nine. Run 14 (main 2ccd41347) has those fixes: lock is eighteen — java-design-patterns and
 keycloak lock for the first time, through a probe for a version a repository serves while its
 metadata lags — while build holds at nine because the lint import still trips on PMD's default
 rule set, an empty module's Checkstyle run and a placeholder config, and a managed junit row trips
 the Vintage floor check. Each is a ticket; the build count is the next ratchet.
-Run 15 (main 86f2a5873) moves it: lock is nineteen and build eleven again — TheAlgorithms-Java is
+Run 15 (main 5bdd4ca7e) moves it: lock is nineteen and build eleven again — TheAlgorithms-Java is
 green through its tests, java-design-patterns, nacos, jenkins and keycloak pass their lint and
 compiler-level walls, spring-cloud-alibaba locks under the BOM's junit version — while zipkin loses
 its build to a `-J` compiler argument the import now carries into an in-process javac, two
 spring-cloud-alibaba modules fail javac with no diagnostic, and floci's build took the 256 MB
 engine down with a heap dump. Each is a ticket; the first two are import regressions the next run
 must recover.
-Run 16 (main 03de088c6) builds thirteen — spring-cloud-alibaba, floci and zipkin past the run-15
+Run 16 (main 30c21270b) builds thirteen — spring-cloud-alibaba, floci and zipkin past the run-15
 walls and into their tests — and locks eighteen: tutorials imports under its Maven profiles for the
 first time, 1,350 modules, and its lock refuses a POM-declared plaintext http repository that
 Maven merely blocks, and jenkins's build stops on the SpotBugs threshold its plugin configuration

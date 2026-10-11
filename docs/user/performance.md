@@ -25,7 +25,7 @@ section of [`wall-baseline.toml`](../../wall-baseline.toml).
 | One-file edit | 594 MiB | 1,497 MiB | 423 MiB |
 | Test run | 1,487 MiB | 1,703 MiB | 1,201 MiB |
 
-Measured 2026-09-28 on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `1a8c211a203d`); project spring-projects/spring-petclinic@818c4136e; Gradle 9.8.0; Maven 3.9.16; jk 0.14.0; jk tree at c3cd4139a; 5 timed runs per cell; loadavg 1.1 at start, engine live jobs ?.
+Measured 2026-09-28 on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `1a8c211a203d`); project spring-projects/spring-petclinic@818c4136e; Gradle 9.8.0; Maven 3.9.16; jk 0.14.0; jk tree at 21a8fc0ac; 5 timed runs per cell; loadavg 1.1 at start, engine live jobs ?.
 <!-- wall-table:end -->
 
 Walls are wall-clock seconds, median and p90 over the timed runs. Peak RSS is the highest sum of

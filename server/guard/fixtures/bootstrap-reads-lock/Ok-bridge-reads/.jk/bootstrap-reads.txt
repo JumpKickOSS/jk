@@ -1,5 +1,5 @@
 # The top-level jk-lock.toml keys the jk CI builds this tree with reads.
-source = 5288e231bb4a6120b0f4f28576e8aec114bd0b01
+source = 3be235a7d633e41e3d5398ec8d07b1d7fa63f1bd
 artifact
 generated-by
 jdk

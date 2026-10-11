@@ -4,7 +4,7 @@ Every repository tried for the corpus, with the baseline outcome under its own t
 Maven or Gradle through `wrappers/`, JDK 25) and under jk after `jk import` with no hand edits. A
 repo is accepted only when both are green; each reject names the first thing that broke, quoted
 from the tool. The Spring guides were recorded 2026-09-15 (jk 0.13.7); everything else, and the
-re-tries of the earlier rejects, 2026-09-29 (jk 0.14.0 at `8457c2286`) against the latest commit
+re-tries of the earlier rejects, 2026-09-29 (jk 0.14.0 at `3f03d9180`) against the latest commit
 of the default branch that day.
 
 ## Accepted (27)
