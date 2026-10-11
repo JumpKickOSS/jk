@@ -392,11 +392,11 @@ public final class SyncPlans {
             try {
                 var r = repos.tryFetchArtifact(coord, hex);
                 if (r.isPresent()) {
-                    // Pin is law: these bytes become worker code under the pinned hash,
-                    // and the memo fast-path trusts the hash without re-hashing — so a
-                    // mismatch must never reach the CAS. The pinned fetch already
-                    // skipped stale local copies, so a mismatch here means the remote
-                    // itself serves different bytes than the lock pins.
+                    // Pin is law: these bytes become worker code under the pinned hash, and
+                    // the CAS put below names the file by it without hashing it again. The
+                    // fetch layer's digest is the file's (MavenRepo.Fetched): a store copy is
+                    // served only once it verifies as the pin, so a digest that is not the pin
+                    // means the remote itself serves different bytes than the lock pins.
                     String got = r.get().fetched().sha256();
                     if (got == null || !got.equalsIgnoreCase(hex)) {
                         ctx.error(

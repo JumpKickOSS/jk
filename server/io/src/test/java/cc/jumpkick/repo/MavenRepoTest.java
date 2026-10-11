@@ -117,6 +117,44 @@ class MavenRepoTest {
     }
 
     @Test
+    void a_store_copy_whose_bytes_differ_from_its_memo_is_replaced_with_or_without_the_pin(@TempDir Path tempDir)
+            throws Exception {
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+        String relPath = MavenLayout.artifactPath(coord);
+        byte[] published = "widget-bytes".getBytes(StandardCharsets.UTF_8);
+        String sha = Hashing.sha256Hex(published);
+        serve("/" + relPath, 200, published);
+        serve("/" + relPath + ".sha256", 200, (sha + "\n").getBytes(StandardCharsets.UTF_8));
+        RepoArtifactStore store = RepoArtifactStore.forRepository(tempDir, "test", base);
+        Cas cas = new Cas(tempDir);
+        MavenRepo repo = new MavenRepo("test", base, new Http(), cas, RepoCredential.ANONYMOUS, false);
+
+        // Without a pin: the memo names the digest the repository publishes, the file is torn.
+        tear(tempDir, store, relPath, published, sha);
+        assertServedIntact(cas, repo.fetchArtifact(coord), published);
+
+        // With a pin: the memo's digest is the pin, the file is torn.
+        tear(tempDir, store, relPath, published, sha);
+        assertServedIntact(cas, repo.fetchArtifact(coord, sha, () -> false), published);
+    }
+
+    /** Store {@code bytes} at {@code relPath}, then truncate the stored file under its intact memo. */
+    private static void tear(Path scratch, RepoArtifactStore store, String relPath, byte[] bytes, String sha)
+            throws IOException {
+        Path intact = Files.write(scratch.resolve("intact.jar"), bytes);
+        store.materialize(relPath, intact, sha);
+        Files.write(store.locate(relPath).orElseThrow(), new byte[0]);
+    }
+
+    /** The served digest names the served bytes, so a CAS put under it never holds the torn file. */
+    private static void assertServedIntact(Cas cas, MavenRepo.Fetched served, byte[] bytes) throws IOException {
+        assertThat(served.sha256()).isEqualTo(Hashing.sha256Hex(bytes));
+        assertThat(Files.readAllBytes(served.cachePath())).isEqualTo(bytes);
+        cas.putFile(served.cachePath(), served.sha256());
+        assertThat(cas.read(served.sha256())).isEqualTo(bytes);
+    }
+
+    @Test
     void translates_404_to_typed_exception(@TempDir Path tempDir) {
         // No handler registered → 404 from the SimpleHttpServer fallback.
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
