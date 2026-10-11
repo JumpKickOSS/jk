@@ -1026,7 +1026,7 @@ public final class JUnitLauncher {
     private Discovery discoverClasses(
             Path javaHome, String classpath, Path testClassesDir, TestProgressListener listener)
             throws IOException, InterruptedException {
-        var classes = new ArrayList<String>();
+        var listing = new Discovery.Listing();
         var crash = new CaptureBuffer();
         List<String> flags = jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir);
         List<String> args = withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir), List.of());
@@ -1040,15 +1040,14 @@ public final class JUnitLauncher {
                     args,
                     testEnv,
                     workDir(),
-                    Discovery.handler(classes, listener),
+                    listing.handler(listener),
                     crash::add,
                     heaps);
         } catch (PluginProcess.HandlerFailure e) {
             // The parent's own decoder ended the listing: a handler row, and no trust in the list.
-            return Discovery.handlerFailed(List.copyOf(classes), crash.text(), e.handler());
+            return listing.handlerFailed(crash.text(), e.handler());
         }
-        return new Discovery(
-                List.copyOf(classes), exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
+        return listing.ended(exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
     }
 
     // -------- shared helpers --------------------------------------------

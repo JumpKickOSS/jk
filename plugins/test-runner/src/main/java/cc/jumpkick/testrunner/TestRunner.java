@@ -126,7 +126,9 @@ public final class TestRunner implements Plugin {
      * treats any non-zero exit as a worker that died with work still owed (it fails the suite as
      * "exited N mid-run"). Exiting 1 because some class failed is therefore wrong twice over — the
      * failure is already counted, and the driver adds a phantom one. Only an input that ends
-     * without {@code DONE} (the driver vanished) exits non-zero.
+     * without {@code DONE} (the driver vanished) exits non-zero. The driver also fails a worker
+     * that ends before it was told {@code DONE}, whatever its exit: a test that calls {@code
+     * System.exit(0)} mid-class owes that class and every class still queued.
      */
     static int runPullMode(Args args, EventWriter writer, BufferedReader stdin) throws Exception {
         LauncherPath.emitReady(writer, args.workerId);

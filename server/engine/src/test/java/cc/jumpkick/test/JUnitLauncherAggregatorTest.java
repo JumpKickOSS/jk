@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,14 @@ import org.junit.jupiter.api.io.TempDir;
  * event stream the workers emit; we feed it raw lines here rather than spinning up a real fork.
  */
 class JUnitLauncherAggregatorTest {
+
+    private static final String PLAN_FINISHED = "{\"event\":\"plan_finished\",\"duration_ms\":100,\"failed\":false}";
+
+    /** The summary of a fork that ran its plan to the end and exited 0, as the runner does. */
+    private static TestSummary completed(ResultAggregator agg) {
+        agg.accept(PLAN_FINISHED);
+        return agg.toResult(0);
+    }
 
     @Test
     void the_xml_names_an_invocation_by_its_display_name_and_a_plain_test_by_its_method(@TempDir Path dir)
@@ -84,7 +93,7 @@ class JUnitLauncherAggregatorTest {
                         + "\"throwable\":{\"class\":\"AssertionError\",\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat C.c(C.java:1)\"}}");
         agg.accept("{\"event\":\"skipped\",\"uniqueId\":\"d\",\"type\":\"TEST\",\"reason\":\"@Disabled\"}");
 
-        var result = agg.toResult(0);
+        var result = completed(agg);
         assertThat(result.total()).isEqualTo(4);
         assertThat(result.succeeded()).isEqualTo(2);
         assertThat(result.failed()).isEqualTo(1);
@@ -108,7 +117,7 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"finished\",\"id\":\"class\",\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
 
-        assertThat(agg.toResult(0).total()).isEqualTo(1);
+        assertThat(completed(agg).total()).isEqualTo(1);
     }
 
     @Test
@@ -120,7 +129,7 @@ class JUnitLauncherAggregatorTest {
                 + "\"testEngine\":\"spock\",\"display\":\"floats the lock\","
                 + "\"type\":\"TEST\",\"status\":\"FAILED\","
                 + "\"throwable\":{\"class\":\"E\",\"message\":\"m\",\"stack\":\"\"}}");
-        var result = agg.toResult(0);
+        var result = completed(agg);
         assertThat(result.failures()).singleElement().satisfies(f -> {
             assertThat(f.method()).isEqualTo("floats the lock");
         });
@@ -139,7 +148,7 @@ class JUnitLauncherAggregatorTest {
         agg.accept(
                 "{\"event\":\"finished\",\"uniqueId\":\"w2.y\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
 
-        var result = agg.toResult(0);
+        var result = completed(agg);
         assertThat(result.total()).isEqualTo(4);
         assertThat(result.succeeded()).isEqualTo(3);
         assertThat(result.failed()).isEqualTo(1);
@@ -154,6 +163,108 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
 
         assertThat(agg.toResult(0).total()).isEqualTo(1);
+    }
+
+    /**
+     * A test, or the code under it, that calls {@code System.exit(0)} ends the fork cleanly with
+     * the rest of the plan unrun: no {@code plan_finished}, exit 0, every reported test green. That
+     * is the same death as a non-zero exit and gets the same {@code (test run)} row.
+     */
+    @Test
+    void a_fork_that_exits_0_without_finishing_its_plan_is_not_green() {
+        var agg = new ResultAggregator();
+        agg.accept("{\"event\":\"discovery_total\",\"classes\":2,\"tests\":3}");
+        agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+
+        var result = agg.toResult(0);
+
+        assertThat(result.allPassed()).isFalse();
+        assertThat(result.total()).isEqualTo(3);
+        assertThat(result.succeeded()).isEqualTo(2);
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.failures()).singleElement().satisfies(row -> {
+            assertThat(row.method()).isEqualTo("(test run)");
+            assertThat(row.message())
+                    .startsWith("worker exited 0 before finishing its plan (2 of 3 discovered tests reported)")
+                    .contains("System.exit");
+        });
+    }
+
+    @Test
+    void a_fork_that_exits_0_with_no_event_and_no_plan_is_a_launcher_failure() {
+        var agg = new ResultAggregator();
+        assertThatThrownBy(() -> agg.toResult(0, "", List.of("java", "-cp", "x", "Main")))
+                .isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
+                    assertThat(f.exit()).isZero();
+                    assertThat(f.phase()).isEqualTo("test runner");
+                });
+    }
+
+    /** The plan count is a floor: a run that finished with fewer tests than discovery named lost some. */
+    @Test
+    void a_plan_that_finished_short_of_its_discovered_tests_is_not_green() {
+        var agg = new ResultAggregator();
+        agg.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":3}");
+        agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+
+        var result = completed(agg);
+
+        assertThat(result.allPassed()).isFalse();
+        assertThat(result.failures()).singleElement().satisfies(row -> {
+            assertThat(row.method()).isEqualTo("(test run)");
+            assertThat(row.message()).isEqualTo("worker finished its plan having reported 2 of 3 discovered tests");
+        });
+    }
+
+    /** Every test discovery named was reported, exit 0 after {@code plan_finished}: green, as every normal run is. */
+    @Test
+    void a_run_that_reports_every_discovered_test_and_finishes_its_plan_is_green() {
+        var agg = new ResultAggregator();
+        agg.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":2}");
+        agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept("{\"event\":\"skipped\",\"id\":\"b\",\"type\":\"TEST\",\"reason\":\"@Disabled\"}");
+        // A dynamic invocation is a test the plan did not count; more than discovered is fine.
+        agg.accept("{\"event\":\"dynamic_registered\",\"uniqueId\":\"dyn-1\",\"type\":\"TEST\"}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"dyn-1\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+
+        var result = completed(agg);
+
+        assertThat(result.allPassed()).isTrue();
+        assertThat(result.total()).isEqualTo(3);
+        assertThat(result.failures()).isEmpty();
+    }
+
+    /**
+     * JUnit reports a disabled or aborted class once, for the container, and says nothing about
+     * the tests under it; an engine whose node is both container and test counts in the plan but
+     * never as a test here. Those runs are green: the plan count cannot bound them.
+     */
+    @Test
+    void a_container_that_hid_its_tests_keeps_a_short_count_green() {
+        var disabled = new ResultAggregator();
+        disabled.accept("{\"event\":\"discovery_total\",\"classes\":2,\"tests\":3}");
+        disabled.accept(
+                "{\"event\":\"skipped\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]\",\"type\":\"CONTAINER\","
+                        + "\"reason\":\"@Disabled\"}");
+        disabled.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        assertThat(completed(disabled).allPassed()).isTrue();
+
+        var aborted = new ResultAggregator();
+        aborted.accept("{\"event\":\"discovery_total\",\"classes\":2,\"tests\":3}");
+        aborted.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]\",\"type\":\"CONTAINER\","
+                        + "\"status\":\"ABORTED\"}");
+        aborted.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        assertThat(completed(aborted).allPassed()).isTrue();
+
+        var both = new ResultAggregator();
+        both.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":2}");
+        both.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:spock]/[spec:S]/[feature:f]\","
+                + "\"type\":\"CONTAINER_AND_TEST\",\"status\":\"SUCCESSFUL\"}");
+        both.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        assertThat(completed(both).allPassed()).isTrue();
     }
 
     @Test
@@ -174,7 +285,7 @@ class JUnitLauncherAggregatorTest {
         var agg = new ResultAggregator();
         agg.accept("not actually json");
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
-        assertThat(agg.toResult(0).total()).isEqualTo(1);
+        assertThat(completed(agg).total()).isEqualTo(1);
     }
 
     @Test
@@ -233,7 +344,8 @@ class JUnitLauncherAggregatorTest {
         };
         var queue = new ConcurrentLinkedDeque<>(List.of("com.acme.BTest"));
         var lastClass = new AtomicReference<>("");
-        var handler = PullWorkerPool.pullHandler(queue, new ResultAggregator(listener, 2), lastClass);
+        var handler =
+                PullWorkerPool.pullHandler(queue, new ResultAggregator(listener, 2), new AtomicBoolean(), lastClass);
         PluginProcess.Conversation convo = new PluginProcess.Conversation() {
             @Override
             public void send(String line) {}
@@ -261,6 +373,44 @@ class JUnitLauncherAggregatorTest {
         assertThat(died.method()).isEqualTo("(worker 2)");
         assertThat(died.message()).isEqualTo("test worker exited 137 mid-run (last class dispatched: com.acme.BTest)");
         assertThat(died.stack()).isEqualTo("killed");
+    }
+
+    /**
+     * The parent marks a worker done only when it sends {@code DONE}; a worker that exits 0 while a
+     * {@code RUN} is outstanding owes its class, and its row says why it is a failure on a clean exit.
+     */
+    @Test
+    void a_pull_worker_is_done_only_once_the_parent_sent_done() {
+        var queue = new ConcurrentLinkedDeque<>(List.of("com.acme.ATest"));
+        var done = new AtomicBoolean();
+        var lastClass = new AtomicReference<>("");
+        var sent = new ArrayList<String>();
+        var handler = PullWorkerPool.pullHandler(queue, new ResultAggregator(), done, lastClass);
+        PluginProcess.Conversation convo = new PluginProcess.Conversation() {
+            @Override
+            public void send(String line) {
+                sent.add(line);
+            }
+
+            @Override
+            public void closeInput() {
+                sent.add("<eof>");
+            }
+        };
+
+        handler.accept("{\"event\":\"ready\"}", convo);
+        assertThat(done).as("a RUN is outstanding").isFalse();
+        assertThat(lastClass).hasValue("com.acme.ATest");
+        handler.accept("{\"event\":\"ready\"}", convo);
+        assertThat(done).isTrue();
+        assertThat(sent).containsExactly("RUN com.acme.ATest", "DONE", "<eof>");
+
+        TestFailureInfo quit = WorkerFailureRow.of("m", 2, 0, "com.acme.ATest", "", null);
+        assertThat(quit.method()).isEqualTo("(worker 2)");
+        assertThat(quit.className()).isEqualTo("com.acme.ATest");
+        assertThat(quit.message())
+                .startsWith("test worker exited 0 before it was told DONE (last class dispatched: com.acme.ATest)")
+                .contains("System.exit");
     }
 
     /**
@@ -317,15 +467,15 @@ class JUnitLauncherAggregatorTest {
                 throw new IllegalStateException("decoder choked on totals");
             }
         };
-        List<String> classes = new ArrayList<>();
-        Consumer<String> handler = Discovery.handler(classes, listener);
+        var listing = new Discovery.Listing();
+        Consumer<String> handler = listing.handler(listener);
         handler.accept("{\"event\":\"discovered\",\"class\":\"com.acme.ATest\"}");
         RuntimeException thrown = catchThrowableOfType(
                 RuntimeException.class,
                 () -> handler.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":3}"));
         PluginProcess.HandlerFailure end = new PluginProcess.HandlerFailure(thrown);
 
-        Discovery discovery = Discovery.handlerFailed(List.copyOf(classes), "", end.handler());
+        Discovery discovery = listing.handlerFailed("", end.handler());
 
         assertThat(discovery.classes()).containsExactly("com.acme.ATest");
         assertThat(discovery.crashed())
@@ -344,8 +494,45 @@ class JUnitLauncherAggregatorTest {
             assertThat(row.stack()).contains("decoder choked on totals");
         });
         // A clean listing with a shutdown blemish keeps its verdict: the list survives a non-zero exit.
-        assertThat(new Discovery(List.of("com.acme.ATest"), 1, "", List.of()).crashed())
+        assertThat(new Discovery(List.of("com.acme.ATest"), true, 1, "", List.of()).crashed())
                 .isFalse();
+    }
+
+    /**
+     * {@code discovery_total} closes the list. A fork that ended before it — killed, or exited 0
+     * by a static initializer that called {@code System.exit} — named classes the suite cannot be
+     * read from: whatever the exit, nothing runs off that list.
+     */
+    @Test
+    void a_discovery_fork_without_its_total_is_crashed_whatever_its_exit() {
+        var listing = new Discovery.Listing();
+        Consumer<String> handler = listing.handler(TestProgressListener.noop());
+        handler.accept("{\"event\":\"discovered\",\"class\":\"com.acme.ATest\"}");
+        handler.accept("{\"event\":\"discovered\",\"class\":\"com.acme.BTest\"}");
+        assertThat(listing.complete()).isFalse();
+
+        Discovery cutShort = listing.ended(0, "", List.of("java", "Main"));
+        assertThat(cutShort.classes()).containsExactly("com.acme.ATest", "com.acme.BTest");
+        assertThat(cutShort.crashed()).isTrue();
+        assertThatThrownBy(() -> cutShort.verdict("m")).isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
+            assertThat(f.exit()).isZero();
+            assertThat(f.phase()).isEqualTo("test discovery");
+            assertThat(f.getMessage())
+                    .startsWith(
+                            "test discovery exited 0 before announcing its total (2 classes named, none of them run)");
+        });
+        assertThat(listing.ended(137, "", List.of()).crashed()).isTrue();
+
+        handler.accept("{\"event\":\"discovery_total\",\"classes\":2,\"tests\":5}");
+        assertThat(listing.complete()).isTrue();
+        assertThat(listing.ended(0, "", List.of()).crashed()).isFalse();
+
+        // Nothing named and no total: the existing launcher failure, with the fork's exit.
+        Discovery empty = new Discovery.Listing().ended(3, "boom", List.of());
+        assertThatThrownBy(() -> empty.verdict("m")).isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
+            assertThat(f.exit()).isEqualTo(3);
+            assertThat(f.getMessage()).startsWith("test discovery exited 3 before any test ran");
+        });
     }
 
     @Test
@@ -354,7 +541,7 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c\",\"type\":\"TEST\",\"status\":\"FAILED\","
                 + "\"testMethod\":\"c()\",\"throwable\":{\"class\":\"AssertionError\","
                 + "\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat Foo.c(Foo.java:9)\"}}");
-        assertThat(agg.toResult(0).failures()).singleElement().satisfies(f -> assertThat(f.stack())
+        assertThat(completed(agg).failures()).singleElement().satisfies(f -> assertThat(f.stack())
                 .contains("AssertionError: nope")
                 .contains("at Foo.c(Foo.java:9)"));
     }
@@ -365,7 +552,7 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c\",\"type\":\"TEST\",\"status\":\"FAILED\","
                 + "\"testMethod\":\"c()\",\"throwable\":{\"class\":\"AssertionError\","
                 + "\"message\":\"nope\",\"stack\":[\"AssertionError: nope\",\"\\tat Foo.c(Foo.java:9)\"]}}");
-        assertThat(agg.toResult(0).failures()).singleElement().satisfies(f -> assertThat(f.stack())
+        assertThat(completed(agg).failures()).singleElement().satisfies(f -> assertThat(f.stack())
                 .contains("AssertionError: nope")
                 .contains("at Foo.c(Foo.java:9)"));
     }
@@ -379,7 +566,7 @@ class JUnitLauncherAggregatorTest {
                 "{\"event\":\"finished\",\"uniqueId\":\"cls\",\"testClass\":\"FooTest\",\"type\":\"CONTAINER\","
                         + "\"status\":\"FAILED\",\"throwable\":{\"class\":\"ExceptionInInitializerError\","
                         + "\"message\":\"\",\"stack\":\"ExceptionInInitializerError\\n\\tat FooTest.<clinit>(FooTest.java:3)\"}}");
-        var result = agg.toResult(0);
+        var result = completed(agg);
         assertThat(result.allPassed()).isFalse();
         assertThat(result.failures()).singleElement().satisfies(f -> {
             assertThat(f.className()).isEqualTo("FooTest");
@@ -400,6 +587,7 @@ class JUnitLauncherAggregatorTest {
     void a_finished_run_and_a_cancel_after_every_test_stay_green() {
         var finished = new ResultAggregator();
         finished.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        finished.accept(PLAN_FINISHED);
         assertThat(finished.toResult(0).allPassed()).isTrue();
         assertThat(finished.toResult(0).failed()).isZero();
 

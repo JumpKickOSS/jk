@@ -29,6 +29,11 @@ import org.jspecify.annotations.Nullable;
  * (the engine root, classes themselves) so totals match {@code SummaryGeneratingListener}
  * semantics. Failure detail is pulled from FINISHED[status=FAILED] events.
  *
+ * <p>A one-shot fork proves it ran its plan to the end with {@code plan_finished}; {@link
+ * #toResult} refuses to stamp a run green without it, whatever the exit code, since a test (or the
+ * code under it) that calls {@code System.exit(0)} ends the JVM cleanly with the rest of the plan
+ * unrun.
+ *
  * <p>Counting per-event (not summing per-worker plan totals) sidesteps a {@link
  * org.junit.platform.launcher.listeners.SummaryGeneratingListener} quirk: it resets its
  * accumulator on every {@code testPlanExecutionStarted} — which fires per {@code
@@ -47,6 +52,15 @@ final class ResultAggregator {
     private long skipped;
     /** Tests {@code discovery_total} announced, or {@code -1} when that event never arrived. */
     private int discoveredTests = -1;
+    /** Whether {@code plan_finished} arrived: the runner ran its plan to the end. */
+    private boolean planFinished;
+    /**
+     * A container outcome hid the tests under it from the stream — a skipped or aborted class
+     * reports once for every test it holds, and a node that is both container and test counts in
+     * the plan but never as a test here — so {@link #discoveredTests} no longer bounds what is
+     * reported.
+     */
+    private boolean containerHidTests;
 
     private final List<TestFailureInfo> failures = new ArrayList<>();
     private final FailureTexts failureTexts = new FailureTexts();
@@ -134,6 +148,7 @@ final class ResultAggregator {
                 discoveredTests = tests;
                 listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), tests);
             }
+            case "plan_finished" -> planFinished = true;
             case "dynamic_registered" -> {
                 if ("TEST".equals(Jsonl.str(json, "type"))) {
                     String uid = identityKey(json);
@@ -164,9 +179,11 @@ final class ResultAggregator {
     }
 
     private void onFinished(String json) {
-        boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
+        String type = Jsonl.str(json, "type");
+        boolean isTest = "TEST".equals(type);
         String id = identityKey(json);
         String status = Objects.requireNonNullElse(Jsonl.str(json, "status"), "");
+        if (!isTest && (!"SUCCESSFUL".equals(status) || "CONTAINER_AND_TEST".equals(type))) containerHidTests = true;
         String label = progressLabel(json);
         long duration = Jsonl.intValue(json, "duration_ms", 0);
         int w = eventWorker(json);
@@ -236,6 +253,7 @@ final class ResultAggregator {
 
     private void onSkipped(String json) {
         boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
+        if (!isTest) containerHidTests = true;
         String id = identityKey(json);
         boolean wasStatic = isTest && (id.isEmpty() || !dynamicIds.contains(id));
         if (isTest) {
@@ -279,31 +297,25 @@ final class ResultAggregator {
     }
 
     /**
-     * As {@link #toResult(int)}. A non-zero exit with no test event at all is a {@link
-     * TestLauncherFailure} carrying {@code crashOutput} (the worker's captured stdout/stderr) and
-     * {@code command} (how the worker was started): the launcher never ran a test, so the step
-     * fails on that instead of counting one red test.
+     * As {@link #toResult(int)}. A fork that ended before running its plan to the end ({@link
+     * #incomplete}) with no test event at all is a {@link TestLauncherFailure} carrying {@code
+     * crashOutput} (the worker's captured stdout/stderr) and {@code command} (how the worker was
+     * started): the launcher never ran a test, so the step fails on that instead of counting one
+     * red test. After tests were reported it is one {@code (test run)} failure row: the passes
+     * reported before the end are not the suite, and counting them green would stamp the run and
+     * skip it next build.
      */
     synchronized TestSummary toResult(int exitCode, String crashOutput, List<String> command) {
         long total = succeeded + failed + skipped;
-        if (total == 0 && exitCode != 0) {
-            throw TestLauncherFailure.runner(moduleLabel, exitCode, crashOutput == null ? "" : crashOutput, command);
-        }
-        if (exitCode != 0 && failed == 0 && !cancelAfterEveryTest(total)) {
-            // A killed or crashed worker can have already reported passes. Those passes are not
-            // the suite. Counting them green would stamp the run and skip it next build. A cancel
-            // that arrives after every discovered test was reported did finish: that one stays green.
+        String why = incomplete(exitCode, total);
+        if (why != null) {
+            if (total == 0) {
+                throw TestLauncherFailure.runner(
+                        moduleLabel, exitCode, crashOutput == null ? "" : crashOutput, command);
+            }
             failed++;
             total++;
-            failures.add(new TestFailureInfo(
-                    moduleLabel,
-                    "",
-                    "",
-                    "(test run)",
-                    "",
-                    "worker " + WorkerContainment.failure(exitCode, "exited " + exitCode),
-                    "",
-                    0));
+            failures.add(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", why, "", 0));
         }
         return new TestSummary(
                 total,
@@ -313,6 +325,32 @@ final class ResultAggregator {
                 executedClasses.size(),
                 List.copyOf(failures),
                 Map.copyOf(classWallMs));
+    }
+
+    /**
+     * Why the fork did not run its plan to the end, or {@code null} when it did. The runner exits
+     * 1 for a failed test it already reported, so a non-zero exit is a death only when nothing
+     * failed; exit 0 is a death when {@code plan_finished} never came, and a plan that finished
+     * short of the tests discovery announced lost some on the way. A cancel that arrived after
+     * every discovered test was reported did finish: that one stays green.
+     */
+    private @Nullable String incomplete(int exitCode, long reported) {
+        if (cancelAfterEveryTest(reported)) return null;
+        if (exitCode != 0) {
+            return failed > 0 ? null : "worker " + WorkerContainment.failure(exitCode, "exited " + exitCode);
+        }
+        if (!planFinished) {
+            String reportedOf = discoveredTests < 0
+                    ? reported + (reported == 1 ? " test" : " tests") + " reported"
+                    : reported + " of " + discoveredTests + " discovered tests reported";
+            return "worker exited 0 before finishing its plan (" + reportedOf
+                    + ") — a test, or the code under test, called System.exit or Runtime.halt";
+        }
+        if (reported < discoveredTests && !containerHidTests) {
+            return "worker finished its plan having reported " + reported + " of " + discoveredTests
+                    + " discovered tests";
+        }
+        return null;
     }
 
     /** True when cancel arrived only after discovery's tests had all been reported. */

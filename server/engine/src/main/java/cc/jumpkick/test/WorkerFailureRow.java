@@ -16,8 +16,8 @@ import org.jspecify.annotations.Nullable;
  * stack, not the exit code of a kill that says nothing. Every fork the launcher drives — the pull
  * pool's workers, the single fork a one-worker module takes, the list-only discovery fork — ends a
  * handler throw with this one row shape, so the same decoder bug reads the same way in every
- * summary. Any other abnormal exit names the worker and the last class it was dispatched, so a
- * shortfall has an owner.
+ * summary. Any other early end — a non-zero exit, or an exit 0 before the parent said {@code
+ * DONE} — names the worker and the last class it was dispatched, so a shortfall has an owner.
  */
 final class WorkerFailureRow {
 
@@ -35,7 +35,10 @@ final class WorkerFailureRow {
             @Nullable RuntimeException handler) {
         String dispatched = lastClass.isBlank() ? "" : " (last class dispatched: " + lastClass + ")";
         if (handler != null) return handlerRow(moduleLabel, "test protocol handler", dispatched, workerId, handler);
-        String why = "test worker " + WorkerContainment.failure(exit, "exited " + exit + " mid-run") + dispatched;
+        String why = exit == 0
+                ? "test worker exited 0 before it was told DONE" + dispatched
+                        + " — a test, or the code under test, called System.exit or Runtime.halt"
+                : "test worker " + WorkerContainment.failure(exit, "exited " + exit + " mid-run") + dispatched;
         return new TestFailureInfo(moduleLabel, "", lastClass, "(worker " + workerId + ")", "", why, output, workerId);
     }
 

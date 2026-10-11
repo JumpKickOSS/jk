@@ -116,6 +116,23 @@ public final class TestLauncherFailure extends RuntimeException {
         return new TestLauncherFailure(moduleLabel, "test runner", exit, output, command, message);
     }
 
+    /**
+     * The list-only discovery fork ended before {@code discovery_total} closed its list, having
+     * named {@code named} classes: a JVM that exited, or was killed, mid-listing, so the classes it
+     * did name are not the suite.
+     */
+    static TestLauncherFailure discoveryCutShort(
+            String moduleLabel, int exit, String output, List<String> command, int named) {
+        String headline = "test discovery "
+                + WorkerContainment.failure(exit, "exited " + exit + signalSuffix(exit))
+                + " before announcing its total ("
+                + named
+                + (named == 1 ? " class" : " classes")
+                + " named, none of them run)"
+                + headlineSuffix(output);
+        return new TestLauncherFailure(moduleLabel, "test discovery", exit, output, command, headline);
+    }
+
     /** The list-only discovery fork died with nothing named; the command it was started with is not at hand. */
     public static TestLauncherFailure discovery(String moduleLabel, int exit, String output) {
         return discovery(moduleLabel, exit, output, List.of());
