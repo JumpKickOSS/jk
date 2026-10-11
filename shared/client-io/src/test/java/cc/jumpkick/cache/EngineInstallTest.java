@@ -362,6 +362,25 @@ class EngineInstallTest {
         assertThat(bin.resolve("jkx.old")).hasContent("old-jkx");
     }
 
+    @Test
+    void a_source_that_cannot_be_copied_leaves_the_live_client_on_path(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Files.writeString(bin.resolve("jk"), "old-jk");
+        Files.writeString(bin.resolve("jkx"), "old-jkx");
+        Path missing = tmp.resolve("missing-blob");
+
+        assertThatThrownBy(() -> EngineInstall.installBinaries(missing, bin, false))
+                .isInstanceOf(IOException.class);
+
+        assertThat(bin.resolve("jk")).hasContent("old-jk");
+        assertThat(bin.resolve("jkx")).hasContent("old-jkx");
+        try (var entries = Files.list(bin)) {
+            assertThat(entries.map(p -> p.getFileName().toString()))
+                    .as("nothing parked, nothing staged")
+                    .containsExactlyInAnyOrder("jk", "jkx");
+        }
+    }
+
     /**
      * The source is a CAS blob its digest vouches for. A hard link would make bin/jk the same
      * inode, so rewriting the PATH client — or the chmod the install itself performs — would change

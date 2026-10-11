@@ -50,6 +50,7 @@ import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
 import cc.jumpkick.tool.ToolProvenance;
 import cc.jumpkick.util.AppInstallConfig;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -944,10 +945,7 @@ public final class InstallCommand {
             // swap is what is reported, as before.
             Path jvmLauncher = null;
             if (!plan.launcherScript().isEmpty()) {
-                jvmLauncher = Path.of(plan.launcherPath());
-                Files.createDirectories(jvmLauncher.getParent());
-                Files.writeString(jvmLauncher, plan.launcherScript());
-                markExecutable(jvmLauncher);
+                jvmLauncher = writeLauncher(Path.of(plan.launcherPath()), plan.launcherScript());
             }
             if (plan.linkSrcs().isEmpty()) {
                 if (jvmLauncher != null) {
@@ -958,21 +956,14 @@ public final class InstallCommand {
             }
             return installProductBin(Path.of(plan.linkSrcs().get(0)), binDir(), JkStores.storeCas());
         }
+        // The jars land first and the launcher last: a launcher on PATH never names a jar that is
+        // not there yet.
         for (int i = 0; i < plan.linkSrcs().size(); i++) {
-            Path src = Path.of(plan.linkSrcs().get(i));
-            Path dest = Path.of(plan.linkDests().get(i));
-            Files.createDirectories(dest.getParent());
-            // COPY, never link: src is a target/ artifact the next build rewrites in place —
-            // an installed tool must be a stable snapshot, not an alias of the build tree.
-            Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+            copyInto(Path.of(plan.linkSrcs().get(i)), Path.of(plan.linkDests().get(i)));
         }
         writeAppInstallConfig(projectDir, plan);
         if (!plan.launcherScript().isEmpty()) {
-            Path launcher = Path.of(plan.launcherPath());
-            Files.createDirectories(launcher.getParent());
-            Files.writeString(launcher, plan.launcherScript());
-            markExecutable(launcher);
-            return launcher;
+            return writeLauncher(Path.of(plan.launcherPath()), plan.launcherScript());
         }
         // Native binary linked directly into bin — no script, just the exec bit.
         Path bin = Path.of(plan.binPath());
@@ -1048,6 +1039,39 @@ public final class InstallCommand {
     /** Record the installed jar basename for a {@code jk install} app. */
     static void putInstalledJarKeys(Map<String, String> keys, Path installedJar) {
         keys.put("jar", installedJar.getFileName().toString());
+    }
+
+    /**
+     * Copy {@code src} over {@code dest} through a staged sibling and one rename, so no reader
+     * sees a partial jar and a Windows target still mapped by a running app is retried rather than
+     * truncated. A copy, never a link: {@code src} is a {@code target/} artifact the next build
+     * rewrites in place, and an installed tool must be a stable snapshot of it.
+     */
+    private static void copyInto(Path src, Path dest) throws IOException {
+        Path staged = AtomicWrites.staging(dest);
+        boolean moved = false;
+        try {
+            Files.copy(src, staged, StandardCopyOption.REPLACE_EXISTING);
+            AtomicWrites.moveInto(staged, dest);
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(staged);
+        }
+    }
+
+    /** Write {@code script} as {@code launcher}, executable from the moment the name appears. */
+    private static Path writeLauncher(Path launcher, String script) throws IOException {
+        Path staged = AtomicWrites.staging(launcher);
+        boolean moved = false;
+        try {
+            Files.writeString(staged, script);
+            markExecutable(staged);
+            AtomicWrites.moveInto(staged, launcher);
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(staged);
+        }
+        return launcher;
     }
 
     private static void markExecutable(Path file) {
