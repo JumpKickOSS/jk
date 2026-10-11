@@ -32,7 +32,7 @@ jobs:
     name: Integration profile
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -68,7 +68,7 @@ jobs:
     name: Slow profile (framework and language e2e)
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -95,7 +95,7 @@ jobs:
     name: Network profile
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -123,7 +123,7 @@ jobs:
     name: Bench profile (microbenchmarks)
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -151,7 +151,7 @@ jobs:
     name: Audit the locked graph (every severity)
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -195,7 +195,7 @@ jobs:
     name: Coverage ratchet
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -255,7 +255,7 @@ jobs:
     name: Engine heap guard (committed-after-idle)
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -310,7 +310,7 @@ jobs:
     name: Doc examples build and test
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -471,7 +471,7 @@ jobs:
     name: JVM client smoke (plain JDK, no GraalVM)
     runs-on: ubuntu-latest
     env:
-      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
