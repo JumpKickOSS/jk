@@ -133,17 +133,17 @@ final class ZincWorkdir {
 
     /**
      * The type Zinc's Java analysis could not load with this worker's JDK the last time it ran here
-     * over a classpath digesting to {@code classpathDigest}, or empty when the analysis runs. While
-     * set, every compile in this workdir over that classpath is a full javac run with no analysis.
-     * A marker left by another classpath is stale — the entry whose supertype could not be loaded
-     * may have changed — so it is dropped and the analysis is tried again; {@code jk clean} takes the
-     * marker with the workdir.
+     * over {@code classpath}, or empty when the analysis runs. While set, every compile in this
+     * workdir over that classpath is a full javac run with no analysis. A marker left by another
+     * classpath is stale — the entry whose supertype could not be loaded may have changed — so it
+     * is dropped and the analysis is tried again; {@code jk clean} takes the marker with the
+     * workdir. The classpath is digested only when a marker exists.
      */
-    Optional<String> analysisOff(String classpathDigest) {
+    Optional<String> analysisOff(List<Path> classpath) {
         try {
             if (!Files.isRegularFile(analysisOffMarker)) return Optional.empty();
             List<String> lines = Files.readAllLines(analysisOffMarker);
-            if (lines.size() >= 2 && lines.get(0).strip().equals(classpathDigest)) {
+            if (lines.size() >= 2 && lines.get(0).strip().equals(classpathDigest(classpath))) {
                 return Optional.of(lines.get(1).strip());
             }
             Files.deleteIfExists(analysisOffMarker);
@@ -154,12 +154,12 @@ final class ZincWorkdir {
     }
 
     /**
-     * Turn the analysis off for this workdir under the classpath digesting to {@code
-     * classpathDigest}, naming the type it could not load, and drop what it wrote.
+     * Turn the analysis off for this workdir under {@code classpath}, naming the type it could not
+     * load, and drop what it wrote.
      */
-    void markAnalysisOff(String missingType, String classpathDigest) throws IOException {
+    void markAnalysisOff(String missingType, List<Path> classpath) throws IOException {
         Files.createDirectories(analysisOffMarker.getParent());
-        Files.writeString(analysisOffMarker, classpathDigest + "\n" + missingType + "\n");
+        Files.writeString(analysisOffMarker, classpathDigest(classpath) + "\n" + missingType + "\n");
         tryDeleteAnalysis();
     }
 
@@ -170,7 +170,7 @@ final class ZincWorkdir {
      * bytes, and different whenever a compiler rewrote, added or deleted a class an entry holds or
      * the lock moved a jar.
      */
-    static String classpathDigest(List<Path> classpath) throws IOException {
+    private static String classpathDigest(List<Path> classpath) throws IOException {
         MessageDigest digest = Hashing.newSha256();
         for (Path entry : classpath) {
             digest.update((entry.toAbsolutePath().normalize() + "\n").getBytes(StandardCharsets.UTF_8));

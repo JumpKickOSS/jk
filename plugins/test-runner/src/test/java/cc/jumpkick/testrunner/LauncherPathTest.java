@@ -301,7 +301,8 @@ class LauncherPathTest {
     @Test
     void a_parameterized_invocation_carries_its_display_name_and_a_plain_test_does_not() {
         var events = new Recorder();
-        LauncherPath.runClass(Parameterized.class.getName(), List.of(), List.of(), List.of(), 0, events);
+        LauncherPath.runClass(
+                LauncherFactory.create(), Parameterized.class.getName(), List.of(), List.of(), List.of(), 0, events);
         List<Map<String, Object>> finished = events.finishedTests();
         assertThat(finished).hasSize(3);
         assertThat(finished.stream().filter(e -> e.containsKey("display")).map(e -> e.get("display")))
@@ -315,7 +316,8 @@ class LauncherPathTest {
     @Test
     void finished_events_carry_split_identity_status_and_worker_id() {
         var events = new Recorder();
-        LauncherPath.runClass(Tagged.class.getName(), List.of(), List.of("slow"), List.of(), 7, events);
+        LauncherPath.runClass(
+                LauncherFactory.create(), Tagged.class.getName(), List.of(), List.of("slow"), List.of(), 7, events);
         Map<String, Object> finished = events.finishedTests().get(0);
         assertThat(finished)
                 .containsEntry("testClass", Tagged.class.getName())
@@ -330,7 +332,14 @@ class LauncherPathTest {
 
     @Test
     void a_passing_run_reports_no_failures() {
-        assertThat(LauncherPath.runClass(Tagged.class.getName(), List.of(), List.of(), List.of(), 0, new Recorder()))
+        assertThat(LauncherPath.runClass(
+                        LauncherFactory.create(),
+                        Tagged.class.getName(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        0,
+                        new Recorder()))
                 .isFalse();
     }
 
@@ -338,7 +347,13 @@ class LauncherPathTest {
     void a_test_that_catches_its_own_out_of_memory_error_passes() {
         var events = new Recorder();
         assertThat(LauncherPath.runClass(
-                        CaughtOutOfMemoryFixture.class.getName(), List.of(), List.of(), List.of(), 0, events))
+                        LauncherFactory.create(),
+                        CaughtOutOfMemoryFixture.class.getName(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        0,
+                        events))
                 .isFalse();
         assertThat(events.finishedTests()).singleElement().satisfies(e -> assertThat(e)
                 .containsEntry("status", "SUCCESSFUL"));
@@ -350,14 +365,27 @@ class LauncherPathTest {
     void a_method_selection_runs_one_method_of_the_named_class() {
         var events = new Recorder();
         LauncherPath.runClass(
-                Tagged.class.getName(), selecting(Tagged.class, "slowOne"), List.of(), List.of(), 0, events);
+                LauncherFactory.create(),
+                Tagged.class.getName(),
+                selecting(Tagged.class, "slowOne"),
+                List.of(),
+                List.of(),
+                0,
+                events);
         assertThat(methods(events)).containsExactly("slowOne()");
     }
 
     @Test
     void a_method_glob_selects_every_matching_method() {
         var events = new Recorder();
-        LauncherPath.runClass(Tagged.class.getName(), selecting(Tagged.class, "*One"), List.of(), List.of(), 0, events);
+        LauncherPath.runClass(
+                LauncherFactory.create(),
+                Tagged.class.getName(),
+                selecting(Tagged.class, "*One"),
+                List.of(),
+                List.of(),
+                0,
+                events);
         assertThat(methods(events)).containsExactly("slowOne()");
     }
 
@@ -365,7 +393,13 @@ class LauncherPathTest {
     void a_nested_class_is_reached_through_its_outermost_class() {
         var events = new Recorder();
         LauncherPath.runClass(
-                WithNested.class.getName(), selecting(WithNested.class, "inner"), List.of(), List.of(), 0, events);
+                LauncherFactory.create(),
+                WithNested.class.getName(),
+                selecting(WithNested.class, "inner"),
+                List.of(),
+                List.of(),
+                0,
+                events);
         assertThat(methods(events)).containsExactly("inner()");
     }
 
@@ -373,7 +407,13 @@ class LauncherPathTest {
     void a_class_no_selection_names_runs_whole() {
         var events = new Recorder();
         LauncherPath.runClass(
-                Tagged.class.getName(), selecting(Parameterized.class, "plain"), List.of(), List.of(), 0, events);
+                LauncherFactory.create(),
+                Tagged.class.getName(),
+                selecting(Parameterized.class, "plain"),
+                List.of(),
+                List.of(),
+                0,
+                events);
         assertThat(methods(events)).containsExactlyInAnyOrder("plain()", "slowOne()", "bracketed()");
     }
 
@@ -482,7 +522,7 @@ class LauncherPathTest {
 
     private static List<String> run(List<String> include, List<String> exclude) {
         var events = new Recorder();
-        LauncherPath.runClass(Tagged.class.getName(), List.of(), include, exclude, 0, events);
+        LauncherPath.runClass(LauncherFactory.create(), Tagged.class.getName(), List.of(), include, exclude, 0, events);
         return events.finishedTests().stream()
                 .map(p -> String.valueOf(p.get("testMethod")))
                 .toList();

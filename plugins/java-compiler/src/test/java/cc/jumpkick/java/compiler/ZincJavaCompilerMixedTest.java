@@ -36,7 +36,7 @@ class ZincJavaCompilerMixedTest {
         Project p = new Project(dir);
         p.write("Hello.scala", "object Hello { def greet: String = \"hi\" }\n");
         Files.createDirectories(p.workdir);
-        ZincWorkdir.of(p.workdir).markAnalysisOff("java.security.acl.Group", ZincWorkdir.classpathDigest(p.compileCp));
+        ZincWorkdir.of(p.workdir).markAnalysisOff("java.security.acl.Group", p.compileCp);
         ZincJavaCompiler.Result r = p.compileMixed();
         assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
         assertThat(p.classFile("Hello.class")).isRegularFile();

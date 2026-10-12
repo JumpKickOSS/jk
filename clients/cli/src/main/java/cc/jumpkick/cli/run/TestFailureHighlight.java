@@ -59,6 +59,11 @@ public final class TestFailureHighlight {
     /** The no-snippet exception locus {@code TestSupport} emits: four spaces + simple type name. */
     private static final Pattern BARE_EXCEPTION = Pattern.compile("^ {4}[A-Z][\\w$]*$");
 
+    private static final Pattern ASSERTJ_TWO_LINES =
+            Pattern.compile("(?i)^expected:\\s*([^\\n]+?)\\s*\\R\\s*but was:\\s*([^\\n]+?)\\s*$");
+    private static final Pattern ASSERTJ_ONE_LINE =
+            Pattern.compile("(?i)^expected:\\s*(.+?)\\s+but was:\\s*(.+?)\\s*$");
+
     private TestFailureHighlight() {}
 
     /**
@@ -241,7 +246,7 @@ public final class TestFailureHighlight {
             }
 
             Matcher thrown = THROWN_AT.matcher(raw.strip());
-            if (thrown.matches() || raw.strip().matches("^[›\\s]*[A-Za-z_][\\w$]* thrown at line \\d+\\s*$")) {
+            if (thrown.matches()) {
                 flushAssert(out, assertBuf, collectingAssert, t);
                 collectingAssert = false;
                 assertBuf.clear();
@@ -903,11 +908,9 @@ public final class TestFailureHighlight {
                 rest = rest.substring(close + 1).strip();
             }
         }
-        Pattern exp = Pattern.compile("(?i)^expected:\\s*([^\\n]+?)\\s*\\R\\s*but was:\\s*([^\\n]+?)\\s*$");
-        Matcher m = exp.matcher(rest);
+        Matcher m = ASSERTJ_TWO_LINES.matcher(rest);
         if (!m.matches()) {
-            Pattern one = Pattern.compile("(?i)^expected:\\s*(.+?)\\s+but was:\\s*(.+?)\\s*$");
-            Matcher m1 = one.matcher(rest);
+            Matcher m1 = ASSERTJ_ONE_LINE.matcher(rest);
             if (!m1.matches()) return null;
             return paintExpectedButWas(desc, m1.group(1).strip(), m1.group(2).strip());
         }

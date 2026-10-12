@@ -120,12 +120,31 @@ public final class FreshnessStamp {
             int release,
             String optionsDigest)
             throws IOException {
+        return freshStamp(outputDir, stampName, sources, classpath, release, optionsDigest)
+                .isPresent();
+    }
+
+    /**
+     * The stamp when {@link #isFresh(Path, String, List, ClasspathTokens, int, String)} would say
+     * so, else empty: one parse and one stat per source for a caller that also wants the
+     * {@link Stamp#actionKey()} the fresh tree was produced by.
+     */
+    public static Optional<Stamp> freshStamp(
+            Path outputDir,
+            String stampName,
+            List<Path> sources,
+            ClasspathTokens classpath,
+            int release,
+            String optionsDigest)
+            throws IOException {
         Stamp stamp = matching(outputDir, stampName, sources, release, optionsDigest);
-        if (stamp == null) return false;
+        if (stamp == null) return Optional.empty();
         // A path-spelled stamp carries no tokens; it matches only a producer that checks by path.
-        if (!stamp.classpath().isEmpty()) return false;
-        if (!new TreeSet<>(classpath.lines()).equals(new TreeSet<>(stamp.classpathTokens()))) return false;
-        return !anySourceChanged(stamp, sources);
+        if (!stamp.classpath().isEmpty()) return Optional.empty();
+        if (!new TreeSet<>(classpath.lines()).equals(new TreeSet<>(stamp.classpathTokens()))) {
+            return Optional.empty();
+        }
+        return anySourceChanged(stamp, sources) ? Optional.empty() : Optional.of(stamp);
     }
 
     /** The stamp, when its release, option digest and source set are the producer's; else null. */
@@ -508,9 +527,12 @@ public final class FreshnessStamp {
             return p;
         }
         Path abs = p.toAbsolutePath().normalize();
-        if (!Files.isRegularFile(abs)) return abs;
-        String name = abs.getFileName().toString();
+        // Only an archive is keyed by content, so a source file is answered without a stat.
+        Path fileName = abs.getFileName();
+        if (fileName == null) return abs;
+        String name = fileName.toString();
         if (!name.endsWith(".jar") && !name.endsWith(".aar") && !name.endsWith(".zip")) return abs;
+        if (!Files.isRegularFile(abs)) return abs;
         try {
             return Path.of("sha256", FileHashMemo.contentHash(abs));
         } catch (IOException e) {
