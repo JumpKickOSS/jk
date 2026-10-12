@@ -30,8 +30,6 @@ import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.StallWatch;
-import cc.jumpkick.resolver.TestEngines;
-import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -793,45 +791,9 @@ public final class PomImporter {
     }
 
     private static void mapDependency(Pom.Dep dep, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
-        if ("system".equalsIgnoreCase(dep.scope())) {
-            report.error("`<dependency>` with `<scope>system</scope>` is rejected ("
-                    + dep.module()
-                    + "). Move it to a git dependency or a local repository.");
-            return;
-        }
-        String unmappedType = DependencyMapping.unmappedType(dep);
-        if (unmappedType != null) {
-            report.error("`<type>" + unmappedType + "</type>` on " + dep.module()
-                    + " names an artifact jk has no manifest spelling for; the dependency was not written."
-                    + " A jar of the same module is `{ group, name, version }`, a classified jar adds"
-                    + " `classifier`.");
-            return;
-        }
-        DependencyMapping.warnUnresolvedVersion(dep, report);
-        DependencyMapping.warnMetaversion(dep, report);
-        Scope scope = DependencyMapping.scope(dep.scope());
-        if (DependencyMapping.isPom(dep)) {
-            report.warning("`<type>pom</type>` on " + dep.module()
-                    + " is written to [platform-dependencies]: its dependencyManagement governs versions, and"
-                    + " the libraries it lists are not on the classpath — declare the ones the code uses.");
-            scope = Scope.PLATFORM;
-        }
-        Dependency d = raiseToEngineFloor(DependencyMapping.toDependency(dep), scope, report);
-        // A BOM import governs versions, not a classpath subtree; its exclusions have nothing to prune.
-        if (scope != Scope.PLATFORM) d = ExclusionMapping.apply(d, dep, report);
-        // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies]
-        // (JkBuildParser.applyDependencyKind), so a test-jar dep declared in another Maven
-        // scope moves to TEST — otherwise the emitted jk.toml rejects its own `jk lock`.
-        if (d.isTestsKind() && scope != Scope.TEST && scope != Scope.TEST_DEV) {
-            report.warning("`<type>test-jar</type>` on "
-                    + dep.module()
-                    + " is in Maven scope `"
-                    + (dep.scope() == null || dep.scope().isBlank() ? "compile" : dep.scope())
-                    + "`; jk models test-jar deps as kind=tests, which is only legal in test"
-                    + " scopes — moved to [test-dependencies].");
-            scope = Scope.TEST;
-        }
-        byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(d);
+        DependencyMapping.map(dep, report)
+                .ifPresent(mapped -> byScope.computeIfAbsent(mapped.scope(), s -> new ArrayList<>())
+                        .add(mapped.dependency()));
     }
 
     /**
@@ -982,33 +944,6 @@ public final class PomImporter {
     }
 
     /**
-     * A test framework pinned below the floor of the Platform engine that runs it under jk is
-     * written at the version the engine accepts: JUnit 3.8.2 becomes JUnit 4.13.2, whose jar still
-     * runs {@code TestCase} suites. The lock would refuse the pin as written; the note says why.
-     */
-    private static Dependency raiseToEngineFloor(Dependency d, Scope scope, ImportReport.Builder report) {
-        if (scope != Scope.TEST && scope != Scope.TEST_DEV) return d;
-        if (d.isPlatformManaged() || !(d.version() instanceof VersionSelector.Exact exact)) return d;
-        for (TestEngines.Row row : TestEngines.ROWS) {
-            if (!row.trigger().equals(d.module()) || Versions.compare(exact.version(), row.floor()) >= 0) continue;
-            report.warning(d.module()
-                    + " "
-                    + exact.version()
-                    + " raised to "
-                    + row.suggested()
-                    + ": jk runs its suites through "
-                    + row.engine().module()
-                    + ", which needs "
-                    + row.floor()
-                    + " or later.");
-            return Dependency.of(d.library(), d.module(), VersionSelector.parse(row.suggested()))
-                    .withKind(d.kind())
-                    .withClassifier(d.classifier());
-        }
-        return d;
-    }
-
-    /**
      * The managed tables of the BOMs inactive profiles import, read through the import's
      * repositories once each; a BOM no repository serves is a row, and the profile's dependencies
      * it would have versioned stay {@code unresolved}.
@@ -1036,11 +971,16 @@ public final class PomImporter {
 
     // --- repositories -------------------------------------------------------
 
+    /** The name a non-Central repository declared under Central's reserved id is written as. */
+    static final String CENTRAL_MIRROR = RepositorySpec.CENTRAL + "-mirror";
+
     /**
      * Every repository the effective model declares or inherits, with its {@code <releases>} /
-     * {@code <snapshots>} policy; Central is the implicit default. A plaintext {@code http://}
-     * repository is written {@code blocked}, as Maven 3.9 blocks it, and is a row; every other one
-     * {@code optional}, as Maven falls through a repository that answers nothing.
+     * {@code <snapshots>} policy; Central is the implicit default, and one at another URL under
+     * its id (a corporate redirect) is written as {@link #CENTRAL_MIRROR}, since the lock keeps
+     * {@code central} for Central itself. A plaintext {@code http://} repository is written {@code
+     * blocked}, as Maven 3.9 blocks it, and is a row; every other one {@code optional}, as Maven
+     * falls through a repository that answers nothing.
      */
     static List<RepositorySpec> mapRepositories(List<Repository> repositories, ImportReport.Builder report) {
         Map<String, RepositorySpec> deduped = new LinkedHashMap<>();
@@ -1051,8 +991,15 @@ public final class PomImporter {
                 report.warning("`<repository>` with no `<url>` was skipped (id=" + id + ").");
                 continue;
             }
+            if (RepoModelResolver.isCentral(url)) continue;
             String name = (id == null || id.isBlank()) ? "repo" + (deduped.size() + 1) : id;
-            if (name.equals("central") || RepoModelResolver.isCentral(url)) continue;
+            if (name.equals(RepositorySpec.CENTRAL)) {
+                name = CENTRAL_MIRROR;
+                report.warning("`<repository>` `central` at " + url.trim() + " is not Maven Central; `central` is"
+                        + " the lock's name for Central itself, so it is written as `" + CENTRAL_MIRROR
+                        + "` under [repositories]. A mirror of Central for this machine belongs in"
+                        + " `~/.m2/settings.xml` or `~/.jk/config.toml` instead.");
+            }
             boolean releases = repo.getReleases() == null || repo.getReleases().isEnabled();
             boolean snapshots =
                     repo.getSnapshots() == null || repo.getSnapshots().isEnabled();
@@ -1087,7 +1034,7 @@ public final class PomImporter {
         Map<String, RepositorySpec> byName = new LinkedHashMap<>();
         for (RepositorySpec spec : declared) byName.putIfAbsent(spec.name(), spec);
         for (RepositorySpec spec : settings.profileRepositories()) {
-            if (spec.name().equals("central")
+            if (spec.name().equals(RepositorySpec.CENTRAL)
                     || RepoModelResolver.isCentral(spec.url().toString())) continue;
             byName.putIfAbsent(spec.name(), spec);
         }

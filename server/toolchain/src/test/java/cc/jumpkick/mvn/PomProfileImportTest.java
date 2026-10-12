@@ -174,6 +174,67 @@ class PomProfileImportTest {
     }
 
     /**
+     * A profile's dependencies go through the same mapping as the POM's own: exclusions are kept,
+     * {@code system} scope and a type jk cannot spell are refused with their rows, and a {@code
+     * pom} type is an optional {@code [platform-dependencies]} entry.
+     */
+    @Test
+    void a_profiles_dependencies_are_mapped_like_the_poms_own(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>0.1.0</version>
+                  <profiles>
+                    <profile>
+                      <id>extra</id>
+                      <dependencies>
+                        <dependency>
+                          <groupId>com.acme</groupId><artifactId>widget</artifactId><version>1.0</version>
+                          <exclusions>
+                            <exclusion><groupId>commons-logging</groupId><artifactId>commons-logging</artifactId></exclusion>
+                          </exclusions>
+                        </dependency>
+                        <dependency>
+                          <groupId>com.acme</groupId><artifactId>tool</artifactId><version>1.0</version>
+                          <scope>system</scope><systemPath>${basedir}/lib/tool.jar</systemPath>
+                        </dependency>
+                        <dependency>
+                          <groupId>com.acme</groupId><artifactId>bundle</artifactId><version>1.0</version>
+                          <type>zip</type>
+                        </dependency>
+                        <dependency>
+                          <groupId>com.acme</groupId><artifactId>bom</artifactId><version>2.0</version>
+                          <type>pom</type>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                  </profiles>
+                </project>
+                """);
+
+        JkBuild build = result.jkBuild();
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module, Dependency::optional, Dependency::exclusions)
+                .containsExactly(tuple("com.acme:widget", true, List.of("commons-logging:commons-logging")));
+        assertThat(build.dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::module, Dependency::optional)
+                .containsExactly(tuple("com.acme:bom", true));
+        assertThat(requireNonNull(build.features().byName().get("extra")).deps())
+                .containsExactly("widget", "bom");
+        List<String> messages = TestImporters.messages(result);
+        assertThat(messages).anyMatch(m -> m.contains("`<scope>system</scope>` is rejected (com.acme:tool)"));
+        assertThat(messages).anyMatch(m -> m.startsWith("`<type>zip</type>` on com.acme:bundle"));
+        assertThat(messages).anyMatch(m -> m.startsWith("Maven profile `extra`: 2 dependencies → `[features.extra]`"));
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(JkBuildParser.parse(rendered).dependencies().of(Scope.MAIN))
+                .singleElement()
+                .extracting(Dependency::exclusions)
+                .isEqualTo(List.of("commons-logging:commons-logging"));
+    }
+
+    /**
      * A dependency an inactive profile declares without a version takes the one the POM's effective
      * {@code dependencyManagement} supplies, a parent's table or an imported BOM included, since
      * that is what governs it once the profile is active; {@code unresolved} is never written when

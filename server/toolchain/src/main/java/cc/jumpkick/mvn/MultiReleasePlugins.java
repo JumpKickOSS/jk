@@ -29,7 +29,7 @@ final class MultiReleasePlugins {
     private MultiReleasePlugins() {}
 
     static List<ReleaseSources> map(Model model, ImportReport.Builder report) {
-        Optional<Plugin> compiler = PluginFacts.compilerPlugin(model);
+        Optional<Plugin> compiler = PluginFacts.lifecycleBoundPlugin(model, "maven-compiler-plugin");
         if (compiler.isEmpty()) return List.of();
         Path baseDir = model.getProjectDirectory() == null
                 ? null

@@ -8,8 +8,11 @@ import cc.jumpkick.model.MavenMetaversion;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.Pom;
+import cc.jumpkick.resolver.TestEngines;
+import cc.jumpkick.version.Versions;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -31,6 +34,84 @@ final class DependencyMapping {
             Map.of("ejb-client", "client", "java-source", "sources", "javadoc", "javadoc");
 
     private DependencyMapping() {}
+
+    /** A mapped dependency and the scope it lands in. */
+    record Mapped(Scope scope, Dependency dependency) {}
+
+    /**
+     * One Maven dependency as the manifest carries it, every rule applied: {@code system} scope
+     * and a type jk cannot spell are refused with a row, a {@code pom} type lands in {@code
+     * [platform-dependencies]}, exclusions become the entry's {@code exclude} list, a test-jar
+     * moves to {@code [test-dependencies]}, and a test framework below its engine's floor is
+     * raised. Empty when the dependency is refused.
+     */
+    static Optional<Mapped> map(Pom.Dep dep, ImportReport.Builder report) {
+        if ("system".equalsIgnoreCase(dep.scope())) {
+            report.error("`<dependency>` with `<scope>system</scope>` is rejected ("
+                    + dep.module()
+                    + "). Move it to a git dependency or a local repository.");
+            return Optional.empty();
+        }
+        String unmappedType = unmappedType(dep);
+        if (unmappedType != null) {
+            report.error("`<type>" + unmappedType + "</type>` on " + dep.module()
+                    + " names an artifact jk has no manifest spelling for; the dependency was not written."
+                    + " A jar of the same module is `{ group, name, version }`, a classified jar adds"
+                    + " `classifier`.");
+            return Optional.empty();
+        }
+        warnUnresolvedVersion(dep, report);
+        warnMetaversion(dep, report);
+        Scope scope = scope(dep.scope());
+        if (isPom(dep)) {
+            report.warning("`<type>pom</type>` on " + dep.module()
+                    + " is written to [platform-dependencies]: its dependencyManagement governs versions, and"
+                    + " the libraries it lists are not on the classpath — declare the ones the code uses.");
+            scope = Scope.PLATFORM;
+        }
+        Dependency d = raiseToEngineFloor(toDependency(dep), scope, report);
+        // A BOM import governs versions, not a classpath subtree; its exclusions have nothing to prune.
+        if (scope != Scope.PLATFORM) d = ExclusionMapping.apply(d, dep, report);
+        // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies], so a test-jar
+        // declared in another Maven scope moves to TEST or the written jk.toml rejects its own `jk lock`.
+        if (d.isTestsKind() && scope != Scope.TEST && scope != Scope.TEST_DEV) {
+            report.warning("`<type>test-jar</type>` on "
+                    + dep.module()
+                    + " is in Maven scope `"
+                    + (dep.scope() == null || dep.scope().isBlank() ? "compile" : dep.scope())
+                    + "`; jk models test-jar deps as kind=tests, which is only legal in test"
+                    + " scopes — moved to [test-dependencies].");
+            scope = Scope.TEST;
+        }
+        return Optional.of(new Mapped(scope, d));
+    }
+
+    /**
+     * A test framework pinned below the floor of the Platform engine that runs it under jk is
+     * written at the version the engine accepts: JUnit 3.8.2 becomes JUnit 4.13.2, whose jar still
+     * runs {@code TestCase} suites. The lock would refuse the pin as written; the note says why.
+     */
+    private static Dependency raiseToEngineFloor(Dependency d, Scope scope, ImportReport.Builder report) {
+        if (scope != Scope.TEST && scope != Scope.TEST_DEV) return d;
+        if (d.isPlatformManaged() || !(d.version() instanceof VersionSelector.Exact exact)) return d;
+        for (TestEngines.Row row : TestEngines.ROWS) {
+            if (!row.trigger().equals(d.module()) || Versions.compare(exact.version(), row.floor()) >= 0) continue;
+            report.warning(d.module()
+                    + " "
+                    + exact.version()
+                    + " raised to "
+                    + row.suggested()
+                    + ": jk runs its suites through "
+                    + row.engine().module()
+                    + ", which needs "
+                    + row.floor()
+                    + " or later.");
+            return Dependency.of(d.library(), d.module(), VersionSelector.parse(row.suggested()))
+                    .withKind(d.kind())
+                    .withClassifier(d.classifier());
+        }
+        return d;
+    }
 
     static Scope scope(@Nullable String mavenScope) {
         if (mavenScope == null || mavenScope.isBlank() || "compile".equalsIgnoreCase(mavenScope)) {

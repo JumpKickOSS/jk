@@ -24,6 +24,7 @@ import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Exclusion;
 import org.apache.maven.model.Model;
+import org.apache.maven.model.Parent;
 import org.apache.maven.model.Profile;
 import org.apache.maven.model.building.DefaultModelBuilderFactory;
 import org.apache.maven.model.building.DefaultModelBuildingRequest;
@@ -270,7 +271,7 @@ final class EffectiveModel {
     /** The nearest ancestor whose own dependencyManagement pins {@code key} (a management key). */
     Optional<Ancestor> managedBy(String key) {
         return ancestors.stream()
-                .filter(a -> a.managed().stream().anyMatch(d -> !isImport(d) && key.equals(d.getManagementKey())))
+                .filter(a -> a.managed().stream().anyMatch(d -> !isImport(d) && key.equals(key(d))))
                 .findFirst();
     }
 
@@ -284,7 +285,7 @@ final class EffectiveModel {
     /** The nearest ancestor that declares the dependency {@code key} itself. */
     Optional<Ancestor> declaredBy(String key) {
         return ancestors.stream()
-                .filter(a -> a.raw().getDependencies().stream().anyMatch(d -> key.equals(d.getManagementKey())))
+                .filter(a -> a.raw().getDependencies().stream().anyMatch(d -> key.equals(key(d))))
                 .findFirst();
     }
 
@@ -306,7 +307,7 @@ final class EffectiveModel {
         Set<String> rawKeys = keys(raw.getDependencies());
         Set<String> rawVersionless = new HashSet<>();
         for (Dependency d : raw.getDependencies()) {
-            if (d.getVersion() == null || d.getVersion().isBlank()) rawVersionless.add(d.getManagementKey());
+            if (d.getVersion() == null || d.getVersion().isBlank()) rawVersionless.add(key(d));
         }
         List<Declared> out = new ArrayList<>();
         for (Dependency d : model.getDependencies()) {
@@ -328,7 +329,7 @@ final class EffectiveModel {
 
     /** Who supplied the version of a dependency this POM declares without one. */
     private String managedSource(String key) {
-        if (ownManaged().stream().anyMatch(m -> !isImport(m) && key.equals(m.getManagementKey()))) {
+        if (ownManaged().stream().anyMatch(m -> !isImport(m) && key.equals(key(m)))) {
             return "this POM's dependencyManagement";
         }
         Optional<Ancestor> pinned = managedBy(key);
@@ -392,7 +393,7 @@ final class EffectiveModel {
      * reactor's POMs, takes back what one of them supplied ({@link ReactorManaged}).
      */
     boolean platformSupplies(String key, Management mgmt) {
-        if (ownManaged().stream().anyMatch(m -> !isImport(m) && key.equals(m.getManagementKey()))) return false;
+        if (ownManaged().stream().anyMatch(m -> !isImport(m) && key.equals(key(m)))) return false;
         Ancestor parent = mgmt.parentPlatform();
         boolean publishedParent = parent != null && parent.published();
         Optional<Ancestor> inline = managedBy(key);
@@ -425,10 +426,46 @@ final class EffectiveModel {
         return dm == null ? List.of() : dm.getDependencies();
     }
 
-    private static Set<String> keys(List<Dependency> deps) {
+    private Set<String> keys(List<Dependency> deps) {
         Set<String> keys = new HashSet<>();
-        for (Dependency d : deps) keys.add(d.getManagementKey());
+        for (Dependency d : deps) keys.add(key(d));
         return keys;
+    }
+
+    /**
+     * The management key of a raw declaration as the effective model spells it: {@code
+     * ${project.*}} and property placeholders in the coordinate are filled the way Maven
+     * interpolates the model, so {@code <groupId>${project.groupId}</groupId>} matches the
+     * effective dependency it became.
+     */
+    private String key(Dependency d) {
+        String classifier = interpolate(d.getClassifier());
+        return interpolate(d.getGroupId()) + ":" + interpolate(d.getArtifactId()) + ":" + interpolate(d.getType())
+                + (classifier == null ? "" : ":" + classifier);
+    }
+
+    private @Nullable String interpolate(@Nullable String value) {
+        return value == null ? null : CiFriendlyVersions.interpolate(value, this::modelValue);
+    }
+
+    /**
+     * What Maven's interpolation gives {@code ${name}} in this model: the project's coordinate
+     * ({@code project.*}, or the {@code pom.*} spelling), its parent's, else a property.
+     */
+    private @Nullable String modelValue(String name) {
+        String key = name.startsWith("pom.") ? "project." + name.substring("pom.".length()) : name;
+        Parent parent = model.getParent() != null ? model.getParent() : raw.getParent();
+        return switch (key) {
+            case "project.groupId" ->
+                model.getGroupId() != null || parent == null ? model.getGroupId() : parent.getGroupId();
+            case "project.artifactId" -> model.getArtifactId();
+            case "project.version" ->
+                model.getVersion() != null || parent == null ? model.getVersion() : parent.getVersion();
+            case "project.parent.groupId" -> parent == null ? null : parent.getGroupId();
+            case "project.parent.artifactId" -> parent == null ? null : parent.getArtifactId();
+            case "project.parent.version" -> parent == null ? null : parent.getVersion();
+            default -> model.getProperties().getProperty(name);
+        };
     }
 
     /** Maven's dependency as jk's POM record; the importer maps scopes and kinds from there. */
