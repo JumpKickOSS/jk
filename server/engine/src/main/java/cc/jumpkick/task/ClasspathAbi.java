@@ -29,6 +29,9 @@ public final class ClasspathAbi {
 
     private static final AtomicLong EXTRACTS = new AtomicLong();
 
+    /** Memo keys carry the extractor's format, so a memo filled by an earlier {@link ClassAbi} is a miss. */
+    private static final String MEMO_NAMESPACE = "abi." + ClassAbi.FORMAT + ":";
+
     private ClasspathAbi() {}
 
     public static String token(Path entry) throws IOException {
@@ -44,7 +47,7 @@ public final class ClasspathAbi {
         }
         String identity = ClasspathFingerprint.entry(abs);
         if (identity.startsWith("missing:")) return identity;
-        String hit = AbiMemo.get(identity);
+        String hit = AbiMemo.get(MEMO_NAMESPACE + identity);
         if (hit != null) return hit;
         EXTRACTS.incrementAndGet();
         // The lines are digested as they are extracted, one class at a time, never held together:
@@ -54,7 +57,7 @@ public final class ClasspathAbi {
         Lines digest = new Lines();
         extract(abs, attrs, digest);
         String abi = "abi:" + digest.hex();
-        AbiMemo.put(identity, abi);
+        AbiMemo.put(MEMO_NAMESPACE + identity, abi);
         return abi;
     }
 
@@ -83,7 +86,7 @@ public final class ClasspathAbi {
             Map<String, String> outputs, List<Path> resourceRoots, Map<String, String> copiedFiles, Cas cas)
             throws IOException {
         String identity = ClasspathFingerprint.entryFromCompileAndResources(outputs, resourceRoots, copiedFiles);
-        String hit = AbiMemo.get(identity);
+        String hit = AbiMemo.get(MEMO_NAMESPACE + identity);
         if (hit != null) return hit;
         EXTRACTS.incrementAndGet();
         // Sorted by tree-relative path, as extractDir sorts a live tree.
@@ -101,7 +104,7 @@ public final class ClasspathAbi {
             for (String line : ClassAbi.apiLines(cas.read(cls.getValue()))) digest.accept(line);
         }
         String abi = "abi:" + digest.hex();
-        AbiMemo.put(identity, abi);
+        AbiMemo.put(MEMO_NAMESPACE + identity, abi);
         return abi;
     }
 

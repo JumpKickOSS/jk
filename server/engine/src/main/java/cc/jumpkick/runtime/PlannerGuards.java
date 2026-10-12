@@ -949,8 +949,17 @@ final class PlannerGuards {
 
     private static final Map<Path, Memo> RULES = new ConcurrentHashMap<>();
 
-    /** The rule file parsed once per {@code (size, mtime)}; every lane of every module shares it. */
+    /** The rule layers parsed once per content stamp; every lane of every module shares the result. */
     static LoadResult rules(GuardsPlan g) throws IOException {
+        return rules(g, () -> GuardRules.load(g.root(), g.config(), JkDirs.store()));
+    }
+
+    /**
+     * As above with the loader injected. The memo is stored under the stamp taken before the load:
+     * a save that lands during the load moves the stamp, so the next call reloads instead of
+     * serving what the load read under the new stamp.
+     */
+    static LoadResult rules(GuardsPlan g, Supplier<LoadResult> loader) throws IOException {
         Path file = GuardsPresence.rulesFile(g.root());
         // Every layer the load reads is in the stamp: the root file, the lock (pack pins), the members'
         // files and the packs' unpack markers. A pack the lock pins but the store has not unpacked yet
@@ -958,8 +967,8 @@ final class PlannerGuards {
         String stamp = GuardRules.stamp(g.root());
         Memo m = RULES.get(file);
         if (m != null && m.stamp.equals(stamp)) return m.load;
-        LoadResult load = GuardRules.load(g.root(), g.config(), JkDirs.store());
-        RULES.put(file, new Memo(GuardRules.stamp(g.root()), load));
+        LoadResult load = loader.get();
+        RULES.put(file, new Memo(stamp, load));
         recordRulesHash(g.root(), file);
         return load;
     }
