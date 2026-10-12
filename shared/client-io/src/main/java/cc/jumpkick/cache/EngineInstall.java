@@ -240,8 +240,8 @@ public final class EngineInstall {
             }
             makeExecutable(stagedJkx);
         } catch (IOException | RuntimeException staging) {
-            discard(stagedJk, staging);
-            discard(stagedJkx, staging);
+            discardStaged(stagedJk, staging);
+            discardStaged(stagedJkx, staging);
             throw staging;
         }
         Optional<Path> parkedJk = Optional.empty();
@@ -252,16 +252,19 @@ public final class EngineInstall {
             AtomicWrites.moveInto(stagedJk, jk);
             AtomicWrites.moveInto(stagedJkx, jkx);
         } catch (IOException | RuntimeException publish) {
-            restore(parkedJk, jk, publish);
-            restore(parkedJkx, jkx, publish);
-            discard(stagedJk, publish);
-            discard(stagedJkx, publish);
+            restoreParked(parkedJk, jk, publish);
+            restoreParked(parkedJkx, jkx, publish);
+            discardStaged(stagedJk, publish);
+            discardStaged(stagedJkx, publish);
             throw publish;
         }
     }
 
-    /** Put a parked client back as {@code live}, over whatever the failed publish left there. */
-    private static void restore(Optional<Path> parked, Path live, Exception cause) {
+    /**
+     * Put a client {@link #displaceToOld} parked back as {@code live}, over whatever the failed
+     * publish left there. A failure to do so is added to {@code cause} as suppressed.
+     */
+    public static void restoreParked(Optional<Path> parked, Path live, Exception cause) {
         if (parked.isEmpty()) return;
         try {
             Files.move(parked.get(), live, StandardCopyOption.REPLACE_EXISTING);
@@ -270,7 +273,8 @@ public final class EngineInstall {
         }
     }
 
-    private static void discard(Path staged, Exception cause) {
+    /** Delete a staged sibling a failed publish left behind; a failure is suppressed into {@code cause}. */
+    public static void discardStaged(Path staged, Exception cause) {
         try {
             Files.deleteIfExists(staged);
         } catch (IOException | RuntimeException failed) {

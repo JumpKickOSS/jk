@@ -2,9 +2,11 @@
 package cc.jumpkick.command.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.host.Os;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -102,12 +104,39 @@ class JvmClientInstallTest {
         assertThat(Files.readString(launcher)).startsWith("#!/bin/sh\n");
         assertThat(Files.isExecutable(launcher)).isTrue();
         assertThat(bin.resolve("jk.old")).hasBinaryContent(new byte[] {0x7f, 'E', 'L', 'F'});
+        assertThat(bin.resolve(".jk-new")).as("the staged sibling is gone").doesNotExist();
         Path jkx = Os.isWindows() ? bin.resolve("jkx.cmd") : bin.resolve("jkx");
         assertThat(jkx).exists();
         // A hardlink to the script (argv0 rides -Djk.argv0=$0), or a shim that execs it.
         boolean linked = Files.isSameFile(jkx, launcher);
         assertThat(linked || Files.readString(jkx).contains("\"" + launcher + "\" tool run"))
                 .isTrue();
+    }
+
+    /**
+     * The launcher is staged before anything live moves, so a staging path the text cannot be
+     * written to (here a directory squatting on it, which a read-only bin would not tell apart
+     * from a failed park) leaves the client the bin had: nothing is parked.
+     */
+    @Test
+    void a_launcher_that_cannot_be_staged_keeps_the_previous_client_on_path(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Files.write(bin.resolve("jk"), new byte[] {0x7f, 'E', 'L', 'F'});
+        Path jar = tmp.resolve("lib/jk/jk-1.2.3.jar");
+        Files.createDirectories(jar.getParent());
+        Files.write(jar, new byte[] {1});
+        Path squatter = Files.createDirectories(bin.resolve(".jk-new"));
+        Files.write(squatter.resolve("occupied"), new byte[] {1});
+
+        assertThatThrownBy(() -> JvmClientInstall.writeLauncher(bin, jar, Path.of("/opt/jdk/bin/java"), false))
+                .isInstanceOf(IOException.class);
+
+        assertThat(bin.resolve("jk")).hasBinaryContent(new byte[] {0x7f, 'E', 'L', 'F'});
+        try (var entries = Files.list(bin)) {
+            assertThat(entries.map(p -> p.getFileName().toString()))
+                    .as("nothing parked")
+                    .containsExactlyInAnyOrder("jk", ".jk-new");
+        }
     }
 
     @Test
@@ -124,6 +153,7 @@ class JvmClientInstallTest {
         assertThat(launcher).isEqualTo(bin.resolve("jk.bat"));
         assertThat(bin.resolve("jk.exe")).doesNotExist();
         assertThat(bin.resolve("jk.exe.old")).exists();
+        assertThat(bin.resolve(".jk.bat-new")).as("the staged sibling is gone").doesNotExist();
         assertThat(Files.readString(launcher)).startsWith("@echo off\r\n");
     }
 
