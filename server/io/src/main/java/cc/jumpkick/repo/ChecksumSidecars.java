@@ -19,6 +19,10 @@ import java.util.concurrent.Future;
  * both are absent. A sidecar whose body is not a digest of the expected length (an HTML error page
  * under HTTP 200) counts as absent. A body fetch that fails {@linkplain #cancel cancels} the two
  * reads, so a repository that stopped answering is not held to for the request timeout twice over.
+ *
+ * <p>Every read runs under the host's permit ({@link DownloadLeg#rateLimited}), so the three files
+ * of one artifact count against the host cap like any other request. The limiter is a plain
+ * semaphore: a caller must not hold the host's permit while it joins a read.
  */
 final class ChecksumSidecars {
 
@@ -86,7 +90,8 @@ final class ChecksumSidecars {
     }
 
     private Optional<String> read(Algorithm algorithm) throws IOException, InterruptedException {
-        Optional<byte[]> body = transport.fetch(URI.create(artifact + algorithm.suffix), credential);
+        URI sidecar = URI.create(artifact + algorithm.suffix);
+        Optional<byte[]> body = DownloadLeg.rateLimited(sidecar, () -> transport.fetch(sidecar, credential));
         if (body.isEmpty()) return Optional.empty();
         return Hashing.checksumFromSidecar(new String(body.get(), StandardCharsets.UTF_8), algorithm.hexLength);
     }

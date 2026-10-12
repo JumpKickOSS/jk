@@ -76,11 +76,19 @@ final class DownloadLeg {
         this.allowUnverified = allowUnverified;
     }
 
+    /** The body landed in its temp file, and the sidecar reads started beside it when the leg asked for them. */
+    private record Streamed(Downloaded stored, @Nullable ChecksumSidecars sidecars) {}
+
     /**
      * Download {@code uri} under its host's permit. {@code abort} is checked before the permit is
      * asked for and again once it is granted — a task that queued behind slow downloads must not
      * start a fetch for a lock that failed while it waited — and never mid-transfer, so a leg in
      * progress always completes cleanly.
+     *
+     * <p>The permit covers the body alone. The sidecar reads each take a permit of their own, so
+     * the leg joins them only once its own permit is released: a leg that held the host's permit
+     * while it waited for reads that need one would stall the host for good once every permit was
+     * held by such a leg.
      */
     Downloaded run(
             Coordinate coord,
@@ -92,14 +100,43 @@ final class DownloadLeg {
             BooleanSupplier abort)
             throws IOException, InterruptedException {
         checkAbort(abort, coord);
-        return rateLimited(uri, () -> {
-            checkAbort(abort, coord);
-            return downloadAndVerify(coord, uri, relativePath, mirror, leg, expectedSha256);
-        });
+        long t0 = Clock.SYSTEM.nanos();
+        Files.createDirectories(shard);
+        Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
+        Streamed streamed;
+        long ms;
+        try {
+            streamed = rateLimited(uri, () -> {
+                checkAbort(abort, coord);
+                return stream(uri, tmp, mirror);
+            });
+            ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
+            if (streamed.sidecars() != null) {
+                verifyUpstreamChecksum(
+                        coord, streamed.sidecars(), relativePath, streamed.stored(), leg, expectedSha256);
+            }
+        } catch (IOException | InterruptedException e) {
+            Files.deleteIfExists(tmp);
+            throw e;
+        }
+        // Successful VERIFIED fetch only — a download that fails its upstream checksum must not
+        // train the host fetch-duration prior.
+        if (ms > 0) {
+            try {
+                FetchTimings.record(ms);
+            } catch (RuntimeException e) {
+                // advisory
+                Log.debug("run: advisory", e);
+            }
+        }
+        return streamed.stored();
     }
 
-    /** Per-host concurrency cap around the network leg only; {@code file://} is not capped. */
-    private static Downloaded rateLimited(URI uri, HostRateLimiter.ThrowingSupplier<Downloaded, IOException> work)
+    /**
+     * Per-host concurrency cap around one request; {@code file://} is not capped. The limiter is a
+     * plain semaphore: work that holds a permit must not wait for other work that needs one.
+     */
+    static <T> T rateLimited(URI uri, HostRateLimiter.ThrowingSupplier<T, IOException> work)
             throws IOException, InterruptedException {
         String host = uri.getHost();
         boolean limitHost = host != null && !host.isBlank() && !"file".equalsIgnoreCase(uri.getScheme());
@@ -113,19 +150,10 @@ final class DownloadLeg {
         }
     }
 
-    private Downloaded downloadAndVerify(
-            Coordinate coord,
-            URI uri,
-            String relativePath,
-            boolean mirror,
-            MavenRepo.Leg leg,
-            @Nullable String expected)
-            throws IOException, InterruptedException {
-        long t0 = Clock.SYSTEM.nanos();
-        Files.createDirectories(shard);
-        Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
+    /** Stream the body to {@code tmp}, hashing as it lands; the sidecars are started beside it when {@code withSidecars}. */
+    private Streamed stream(URI uri, Path tmp, boolean withSidecars) throws IOException, InterruptedException {
         // The sidecars travel beside the body, so the check costs no round trip of its own.
-        ChecksumSidecars sidecars = mirror ? ChecksumSidecars.start(transport, credential, uri) : null;
+        ChecksumSidecars sidecars = withSidecars ? ChecksumSidecars.start(transport, credential, uri) : null;
         MessageDigest digest = Hashing.newSha256();
         long size;
         try (InputStream in = transport
@@ -137,30 +165,9 @@ final class DownloadLeg {
         } catch (IOException | InterruptedException e) {
             // The sidecars were only ever worth reading beside a body that arrived.
             if (sidecars != null) sidecars.cancel();
-            Files.deleteIfExists(tmp);
             throw e;
         }
-        Downloaded stored = new Downloaded(tmp, Hashing.hex(digest.digest()), size);
-        long ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
-        if (sidecars != null) {
-            try {
-                verifyUpstreamChecksum(coord, sidecars, relativePath, stored, leg, expected);
-            } catch (IOException e) {
-                Files.deleteIfExists(tmp);
-                throw e;
-            }
-        }
-        // Successful VERIFIED fetch only — a download that fails its upstream checksum must not
-        // train the host fetch-duration prior.
-        if (ms > 0) {
-            try {
-                FetchTimings.record(ms);
-            } catch (RuntimeException e) {
-                // advisory
-                Log.debug("downloadAndVerify: advisory", e);
-            }
-        }
-        return stored;
+        return new Streamed(new Downloaded(tmp, Hashing.hex(digest.digest()), size), sidecars);
     }
 
     /**

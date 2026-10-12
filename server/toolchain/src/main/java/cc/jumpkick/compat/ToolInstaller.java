@@ -348,19 +348,20 @@ public final class ToolInstaller {
     private static void extractTarGz(Path archive, Path destDir) throws IOException {
         try (InputStream fis = new BufferedInputStream(Files.newInputStream(archive));
                 GZIPInputStream gz = new GZIPInputStream(fis)) {
-            MinimalTar.stream(gz, (name, linkName, mode, isDir, isLink, data, size) -> {
+            MinimalTar.stream(gz, (name, linkName, mode, kind, data, size) -> {
                 Path out = destDir.resolve(name).normalize();
                 if (!out.startsWith(destDir)) {
                     throw new IOException("tar entry escapes destination: " + name);
                 }
-                if (isDir) {
-                    MinimalTar.createDirectoryInside(destDir, out);
-                } else if (isLink) {
-                    MinimalTar.createSymlinkInside(destDir, out, linkName);
-                } else {
-                    MinimalTar.requireParentInside(destDir, out);
-                    Files.copy(data, out);
-                    MinimalTar.applyMode(out, mode);
+                switch (kind) {
+                    case DIRECTORY -> MinimalTar.createDirectoryInside(destDir, out);
+                    case SYMLINK -> MinimalTar.createSymlinkInside(destDir, out, linkName);
+                    case HARD_LINK -> MinimalTar.createHardLinkInside(destDir, out, linkName);
+                    case FILE -> {
+                        MinimalTar.requireParentInside(destDir, out);
+                        Files.copy(data, out);
+                        MinimalTar.applyMode(out, mode);
+                    }
                 }
             });
         }
