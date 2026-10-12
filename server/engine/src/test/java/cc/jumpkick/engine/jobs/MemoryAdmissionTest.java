@@ -9,6 +9,7 @@ import cc.jumpkick.testing.Await;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -296,12 +297,19 @@ class MemoryAdmissionTest {
         assertThat(format.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
     }
 
+    /**
+     * The fair wait drops the committed-heap view, not the ledger: a head whose estimate the ledger
+     * holds beside the live job is admitted after it, and a head the ledger has no room for waits
+     * for a release however long it has stood there.
+     */
     @Test
-    void the_head_of_the_queue_is_admitted_after_the_fair_wait_when_the_host_has_room() throws Exception {
+    void the_head_of_the_queue_is_judged_by_the_ledger_alone_after_the_fair_wait() throws Exception {
         FakeHeap heap = heldByOneLongJob();
         FakeClock clock = new FakeClock();
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(10_000L, 0L, Long.MAX_VALUE / 4);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, timing, clock);
+        // 60 idle + 100 suite + 50 lib = 210 of 224: the ledger holds the lib; the committed heap says no.
+        MemoryAdmission gate = new MemoryAdmission(
+                heap, (kind, dir) -> "test".equals(kind) ? 100 * MIB : 50 * MIB, () -> 8L << 30, timing, clock);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
@@ -317,12 +325,14 @@ class MemoryAdmissionTest {
 
         clock.now += 1L;
         assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        // 60 + 100 + 50 + 50 = 260 of 224: the next head is past its own fair wait and still waits.
+        clock.now += 60_000L;
         Thread.sleep(2 * MemoryAdmission.POLL_MS);
         assertThat(second)
-                .as("the next head waits its own fair wait, measured from its own arrival")
+                .as("the fair wait never admits past the heap the ledger accounts for")
                 .isNotDone();
         assertThat(gate.queued()).isEqualTo(1);
-        clock.now += 5_000L;
+        gate.release(2);
         assertThat(second.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
     }
 
@@ -331,7 +341,8 @@ class MemoryAdmissionTest {
         FakeHeap heap = heldByOneLongJob();
         FakeClock clock = new FakeClock();
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(10_000L, 0L, Long.MAX_VALUE / 4);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 200 * MIB, timing, clock);
+        MemoryAdmission gate = new MemoryAdmission(
+                heap, (kind, dir) -> "test".equals(kind) ? 100 * MIB : 50 * MIB, () -> 200 * MIB, timing, clock);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
@@ -342,6 +353,53 @@ class MemoryAdmissionTest {
         assertThat(build).isNotDone();
         assertThat(gate.cancel(2)).isTrue();
         assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
+    }
+
+    /**
+     * Many small jobs on a small heap with a fair wait that is over at once and a host with room
+     * to spare: every one of them queues and runs in turn, and at no instant do the admitted
+     * estimates exceed what the heap holds — the degradation is queueing, never an exit.
+     */
+    @Test
+    void many_concurrent_small_jobs_queue_for_a_small_heap_and_never_overfill_it() throws Exception {
+        // 160 MiB heap, 40 idle, 32 reserved: 88 to hand out, so two 40 MiB jobs at a time.
+        FakeHeap heap = new FakeHeap(160, 40);
+        MemoryAdmission.Timing timing = new MemoryAdmission.Timing(1L, 0L, Long.MAX_VALUE / 4);
+        MemoryAdmission gate =
+                new MemoryAdmission(heap, (kind, dir) -> 40 * MIB, () -> 64L << 30, timing, System::currentTimeMillis);
+        int jobs = 12;
+        AtomicInteger live = new AtomicInteger();
+        AtomicInteger peakLive = new AtomicInteger();
+        AtomicInteger queuedAtLeastOnce = new AtomicInteger();
+        List<CompletableFuture<Verdict>> verdicts = new ArrayList<>();
+        for (int i = 0; i < jobs; i++) {
+            long jid = i + 1;
+            verdicts.add(async(() -> {
+                Verdict v = gate.admit(
+                        jid, "build", "/w" + jid, (ahead, waited) -> queuedAtLeastOnce.incrementAndGet(), () -> false);
+                if (v != Verdict.ADMITTED) return v;
+                int now = live.incrementAndGet();
+                peakLive.accumulateAndGet(now, Math::max);
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    live.decrementAndGet();
+                    gate.release(jid);
+                }
+                return v;
+            }));
+        }
+        for (CompletableFuture<Verdict> v : verdicts) {
+            assertThat(v.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        }
+        assertThat(peakLive)
+                .as("the ledger holds two 40 MiB jobs beside 40 idle on a 160 MiB heap; the fair wait admits no third")
+                .hasValueLessThanOrEqualTo(2);
+        assertThat(queuedAtLeastOnce).as("the other ten waited their turn").hasValueGreaterThan(0);
+        assertThat(gate.queued()).isZero();
+        assertThat(gate.admittedCount()).isZero();
     }
 
     @Test

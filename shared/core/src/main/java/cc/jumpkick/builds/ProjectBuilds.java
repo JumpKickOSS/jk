@@ -7,6 +7,7 @@ import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -415,12 +416,27 @@ public final class ProjectBuilds {
             }
             Path record = runDir.resolve(RECORD);
             if (Files.isRegularFile(record)) {
-                String dir = Jsonl.topStr(Files.readString(record, StandardCharsets.UTF_8), "dir");
+                String dir = Jsonl.topStr(recordHead(record), "dir");
                 if (dir != null && !dir.isBlank()) return Path.of(dir);
             }
             return null;
         } catch (IOException | RuntimeException unreadable) {
             return null;
+        }
+    }
+
+    /** How much of a {@link #RECORD} a reader of its scalar fields loads. */
+    public static final int RECORD_HEAD_BYTES = 64 * 1024;
+
+    /**
+     * The first {@link #RECORD_HEAD_BYTES} of a run's {@link #RECORD}. Its scalar fields (dir,
+     * window, outcome) come before the module rows, and a record of a large reactor runs to tens
+     * of MiB: readers of the scalars take the head so a background pass never loads a whole record
+     * onto the engine's heap.
+     */
+    public static String recordHead(Path record) throws IOException {
+        try (InputStream in = Files.newInputStream(record)) {
+            return new String(in.readNBytes(RECORD_HEAD_BYTES), StandardCharsets.UTF_8);
         }
     }
 

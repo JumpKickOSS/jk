@@ -165,6 +165,17 @@ ten jobs, ten trees, and `HeapPlan` sizes **worker** JVM heaps — the lease led
 do not account for engine-heap VFS. Ten × 32 MiB = 320 MiB on a 256 MiB
 SerialGC engine is an OOM; the per-job cap does not see it.
 
+The pool bounds the **tree** only. How many jobs run at once is the admission
+gate's call (`MemoryAdmission`): every plan job carries an estimate of what it
+holds in the engine — a 48 MiB base for the graph, memos, journal rows and
+worker plumbing, plus the lock as a parse tree and the metrics ledgers — and
+queues ("waiting for engine memory") until the admitted estimates leave room
+for it under `max-heap-mb`. No rule of the gate admits past that ledger; a
+fairness admission only stops consulting the committed heap. What the gate
+cannot see is a background thread's allocation: the metrics harvest runs beside
+every live job, so readers of a run's `record.json` take its head
+(`ProjectBuilds.recordHead`), never the whole file.
+
 **Pool:** the live sum of every in-flight job’s retained VFS bytes must stay
 ≤ **75% of `max-heap-mb`**. The other 25% is coordinator headroom (module
 graphs, journals, `FileHashMemo`, JSONL, SerialGC). 75% is a constant, like
