@@ -224,6 +224,9 @@ public final class JUnitLauncher {
     /** The XML report of the run in progress, which a heap retry's suite JVM records into too. */
     private @Nullable XmlTestReport runXml;
 
+    /** The Markdown report of the run in progress; a heap retry replaces its classes' entries. */
+    private @Nullable MarkdownTestReport runMd;
+
     /** Non-null only while a heap retry is re-running an item at this {@code -Xmx}. */
     private @Nullable Long heapOverride;
 
@@ -663,6 +666,7 @@ public final class JUnitLauncher {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         runXml = xml;
         MarkdownTestReport md = new MarkdownTestReport();
+        runMd = md;
         var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md, moduleLabel);
         // Capture the worker's non-protocol output so a hard crash (uncaught
         // throwable / System.exit before any test event) can be explained instead
@@ -802,14 +806,16 @@ public final class JUnitLauncher {
         try {
             if (killed) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
+                MarkdownTestReport.Tally share = share(classes);
                 TestSummary again = rung(javaHome, classpath, classes, listener, heap, new CaptureBuffer());
-                return first == null ? again : SuiteRetry.merge(first, classes, again);
+                return first == null ? again : SuiteRetry.merge(first, classes, share, again);
             }
             HeapScope.Key key = filledKey(javaHome);
             List<Long> ranOut = new ArrayList<>(List.of(heap));
             TestSummary settled = first;
             @Nullable TestSummary partial = null;
             List<String> selection = classes;
+            MarkdownTestReport.Tally share = share(selection);
             int diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
             String diedOutput = "";
             List<String> diedCommand = List.of();
@@ -847,7 +853,7 @@ public final class JUnitLauncher {
                     diedCommand = List.of();
                     continue;
                 }
-                TestSummary merged = settled == null ? run : SuiteRetry.merge(settled, selection, run);
+                TestSummary merged = settled == null ? run : SuiteRetry.merge(settled, selection, share, run);
                 List<String> still = SuiteRetry.heapClasses(run);
                 if (still.isEmpty() && !SuiteRetry.wholeSuite(run)) {
                     heaps.good(key, next);
@@ -857,12 +863,18 @@ public final class JUnitLauncher {
                 if (!SuiteRetry.wholeSuite(run)) {
                     settled = merged;
                     selection = still;
+                    share = share(still);
                 }
             }
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return first;
         }
+    }
+
+    /** What the run so far recorded for {@code classes}; a rung for them must replace it, not add to it. */
+    private MarkdownTestReport.Tally share(List<String> classes) {
+        return Objects.requireNonNull(runMd, "runMd").tally(classes);
     }
 
     /** One suite JVM for {@code classes} at {@code heap}; its non-protocol output lands in {@code crash}. */
@@ -883,7 +895,8 @@ public final class JUnitLauncher {
             // The rung's results replace what the run that ran out of heap recorded for its classes.
             XmlTestReport xml = runXml;
             if (xml != null) xml.forget(names);
-            MarkdownTestReport md = new MarkdownTestReport();
+            MarkdownTestReport md = Objects.requireNonNull(runMd, "runMd");
+            md.forget(names);
             var aggregator = new ResultAggregator(listener, 0, xml, md, moduleLabel);
             List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
@@ -942,6 +955,7 @@ public final class JUnitLauncher {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         runXml = xml;
         MarkdownTestReport md = new MarkdownTestReport();
+        runMd = md;
 
         PullWorkerPool pool = new PullWorkerPool(this, javaHome, classpath, testClassesDir, listener);
         TestSummary summary;

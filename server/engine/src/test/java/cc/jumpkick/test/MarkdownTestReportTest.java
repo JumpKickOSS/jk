@@ -162,6 +162,30 @@ class MarkdownTestReportTest {
     }
 
     @Test
+    void forget_drops_a_class_s_entries_so_a_repeat_of_it_reports_only_the_repeat(@TempDir Path ws) {
+        RunResults sink = new RunResults();
+        RunResults.open(sink);
+        MarkdownTestReport report = new MarkdownTestReport();
+        report.recordFinished("[class:com.acme.BigTest]", "warm()", 1, null);
+        report.recordFinished("[class:com.acme.BigTest]", "alloc()", 2, "{\"message\":\"Java heap space\"}");
+        report.recordSkipped("[class:com.acme.BigTest]", "later()", "slow");
+        report.recordFinished("[class:com.acme.OtherTest]", "fine()", 3, null);
+        assertThat(report.tally(List.of("com.acme.BigTest"))).isEqualTo(new MarkdownTestReport.Tally(1, 1, 1));
+        assertThat(report.tally(List.of())).isEqualTo(new MarkdownTestReport.Tally(2, 1, 2));
+
+        report.forget(List.of("com.acme.BigTest"));
+        report.recordFinished("[class:com.acme.BigTest]", "warm()", 1, null);
+        report.recordFinished("[class:com.acme.BigTest]", "alloc()", 2, null);
+        report.publish(ws.resolve("core").toString(), "g:core");
+
+        assertThat(sink.takeTests().getFirst().entries())
+                .extracting(MarkdownTestReport.Entry::displayName, MarkdownTestReport.Entry::isPass)
+                .containsExactly(tuple("fine()", true), tuple("warm()", true), tuple("alloc()", true));
+        report.forget(List.of());
+        assertThat(report.tally(List.of())).isEqualTo(new MarkdownTestReport.Tally(0, 0, 0));
+    }
+
+    @Test
     void class_name_from_junit_unique_id() {
         assertThat(MarkdownTestReport.classNameFrom("[engine:junit-jupiter]/[class:com.acme.FooTest]/[method:bar()]"))
                 .isEqualTo("com.acme.FooTest");

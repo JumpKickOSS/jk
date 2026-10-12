@@ -458,8 +458,9 @@ it names every heap that ran out and how to raise it: `[jvm] args = ["-Xmx…"]`
 jvm-args = ["-Xmx…"]`. A heap you pinned is never learned and never resized; that failure is
 reported immediately and names your setting.
 
-A retry that then passes stays a green build. The results and the agent report carry one
-line per rung, `retried with 1.0 GiB heap after running out of 512 MiB`. In a workspace that line
+A retry that then passes stays a green build: the test counts, the tests table and the next
+run's fixed/broken delta carry the retried classes' last run only, not the attempt that ran out.
+The results and the agent report carry one line per rung, `retried with 1.0 GiB heap after running out of 512 MiB`. In a workspace that line
 names the module: `` `jk-engine` `run-tests` retried with … `` in the results,
 `W jk-engine run-tests: retried with …` in the agent report. A single module stays the one line.
 

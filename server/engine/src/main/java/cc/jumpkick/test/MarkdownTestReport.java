@@ -4,7 +4,10 @@ package cc.jumpkick.test;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -85,6 +88,34 @@ public final class MarkdownTestReport {
     public synchronized void recordSkipped(String uniqueId, String display, @Nullable String reason) {
         String className = classNameFrom(uniqueId);
         entries.add(new Entry(className, display, 0, null, null, reason != null ? reason : ""));
+    }
+
+    /** What a launch recorded for some classes that its {@link cc.jumpkick.run.TestSummary} carries only as totals. */
+    public record Tally(long passed, long skipped, long classes) {}
+
+    /** The passes, skips and distinct classes recorded for {@code classNames}, every class when it is empty. */
+    public synchronized Tally tally(Collection<String> classNames) {
+        long passed = 0, skipped = 0;
+        Set<String> classes = new HashSet<>();
+        for (Entry e : entries) {
+            if (!classNames.isEmpty() && !classNames.contains(e.className())) continue;
+            if (e.isPass()) passed++;
+            else if (e.isSkip()) skipped++;
+            classes.add(e.className());
+        }
+        return new Tally(passed, skipped, classes.size());
+    }
+
+    /**
+     * Drop what was recorded for {@code classNames}, every class when it is empty, so a run that
+     * repeats them reports only the repeat.
+     */
+    public synchronized void forget(Collection<String> classNames) {
+        if (classNames.isEmpty()) {
+            entries.clear();
+            return;
+        }
+        entries.removeIf(e -> classNames.contains(e.className()));
     }
 
     /**
