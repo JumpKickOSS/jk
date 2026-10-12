@@ -19,7 +19,6 @@ import cc.jumpkick.scaffold.NewGroupGuess;
 import cc.jumpkick.scaffold.NewParentDirGuess;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -554,18 +553,7 @@ final class HttpProjectApi {
         // binary probe only rejects NUL, so a legal control-char-heavy file under the 1 MiB
         // write cap can escape past 3x.
         int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 6 + 4096;
-        byte[] raw = exchange.getRequestBody().readNBytes(maxBody + 1);
-        if (raw.length > maxBody) {
-            HttpResponses.sendJson(
-                    exchange,
-                    413,
-                    JsonOut.object()
-                            .put("error", "request body too large")
-                            .put("maxBytes", maxBody)
-                            .toString());
-            return;
-        }
-        String body = new String(raw, StandardCharsets.UTF_8);
+        String body = HttpRequests.body(exchange, maxBody);
         String projectId = Jsonl.topStr(body, "project");
         String path = Jsonl.topStr(body, "path");
         String content = Jsonl.topStr(body, "content");

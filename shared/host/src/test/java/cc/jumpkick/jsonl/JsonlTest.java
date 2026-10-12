@@ -29,6 +29,15 @@ class JsonlTest {
     }
 
     @Test
+    void anUnterminatedStringIsAbsentNotItsPrefix() {
+        String cut = "{\"dir\":\"/home/u/proj";
+        assertThat(Jsonl.str(cut, "dir")).isNull();
+        assertThat(Jsonl.topStr(cut, "dir")).isNull();
+        assertThat(Jsonl.str(cut + "\\", "dir")).isNull();
+        assertThat(Jsonl.str(cut + "\"}", "dir")).isEqualTo("/home/u/proj");
+    }
+
+    @Test
     void readsNegativeIntegers() {
         assertThat(Jsonl.intValue("{\"d\":-15}", "d", 0)).isEqualTo(-15);
         assertThat(Jsonl.intValue("{\"d\":-}", "d", 99)).isEqualTo(99);

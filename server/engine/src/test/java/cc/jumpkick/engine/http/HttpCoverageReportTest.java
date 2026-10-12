@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -13,13 +14,15 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
  * The run's coverage HTML is reachable from the dashboard: the tokenized entry link redirects to
  * the report's page, the report's own relative links resolve under the same route, anything
- * outside the report directories is refused, and a bad token is a 401.
+ * outside the report directories is refused (by real path, so a planted symlink does not leak its
+ * target), an oversized file is a 413, and a bad token is a 401.
  */
 @Tag("integration")
 class HttpCoverageReportTest extends HttpEngineServerHarness {
@@ -81,6 +84,43 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         assertThat(fetch("/report/" + token() + "/" + id + "/app/target/site/jacoco/index.html")
                         .body())
                 .contains("app");
+    }
+
+    @Test
+    void a_symlink_under_the_report_dir_that_points_outside_is_refused() throws Exception {
+        Path ws = Files.createDirectories(stateDir.resolve("ws3"));
+        Path report = Files.createDirectories(ws.resolve("lib/target/site/jacoco"));
+        Files.writeString(report.resolve("index.html"), "<html>lib</html>");
+        Path secret = Files.writeString(ws.resolve("lib/target/secret.txt"), "not a report");
+        boolean linked;
+        try {
+            Files.createSymbolicLink(report.resolve("leak.txt"), secret);
+            linked = true;
+        } catch (UnsupportedOperationException | IOException e) {
+            linked = false;
+        }
+        Assumptions.assumeTrue(linked, "this filesystem does not create symlinks");
+        String id = finished(testJournal(), ws, List.of(module(ws, "lib", 1, 1)));
+
+        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/leak.txt")
+                        .statusCode())
+                .isEqualTo(404);
+        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html")
+                        .statusCode())
+                .isEqualTo(200);
+    }
+
+    @Test
+    void a_report_file_past_the_size_cap_is_a_413() throws Exception {
+        Path ws = Files.createDirectories(stateDir.resolve("ws4"));
+        Path report = Files.createDirectories(ws.resolve("lib/target/site/jacoco"));
+        Files.writeString(report.resolve("index.html"), "<html>lib</html>");
+        Files.write(report.resolve("huge.html"), new byte[(int) HttpCoverageReport.MAX_FILE_BYTES + 1]);
+        String id = finished(testJournal(), ws, List.of(module(ws, "lib", 1, 1)));
+
+        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/huge.html")
+                        .statusCode())
+                .isEqualTo(413);
     }
 
     /** No bearer header and no redirect following: the browser's own navigation, seen one hop at a time. */

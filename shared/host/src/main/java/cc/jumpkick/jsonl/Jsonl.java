@@ -19,7 +19,8 @@ public final class Jsonl {
 
     /**
      * Extract a JSON string field value, handling basic escape sequences ({@code \"}, {@code \\},
-     * {@code \n}, {@code \r}, {@code \t}). Returns {@code null} when the key is absent.
+     * {@code \n}, {@code \r}, {@code \t}). Returns {@code null} when the key is absent or the
+     * string never closes (a cut-off line yields nothing, not its prefix).
      */
     public static @Nullable String str(@Nullable String json, String key) {
         return strAt(json, indexOfKey(json, key, false));
@@ -58,12 +59,12 @@ public final class Jsonl {
             if (c == '\\' && i + 1 < json.length()) {
                 i = appendEscape(json, i + 1, sb);
             } else if (c == '"') {
-                break;
+                return sb.toString();
             } else {
                 sb.append(c);
             }
         }
-        return sb.toString();
+        return null;
     }
 
     /**
