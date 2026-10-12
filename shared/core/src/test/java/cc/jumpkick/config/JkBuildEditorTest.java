@@ -984,4 +984,154 @@ class JkBuildEditorTest {
         assertThat(JkBuildEditor.addWorkspaceModule(inline, "cli"))
                 .isEqualTo("[workspace]\nmodules = [\"core\", \"cli\"] # [x]\n");
     }
+
+    /** {@code [dependencies] # note} is the scope table, not a reason to append a second one. */
+    @Test
+    void a_scope_header_with_a_trailing_comment_is_the_scope_table() {
+        String start = """
+                name = "widget"
+                java = 25
+
+                [dependencies] # runtime
+                guava = "33.4.0-jre"
+
+                [test-dependencies] # tests
+                jupiter = "org.junit.jupiter:junit-jupiter:6.0.0"
+                """;
+        String added =
+                JkBuildEditor.addDependency(start, Scope.MAIN, "jackson", "com.fasterxml.jackson", "jackson", "1.0");
+        assertThat(added)
+                .contains(
+                        "[dependencies] # runtime\nguava = \"33.4.0-jre\"\njackson = \"com.fasterxml.jackson:jackson:1.0\"\n")
+                .containsOnlyOnce("[dependencies]");
+        assertThat(JkBuildParser.parse(added).dependencies().of(Scope.MAIN))
+                .extracting(Dependency::name)
+                .containsExactly("guava", "jackson");
+        assertThat(JkBuildEditor.removeDependency(added, Scope.TEST, "jupiter"))
+                .contains("[test-dependencies] # tests\n")
+                .doesNotContain("jupiter");
+    }
+
+    /** A commented header still closes the table before it, so an edit never reaches past it. */
+    @Test
+    void a_commented_header_bounds_the_table_before_it() {
+        String start = """
+                name = "widget"
+                java = 25
+
+                [dependencies]
+                guava = "33.4.0-jre"
+
+                [test-dependencies] # tests
+                jupiter = "org.junit.jupiter:junit-jupiter:6.0.0"
+                """;
+        assertThatThrownBy(() -> JkBuildEditor.removeDependency(start, Scope.MAIN, "jupiter"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("\"jupiter\" not found in dependencies");
+        String added = JkBuildEditor.addDependency(start, Scope.MAIN, "zulu", "org.zulu", "zulu", "1.0");
+        assertThat(added)
+                .contains("guava = \"33.4.0-jre\"\nzulu = \"org.zulu:zulu:1.0\"\n\n[test-dependencies] # tests\n");
+
+        String rooted = JkBuildEditor.setRootScalar(
+                "name = \"w\"\n\n[application] # app\nmain = \"x\"\n", "version", "\"1.0\"");
+        assertThat(rooted).isEqualTo("name = \"w\"\nversion = \"1.0\"\n\n[application] # app\nmain = \"x\"\n");
+    }
+
+    /** Every table-specific edit finds its header when a comment trails the {@code ]}. */
+    @Test
+    void workspace_and_table_headers_accept_a_trailing_comment() {
+        String start = BASE + """
+
+                [workspace] # the modules
+                modules = ["a"]
+
+                [workspace.dependencies] # shared pins
+                jupiter = "org.junit.jupiter:junit-jupiter:6.0.0"
+
+                [application] # the launcher
+                main = "demo.App"
+                assembly = false
+                """;
+        String out = JkBuildEditor.addWorkspaceModule(start, "b");
+        assertThat(out)
+                .contains("[workspace] # the modules\nmodules = [\"a\", \"b\"]\n")
+                .containsOnlyOnce("[workspace]");
+        assertThat(JkBuildEditor.removeWorkspaceModule(out, "b")).isEqualTo(start);
+
+        out = JkBuildEditor.setWorkspaceDependencyVersion(out, "jupiter", "6.1.0");
+        assertThat(out)
+                .contains(
+                        "[workspace.dependencies] # shared pins\njupiter = \"org.junit.jupiter:junit-jupiter:6.1.0\"\n");
+
+        out = JkBuildEditor.setArtifacts(out, true, false);
+        out = JkBuildEditor.setTableString(out, "application", "main", "demo.Main");
+        out = JkBuildEditor.setTableScalar(out, "application", "assembly", "true");
+        assertThat(out).contains("[application] # the launcher\nmain = \"demo.Main\"\nassembly = true\n");
+
+        JkBuild parsed = JkBuildParser.parse(out);
+        assertThat(workspaceOf(parsed).modules()).containsExactly("a", "b");
+        assertThat(parsed.assembly()).isTrue();
+    }
+
+    /** The separator goes before the last element's trailing comment, never inside it. */
+    @Test
+    void a_trailing_comment_on_the_last_element_keeps_the_comma_before_it() {
+        String start = """
+                group = "cc.jumpkick"
+                name = "jk"
+                version = "0.1.0"
+
+                [workspace]
+                modules = [
+                    "core",
+                    "io" # the '#' ends the element, not the array
+                ]
+                """;
+        String added = JkBuildEditor.addWorkspaceModule(start, "cli");
+        assertThat(added).isEqualTo("""
+                group = "cc.jumpkick"
+                name = "jk"
+                version = "0.1.0"
+
+                [workspace]
+                modules = [
+                    "core",
+                    "io", # the '#' ends the element, not the array
+                    "cli",
+                ]
+                """);
+        assertThat(workspaceOf(JkBuildParser.parse(added)).modules()).containsExactly("core", "io", "cli");
+    }
+
+    /** A quoted string inside a trailing comment is neither a registered module nor one to cut. */
+    @Test
+    void a_quoted_string_inside_a_comment_is_not_a_module() {
+        String start = """
+                group = "cc.jumpkick"
+                name = "jk"
+                version = "0.1.0"
+
+                [workspace]
+                modules = [
+                    "core", # replaced "old"; see "cli"
+                    "old",
+                ]
+                """;
+        String removed = JkBuildEditor.removeWorkspaceModule(start, "old");
+        assertThat(removed).isEqualTo("""
+                group = "cc.jumpkick"
+                name = "jk"
+                version = "0.1.0"
+
+                [workspace]
+                modules = [
+                    "core", # replaced "old"; see "cli"
+                ]
+                """);
+        assertThat(workspaceOf(JkBuildParser.parse(removed)).modules()).containsExactly("core");
+
+        String added = JkBuildEditor.addWorkspaceModule(removed, "cli");
+        assertThat(added).contains("    \"core\", # replaced \"old\"; see \"cli\"\n    \"cli\",\n]\n");
+        assertThat(workspaceOf(JkBuildParser.parse(added)).modules()).containsExactly("core", "cli");
+    }
 }

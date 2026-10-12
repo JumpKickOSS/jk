@@ -22,14 +22,14 @@ import org.tomlj.TomlParseResult;
  */
 public final class JkBuildEditor {
 
-    /** Header line for the {@code [dependencies]} table (MAIN scope). */
-    private static final Pattern DEPS_FLAT_HEADER = Pattern.compile("^\\s*\\[dependencies]\\s*$");
-
-    /** Any table header, {@code [table]} or {@code [[array.of.tables]]}: where the table before it ends. */
+    /**
+     * Any table header, {@code [table]} or {@code [[array.of.tables]]}: where the table before it
+     * ends. Every header pattern is matched by {@link #isHeader}, so a trailing comment is allowed.
+     */
     private static final Pattern ANY_HEADER = Pattern.compile("^\\s*(\\[[^\\[\\]]+]|\\[\\[[^\\[\\]]+]])\\s*$");
 
     /** Header line for the {@code [workspace]} table. */
-    private static final Pattern WORKSPACE_HEADER = Pattern.compile("^(\\s*)\\[workspace]\\s*$");
+    private static final Pattern WORKSPACE_HEADER = Pattern.compile("^\\s*\\[workspace]\\s*$");
 
     /** The {@code modules = ...} assignment within {@code [workspace]}. */
     private static final Pattern MODULES_KEY = Pattern.compile("^\\s*modules\\s*=.*$");
@@ -322,16 +322,7 @@ public final class JkBuildEditor {
 
         Lines manifest = Lines.split(content);
         List<String> lines = manifest.lines();
-        int wsHeader = -1;
-        String wsIndent = "";
-        for (int i = 0; i < lines.size(); i++) {
-            Matcher m = WORKSPACE_HEADER.matcher(lines.get(i));
-            if (m.matches()) {
-                wsHeader = i;
-                wsIndent = m.group(1);
-                break;
-            }
-        }
+        int wsHeader = findHeader(lines, WORKSPACE_HEADER);
         if (wsHeader < 0) {
             if (!createTable) {
                 throw new IllegalStateException("no [workspace] table in jk.toml");
@@ -352,8 +343,9 @@ public final class JkBuildEditor {
                 break;
             }
         }
-        // No modules key yet — add one right under the header.
+        // No modules key yet — add one right under the header, at the header's indent.
         if (modulesLine < 0) {
+            String wsIndent = indentOf(lines.get(wsHeader));
             lines.add(wsHeader + 1, wsIndent + "modules = [" + MinimalToml.quote(path) + "]");
             return validated(manifest.join());
         }
@@ -364,7 +356,7 @@ public final class JkBuildEditor {
         // covers the new module counts — appending the literal beside `libs/*` would list it twice.
         StringBuilder arrayText = new StringBuilder();
         for (int i = modulesLine; i <= closeLine; i++)
-            arrayText.append(lines.get(i)).append('\n');
+            arrayText.append(code(lines.get(i))).append('\n');
         Matcher q = QUOTED.matcher(arrayText);
         List<String> existing = new ArrayList<>();
         while (q.find()) existing.add(decoded(q));
@@ -391,13 +383,7 @@ public final class JkBuildEditor {
 
         Lines manifest = Lines.split(content);
         List<String> lines = manifest.lines();
-        int wsHeader = -1;
-        for (int i = 0; i < lines.size(); i++) {
-            if (WORKSPACE_HEADER.matcher(lines.get(i)).matches()) {
-                wsHeader = i;
-                break;
-            }
-        }
+        int wsHeader = findHeader(lines, WORKSPACE_HEADER);
         if (wsHeader < 0) return content;
 
         int end = endOfTable(lines, wsHeader);
@@ -414,7 +400,7 @@ public final class JkBuildEditor {
 
         for (int i = modulesLine; i <= closeLine; i++) {
             String line = lines.get(i);
-            Matcher q = QUOTED.matcher(line);
+            Matcher q = QUOTED.matcher(code(line)); // a quoted string inside a comment is not an element
             while (q.find()) {
                 if (!decoded(q).equals(path)) continue;
                 // Cut the quoted element plus one adjacent comma (the following one when present,
@@ -461,22 +447,18 @@ public final class JkBuildEditor {
 
     /** Insert a new element line just before the {@code ]} of a multi-line array. */
     private static void insertMultilineModule(List<String> lines, int modulesLine, int closeLine, String path) {
-        // Ensure the last element line carries a trailing comma.
-        for (int i = closeLine - 1; i > modulesLine - 1; i--) {
-            String t = lines.get(i);
-            String trimmed = t.stripTrailing();
-            if (trimmed.isEmpty() || trimmed.stripLeading().startsWith("#")) continue;
-            if (!trimmed.endsWith(",") && !trimmed.endsWith("[")) {
-                lines.set(i, trimmed + ",");
+        // Ensure the last element line carries a trailing comma, placed before any comment.
+        for (int i = closeLine - 1; i >= modulesLine; i--) {
+            String line = lines.get(i);
+            String code = code(line).stripTrailing();
+            if (code.isEmpty()) continue; // blank or comment-only
+            if (!code.endsWith(",") && !code.endsWith("[")) {
+                lines.set(i, code + "," + line.substring(code.length()).stripTrailing());
             }
             break;
         }
         // Indent like the first element line if there is one, else 4 spaces.
-        String indent = "    ";
-        if (modulesLine + 1 < closeLine) {
-            String el = lines.get(modulesLine + 1);
-            indent = el.substring(0, el.length() - el.stripLeading().length());
-        }
+        String indent = modulesLine + 1 < closeLine ? indentOf(lines.get(modulesLine + 1)) : "    ";
         lines.add(closeLine, indent + MinimalToml.quote(path) + ",");
     }
 
@@ -493,25 +475,9 @@ public final class JkBuildEditor {
         throw new IllegalStateException("malformed modules array in [workspace]");
     }
 
-    /**
-     * Locate the line that opens the section for {@code scope}. MAIN scope uses the {@code
-     * [dependencies]} header; non-MAIN scopes use {@code [<canonical>-dependencies]}.
-     */
+    /** The line that opens the dependency table for {@code scope}, or {@code -1}. */
     private static int findScopeHeader(List<String> lines, Scope scope) {
-        String sectionName = scope.tomlSection();
-        Pattern target;
-        if (scope == Scope.MAIN) {
-            target = DEPS_FLAT_HEADER;
-        } else {
-            // Build a pattern that matches exactly this scope's section header.
-            target = Pattern.compile("^\\s*\\[" + Pattern.quote(sectionName) + "]\\s*$");
-        }
-        for (int i = 0; i < lines.size(); i++) {
-            if (target.matcher(lines.get(i)).matches()) {
-                return i;
-            }
-        }
-        return -1;
+        return findHeader(lines, tableHeader(scope.tomlSection()));
     }
 
     /** Find the line index of the dep entry named {@code name} in {@code scope}, or {@code -1}. */
@@ -533,7 +499,7 @@ public final class JkBuildEditor {
      */
     private static int endOfTable(List<String> lines, int headerLine) {
         for (int i = headerLine + 1; i < lines.size(); i++) {
-            if (ANY_HEADER.matcher(lines.get(i)).matches()) return i;
+            if (isHeader(ANY_HEADER, lines.get(i))) return i;
         }
         return lines.size();
     }
@@ -576,14 +542,7 @@ public final class JkBuildEditor {
         requireVersionLiteral(versionLiteral);
         Lines manifest = Lines.split(content);
         List<String> lines = manifest.lines();
-        Pattern header = Pattern.compile("^\\s*\\[workspace\\.dependencies]\\s*$");
-        int headerLine = -1;
-        for (int i = 0; i < lines.size(); i++) {
-            if (header.matcher(lines.get(i)).matches()) {
-                headerLine = i;
-                break;
-            }
-        }
+        int headerLine = findHeader(lines, tableHeader("workspace.dependencies"));
         if (headerLine < 0) {
             throw new IllegalStateException("[workspace.dependencies] not found in jk.toml");
         }
@@ -684,15 +643,8 @@ public final class JkBuildEditor {
     private static String setApplicationFlag(String content, String key, boolean value) {
         Lines manifest = Lines.split(content);
         List<String> lines = manifest.lines();
-        Pattern appHeader = Pattern.compile("^\\s*\\[application]\\s*$");
         Pattern flagKey = Pattern.compile("^(\\s*)" + Pattern.quote(key) + "\\s*=");
-        int header = -1;
-        for (int i = 0; i < lines.size(); i++) {
-            if (appHeader.matcher(lines.get(i)).matches()) {
-                header = i;
-                break;
-            }
-        }
+        int header = findHeader(lines, tableHeader("application"));
         String assignment = value ? key + " = true" : null;
         if (header < 0) {
             if (assignment == null) return content; // nothing to remove
@@ -734,14 +686,7 @@ public final class JkBuildEditor {
     public static String setTableString(String content, String tablePath, String key, String value) {
         Lines manifest = Lines.split(content);
         List<String> lines = manifest.lines();
-        Pattern header = Pattern.compile("^\\s*\\[" + Pattern.quote(tablePath) + "]\\s*$");
-        int headerLine = -1;
-        for (int i = 0; i < lines.size(); i++) {
-            if (header.matcher(lines.get(i)).matches()) {
-                headerLine = i;
-                break;
-            }
-        }
+        int headerLine = findHeader(lines, tableHeader(tablePath));
         if (headerLine < 0) throw new IllegalStateException("[" + tablePath + "] not found in jk.toml");
         int end = endOfTable(lines, headerLine);
         Pattern entry = Pattern.compile("^([ \\t]*)" + Pattern.quote(key) + "([ \\t]*=[ \\t]*)");
@@ -769,14 +714,7 @@ public final class JkBuildEditor {
     public static String setTableScalar(String content, String tablePath, String key, String value) {
         Lines manifest = Lines.split(content);
         List<String> lines = manifest.lines();
-        Pattern header = Pattern.compile("^\\s*\\[" + Pattern.quote(tablePath) + "]\\s*$");
-        int headerLine = -1;
-        for (int i = 0; i < lines.size(); i++) {
-            if (header.matcher(lines.get(i)).matches()) {
-                headerLine = i;
-                break;
-            }
-        }
+        int headerLine = findHeader(lines, tableHeader(tablePath));
         if (headerLine < 0) throw new IllegalStateException("[" + tablePath + "] not found in jk.toml");
         int end = endOfTable(lines, headerLine);
         Pattern entry = Pattern.compile("^([ \\t]*)" + Pattern.quote(key) + "([ \\t]*=[ \\t]*)");
@@ -810,7 +748,7 @@ public final class JkBuildEditor {
         // stays aligned across an edit.
         Pattern rootKey = Pattern.compile("^([ \\t]*)" + Pattern.quote(key) + "([ \\t]*)=");
         for (int i = 0; i < lines.size(); i++) {
-            if (ANY_HEADER.matcher(lines.get(i)).matches()) break; // past the root section
+            if (isHeader(ANY_HEADER, lines.get(i))) break; // past the root section
             String line = lines.get(i);
             Matcher m = rootKey.matcher(line);
             if (m.find()) {
@@ -819,13 +757,8 @@ public final class JkBuildEditor {
                 return validated(manifest.join());
             }
         }
-        int firstHeader = lines.size();
-        for (int i = 0; i < lines.size(); i++) {
-            if (ANY_HEADER.matcher(lines.get(i)).matches()) {
-                firstHeader = i;
-                break;
-            }
-        }
+        int firstHeader = findHeader(lines, ANY_HEADER);
+        if (firstHeader < 0) firstHeader = lines.size();
         while (firstHeader > 0 && lines.get(firstHeader - 1).isBlank()) firstHeader--;
         lines.add(firstHeader, assignment);
         return validated(manifest.join());
@@ -864,6 +797,35 @@ public final class JkBuildEditor {
             } else if (c == '#') {
                 return -1;
             }
+        }
+        return -1;
+    }
+
+    /** {@code line} up to its trailing comment; a {@code #} inside a string is kept. */
+    private static String code(String line) {
+        int hash = codeIndexOf(line, '#');
+        return hash < 0 ? line : line.substring(0, hash);
+    }
+
+    /** The leading whitespace of {@code line}. */
+    private static String indentOf(String line) {
+        return line.substring(0, line.length() - line.stripLeading().length());
+    }
+
+    /** The header pattern for the table {@code [tablePath]}, matched by {@link #isHeader}. */
+    private static Pattern tableHeader(String tablePath) {
+        return Pattern.compile("^\\s*\\[" + Pattern.quote(tablePath) + "]\\s*$");
+    }
+
+    /** Whether {@code line} is the header {@code pattern} names; a trailing comment after the {@code ]} is allowed. */
+    private static boolean isHeader(Pattern pattern, String line) {
+        return pattern.matcher(code(line)).matches();
+    }
+
+    /** The first line that is the header {@code pattern} names, or {@code -1}. */
+    private static int findHeader(List<String> lines, Pattern pattern) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (isHeader(pattern, lines.get(i))) return i;
         }
         return -1;
     }
