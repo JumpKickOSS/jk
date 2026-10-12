@@ -3,11 +3,13 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.PathUtil;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,15 +28,20 @@ public final class WarPackager {
     static final String CLASSES = "WEB-INF/classes";
     static final String LIB = "WEB-INF/lib";
 
-    /** Write {@code request.explodedDir()} anew, then {@code request.warFile()} from it. */
-    public Path packageWar(WarRequest request) throws IOException {
+    /**
+     * Write {@code request.explodedDir()} anew, then {@code request.warFile()} from it. The web
+     * roots are copied in order, the webapp first: the first root to carry a path wins, and every
+     * later copy of it is reported in the result.
+     */
+    public War packageWar(WarRequest request) throws IOException {
         Path exploded = request.explodedDir();
         PathUtil.deleteRecursivelyOrThrow(exploded);
         Files.createDirectories(exploded);
-        if (request.webapp() != null) PathUtil.copyTree(request.webapp(), exploded);
+        Map<String, Path> owners = new HashMap<>();
+        List<Shadowed> shadowed = new ArrayList<>();
+        if (request.webapp() != null) copyWebRoot(request.webapp(), "", exploded, owners, shadowed);
         for (Map.Entry<Path, String> content : request.webContent().entrySet()) {
-            Path into = content.getValue().isEmpty() ? exploded : exploded.resolve(content.getValue());
-            PathUtil.copyTree(content.getKey(), into);
+            copyWebRoot(content.getKey(), content.getValue(), exploded, owners, shadowed);
         }
         Path classes = exploded.resolve(CLASSES);
         PathUtil.copyTree(request.classes(), classes);
@@ -44,9 +51,37 @@ public final class WarPackager {
         for (Map.Entry<String, Path> jar : libNames(request.libs()).entrySet()) {
             Files.copy(jar.getValue(), lib.resolve(jar.getKey()), StandardCopyOption.REPLACE_EXISTING);
         }
-        return new JarPackager()
+        Path war = new JarPackager()
                 .packageJar(
                         JarPackager.JarRequest.of(exploded, request.warFile()).withAttributes(request.attributes()));
+        return new War(war, List.copyOf(shadowed));
+    }
+
+    /**
+     * Copy {@code root}'s files under {@code prefix} ({@code ""} for the war root), skipping any
+     * path an earlier root already wrote; {@code owners} maps each written war path to its root.
+     */
+    private static void copyWebRoot(
+            Path root, String prefix, Path exploded, Map<String, Path> owners, List<Shadowed> shadowed)
+            throws IOException {
+        if (!Files.isDirectory(root)) return;
+        List<Path> files = new ArrayList<>();
+        try (Stream<Path> stream = Files.find(root, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
+            stream.forEach(files::add);
+        }
+        files.sort(null);
+        for (Path file : files) {
+            String relative = root.relativize(file).toString().replace(File.separatorChar, '/');
+            String path = prefix.isEmpty() ? relative : prefix + "/" + relative;
+            Path owner = owners.putIfAbsent(path, root);
+            if (owner != null) {
+                shadowed.add(new Shadowed(path, owner, root));
+                continue;
+            }
+            Path target = exploded.resolve(path);
+            Files.createDirectories(target.getParent());
+            Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     /**
@@ -97,8 +132,8 @@ public final class WarPackager {
      * @param webapp the web resources directory; {@code null} when the module has none
      * @param libs the runtime jars, in classpath order
      * @param attributes the archive manifest's attributes beyond {@code Manifest-Version}
-     * @param webContent directories copied into the war after the webapp, each under its war-relative
-     *     path ({@code ""} for the root): a node sibling's build output
+     * @param webContent directories copied into the war after the webapp, in declaration order, each
+     *     under its war-relative path ({@code ""} for the root): a node sibling's build output
      */
     public record WarRequest(
             Path classes,
@@ -114,8 +149,14 @@ public final class WarPackager {
             Objects.requireNonNull(explodedDir, "explodedDir");
             Objects.requireNonNull(warFile, "warFile");
             libs = List.copyOf(libs);
-            webContent = Map.copyOf(webContent);
+            webContent = Collections.unmodifiableMap(new LinkedHashMap<>(webContent));
             attributes = Map.copyOf(attributes);
         }
     }
+
+    /** The archive written, and each war path a later web root also carried. */
+    public record War(Path file, List<Shadowed> shadowed) {}
+
+    /** {@code path} in the war comes from {@code winner}; {@code loser}'s copy was left out. */
+    public record Shadowed(String path, Path winner, Path loser) {}
 }

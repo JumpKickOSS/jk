@@ -34,10 +34,38 @@ class AppJarTest {
         Path jar = tmp.resolve("app.jar");
         AppJar.write(tmp.resolve("classes"), jar);
 
-        assertThat(entryNames(jar)).containsExactly(JarFile.MANIFEST_NAME, "com/ex/App.class");
+        assertThat(entryNames(jar)).containsExactly(JarFile.MANIFEST_NAME, "com/", "com/ex/", "com/ex/App.class");
         // The manifest included: `new JarOutputStream(out, manifest)` would stamp it with now.
         assertThat(entryTimes(jar)).isNotEmpty().allSatisfy(time -> assertThat(time)
                 .isEqualTo(PINNED));
+    }
+
+    @Test
+    void entries_are_written_in_name_order_with_their_directories_whatever_the_walk_order(@TempDir Path tmp)
+            throws Exception {
+        // A directory walk yields files in the filesystem's order; the jar's bytes key an action
+        // cache, so the entry order is settled by name.
+        Path classes = tmp.resolve("classes");
+        for (String name : List.of("z/Last.class", "m/Mid.class", "a/b/First.class", "application.properties")) {
+            Path file = classes.resolve(name);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, name);
+        }
+
+        Path jar = tmp.resolve("app.jar");
+        AppJar.write(classes, jar);
+
+        assertThat(entryNames(jar))
+                .containsExactly(
+                        JarFile.MANIFEST_NAME,
+                        "a/",
+                        "a/b/",
+                        "a/b/First.class",
+                        "application.properties",
+                        "m/",
+                        "m/Mid.class",
+                        "z/",
+                        "z/Last.class");
     }
 
     private static List<String> entryNames(Path jar) throws Exception {
