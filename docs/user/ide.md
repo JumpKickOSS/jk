@@ -67,7 +67,7 @@ pinned jar is verified against it.
 | `buildTarget/compile` | yes; `publishDiagnostics` with file/line/column for javac, kotlinc, groovyc and scalac blocks, colour escapes stripped (errors severity 1, warnings 2; anything unparseable lands at project root) |
 | `buildTarget/test` | yes; optional suite/tag/class `data`, optional `debug` |
 | `buildTarget/run` | yes when main class known; optional `debug` |
-| `build/cancel` | yes |
+| `build/cancel` | yes; `params.id` names the compile/test/run request to cancel, running or still queued (a queued one is answered as cancelled, code -32800); without an id every outstanding request is cancelled |
 | `workspace/reload` | yes |
 | Debug adapter | **JDWP attach, not DAP.** `data.debug` starts the test/app JVM with a JDWP listener; the address arrives as `build/logMessage` before the launch (and in the test result's `data`). Attach with a stock remote-JVM configuration — see below |
 
