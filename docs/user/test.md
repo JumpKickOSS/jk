@@ -126,8 +126,22 @@ When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
 
 `--class <name>` runs only the matching test classes of the selected suites: a fully
 qualified name is exact, a simple name matches in any package, and `*` stands for any run of
-characters (`--class '*IT'`). Repeat the flag to union. Tags still apply. The filter is part of
-the run's stamp, so a green `--class` run never marks the whole suite up to date.
+characters (`--class '*IT'`). Repeat the flag to union. The filter is part of the run's stamp,
+so a green `--class` run never marks the whole suite up to date.
+
+Tags still apply, and a named class is never dropped quietly. When every pattern names its class
+without a `*` (`--class OrdersIT`, `--class com.example.OrdersIT#refunds`) and the tag filter
+drops one of those classes, the module fails with the class, its tags and the profile that runs
+it, whatever else ran:
+
+```
+--class named 1 class the tag filter excluded: com.example.OrdersIT [integration]; pass --include-tags integration (or a --profile that includes it) to run it; --profile integration runs it
+```
+
+Run it again with that `--profile` (or `--include-tags`). `--no-profile` lifts only a profile's
+filters, not `[test] exclude-tags`. A wildcard composes with the tag filter: `--class '*Orders*'`
+runs the matches the filter keeps and warns about the ones it drops; a run in which the dropped
+ones were the only matches fails with that line.
 
 `--class OrdersTest#refunds` runs one method of the class — the shape the IntelliJ gutter's
 method-level Run and Debug pass. The class half follows the rules above; the method half is the
@@ -149,7 +163,8 @@ judged together: a pattern that only matches serial-tagged classes is a match.
 runs its own suite too (a green suite replays from its stamp; a dirty one runs). `-m` is the
 same cone for `jk build` and `jk test`. To reach one module's class from the workspace root,
 name the class: `jk test -m clients/cli --class SelfNukeCommandTest` runs it in `clients/cli`
-and skips the prerequisites, whose suites match nothing.
+and skips the prerequisites, whose suites match nothing. A prerequisite compiles its tests and
+is judged from their class files, so it skips without a test JVM, warm engine or cold.
 
 ## Leave classes, sources and dependencies out (`[test] exclude-classes`, `exclude-src`, `exclude-dependencies`)
 

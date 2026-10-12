@@ -181,6 +181,20 @@ public final class SuiteClassFilter {
         return String.join("; ", parts);
     }
 
+    /**
+     * True when a class compiled under {@code testClasses} passes the class filter the runner would
+     * apply: it matches {@code classPatterns}, this run's suites own it and {@code excludeClasses}
+     * does not name it. The judgement a forked discovery would reach, read from the class files
+     * instead, so a module the patterns name nothing in skips without a test JVM.
+     */
+    public boolean namesCompiledClass(Path testClasses, List<String> classPatterns, List<String> excludeClasses) {
+        if (classPatterns.isEmpty() || !Files.isDirectory(testClasses)) return false;
+        Pattern accepted = Pattern.compile(JUnitClassFilter.filter(
+                JUnitClassFilter.patternRegex(classPatterns), JUnitClassFilter.excludeBody(excludeClasses), body()));
+        return compiledClasses(testClasses, true).stream()
+                .anyMatch(name -> accepted.matcher(name).matches());
+    }
+
     private @Nullable String directoryOwner(String className) {
         int nested = className.indexOf('$');
         return directoryClasses.get(nested < 0 ? className : className.substring(0, nested));
@@ -203,11 +217,17 @@ public final class SuiteClassFilter {
 
     /** Top-level class names under {@code testClasses}, from their {@code .class} paths. */
     private static Set<String> compiledClasses(Path testClasses) {
+        return compiledClasses(testClasses, false);
+    }
+
+    /** Binary class names under {@code testClasses}, nested classes included when {@code nested}. */
+    private static Set<String> compiledClasses(Path testClasses, boolean nested) {
         Set<String> out = new TreeSet<>();
         try {
             PathUtil.forEachRegularFile(testClasses, (file, attrs) -> {
                 String rel = testClasses.relativize(file).toString().replace('\\', '/');
-                if (!rel.endsWith(".class") || rel.contains("$") || rel.endsWith("module-info.class")) return;
+                if (!rel.endsWith(".class") || rel.endsWith("module-info.class")) return;
+                if (!nested && rel.contains("$")) return;
                 out.add(rel.substring(0, rel.length() - ".class".length()).replace('/', '.'));
             });
         } catch (IOException e) {

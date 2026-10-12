@@ -94,6 +94,35 @@ class SuiteClassFilterTest {
                 .isEqualTo("FooTest is in the test suite (jk test --suite test --class FooTest)");
     }
 
+    @Test
+    void the_class_files_say_whether_the_patterns_name_a_class_this_run_would_keep(@TempDir Path classes)
+            throws Exception {
+        Files.createDirectories(classes.resolve("com/acme"));
+        for (String name : List.of("FooTest", "FooTest$Nested", "FooIT", "SlowTest")) {
+            Files.writeString(classes.resolve("com/acme/" + name + ".class"), "");
+        }
+        SuiteClassFilter suites = SuiteClassFilter.of(classes, false, List.of("test"), FAILSAFE);
+
+        assertThat(suites.namesCompiledClass(classes, List.of("FooTest"), List.of()))
+                .isTrue();
+        assertThat(suites.namesCompiledClass(classes, List.of("com.acme.FooTest#refunds"), List.of()))
+                .isTrue();
+        assertThat(suites.namesCompiledClass(classes, List.of("*Nested"), List.of()))
+                .as("a nested class is a class the runner can be asked for")
+                .isTrue();
+        assertThat(suites.namesCompiledClass(classes, List.of("OrdersTest"), List.of()))
+                .as("a module without the class skips without a test JVM")
+                .isFalse();
+        assertThat(suites.namesCompiledClass(classes, List.of("FooIT"), List.of()))
+                .as("the integration suite owns it; this run does not")
+                .isFalse();
+        assertThat(suites.namesCompiledClass(classes, List.of("SlowTest"), List.of("*Slow*")))
+                .as("[test] exclude-classes")
+                .isFalse();
+        assertThat(suites.namesCompiledClass(classes.resolve("absent"), List.of("FooTest"), List.of()))
+                .isFalse();
+    }
+
     /** A Failsafe exclude stays the suite's, so the default suite never takes it, and runs nowhere. */
     @Test
     void an_excluded_class_runs_in_no_suite(@TempDir Path module) {

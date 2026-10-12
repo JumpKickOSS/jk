@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.model.Profile;
+import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestFailureInfo;
@@ -12,6 +14,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.test.TestProgressListener;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -128,6 +131,58 @@ class TestClassMatchTest {
         capture.onWarning("tag-excluded", TAG_EXCLUDED);
         assertThat(capture.message()).isEqualTo(TAG_EXCLUDED);
         assertThat(forwarded).containsExactly("no-test-classes", "tag-excluded");
+    }
+
+    @Test
+    void only_patterns_without_a_wildcard_name_their_classes() {
+        assertThat(TestClassMatch.namesClasses(ORDERS)).isTrue();
+        assertThat(TestClassMatch.namesClasses(TestSelection.DEFAULT.withClasses(List.of("a.OrdersIT#refund*"))))
+                .as("a wildcard in the method half still names the class")
+                .isTrue();
+        assertThat(TestClassMatch.namesClasses(TestSelection.DEFAULT.withClasses(List.of("OrdersTest", "*IT"))))
+                .isFalse();
+        assertThat(TestClassMatch.namesClasses(TestSelection.DEFAULT)).isFalse();
+    }
+
+    @Test
+    void a_named_class_the_tag_filter_dropped_fails_beside_the_tests_that_ran() {
+        TestSummary ran = new TestSummary(2, 2, 0, 0, 1, List.of());
+        TestSummary failed = TestClassMatch.withTagExcluded(ran, "acme:fmt", ORDERS, TAG_EXCLUDED, null);
+        assertThat(failed.allPassed()).isFalse();
+        assertThat(failed.total()).isEqualTo(3);
+        assertThat(failed.succeeded()).isEqualTo(2);
+        assertThat(failed.failures()).singleElement().satisfies(f -> {
+            assertThat(f.module()).isEqualTo("acme:fmt");
+            assertThat(f.message()).isEqualTo(TAG_EXCLUDED);
+        });
+        assertThat(TestClassMatch.withTagExcluded(EMPTY, "acme:fmt", ORDERS, TAG_EXCLUDED, null))
+                .as("nothing else ran: the module's one failure")
+                .isEqualTo(TestClassMatch.asFailure("acme:fmt", ORDERS, TAG_EXCLUDED, null));
+    }
+
+    @Test
+    void the_tag_excluded_warning_names_the_profiles_that_run_the_tag() {
+        Profiles profiles = new Profiles(Map.of(
+                "integration",
+                        new Profile(
+                                "integration", null, List.of(), List.of(), List.of("integration"), List.of("bench")),
+                "bench", new Profile("bench", null, List.of(), List.of(), List.of("bench"), List.of()),
+                "ci", new Profile("ci", null, List.of(), List.of(), List.of(), List.of("integration", "bench")),
+                "all", new Profile("all", null, List.of(), List.of(), List.of(), List.of()),
+                "args", Profile.of("args")));
+        String integration = "--class named 1 class the tag filter excluded: a.OrdersIT [integration];"
+                + " pass --include-tags integration (or a --profile that includes it) to run it";
+
+        assertThat(TestClassMatch.namingProfiles(integration, profiles, null))
+                .isEqualTo(integration + "; --profile all or --profile integration runs it");
+        assertThat(TestClassMatch.namingProfiles(integration, profiles, "all"))
+                .as("the active profile is the one that dropped it")
+                .isEqualTo(integration + "; --profile integration runs it");
+        assertThat(TestClassMatch.namingProfiles(TAG_EXCLUDED, profiles, null))
+                .isEqualTo(TAG_EXCLUDED + "; --profile all or --profile bench runs it");
+        assertThat(TestClassMatch.namingProfiles(integration, Profiles.empty(), null))
+                .isEqualTo(integration);
+        assertThat(TestClassMatch.namingProfiles(null, profiles, null)).isNull();
     }
 
     private static final String TAG_EXCLUDED = "--class named 1 class the tag filter excluded:"
