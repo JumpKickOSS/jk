@@ -9,6 +9,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -17,7 +18,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Client for the <a href="https://api.osv.dev/v1/querybatch">OSV v1 batch query API</a>. One
- * round trip per lockfile; full vuln details are fetched separately when needed.
+ * round trip per lockfile, plus one per page when OSV paginates a large hit set; full vuln
+ * details are fetched separately when needed.
  *
  * <p>Requests go through {@link Http}, so the proxy jk is configured with — {@code [network]} or
  * the shell's proxy variables, handed to this worker over the engine's own — carries the audit
@@ -30,6 +32,9 @@ public final class OsvClient {
 
     /** GHSA-…, CVE-…, GO-… and friends: letters, digits, dot, dash, underscore. Nothing path-like. */
     private static final Pattern VULN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
+
+    /** Batch pages followed per audit; a token still present afterwards fails the audit. */
+    static final int MAX_PAGES = 50;
 
     private final Http http;
     private final URI batchUrl;
@@ -79,27 +84,63 @@ public final class OsvClient {
         }
     }
 
-    /** Batch query — one Result per input query, in the same order. */
+    /**
+     * Batch query — one Result per input query, in the same order. A result that carries a
+     * {@code next_page_token} is re-queried with that token until none remains, so a query with
+     * more hits than one page holds still reports every id; ids stay de-duplicated per query in
+     * first-seen order. A token still present after {@link #MAX_PAGES} pages fails the audit.
+     */
     public List<Result> queryBatch(List<Query> queries) throws IOException, InterruptedException {
         if (queries.isEmpty()) return List.of();
-        List<Object> rows = new ArrayList<>(queries.size());
-        for (Query q : queries) {
-            Map<String, Object> pkg = new LinkedHashMap<>();
-            pkg.put("ecosystem", q.ecosystem());
-            pkg.put("name", q.name());
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("package", pkg);
-            row.put("version", q.version());
-            rows.add(row);
+        List<LinkedHashSet<String>> ids = new ArrayList<>(queries.size());
+        Map<Integer, @Nullable String> pending = new LinkedHashMap<>();
+        for (int i = 0; i < queries.size(); i++) {
+            ids.add(new LinkedHashSet<>());
+            pending.put(i, null);
         }
-        String body = MiniJson.write(Map.of("queries", rows));
+        for (int page = 0; !pending.isEmpty(); page++) {
+            if (page == MAX_PAGES) {
+                throw new IOException("OSV batch query did not finish: "
+                        + pending.size()
+                        + " quer"
+                        + (pending.size() == 1 ? "y" : "ies")
+                        + " still carried a next_page_token after "
+                        + MAX_PAGES
+                        + " pages; the audit cannot report the full hit set");
+            }
+            List<Object> rows = new ArrayList<>(pending.size());
+            for (var entry : pending.entrySet()) rows.add(row(queries.get(entry.getKey()), entry.getValue()));
+            String body = MiniJson.write(Map.of("queries", rows));
+            HttpResponse<byte[]> response = http.post(
+                    batchUrl, body.getBytes(StandardCharsets.UTF_8), Map.of("Content-Type", "application/json"));
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + " — " + text(response));
+            }
+            List<Page> pages = parseBatchResponse(text(response), pending.size());
+            Map<Integer, @Nullable String> next = new LinkedHashMap<>();
+            int p = 0;
+            for (int index : pending.keySet()) {
+                Page result = pages.get(p++);
+                ids.get(index).addAll(result.vulnIds());
+                if (result.nextPageToken() != null) next.put(index, result.nextPageToken());
+            }
+            pending = next;
+        }
+        List<Result> out = new ArrayList<>(queries.size());
+        for (LinkedHashSet<String> found : ids) out.add(new Result(List.copyOf(found)));
+        return out;
+    }
 
-        HttpResponse<byte[]> response =
-                http.post(batchUrl, body.getBytes(StandardCharsets.UTF_8), Map.of("Content-Type", "application/json"));
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + " — " + text(response));
-        }
-        return parseBatchResponse(text(response), queries.size());
+    /** One querybatch row; {@code pageToken} continues an earlier page of the same query. */
+    private static Map<String, Object> row(Query q, @Nullable String pageToken) {
+        Map<String, Object> pkg = new LinkedHashMap<>();
+        pkg.put("ecosystem", q.ecosystem());
+        pkg.put("name", q.name());
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("package", pkg);
+        row.put("version", q.version());
+        if (pageToken != null) row.put("page_token", pageToken);
+        return row;
     }
 
     private static String text(HttpResponse<byte[]> response) {
@@ -134,8 +175,11 @@ public final class OsvClient {
 
     // --- helpers ---------------------------------------------------------
 
-    private static List<Result> parseBatchResponse(String body, int expectedSize) throws IOException {
-        List<Result> out = new ArrayList<>(expectedSize);
+    /** One page of one query's hits; {@code nextPageToken} is null when OSV has no more. */
+    private record Page(List<String> vulnIds, @Nullable String nextPageToken) {}
+
+    private static List<Page> parseBatchResponse(String body, int expectedSize) throws IOException {
+        List<Page> out = new ArrayList<>(expectedSize);
         try {
             Object results = object(MiniJson.parse(body)).get("results");
             if (!(results instanceof List<?> rows)) {
@@ -148,7 +192,8 @@ public final class OsvClient {
                         if (object(v).get("id") instanceof String id) ids.add(id);
                     }
                 }
-                out.add(new Result(ids));
+                String token = textOrEmpty(object(entry), "next_page_token");
+                out.add(new Page(ids, token.isEmpty() ? null : token));
             }
         } catch (RuntimeException e) {
             throw new IOException("failed to parse OSV batch response", e);
