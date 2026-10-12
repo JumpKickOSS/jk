@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The JVM client's install shape, owned in one place so the installers and {@code jk self update}
@@ -107,25 +108,46 @@ public final class JvmClientInstall {
 
     /**
      * Write the launcher for {@code jar} on {@code java} under {@code binDir}, parking the PATH
-     * client it replaces, and point {@code jkx} at it. On Windows a leftover {@code jk.exe} is
-     * parked too: PATHEXT prefers {@code .exe} to {@code .bat}, so one left beside the launcher is
-     * what {@code jk} would keep starting.
+     * client it replaces, and point {@code jkx} at it. The text is staged beside the launcher and
+     * made executable first; only then is the live client parked as {@code .old} and the staged
+     * file moved in, and a failure after the park puts the parked client back, so the bin never
+     * ends up with no {@code jk} at all. On Windows a leftover {@code jk.exe} is parked too:
+     * PATHEXT prefers {@code .exe} to {@code .bat}, so one left beside the launcher is what
+     * {@code jk} would keep starting.
      */
     public static Path writeLauncher(Path binDir, Path jar, Path java, boolean windows) throws IOException {
         Files.createDirectories(binDir);
         Path launcher = launcher(binDir, windows);
-        String text = windows ? renderWindows(jar, java) : renderPosix(jar, java);
-        if (windows) {
-            EngineInstall.displaceToOld(binDir.resolve("jk.exe"));
-            EngineInstall.displaceToOld(binDir.resolve("jkx.exe"));
+        Path staged = launcher.resolveSibling("." + launcher.getFileName() + "-new");
+        try {
+            Files.writeString(
+                    staged, windows ? renderWindows(jar, java) : renderPosix(jar, java), StandardCharsets.UTF_8);
+            if (!windows && !staged.toFile().setExecutable(true, false)) {
+                throw new IOException("could not mark " + staged + " executable");
+            }
+        } catch (IOException | RuntimeException staging) {
+            EngineInstall.discardStaged(staged, staging);
+            throw staging;
         }
-        EngineInstall.displaceToOld(launcher);
-        Path tmp = launcher.resolveSibling("." + launcher.getFileName() + "-new");
-        Files.writeString(tmp, text, StandardCharsets.UTF_8);
-        if (!windows && !tmp.toFile().setExecutable(true, false)) {
-            throw new IOException("could not mark " + tmp + " executable");
+        Path exe = binDir.resolve("jk.exe");
+        Path jkxExe = binDir.resolve("jkx.exe");
+        Optional<Path> parkedExe = Optional.empty();
+        Optional<Path> parkedJkxExe = Optional.empty();
+        Optional<Path> parkedLauncher = Optional.empty();
+        try {
+            if (windows) {
+                parkedExe = EngineInstall.displaceToOld(exe);
+                parkedJkxExe = EngineInstall.displaceToOld(jkxExe);
+            }
+            parkedLauncher = EngineInstall.displaceToOld(launcher);
+            AtomicWrites.moveInto(staged, launcher);
+        } catch (IOException | RuntimeException publish) {
+            EngineInstall.restoreParked(parkedLauncher, launcher, publish);
+            EngineInstall.restoreParked(parkedJkxExe, jkxExe, publish);
+            EngineInstall.restoreParked(parkedExe, exe, publish);
+            EngineInstall.discardStaged(staged, publish);
+            throw publish;
         }
-        AtomicWrites.moveInto(tmp, launcher);
         JkxLink.ensure(binDir, launcher);
         return launcher;
     }
