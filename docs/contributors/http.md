@@ -295,7 +295,9 @@ record has no `coverage[]` is a 404. An empty `<path>` is a `302` to the report'
 one module's `index.html`, or the workspace roll-up (`target/site/jacoco/index.html`, or
 `workspace.html` beside it when a module's own report owns `index.html`). Any other `<path>`
 resolves under the record's `dir` and is served only when it is a regular file inside one of the
-report directories the record names (each module's `html` parent, plus the roll-up's). Pages carry
+report directories the record names (each module's `html` parent, plus the roll-up's); the check
+is on real paths, so a symlink planted under a report directory never serves its target. Files
+stream with a 16 MiB cap (**413** past it). Pages carry
 `Content-Security-Policy: sandbox`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options:
 nosniff` and `Cache-Control: no-cache`; the content type follows the extension (html, css, js,
 gif, png, svg, ico, xml, txt).
@@ -332,6 +334,11 @@ One admission point for every HTTP and MCP job: the body's `dir` (required) and 
 decode to the same wire request line the CLI would send, and submit detached. The reply is
 `202` with the `jid`; progress is the SSE stream. `409` carries the `jid` of a same-project job
 already in flight, `400` a body the verb cannot run.
+
+Every JSON request body (`POST /api/build`, `/api/cancel`, `/api/projects`, `/mcp`) is capped at
+64 KiB; past it the engine stops reading and answers **413**
+`{ "error": "request body too large", "maxBytes": 65536 }` — a body is never truncated and
+parsed. `PUT /api/project/file` has its own, larger cap.
 
 A detached job has no connection whose EOF would end it, so it always runs under a wall
 deadline: the body's `deadlineMs` when present (`0` = none; a negative is a `400`), else the

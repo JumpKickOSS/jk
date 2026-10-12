@@ -6,9 +6,11 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.CoverageRollup;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -21,13 +23,17 @@ import org.jspecify.annotations.Nullable;
  * checkout the run measured. The bearer token rides in the path because a report is a tree of
  * pages the browser follows by relative link, and a link can carry neither a header nor a query
  * string into the next page. An empty path redirects to the report's entry page: the one module's
- * {@code index.html}, or the workspace roll-up. Only files under a report directory the record
- * names are served, each in a sandboxed opaque origin so a report cannot script the dashboard.
+ * {@code index.html}, or the workspace roll-up. Only files whose real path lies under a report
+ * directory the record names are served, streamed under {@link #MAX_FILE_BYTES}, each in a
+ * sandboxed opaque origin so a report cannot script the dashboard.
  */
 @NullMarked
 final class HttpCoverageReport {
 
     static final String PREFIX = "/report/";
+
+    /** A source page for a very long class runs past the editor's 1 MiB; 16 MiB covers any report. */
+    static final long MAX_FILE_BYTES = 16L * WorkspaceFileAccess.MAX_FILE_BYTES;
 
     private static final Map<String, String> MIME_TYPES = Map.ofEntries(
             Map.entry("html", "text/html; charset=utf-8"),
@@ -85,7 +91,30 @@ final class HttpCoverageReport {
         exchange.getResponseHeaders().set("Referrer-Policy", "no-referrer");
         exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-        HttpResponses.sendBytes(exchange, 200, contentType(rel), Files.readAllBytes(file));
+        FileChannel channel;
+        try {
+            channel = FileChannel.open(file, StandardOpenOption.READ);
+        } catch (IOException gone) {
+            HttpResponses.sendText(exchange, 404, "not part of this run's coverage report\n");
+            return;
+        }
+        try (channel) {
+            long size = channel.size();
+            if (size > MAX_FILE_BYTES) {
+                HttpResponses.sendText(exchange, 413, "report file too large\n");
+                return;
+            }
+            exchange.getResponseHeaders().set("Content-Type", contentType(rel));
+            if (method.equals("HEAD")) {
+                exchange.getResponseHeaders().set("Content-Length", Long.toString(size));
+                exchange.sendResponseHeaders(200, -1);
+            } else if (size == 0) {
+                exchange.sendResponseHeaders(200, -1); // a 0 length arg would mean chunked, not empty
+            } else {
+                exchange.sendResponseHeaders(200, size);
+                StaticContent.copyExactly(channel, exchange.getResponseBody(), size);
+            }
+        }
     }
 
     /** The entry page relative to the run's directory, forward slashes. */
@@ -98,8 +127,10 @@ final class HttpCoverageReport {
     }
 
     /**
-     * {@code rel} under the run's directory when it is a file inside one of the record's report
-     * directories (each module's, and the roll-up's), else {@code null}.
+     * {@code rel} under the run's directory when it is a regular file whose real path lies inside
+     * one of the record's report directories (each module's, and the roll-up's), else {@code
+     * null}. Real paths, not lexical ones: a symlink planted under a report directory must not
+     * serve its target.
      */
     static @Nullable Path servable(BuildRecord record, String rel) {
         Path root = Path.of(record.dir()).toAbsolutePath().normalize();
@@ -110,8 +141,18 @@ final class HttpCoverageReport {
             return null;
         }
         if (!file.startsWith(root) || !Files.isRegularFile(file)) return null;
+        Path real;
+        try {
+            real = file.toRealPath();
+        } catch (IOException e) {
+            return null;
+        }
         for (Path dir : reportDirs(record)) {
-            if (file.startsWith(dir)) return file;
+            try {
+                if (real.startsWith(dir.toRealPath())) return file;
+            } catch (IOException missing) {
+                // a report directory the record names but the checkout no longer has
+            }
         }
         return null;
     }

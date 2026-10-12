@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.Log;
@@ -357,6 +358,14 @@ public final class HttpEngineServer implements AutoCloseable {
                 } finally {
                     lane.release();
                 }
+            } catch (HttpRequests.TooLarge e) {
+                HttpResponses.sendJson(
+                        exchange,
+                        413,
+                        JsonOut.object()
+                                .put("error", "request body too large")
+                                .put("maxBytes", e.maxBytes())
+                                .toString());
             } catch (RuntimeException e) {
                 // A handler bug must not kill the virtual thread silently mid-response.
                 log.accept("jk engine: http handler error: " + e);

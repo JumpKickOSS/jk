@@ -248,7 +248,7 @@ final class StaticContent {
         }
     }
 
-    private static void copyExactly(FileChannel channel, OutputStream out, long size) throws IOException {
+    static void copyExactly(FileChannel channel, OutputStream out, long size) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(64 * 1024);
         long remaining = size;
         var target = Channels.newChannel(out);
