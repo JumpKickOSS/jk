@@ -26,16 +26,10 @@ import xsbti.compile.AnalysisContents;
 import xsbti.compile.AnalysisStore;
 
 /**
- * The incremental workdir: where the Zinc analysis lives, and every read and write of it.
- *
- * <p>This exists because of the invariant the size baseline named — the analysis store and the
- * compile that writes it must agree on the key — and it is the way to <em>keep</em> that agreement,
- * not a way around it. Before, {@code "zinc"} and {@code "aggregating"} were bare string literals
- * retyped at six sites across two methods, and every read took a {@code (store, analysisFile)} pair
- * as two independent parameters that nothing forced to describe the same file. Here the path is
- * derived once and the store is derived from the path, so the pair cannot disagree by construction.
- *
- * <p>The Windows retry ladder is here for the same reason: it is the analysis file's own lifecycle.
+ * The incremental workdir: where the Zinc analysis lives, and every read and write of it. The
+ * analysis path and its marker files are derived once from the workdir and the store from the
+ * path, so a read and the compile that wrote it always name the same file; the Windows retry
+ * ladder around deleting and replacing that file lives here too.
  */
 final class ZincWorkdir {
 

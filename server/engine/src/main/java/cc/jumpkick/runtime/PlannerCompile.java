@@ -786,14 +786,13 @@ public final class PlannerCompile {
                         return;
                     }
                     List<Path> classpath = ctx.require(CLASSPATH);
-                    // Freshness inputs: Kotlin sources plus — in a mixed module
-                    // the Java sources, since kotlinc compiles against the Java
-                    // output (kotlincCp includes `classes`) and a Java edit can
-                    // make our.class files stale. Unlike compile-java there is
-                    // no content-hash action cache behind this stamp, so the
-                    // check must err conservative: any Java change forces a
-                    // Kotlin recompile. The output dir itself is deliberately not
-                    // an input (directory mtimes don't track in-place.class
+                    // Freshness inputs: Kotlin sources plus — in a mixed module — the Java
+                    // sources, since kotlinc compiles against the Java output (kotlincCp
+                    // includes `classes`) and a Java edit can make our .class files stale. The
+                    // stamp is the cheap mtime check in front of LangCompile's content-hash
+                    // action cache, so it errs conservative: any Java change falls through to
+                    // the key, which then hits or compiles. The output dir itself is
+                    // deliberately not an input (directory mtimes don't track in-place .class
                     // rewrites, and copy-resources churns it).
                     List<Path> freshInputs = new ArrayList<>(ktSources);
                     if (mixedWithJava) freshInputs.addAll(javaSources(ctx));

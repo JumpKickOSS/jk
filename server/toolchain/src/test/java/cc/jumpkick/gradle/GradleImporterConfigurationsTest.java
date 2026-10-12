@@ -170,6 +170,38 @@ class GradleImporterConfigurationsTest {
     }
 
     @Test
+    void a_brace_inside_a_closure_string_is_text_not_nesting() {
+        GradleImporter.Result result = GradleImporter.importFromString("""
+                dependencies {
+                    implementation("org.springframework:spring-context:6.2.7") {
+                        because 'see {x'
+                        exclude group: 'commons-logging', module: 'commons-logging'
+                    }
+                    runtimeOnly('ch.qos.logback:logback-classic:1.5.18') {
+                        because "see x}"
+                        exclude group: 'org.slf4j'
+                    }
+                    implementation("com.google.guava:guava:33.4.8-jre")
+                }
+                """, "app");
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("org.springframework:spring-context", "com.google.guava:guava");
+        assertThat(build.dependencies().of(Scope.MAIN).get(0).exclusions())
+                .containsExactly("commons-logging:commons-logging");
+        assertThat(build.dependencies().of(Scope.MAIN).get(1).exclusions()).isEmpty();
+        assertThat(build.dependencies().of(Scope.RUNTIME))
+                .extracting(Dependency::module)
+                .containsExactly("ch.qos.logback:logback-classic");
+        assertThat(build.dependencies().of(Scope.RUNTIME).get(0).exclusions()).containsExactly("org.slf4j:*");
+        assertThat(result.report().hasErrors())
+                .as(messages(result.report()).toString())
+                .isFalse();
+    }
+
+    @Test
     void a_closure_on_a_platform_configures_the_platform_entry_not_the_last_dependency() {
         JkBuild build = GradleImporter.importFromString("""
                         dependencies {

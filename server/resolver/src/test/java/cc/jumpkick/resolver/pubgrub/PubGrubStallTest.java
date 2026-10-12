@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -17,9 +18,16 @@ import org.junit.jupiter.api.Timeout;
  */
 class PubGrubStallTest {
 
-    /** Every package has one version; {@code stuck} never answers for its dependencies. */
+    /**
+     * Every package has one version; {@code stuck} never answers for its dependencies. The progress
+     * counter moves on every sample until that read is entered, so the watch can trip only inside
+     * it, however slowly the solve reaches it.
+     */
     private static PackageSource stallingOn(String stuck) {
         return new PackageSource() {
+            private final AtomicLong samples = new AtomicLong();
+            private volatile boolean parked;
+
             @Override
             public List<String> versions(String pkg) {
                 return List.of("1.0");
@@ -27,8 +35,16 @@ class PubGrubStallTest {
 
             @Override
             public List<Term> dependencies(String pkg, String version) throws InterruptedException {
-                if (pkg.equals(stuck)) new CountDownLatch(1).await();
+                if (pkg.equals(stuck)) {
+                    parked = true;
+                    new CountDownLatch(1).await();
+                }
                 return List.of();
+            }
+
+            @Override
+            public long readsCompleted() {
+                return parked ? samples.get() : samples.incrementAndGet();
             }
 
             @Override
