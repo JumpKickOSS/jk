@@ -224,4 +224,35 @@ class LibraryCatalogLayeringTest {
                 .extracting(LibraryCatalog.Module::moduleKey)
                 .isEqualTo("com.acme:from-nested");
     }
+
+    @Test
+    void stamp_names_every_catalog_file_and_moves_when_one_changes(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("ws");
+        Path mod = root.resolve("app");
+        Files.createDirectories(mod);
+        Files.writeString(root.resolve("jk.toml"), """
+                [workspace]
+                modules = ["app"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), "name = \"app\"\n");
+
+        var absent = LibraryCatalog.stamp(mod);
+        assertThat(absent.keySet())
+                .containsExactly(
+                        mod.resolve("jk-libs.toml"), root.resolve("jk-libs.toml"), LibraryCatalog.downloadedFile());
+        assertThat(absent.get(root.resolve("jk-libs.toml")))
+                .as("no project file yet")
+                .isNull();
+
+        Files.writeString(root.resolve("jk-libs.toml"), "[libraries]\nx = \"com.acme:x\"\n");
+        var present = LibraryCatalog.stamp(mod);
+        assertThat(present).isNotEqualTo(absent);
+        assertThat(present.get(root.resolve("jk-libs.toml"))).isNotNull();
+        assertThat(LibraryCatalog.stamp(mod))
+                .as("a stable file stamps the same")
+                .isEqualTo(present);
+
+        Files.writeString(root.resolve("jk-libs.toml"), "[libraries]\nx = \"com.acme:x-longer\"\n");
+        assertThat(LibraryCatalog.stamp(mod)).as("a rewrite moves the stamp").isNotEqualTo(present);
+    }
 }

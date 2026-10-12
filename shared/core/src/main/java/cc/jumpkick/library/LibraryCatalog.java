@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.library;
 
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.lock.ManifestPaths;
@@ -113,17 +114,43 @@ public final class LibraryCatalog {
     public static LibraryCatalog forProject(Path dir, Consumer<String> warn) {
         Objects.requireNonNull(dir, "dir");
         Objects.requireNonNull(warn, "warn");
-        Path root = catalogRoot(dir);
-        Path moduleLibs = dir.toAbsolutePath().normalize().resolve(ManifestPaths.LIBRARIES);
-        Path rootLibs = projectFile(root);
-        if (!moduleLibs.equals(rootLibs) && Files.isRegularFile(moduleLibs)) {
+        Sources sources = sources(dir);
+        if (!sources.module().equals(sources.root()) && Files.isRegularFile(sources.module())) {
             throw new IllegalStateException(ManifestPaths.LIBRARIES + " is only allowed at the workspace root ("
-                    + rootLibs + "); found " + moduleLibs);
+                    + sources.root() + "); found " + sources.module());
         }
         LibraryCatalog base = layered(warn);
-        return loadFileLayer(rootLibs, "project", warn)
+        return loadFileLayer(sources.root(), "project", warn)
                 .map(layer -> base.withProjectOverrides(layer.libraries))
                 .orElse(base);
+    }
+
+    /**
+     * Staleness stamp of {@link #forProject(Path)}: every catalog file it would read or refuse for
+     * {@code dir}, in order, each with its {@link FileStamp} or {@code null} when absent. Two
+     * stamps are equal exactly when the catalog resolution of {@code dir} would read the same files
+     * in the same state, so a memo of a parse that resolved short names through it can compare them
+     * and miss when one of them changes, appears, or goes.
+     */
+    public static Map<Path, @Nullable FileStamp> stamp(Path dir) {
+        Sources sources = sources(dir);
+        Map<Path, @Nullable FileStamp> stamp = new LinkedHashMap<>();
+        stamp.put(sources.module(), FileStamp.of(sources.module()));
+        stamp.put(sources.root(), FileStamp.of(sources.root()));
+        stamp.put(sources.global(), FileStamp.of(sources.global()));
+        return Collections.unmodifiableMap(stamp);
+    }
+
+    /**
+     * The catalog files {@link #forProject(Path)} consults for {@code dir}: the module's own
+     * {@code jk-libs.toml} (refused unless it is the root's), the catalog root's, and the global
+     * layer. The bundled resource is not a file and never changes within a process.
+     */
+    private record Sources(Path module, Path root, Path global) {}
+
+    private static Sources sources(Path dir) {
+        Path moduleLibs = dir.toAbsolutePath().normalize().resolve(ManifestPaths.LIBRARIES);
+        return new Sources(moduleLibs, projectFile(catalogRoot(dir)), downloadedFile());
     }
 
     /**
