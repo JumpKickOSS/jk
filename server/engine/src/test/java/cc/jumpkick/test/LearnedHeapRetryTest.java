@@ -237,6 +237,41 @@ class LearnedHeapRetryTest {
     }
 
     /**
+     * The ladder's last rung dies before it reports a test: the report keeps the previous rung's
+     * record of the classes it was to run, the same classes the summary names as failures.
+     */
+    @Test
+    void a_dead_final_rung_leaves_the_previous_rung_s_report_of_its_classes(@TempDir Path dir) throws Exception {
+        Path home = fakeJdk(dir, "partial");
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        Path reports = dir.resolve("reports");
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        RunResults sink = new RunResults();
+        RunResults.open(sink);
+        JUnitLauncher launcher = new JUnitLauncher()
+                .withModuleLabel("g:app")
+                .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
+        TestSummary summary =
+                launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop(), reports);
+
+        assertThat(summary.failed()).isEqualTo(2);
+        assertThat(summary.failures())
+                .extracting(f -> f.className() + " " + f.message())
+                .containsExactlyInAnyOrder("demo.B expected 1", "demo.C Java heap space");
+        List<MarkdownTestReport.Entry> entries = sink.takeTests().getFirst().entries();
+        assertThat(entries)
+                .extracting(e -> e.className() + " " + (e.isPass() ? "pass" : e.failureMessage()))
+                .containsExactlyInAnyOrder("demo.A pass", "demo.B expected 1", "demo.C Java heap space");
+        assertThat(Files.readString(reports.resolve("TEST-demo.C.xml"))).contains("Java heap space");
+        assertThat(HeapNotes.drain())
+                .containsExactly(
+                        "retried with 256 MiB heap after running out of 128 MiB",
+                        "retried with 512 MiB heap after running out of 256 MiB",
+                        "retried with 1.0 GiB heap after running out of 512 MiB");
+    }
+
+    /**
      * Wait until {@code g:app}'s test row holds {@code count} peaks, so a GC log folded in after
      * {@code run} returned does not write into a temp directory that is being deleted.
      */
@@ -291,7 +326,10 @@ class LearnedHeapRetryTest {
      * {@code always} does that at every heap. {@code big} dies as {@code die} does below 512 MiB.
      * {@code escaped} reports {@code warm()} passing and then {@code alloc()} failed with {@code
      * java.lang.OutOfMemoryError: Java heap space}, exiting 1 as a test JVM without exit-on-OOM
-     * does. A heap of 256 MiB or more passes, except {@code always} and {@code big}.
+     * does. A heap of 256 MiB or more passes, except {@code always} and {@code big}. {@code partial}
+     * runs {@code demo.A}, {@code demo.B} and {@code demo.C}: at 128 MiB {@code A} passes and the
+     * other two fail with escaped heap errors, at 256 MiB {@code B} fails an assertion and {@code
+     * C} the heap again, and every larger heap dies as {@code die} does.
      */
     private static Path fakeJdk(Path dir, String mode) throws Exception {
         assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "POSIX shell required");
@@ -310,6 +348,17 @@ class LearnedHeapRetryTest {
                 done
                 echo "$mx" >> "$(dirname "$0")/../heaps"
                 mode="MODE"
+                if [ "$mode" = "partial" ]; then
+                  f() { printf '%s\\n' "##JKT:{\\"event\\":\\"finished\\",\\"type\\":\\"TEST\\",\\"status\\":\\"$2\\",\\"uniqueId\\":\\"[engine:junit-jupiter]/[class:$1]/[method:t()]\\",\\"testClass\\":\\"$1\\",\\"testMethod\\":\\"t()\\",\\"duration_ms\\":1$3}"; }
+                  heap=',"throwable":{"class":"java.lang.OutOfMemoryError","message":"Java heap space","stack":""}'
+                  assertion=',"throwable":{"class":"java.lang.AssertionError","message":"expected 1","stack":""}'
+                  case "$mx" in
+                    -Xmx128m) f demo.A SUCCESSFUL ""; f demo.B FAILED "$heap"; f demo.C FAILED "$heap"; exit 1 ;;
+                    -Xmx256m) f demo.B FAILED "$assertion"; f demo.C FAILED "$heap"; exit 1 ;;
+                  esac
+                  echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
+                  exit 3
+                fi
                 small=0
                 case "$mx" in
                   -Xmx128m|-Xmx64m) small=1 ;;

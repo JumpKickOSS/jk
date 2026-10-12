@@ -121,20 +121,58 @@ public final class XmlTestReport {
         sb.append(line).append('\n');
     }
 
+    /** What {@link #forget} took for some classes, for {@link #restore}. */
+    public static final class Held {
+        private final List<String> classNames;
+        private final List<Entry> entries = new ArrayList<>();
+        private final Map<String, StringBuilder> output = new LinkedHashMap<>();
+        private final Map<String, Integer> truncatedLines = new LinkedHashMap<>();
+
+        private Held(Collection<String> classNames) {
+            this.classNames = List.copyOf(classNames);
+        }
+
+        private boolean holds(String className) {
+            return classNames.isEmpty() || classNames.contains(className);
+        }
+    }
+
     /**
      * Drop what was recorded for {@code classNames}, every class when it is empty, so a run that
-     * repeats them reports only the repeat.
+     * repeats them reports only the repeat. Returns what was dropped.
      */
-    public synchronized void forget(Collection<String> classNames) {
-        if (classNames.isEmpty()) {
-            entries.clear();
-            output.clear();
-            truncatedLines.clear();
-            return;
+    public synchronized Held forget(Collection<String> classNames) {
+        Held held = new Held(classNames);
+        for (var it = entries.iterator(); it.hasNext(); ) {
+            Entry e = it.next();
+            if (held.holds(e.className())) {
+                held.entries.add(e);
+                it.remove();
+            }
         }
-        entries.removeIf(e -> classNames.contains(e.className()));
-        output.keySet().removeAll(classNames);
-        truncatedLines.keySet().removeAll(classNames);
+        for (var it = output.entrySet().iterator(); it.hasNext(); ) {
+            var e = it.next();
+            if (held.holds(e.getKey())) {
+                held.output.put(e.getKey(), e.getValue());
+                it.remove();
+            }
+        }
+        for (var it = truncatedLines.entrySet().iterator(); it.hasNext(); ) {
+            var e = it.next();
+            if (held.holds(e.getKey())) {
+                held.truncatedLines.put(e.getKey(), e.getValue());
+                it.remove();
+            }
+        }
+        return held;
+    }
+
+    /** Put back what {@link #forget} took, in place of anything recorded for its classes since. */
+    public synchronized void restore(Held held) {
+        forget(held.classNames);
+        entries.addAll(held.entries);
+        output.putAll(held.output);
+        truncatedLines.putAll(held.truncatedLines);
     }
 
     /** Lines {@link #recordOutput} could not keep, by class. */

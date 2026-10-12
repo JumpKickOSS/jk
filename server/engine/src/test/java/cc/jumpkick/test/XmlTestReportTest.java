@@ -169,4 +169,21 @@ class XmlTestReportTest {
         assertThat(written).contains("tests=\"1\"").contains("second attempt").doesNotContain("first attempt");
         assertThat(dir.resolve("TEST-com.example.B.xml")).exists();
     }
+
+    @Test
+    void a_restored_class_reports_what_was_recorded_before_it_was_forgotten() throws Exception {
+        var xml = new XmlTestReport();
+        String a = "[engine:junit-jupiter]/[class:com.example.A]/[method:runs()]";
+        xml.recordFinished(a, "runs()", 1, null);
+        xml.recordOutput("com.example.A", "first attempt");
+
+        XmlTestReport.Held held = xml.forget(List.of("com.example.A"));
+        xml.recordFinished(a, "runs()", 2, null);
+        xml.recordOutput("com.example.A", "second attempt");
+        xml.restore(held);
+        xml.writeAll(dir);
+
+        String written = Files.readString(dir.resolve("TEST-com.example.A.xml"));
+        assertThat(written).contains("tests=\"1\"").contains("first attempt").doesNotContain("second attempt");
+    }
 }

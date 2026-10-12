@@ -47,6 +47,9 @@ final class PullWorkerPool {
     private final TestProgressListener listener;
     private final String moduleLabel;
 
+    /** The classes the last {@link #run} left queued: every worker had ended before they were dispatched. */
+    private List<String> undispatched = List.of();
+
     PullWorkerPool(
             JUnitLauncher launcher,
             Path javaHome,
@@ -70,6 +73,7 @@ final class PullWorkerPool {
         int actualWorkers = Math.min(workers, classes.size());
         actualWorkers = TestWorkers.clampByHeap(actualWorkers);
 
+        undispatched = List.of();
         var queue = new ConcurrentLinkedDeque<>(classes);
         var aggregators = new ArrayList<ResultAggregator>();
         var workerThreads = new ArrayList<Thread>();
@@ -135,6 +139,7 @@ final class PullWorkerPool {
             allFailures.addAll(r.failures());
             r.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
         }
+        undispatched = List.copyOf(queue);
         boolean handlerFailed = handlerFailures.stream().anyMatch(f -> f.get() != null);
         if (total == 0 && anyIncomplete && !handlerFailed) {
             // No test events but a worker died — the launcher failed before any test ran; what
@@ -180,6 +185,11 @@ final class PullWorkerPool {
             allFailures.add(shortfall);
         }
         return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, actualWorkers);
+    }
+
+    /** The classes the last {@link #run} never dispatched; a heap retry runs them with the worker's own class. */
+    List<String> undispatched() {
+        return undispatched;
     }
 
     /**

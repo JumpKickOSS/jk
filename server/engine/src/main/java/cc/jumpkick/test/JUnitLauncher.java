@@ -20,6 +20,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -682,7 +683,7 @@ public final class JUnitLauncher {
             if (heapOverride != null) throw e;
             result = retryLaunch(javaHome, classpath, flags, listener, e);
         }
-        if (heapOverride == null) result = retrySuite(javaHome, classpath, flags, listener, result);
+        if (heapOverride == null) result = retrySuite(javaHome, classpath, flags, listener, result, List.of());
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir);
         return result;
@@ -745,14 +746,21 @@ public final class JUnitLauncher {
 
     /**
      * Re-run a suite that died of its own heap or a memory kill ({@link #rerun}). {@code flags} is
-     * the heap the first fork used. A pinned heap is reported with the pin named.
+     * the heap the first fork used; {@code undispatched} is what a pool left queued, run with the
+     * dying workers' classes. A pinned heap is reported with the pin named.
      */
     private TestSummary retrySuite(
-            Path javaHome, String classpath, List<String> flags, TestProgressListener listener, TestSummary first) {
+            Path javaHome,
+            String classpath,
+            List<String> flags,
+            TestProgressListener listener,
+            TestSummary first,
+            List<String> undispatched) {
         if (!SuiteRetry.planned(jvmArgs)) return first;
         // A suite JVM that dies after reporting tests leaves no class name. Run the selection again.
         boolean whole = SuiteRetry.wholeSuite(first) && SuiteRetry.onlyHeap(first);
-        List<String> again = whole ? (onlyClasses != null ? onlyClasses : classNames) : SuiteRetry.classes(first);
+        List<String> again =
+                whole ? (onlyClasses != null ? onlyClasses : classNames) : SuiteRetry.classes(first, undispatched);
         if (!whole && again.isEmpty()) return first;
         boolean killed = first.failures().stream().filter(SuiteRetry::retryable).allMatch(SuiteRetry::killed);
         TestSummary second = rerun(javaHome, classpath, flags, again, listener, killed, whole ? null : first);
@@ -807,7 +815,8 @@ public final class JUnitLauncher {
             if (killed) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
                 MarkdownTestReport.Tally share = share(classes);
-                TestSummary again = rung(javaHome, classpath, classes, listener, heap, new CaptureBuffer());
+                TestSummary again = rung(javaHome, classpath, classes, listener, heap, new CaptureBuffer())
+                        .run();
                 return first == null ? again : SuiteRetry.merge(first, classes, share, again);
             }
             HeapScope.Key key = filledKey(javaHome);
@@ -837,9 +846,9 @@ public final class JUnitLauncher {
                 HeapNotes.note(HeapNotes.line(next, failed, false));
                 ranOut.add(next);
                 var crash = new CaptureBuffer();
-                TestSummary run;
+                Rung attempt;
                 try {
-                    run = rung(javaHome, classpath, selection, listener, next, crash);
+                    attempt = rung(javaHome, classpath, selection, listener, next, crash);
                 } catch (TestLauncherFailure e) {
                     if (SuiteRetry.cause(e) != WorkerFate.Cause.HEAP_EXHAUSTED) throw e;
                     diedExit = e.exit();
@@ -847,7 +856,10 @@ public final class JUnitLauncher {
                     diedCommand = e.command();
                     continue;
                 }
+                TestSummary run = attempt.run();
                 if (SuiteRetry.onlyHeap(run)) {
+                    // Nothing this rung reported outlives it; the record it displaced is the report's.
+                    attempt.held().restore();
                     diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
                     diedOutput = crash.text();
                     diedCommand = List.of();
@@ -877,8 +889,31 @@ public final class JUnitLauncher {
         return Objects.requireNonNull(runMd, "runMd").tally(classes);
     }
 
-    /** One suite JVM for {@code classes} at {@code heap}; its non-protocol output lands in {@code crash}. */
-    private TestSummary rung(
+    /**
+     * What the reports held for a rung's classes, taken out so the rung's run replaces it. {@link
+     * #restore} puts it back in place of the rung's run when that run is discarded, so the report
+     * and the summary name the same classes.
+     */
+    private record Held(
+            MarkdownTestReport md,
+            MarkdownTestReport.Held mdHeld,
+            @Nullable XmlTestReport xml,
+            XmlTestReport.@Nullable Held xmlHeld) {
+        void restore() {
+            md.restore(mdHeld);
+            if (xml != null && xmlHeld != null) xml.restore(xmlHeld);
+        }
+    }
+
+    /** One rung's run and the record it displaced. */
+    private record Rung(TestSummary run, Held held) {}
+
+    /**
+     * One suite JVM for {@code classes} at {@code heap}; its non-protocol output lands in {@code
+     * crash}. A fork that throws reported nothing that outlives it, and the record it displaced is
+     * put back before the throw.
+     */
+    private Rung rung(
             Path javaHome,
             String classpath,
             List<String> classes,
@@ -894,14 +929,18 @@ public final class JUnitLauncher {
             List<String> names = onlyClasses != null ? onlyClasses : classNames;
             // The rung's results replace what the run that ran out of heap recorded for its classes.
             XmlTestReport xml = runXml;
-            if (xml != null) xml.forget(names);
             MarkdownTestReport md = Objects.requireNonNull(runMd, "runMd");
-            md.forget(names);
+            Held held = new Held(md, md.forget(names), xml, xml == null ? null : xml.forget(names));
             var aggregator = new ResultAggregator(listener, 0, xml, md, moduleLabel);
             List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
             List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names);
-            return forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
+            try {
+                return new Rung(forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener), held);
+            } catch (TestLauncherFailure | IOException | InterruptedException e) {
+                held.restore();
+                throw e;
+            }
         } finally {
             heapOverride = previous;
             onlyClasses = previousOnly;
@@ -978,17 +1017,33 @@ public final class JUnitLauncher {
         }
         if (SuiteRetry.planned(jvmArgs) && heapOverride == null) {
             summary = retrySuite(
-                    javaHome, classpath, jvmFlags(JvmRole.PULL_WORKER, workers, testTmpDir), listener, summary);
+                    javaHome,
+                    classpath,
+                    jvmFlags(JvmRole.PULL_WORKER, workers, testTmpDir),
+                    listener,
+                    summary,
+                    pool.undispatched());
         }
-        // A runner-crash sentinel means the fork itself is broken — don't fork it again.
-        boolean crashed = summary.failures().stream().anyMatch(f -> "(test run)".equals(f.method()));
-        if (!serialClasses.isEmpty() && !crashed) {
+        if (!serialClasses.isEmpty() && serialPoolRuns(summary, SessionCancel.cancelled())) {
             TestSummary serial = pool.run(1, serialClasses, xml, md, workers);
             summary = merge(summary, serial);
         }
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir);
         return summary;
+    }
+
+    /**
+     * Whether the serial-tag pool still forks after the sharded pool's {@code summary}: not once
+     * the run is cancelled, and not when a {@code (test run)} row says the fork itself is broken.
+     * The shortfall row for classes the pool left queued is a fact about that queue, not the fork.
+     */
+    static boolean serialPoolRuns(TestSummary summary, boolean cancelled) {
+        if (cancelled) return false;
+        for (var f : summary.failures()) {
+            if (RunShortfall.RUN.equals(f.method()) && !RunShortfall.isRow(f)) return false;
+        }
+        return true;
     }
 
     /** Fold this launch's JUnit events into the request's sink, which {@code jk-results.md} drains. */

@@ -106,16 +106,29 @@ public final class MarkdownTestReport {
         return new Tally(passed, skipped, classes.size());
     }
 
+    /** What {@link #forget} took for some classes, for {@link #restore}. */
+    public record Held(Collection<String> classNames, List<Entry> entries) {}
+
     /**
      * Drop what was recorded for {@code classNames}, every class when it is empty, so a run that
-     * repeats them reports only the repeat.
+     * repeats them reports only the repeat. Returns what was dropped.
      */
-    public synchronized void forget(Collection<String> classNames) {
-        if (classNames.isEmpty()) {
-            entries.clear();
-            return;
+    public synchronized Held forget(Collection<String> classNames) {
+        List<Entry> held = new ArrayList<>();
+        for (var it = entries.iterator(); it.hasNext(); ) {
+            Entry e = it.next();
+            if (classNames.isEmpty() || classNames.contains(e.className())) {
+                held.add(e);
+                it.remove();
+            }
         }
-        entries.removeIf(e -> classNames.contains(e.className()));
+        return new Held(List.copyOf(classNames), held);
+    }
+
+    /** Put back what {@link #forget} took, in place of anything recorded for its classes since. */
+    public synchronized void restore(Held held) {
+        forget(held.classNames());
+        entries.addAll(held.entries());
     }
 
     /**

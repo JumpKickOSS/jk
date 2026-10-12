@@ -106,14 +106,20 @@ final class SuiteRetry {
         return WorkerFate.retryableKill(text) && !WorkerFate.mentionsHeap(text);
     }
 
-    /** Classes to run again. A worker row's class is the one it was dispatching. */
-    static List<String> classes(TestSummary summary) {
+    /**
+     * Classes to run again. A worker row's class is the one it was dispatching; once a retry is
+     * due, {@code undispatched} — the classes a pool left queued when its workers died — joins it.
+     */
+    static List<String> classes(TestSummary summary, List<String> undispatched) {
         Set<String> out = new LinkedHashSet<>();
         if (summary == null) return List.of();
+        boolean due = false;
         for (TestFailureInfo failure : summary.failures()) {
             if (!retryable(failure)) continue;
+            due = true;
             if (!failure.className().isBlank()) out.add(failure.className());
         }
+        if (due) out.addAll(undispatched);
         return List.copyOf(out);
     }
 
@@ -164,9 +170,9 @@ final class SuiteRetry {
 
     /**
      * {@code second}, the retried classes' run, replaces what {@code first} holds for them: their
-     * failure rows and a blank-class heap row go, {@code share} — the passes, skips and classes
-     * the launch's report recorded for them before the retry — comes off the counts, and their
-     * walls are the retry's.
+     * failure rows, a blank-class heap row and the shortfall row for the classes the retry ran
+     * undispatched go, {@code share} — the passes, skips and classes the launch's report recorded
+     * for them before the retry — comes off the counts, and their walls are the retry's.
      */
     static TestSummary merge(
             TestSummary first, List<String> retried, MarkdownTestReport.Tally share, TestSummary second) {
@@ -174,7 +180,7 @@ final class SuiteRetry {
         List<TestFailureInfo> kept = new ArrayList<>();
         for (TestFailureInfo failure : first.failures()) {
             String cls = failure.className();
-            if (drop.contains(cls) || (cls.isBlank() && retryable(failure))) continue;
+            if (drop.contains(cls) || (cls.isBlank() && retryable(failure)) || RunShortfall.isRow(failure)) continue;
             kept.add(failure);
         }
         long removed = first.failures().size() - kept.size();
