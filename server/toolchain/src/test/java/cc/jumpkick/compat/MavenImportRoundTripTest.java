@@ -64,8 +64,7 @@ class MavenImportRoundTripTest {
         assertThat(reparsed.dependencies().of(Scope.TEST))
                 .extracting(Dependency::packageKey)
                 .containsExactlyInAnyOrder(
-                        "org.apache.logging.log4j:log4j-core:jar:",
-                        "org.apache.logging.log4j:log4j-core:test-jar:tests");
+                        "org.apache.logging.log4j:log4j-core:jar:", "org.apache.logging.log4j:log4j-core:jar:tests");
     }
 
     @Test
@@ -89,7 +88,7 @@ class MavenImportRoundTripTest {
         assertThat(reparsed.dependencies().of(Scope.MAIN)).isEmpty();
         assertThat(reparsed.dependencies().of(Scope.TEST))
                 .extracting(Dependency::packageKey)
-                .containsExactly("com.acme:helpers:test-jar:tests");
+                .containsExactly("com.acme:helpers:jar:tests");
         assertThat(result.report().issues()).anyMatch(i -> i.message().contains("moved to [test-dependencies]"));
     }
 

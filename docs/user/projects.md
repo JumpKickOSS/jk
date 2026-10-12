@@ -75,8 +75,8 @@ One grammar, every place `jk.toml` names a version: every dependency scope,
 |---------|--------|
 | `"1.2.3"` | Exact `1.2.3` |
 | `"=1.2.3"` | Exact `1.2.3` (same type; writers emit the bare form) |
-| `"^1.2.3"` | Caret, opt-in |
-| `"~1.2.3"` | Tilde, opt-in |
+| `"^1.2.3"` | Caret, opt-in: `1.2.3` up to, not including, the next major (`2.0.0`); a `0.x` line bumps the first non-zero segment |
+| `"~1.2.3"` | Tilde, opt-in: `1.2.3` up to, not including, the next minor (`1.3.0`); `~1` takes the whole `1.x` line |
 | `">=1.2,<2"` | Range, opt-in |
 | `"latest"` | Newest stable at the next resolve, opt-in; do not commit in scaffolds |
 | `"g:a:1.2.3"` | Maven GAV, exact `1.2.3` |
@@ -85,7 +85,10 @@ One grammar, every place `jk.toml` names a version: every dependency scope,
 | `"managed"` | Platform-managed, on a catalog short name |
 
 A bare version is a pin: `jk build` and `jk lock` never move it. Floating is always spelled
-out with a decoration or a keyword. Maven's `LATEST` and `RELEASE` metaversions are not part of
+out with a decoration or a keyword. The bound of a caret or tilde excludes the next line's
+pre-releases as well as its release: `^1.2.3` stops short of `2.0.0-RC1` and `~1.2.3` of
+`1.3.0-M1`, even when a transitive POM asks for one. Pre-releases inside the line stay eligible
+(`^1.2.3` takes `1.3.0-RC1`; `latest` still prefers a stable). Maven's `LATEST` and `RELEASE` metaversions are not part of
 this grammar — `jk import` writes them as `latest` — but a dependency's POM may still use them,
 and the resolver reads them as Maven does ([Dependencies](dependencies.md#coordinates)). `jk add` and `jk new` write today's stable as a number, and
 `jk update` rewrites those numbers — [Lockfile](lockfile.md#jk-update). A `^N` major-line

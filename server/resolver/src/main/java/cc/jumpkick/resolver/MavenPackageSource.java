@@ -921,7 +921,9 @@ public final class MavenPackageSource implements PackageSource {
      * Solver package key for a POM dependency ({@code g:a:type:classifier}). The type names the
      * artifact's packaging, not a different library: an edge that says {@code aar} and one that
      * says nothing are the same package, so both converge on one version. The assembler recovers
-     * the packaging from the POM when it materialises the artifact.
+     * the packaging from the POM when it materialises the artifact. A {@code test-jar} edge keys as
+     * the jar under the {@code tests} classifier, the same package a manifest {@code kind = "tests"}
+     * root names ({@link PackageId}).
      */
     static String packageKey(Pom.Dep dep) {
         String type = solverType(dep.type());

@@ -321,7 +321,7 @@ class DependencyGraphModelTest {
                 deps     = ["com.foo:main-leaf@1"]
 
                 [[artifact]]
-                name     = "com.foo:lib:test-jar:tests"
+                name     = "com.foo:lib:jar:tests"
                 version  = "1"
                 source   = "central+https://repo.maven.apache.org/maven2/"
                 checksum = "sha256:dummy"

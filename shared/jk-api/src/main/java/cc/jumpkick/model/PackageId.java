@@ -7,10 +7,21 @@ import java.util.Objects;
  * Solver / lock package identity: {@code group:artifact:type:classifier}. Defaults: type
  * {@code jar}, classifier empty ({@code g:a:jar:}). Bare {@code group:artifact} parses as the
  * default jar. BOM management and Maven exclusions stay GA-scoped via {@link #ga()}.
+ *
+ * <p>Maven's {@code test-jar} type is the jar under the {@code tests} classifier, so an id spelled
+ * with that type keys as {@code g:a:jar:tests} (or {@code g:a:jar:<classifier>} when the edge
+ * names one): a POM edge, a manifest {@code kind = "tests"} root and a {@code tests} classifier
+ * are one package, and the lock fetches {@code a-v-tests.jar} for all of them.
  */
 public final class PackageId {
 
     public static final String DEFAULT_TYPE = "jar";
+
+    /** Maven's packaging type for a module's test classes; see the class note. */
+    public static final String TEST_JAR_TYPE = "test-jar";
+
+    /** The classifier Maven publishes a {@link #TEST_JAR_TYPE} under. */
+    public static final String TESTS_CLASSIFIER = "tests";
 
     private final String group;
     private final String artifact;
@@ -20,8 +31,14 @@ public final class PackageId {
     private PackageId(String group, String artifact, String type, String classifier) {
         this.group = Objects.requireNonNull(group, "group");
         this.artifact = Objects.requireNonNull(artifact, "artifact");
-        this.type = (type == null || type.isBlank()) ? DEFAULT_TYPE : type;
-        this.classifier = classifier == null ? "" : classifier;
+        String t = (type == null || type.isBlank()) ? DEFAULT_TYPE : type;
+        String c = classifier == null ? "" : classifier;
+        if (TEST_JAR_TYPE.equals(t)) {
+            t = DEFAULT_TYPE;
+            if (c.isEmpty()) c = TESTS_CLASSIFIER;
+        }
+        this.type = t;
+        this.classifier = c;
         if (group.isBlank() || artifact.isBlank()) {
             throw new IllegalArgumentException("group and artifact must be non-blank");
         }
@@ -29,6 +46,11 @@ public final class PackageId {
 
     public static PackageId of(String group, String artifact, String type, String classifier) {
         return new PackageId(group, artifact, type, classifier);
+    }
+
+    /** The test-jar of {@code group:artifact}: {@code g:a:jar:tests}. */
+    public static PackageId testJar(String group, String artifact) {
+        return new PackageId(group, artifact, TEST_JAR_TYPE, TESTS_CLASSIFIER);
     }
 
     /** Default jar, no classifier from a {@code group:artifact} module string. */

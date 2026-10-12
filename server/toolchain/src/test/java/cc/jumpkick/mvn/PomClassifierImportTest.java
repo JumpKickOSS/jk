@@ -100,7 +100,7 @@ class PomClassifierImportTest {
                         && i.message().startsWith("`<type>aar</type>` on androidx.core:core-ktx"));
 
         assertThat(build.dependencies().of(Scope.TEST))
-                .anyMatch(d -> d.isTestsKind() && d.packageKey().equals("com.acme:helpers:test-jar:tests"));
+                .anyMatch(d -> d.isTestsKind() && d.packageKey().equals("com.acme:helpers:jar:tests"));
     }
 
     @Test

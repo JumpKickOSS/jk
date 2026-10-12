@@ -113,7 +113,7 @@ final class SiblingEdges {
                         dropped.add(d.library());
                         continue;
                     }
-                    // External test-jar keeps kind=tests (lock/resolve map to g:a:test-jar:tests).
+                    // External test-jar keeps kind=tests (lock/resolve map to g:a:jar:tests).
                     out.add(d);
                     if (d.isTestsKind()) changed = true;
                     continue;

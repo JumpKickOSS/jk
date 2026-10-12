@@ -481,14 +481,13 @@ public record Dependency(
 
     /**
      * Solver / lock package key for this edge. Workspace/git/path/file deps return {@link #module()}
-     * unchanged. Maven GAs with {@link #isTestsKind()} map to {@code g:a:test-jar:tests}; one with
-     * a {@link #classifier()} maps to {@code g:a:jar:classifier}.
+     * unchanged. Maven GAs with {@link #isTestsKind()} map to the test-jar, {@code g:a:jar:tests}
+     * ({@link PackageId#testJar}); one with a {@link #classifier()} maps to {@code g:a:jar:classifier}.
      */
     public String packageKey() {
         if (isWorkspace() || isGit() || isPath() || isFile()) return module;
         if (!PackageId.isMavenPackageKey(module) || module.indexOf(':') != module.lastIndexOf(':')) return module;
-        if (isTestsKind())
-            return PackageId.of(group(), name(), "test-jar", "tests").key();
+        if (isTestsKind()) return PackageId.testJar(group(), name()).key();
         return PackageId.of(group(), name(), PackageId.DEFAULT_TYPE, classifier == null ? "" : classifier)
                 .key();
     }

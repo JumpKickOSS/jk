@@ -191,8 +191,8 @@ class WorkspaceMergeTest {
 
     @Test
     void merge_keeps_jar_and_test_jar_of_same_ga_as_distinct_rows() {
-        // LockOrchestrator roots per packageKey() (e65323f6): the main jar and the
-        // test-jar of one GA are different packages. The workspace union feeding it
+        // LockOrchestrator roots per packageKey(): the main jar and the test-jar of one GA
+        // are different packages. The workspace union feeding it
         // must not collapse them to first-seen-wins on bare GA.
         Dependency plain = dep("helpers", "com.acme:helpers", "1.2.3");
         Dependency testsKind = dep("helpers-tests", "com.acme:helpers", "1.2.3").withKind(DependencyKind.TESTS);
@@ -204,7 +204,7 @@ class WorkspaceMergeTest {
 
         assertThat(merged.dependencies().of(Scope.TEST))
                 .extracting(Dependency::packageKey)
-                .containsExactlyInAnyOrder("com.acme:helpers:jar:", "com.acme:helpers:test-jar:tests");
+                .containsExactlyInAnyOrder("com.acme:helpers:jar:", "com.acme:helpers:jar:tests");
     }
 
     @Test

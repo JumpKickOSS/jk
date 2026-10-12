@@ -331,8 +331,7 @@ class PomImporterTest {
         assertThat(test)
                 .extracting(Dependency::packageKey)
                 .containsExactly(
-                        "org.apache.logging.log4j:log4j-core:jar:",
-                        "org.apache.logging.log4j:log4j-core:test-jar:tests");
+                        "org.apache.logging.log4j:log4j-core:jar:", "org.apache.logging.log4j:log4j-core:jar:tests");
     }
 
     /**
@@ -479,6 +478,6 @@ class PomImporterTest {
         assertThat(app.dependencies().of(Scope.TEST))
                 .anyMatch(d -> d.isTestsKind()
                         && d.module().equals("com.acme:helpers")
-                        && d.packageKey().equals("com.acme:helpers:test-jar:tests"));
+                        && d.packageKey().equals("com.acme:helpers:jar:tests"));
     }
 }

@@ -161,10 +161,11 @@ public final class VersionSelectors {
 
     /**
      * Cargo-style caret semantics: increment the leading non-zero segment, zero out everything after
-     * it, exclusive upper. {@code 1.2.3 → [1.2.3, 2.0.0)}, {@code 0.2.3 → [0.2.3, 0.3.0)}, {@code
-     * 0.0.3 → [0.0.3, 0.0.4)}. Pre-release anchors use the numeric core for bound math and keep the
-     * full string as the inclusive lower bound ({@code ^1.2.3-RC1 → [1.2.3-RC1, 2.0.0)} — includes
-     * RC1 itself). Non-numeric versions fall back to an exact match.
+     * it, exclusive upper below the next version's pre-releases ({@link #belowPreReleasesOf}).
+     * {@code 1.2.3 → [1.2.3, 2.0.0-alpha)}, {@code 0.2.3 → [0.2.3, 0.3.0-alpha)}, {@code 0.0.3 →
+     * [0.0.3, 0.0.4-alpha)}. Pre-release anchors use the numeric core for bound math and keep the
+     * full string as the inclusive lower bound ({@code ^1.2.3-RC1 → [1.2.3-RC1, 2.0.0-alpha)} —
+     * includes RC1 itself). Non-numeric versions fall back to an exact match.
      */
     static VersionSet caretRange(String version) {
         String core = Versions.numericCore(version);
@@ -179,16 +180,18 @@ public final class VersionSelectors {
             for (int i = 0; i < leading; i++) upper.append("0.");
             upper.append(n + 1);
             for (int i = leading + 1; i < parts.length; i++) upper.append(".0");
-            return VersionSet.between(version, true, upper.toString(), false);
+            return VersionSet.between(version, true, belowPreReleasesOf(upper.toString()), false);
         } catch (NumberFormatException e) {
             return VersionSet.exact(version);
         }
     }
 
     /**
-     * Cargo-style tilde semantics: lock the major (and minor, if present), allow patches. {@code
-     * ~1.2.3 → [1.2.3, 1.3.0)}, {@code ~1.2 → [1.2, 1.3.0)}, {@code ~1 → [1, 2.0.0)}. Pre-release
-     * anchors use the numeric core for upper-bound segments ({@code ~1.2.3-RC1 → [1.2.3-RC1, 1.3.0)}).
+     * Cargo-style tilde semantics: lock the major (and minor, if present), allow patches; the
+     * exclusive upper sits below the next version's pre-releases ({@link #belowPreReleasesOf}).
+     * {@code ~1.2.3 → [1.2.3, 1.3.0-alpha)}, {@code ~1.2 → [1.2, 1.3-alpha)}, {@code ~1 → [1,
+     * 2-alpha)}. Pre-release anchors use the numeric core for upper-bound segments ({@code
+     * ~1.2.3-RC1 → [1.2.3-RC1, 1.3.0-alpha)}).
      */
     static VersionSet tildeRange(String version) {
         String core = Versions.numericCore(version);
@@ -197,14 +200,24 @@ public final class VersionSelectors {
         try {
             if (parts.length == 1) {
                 int n = Integer.parseInt(parts[0]);
-                return VersionSet.between(version, true, String.valueOf(n + 1), false);
+                return VersionSet.between(version, true, belowPreReleasesOf(String.valueOf(n + 1)), false);
             }
             int minor = Integer.parseInt(parts[1]);
             StringBuilder upper = new StringBuilder(parts[0]).append('.').append(minor + 1);
             for (int i = 2; i < parts.length; i++) upper.append(".0");
-            return VersionSet.between(version, true, upper.toString(), false);
+            return VersionSet.between(version, true, belowPreReleasesOf(upper.toString()), false);
         } catch (NumberFormatException e) {
             return VersionSet.exact(version);
         }
+    }
+
+    /**
+     * The exclusive upper bound that keeps every pre-release of {@code next} out of a range. Maven
+     * orders {@code alpha} below every other qualifier ({@code beta}, {@code M1}, {@code RC1},
+     * {@code SNAPSHOT}) and below the release itself, so {@code next-alpha} is the lowest version of
+     * {@code next}; {@code ^1.2.3} then stops short of {@code 2.0.0-RC1}, not only of {@code 2.0.0}.
+     */
+    private static String belowPreReleasesOf(String next) {
+        return next + "-alpha";
     }
 }

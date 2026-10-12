@@ -49,7 +49,7 @@ class ImageJarNamesTest {
     void residual_collision_fails_instead_of_overwriting() {
         Map<Path, Lockfile.Artifact> rows = new LinkedHashMap<>();
         rows.put(Path.of("cas/aa"), row("com.foo:util:jar:", "1.0"));
-        rows.put(Path.of("cas/bb"), row("com.foo:util:test-jar:", "1.0"));
+        rows.put(Path.of("cas/bb"), row("com.foo:util:aar:", "1.0"));
         assertThatThrownBy(() -> ImagePlans.jarNames(rows))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("collision");

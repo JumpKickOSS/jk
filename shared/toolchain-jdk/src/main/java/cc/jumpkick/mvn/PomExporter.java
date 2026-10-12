@@ -193,9 +193,9 @@ public final class PomExporter {
 
     /** Locked exact version when known, else the collapsed selector (with a warning). */
     private static String resolveVersion(Dependency d, Map<String, String> locked, ImportReport.Builder report) {
-        // Lock rows key on the full package id (g:a:type:classifier, e65323f6) — packageKey()
-        // hits both the plain jar (g:a:jar:) and a tests-kind dep (g:a:test-jar:tests). Bare GA
-        // stays as a fallback for hand-built maps.
+        // Lock rows key on the full package id (g:a:type:classifier) — packageKey() hits both
+        // the plain jar (g:a:jar:) and a tests-kind dep (g:a:jar:tests). Bare GA stays as a
+        // fallback for hand-built maps.
         String fromLock = locked.get(d.packageKey());
         if (fromLock == null || fromLock.isBlank()) fromLock = locked.get(d.module());
         if (fromLock != null && !fromLock.isBlank()) return fromLock;
