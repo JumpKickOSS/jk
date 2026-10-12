@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.TestClassMatch;
 import java.util.List;
@@ -29,6 +31,26 @@ class JUnitLauncherSerialPartitionTest {
         assertThat(suite.classWallMs()).containsEntry("acme.SerialTest", 40L);
         TestSelection serialOnly = TestSelection.DEFAULT.withClasses(List.of("Serial*"));
         assertThat(TestClassMatch.nothingMatched(serialOnly, false, suite)).isFalse();
+    }
+
+    @Test
+    void the_serial_pool_runs_after_a_shortfall_or_a_worker_death_but_not_after_a_broken_fork_or_a_cancel() {
+        TestFailureInfo shortfall = requireNonNull(RunShortfall.row("g:app", false, true, 2));
+        TestFailureInfo worker = new TestFailureInfo(
+                "g:app", "", "acme.BigTest", "(worker 1)", "", "test worker exited 137 mid-run", "", 1);
+        TestFailureInfo red = new TestFailureInfo("g:app", "", "acme.FooTest", "fails()", "", "boom", "", 0);
+        TestFailureInfo broken = new TestFailureInfo(
+                "g:app", "", "", "(test run)", "", "test protocol handler threw IllegalStateException", "", 1);
+        assertThat(JUnitLauncher.serialPoolRuns(summary(shortfall, worker, red), false))
+                .isTrue();
+        assertThat(JUnitLauncher.serialPoolRuns(summary(), false)).isTrue();
+        assertThat(JUnitLauncher.serialPoolRuns(summary(shortfall, broken), false))
+                .isFalse();
+        assertThat(JUnitLauncher.serialPoolRuns(summary(), true)).isFalse();
+    }
+
+    private static TestSummary summary(TestFailureInfo... failures) {
+        return new TestSummary(failures.length, 0, failures.length, 0, List.of(failures));
     }
 
     @Test

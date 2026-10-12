@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
 
@@ -20,7 +21,7 @@ class SuiteRetryTest {
         assertThat(SuiteRetry.retryable(died.failures().getFirst())).isTrue();
         assertThat(SuiteRetry.wholeSuite(died)).isTrue();
         assertThat(SuiteRetry.onlyHeap(died)).isTrue();
-        assertThat(SuiteRetry.classes(died)).isEmpty();
+        assertThat(SuiteRetry.classes(died, List.of())).isEmpty();
         assertThat(SuiteRetry.killed(died.failures().getFirst())).isFalse();
     }
 
@@ -30,7 +31,7 @@ class SuiteRetryTest {
                 "g:app", "", "com.acme.BigTest", "(worker 1)", "", "test worker exited 3 mid-run", "");
         TestFailureInfo assertion =
                 new TestFailureInfo("g:app", "", "com.acme.OtherTest", "nope()", "AssertionError", "expected 1", "");
-        assertThat(SuiteRetry.classes(summary(worker))).containsExactly("com.acme.BigTest");
+        assertThat(SuiteRetry.classes(summary(worker), List.of())).containsExactly("com.acme.BigTest");
         assertThat(SuiteRetry.wholeSuite(summary(worker))).isFalse();
         assertThat(SuiteRetry.onlyHeap(summary(worker, assertion))).isFalse();
         assertThat(SuiteRetry.retryable(assertion)).isFalse();
@@ -45,6 +46,36 @@ class SuiteRetryTest {
     }
 
     @Test
+    void the_classes_a_pool_left_queued_join_a_due_retry_and_no_other() {
+        TestFailureInfo kill = new TestFailureInfo(
+                "g:app", "", "com.acme.BigTest", "(worker 1)", "", "test worker killed for memory", "");
+        TestFailureInfo quit = new TestFailureInfo(
+                "g:app", "", "com.acme.QuitTest", "(worker 2)", "", "test worker exited 0 before it was told DONE", "");
+        TestFailureInfo shortfall = requireNonNull(RunShortfall.row("g:app", false, true, 2));
+        List<String> queued = List.of("com.acme.LateTest", "com.acme.LastTest");
+        assertThat(SuiteRetry.classes(summary(kill, quit, shortfall), queued))
+                .containsExactly("com.acme.BigTest", "com.acme.LateTest", "com.acme.LastTest");
+        assertThat(SuiteRetry.classes(summary(quit, shortfall), queued)).isEmpty();
+    }
+
+    @Test
+    void a_retry_that_ran_the_queued_classes_drops_the_shortfall_row() {
+        TestFailureInfo kill = new TestFailureInfo(
+                "g:app", "", "com.acme.BigTest", "(worker 1)", "", "test worker killed for memory", "");
+        TestFailureInfo quit = new TestFailureInfo(
+                "g:app", "", "com.acme.QuitTest", "(worker 2)", "", "test worker exited 0 before it was told DONE", "");
+        TestFailureInfo shortfall = requireNonNull(RunShortfall.row("g:app", false, true, 1));
+        TestSummary first = new TestSummary(4, 1, 3, 0, 1, List.of(kill, quit, shortfall));
+        TestSummary second = new TestSummary(2, 2, 0, 0, 2, List.of());
+        TestSummary merged = SuiteRetry.merge(
+                first, List.of("com.acme.BigTest", "com.acme.LateTest"), new MarkdownTestReport.Tally(0, 0, 0), second);
+        assertThat(merged.failures()).containsExactly(quit);
+        assertThat(merged.total()).isEqualTo(4);
+        assertThat(merged.succeeded()).isEqualTo(3);
+        assertThat(merged.failed()).isEqualTo(1);
+    }
+
+    @Test
     void a_kill_at_the_worker_cap_is_not_retried() {
         TestFailureInfo capped = new TestFailureInfo(
                 "g:app",
@@ -56,7 +87,7 @@ class SuiteRetryTest {
                 "");
         assertThat(SuiteRetry.retryable(capped)).isFalse();
         assertThat(SuiteRetry.killed(capped)).isFalse();
-        assertThat(SuiteRetry.classes(summary(capped))).isEmpty();
+        assertThat(SuiteRetry.classes(summary(capped), List.of())).isEmpty();
     }
 
     @Test

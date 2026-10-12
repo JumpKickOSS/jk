@@ -463,7 +463,8 @@ ladder. An item the kernel killed for memory — host or cgroup pressure, not it
 run once more at the same heap once its lease can be taken again. An item killed at its own
 worker cap is not run again: its memory outside the heap outgrew three quarters of the
 budget, and neither the same heap nor a larger one changes that. The item is a compile, a
-format run, or a test class (pull mode) or the whole suite (one JVM). Only the last failure reaches you, and
+format run, or a test class (pull mode) or the whole suite (one JVM); classes a pull pool left
+queued when every worker ran out are run again with them. Only the last failure reaches you, and
 it names every heap that ran out and how to raise it: `[jvm] args = ["-Xmx…"]` or `[test]
 jvm-args = ["-Xmx…"]`. A heap you pinned is never learned and never resized; that failure is
 reported immediately and names your setting.

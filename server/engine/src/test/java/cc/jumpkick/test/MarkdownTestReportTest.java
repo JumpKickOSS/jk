@@ -162,6 +162,21 @@ class MarkdownTestReportTest {
     }
 
     @Test
+    void restore_puts_a_forgotten_class_s_entries_back_in_place_of_a_repeat_s() {
+        var report = new MarkdownTestReport();
+        String big = "[engine:junit-jupiter]/[class:com.acme.BigTest]/[method:alloc()]";
+        report.recordFinished(big, "alloc()", 1, "{\"message\":\"Java heap space\"}");
+        report.recordFinished("[engine:junit-jupiter]/[class:com.acme.OtherTest]/[method:ok()]", "ok()", 1, null);
+
+        MarkdownTestReport.Held held = report.forget(List.of("com.acme.BigTest"));
+        report.recordFinished(big, "alloc()", 2, null);
+        report.restore(held);
+
+        assertThat(report.tally(List.of())).isEqualTo(new MarkdownTestReport.Tally(1, 0, 2));
+        assertThat(report.tally(List.of("com.acme.BigTest"))).isEqualTo(new MarkdownTestReport.Tally(0, 0, 1));
+    }
+
+    @Test
     void forget_drops_a_class_s_entries_so_a_repeat_of_it_reports_only_the_repeat(@TempDir Path ws) {
         RunResults sink = new RunResults();
         RunResults.open(sink);
