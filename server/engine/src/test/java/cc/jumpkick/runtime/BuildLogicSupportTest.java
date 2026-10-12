@@ -308,6 +308,73 @@ class BuildLogicSupportTest {
         assertTrue(ac.lookup(expected).isPresent(), "the record sits under today's key");
     }
 
+    /**
+     * A module script keys on every root the preflight memo fingerprints, so an edit under a
+     * {@code [build] extra-src} root — outside {@code src/} — moves the key and re-runs the script.
+     */
+    @Test
+    void an_edit_under_a_build_extra_src_root_reruns_a_module_script(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+
+                [build]
+                extra-src = ["gen/java"]
+                """);
+        Path bar = Files.createDirectories(project.resolve("gen/java")).resolve("Bar.java");
+        Files.writeString(bar, "class Bar { int x = 1; }\n");
+        Files.createDirectories(project.resolve(".jk"));
+        Path script = project.resolve(".jk/after-resources.groovy");
+        writeStampGroovy(script);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = Files.createDirectories(layout.classesDir());
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        String before = expectedKey(
+                project, script, BuildLogicAnchor.AFTER_RESOURCES, BuildLogicSupport.projectInputTokens(project));
+        assertTrue(ac.lookup(before).isPresent());
+
+        Files.writeString(bar, "class Bar { int x = 2; }\n");
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> labels.append(s)
+                        .append(';')));
+        String after = expectedKey(
+                project, script, BuildLogicAnchor.AFTER_RESOURCES, BuildLogicSupport.projectInputTokens(project));
+        assertNotEquals(before, after, "an edit under [build] extra-src is an input change");
+        assertTrue(ac.lookup(after).isPresent(), "the script re-ran and recorded under the new key");
+        assertFalse(labels.toString().contains("cache hit"), labels.toString());
+    }
+
+    /** A single-file {@code [test] extra-src} entry is keyed from the file itself, not a tree walk. */
+    @Test
+    void an_edit_to_a_single_file_test_extra_src_entry_moves_the_module_key(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+
+                [test]
+                extra-src = ["shared/Parser.java"]
+                """);
+        Path parser = Files.createDirectories(project.resolve("shared")).resolve("Parser.java");
+        Files.writeString(parser, "class Parser { int x = 1; }\n");
+        Files.writeString(project.resolve("shared/Other.java"), "class Other {}\n");
+
+        List<String> before = BuildLogicSupport.projectInputTokens(project);
+        assertThat(before).anyMatch(t -> t.startsWith("in:shared/Parser.java:"));
+        assertThat(before).noneMatch(t -> t.startsWith("in:shared/Other.java:"));
+
+        Files.writeString(parser, "class Parser { int x = 2; }\n");
+        assertNotEquals(before, BuildLogicSupport.projectInputTokens(project));
+    }
+
     @Test
     void a_cache_consulting_root_script_keys_on_the_workspace_as_before(@TempDir Path dir) throws Exception {
         Path root = workspace(dir);

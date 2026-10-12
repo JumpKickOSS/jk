@@ -7,7 +7,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
@@ -25,11 +24,11 @@ import cc.jumpkick.task.MirroredOutputs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -423,9 +422,11 @@ public final class BuildLogicSupport {
     static final AtomicInteger SCOPE_WALKS_FOR_TESTS = new AtomicInteger();
 
     /**
-     * What a build-logic task can read through {@code projectDir}, as cache-key tokens: the
-     * module's source roots plus {@code jk.toml}/{@code jk-lock.toml}. Conservative on purpose — a
-     * script declares no inputs, so the key covers every input it <em>could</em> consume.
+     * What a build-logic task can read through {@code projectDir}, as cache-key tokens: every
+     * root the preflight memo fingerprints ({@link ModuleLayoutPlugins#fingerprintRoots} — the
+     * layout's trees, {@code [build] extra-src}, {@code [test] extra-src}, {@code [test] fixtures},
+     * plugin-contributed roots) plus {@code jk.toml}/{@code jk-lock.toml}. Conservative on purpose
+     * — a script declares no inputs, so the key covers every input it <em>could</em> consume.
      *
      * <p>The key is the <strong>sources</strong>, not {@code classesDir}, even for the anchors that
      * read classes. Classes are a function of these sources, and hashing the classes tree would be
@@ -434,13 +435,15 @@ public final class BuildLogicSupport {
     static List<String> projectInputTokens(Path projectDir) throws IOException {
         SCOPE_WALKS_FOR_TESTS.incrementAndGet();
         List<String> tokens = new ArrayList<>();
-        LinkedHashSet<Path> dirs = new LinkedHashSet<>(ModuleLayout.fingerprintDirs(projectDir, /* skipTests */ false));
-        for (var root : ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
-            Path p = projectDir.resolve(root.relative());
-            if (Files.isDirectory(p)) dirs.add(p.toAbsolutePath().normalize());
-        }
-        for (Path dir : dirs) {
-            hashTree(projectDir, dir, "in", tokens);
+        Path from = projectDir.toAbsolutePath().normalize();
+        for (Path root : ModuleLayoutPlugins.fingerprintRoots(projectDir, /* skipTests */ false)) {
+            if (Files.isRegularFile(root)) {
+                Path abs = root.toAbsolutePath().normalize();
+                var attrs = Files.readAttributes(abs, BasicFileAttributes.class);
+                tokens.add("in:" + from.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
+                continue;
+            }
+            hashTree(projectDir, root, "in", tokens);
         }
         for (String file : new String[] {ManifestPaths.MANIFEST, ManifestPaths.LOCK}) {
             Path p = projectDir.resolve(file);

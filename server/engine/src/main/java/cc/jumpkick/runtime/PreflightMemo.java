@@ -15,7 +15,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
-import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.LockPaths;
@@ -818,11 +817,11 @@ public final class PreflightMemo {
     // Module dirty fingerprint (sources)
 
     /**
-     * Every regular file under the roots the build consumes feeds the digest: main sources, main
-     * resources, default + named test suites and suite resources ({@link ModuleLayout#fingerprintDirs}),
-     * plus the roots the manifest declares outside them — {@code [build] extra-src},
-     * {@code [test] extra-src}, {@code [test] fixtures}, plugin-contributed roots
-     * ({@link ModuleLayoutPlugins#declaredRoots}).
+     * Every regular file under the roots the build consumes feeds the digest
+     * ({@link ModuleLayoutPlugins#fingerprintRoots}): main sources, main resources, default + named
+     * test suites and suite resources, plus the roots the manifest declares outside them —
+     * {@code [build] extra-src}, {@code [test] extra-src}, {@code [test] fixtures},
+     * plugin-contributed roots.
      */
     static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests) {
         return fingerprintModule(moduleDir, skipTests, "");
@@ -842,7 +841,7 @@ public final class PreflightMemo {
                 feedFile(md, moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST));
             }
             boolean mtimeMode = useMtimeMode();
-            for (Path r : fingerprintRoots(moduleDir, skipTests)) {
+            for (Path r : ModuleLayoutPlugins.fingerprintRoots(moduleDir, skipTests)) {
                 if (Files.isRegularFile(r)) {
                     var attrs = Files.readAttributes(r, BasicFileAttributes.class);
                     feedFingerprint(
@@ -883,29 +882,6 @@ public final class PreflightMemo {
         } catch (Exception e) {
             return uncertain(moduleDir, e);
         }
-    }
-
-    /**
-     * The layout's roots plus the manifest's declared roots, each walked once: a declared root
-     * under a layout root (a variant's {@code src/demo/kotlin}) is already covered, and a
-     * {@code [test] extra-src} entry may be a single file rather than a directory.
-     */
-    private static List<Path> fingerprintRoots(Path moduleDir, boolean skipTests) throws IOException {
-        List<Path> roots = new ArrayList<>(ModuleLayout.fingerprintDirs(moduleDir, skipTests));
-        Path toml = ManifestPaths.manifestIn(moduleDir);
-        if (!Files.isRegularFile(toml)) return roots;
-        JkBuild manifest = JkBuildParser.parse(toml);
-        for (Path declared : ModuleLayoutPlugins.declaredRoots(moduleDir, manifest, skipTests)) {
-            boolean covered = false;
-            for (Path r : roots) {
-                if (declared.startsWith(r)) {
-                    covered = true;
-                    break;
-                }
-            }
-            if (!covered) roots.add(declared);
-        }
-        return roots;
     }
 
     /**
