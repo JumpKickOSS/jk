@@ -59,8 +59,8 @@ public class IdeEngineClient {
     private final Path cacheDir;
     private final @Nullable Path jdksDir;
 
-    /** Package-visible for BSP/IDE tests that stub engine calls. */
-    IdeEngineClient(Path projectDir, Path cacheDir, @Nullable Path jdksDir) {
+    /** Subclassed by BSP/IDE tests that stub engine calls. */
+    protected IdeEngineClient(Path projectDir, Path cacheDir, @Nullable Path jdksDir) {
         this.projectDir = projectDir.toAbsolutePath().normalize();
         this.cacheDir = cacheDir.toAbsolutePath().normalize();
         this.jdksDir = jdksDir == null ? null : jdksDir.toAbsolutePath().normalize();

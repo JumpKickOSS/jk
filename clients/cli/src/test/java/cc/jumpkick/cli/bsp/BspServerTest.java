@@ -5,13 +5,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.EngineTestSupport;
 import cc.jumpkick.cli.ide.IdeEngineClient;
+import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -251,6 +259,135 @@ class BspServerTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         new BspServer(ide, new ByteArrayInputStream(framed.getBytes(StandardCharsets.UTF_8)), out).serve();
         assertThat(out.toString(StandardCharsets.UTF_8)).contains("testProvider");
+    }
+
+    /**
+     * {@code Content-Length} counts bytes: a body whose class name takes two bytes per letter is
+     * read whole, decoded as UTF-8, and the frame queued behind it is still framed and answered.
+     */
+    @Test
+    void a_non_ascii_body_is_framed_by_its_byte_length_and_the_frame_behind_it_is_answered(@TempDir Path dir)
+            throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                java = 25
+                """);
+        List<String> classes = new CopyOnWriteArrayList<>();
+        IdeEngineClient ide = new IdeEngineClient(dir, dir.resolve("cache"), null) {
+            @Override
+            public BuildOutcome testModule(
+                    @Nullable Path moduleDir,
+                    @Nullable BuildListener listener,
+                    @Nullable TestSelection selection,
+                    @Nullable DebugJvm debug) {
+                if (selection != null) classes.addAll(selection.classes());
+                return new BuildOutcome(true, 1, 0, List.of());
+            }
+        };
+        String test = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"buildTarget/test\",\"params\":"
+                + "{\"targets\":[{\"uri\":\"file:///x#root\"}],\"data\":{\"classes\":[\"com.acme.ÜberTest\"]}}}";
+        String session = frame(init(1)) + frame(test) + frame(shutdown(3)) + frame(exit());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new BspServer(ide, new ByteArrayInputStream(session.getBytes(StandardCharsets.UTF_8)), out).serve();
+        String responses = out.toString(StandardCharsets.UTF_8);
+
+        assertThat(classes).containsExactly("com.acme.ÜberTest");
+        assertThat(responses).contains("\"id\":2").contains("\"statusCode\":1");
+        assertThat(responses)
+                .as("the shutdown framed right behind the non-ASCII body")
+                .contains("\"id\":3");
+    }
+
+    /**
+     * A second compile queues behind the running one without blocking the stdio reader, so a
+     * {@code build/cancel} sent behind it is read while the first job is still in flight: the queued
+     * request is answered as cancelled before it starts, and the running one finishes as usual.
+     */
+    @Test
+    void a_cancel_behind_a_queued_request_is_read_while_the_first_job_runs(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                java = 25
+                """);
+        CountDownLatch running = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        List<Path> enginesCancelled = new CopyOnWriteArrayList<>();
+        IdeEngineClient ide = new IdeEngineClient(dir, dir.resolve("cache"), null) {
+            @Override
+            public BuildOutcome buildModule(@Nullable Path moduleDir, @Nullable BuildListener listener) {
+                running.countDown();
+                try {
+                    release.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return new BuildOutcome(true, 1, 0, List.of());
+            }
+
+            @Override
+            public void cancel(@Nullable Path moduleDir) {
+                enginesCancelled.add(moduleDir == null ? dir : moduleDir);
+            }
+        };
+        String session = frame(init(1))
+                + frame(compile(2))
+                + frame(compile(3))
+                + frame("{\"jsonrpc\":\"2.0\",\"method\":\"build/cancel\",\"params\":{\"id\":3}}")
+                + frame(shutdown(4))
+                + frame(exit());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Thread server = Thread.ofPlatform().daemon().start(() -> {
+            try {
+                new BspServer(ide, new ByteArrayInputStream(session.getBytes(StandardCharsets.UTF_8)), out).serve();
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        try {
+            assertThat(running.await(10, TimeUnit.SECONDS))
+                    .as("the first compile runs")
+                    .isTrue();
+            String cancelled = awaitResponse(out, 3);
+            assertThat(cancelled).contains("-32800");
+            assertThat(out.toString(StandardCharsets.UTF_8))
+                    .as("the first compile is still in flight when the queued one is refused")
+                    .doesNotContain("\"id\":2");
+            assertThat(enginesCancelled)
+                    .as("a job that never started has nothing to cancel on the engine")
+                    .isEmpty();
+        } finally {
+            release.countDown();
+        }
+        server.join(TimeUnit.SECONDS.toMillis(10));
+        assertThat(server.isAlive()).isFalse();
+        String responses = out.toString(StandardCharsets.UTF_8);
+        assertThat(responses).contains("\"id\":2").contains("\"statusCode\":1");
+        assertThat(responses).contains("\"id\":4");
+    }
+
+    /** The response frame with {@code id}, polled for up to ten seconds. */
+    private static String awaitResponse(ByteArrayOutputStream out, int id) throws InterruptedException {
+        String needle = "\"id\":" + id;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            String responses = out.toString(StandardCharsets.UTF_8);
+            int at = responses.indexOf(needle);
+            if (at >= 0) {
+                int end = responses.indexOf("Content-Length:", at);
+                return responses.substring(at, end < 0 ? responses.length() : end);
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("no response for id " + id + " within ten seconds; got: " + out);
+    }
+
+    private static String compile(int id) {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"buildTarget/compile\","
+                + "\"params\":{\"targets\":[{\"uri\":\"file:///x#root\"}]}}";
     }
 
     private static String init(int id) {

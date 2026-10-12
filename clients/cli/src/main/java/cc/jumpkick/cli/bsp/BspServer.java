@@ -15,13 +15,11 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,10 +28,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -45,8 +44,8 @@ import org.jspecify.annotations.Nullable;
  * dependency sources, output paths, scalac and javac options, compile/test/run by target URI,
  * workspace/reload, build/cancel, and publishDiagnostics on compile failures. A module that
  * compiles Scala is a Scala build target ({@link BspTargetOptions}), which is how Metals imports
- * a mixed Java/Scala module. Long-running compile/test/run run on a worker so {@code build/cancel}
- * can be accepted mid-flight.
+ * a mixed Java/Scala module. Compile, test and run queue on a worker, one at a time in request
+ * order, so the stdio loop keeps reading and {@code build/cancel} reaches a running or queued job.
  */
 public final class BspServer {
 
@@ -54,23 +53,24 @@ public final class BspServer {
             Pattern.compile("Content-Length:\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private final IdeEngineClient ide;
-    private final BufferedReader in;
-    private final BufferedWriter out;
+    private final InputStream in;
+    private final OutputStream out;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "jk-bsp-worker");
         t.setDaemon(true);
         return t;
     });
-    private final AtomicReference<@Nullable Future<?>> activeJob = new AtomicReference<>();
-    private final AtomicReference<@Nullable Path> activeDir = new AtomicReference<>();
+
+    /** Compile/test/run requests not yet answered, oldest first. Guarded by itself. */
+    private final List<LongJob> jobs = new ArrayList<>();
 
     private @Nullable IdeWireModel cachedModel;
     private @Nullable ProjectInfo cachedInfo;
 
     public BspServer(IdeEngineClient ide, InputStream in, OutputStream out) {
         this.ide = ide;
-        this.in = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
-        this.out = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
+        this.in = new BufferedInputStream(in);
+        this.out = out;
     }
 
     public void serve() throws IOException {
@@ -83,7 +83,7 @@ public final class BspServer {
         } catch (IOException e) {
             if (!"bsp exit".equals(e.getMessage())) throw e;
         } finally {
-            awaitActiveJob();
+            awaitJobs();
             worker.shutdownNow();
         }
     }
@@ -130,16 +130,16 @@ public final class BspServer {
                 case "buildTarget/test" -> scheduleLong(id, json, "test");
                 case "buildTarget/run" -> scheduleLong(id, json, "run");
                 case "build/cancel" -> {
-                    handleCancel(json);
+                    cancel(message);
                     if (id != null) respond(id, "null");
                 }
                 case "build/shutdown" -> {
-                    awaitActiveJob();
+                    awaitJobs();
                     worker.shutdownNow();
                     respond(id, "null");
                 }
                 case "build/exit" -> {
-                    awaitActiveJob();
+                    awaitJobs();
                     throw new IOException("bsp exit");
                 }
                 default -> {
@@ -166,75 +166,120 @@ public final class BspServer {
     }
 
     /**
-     * Compile / test / run on the worker so the stdio loop can still accept {@code build/cancel}.
-     * {@link #awaitActiveJob} is called on shutdown so clients still receive the response.
+     * Queue a compile/test/run on the worker behind the requests before it. The reader never waits
+     * for a job, so a {@code build/cancel} framed behind this request is read while it runs.
      */
-    private void scheduleLong(@Nullable String id, String requestJson, String kind) {
+    private void scheduleLong(@Nullable String id, String requestJson, String kind) throws IOException {
         if (id == null) return;
-        Path moduleDir;
-        try {
-            moduleDir = resolveTargetModule(requestJson);
-        } catch (IOException e) {
-            try {
-                error(
-                        id,
-                        -32000,
-                        e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-            } catch (IOException ignored) {
-                // best-effort
-            }
-            return;
-        }
+        Path moduleDir = resolveTargetModule(requestJson);
         Path workDir = moduleDir != null ? moduleDir : ide.projectDir();
-        awaitActiveJob();
-        activeDir.set(workDir);
+        Callable<String> body =
+                switch (kind) {
+                    case "compile" -> () -> compileJson(requestJson, moduleDir);
+                    case "test" -> () -> testJson(requestJson, moduleDir);
+                    default -> () -> runJson(requestJson, moduleDir);
+                };
+        LongJob job = new LongJob(id, workDir, body);
+        synchronized (jobs) {
+            job.future = worker.submit(job);
+            jobs.add(job);
+        }
+    }
 
-        Future<?> job = worker.submit(() -> {
+    /**
+     * {@code build/cancel}: {@code params.id} names one compile/test/run request, running or still
+     * queued; without an id every outstanding request is cancelled.
+     */
+    private void cancel(@Nullable Object message) throws IOException {
+        String target = requestId(MiniJson.get(message, "params"));
+        for (LongJob job : outstanding()) {
+            if (target == null || target.equals(job.id)) job.cancel();
+        }
+    }
+
+    /** Block until every queued or running job has answered. */
+    private void awaitJobs() {
+        for (LongJob job : outstanding()) job.awaitDone();
+    }
+
+    private List<LongJob> outstanding() {
+        synchronized (jobs) {
+            return List.copyOf(jobs);
+        }
+    }
+
+    /**
+     * One compile/test/run request on the worker. Its reply is the job's own once it has started;
+     * cancelled before that, it never starts and is answered as cancelled from the reader thread.
+     */
+    private final class LongJob implements Runnable {
+        private final String id;
+        private final Path workDir;
+        private final Callable<String> body;
+        private final CountDownLatch done = new CountDownLatch(1);
+        private @Nullable Future<?> future;
+        private boolean started;
+        private boolean cancelled;
+
+        LongJob(String id, Path workDir, Callable<String> body) {
+            this.id = id;
+            this.workDir = workDir;
+            this.body = body;
+        }
+
+        @Override
+        public void run() {
+            synchronized (this) {
+                if (cancelled) return;
+                started = true;
+            }
             try {
-                String result =
-                        switch (kind) {
-                            case "compile" -> compileJson(requestJson, moduleDir);
-                            case "test" -> testJson(requestJson, moduleDir);
-                            case "run" -> runJson(requestJson, moduleDir);
-                            default ->
-                                JsonFields.object()
-                                        .number("statusCode", 2)
-                                        .string("message", "unknown op " + kind)
-                                        .finish();
-                        };
-                respond(id, result);
+                respond(id, body.call());
             } catch (Exception e) {
+                invalidateModel();
+                String msg =
+                        e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 try {
-                    invalidateModel();
-                    String msg = e.getMessage() != null
-                            ? e.getMessage()
-                            : e.getClass().getSimpleName();
                     error(id, -32000, msg);
                 } catch (IOException ignored) {
-                    // best-effort
+                    // the stdio channel is gone; nobody is left to answer
                 }
             } finally {
-                activeDir.compareAndSet(workDir, null);
+                finish();
             }
-        });
-        activeJob.set(job);
-    }
+        }
 
-    private void handleCancel(String requestJson) {
-        Path dir = activeDir.get();
-        ide.cancel(dir);
-        Future<?> job = activeJob.getAndSet(null);
-        if (job != null) job.cancel(true);
-    }
+        /** Cancel on the engine when running; otherwise refuse the request before it starts. */
+        void cancel() throws IOException {
+            boolean running;
+            synchronized (this) {
+                if (cancelled || done.getCount() == 0) return;
+                cancelled = true;
+                running = started;
+            }
+            if (running) {
+                ide.cancel(workDir);
+                if (future != null) future.cancel(true);
+            } else {
+                if (future != null) future.cancel(false);
+                finish();
+                error(id, -32800, "request cancelled");
+            }
+        }
 
-    /** Block until the in-flight compile/test/run finishes (or was cancelled). */
-    private void awaitActiveJob() {
-        Future<?> job = activeJob.getAndSet(null);
-        if (job == null) return;
-        try {
-            job.get();
-        } catch (Exception ignored) {
-            // response already written or cancelled
+        void awaitDone() {
+            try {
+                done.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        private void finish() {
+            synchronized (jobs) {
+                jobs.remove(this);
+            }
+            done.countDown();
         }
     }
 
@@ -812,8 +857,6 @@ public final class BspServer {
         if (requestJson == null || requestJson.isBlank()) {
             return TestSelection.DEFAULT;
         }
-        // Structural parse — the old needle/brace-slicing degraded silently on
-        // pretty-printed payloads ("suites": [...]) and non-object data values.
         try {
             Object parsed = MiniJson.parse(requestJson);
             if (!(parsed instanceof Map<?, ?> outer)) {
@@ -947,8 +990,6 @@ public final class BspServer {
 
     /** Collect target URIs from a BSP params object (targets array or single target). */
     static List<String> extractTargetUris(String json) {
-        // Structural — the old regex collected any "uri" anywhere — including ones
-        // nested inside data payloads.
         try {
             Object parsed = MiniJson.parse(json);
             if (!(parsed instanceof Map<?, ?> outer)) return List.of();
@@ -999,31 +1040,42 @@ public final class BspServer {
                 .finish());
     }
 
+    /** One frame: ASCII headers, a blank line, then the body whose byte count the header carries. */
     private void writeMessage(String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        out.write("Content-Length: " + bytes.length + "\r\n\r\n");
-        out.write(body);
+        out.write(("Content-Length: " + bytes.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+        out.write(bytes);
         out.flush();
     }
 
+    /**
+     * The next frame's body decoded as UTF-8, or {@code null} at end of stream or on a frame with no
+     * {@code Content-Length}. The length is a byte count, so the body is read as bytes.
+     */
     private @Nullable String readMessage() throws IOException {
         int contentLength = -1;
         while (true) {
-            String line = in.readLine();
+            String line = readHeaderLine();
             if (line == null) return null;
             if (line.isEmpty()) break;
             Matcher m = CONTENT_LENGTH.matcher(line);
             if (m.find()) contentLength = Integer.parseInt(m.group(1));
         }
         if (contentLength < 0) return null;
-        char[] buf = new char[contentLength];
-        int off = 0;
-        while (off < contentLength) {
-            int n = in.read(buf, off, contentLength - off);
-            if (n < 0) return null;
-            off += n;
+        byte[] body = in.readNBytes(contentLength);
+        return body.length == contentLength ? new String(body, StandardCharsets.UTF_8) : null;
+    }
+
+    /** One header line without its CRLF (a bare LF is tolerated), or {@code null} at end of stream. */
+    private @Nullable String readHeaderLine() throws IOException {
+        ByteArrayOutputStream line = new ByteArrayOutputStream();
+        while (true) {
+            int b = in.read();
+            if (b < 0) return null;
+            if (b == '\n') break;
+            if (b != '\r') line.write(b);
         }
-        return new String(buf);
+        return line.toString(StandardCharsets.US_ASCII);
     }
 
     private static String pathUri(Path p) {
@@ -1033,10 +1085,6 @@ public final class BspServer {
     /**
      * The request id, re-rendered as the JSON literal the response has to echo — a string id comes
      * back quoted, a numeric one bare — or {@code null} for a notification, which takes no reply.
-     *
-     * <p>The regex this replaced took the first {@code "id":} anywhere in the message, so a
-     * {@code buildTarget/run} whose {@code params.data} carried an {@code id} of its own was
-     * answered under the wrong one and the IDE waited out its own request forever.
      */
     private static @Nullable String requestId(@Nullable Object message) {
         Object id = MiniJson.get(message, "id");
