@@ -92,6 +92,8 @@ final class PluginFacts {
             "docker-maven-plugin",
             "maven-war-plugin");
 
+    private static final String COMPILER = "maven-compiler-plugin";
+    private static final String JAR = "maven-jar-plugin";
     private static final String[] COMPILER_PROPERTIES = {
         "maven.compiler.release", "maven.compiler.target", "maven.compiler.source"
     };
@@ -119,18 +121,37 @@ final class PluginFacts {
     }
 
     /**
-     * The compiler plugin as the bound compile runs it: the {@code <plugins>} entry, else the
-     * {@code <pluginManagement>} one — the jar lifecycle binds the plugin whether or not the POM
-     * lists it, and Maven configures that run from the managed entry.
+     * A plugin the lifecycle binds whether or not the POM lists it (compiler, surefire, jar,
+     * resources) as that run is configured: the {@code <plugins>} entry, else the {@code
+     * <pluginManagement>} one, since Maven configures the bound run from the managed entry.
      */
-    static Optional<Plugin> compilerPlugin(Model model) {
-        Optional<Plugin> declared = plugin(model, "maven-compiler-plugin");
-        if (declared.isPresent()) return declared;
-        Build build = model.getBuild();
-        if (build == null || build.getPluginManagement() == null) return Optional.empty();
-        return build.getPluginManagement().getPlugins().stream()
-                .filter(p -> "maven-compiler-plugin".equals(p.getArtifactId()))
+    static Optional<Plugin> lifecycleBoundPlugin(Model model, String artifactId) {
+        return lifecycleBoundPlugin(model.getBuild(), artifactId);
+    }
+
+    /** {@link #lifecycleBoundPlugin(Model, String)} over a profile's or a model's {@code <build>}. */
+    static Optional<Plugin> lifecycleBoundPlugin(@Nullable BuildBase build, String artifactId) {
+        if (build == null) return Optional.empty();
+        Optional<Plugin> declared = build.getPlugins().stream()
+                .filter(p -> artifactId.equals(p.getArtifactId()))
                 .findFirst();
+        if (declared.isPresent() || build.getPluginManagement() == null) return declared;
+        return build.getPluginManagement().getPlugins().stream()
+                .filter(p -> artifactId.equals(p.getArtifactId()))
+                .findFirst();
+    }
+
+    /**
+     * The plugins whose configuration Maven applies here: every {@code <plugins>} entry, then the
+     * jar plugin when {@code <pluginManagement>} alone configures it, since the jar lifecycle binds
+     * it either way.
+     */
+    private static List<Plugin> configuredPlugins(Model model) {
+        List<Plugin> out = new ArrayList<>(plugins(model));
+        if (out.stream().noneMatch(p -> JAR.equals(p.getArtifactId()))) {
+            lifecycleBoundPlugin(model, JAR).ifPresent(out::add);
+        }
+        return out;
     }
 
     /** A declared compiler level and the key that declared it ({@code maven.compiler.source}, {@code <release>}). */
@@ -143,7 +164,7 @@ final class PluginFacts {
             Optional<Integer> level = javaLevel(props.getProperty(key));
             if (level.isPresent()) return Optional.of(new CompilerLevel(level.get(), "`" + key + "`"));
         }
-        Optional<Plugin> compiler = compilerPlugin(model);
+        Optional<Plugin> compiler = lifecycleBoundPlugin(model, COMPILER);
         if (compiler.isEmpty()) return Optional.empty();
         for (Xpp3Dom config : configurations(compiler.get())) {
             for (String key : COMPILER_CONFIG) {
@@ -196,7 +217,7 @@ final class PluginFacts {
         List<String> main = new ArrayList<>();
         List<String> test = new ArrayList<>();
         List<String> scoped = new ArrayList<>();
-        Optional<Plugin> compiler = compilerPlugin(model);
+        Optional<Plugin> compiler = lifecycleBoundPlugin(model, COMPILER);
         if (compiler.isEmpty()) return new CompilerArgs(main, test, scoped, List.of());
         if (compiler.get().getConfiguration() instanceof Xpp3Dom config) {
             collectCompilerArgs(config, main);
@@ -232,7 +253,7 @@ final class PluginFacts {
      */
     static List<String> compilerSourceGlobs(Model model, String element, boolean test) {
         Set<String> out = new LinkedHashSet<>();
-        Optional<Plugin> compiler = compilerPlugin(model);
+        Optional<Plugin> compiler = lifecycleBoundPlugin(model, COMPILER);
         if (compiler.isEmpty()) return List.of();
         List<Xpp3Dom> configs = new ArrayList<>();
         if (compiler.get().getConfiguration() instanceof Xpp3Dom config) configs.add(config);
@@ -283,7 +304,7 @@ final class PluginFacts {
      */
     static List<String> mainScopedProcessorPaths(Model model) {
         List<String> scoped = new ArrayList<>();
-        Optional<Plugin> compiler = compilerPlugin(model);
+        Optional<Plugin> compiler = lifecycleBoundPlugin(model, COMPILER);
         if (compiler.isEmpty()) return scoped;
         for (PluginExecution execution : compiler.get().getExecutions()) {
             if (!(execution.getConfiguration() instanceof Xpp3Dom config)) continue;
@@ -351,7 +372,7 @@ final class PluginFacts {
     static ProcessorPaths annotationProcessorPaths(Model model) {
         List<Pom.Dep> shared = new ArrayList<>();
         List<Pom.Dep> test = new ArrayList<>();
-        Optional<Plugin> compiler = compilerPlugin(model);
+        Optional<Plugin> compiler = lifecycleBoundPlugin(model, COMPILER);
         if (compiler.isEmpty()) return new ProcessorPaths(shared, test);
         if (compiler.get().getConfiguration() instanceof Xpp3Dom config) collectProcessorPaths(model, config, shared);
         for (PluginExecution execution : compiler.get().getExecutions()) {
@@ -391,7 +412,7 @@ final class PluginFacts {
      * {@code 17}). Empty when the POM names no toolchain — a compiler level alone is not a pin.
      */
     static Optional<String> toolchainJdk(Model model) {
-        for (String artifactId : new String[] {"maven-toolchains-plugin", "maven-compiler-plugin"}) {
+        for (String artifactId : new String[] {"maven-toolchains-plugin", COMPILER}) {
             Optional<Plugin> plugin = plugin(model, artifactId);
             if (plugin.isEmpty()) continue;
             for (Xpp3Dom config : configurations(plugin.get())) {
@@ -487,7 +508,7 @@ final class PluginFacts {
      */
     static @Nullable String mainClass(Model model) {
         List<String> found = new ArrayList<>();
-        for (Plugin plugin : plugins(model)) {
+        for (Plugin plugin : configuredPlugins(model)) {
             for (Xpp3Dom config : configurations(plugin)) {
                 visit(config, "mainClass", node -> {
                     String v = usable(node.getValue());
@@ -509,7 +530,7 @@ final class PluginFacts {
      */
     static Map<String, String> manifestEntries(Model model) {
         Map<String, String> attrs = new LinkedHashMap<>();
-        for (Plugin plugin : plugins(model)) {
+        for (Plugin plugin : configuredPlugins(model)) {
             for (Xpp3Dom config : configurations(plugin)) {
                 visit(config, "manifestEntries", entries -> {
                     for (Xpp3Dom entry : entries.getChildren()) {

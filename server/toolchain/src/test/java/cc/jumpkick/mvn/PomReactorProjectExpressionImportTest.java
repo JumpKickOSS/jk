@@ -108,6 +108,65 @@ class PomReactorProjectExpressionImportTest {
         assertThat(util.project().version()).isEqualTo("1.0.0");
     }
 
+    /**
+     * A dependency spelled {@code ${project.groupId}} is the module's own declaration, matched
+     * against the effective model once the expression is filled: the version a reactor parent
+     * manages for it is the workspace's, not an inherited pin.
+     */
+    @Test
+    void a_dependency_spelled_with_project_group_id_is_the_modules_own(@TempDir Path root) throws Exception {
+        write(root, "pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.demo</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <modules><module>core</module></modules>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.demo</groupId><artifactId>ext-lib</artifactId><version>2.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        write(root, "core/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.demo</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0.0</version>
+                  </parent>
+                  <artifactId>core</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>${project.groupId}</groupId>
+                      <artifactId>ext-lib</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .noneMatch(m -> m.contains("org.demo:ext-lib inherited from"))
+                .anyMatch(m -> m.contains("versions for org.demo:ext-lib managed by workspace parent"));
+        assertThat(requireNonNull(result.modules().get("core")).dependencies().of(Scope.MAIN))
+                .singleElement()
+                .satisfies(d -> assertThat(d.isWorkspace())
+                        .as("the parent's managed version is read from the root")
+                        .isTrue());
+        assertThat(requireNonNull(result.root().workspace()).dependencies())
+                .hasEntrySatisfying(
+                        "ext-lib",
+                        ws -> assertThat(requireNonNull(ws.version()).raw()).isEqualTo("2.0"));
+    }
+
     private static void write(Path root, String relative, String xml) throws Exception {
         Path file = root.resolve(relative);
         Files.createDirectories(requireNonNull(file.getParent()));

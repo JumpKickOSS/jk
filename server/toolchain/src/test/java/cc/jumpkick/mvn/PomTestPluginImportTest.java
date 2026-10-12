@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.JkBuildRenderer;
@@ -73,6 +74,47 @@ class PomTestPluginImportTest {
         assertThat(JkBuildParser.parseTestTags(writeManifest(tempDir, rendered)).excludeTags())
                 .as("the engine's root-scoped reader sees the same filters")
                 .containsExactly("slow");
+    }
+
+    /**
+     * The jar lifecycle runs surefire and the jar plugin whether or not {@code <plugins>} lists
+     * them, configured from {@code <pluginManagement>}; a parent that configures them there alone
+     * still shapes the build.
+     */
+    @Test
+    void plugin_management_alone_configures_the_lifecycle_bound_surefire_and_jar_plugins(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <build><pluginManagement><plugins>
+                    <plugin>
+                      <groupId>org.apache.maven.plugins</groupId>
+                      <artifactId>maven-surefire-plugin</artifactId>
+                      <version>3.5.2</version>
+                      <configuration>
+                        <argLine>-Xmx1g</argLine>
+                        <excludedGroups>slow</excludedGroups>
+                      </configuration>
+                    </plugin>
+                    <plugin>
+                      <groupId>org.apache.maven.plugins</groupId>
+                      <artifactId>maven-jar-plugin</artifactId>
+                      <version>3.4.2</version>
+                      <configuration>
+                        <archive><manifest><mainClass>com.ex.Main</mainClass></manifest></archive>
+                      </configuration>
+                    </plugin>
+                  </plugins></pluginManagement></build>
+                </project>
+                """);
+        JkBuild build = result.jkBuild();
+        assertThat(build.build().testJvm().jvmArgs()).containsExactly("-Xmx1g");
+        assertThat(build.build().testExcludeTags()).containsExactly("slow");
+        assertThat(requireNonNull(build.application()).main()).isEqualTo("com.ex.Main");
     }
 
     @Test

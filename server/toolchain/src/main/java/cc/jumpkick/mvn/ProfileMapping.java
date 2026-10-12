@@ -146,10 +146,11 @@ final class ProfileMapping {
     }
 
     /**
-     * {@code <dependencies>} → {@code [features.<id>]}: each dep goes to its scope marked optional,
-     * the feature lists their handles, and {@code default} leaves it off. Per-platform deps under an
-     * OS or JDK activation are a variants proposal instead — which product you build, not an
-     * optional library.
+     * {@code <dependencies>} → {@code [features.<id>]}: each dep goes through the same mapping as
+     * the POM's own ({@link DependencyMapping#map}), lands in its scope marked optional, and the
+     * feature lists the handles that were written; {@code default} leaves it off. Per-platform deps
+     * under an OS or JDK activation are a variants proposal instead — which product you build, not
+     * an optional library.
      */
     private boolean mapDependencies(Profile profile) {
         List<Pom.Dep> deps = new ArrayList<>();
@@ -177,18 +178,25 @@ final class ProfileMapping {
         String id = label(profile);
         List<String> handles = new ArrayList<>();
         for (Pom.Dep dep : deps) {
-            DependencyMapping.warnUnresolvedVersion(dep, report);
-            Dependency d = DependencyMapping.toDependency(dep).withOptional(true);
-            Scope scope = DependencyMapping.scope(dep.scope());
-            if (d.isTestsKind() && scope != Scope.TEST && scope != Scope.TEST_DEV) scope = Scope.TEST;
-            optionalDeps.computeIfAbsent(scope, s -> new ArrayList<>()).add(d);
-            optionalDepFeatures.computeIfAbsent(scope, s -> new ArrayList<>()).add(id);
+            Optional<DependencyMapping.Mapped> mapped = DependencyMapping.map(dep, report);
+            if (mapped.isEmpty()) continue;
+            Dependency d = mapped.get().dependency().withOptional(true);
+            optionalDeps
+                    .computeIfAbsent(mapped.get().scope(), s -> new ArrayList<>())
+                    .add(d);
+            optionalDepFeatures
+                    .computeIfAbsent(mapped.get().scope(), s -> new ArrayList<>())
+                    .add(id);
             handles.add(d.library());
+        }
+        if (handles.isEmpty()) {
+            row(profile, "every dependency was refused (see the rows above); no `[features." + id + "]` written.");
+            return true;
         }
         features.put(id, new Feature(id, handles, List.of()));
         row(
                 profile,
-                count(deps.size(), "dependency", "dependencies") + " → `[features." + id
+                count(handles.size(), "dependency", "dependencies") + " → `[features." + id
                         + "]` (optional deps " + String.join(", ", handles) + "; not in `default`, activate with"
                         + " `--features " + id + "`).");
         return true;
@@ -286,12 +294,13 @@ final class ProfileMapping {
                 break;
             }
         }
-        compilerPlugin(profile.getBuild()).ifPresent(compiler -> {
-            for (Xpp3Dom config : PluginFacts.configurations(compiler)) {
-                PluginFacts.collectCompilerArgs(config, javac);
-                PluginFacts.collectCompilerSwitches(config, javac);
-            }
-        });
+        PluginFacts.lifecycleBoundPlugin(profile.getBuild(), "maven-compiler-plugin")
+                .ifPresent(compiler -> {
+                    for (Xpp3Dom config : PluginFacts.configurations(compiler)) {
+                        PluginFacts.collectCompilerArgs(config, javac);
+                        PluginFacts.collectCompilerSwitches(config, javac);
+                    }
+                });
         List<String> jvm = new ArrayList<>();
         String argLine = PluginFacts.usable(props.getProperty("argLine"));
         if (argLine != null) jvm.addAll(List.of(argLine.trim().split("\\s+")));
@@ -306,16 +315,6 @@ final class ProfileMapping {
                 "compiler settings → `[profiles." + id + "]` " + String.join(" and ", keys)
                         + "; select with `--profile " + id + "`.");
         return true;
-    }
-
-    private static Optional<Plugin> compilerPlugin(@Nullable BuildBase build) {
-        if (build == null) return Optional.empty();
-        List<Plugin> plugins = new ArrayList<>(build.getPlugins());
-        if (build.getPluginManagement() != null)
-            plugins.addAll(build.getPluginManagement().getPlugins());
-        return plugins.stream()
-                .filter(p -> "maven-compiler-plugin".equals(p.getArtifactId()))
-                .findFirst();
     }
 
     /** {@code <repositories>} → the top-level list; a repository is never conditional in jk. */

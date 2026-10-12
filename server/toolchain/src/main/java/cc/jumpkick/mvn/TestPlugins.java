@@ -66,10 +66,10 @@ final class TestPlugins {
 
     static TestSettings map(Model model, ImportReport.Builder report) {
         Jvm jvm = new Jvm();
-        TestSettings tags = PluginFacts.plugin(model, SUREFIRE)
+        TestSettings tags = PluginFacts.lifecycleBoundPlugin(model, SUREFIRE)
                 .map(surefire -> mapSurefire(surefire, model, report, jvm))
                 .orElse(TestSettings.NONE);
-        ClassSuite integration = PluginFacts.plugin(model, FAILSAFE)
+        ClassSuite integration = PluginFacts.lifecycleBoundPlugin(model, FAILSAFE)
                 .map(failsafe -> mapFailsafe(failsafe, model, report, jvm))
                 .orElseGet(() -> unboundIntegration(model, report));
         if (PluginFacts.plugin(model, "jacoco-maven-plugin").isPresent()) {
@@ -105,7 +105,7 @@ final class TestPlugins {
     }
 
     private static boolean ignoresFailures(Model model, String plugin) {
-        return PluginFacts.plugin(model, plugin)
+        return PluginFacts.lifecycleBoundPlugin(model, plugin)
                 .map(p -> PluginFacts.configurations(p).stream()
                         .anyMatch(config -> Boolean.parseBoolean(PluginFacts.child(config, "testFailureIgnore"))))
                 .orElse(false);

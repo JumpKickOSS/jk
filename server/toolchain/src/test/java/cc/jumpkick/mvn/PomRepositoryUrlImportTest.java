@@ -50,6 +50,44 @@ class PomRepositoryUrlImportTest {
     }
 
     /**
+     * {@code central} is the lock's name for Central itself, so a repository redirecting that id to
+     * another URL is written under {@code central-mirror} with a row; Central at its own URL stays
+     * implicit, whatever its id.
+     */
+    @Test
+    void a_central_id_at_another_url_is_written_as_central_mirror(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>api</artifactId>
+                  <version>1.0.0</version>
+                  <repositories>
+                    <repository>
+                      <id>central</id>
+                      <url>https://nexus.example/repository/maven-public/</url>
+                    </repository>
+                    <repository>
+                      <id>maven-central</id>
+                      <url>https://repo.maven.apache.org/maven2/</url>
+                    </repository>
+                  </repositories>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().repositories())
+                .extracting(RepositorySpec::name, r -> r.url().toString())
+                .containsExactly(Tuple.tuple("central-mirror", "https://nexus.example/repository/maven-public/"));
+        assertThat(TestImporters.messages(result))
+                .anyMatch(
+                        m -> m.startsWith("`<repository>` `central` at https://nexus.example/repository/maven-public/")
+                                && m.contains("written as `central-mirror`"));
+        assertThat(JkBuildRenderer.render(result.jkBuild()))
+                .contains(
+                        "central-mirror = { url = \"https://nexus.example/repository/maven-public/\", optional = true }");
+    }
+
+    /**
      * Maven 3.9 blocks a plaintext {@code http://} repository and builds on while nothing needs it;
      * the import writes it blocked and says so, and the manifest it writes parses. Every other
      * repository is written {@code optional}, as Maven falls through one that answers nothing.
