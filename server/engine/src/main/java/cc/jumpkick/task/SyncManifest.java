@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -41,7 +42,8 @@ public final class SyncManifest {
         for (String ref : refs) {
             sb.append("REF ").append(ref).append('\n');
         }
-        Files.writeString(target, sb.toString(), StandardCharsets.UTF_8);
+        // A sweep reads the manifest while a sync writes it: it must see one list or the other.
+        AtomicWrites.replace(target, sb.toString());
         return target;
     }
 

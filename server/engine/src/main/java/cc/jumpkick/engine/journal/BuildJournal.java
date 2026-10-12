@@ -14,6 +14,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.TaskPhases;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
@@ -191,10 +192,11 @@ public final class BuildJournal {
                 } else {
                     writeRunMetricsToml(tmp, withIds);
                 }
-                if (Files.exists(target)) {
-                    // Replacing an existing run dir (complete path uses complete(); append for finished
-                    // orphan may overwrite). Prefer atomic replace of contents.
-                    PathUtil.deleteRecursively(target);
+                if (Files.isDirectory(target)) {
+                    // A live entry (its details.jsonl is being written) is only ever rewritten in
+                    // place, never deleted from under its readers.
+                    PathUtil.deleteRecursively(tmp);
+                    return complete(dirName, withIds, snapshot) ? dirName : null;
                 }
                 OwnerOnlyFiles.seal(tmp);
                 move(tmp, target);
@@ -250,31 +252,16 @@ public final class BuildJournal {
             writeSnapshot(tmp, snapshot);
             writeRunMetricsToml(tmp, toWrite);
             OwnerOnlyFiles.seal(tmp);
-            Files.move(tmp.resolve(RECORD), target.resolve(RECORD), StandardCopyOption.REPLACE_EXISTING);
+            // Every file lands by rename from a sibling under the same runs/ tree: a reader polling
+            // the record sees the old bytes or the new ones, and a Windows handle on it is waited
+            // out rather than failing the run.
+            AtomicWrites.moveInto(tmp.resolve(RECORD), target.resolve(RECORD));
             Files.deleteIfExists(target.resolve(ENGINE_OWNER));
-            if (Files.isRegularFile(tmp.resolve(ProjectBuilds.METRICS))) {
-                Files.move(
-                        tmp.resolve(ProjectBuilds.METRICS),
-                        target.resolve(ProjectBuilds.METRICS),
-                        StandardCopyOption.REPLACE_EXISTING);
-            }
+            moveIfPresent(tmp, target, ProjectBuilds.METRICS);
             if (snapshot != null) {
-                if (snapshot.resultsMd() != null && Files.isRegularFile(tmp.resolve(RESULTS_MD))) {
-                    Files.move(
-                            tmp.resolve(RESULTS_MD), target.resolve(RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
-                }
-                if (snapshot.lockfile() != null && Files.isRegularFile(tmp.resolve(ManifestPaths.LOCK))) {
-                    Files.move(
-                            tmp.resolve(ManifestPaths.LOCK),
-                            target.resolve(ManifestPaths.LOCK),
-                            StandardCopyOption.REPLACE_EXISTING);
-                }
-                if (snapshot.diagnosticsText() != null && Files.isRegularFile(tmp.resolve(DIAGNOSTICS_TXT))) {
-                    Files.move(
-                            tmp.resolve(DIAGNOSTICS_TXT),
-                            target.resolve(DIAGNOSTICS_TXT),
-                            StandardCopyOption.REPLACE_EXISTING);
-                }
+                if (snapshot.resultsMd() != null) moveIfPresent(tmp, target, RESULTS_MD);
+                if (snapshot.lockfile() != null) moveIfPresent(tmp, target, ManifestPaths.LOCK);
+                if (snapshot.diagnosticsText() != null) moveIfPresent(tmp, target, DIAGNOSTICS_TXT);
                 moveIfPresent(tmp, target, TEST_OUTCOMES_TSV);
                 moveIfPresent(tmp, target, SOURCES_TSV);
             }
@@ -549,7 +536,7 @@ public final class BuildJournal {
 
     private static void moveIfPresent(Path from, Path to, String name) throws IOException {
         if (Files.isRegularFile(from.resolve(name))) {
-            Files.move(from.resolve(name), to.resolve(name), StandardCopyOption.REPLACE_EXISTING);
+            AtomicWrites.moveInto(from.resolve(name), to.resolve(name));
         }
     }
 

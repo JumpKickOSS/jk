@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -66,6 +67,11 @@ class GeneratedProvenanceTest {
                         sourceOutput, classOutput, List.of(origin), List.of(origin), Map.of(generated, Set.of(origin)));
 
         assertThat(Files.readString(workdir.resolve("provenance.tsv"))).contains("AGen.java");
+        try (Stream<Path> files = Files.list(workdir)) {
+            assertThat(files.map(p -> p.getFileName().toString()))
+                    .as("the map lands by rename, with no staging sibling left")
+                    .containsExactly("provenance.tsv");
+        }
     }
 
     @Test
