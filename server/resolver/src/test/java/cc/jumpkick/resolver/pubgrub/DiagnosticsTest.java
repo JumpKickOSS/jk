@@ -195,4 +195,31 @@ class DiagnosticsTest {
         // referenced by number on its second mention.
         assertThat(rendered).contains("(see #");
     }
+
+    /** A derivation chain as deep as a long solve's resolution steps renders without a stack of its own depth. */
+    @Test
+    void a_derivation_chain_thousands_deep_renders() {
+        Term root = Term.positive("<root>", VersionSet.exact("1.0"));
+        Term dep = Term.positive("widget", VersionSet.exact("1.0"));
+        Incompatibility leaf =
+                new Incompatibility(List.of(root, dep.invert()), new Incompatibility.Cause.Dependency(root, dep));
+        Incompatibility chain = leaf;
+        int depth = 20_000;
+        for (int i = 0; i < depth; i++) {
+            chain = new Incompatibility(List.of(root), new Incompatibility.Cause.Derived(chain, leaf));
+        }
+
+        String rendered = Diagnostics.render(chain);
+
+        assertThat(rendered.lines().filter(l -> l.contains("Therefore,")).count())
+                .isEqualTo(depth);
+        assertThat(rendered.lines().filter(l -> l.contains("depends on")).count())
+                .as("the shared leaf renders once and is referenced after that")
+                .isEqualTo(1);
+        // Every derived node names the leaf as its second input, the bottom one as both inputs.
+        assertThat(rendered.lines().filter(l -> l.contains("(see #1)")).count()).isEqualTo(depth);
+        assertThat(rendered)
+                .as("the suggestion walk reaches the leaf at the bottom of the chain")
+                .contains("Relax or remove the project constraint on widget");
+    }
 }

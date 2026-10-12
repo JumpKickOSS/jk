@@ -723,7 +723,7 @@ population = { examined = 4 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 56, sites = 3311 }
-"server/resolver" = { classes = 111, sites = 6750 }
+"server/resolver" = { classes = 123, sites = 7334 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/host" = { classes = 51, sites = 2014 }
@@ -1307,10 +1307,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "server/resolver"
 at     = "cc.jumpkick.resolver.MavenPackageSource#dependencies(Ljava/lang/String;Ljava/lang/String;)Ljava/util/List; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.MavenPackageSource#versions(Ljava/lang/String;)Ljava/util/List; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/resolver"

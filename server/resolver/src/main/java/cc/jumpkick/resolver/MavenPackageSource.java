@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.host.Interned;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.InFlightRequests;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.lock.Lockfile;
@@ -111,10 +112,19 @@ public final class MavenPackageSource implements PackageSource {
      */
     private volatile Map<String, String> exactRoots = Map.of();
 
-    private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
-    private final Map<String, List<String>> expandedVersionCache = new ConcurrentHashMap<>();
-    /** pkg → the wanted set its cached candidate lists were computed for; see {@link #dropStaleCandidates}. */
-    private final Map<String, Set<String>> wantedAtCache = new ConcurrentHashMap<>();
+    /** pkg → its compact candidate window; see {@link #cachedCandidates}. */
+    private final Map<String, Cached> versionCache = new ConcurrentHashMap<>();
+    /** pkg → its full advertised history; see {@link #cachedCandidates}. */
+    private final Map<String, Cached> expandedVersionCache = new ConcurrentHashMap<>();
+
+    /** A candidate list with the wanted set it was computed for, stored as one entry so the two never disagree. */
+    private record Cached(List<String> versions, Set<String> wanted) {}
+
+    /** Reads one candidate list from the repositories. */
+    @FunctionalInterface
+    private interface CandidateRead {
+        List<String> read() throws IOException, InterruptedException;
+    }
     /**
      * Raw POM edge cache keyed by {@code pkg@version} only. Exclusion filtering is applied
      * per-call so backtracking does not re-parse EffectivePoms under shifting exclusion keys.
@@ -398,16 +408,22 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Forget the candidate lists of {@code pkg} when a version was asked for after they were
-     * computed: a later edge naming a version the first repository never listed is exactly what
-     * must send the walk on to the next one.
+     * The cached candidate list of {@code pkg}, recomputed when a version was asked for after it
+     * was computed: a later edge naming a version the first repository never listed is exactly
+     * what must send the walk on to the next one. The read runs outside the map, since a
+     * repository read can take seconds and a lock on the entry would stall every other package
+     * in its bin; the result is installed only while no entry computed for a superset of
+     * {@code wanted} has landed, so two threads asking at once may read twice but never leave a
+     * list labelled with a wanted set it was not computed for.
      */
-    private void dropStaleCandidates(String pkg, Set<String> wanted) {
-        Set<String> known = wantedAtCache.get(pkg);
-        if (known != null && !known.containsAll(wanted)) {
-            versionCache.remove(pkg);
-            expandedVersionCache.remove(pkg);
-        }
+    private List<String> cachedCandidates(Map<String, Cached> cache, String pkg, Set<String> wanted, CandidateRead read)
+            throws IOException, InterruptedException {
+        Cached current = cache.get(pkg);
+        if (current != null && current.wanted().containsAll(wanted)) return current.versions();
+        Cached fresh = new Cached(read.read(), Set.copyOf(wanted));
+        return cache.compute(
+                        pkg, (k, cached) -> cached != null && cached.wanted().containsAll(wanted) ? cached : fresh)
+                .versions();
     }
 
     @Override
@@ -588,24 +604,20 @@ public final class MavenPackageSource implements PackageSource {
         // this is what every POM that asked for the coordinate selects, in any order, every run.
         if (memberVersion != null) return List.of(memberVersion);
         Set<String> wanted = wantedVersions(pkg);
-        dropStaleCandidates(pkg, wanted);
-        List<String> cached = versionCache.get(pkg);
-        if (cached != null) return cached;
-
-        long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
-        // highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
-        // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
-        List<String> ordered = orderedVersions(pkg, wanted);
-        // `snapshot` asked for the bleeding edge explicitly, so leave its window unnarrowed.
-        List<String> result =
-                List.copyOf(isSnapshotPackage(pkg) ? CandidateWindow.highest(ordered) : CandidateWindow.of(ordered));
-        versionCache.put(pkg, result);
-        wantedAtCache.put(pkg, Set.copyOf(wanted));
-        readsCompleted.incrementAndGet();
-        if (ResolveProfile.on()) {
-            ResolveProfile.versions(System.nanoTime() - t0);
-        }
-        return result;
+        return cachedCandidates(versionCache, pkg, wanted, () -> {
+            long t0 = ResolveProfile.on() ? Clock.SYSTEM.nanos() : 0L;
+            // highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
+            // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
+            List<String> ordered = orderedVersions(pkg, wanted);
+            // `snapshot` asked for the bleeding edge explicitly, so leave its window unnarrowed.
+            List<String> result = List.copyOf(
+                    isSnapshotPackage(pkg) ? CandidateWindow.highest(ordered) : CandidateWindow.of(ordered));
+            readsCompleted.incrementAndGet();
+            if (ResolveProfile.on()) {
+                ResolveProfile.versions(Clock.SYSTEM.nanos() - t0);
+            }
+            return result;
+        });
     }
 
     /**
@@ -617,14 +629,11 @@ public final class MavenPackageSource implements PackageSource {
     @Override
     public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
         Set<String> wanted = wantedVersions(pkg);
-        dropStaleCandidates(pkg, wanted);
-        List<String> cached = expandedVersionCache.get(pkg);
-        if (cached != null) return cached;
-        List<String> result = List.copyOf(orderedVersions(pkg, wanted));
-        expandedVersionCache.put(pkg, result);
-        wantedAtCache.put(pkg, Set.copyOf(wanted));
-        readsCompleted.incrementAndGet();
-        return result;
+        return cachedCandidates(expandedVersionCache, pkg, wanted, () -> {
+            List<String> result = List.copyOf(orderedVersions(pkg, wanted));
+            readsCompleted.incrementAndGet();
+            return result;
+        });
     }
 
     @Override

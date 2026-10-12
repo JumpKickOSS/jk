@@ -2,9 +2,10 @@
 package cc.jumpkick.resolver.pubgrub;
 
 import cc.jumpkick.model.PackageId;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
+import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -96,26 +97,12 @@ public final class Diagnostics {
     }
 
     public static String render(Incompatibility rootCause, Palette palette) {
-        Map<Incompatibility, Integer> incomingEdges = new HashMap<>();
-        countIncomingEdges(rootCause, incomingEdges, new HashSet<>());
-
-        // Anything referenced from more than one parent gets a number so
-        // its second mention is a back-reference instead of a re-rendering.
-        Map<Incompatibility, Integer> numbered = new LinkedHashMap<>();
-        int nextNumber = 1;
-        for (Map.Entry<Incompatibility, Integer> e : incomingEdges.entrySet()) {
-            if (e.getValue() > 1) {
-                numbered.put(e.getKey(), nextNumber++);
-            }
-        }
-
         StringBuilder out = new StringBuilder();
         boolean ansi = !palette.reset().isEmpty();
         String bang = ansi ? palette.header() + "‼" + palette.reset() : "‼";
         out.append(bang).append(" Cannot resolve dependencies:\n");
-        Set<Incompatibility> emitted = new HashSet<>();
         String rail = ansi ? palette.rail() + "  │" + palette.reset() + " " : "  │ ";
-        renderInco(rootCause, out, rail, emitted, numbered, palette);
+        renderInco(rootCause, out, rail, sharedNodes(rootCause), palette);
         out.append('\n');
         appendSuggestions(rootCause, out, palette);
         return out.toString();
@@ -126,8 +113,7 @@ public final class Diagnostics {
      * incompatibility DAG (e.g. NoVersions.available samples). At most three lines.
      */
     static void appendSuggestions(Incompatibility rootCause, StringBuilder out, Palette palette) {
-        LinkedHashSet<String> lines = new LinkedHashSet<>();
-        collectSuggestions(rootCause, lines, new HashSet<>());
+        LinkedHashSet<String> lines = collectSuggestions(rootCause);
         if (lines.isEmpty()) return;
         out.append("Suggestions:\n");
         int n = 0;
@@ -137,9 +123,26 @@ public final class Diagnostics {
         }
     }
 
-    private static void collectSuggestions(
-            Incompatibility inco, LinkedHashSet<String> lines, Set<Incompatibility> visited) {
-        if (inco == null || !visited.add(inco)) return;
+    /** Suggestion lines in pre-order over the DAG, each node once; {@code a} before {@code b}. */
+    private static LinkedHashSet<String> collectSuggestions(Incompatibility rootCause) {
+        LinkedHashSet<String> lines = new LinkedHashSet<>();
+        Set<Incompatibility> visited = identitySet();
+        Deque<Incompatibility> stack = new ArrayDeque<>();
+        stack.push(rootCause);
+        while (!stack.isEmpty()) {
+            Incompatibility inco = stack.pop();
+            if (!visited.add(inco)) continue;
+            if (inco.cause() instanceof Incompatibility.Cause.Derived d) {
+                stack.push(d.b());
+                stack.push(d.a());
+            } else {
+                suggest(inco, lines);
+            }
+        }
+        return lines;
+    }
+
+    private static void suggest(Incompatibility inco, LinkedHashSet<String> lines) {
         switch (inco.cause()) {
             case Incompatibility.Cause.NoVersions nv -> {
                 if (nv.unknownPackage()) {
@@ -165,12 +168,12 @@ public final class Diagnostics {
                             + displayPkg(dep.to().pkg()));
                 }
             }
-            case Incompatibility.Cause.Derived d -> {
-                collectSuggestions(d.a(), lines, visited);
-                collectSuggestions(d.b(), lines, visited);
-            }
             default -> {}
         }
+    }
+
+    private static Set<Incompatibility> identitySet() {
+        return Collections.newSetFromMap(new IdentityHashMap<>());
     }
 
     private static String displayPkg(String pkg) {
@@ -193,46 +196,87 @@ public final class Diagnostics {
         return display + " = \"" + version + "\"";
     }
 
-    private static void countIncomingEdges(
-            Incompatibility inco, Map<Incompatibility, Integer> counts, Set<Incompatibility> visited) {
-        if (!visited.add(inco)) return;
-        if (inco.cause() instanceof Incompatibility.Cause.Derived d) {
-            counts.merge(d.a(), 1, Integer::sum);
-            counts.merge(d.b(), 1, Integer::sum);
-            countIncomingEdges(d.a(), counts, visited);
-            countIncomingEdges(d.b(), counts, visited);
+    /**
+     * The nodes under {@code rootCause} with more than one parent. The DAG is a chain as deep as
+     * the solve had resolution steps, so the walks here keep their own stack and key their sets
+     * by identity: a record hash of a {@code Derived} node would recurse the whole chain.
+     */
+    private static Set<Incompatibility> sharedNodes(Incompatibility rootCause) {
+        Set<Incompatibility> shared = identitySet();
+        Set<Incompatibility> visited = identitySet();
+        Deque<Incompatibility> stack = new ArrayDeque<>();
+        stack.push(rootCause);
+        while (!stack.isEmpty()) {
+            Incompatibility inco = stack.pop();
+            if (!visited.add(inco)) {
+                shared.add(inco);
+                continue;
+            }
+            if (inco.cause() instanceof Incompatibility.Cause.Derived d) {
+                stack.push(d.b());
+                stack.push(d.a());
+            }
         }
+        return shared;
     }
 
+    /** One frame of the rendering walk: a node on the way in, or a {@code Derived} node whose children are out. */
+    private record Frame(Incompatibility inco, boolean childrenDone) {}
+
+    /**
+     * Post-order: a derived node's inputs before its "Therefore". A shared node is numbered where
+     * it first prints and is a back-reference after that; any other node prints once.
+     */
     private static void renderInco(
-            Incompatibility inco,
-            StringBuilder out,
-            String prefix,
-            Set<Incompatibility> emitted,
-            Map<Incompatibility, Integer> numbered,
-            Palette palette) {
-        boolean ansi = !palette.reset().isEmpty();
-
-        if (emitted.contains(inco)) {
-            Integer ref = numbered.get(inco);
-            if (ref != null) {
-                out.append(prefix).append("(see #").append(ref).append(")\n");
-            }
-            return;
-        }
-        emitted.add(inco);
-        String label = numbered.containsKey(inco) ? "#" + numbered.get(inco) + " " : "";
-
-        switch (inco.cause()) {
-            case Incompatibility.Cause.Derived d -> {
-                renderInco(d.a(), out, prefix, emitted, numbered, palette);
-                renderInco(d.b(), out, prefix, emitted, numbered, palette);
+            Incompatibility rootCause, StringBuilder out, String prefix, Set<Incompatibility> shared, Palette palette) {
+        Map<Incompatibility, Integer> numbered = new IdentityHashMap<>();
+        Set<Incompatibility> emitted = identitySet();
+        Deque<Frame> stack = new ArrayDeque<>();
+        stack.push(new Frame(rootCause, false));
+        while (!stack.isEmpty()) {
+            Frame frame = stack.pop();
+            Incompatibility inco = frame.inco();
+            if (frame.childrenDone()) {
                 out.append(prefix)
-                        .append(label)
+                        .append(label(inco, shared, numbered))
                         .append("Therefore, ")
                         .append(describeConclusion(inco, palette))
                         .append('\n');
+                continue;
             }
+            if (!emitted.add(inco)) {
+                Integer ref = numbered.get(inco);
+                if (ref != null) {
+                    out.append(prefix).append("(see #").append(ref).append(")\n");
+                }
+                continue;
+            }
+            if (inco.cause() instanceof Incompatibility.Cause.Derived d) {
+                stack.push(new Frame(inco, true));
+                stack.push(new Frame(d.b(), false));
+                stack.push(new Frame(d.a(), false));
+                continue;
+            }
+            renderLeaf(inco, out, prefix, label(inco, shared, numbered), palette);
+        }
+    }
+
+    /** The {@code "#n "} prefix of a shared node's line, numbered in print order; empty for any other node. */
+    private static String label(
+            Incompatibility inco, Set<Incompatibility> shared, Map<Incompatibility, Integer> numbered) {
+        if (!shared.contains(inco)) return "";
+        Integer n = numbered.get(inco);
+        if (n == null) {
+            n = numbered.size() + 1;
+            numbered.put(inco, n);
+        }
+        return "#" + n + " ";
+    }
+
+    private static void renderLeaf(
+            Incompatibility inco, StringBuilder out, String prefix, String label, Palette palette) {
+        switch (inco.cause()) {
+            case Incompatibility.Cause.Derived d -> throw new IllegalStateException("derived nodes render by frame");
             case Incompatibility.Cause.Dependency dep -> {
                 // A coordinate keeps its case at the head of the sentence: ch.qos.logback is a
                 // name, and capitalising it spells a group id nothing publishes.

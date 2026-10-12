@@ -375,7 +375,12 @@ public class PubGrubSolver {
         while (!changed.isEmpty()) {
             checkBudget();
             String pkg = removeFirst(changed);
-            for (Incompatibility inco : new ArrayList<>(incompatibilitiesByPackage.getOrDefault(pkg, List.of()))) {
+            List<Incompatibility> clauses = incompatibilitiesByPackage.getOrDefault(pkg, List.of());
+            // The list only grows, and a clause learned mid-round lands past this size; its
+            // packages join the queue, so it is read on their round rather than this one.
+            int known = clauses.size();
+            for (int i = 0; i < known; i++) {
+                Incompatibility inco = clauses.get(i);
                 PartialSolution.Relation rel = solution.relationTo(inco);
                 switch (rel.kind()) {
                     case SATISFIED -> {

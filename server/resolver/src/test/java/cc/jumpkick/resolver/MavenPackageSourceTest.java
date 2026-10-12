@@ -116,6 +116,46 @@ class MavenPackageSourceTest {
                 .contains("2.0");
     }
 
+    @Test
+    void a_version_declared_after_the_catalog_was_read_is_walked_to(@TempDir Path tempDir) throws Exception {
+        Path first = tempDir.resolve("first");
+        Path second = tempDir.resolve("second");
+        writeMetadata(first, "com.foo", "widget", "1.0");
+        writeMetadata(second, "com.foo", "widget", "1.0", "2.0");
+        writePom(first, "com.foo", "app", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.foo</groupId><artifactId>widget</artifactId><version>2.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        Cas cas = new Cas(tempDir.resolve("cache"));
+        MavenRepo a = new MavenRepo("first", first.toUri(), new Http(), cas);
+        MavenRepo b = new MavenRepo("second", second.toUri(), new Http(), cas);
+        RepoGroup repos = new RepoGroup(List.of(a, b));
+        MavenPackageSource src = new MavenPackageSource(repos, new EffectivePomBuilder(repos));
+
+        assertThat(src.versions("com.foo:widget:jar:")).containsExactly("1.0");
+        assertThat(src.expandedVersions("com.foo:widget:jar:")).containsExactly("1.0");
+        src.dependencies("com.foo:app", "1.0");
+
+        assertThat(src.versions("com.foo:widget:jar:"))
+                .as("the edge's version sends the walk on to the second repository")
+                .containsExactly("2.0", "1.0");
+        assertThat(src.expandedVersions("com.foo:widget:jar:")).containsExactly("2.0", "1.0");
+        assertThat(src.versions("com.foo:widget:jar:"))
+                .as("the recomputed list is what the cache now holds")
+                .containsExactly("2.0", "1.0");
+    }
+
+    private static void writePom(Path repoDir, String group, String artifact, String version, String pom)
+            throws Exception {
+        Path dir = repoDir.resolve(group.replace('.', '/')).resolve(artifact).resolve(version);
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve(artifact + "-" + version + ".pom"), pom);
+    }
+
     private static void writeMetadata(Path repoDir, String group, String artifact, String... versions)
             throws Exception {
         Path dir = repoDir.resolve(group.replace('.', '/')).resolve(artifact);
