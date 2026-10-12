@@ -109,6 +109,30 @@ class JavaApIncrementalCompileTest {
     }
 
     /**
+     * Deleting the annotated source itself: Zinc removes the source's own class, and the generated
+     * class it originated must go with it rather than ship in the jar.
+     */
+    @Test
+    void deleting_the_annotated_source_deletes_the_previously_generated_class(@TempDir Path dir) throws Exception {
+        Path worker = workerJar();
+        Path procDir = isolatingProcessor(dir);
+        Project p = new Project(dir, worker, procDir);
+
+        p.write("app/Widget.java", widget("one"));
+        p.write("app/Other.java", "package app; public class Other {}");
+        assertThat(p.build().success()).isTrue();
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+
+        p.delete("app/Widget.java");
+        assertThat(p.build().success()).isTrue();
+        assertThat(p.classFile("app/Other.class")).isRegularFile();
+        assertThat(p.classFile("app/Widget.class")).doesNotExist();
+        assertThat(p.classFile("app/WidgetGen.class"))
+                .as("stale generated class must be pruned once its origin is deleted")
+                .doesNotExist();
+    }
+
+    /**
      *: a processor that writes a file with no originating elements (arity 0 — a common
      * META-INF/services writer) has unknown provenance and must be treated as aggregating (full
      * rebuild), not silently classified isolating.
@@ -168,6 +192,10 @@ class JavaApIncrementalCompileTest {
             Path f = srcRoot.resolve(rel);
             Files.createDirectories(f.getParent());
             Files.writeString(f, body);
+        }
+
+        void delete(String rel) throws IOException {
+            Files.delete(srcRoot.resolve(rel));
         }
 
         Path classFile(String rel) {

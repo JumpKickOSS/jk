@@ -42,24 +42,31 @@ final class GeneratedProvenance {
     }
 
     /**
-     * Reconcile annotation-processor outputs against the previous build's provenance. For every
-     * generated file recorded last time whose origins were <em>all</em> recompiled this run but which
-     * was <em>not</em> regenerated, delete the generated source and its class files (an isolating
-     * processor that stopped generating it — e.g. its annotation was removed). Then persist the
-     * merged provenance for the next build.
+     * Reconcile annotation-processor outputs against the previous build's provenance, then persist
+     * the merged map for the next build. A generated file recorded last time and not regenerated
+     * this run is stale once none of its origins can still vouch for it: an origin that was
+     * recompiled this run had its chance to regenerate the file, and an origin no longer in
+     * {@code sources} was deleted. Its generated source and class files are deleted. A row with no
+     * origins is dropped from the map, since nothing can attribute the file. A row whose origin
+     * is present and was not recompiled is kept as is.
      *
      * <p>Every path that takes part in a comparison below goes through one {@link Canon} first.
-     * Each question asked here — was this source recompiled, was this file regenerated, is it under
-     * my own output root — is "are these two names the same file", and only a link-resolved form
-     * answers it.
+     * Each question asked here — is this source still present, was it recompiled, was this file
+     * regenerated, is it under my own output root — is "are these two names the same file", and
+     * only a link-resolved form answers it.
      */
     void reconcile(
-            @Nullable Path sourceOutput, Path classOutput, List<Path> compiledSources, Map<Path, Set<Path>> newProv)
+            @Nullable Path sourceOutput,
+            Path classOutput,
+            List<Path> sources,
+            List<Path> compiledSources,
+            Map<Path, Set<Path>> newProv)
             throws IOException {
         Canon canon = new Canon(sourceOutput == null ? List.of(classOutput) : List.of(sourceOutput, classOutput));
         Path srcRoot = sourceOutput == null ? null : canon.canonical(sourceOutput);
         Path classRoot = canon.canonical(classOutput);
         Map<Path, Set<Path>> prev = read(canon);
+        Set<Path> present = canon.all(sources);
         Set<Path> recompiled = canon.all(compiledSources);
         Set<Path> regenerated = canon.all(newProv.keySet()); // this run's generated files
 
@@ -68,11 +75,11 @@ final class GeneratedProvenance {
             Path gen = e.getKey(); // canonical on read
             Set<Path> origins = e.getValue();
             if (regenerated.contains(gen)) continue; // regenerated this run — newProv is authoritative
-            boolean allRecompiled = !origins.isEmpty() && recompiled.containsAll(origins);
-            if (allRecompiled) {
-                deleteOutputs(gen, srcRoot, classRoot); // no longer generated → prune
+            if (origins.isEmpty()) continue; // nothing attributes it — drop the row
+            if (origins.stream().allMatch(o -> recompiled.contains(o) || !present.contains(o))) {
+                deleteOutputs(gen, srcRoot, classRoot); // no origin can vouch for it any more → prune
             } else {
-                merged.put(gen, origins); // owned by a source that was not recompiled — keep
+                merged.put(gen, origins); // owned by a present source that was not recompiled — keep
             }
         }
         for (Map.Entry<Path, Set<Path>> e : newProv.entrySet()) {
