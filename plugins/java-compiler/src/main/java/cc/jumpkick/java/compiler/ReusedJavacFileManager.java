@@ -50,6 +50,9 @@ final class ReusedJavacFileManager {
     private @Nullable StandardJavaFileManager fm;
     private @Nullable Charset encoding;
 
+    /** Every option-set location a compile has declared on the held manager since it was built. */
+    private final Set<StandardLocation> carried = EnumSet.noneOf(StandardLocation.class);
+
     private ReusedJavacFileManager() {}
 
     /**
@@ -58,9 +61,9 @@ final class ReusedJavacFileManager {
      * the charset a manager is constructed with is what decodes sources and cannot be changed after.
      *
      * <p>{@code declared} names the path locations the compile about to run sets through its own
-     * options: {@code -processorpath}, {@code --module-path}, {@code --patch-module}. If the held
-     * manager still carries one the compile never asked for, that manager is thrown away rather than
-     * handed over — see {@link #staleLocation}.
+     * options ({@link ProvenanceJavac#declaredLocations}). If the held manager still carries one the
+     * compile never asked for, that manager is thrown away rather than handed over — see
+     * {@link #staleLocation}.
      */
     static StandardJavaFileManager acquire(
             JavaCompiler javac,
@@ -70,11 +73,21 @@ final class ReusedJavacFileManager {
         return PER_THREAD.get().get(javac, encoding, diags, declared);
     }
 
-    /** The option-set locations a held manager may carry over from an earlier compile. */
+    /**
+     * The option-set locations a held manager may carry over from an earlier compile, each one
+     * reported by {@link StandardJavaFileManager#hasLocation} only once set. {@code SYSTEM_MODULES}
+     * is not among them: a fresh manager already reports it set, defaulting to the running JDK, so
+     * a carried {@code --system} is known only from the compile that declared it.
+     */
     static final Set<StandardLocation> OPTION_LOCATIONS = EnumSet.of(
+            StandardLocation.SOURCE_PATH,
+            StandardLocation.MODULE_SOURCE_PATH,
             StandardLocation.ANNOTATION_PROCESSOR_PATH,
+            StandardLocation.ANNOTATION_PROCESSOR_MODULE_PATH,
             StandardLocation.MODULE_PATH,
-            StandardLocation.PATCH_MODULE_PATH);
+            StandardLocation.UPGRADE_MODULE_PATH,
+            StandardLocation.PATCH_MODULE_PATH,
+            StandardLocation.NATIVE_HEADER_OUTPUT);
 
     private StandardJavaFileManager get(
             JavaCompiler javac,
@@ -84,27 +97,35 @@ final class ReusedJavacFileManager {
         relay.to = diags;
         StandardJavaFileManager current = fm;
         if (current != null && wanted.equals(encoding) && !staleLocation(current, declared)) {
+            carried.addAll(declared);
             return current;
         }
         close(current);
         StandardJavaFileManager fresh = javac.getStandardFileManager(relay, Locale.ROOT, wanted);
         fm = fresh;
         encoding = wanted;
+        carried.clear();
+        carried.addAll(declared);
         return fresh;
     }
 
     /**
-     * Whether the held manager carries a path location the compile about to run never asked for.
+     * Whether the held manager carries a path location the compile about to run never asked for:
+     * one an earlier compile declared, or one the manager reports set.
      *
      * <p>Such a manager has to be discarded rather than corrected, because a location cannot be put
      * back to "never set": clearing the processor path with a null leaves javac treating it as
      * declared and empty, which stops it falling back to the compile classpath for {@code -proc:full}
      * discovery. Leaving it alone instead is worse — the compile would silently run the previous
-     * module's processors, or resolve the previous module's module path and patches, in a build that
-     * never asked for them. Discarding costs one manager on a transition between a module with the
-     * location and one without, and nothing on a run of either kind.
+     * module's processors, resolve a type from the previous module's source path, or read its module
+     * path, patches or system image, in a build that never asked for them. Discarding costs one
+     * manager on a transition between a module with the location and one without, and nothing on a
+     * run of either kind.
      */
-    private static boolean staleLocation(StandardJavaFileManager held, Set<StandardLocation> declared) {
+    private boolean staleLocation(StandardJavaFileManager held, Set<StandardLocation> declared) {
+        for (StandardLocation location : carried) {
+            if (!declared.contains(location)) return true;
+        }
         for (StandardLocation location : OPTION_LOCATIONS) {
             if (!declared.contains(location) && held.hasLocation(location)) return true;
         }

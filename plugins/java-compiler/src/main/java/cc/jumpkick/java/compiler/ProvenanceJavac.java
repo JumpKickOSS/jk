@@ -165,14 +165,23 @@ final class ProvenanceJavac implements JavaCompiler {
         }
     }
 
-    /** The path locations this compile's options set: processor path, module path, patched modules. */
+    /**
+     * The path locations this compile's options set on the file manager, other than the class
+     * path and the two outputs, which every compile sets.
+     */
     static Set<StandardLocation> declaredLocations(String[] options) {
         Set<StandardLocation> declared = EnumSet.noneOf(StandardLocation.class);
         for (String option : options) {
             switch (option) {
+                case "-sourcepath", "--source-path" -> declared.add(StandardLocation.SOURCE_PATH);
+                case "--module-source-path" -> declared.add(StandardLocation.MODULE_SOURCE_PATH);
                 case "-processorpath", "--processor-path" -> declared.add(StandardLocation.ANNOTATION_PROCESSOR_PATH);
+                case "--processor-module-path" -> declared.add(StandardLocation.ANNOTATION_PROCESSOR_MODULE_PATH);
                 case "--module-path", "-p" -> declared.add(StandardLocation.MODULE_PATH);
+                case "--upgrade-module-path" -> declared.add(StandardLocation.UPGRADE_MODULE_PATH);
                 case "--patch-module" -> declared.add(StandardLocation.PATCH_MODULE_PATH);
+                case "--system" -> declared.add(StandardLocation.SYSTEM_MODULES);
+                case "-h" -> declared.add(StandardLocation.NATIVE_HEADER_OUTPUT);
                 default -> {}
             }
         }

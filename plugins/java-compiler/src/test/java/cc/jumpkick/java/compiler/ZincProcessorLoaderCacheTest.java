@@ -27,8 +27,8 @@ class ZincProcessorLoaderCacheTest {
     void the_same_processor_path_is_loaded_once(@TempDir Path tmp) throws Exception {
         Path procDir = writeGeneratingProcessor(tmp.resolve("proc"));
 
-        ZincJavaCompiler.ProcessorLoad first = ZincJavaCompiler.processorsFor(List.of(procDir));
-        ZincJavaCompiler.ProcessorLoad second = ZincJavaCompiler.processorsFor(List.of(procDir));
+        ZincJavaCompiler.ProcessorLoad first = load(procDir);
+        ZincJavaCompiler.ProcessorLoad second = load(procDir);
 
         assertThat(first.any()).isTrue();
         assertThat(second.loader()).isSameAs(first.loader());
@@ -40,8 +40,8 @@ class ZincProcessorLoaderCacheTest {
         Path one = writeGeneratingProcessor(tmp.resolve("one"));
         Path two = writeGeneratingProcessor(tmp.resolve("two"));
 
-        ZincJavaCompiler.ProcessorLoad first = ZincJavaCompiler.processorsFor(List.of(one));
-        ZincJavaCompiler.ProcessorLoad second = ZincJavaCompiler.processorsFor(List.of(two));
+        ZincJavaCompiler.ProcessorLoad first = load(one);
+        ZincJavaCompiler.ProcessorLoad second = load(two);
 
         assertThat(second.loader()).isNotSameAs(first.loader());
     }
@@ -49,8 +49,8 @@ class ZincProcessorLoaderCacheTest {
     /** No processor path is not a cache key: it stays the shared empty load. */
     @Test
     void no_processor_path_loads_nothing() {
-        assertThat(ZincJavaCompiler.processorsFor(List.of()).loader()).isNull();
-        assertThat(ZincJavaCompiler.processorsFor(List.of()).any()).isFalse();
+        assertThat(ZincJavaCompiler.processorsFor(List.of(), "").loader()).isNull();
+        assertThat(ZincJavaCompiler.processorsFor(List.of(), "").any()).isFalse();
     }
 
     /**
@@ -68,6 +68,22 @@ class ZincProcessorLoaderCacheTest {
 
         assertThat(firstOut.resolve("gen/Generated.class")).exists();
         assertThat(secondOut.resolve("gen/Generated.class")).exists();
+    }
+
+    /** A processor whose classes were rewritten under the same path is loaded again, not served from the cache. */
+    @Test
+    void a_processor_rewritten_in_place_gets_a_fresh_loader(@TempDir Path tmp) throws Exception {
+        Path procDir = writeGeneratingProcessor(tmp.resolve("proc"));
+        ZincJavaCompiler.ProcessorLoad first = load(procDir);
+
+        Files.writeString(procDir.resolve("note.txt"), "rewritten");
+
+        assertThat(load(procDir).loader()).isNotSameAs(first.loader());
+    }
+
+    private static ZincJavaCompiler.ProcessorLoad load(Path procDir) throws Exception {
+        List<Path> path = List.of(procDir);
+        return ZincJavaCompiler.processorsFor(path, ZincWorkdir.processorDigest(path));
     }
 
     /** One compile of a single source in its own package, returning the class output directory. */

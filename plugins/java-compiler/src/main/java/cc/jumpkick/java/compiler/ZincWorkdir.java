@@ -45,11 +45,13 @@ final class ZincWorkdir {
     private final Path analysisFile;
     private final Path aggregatingMarker;
     private final Path analysisOffMarker;
+    private final Path processorsMarker;
 
     private ZincWorkdir(Path workdir) {
         this.analysisFile = workdir.resolve("zinc");
         this.aggregatingMarker = workdir.resolve("aggregating");
         this.analysisOffMarker = workdir.resolve("analysis-off");
+        this.processorsMarker = workdir.resolve("processors");
     }
 
     static ZincWorkdir of(Path workdir) {
@@ -91,6 +93,51 @@ final class ZincWorkdir {
     }
 
     /**
+     * True when the processor path's contents differ from what the analysis was last written
+     * against ({@link #processorDigest}). Zinc's setup records the processor path as strings, so a
+     * processor rebuilt in place under the same path — a sibling module's {@code target/classes} —
+     * would otherwise invalidate nothing and its consumers' generated code would stay stale.
+     */
+    boolean processorsChanged(String processorDigest) {
+        try {
+            String recorded = Files.isRegularFile(processorsMarker)
+                    ? Files.readString(processorsMarker).strip()
+                    : "";
+            return !recorded.equals(processorDigest);
+        } catch (IOException e) {
+            return true;
+        }
+    }
+
+    /** {@link #processorsChanged(String)} over the path itself; a path that cannot be read counts as changed. */
+    boolean processorsChanged(List<Path> processorPath) {
+        try {
+            return processorsChanged(processorDigest(processorPath));
+        } catch (IOException e) {
+            return true;
+        }
+    }
+
+    /** A changed processor path invalidates every generated class, so drop the analysis outright. */
+    void discardAnalysisIfProcessorsChanged(String processorDigest) throws IOException {
+        if (processorsChanged(processorDigest)) Files.deleteIfExists(analysisFile);
+    }
+
+    /** Record the processor path the analysis just written was compiled with; no marker means no processors. */
+    void markProcessors(String processorDigest) throws IOException {
+        if (processorDigest.isEmpty()) {
+            Files.deleteIfExists(processorsMarker);
+        } else {
+            Files.writeString(processorsMarker, processorDigest + "\n");
+        }
+    }
+
+    /** {@link #classpathDigest} over the processor path; the empty string when there is none. */
+    static String processorDigest(List<Path> processorPath) throws IOException {
+        return processorPath.isEmpty() ? "" : classpathDigest(processorPath);
+    }
+
+    /**
      * The type Zinc's Java analysis could not load with this worker's JDK the last time it ran here
      * over a classpath digesting to {@code classpathDigest}, or empty when the analysis runs. While
      * set, every compile in this workdir over that classpath is a full javac run with no analysis.
@@ -123,11 +170,11 @@ final class ZincWorkdir {
     }
 
     /**
-     * What a compile classpath looks like right now, as one digest: each entry's path, then for a
-     * jar its size and mtime and for a classes directory the sorted (relative path, size, mtime) of
-     * every file in it; an absent entry digests as absent. Cheap against reading the bytes, and
-     * different whenever a compiler rewrote, added or deleted a class an entry holds or the lock
-     * moved a jar.
+     * What a compile or processor path looks like right now, as one digest: each entry's path, then
+     * for a jar its size and mtime and for a classes directory the sorted (relative path, size,
+     * mtime) of every file in it; an absent entry digests as absent. Cheap against reading the
+     * bytes, and different whenever a compiler rewrote, added or deleted a class an entry holds or
+     * the lock moved a jar.
      */
     static String classpathDigest(List<Path> classpath) throws IOException {
         MessageDigest digest = Hashing.newSha256();
