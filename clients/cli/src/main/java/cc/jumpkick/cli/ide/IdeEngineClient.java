@@ -394,7 +394,7 @@ public class IdeEngineClient {
 
     /**
      * Best-effort cancel of engine jobs under this project (and optional module dir). Used by BSP
-     * {@code build/cancel}. Does not spawn an engine solely to cancel.
+     * {@code $/cancelRequest}. Does not spawn an engine solely to cancel.
      */
     public void cancel(@Nullable Path moduleDir) {
         Path dir = moduleDir != null ? moduleDir.toAbsolutePath().normalize() : projectDir;

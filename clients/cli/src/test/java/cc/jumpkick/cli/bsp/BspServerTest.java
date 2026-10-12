@@ -12,6 +12,8 @@ import cc.jumpkick.wire.protocol.RequestEnvironment;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -302,8 +304,9 @@ class BspServerTest {
 
     /**
      * A second compile queues behind the running one without blocking the stdio reader, so a
-     * {@code build/cancel} sent behind it is read while the first job is still in flight: the queued
-     * request is answered as cancelled before it starts, and the running one finishes as usual.
+     * {@code $/cancelRequest} sent behind it is read while the first job is still in flight: the
+     * queued request is answered as cancelled before it starts, and the running one finishes as
+     * usual.
      */
     @Test
     void a_cancel_behind_a_queued_request_is_read_while_the_first_job_runs(@TempDir Path dir) throws Exception {
@@ -336,7 +339,7 @@ class BspServerTest {
         String session = frame(init(1))
                 + frame(compile(2))
                 + frame(compile(3))
-                + frame("{\"jsonrpc\":\"2.0\",\"method\":\"build/cancel\",\"params\":{\"id\":3}}")
+                + frame(cancelRequest(3))
                 + frame(shutdown(4))
                 + frame(exit());
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -369,6 +372,78 @@ class BspServerTest {
         assertThat(responses).contains("\"id\":4");
     }
 
+    /**
+     * A {@code $/cancelRequest} for the compile in flight reaches the engine: the job is cancelled
+     * there and interrupted, and its reply is the job's own, not a {@code -32800}. The cancel is
+     * written only once the compile has started, so it cannot refuse the request before it runs.
+     */
+    @Test
+    void a_cancel_for_the_running_request_cancels_it_on_the_engine(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                java = 25
+                """);
+        CountDownLatch running = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        List<Path> enginesCancelled = new CopyOnWriteArrayList<>();
+        IdeEngineClient ide = new IdeEngineClient(dir, dir.resolve("cache"), null) {
+            @Override
+            public BuildOutcome buildModule(@Nullable Path moduleDir, @Nullable BuildListener listener) {
+                running.countDown();
+                try {
+                    release.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return new BuildOutcome(false, 0, 0, List.of());
+                }
+                return new BuildOutcome(true, 1, 0, List.of());
+            }
+
+            @Override
+            public void cancel(@Nullable Path moduleDir) {
+                enginesCancelled.add(moduleDir == null ? dir : moduleDir);
+            }
+        };
+        PipedOutputStream client = new PipedOutputStream();
+        PipedInputStream serverIn = new PipedInputStream(client, 1 << 16);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Thread server = Thread.ofPlatform().daemon().start(() -> {
+            try {
+                new BspServer(ide, serverIn, out).serve();
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        try (client) {
+            send(client, frame(init(1)) + frame(compile(2)));
+            assertThat(running.await(10, TimeUnit.SECONDS))
+                    .as("the compile runs")
+                    .isTrue();
+            send(client, frame(cancelRequest(2)));
+            String reply = awaitResponse(out, 2);
+            assertThat(enginesCancelled)
+                    .as("the running job is cancelled on the engine, under its module dir")
+                    .containsExactly(dir);
+            assertThat(reply)
+                    .as("a running job answers with its own result, not as refused")
+                    .doesNotContain("-32800")
+                    .contains("\"statusCode\":2");
+            send(client, frame(shutdown(3)) + frame(exit()));
+        } finally {
+            release.countDown();
+        }
+        server.join(TimeUnit.SECONDS.toMillis(10));
+        assertThat(server.isAlive()).isFalse();
+        assertThat(out.toString(StandardCharsets.UTF_8)).contains("\"id\":3");
+    }
+
+    private static void send(PipedOutputStream client, String frames) throws IOException {
+        client.write(frames.getBytes(StandardCharsets.UTF_8));
+        client.flush();
+    }
+
     /** The response frame with {@code id}, polled for up to ten seconds. */
     private static String awaitResponse(ByteArrayOutputStream out, int id) throws InterruptedException {
         String needle = "\"id\":" + id;
@@ -388,6 +463,10 @@ class BspServerTest {
     private static String compile(int id) {
         return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"buildTarget/compile\","
                 + "\"params\":{\"targets\":[{\"uri\":\"file:///x#root\"}]}}";
+    }
+
+    private static String cancelRequest(int id) {
+        return "{\"jsonrpc\":\"2.0\",\"method\":\"$/cancelRequest\",\"params\":{\"id\":" + id + "}}";
     }
 
     private static String init(int id) {

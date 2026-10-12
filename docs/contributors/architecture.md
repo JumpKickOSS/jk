@@ -611,11 +611,14 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 
 The method set is `BspServer`'s dispatch — `build/initialize` and `build/initialized`,
 `workspace/buildTargets` and `workspace/reload`, `buildTarget/sources`, `dependencyModules`,
-`outputPaths`, `compile`, `test` and `run`, `build/cancel`, `build/shutdown`, `build/exit`, plus the
-`build/publishDiagnostics` and `build/logMessage` notifications. Reads answer from `projectInfo` +
-`ideModel`; `compile`/`test`/`run` are engine jobs through `IdeEngineClient`. The user-facing
-capability table, including what is deliberately not implemented (a debug adapter), is
-[docs/user/ide.md](../user/ide.md) — one owner, so this page does not carry a second copy to drift.
+`outputPaths`, `compile`, `test` and `run`, `build/shutdown`, `build/exit`, the JSON-RPC
+`$/cancelRequest` notification, plus the `build/publishDiagnostics` and `build/logMessage`
+notifications. Reads answer from `projectInfo` + `ideModel`; `compile`/`test`/`run` are engine jobs
+through `IdeEngineClient`, queued one at a time on a worker so the stdio reader stays free to read
+a `$/cancelRequest` for the job in flight (cancelled on the engine) or for one still queued
+(answered `-32800`). The user-facing capability table, including what is deliberately not
+implemented (a debug adapter), is [docs/user/ide.md](../user/ide.md) — one owner, so this page does
+not carry a second copy to drift.
 
 **IDE file generators** live in `shared/ide` (`cc.jumpkick.ide`): `IdeModel.fromWire` rebuilds the
 `ide-model` record, `IdeGenerators` runs the IntelliJ and VS Code generators through an `IdeOutput`

@@ -42,10 +42,11 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Targets, sources (incl. resources), dependency modules (with sources jars when present),
  * dependency sources, output paths, scalac and javac options, compile/test/run by target URI,
- * workspace/reload, build/cancel, and publishDiagnostics on compile failures. A module that
- * compiles Scala is a Scala build target ({@link BspTargetOptions}), which is how Metals imports
- * a mixed Java/Scala module. Compile, test and run queue on a worker, one at a time in request
- * order, so the stdio loop keeps reading and {@code build/cancel} reaches a running or queued job.
+ * workspace/reload, {@code $/cancelRequest}, and publishDiagnostics on compile failures. A module
+ * that compiles Scala is a Scala build target ({@link BspTargetOptions}), which is how Metals
+ * imports a mixed Java/Scala module. Compile, test and run queue on a worker, one at a time in
+ * request order, so the stdio loop keeps reading and a {@code $/cancelRequest} reaches a running or
+ * queued job.
  */
 public final class BspServer {
 
@@ -129,10 +130,7 @@ public final class BspServer {
                 case "buildTarget/compile" -> scheduleLong(id, json, "compile");
                 case "buildTarget/test" -> scheduleLong(id, json, "test");
                 case "buildTarget/run" -> scheduleLong(id, json, "run");
-                case "build/cancel" -> {
-                    cancel(message);
-                    if (id != null) respond(id, "null");
-                }
+                case "$/cancelRequest" -> cancel(message);
                 case "build/shutdown" -> {
                     awaitJobs();
                     worker.shutdownNow();
@@ -167,7 +165,7 @@ public final class BspServer {
 
     /**
      * Queue a compile/test/run on the worker behind the requests before it. The reader never waits
-     * for a job, so a {@code build/cancel} framed behind this request is read while it runs.
+     * for a job, so a {@code $/cancelRequest} framed behind this request is read while it runs.
      */
     private void scheduleLong(@Nullable String id, String requestJson, String kind) throws IOException {
         if (id == null) return;
@@ -187,13 +185,15 @@ public final class BspServer {
     }
 
     /**
-     * {@code build/cancel}: {@code params.id} names one compile/test/run request, running or still
-     * queued; without an id every outstanding request is cancelled.
+     * The JSON-RPC {@code $/cancelRequest} notification: {@code params.id} names one compile/test/run
+     * request, running or still queued. A read request has already answered by the time its cancel
+     * is read, and a notification without an id names nothing, so both are ignored.
      */
     private void cancel(@Nullable Object message) throws IOException {
         String target = requestId(MiniJson.get(message, "params"));
+        if (target == null) return;
         for (LongJob job : outstanding()) {
-            if (target == null || target.equals(job.id)) job.cancel();
+            if (target.equals(job.id)) job.cancel();
         }
     }
 
