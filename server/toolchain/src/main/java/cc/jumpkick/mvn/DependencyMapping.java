@@ -5,6 +5,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.MavenMetaversion;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.Pom;
@@ -178,7 +179,7 @@ final class DependencyMapping {
         if (type == null
                 || JAR_TYPES.contains(type)
                 || CLASSIFIED_TYPES.containsKey(type)
-                || "test-jar".equals(type)
+                || PackageId.TEST_JAR_TYPE.equals(type)
                 || "pom".equals(type)) {
             return null;
         }
@@ -196,7 +197,7 @@ final class DependencyMapping {
      * jk.toml that the parser rejects outside test scopes.
      */
     static boolean isTestJar(Pom.Dep dep) {
-        return dep.type() != null && "test-jar".equalsIgnoreCase(dep.type());
+        return dep.type() != null && PackageId.TEST_JAR_TYPE.equalsIgnoreCase(dep.type());
     }
 
     /**

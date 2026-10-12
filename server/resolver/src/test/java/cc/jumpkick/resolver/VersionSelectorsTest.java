@@ -41,7 +41,9 @@ class VersionSelectorsTest {
     void caret_with_zero_major_bumps_minor() {
         VersionSet set = VersionSelectors.caretRange("0.2.3");
         assertThat(set.contains("0.2.5")).isTrue();
+        assertThat(set.contains("0.2.5-RC1")).isTrue();
         assertThat(set.contains("0.3.0")).isFalse();
+        assertThat(set.contains("0.3.0-RC1")).isFalse();
     }
 
     @Test
@@ -49,6 +51,49 @@ class VersionSelectorsTest {
         VersionSet set = VersionSelectors.caretRange("0.0.3");
         assertThat(set.contains("0.0.3")).isTrue();
         assertThat(set.contains("0.0.4")).isFalse();
+        assertThat(set.contains("0.0.4-alpha")).isFalse();
+    }
+
+    @Test
+    void caret_excludes_the_next_majors_pre_releases() {
+        // Maven orders 2.0.0-RC1 below 2.0.0, so an upper bound at the release alone lets a
+        // transitive bare 2.0.0-RC1 intersect ^1.2.3 to a non-empty set.
+        VersionSet set = VersionSelectors.caretRange("1.2.3");
+        assertThat(set.contains("2.0.0-RC1")).isFalse();
+        assertThat(set.contains("2.0.0-alpha")).isFalse();
+        assertThat(set.contains("2.0.0-M1")).isFalse();
+        assertThat(set.contains("2.0.0-SNAPSHOT")).isFalse();
+        assertThat(set.contains("2.0-alpha1")).isFalse();
+        assertThat(set.contains("2-beta")).isFalse();
+        assertThat(set.contains("2.0.0")).isFalse();
+        assertThat(set.contains("2.0.1")).isFalse();
+        assertThat(set.intersect(VersionSet.atLeast("2.0.0-RC1", true)).isEmpty())
+                .isTrue();
+        // Pre-releases inside the line still resolve.
+        assertThat(set.contains("1.3.0-RC1")).isTrue();
+        assertThat(set.contains("1.9.9")).isTrue();
+        assertThat(set.contains("1.99.0-M1")).isTrue();
+    }
+
+    @Test
+    void tilde_excludes_the_next_minors_pre_releases() {
+        VersionSet set = VersionSelectors.tildeRange("1.2.3");
+        assertThat(set.contains("1.3.0-M1")).isFalse();
+        assertThat(set.contains("1.3.0-alpha")).isFalse();
+        assertThat(set.contains("1.3-RC1")).isFalse();
+        assertThat(set.contains("1.3.0")).isFalse();
+        assertThat(set.contains("1.2.9-RC1")).isTrue();
+        assertThat(set.contains("1.2.9")).isTrue();
+
+        VersionSet major = VersionSelectors.tildeRange("1");
+        assertThat(major.contains("1.9.9")).isTrue();
+        assertThat(major.contains("2.0.0-RC1")).isFalse();
+        assertThat(major.contains("2-alpha")).isFalse();
+
+        VersionSet minor = VersionSelectors.tildeRange("1.2");
+        assertThat(minor.contains("1.2.9")).isTrue();
+        assertThat(minor.contains("1.3-M1")).isFalse();
+        assertThat(minor.contains("1.3.0-M1")).isFalse();
     }
 
     @Test

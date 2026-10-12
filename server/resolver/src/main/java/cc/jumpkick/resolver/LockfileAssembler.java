@@ -158,7 +158,7 @@ final class LockfileAssembler {
         for (Scope scope : scopes) {
             Set<String> rootModules = new HashSet<>();
             for (Dependency d : project.dependencies().of(scope)) {
-                // packageKey: kind=tests → g:a:test-jar:tests; else g:a:jar:
+                // packageKey: kind=tests → g:a:jar:tests; else g:a:jar:
                 rootModules.add(d.packageKey());
             }
             if (includeJunitSeeds && scope == Scope.TEST) {

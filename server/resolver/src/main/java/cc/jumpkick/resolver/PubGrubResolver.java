@@ -139,7 +139,7 @@ public final class PubGrubResolver implements Resolver {
         List<Term> rootTerms = new ArrayList<>(roots.size());
         Map<String, String> rootDepNames = new HashMap<>();
         for (Dependency dep : roots) {
-            // Declared GAs → g:a:jar:; kind=tests → g:a:test-jar:tests.
+            // Declared GAs → g:a:jar:; kind=tests → g:a:jar:tests.
             String pkg = dep.packageKey();
             rootTerms.add(Term.positive(pkg, VersionSelectors.toVersionSet(dep.version())));
             // Skip workspace placeholders — they never hit the network so

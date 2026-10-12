@@ -29,12 +29,27 @@ class PackageIdTest {
 
     @Test
     void withVersion_carries_classifier_and_type() {
-        Coordinate c = PackageId.parse("g:a:test-jar:tests").withVersion("1.2.3");
+        Coordinate c = PackageId.parse("g:a:aar:linux").withVersion("1.2.3");
         assertThat(c.group()).isEqualTo("g");
         assertThat(c.artifact()).isEqualTo("a");
         assertThat(c.version()).isEqualTo("1.2.3");
+        assertThat(c.classifier()).isEqualTo("linux");
+        assertThat(c.type()).isEqualTo("aar");
+    }
+
+    @Test
+    void test_jar_type_is_the_jar_under_the_tests_classifier() {
+        // Maven never writes a classifier on a <type>test-jar</type> edge; the tests classifier is implied.
+        assertThat(PackageId.of("g", "a", "test-jar", "").key()).isEqualTo("g:a:jar:tests");
+        assertThat(PackageId.of("g", "a", "test-jar", "tests").key()).isEqualTo("g:a:jar:tests");
+        assertThat(PackageId.testJar("g", "a").key()).isEqualTo("g:a:jar:tests");
+        assertThat(PackageId.parse("g:a:test-jar:").key()).isEqualTo("g:a:jar:tests");
+        assertThat(PackageId.parse("g:a:test-jar")).isEqualTo(PackageId.of("g", "a", "jar", "tests"));
+        // An explicit classifier on the test-jar type names that classified jar, as Maven reads it.
+        assertThat(PackageId.of("g", "a", "test-jar", "it").key()).isEqualTo("g:a:jar:it");
+        Coordinate c = PackageId.testJar("g", "a").withVersion("1.2.3");
+        assertThat(c.type()).isEqualTo("jar");
         assertThat(c.classifier()).isEqualTo("tests");
-        assertThat(c.type()).isEqualTo("test-jar");
     }
 
     @Test

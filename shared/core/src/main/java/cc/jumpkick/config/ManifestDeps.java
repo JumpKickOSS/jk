@@ -390,7 +390,7 @@ public final class ManifestDeps {
                         + ".kind = \"tests\" requires `workspace = true` or a Maven"
                         + " coordinate (got git/path/file source)");
             }
-            // Maven GA only (group:artifact). packageKey maps this to g:a:test-jar:tests.
+            // Maven GA only (group:artifact). packageKey maps this to g:a:jar:tests.
             String mod = dep.module();
             if (mod == null || mod.indexOf(':') <= 0 || mod.indexOf(':') != mod.lastIndexOf(':')) {
                 throw new JkBuildParseException(displayPath

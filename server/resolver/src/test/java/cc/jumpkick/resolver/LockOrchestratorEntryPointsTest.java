@@ -334,7 +334,7 @@ class LockOrchestratorEntryPointsTest {
                         .withKind(DependencyKind.TESTS))));
         assertThatThrownBy(() -> new LockOrchestrator(repos(dir.resolve("tests"))).lock(tests, "test"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("could not fetch artifact com.foo:ghost:1.0 type=test-jar classifier=tests"
+                .hasMessage("could not fetch artifact com.foo:ghost:1.0 classifier=tests"
                         + " at com/foo/ghost/1.0/ghost-1.0-tests.jar (tried: "
                         + repo
                         + "com/foo/ghost/1.0/ghost-1.0-tests.jar) — the POM resolved but the artifact is missing;"

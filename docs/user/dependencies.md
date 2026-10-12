@@ -75,7 +75,9 @@ unless `--library` names one. `jk format` never rewrites one spelling into anoth
 the module (`natives-linux`, `linux-x86_64`); the solver and the lock key that edge as
 `group:artifact:jar:classifier`, so the plain jar and a classified twin are two entries under two
 handles. It applies to a Maven coordinate only, and `kind = "tests"` already names the test-jar's
-`tests` classifier, so the two do not combine.
+`tests` classifier, so the two do not combine: a `kind = "tests"` entry, a POM edge of
+`<type>test-jar</type>` and a `tests` classifier are the one package `group:artifact:jar:tests`,
+fetched as `artifact-version-tests.jar`.
 
 Version syntax: [Projects](projects.md#version-strings). Scopes:
 [Projects](projects.md#dependency-scopes).

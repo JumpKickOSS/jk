@@ -6,8 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.resolver.pubgrub.InMemoryPackageSource;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
@@ -57,6 +59,29 @@ class ClassifierPackageIdentityTest {
         assertThat(MavenPackageSource.packageKey(testJar))
                 .as("a secondary artifact type is still its own package")
                 .isNotEqualTo(MavenPackageSource.packageKey(bare));
+    }
+
+    @Test
+    void a_test_jar_edge_without_a_classifier_is_the_tests_classified_jar() {
+        // Maven writes <type>test-jar</type> and no classifier; the artifact is a-v-tests.jar, the
+        // package a manifest `kind = "tests"` root names. Keyed apart, the two solve to two versions
+        // and the POM edge's row fetches the main jar under a test-jar name.
+        Pom.Dep pomEdge = new Pom.Dep("com.acme", "helpers", "1.0", "test", false, null, "test-jar", List.of());
+        Pom.Dep classified = new Pom.Dep("com.acme", "helpers", "1.0", "test", false, "tests", "jar", List.of());
+        Dependency root = Dependency.of("helpers-tests", "com.acme:helpers", VersionSelector.parse("=1.0"))
+                .withKind(DependencyKind.TESTS);
+        assertThat(MavenPackageSource.packageKey(pomEdge))
+                .isEqualTo("com.acme:helpers:jar:tests")
+                .isEqualTo(root.packageKey())
+                .isEqualTo(MavenPackageSource.packageKey(classified));
+        var art = new Lockfile.Artifact(
+                MavenPackageSource.packageKey(pomEdge),
+                "1.0",
+                "central+https://repo1.maven.org/maven2/",
+                "sha256:" + "a".repeat(64),
+                null,
+                List.of());
+        assertThat(MavenLayout.artifactPath(art.coordinate())).isEqualTo("com/acme/helpers/1.0/helpers-1.0-tests.jar");
     }
 
     @Test

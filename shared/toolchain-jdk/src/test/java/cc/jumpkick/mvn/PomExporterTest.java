@@ -171,7 +171,7 @@ class PomExporterTest {
                 b,
                 Map.of(
                         "com.google.guava:guava:jar:", "33.4.0-jre",
-                        "com.acme:helpers:test-jar:tests", "1.2.3"));
+                        "com.acme:helpers:jar:tests", "1.2.3"));
 
         assertThat(result.xml()).contains("<version>33.4.0-jre</version>");
         assertThat(result.xml()).contains("<version>1.2.3</version>");

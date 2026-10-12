@@ -60,12 +60,12 @@ class DependencyTest {
     }
 
     @Test
-    void package_key_maps_external_tests_kind_to_test_jar() {
+    void package_key_maps_external_tests_kind_to_the_tests_classifier() {
         Dependency main = Dependency.of("lib", "com.acme:lib", VersionSelector.parse("=1.0.0"));
         assertThat(main.packageKey()).isEqualTo("com.acme:lib:jar:");
 
         Dependency tests = main.withKind(DependencyKind.TESTS);
-        assertThat(tests.packageKey()).isEqualTo("com.acme:lib:test-jar:tests");
+        assertThat(tests.packageKey()).isEqualTo("com.acme:lib:jar:tests");
     }
 
     @Test
